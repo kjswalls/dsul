@@ -22,6 +22,7 @@ import type { TimeBucket } from '@/lib/planner-types';
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const initializeStore = usePlannerStore((s) => s.initializeStore);
+  const identifyUser = usePlannerStore((s) => s.identifyUser);
   const clearStore = usePlannerStore((s) => s.clearStore);
   const { setTheme } = useTheme();
   const hydratedUserId = useRef<string | null>(null);
@@ -318,6 +319,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
      */
     const adoptUser = (userId: string) => {
       adoptLocalState(userId);
+      // WHO, before anything that needs to know. `userId` on planner-store used
+      // to be stamped only by initializeStore, which made "signed in" and "the
+      // item fetch has begun" the same fact — so a surface that needed only the
+      // first (the /settings hydration gate is the one that matters) could not
+      // be served without starting the second. Stamping it here, ahead of every
+      // load below, is what decouples them; see the action's note.
+      identifyUser(userId);
       loadPlanner(userId);
       hydrateSettings(userId);
       // Deliberately NOT part of planner-store's Promise.all: that batch
@@ -368,7 +376,10 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     // setTheme is deliberately absent — see setThemeRef above. Both remaining
     // deps are zustand actions, created once by the store creator and stable
     // for its lifetime, so this effect now runs exactly once per mount.
-  }, [initializeStore, clearStore]);
+    // Zustand actions are minted once by `create` and never re-identified, so
+    // naming a third one here cannot re-run this effect — unlike `setTheme`,
+    // which is why that one is held behind a ref at the top of this file.
+  }, [initializeStore, identifyUser, clearStore]);
 
   return <>{children}</>;
 }
