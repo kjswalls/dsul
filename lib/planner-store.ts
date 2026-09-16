@@ -2158,12 +2158,21 @@ export const usePlannerStore = create<PlannerStore>()(
           // guard, exactly like an account that is already loaded, so the next
           // `initializeStore(B)` early-returns and B is left reading A's rows
           // for the rest of the session.
+          // SUPERSEDED covers the case `userId` cannot see. The opening guard
+          // deliberately lets a second call through while the first is still
+          // running ("a second call while the first is still running must be
+          // allowed through to replace it"), so two loads for the SAME account
+          // can overlap — a sign-out and immediate sign-in as A, or A → B → A
+          // across tabs. The older one has stale rows and a stale history
+          // baseline, and must bow out rather than land on top of the newer.
+          if (loadGeneration !== generation) return;
           if (get().userId !== userId) {
             // Releasing the suppressor is this load's job only while it still
-            // owns it — see `loadGeneration`. Skipping the release outright
-            // would latch it forever and silently stop the history subscriber
-            // recording anything for the rest of the session.
-            if (loadGeneration === generation) isUpdatingUndoRedo = false;
+            // owns it, and the line above has just established that it does.
+            // Skipping the release outright would latch it forever and silently
+            // stop the history subscriber recording anything for the rest of
+            // the session.
+            isUpdatingUndoRedo = false;
             return;
           }
 
@@ -2213,9 +2222,11 @@ export const usePlannerStore = create<PlannerStore>()(
           });
           isUpdatingUndoRedo = false;
         } catch (err) {
-          if (loadGeneration === generation) isUpdatingUndoRedo = false;
-          // Same rule as the success path above, and it matters more here: a
-          // FAILED load for the previous account would otherwise clear
+          // Both bow-out conditions from the success path, in the same order
+          // and for the same reasons.
+          if (loadGeneration !== generation) return;
+          isUpdatingUndoRedo = false;
+          // A FAILED load for the previous account would otherwise clear
           // `isLoading` for the current one and put someone else's error on
           // their screen — and leave this function's opening guard reading the
           // new account as settled, so its own load could never start.

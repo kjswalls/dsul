@@ -240,3 +240,61 @@ describe('a superseded load and the history suppressor', () => {
     expect(usePlannerStore.getState().items.map((i) => i.id)).toEqual(['b-item']);
   });
 });
+
+/**
+ * Two loads for the SAME account, overlapping.
+ *
+ * `initializeStore`'s opening guard lets a second call through while the first
+ * is still running — deliberately, so a genuine in-flight load can be replaced.
+ * So a sign-out and immediate sign-in as the same person, or A → B → A across
+ * tabs, puts two loads for one account in the air at once, and the `userId`
+ * staleness check cannot tell them apart: both name the same user.
+ *
+ * The older one carries stale rows AND a stale history baseline. Landing it on
+ * top of the newer leaves `historyIndex` and `historyStack` describing
+ * different things, and an undo from there syncs a snapshot the store never
+ * held back to the database.
+ */
+describe('two loads for the same account', () => {
+  beforeEach(() => {
+    usePlannerStore.getState().clearStore();
+    pendingItemFetches.length = 0;
+  });
+
+  it('lets the newer one win and the older one bow out', async () => {
+    const first = usePlannerStore.getState().initializeStore(A);
+    await Promise.resolve();
+    // Allowed through by the opening guard, because the first is still loading.
+    const second = usePlannerStore.getState().initializeStore(A);
+    await Promise.resolve();
+
+    // They come back out of order: the superseded one lands last.
+    releaseItems([{ id: 'stale', title: 'stale', type: 'task', completedDates: [] }]);
+    await first;
+    releaseItems([{ id: 'fresh', title: 'fresh', type: 'task', completedDates: [] }]);
+    await second;
+
+    expect(usePlannerStore.getState().items.map((i) => i.id)).toEqual(['fresh']);
+  });
+
+  it('does not let the older one release a suppressor the newer still owns', async () => {
+    const first = usePlannerStore.getState().initializeStore(A);
+    await Promise.resolve();
+    const second = usePlannerStore.getState().initializeStore(A);
+    await Promise.resolve();
+
+    // The older one finishes while the newer is still fetching.
+    releaseItems([{ id: 'stale', title: 'stale', type: 'task', completedDates: [] }]);
+    await first;
+
+    // The newer load's window is still open, so nothing written inside it may
+    // reach the history subscriber.
+    usePlannerStore.setState({ error: 'a write inside the newer load window' });
+    await Promise.resolve();
+    expect(usePlannerStore.getState().actionLog).toEqual([]);
+
+    releaseItems([{ id: 'fresh', title: 'fresh', type: 'task', completedDates: [] }]);
+    await second;
+    expect(usePlannerStore.getState().items.map((i) => i.id)).toEqual(['fresh']);
+  });
+});
