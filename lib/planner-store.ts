@@ -2142,6 +2142,23 @@ export const usePlannerStore = create<PlannerStore>()(
               // erases a year of target dates in one silent batch.
               fetchGoals(userId),
             ]);
+          // A SLOWER RESPONSE FOR A PREVIOUS ACCOUNT MUST NEVER LAND ON THE
+          // CURRENT ONE — the rule supabase-provider's `hydrateSettings`
+          // already follows across its own await, and the one place on this
+          // store that did not.
+          //
+          // An account switch with no intervening SIGNED_OUT (Supabase delivers
+          // no event for it) re-stamps `userId` while this fetch is still in
+          // flight. Everything below belongs to the account that is no longer
+          // signed in, so it is dropped wholesale rather than partially
+          // applied. Without this the `set()` below lands user A's items under
+          // user B's id AND clears `isLoading` — after which
+          // `identifyUser`-stamped B looks, to this function's own opening
+          // guard, exactly like an account that is already loaded, so the next
+          // `initializeStore(B)` early-returns and B is left reading A's rows
+          // for the rest of the session.
+          if (get().userId !== userId) return;
+
           const itemTypes = itemTypesResult ?? [];
           // null means the table is unreachable, NOT "no rows" — the flag gates
           // the UI so a write can't look like it landed and vanish.
@@ -2189,6 +2206,12 @@ export const usePlannerStore = create<PlannerStore>()(
           isUpdatingUndoRedo = false;
         } catch (err) {
           isUpdatingUndoRedo = false;
+          // Same rule as the success path above, and it matters more here: a
+          // FAILED load for the previous account would otherwise clear
+          // `isLoading` for the current one and put someone else's error on
+          // their screen — and leave this function's opening guard reading the
+          // new account as settled, so its own load could never start.
+          if (get().userId !== userId) return;
           set({
             isLoading: false,
             error: err instanceof Error ? err.message : 'Failed to load data',

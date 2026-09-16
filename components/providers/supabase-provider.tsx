@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
+import { usePathname } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -17,6 +18,7 @@ import { useNudgeStore } from '@/lib/nudge-store';
 import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
+import { routeNeedsItems } from '@/lib/route-data';
 import { useTheme } from 'next-themes';
 import type { TimeBucket } from '@/lib/planner-types';
 
@@ -28,6 +30,33 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const hydratedUserId = useRef<string | null>(null);
   /** Its sibling for the planner load itself — see loadPlanner. */
   const loadedUserId = useRef<string | null>(null);
+
+  /**
+   * Does the route on screen render any of what `loadPlanner` fetches?
+   *
+   * Held in a ref as well as read directly, for the same reason `setTheme` is
+   * (see below): `adoptUser` runs inside the auth effect, which must NOT be
+   * torn down and re-subscribed on every navigation — Supabase re-resolves
+   * `getSession()` when it is, and the whole account would re-adopt on each
+   * route change. The ref is what lets that effect read a value it is not
+   * allowed to depend on.
+   */
+  const pathname = usePathname();
+  const needsItems = routeNeedsItems(pathname);
+  const needsItemsRef = useRef(needsItems);
+  useEffect(() => {
+    needsItemsRef.current = needsItems;
+  }, [needsItems]);
+
+  /**
+   * `loadPlanner`, reachable from outside the auth effect that defines it.
+   *
+   * The load keeps its latch, its unlatch-on-failure and its first-run seeding
+   * exactly where they are — that ordering is the design and moving it would be
+   * the change, not the gate. This only gives the navigation effect below a way
+   * to ask for the same load the auth path would have asked for.
+   */
+  const loadPlannerRef = useRef<((userId: string) => void) | null>(null);
 
   /**
    * setTheme, held at arm's length from the auth effect below.
@@ -326,7 +355,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // be served without starting the second. Stamping it here, ahead of every
       // load below, is what decouples them; see the action's note.
       identifyUser(userId);
-      loadPlanner(userId);
+      // The item load, only where an item is rendered. On a lean route
+      // (lib/route-data.ts) the stamp above is the whole of what the page
+      // needs, and the navigation effect below picks the load up the moment
+      // the user goes somewhere that does need it.
+      if (needsItemsRef.current) loadPlanner(userId);
       hydrateSettings(userId);
       // Deliberately NOT part of planner-store's Promise.all: that batch
       // gates the overdue sweep, and extensions must never be able to fail
@@ -342,6 +375,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // a nudge that fails to load stays inert, never a failed data load.
       useNudgeStore.getState().hydrate(userId);
     };
+
+    // Published for the navigation effect below, which needs the SAME load —
+    // latch, failure unlatch and first-run seeding included — rather than a
+    // second copy of it.
+    loadPlannerRef.current = loadPlanner;
 
     // Check current session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -379,7 +417,32 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     // Zustand actions are minted once by `create` and never re-identified, so
     // naming a third one here cannot re-run this effect — unlike `setTheme`,
     // which is why that one is held behind a ref at the top of this file.
+    // `needsItems` is deliberately absent for the same reason and read through
+    // its ref instead: re-running this effect per navigation would re-resolve
+    // getSession and re-adopt the account on every route change.
   }, [initializeStore, identifyUser, clearStore]);
+
+  /**
+   * Arriving somewhere that DOES need the items, having skipped the load.
+   *
+   * The auth path above only fires on a Supabase event, and a client-side
+   * navigation is not one — so without this, /settings → / would land on the
+   * planner with an empty store and nothing left to ask for it.
+   *
+   * Keyed on the BOOLEAN, not the pathname: /item/a → /item/b must not re-enter
+   * a load that has already happened. `loadPlanner`'s own latch would refuse it
+   * anyway, and this keeps the effect from running at all on the common case.
+   *
+   * `userId` comes from the store rather than a local, because the two orders
+   * are both real: land on / first and `adoptUser` does the load (this runs
+   * before the session resolves, sees no user, and correctly does nothing);
+   * arrive from a lean route and the stamp is already there.
+   */
+  useEffect(() => {
+    if (!needsItems) return;
+    const userId = usePlannerStore.getState().userId;
+    if (userId) loadPlannerRef.current?.(userId);
+  }, [needsItems]);
 
   return <>{children}</>;
 }

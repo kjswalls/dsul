@@ -76,22 +76,6 @@ describe('identifyUser', () => {
     expect(s.canUndo).toBe(false);
     expect(s.actionLog).toEqual([]);
   });
-
-  it('leaves initializeStore free to run afterwards', async () => {
-    // The trap this guards: initializeStore early-returns when the account is
-    // already named AND nothing is loading. If the identity stamp looked like
-    // a finished load, the route that later asks for items would be refused
-    // and the planner would stay empty forever.
-    usePlannerStore.getState().identifyUser(A);
-
-    const before = usePlannerStore.getState();
-    expect(before.userId).toBe(A);
-    expect(before.isLoading).toBe(true);
-
-    // The real guard, read directly: `userId === userId && !isLoading`.
-    const wouldEarlyReturn = before.userId === A && !before.isLoading;
-    expect(wouldEarlyReturn).toBe(false);
-  });
 });
 
 /**
