@@ -354,7 +354,19 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // first (the /settings hydration gate is the one that matters) could not
       // be served without starting the second. Stamping it here, ahead of every
       // load below, is what decouples them; see the action's note.
+      const previousUserId = usePlannerStore.getState().userId;
       identifyUser(userId);
+      // THE WIPE AND THE LATCH HAVE TO MOVE TOGETHER. `identifyUser` empties
+      // the store whenever the account changes, and `loadedUserId` is what
+      // stops `loadPlanner` re-entering a load it has already done — so an
+      // account that is wiped while its latch still names it can never be
+      // loaded again. Supabase broadcasts SIGNED_IN across tabs, so A → B → A
+      // arrives as two adoptions with no navigation between them: the second
+      // wipes A's rows, the latch still reads 'A', and the next trip to the
+      // planner is refused its items and sits empty with no error to explain
+      // it. Clearing the latch on the same condition as the wipe is what keeps
+      // the two from disagreeing.
+      if (previousUserId !== userId) loadedUserId.current = null;
       // The item load, only where an item is rendered. On a lean route
       // (lib/route-data.ts) the stamp above is the whole of what the page
       // needs, and the navigation effect below picks the load up the moment

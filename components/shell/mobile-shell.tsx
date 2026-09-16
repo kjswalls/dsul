@@ -117,7 +117,7 @@ export const MobileShell = memo(function MobileShell() {
     // and the Today card's copy keep the default.
     <span className="flex [&>button]:size-7 [&_[data-slot=avatar]]:size-6">
       <UserProfileDropdown
-        onOpenSettings={() => router.push('/settings/day')}
+        settingsHref="/settings/day"
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
       />
     </span>
@@ -155,7 +155,7 @@ export const MobileShell = memo(function MobileShell() {
       {/* One card, not two: the week strip is a row inside the header now, so
           the shell no longer mounts a day-strip beside it. */}
       <MobileHeader
-        onOpenSettings={() => router.push('/settings/day')}
+        settingsHref="/settings/day"
         onOpenBugReport={() => openDialog({ type: 'bug-report' })}
       />
 

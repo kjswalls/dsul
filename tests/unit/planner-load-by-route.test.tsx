@@ -24,11 +24,22 @@ vi.mock('@/lib/settings-service', () => ({
   flushSettings: vi.fn(async () => {}),
 }));
 
+/**
+ * The provider's auth listener, captured so a test can deliver the events
+ * Supabase would. SIGNED_IN is re-emitted on every hidden→visible transition
+ * AND broadcast across tabs, which is what makes an A → B → A sequence with no
+ * navigation between the steps an ordinary thing rather than a contrived one.
+ */
+let emitAuth: (event: string, session: { user: { id: string } } | null) => void = () => {};
+
 vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
     auth: {
       getSession: async () => ({ data: { session: { user: { id: USER } } } }),
-      onAuthStateChange: () => ({ data: { subscription: { unsubscribe: () => {} } } }),
+      onAuthStateChange: (cb: (e: string, s: unknown) => void) => {
+        emitAuth = cb as typeof emitAuth;
+        return { data: { subscription: { unsubscribe: () => {} } } };
+      },
     },
   }),
 }));
@@ -155,5 +166,56 @@ describe('the item load follows the route', () => {
     // Re-entering it would clear the undo stack and replace `items` wholesale
     // — a rename committed inside that window is silently reverted.
     expect(initializeStore).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * The wipe and the load latch have to agree about which account is loaded.
+   *
+   * `loadPlanner` latches `loadedUserId` so a SIGNED_IN re-emit cannot re-enter
+   * a load and throw away the undo stack. `identifyUser` empties the store
+   * whenever the account changes. Those two facts can disagree: an account
+   * wiped while its latch still names it could never be loaded again, and the
+   * planner sat empty with `isLoading` stuck true and no error to explain it.
+   *
+   * Supabase broadcasts SIGNED_IN across tabs, so signing into B in another tab
+   * and back to A in this one delivers exactly this sequence with no navigation
+   * in between.
+   */
+  it('reloads an account that was wiped while its latch still named it', async () => {
+    pathname = '/';
+    const view = render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    await waitFor(() => expect(initializeStore).toHaveBeenCalledWith(USER));
+
+    // Off to settings, where nothing loads.
+    pathname = '/settings/day';
+    view.rerender(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    // Two cross-tab broadcasts: A's rows are wiped by the switch to B, and
+    // wiped again on the way back.
+    emitAuth('SIGNED_IN', { user: { id: 'user-b' } });
+    await waitFor(() => expect(usePlannerStore.getState().userId).toBe('user-b'));
+    emitAuth('SIGNED_IN', { user: { id: USER } });
+    await waitFor(() => expect(usePlannerStore.getState().userId).toBe(USER));
+    expect(usePlannerStore.getState().items).toEqual([]);
+
+    // Back to the planner. A's items are gone, so they must be fetched again.
+    initializeStore.mockClear();
+    pathname = '/';
+    view.rerender(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    await waitFor(() => expect(initializeStore).toHaveBeenCalledWith(USER));
   });
 });

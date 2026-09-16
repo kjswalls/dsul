@@ -2101,6 +2101,7 @@ export const usePlannerStore = create<PlannerStore>()(
         if (current.userId === userId && !current.isLoading) return;
 
         // Block subscriber during initialization to prevent poisoned history entries
+        const generation = ++loadGeneration;
         isUpdatingUndoRedo = true;
         hasInitializedHistory = false;
 
@@ -2157,7 +2158,14 @@ export const usePlannerStore = create<PlannerStore>()(
           // guard, exactly like an account that is already loaded, so the next
           // `initializeStore(B)` early-returns and B is left reading A's rows
           // for the rest of the session.
-          if (get().userId !== userId) return;
+          if (get().userId !== userId) {
+            // Releasing the suppressor is this load's job only while it still
+            // owns it — see `loadGeneration`. Skipping the release outright
+            // would latch it forever and silently stop the history subscriber
+            // recording anything for the rest of the session.
+            if (loadGeneration === generation) isUpdatingUndoRedo = false;
+            return;
+          }
 
           const itemTypes = itemTypesResult ?? [];
           // null means the table is unreachable, NOT "no rows" — the flag gates
@@ -2205,7 +2213,7 @@ export const usePlannerStore = create<PlannerStore>()(
           });
           isUpdatingUndoRedo = false;
         } catch (err) {
-          isUpdatingUndoRedo = false;
+          if (loadGeneration === generation) isUpdatingUndoRedo = false;
           // Same rule as the success path above, and it matters more here: a
           // FAILED load for the previous account would otherwise clear
           // `isLoading` for the current one and put someone else's error on
@@ -4364,6 +4372,18 @@ function syncContainers<T extends { id: string }>(
 
 // Subscribe to changes and save to history
 let isUpdatingUndoRedo = false;
+
+/**
+ * Which `initializeStore` call currently owns `isUpdatingUndoRedo`.
+ *
+ * The flag is a plain boolean, set true for the WHOLE of a load and released at
+ * each of that load's three exits. With two loads overlapping — an account
+ * switch mid-fetch — the slower one's exit would otherwise release a flag the
+ * faster one is still relying on, waking the history subscriber inside a window
+ * where the store is being replaced wholesale. A superseded load compares its
+ * generation, finds it stale, and leaves the flag to whoever took over.
+ */
+let loadGeneration = 0;
 let hasInitializedHistory = false;
 
 // Initialize prevStateJson eagerly with the store's initial state

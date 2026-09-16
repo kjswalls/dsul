@@ -24,22 +24,27 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
  * file red and nothing else in the suite.
  */
 
-/** Held open for the whole test — this is what keeps the load in flight. */
-let releaseItems: (value: unknown[]) => void = () => {};
-let itemsInFlight = new Promise<unknown[]>((resolve) => {
-  releaseItems = resolve;
-});
-const reopenItemsFetch = () => {
-  itemsInFlight = new Promise<unknown[]>((resolve) => {
-    releaseItems = resolve;
-  });
+/**
+ * One deferred per `fetchItems` call, in the order they were made.
+ *
+ * A QUEUE rather than a single promise, because the cases below need two loads
+ * in flight at once — a single shared deferred hands both loads the same
+ * promise, so releasing "the" fetch resolves whichever one happens to be
+ * current and leaves the other awaiting forever.
+ */
+const pendingItemFetches: ((value: unknown[]) => void)[] = [];
+/** Resolve the OLDEST outstanding fetch — the one started first. */
+const releaseItems = (value: unknown[]) => {
+  const resolve = pendingItemFetches.shift();
+  if (!resolve) throw new Error('releaseItems: no fetch in flight');
+  resolve(value);
 };
 
 vi.mock('@/lib/db', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@/lib/db');
   return {
     ...actual,
-    fetchItems: () => itemsInFlight,
+    fetchItems: () => new Promise((resolve) => pendingItemFetches.push(resolve)),
     fetchProjects: async () => [],
     fetchItemTypes: async () => [],
     fetchRoutines: async () => [],
@@ -100,7 +105,7 @@ describe('identifyUser inside another load', () => {
 describe('a load that resolves after the account changed', () => {
   beforeEach(() => {
     usePlannerStore.getState().clearStore();
-    reopenItemsFetch();
+    pendingItemFetches.length = 0;
   });
 
   it('is dropped wholesale rather than applied to whoever is signed in now', async () => {
@@ -131,7 +136,6 @@ describe('a load that resolves after the account changed', () => {
     await loading;
 
     // The navigation effect asking for B's items, for real this time.
-    reopenItemsFetch();
     const bLoading = usePlannerStore.getState().initializeStore(B);
     releaseItems([{ id: 'b-item', title: 'B', type: 'task', completedDates: [] }]);
     await bLoading;
@@ -160,7 +164,7 @@ describe('a load that resolves after the account changed', () => {
 describe('identifyUser then a real load', () => {
   beforeEach(() => {
     usePlannerStore.getState().clearStore();
-    reopenItemsFetch();
+    pendingItemFetches.length = 0;
   });
 
   it('is not mistaken for an account that has already loaded', async () => {
@@ -175,5 +179,64 @@ describe('identifyUser then a real load', () => {
 
     expect(usePlannerStore.getState().items.map((i) => i.id)).toEqual(['a-item']);
     expect(usePlannerStore.getState().isLoading).toBe(false);
+  });
+});
+
+/**
+ * A superseded load must not latch the history suppressor shut.
+ *
+ * `isUpdatingUndoRedo` is held true for the WHOLE of a load and released at each
+ * of that load's exits. The stale-account return added above is a new exit — and
+ * one that returns with the flag still held. Skipping the release there stops the
+ * history subscriber recording ANYTHING for the rest of the session: no undo, no
+ * action log, `prevStateJson` frozen, and nothing on screen to say so.
+ *
+ * Releasing it unconditionally is the other wrong answer, which is why the load
+ * carries a generation: a slow load must not release a flag that a faster one
+ * has since taken over.
+ */
+describe('a superseded load and the history suppressor', () => {
+  beforeEach(() => {
+    usePlannerStore.getState().clearStore();
+    pendingItemFetches.length = 0;
+  });
+
+  it('releases the suppressor it still owns when it bows out', async () => {
+    const loading = usePlannerStore.getState().initializeStore(A);
+    await Promise.resolve();
+
+    usePlannerStore.getState().identifyUser(B);
+    releaseItems([{ id: 'a-item', title: 'A', type: 'task', completedDates: [] }]);
+    await loading;
+
+    // B goes on using the app. Its first change has to be recorded.
+    usePlannerStore.setState({
+      items: [{ id: 'b-item', title: 'B', type: 'task', completedDates: [] }],
+    } as never);
+    await Promise.resolve();
+
+    expect(usePlannerStore.getState().actionLog.length).toBeGreaterThan(0);
+  });
+
+  it('leaves the suppressor alone when a newer load has taken it over', async () => {
+    const stale = usePlannerStore.getState().initializeStore(A);
+    await Promise.resolve();
+
+    // B identifies AND starts its own load, which now owns the flag.
+    usePlannerStore.getState().identifyUser(B);
+    const fresh = usePlannerStore.getState().initializeStore(B);
+    await Promise.resolve();
+
+    // A's fetch lands late. It must not unblock the subscriber mid-load for B.
+    releaseItems([{ id: 'a-item', title: 'A', type: 'task', completedDates: [] }]);
+    await stale;
+
+    usePlannerStore.setState({ error: 'a write inside B\'s load window' });
+    await Promise.resolve();
+    expect(usePlannerStore.getState().actionLog).toEqual([]);
+
+    releaseItems([{ id: 'b-item', title: 'B', type: 'task', completedDates: [] }]);
+    await fresh;
+    expect(usePlannerStore.getState().items.map((i) => i.id)).toEqual(['b-item']);
   });
 });

@@ -39,17 +39,35 @@ const ITEM_FIELDS = [
 ];
 
 /**
- * The four ways this codebase reaches a planner field.
+ * The ways this codebase reaches a planner field.
  *
- * `planner()` is the settings manifest's own accessor (manifest.ts:349), and it
- * is the one that matters most here: every settings record reads through it, so
- * a new `planner().projects` record is precisely how `/settings` would start
- * needing the load. Matching only `s.` / `state.` would miss all of them.
+ * `planner()` is the settings manifest's own accessor (manifest.ts:349): every
+ * settings record reads through it, so a new `planner().projects` record is
+ * precisely how `/settings` would start needing the load.
+ *
+ * The BARE DESTRUCTURE — `const { items, projects } = usePlannerStore()` — is
+ * the other form that matters, and the one a selector-shaped regex misses
+ * entirely. Eighteen files use it (components/sidebar/braindump.tsx among
+ * them), so a check blind to it is blind to the commonest way a component
+ * reads this store.
  */
-const readPattern = (field: string) =>
+const accessorPattern = (field: string) =>
   new RegExp(
     `\\bs\\.${field}\\b|\\bstate\\.${field}\\b|planner\\(\\)\\.${field}\\b|getState\\(\\)\\.${field}\\b`
   );
+
+/** `const { a, b } = usePlannerStore()` — every name inside the braces. */
+function destructuredFields(src: string): Set<string> {
+  const names = new Set<string>();
+  for (const m of src.matchAll(/(?:const|let)\s*\{([^}]*)\}\s*=\s*usePlannerStore\s*\(\s*\)/g)) {
+    for (const part of m[1].split(',')) {
+      // `items` and `items: renamed` alike — the SOURCE name is what is read.
+      const name = part.split(':')[0].trim();
+      if (name) names.add(name);
+    }
+  }
+  return names;
+}
 
 /**
  * Store modules are excluded: `lib/planner-store.ts` obviously contains
@@ -74,7 +92,12 @@ const isStoreModule = (file: string) =>
 const isRenderSurface = (file: string) => {
   const rel = path.relative(ROOT, file);
   return (
-    rel.startsWith('app/') || rel.startsWith('components/') || rel.startsWith('lib/settings/')
+    rel.startsWith('app/') ||
+    rel.startsWith('components/') ||
+    // `hooks/use-day-items.ts` reads `s.goals` — a hook is a render surface
+    // wearing a different directory.
+    rel.startsWith('hooks/') ||
+    rel.startsWith('lib/settings/')
   );
 };
 
@@ -104,7 +127,10 @@ function itemReadsUnder(entry: string): { file: string; fields: string[] }[] {
     const src = readFileSync(file, 'utf8');
 
     if (isRenderSurface(file) && !isStoreModule(file) && src.includes('usePlannerStore')) {
-      const fields = ITEM_FIELDS.filter((f) => readPattern(f).test(src));
+      const destructured = destructuredFields(src);
+      const fields = ITEM_FIELDS.filter(
+        (f) => accessorPattern(f).test(src) || destructured.has(f)
+      );
       if (fields.length) found.push({ file: path.relative(ROOT, file), fields });
     }
 
@@ -128,6 +154,10 @@ function pageRoutes(dir: string, urlPath = ''): { route: string; file: string }[
       const segment = entry.startsWith('(') ? '' : `/${entry}`;
       out.push(...pageRoutes(full, urlPath + segment));
     } else if (entry === 'page.tsx') {
+      out.push({ route: urlPath || '/', file: full });
+    } else if (entry === 'layout.tsx') {
+      // A layout renders ABOVE the page on that route and is just as able to
+      // read the store. The root one is shared by every route, lean or not.
       out.push({ route: urlPath || '/', file: full });
     }
   }
@@ -179,11 +209,18 @@ describe('routeNeedsItems', () => {
   it('reaches past the page file, or the check above proves nothing', () => {
     // A positive control for the walk itself. The planner's own page is three
     // lines and reads nothing; every hit here comes from the tree beneath it.
-    const settingsPage = pageRoutes(APP).find((p) => p.route.startsWith('/settings'));
+    const settingsPage = pageRoutes(APP).find(
+      (p) => p.route.startsWith('/settings') && p.file.endsWith('page.tsx')
+    );
     expect(settingsPage).toBeDefined();
     expect(itemReadsUnder(settingsPage!.file).length).toBe(0);
 
-    const planner = pageRoutes(APP).find((p) => p.route === '/');
+    // The PAGE, explicitly: `pageRoutes` also yields the root layout on '/',
+    // and the layout reads nothing — which is the right answer for it and the
+    // wrong one for this control.
+    const planner = pageRoutes(APP).find(
+      (p) => p.route === '/' && p.file.endsWith('page.tsx')
+    );
     expect(readFileSync(planner!.file, 'utf8')).not.toContain('s.items');
     expect(itemReadsUnder(planner!.file).length).toBeGreaterThan(0);
   });

@@ -596,7 +596,7 @@ describe('each surface renders only what it can honour', () => {
  */
 describe('the mobile header mount', () => {
   const renderHeader = () =>
-    render(<MobileHeader onOpenSettings={() => {}} onOpenBugReport={() => {}} />);
+    render(<MobileHeader settingsHref="/settings/day" onOpenBugReport={() => {}} />);
 
   afterEach(() => useMobileNavStore.setState({ activeTab: 'today' }));
 
