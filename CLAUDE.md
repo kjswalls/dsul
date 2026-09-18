@@ -28,12 +28,24 @@ is republished.
 
 ```bash
 pnpm install
-vercel env pull .env.local   # .env.local is gitignored and Vercel-generated — don't hand-copy
+vercel env pull .env.local        # gitignored, Vercel-generated — don't hand-copy
+./scripts/local-setup.sh dev      # then point dev at a LOCAL Supabase
 ```
 
 Then run `/mcp` to authenticate. `.mcp.json` is committed but holds only hosted OAuth
-URLs (Figma + Supabase), no secrets, so it works from any machine. E2E tests need a
-separate `.env.test` — see `.env.test.example`.
+URLs (Figma + Supabase), no secrets, so it works from any machine.
+
+**`vercel env pull` writes PRODUCTION credentials, so `pnpm dev` talks to prod until
+you run `local-setup.sh`.** That is not theoretical: of the API requests in one
+ten-minute window on 2026-09-18, 5,917 came from `localhost:3000` and two came from
+the deployed app — every hot-reload remount re-runs the planner's container fan-out
+against the live project. `local-setup.sh dev` stands up a local stack and swaps only
+the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the VAPID pair and
+`CRON_SECRET` through untouched. `vercel env pull .env.local` puts prod back.
+
+The same script covers the e2e suite (`./scripts/local-setup.sh e2e`, writing
+`.env.test` — see `.env.test.example`), or `both` from one stack. See
+[scripts/README.md](scripts/README.md).
 
 ## Git workflow
 
