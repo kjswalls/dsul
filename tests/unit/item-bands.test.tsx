@@ -174,6 +174,20 @@ const task = (over: Partial<TaskItem> = {}): TaskItem => ({
   ...over,
 });
 
+/** A habit — the one type with a REQUIRED container, hence its own fixture. */
+const habitItem = (over: Record<string, unknown> = {}): Item =>
+  ({
+    type: 'habit',
+    id: 'h1',
+    title: 'Morning pages',
+    status: 'pending',
+    repeatFrequency: 'daily',
+    completedDates: [],
+    skippedDates: [],
+    streak: 0,
+    ...over,
+  }) as unknown as Item;
+
 const routine = (over: Partial<Routine> = {}): Routine => ({
   id: 'r1',
   name: 'Deep work',
@@ -237,6 +251,18 @@ const panel = (item: Item = task()) =>
 const capture = (type = 'task', over: Record<string, unknown> = {}) =>
   render(
     <ItemDialog state={{ mode: 'add', type, ...over }} onOpenChange={() => {}} />
+  );
+
+/**
+ * The mobile edit drawer — and the Zen edit modal, which resolves identically.
+ * The ONLY surface that is Clearing and does NOT autosave, which makes it the
+ * only fixture that can tell `autosaves` apart from `mode`: every other pairing
+ * moves both at once (the panel is edit+autosaving, capture is add+not). Without
+ * it a footer keyed on `mode === 'add'` would pass every test in this file.
+ */
+const modalEdit = (item: Item = task()) =>
+  render(
+    <ItemDialog state={{ mode: 'edit', item }} onOpenChange={() => {}} withDetailSections={false} />
   );
 
 const field = () => screen.getByTestId('item-clearing-field');
@@ -385,6 +411,32 @@ describe('the capture surface gets the field too', () => {
     }
   });
 
+  it('folds the WHEN cluster away too — the rows the complaint was actually about', () => {
+    /**
+     * The container nouns above are the easy half. The five schedule properties
+     * — Date, Time, Repeat, Remind, Times per day — were the `When` band, the
+     * first and widest of the five empty rows a fresh capture used to draw, and
+     * nothing in this file pinned them.
+     *
+     * MUTATION-CHECKED: flipping `set: !!d.startDate` to `set: true` on the date
+     * prop (item-dialog.tsx) leaves every other test in the repo green while the
+     * capture modal draws a valueless "Date" chip again — exactly the empty
+     * affordance this layout exists to delete. This test is what fails instead.
+     */
+    capture(); // an undated task: the braindump / omnibar capture path
+    for (const noun of ['Date', 'Repeat', 'Remind']) {
+      expect(field().textContent).not.toContain(noun);
+    }
+    // A dateless task is not date-anchored ANYWHERE yet, so Time goes with it —
+    // `showTime` is a capability question, not a value one.
+    expect(field().textContent).not.toContain('Time');
+    // Absent from the field, present in the seed: folded, never removed.
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    for (const noun of ['Date', 'Repeat', 'Remind']) {
+      expect(seedOptions().some((t) => t.includes(noun))).toBe(true);
+    }
+  });
+
   it('keeps what the open ALREADY set on screen — the date you added from', () => {
     // The seed is not a diet: a capture anchored to a day carries that day, so
     // the chip is set and shows at rest. This is why the field is not simply
@@ -401,6 +453,11 @@ describe('the capture surface gets the field too', () => {
     capture('habit');
     expect(screen.getByTestId('item-dialog-container-chip').textContent).toContain('Onboarding');
     expect(field().textContent).toContain('Daily');
+    // The count chip is asserted BY VALUE, not just by the section it sits in:
+    // `timesPerDay` is the one prop hardcoded `set: true` (it always carries a
+    // value, defaulting to 1×), and flipping that to false silently drops it
+    // into the seed on every surface with nothing else in the suite noticing.
+    expect(field().textContent).toContain('1×');
     // …and the chip keeps the registry noun in its accessible name, which is
     // the only place the band label used to live.
     expect(screen.getByTestId('item-dialog-container-chip').getAttribute('aria-label')).toBe(
@@ -408,11 +465,27 @@ describe('the capture surface gets the field too', () => {
     );
   });
 
-  it('keeps a required container out of the seed even so', () => {
-    // `required` is asserted separately from `set` on purpose: a habit whose
-    // project were ever cleared must still see the chip, never a field that
-    // silently dropped the one property it cannot do without.
+  it("never offers a habit's own container in the seed — it cannot be un-set", () => {
+    /**
+     * Honest about WHY this passes, because the obvious reading is wrong: it is
+     * `set`, not `required`, that carries it. Neither draft builder can produce
+     * `container: 'none'` for a type that requires one — makeAddDraft seeds the
+     * first container (or legacy 'personal'), and draftFromItem falls back to
+     * `''` — and `set` is `d.container !== 'none'`, so it is true even for a
+     * habit filed nowhere. `required` is the backstop behind that, not the
+     * mechanism, and there is no state reachable from either builder that
+     * exercises it alone. What this pins is the USER-FACING guarantee: the one
+     * property a habit cannot do without is never folded out of reach.
+     */
     capture('habit');
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
+    cleanup();
+    // The same guarantee on the edit side, where the project really IS empty:
+    // draftFromItem gives a container-requiring type `''` rather than 'none'.
+    seed({ items: [habitItem()] });
+    panel(habitItem());
+    expect(screen.getByTestId('item-dialog-container-chip')).toBeTruthy();
     fireEvent.click(screen.getByTestId('item-clearing-seed'));
     expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
   });
@@ -434,6 +507,39 @@ describe('the capture surface gets the field too', () => {
     expect(screen.getByTestId('item-dialog-submit').textContent).toContain('Add');
     cleanup();
     panel();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Done');
+  });
+});
+
+describe('the mobile drawer: Clearing without autosave', () => {
+  /**
+   * The second surface the gate held back, and the one no test in this repo
+   * mounted. It matters more than its size suggests: it is the only place where
+   * "is this Clearing?" and "does this save itself?" disagree, so it is the only
+   * fixture that can prove the layout is universal while the COMMIT affordance
+   * still tracks persistence.
+   */
+  it('gets the field and the whisper, like every other surface', () => {
+    modalEdit();
+    expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
+    expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
+    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
+  });
+
+  it('keeps Save Changes in the footer — the layout is universal, the commit is not', () => {
+    /**
+     * The discriminator is `autosaves` (isPanel && edit), NOT `mode`. This is the
+     * fixture that says so: it is mode 'edit' like the panel, but modal like the
+     * capture, and it must follow the CAPTURE on the footer. A regression that
+     * re-keyed the footer or the top-rail Done on `mode === 'add'` would satisfy
+     * every other test in this file and strand this surface with a Done button
+     * that flushes an autosave queue it never fills.
+     */
+    modalEdit();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Save Changes');
+    cleanup();
+    panel(); // same mode, different presentation → the other answer
     expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Done');
   });
 });
