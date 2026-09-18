@@ -25,7 +25,8 @@ import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { cn } from '@/lib/utils';
 
 interface MobileHeaderProps {
-  onOpenSettings: () => void;
+  /** Passed straight through to UserProfileDropdown — see its note. */
+  settingsHref: string;
   /**
    * Opens the bug-report/feature-request dialog. Dogfooding affordance for
    * #196; it lives inside the user menu now rather than in its own header
@@ -165,7 +166,7 @@ function WeekStrip() {
  * pt-safe lives on the outer <header> and the card carries its own top margin,
  * so the notch inset and the card's gap add rather than collide.
  */
-export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderProps) {
+export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProps) {
   const { selectedDate, setSelectedDate, weekStartDay } = usePlannerStore();
   const { layout, setLayout } = useViewStore();
   const activeTab = useMobileNavStore((s) => s.activeTab);
@@ -317,7 +318,7 @@ export function MobileHeader({ onOpenSettings, onOpenBugReport }: MobileHeaderPr
             </div>
 
             <UserProfileDropdown
-              onOpenSettings={onOpenSettings}
+              settingsHref={settingsHref}
               onOpenBugReport={onOpenBugReport}
             />
           </div>

@@ -171,6 +171,32 @@ interface PlannerStore {
   error: string | null;
 
   // Store lifecycle
+  /**
+   * Say WHO is signed in, without fetching anything.
+   *
+   * `userId` used to have exactly one writer — `initializeStore` — which made
+   * it mean two things at once: "this account is signed in" AND "the
+   * seven-table item fetch has begun". Every surface that only needed the
+   * first had to pay for the second. `/settings` is the clearest case: its
+   * hydration gate (lib/settings/hydration.ts) reads `userId` and no item on
+   * this store, and #243 already took the item load off that gate's critical
+   * path — but the load still had to be STARTED for the page to know who it
+   * was rendering for.
+   *
+   * Splitting the two is what lets a route that shows no items skip the fetch
+   * without the pages that only wanted the identity going dark.
+   *
+   * `isLoading: true` rides along and is not incidental: every `!isLoading`
+   * gate in the app (the overdue sweep, the auto-age sweep, AppShell's
+   * readiness check, /item and /goal's not-found guards) reads it as "the
+   * items are settled". They are not — they have not been asked for. Leaving
+   * it false would hand every one of those an EMPTY store that claims to be
+   * complete, which is how a sweep unschedules a year of work in one silent
+   * batch. It also keeps `initializeStore`'s own early-return open: that guard
+   * skips a re-entry only when the account is already loaded AND not loading,
+   * so the stamp must not look like a finished load.
+   */
+  identifyUser: (userId: string) => void;
   initializeStore: (userId: string) => Promise<void>;
   clearStore: () => void;
   /**
@@ -472,6 +498,49 @@ const projectItems = (items: Item[]) => ({
     (i): i is TaskItem => i.type !== 'habit' && !i.parentItemId
   ) as Task[],
   habits: items.filter((i): i is HabitItem => i.type === 'habit'),
+});
+
+/**
+ * Everything on this store that BELONGED TO AN ACCOUNT, back to empty.
+ *
+ * Shared by the two callers that drop a previous user: `clearStore` on
+ * sign-out, and `identifyUser` when the account changes under it. One list
+ * rather than two, because the failure mode of the second copy is silent and
+ * expensive — the `goals` note below is a bug that was found exactly that way,
+ * a slice the reset had never been taught about, leaving user B holding user
+ * A's rows.
+ *
+ * Deliberately NOT included: `userId` and `isLoading`, which say who we are and
+ * where the fetch has got to. The two callers disagree about those (a sign-out
+ * has no user and nothing loading; an account switch has both) so they stay at
+ * the call sites, where the difference is visible.
+ */
+const emptyAccountData = () => ({
+  ...projectItems([]),
+  projects: [],
+  itemTypes: [],
+  routines: [],
+  programs: [],
+  collectionsAvailable: true,
+  // Goals reset with every other slice. Missed, the previous account's goal
+  // names, whys and target dates stay in memory after SIGNED_OUT — and
+  // initializeStore's catch branch sets only isLoading/error, so a FAILED next
+  // sign-in leaves user B looking at user A's goals in the chip and the
+  // console, with updateGoal firing user-B writes at user-A ids.
+  goals: [],
+  goalsAvailable: true,
+  // Its two siblings above were here and this was not — a gap inherited from
+  // the old `clearStore` body, and exactly the miss the note above describes.
+  // Left at `false` by an account whose item_types table was unreachable, it
+  // makes `addItemType`'s opening guard silently drop the NEXT account's custom
+  // types until their own fetch resolves.
+  itemTypesAvailable: true,
+  error: null,
+  canUndo: false,
+  canRedo: false,
+  actionLog: [],
+  historyIndex: -1,
+  userTimezone: null,
 });
 
 /**
@@ -1959,6 +2028,61 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbUpdateGoal(userId, id, patch).catch(console.error);
       },
 
+      identifyUser: (userId: string) => {
+        // Idempotent, and that is the whole reason it is safe to call from the
+        // auth path: Supabase re-emits SIGNED_IN on every hidden→visible
+        // transition and broadcasts it across tabs, so this runs on every tab
+        // switch. Re-stamping the SAME account would flip `isLoading` back to
+        // true under a planner that is fully loaded, which is the tab-switch
+        // blank-screen bug initializeStore's own guard exists to prevent.
+        if (get().userId === userId) return;
+
+        // A DIFFERENT account (or the first one) — whatever is in these slices
+        // belongs to someone else. On the routes that go on to load, this is
+        // redundant with initializeStore's own replace; on the routes that do
+        // not, it is the only thing standing between user B and user A's rows.
+        // The history globals go with them: an undo stack recorded against A's
+        // items must never be applicable to B's session.
+        historyStack = [];
+        historyIndex = -1;
+        actionLog = [];
+        prevStateJson = null;
+        // WITH the stack, not apart from it — `initializeStore` resets the pair
+        // together for the same reason. The subscriber's lazy-baseline branch
+        // fires only on `!hasInitializedHistory && historyStack.length === 0`,
+        // so a stack emptied while the flag stays true from the last session is
+        // a session that can never record its 'Session start'. On the routes
+        // this action exists to serve there is no `initializeStore` afterwards
+        // to set it, so the first mutation of the new account would land with
+        // `historyIndex` at -1 and nothing to undo back to.
+        hasInitializedHistory = false;
+
+        hydrateCustomTypes([]);
+        // SAVED AND RESTORED, never a hard `false` — the rule set out at
+        // `removeRefusedContainer`. An account switch with no intervening
+        // SIGNED_OUT can land here while the PREVIOUS account's
+        // `initializeStore` is still awaiting its fetch, and that load holds
+        // the flag true across its whole window. Handing it back unblocked
+        // there wakes the history subscriber mid-load, which is the bug that
+        // comment was written for: a second 'Session start', a `historyIndex`
+        // naming a snapshot the store does not hold, and one ⌘Z soft-deleting
+        // every row the load brought in.
+        const wasSuppressed = isUpdatingUndoRedo;
+        isUpdatingUndoRedo = true;
+        try {
+          set({
+            ...emptyAccountData(),
+            userId,
+            // See the interface note: "not asked for yet" has to read as
+            // unsettled, or every `!isLoading` gate in the app treats an empty
+            // store as a complete one.
+            isLoading: true,
+          });
+        } finally {
+          isUpdatingUndoRedo = wasSuppressed;
+        }
+      },
+
       initializeStore: async (userId: string) => {
         // Re-initializing the account that is already loaded is never a
         // refresh — it is a reset. It refetches six tables, flips isLoading
@@ -1977,6 +2101,7 @@ export const usePlannerStore = create<PlannerStore>()(
         if (current.userId === userId && !current.isLoading) return;
 
         // Block subscriber during initialization to prevent poisoned history entries
+        const generation = ++loadGeneration;
         isUpdatingUndoRedo = true;
         hasInitializedHistory = false;
 
@@ -2018,6 +2143,39 @@ export const usePlannerStore = create<PlannerStore>()(
               // erases a year of target dates in one silent batch.
               fetchGoals(userId),
             ]);
+          // A SLOWER RESPONSE FOR A PREVIOUS ACCOUNT MUST NEVER LAND ON THE
+          // CURRENT ONE — the rule supabase-provider's `hydrateSettings`
+          // already follows across its own await, and the one place on this
+          // store that did not.
+          //
+          // An account switch with no intervening SIGNED_OUT (Supabase delivers
+          // no event for it) re-stamps `userId` while this fetch is still in
+          // flight. Everything below belongs to the account that is no longer
+          // signed in, so it is dropped wholesale rather than partially
+          // applied. Without this the `set()` below lands user A's items under
+          // user B's id AND clears `isLoading` — after which
+          // `identifyUser`-stamped B looks, to this function's own opening
+          // guard, exactly like an account that is already loaded, so the next
+          // `initializeStore(B)` early-returns and B is left reading A's rows
+          // for the rest of the session.
+          // SUPERSEDED covers the case `userId` cannot see. The opening guard
+          // deliberately lets a second call through while the first is still
+          // running ("a second call while the first is still running must be
+          // allowed through to replace it"), so two loads for the SAME account
+          // can overlap — a sign-out and immediate sign-in as A, or A → B → A
+          // across tabs. The older one has stale rows and a stale history
+          // baseline, and must bow out rather than land on top of the newer.
+          if (loadGeneration !== generation) return;
+          if (get().userId !== userId) {
+            // Releasing the suppressor is this load's job only while it still
+            // owns it, and the line above has just established that it does.
+            // Skipping the release outright would latch it forever and silently
+            // stop the history subscriber recording anything for the rest of
+            // the session.
+            isUpdatingUndoRedo = false;
+            return;
+          }
+
           const itemTypes = itemTypesResult ?? [];
           // null means the table is unreachable, NOT "no rows" — the flag gates
           // the UI so a write can't look like it landed and vanish.
@@ -2064,7 +2222,15 @@ export const usePlannerStore = create<PlannerStore>()(
           });
           isUpdatingUndoRedo = false;
         } catch (err) {
+          // Both bow-out conditions from the success path, in the same order
+          // and for the same reasons.
+          if (loadGeneration !== generation) return;
           isUpdatingUndoRedo = false;
+          // A FAILED load for the previous account would otherwise clear
+          // `isLoading` for the current one and put someone else's error on
+          // their screen — and leave this function's opening guard reading the
+          // new account as settled, so its own load could never start.
+          if (get().userId !== userId) return;
           set({
             isLoading: false,
             error: err instanceof Error ? err.message : 'Failed to load data',
@@ -2081,28 +2247,9 @@ export const usePlannerStore = create<PlannerStore>()(
         hydrateCustomTypes([]);
         isUpdatingUndoRedo = true;
         set({
+          ...emptyAccountData(),
           userId: null,
-          ...projectItems([]),
-          projects: [],
-          itemTypes: [],
-          routines: [],
-          programs: [],
-          collectionsAvailable: true,
-          // Goals reset with every other slice. Missed, the previous account's
-          // goal names, whys and target dates stay in memory after SIGNED_OUT —
-          // and initializeStore's catch branch sets only isLoading/error, so a
-          // FAILED next sign-in leaves user B looking at user A's goals in the
-          // chip and the console, with updateGoal firing user-B writes at
-          // user-A ids.
-          goals: [],
-          goalsAvailable: true,
           isLoading: false,
-          error: null,
-          canUndo: false,
-          canRedo: false,
-          actionLog: [],
-          historyIndex: -1,
-          userTimezone: null,
         });
         isUpdatingUndoRedo = false;
       },
@@ -4236,6 +4383,18 @@ function syncContainers<T extends { id: string }>(
 
 // Subscribe to changes and save to history
 let isUpdatingUndoRedo = false;
+
+/**
+ * Which `initializeStore` call currently owns `isUpdatingUndoRedo`.
+ *
+ * The flag is a plain boolean, set true for the WHOLE of a load and released at
+ * each of that load's three exits. With two loads overlapping — an account
+ * switch mid-fetch — the slower one's exit would otherwise release a flag the
+ * faster one is still relying on, waking the history subscriber inside a window
+ * where the store is being replaced wholesale. A superseded load compares its
+ * generation, finds it stale, and leaves the flag to whoever took over.
+ */
+let loadGeneration = 0;
 let hasInitializedHistory = false;
 
 // Initialize prevStateJson eagerly with the store's initial state

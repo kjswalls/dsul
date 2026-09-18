@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, MessageSquarePlus } from 'lucide-react';
 import {
@@ -18,7 +19,20 @@ import { createClient } from '@/lib/supabase';
 import { flushSettings } from '@/lib/settings-service';
 
 interface UserProfileDropdownProps {
-  onOpenSettings: () => void;
+  /**
+   * Where Settings goes, as a URL rather than a callback.
+   *
+   * A HREF AND NOT AN `onOpenSettings` HANDLER, for the reason the sidebar's
+   * own user card spells out (components/sidebar/user-card.tsx): opening the
+   * menu mounts this row, and a mounted `<Link>` is what gets the settings
+   * route chunk prefetched in production — an imperative `router.push` always
+   * pays that fetch at click time, which on a phone is the whole of the delay
+   * between tapping Settings and seeing it.
+   *
+   * Every caller passed `() => router.push(...)` and nothing else, so there was
+   * no behaviour in the callback to keep.
+   */
+  settingsHref: string;
   /**
    * Opens the bug-report/feature-request dialog. Optional, and the row is
    * rendered only when it is supplied: the mobile header folded its standalone
@@ -38,7 +52,7 @@ function getInitials(email: string, name?: string | null): string {
   return email.slice(0, 2).toUpperCase();
 }
 
-export function UserProfileDropdown({ onOpenSettings, onOpenBugReport }: UserProfileDropdownProps) {
+export function UserProfileDropdown({ settingsHref, onOpenBugReport }: UserProfileDropdownProps) {
   const router = useRouter();
   const [email, setEmail] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -102,9 +116,11 @@ export function UserProfileDropdown({ onOpenSettings, onOpenBugReport }: UserPro
         </DropdownMenuLabel>
         <DropdownMenuSeparator />
         <DropdownMenuGroup>
-          <DropdownMenuItem onClick={onOpenSettings} className="cursor-pointer">
-            <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
+          <DropdownMenuItem asChild className="cursor-pointer">
+            <Link href={settingsHref}>
+              <Settings className="mr-2 h-4 w-4" />
+              <span>Settings</span>
+            </Link>
           </DropdownMenuItem>
           {onOpenBugReport && (
             <DropdownMenuItem

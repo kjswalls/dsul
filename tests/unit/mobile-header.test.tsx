@@ -67,7 +67,7 @@ beforeAll(() => {
 const MONDAY = new Date(2026, 7, 24);
 
 const renderHeader = () =>
-  render(<MobileHeader onOpenSettings={() => {}} onOpenBugReport={() => {}} />);
+  render(<MobileHeader settingsHref="/settings/day" onOpenBugReport={() => {}} />);
 
 beforeEach(() => {
   usePlannerStore.setState({ selectedDate: MONDAY, weekStartDay: 'sunday' });
@@ -184,7 +184,7 @@ describe('the user menu', () => {
     // The mobile header retired its standalone bug-report button into this
     // menu, and the menu is shared. An unconditional row would put a dead entry
     // in every other mount — hence the prop gate, asserted from both sides.
-    render(<UserProfileDropdown onOpenSettings={() => {}} />);
+    render(<UserProfileDropdown settingsHref="/settings/day" />);
     fireEvent.pointerDown(screen.getByRole('button', { name: 'User menu' }), { button: 0 });
     expect(await screen.findByRole('menuitem', { name: /Settings/ })).toBeInTheDocument();
     expect(screen.queryByTestId('user-menu-bug-report')).toBeNull();
@@ -192,9 +192,24 @@ describe('the user menu', () => {
     cleanup();
 
     const onOpenBugReport = vi.fn();
-    render(<UserProfileDropdown onOpenSettings={() => {}} onOpenBugReport={onOpenBugReport} />);
+    render(<UserProfileDropdown settingsHref="/settings/day" onOpenBugReport={onOpenBugReport} />);
     fireEvent.pointerDown(screen.getByRole('button', { name: 'User menu' }), { button: 0 });
     fireEvent.click(await screen.findByTestId('user-menu-bug-report'));
     expect(onOpenBugReport).toHaveBeenCalledTimes(1);
+  });
+
+  it('reaches Settings through a real link, not a push', async () => {
+    // This is the only route to Settings on either mobile tab, and the whole
+    // reason it takes an href: opening the menu MOUNTS this row, and a mounted
+    // <Link> is what prefetches the settings route chunk in production. An
+    // imperative router.push renders an identical-looking menuitem that pays
+    // that fetch at tap time instead — so the property has to be asserted on
+    // the element, where the difference actually shows.
+    render(<UserProfileDropdown settingsHref="/settings/day" />);
+    fireEvent.pointerDown(screen.getByRole('button', { name: 'User menu' }), { button: 0 });
+
+    const settings = await screen.findByRole('menuitem', { name: /Settings/ });
+    expect(settings.tagName).toBe('A');
+    expect(settings).toHaveAttribute('href', '/settings/day');
   });
 });
