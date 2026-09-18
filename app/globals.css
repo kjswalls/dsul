@@ -1248,6 +1248,106 @@ body {
   }
 }
 
+/* ── Week: the day under the pointer stays, the other six recede ──────────
+   Hovering one day column mutes the other six. This REPLACES the
+   `hover:bg-accent` wash the columns used to take, which read as a second
+   selection mark rather than as a pointer echo.
+
+   The obvious spelling — `opacity` on the non-hovered columns — is the one
+   thing this cannot be, and it is not a matter of taste: a column opacity
+   composites everything inside it, and an ordinary Tuesday is full of lime.
+   The accent rail and start bead of every project-less scheduled block, the
+   completion checkbox of every done row, the multi-select marks, and any
+   project whose name hashes to --accent-8 all fade with it, and lime at 0.6
+   over the dark ramp turns olive (components/primitives/task-row.tsx names
+   that exact number). CLAUDE.md: the accent never fades through a parent's
+   opacity. Excluding the selected and today columns does not save it —
+   an ordinary Tuesday holds all of the above.
+
+   So the recede is spelled in TOKENS, not in opacity. A non-hovered column
+   re-points the neutral half of the palette — ink, surfaces, hairlines — at
+   its receded twin below, and every chromatic token (--primary, the
+   --accent-N user ramp, the bucket hues, coral, honey) is left alone. The
+   effect is a column whose text and edges sink toward the canvas while every
+   colour mark in it stays exactly as bright as it was, which is what the
+   accent rule asks for and what an opacity cannot do. Nothing here is a
+   filter or a scrim either — both dim lime the same way opacity does.
+
+   The recede is scoped to `> [data-week-col]` under the row that holds them,
+   so a pointer resting in a flex GAP between two columns hovers none of them
+   and nothing dims — the failure mode a row-level `:hover` has.
+
+   The pointer guard is load-bearing, and is the one thing the old wash did
+   not need: on a touch tablet wide enough for the desktop shell, `:hover`
+   STICKS after a tap. What stuck under the wash was a highlight on the day
+   you just tapped; what would stick here is six days dimmed until you tap
+   somewhere else. */
+:root {
+  /* The one tuning knob, and it is deliberately the SAME number the reverted
+     `opacity-60` carried: mixing a colour 60% toward the canvas lands where
+     compositing it at 0.6 over that canvas would have. The recede reads as
+     the dim that was asked for — it just arrives per-token, so the marks that
+     must not dim can be left out of it. Mixing toward --canvas rather than
+     toward transparent also keeps every result opaque, so nothing underneath
+     shows through and no child is composited by it. */
+  --day-recede: 60%;
+
+  /* Derived HERE, at :root, on purpose. Each of these reads a token the
+     active theme has already resolved on this same element, so the four
+     themes × two modes all get their own correct receded values from one
+     declaration — and none of them can be written as a self-reference
+     (`--foreground: color-mix(…, var(--foreground), …)`) because a custom
+     property that references itself is a cycle and computes to nothing. */
+  --recede-ink-0: color-mix(in oklab, var(--foreground) var(--day-recede), var(--canvas));
+  --recede-ink-1: color-mix(in oklab, var(--secondary-foreground) var(--day-recede), var(--canvas));
+  --recede-ink-2: color-mix(in oklab, var(--muted-foreground) var(--day-recede), var(--canvas));
+  --recede-surface-2: color-mix(in oklab, var(--surface-2) var(--day-recede), var(--canvas));
+  --recede-surface-3: color-mix(in oklab, var(--surface-3) var(--day-recede), var(--canvas));
+  --recede-border: color-mix(in oklab, var(--border) var(--day-recede), var(--canvas));
+  --recede-input: color-mix(in oklab, var(--input) var(--day-recede), var(--canvas));
+  --recede-rail: color-mix(in oklab, var(--sched-rail) var(--day-recede), transparent);
+  --recede-spine: color-mix(in oklab, var(--bkt-spine) var(--day-recede), transparent);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  [data-week-cols]:has(> [data-week-col]:hover) > [data-week-col]:not(:hover) {
+    /* Ink. */
+    --foreground: var(--recede-ink-0);
+    --card-foreground: var(--recede-ink-0);
+    --popover-foreground: var(--recede-ink-0);
+    --secondary-foreground: var(--recede-ink-1);
+    --muted-foreground: var(--recede-ink-2);
+    --day-on: var(--recede-ink-1);
+
+    /* Surfaces and edges. */
+    --surface-2: var(--recede-surface-2);
+    --card: var(--recede-surface-2);
+    --popover: var(--recede-surface-2);
+    --surface-3: var(--recede-surface-3);
+    --secondary: var(--recede-surface-3);
+    --muted: var(--recede-surface-3);
+    --border: var(--recede-border);
+    --input: var(--recede-input);
+    --sched-rail: var(--recede-rail);
+    --bkt-spine: var(--recede-spine);
+  }
+
+  /* A token swap is not a transition: the elements that consume these are
+     the columns' descendants, and only the ones already carrying a colour
+     transition (task rows, day headers) would fade — the rest would snap,
+     which is worse than either doing it or not. This gives the rest one, and
+     lives in @layer base so that any child declaring its own transition
+     utility (`transition-transform` on a dragged block) still wins: the
+     utilities layer beats base regardless of specificity, which a `:where()`
+     wrapper would NOT have bought here. */
+  @layer base {
+    [data-week-col] * {
+      transition-property: color, background-color, border-color;
+      transition-duration: 140ms;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
