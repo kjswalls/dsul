@@ -3,28 +3,42 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
- * THE BANDS — the item surface stops rendering four questions as one row.
+ * WHICH CONTAINERS AN ITEM MAY JOIN — the pure answer, and the two surfaces
+ * that render it differently on purpose.
  *
- * Ticket D4. Every chip on the edit surface already asked lib/item-registry.ts
- * whether it may exist; nothing asked about order or grouping, so Project
- * (classify), Routine and Program (gate) and Goal (aspire) rendered as five
- * identical pills in source order and the three container ROLES that
- * lib/container-registry.ts spends four screens distinguishing reached the user
- * as no distinction at all.
+ * Ticket D4 gave the item surface a stack of labelled BANDS: Project
+ * (classify), Routine and Program (gate), Goal (aspire), ordered by the ROLE
+ * that lib/container-registry.ts spends four screens distinguishing and which,
+ * as five identical pills in source order, had reached the user as no
+ * distinction at all.
  *
- * Three claims are load-bearing here, and each one is a thing a later edit could
+ * Every EDITING surface has since dropped the band stack for the Clearing
+ * field — one label-less wrapping row of the properties the item actually
+ * carries, with the rest folded behind one "+ Add property" seed. The bands
+ * survive on /item/[id], where `ContainerBandsReadout` is a readout rather
+ * than a form and an empty row is a way in rather than a blank.
+ *
+ * Four claims are load-bearing here, and each is a thing a later edit could
  * quietly undo:
  *
  *  1. THE ORDER AND THE SET ARE DERIVED. `CONTAINER_BANDS` iterates the
  *     registry and sorts by ROLE. Hand-listing the four kinds would look
- *     identical today and would silently drop the fifth.
+ *     identical today and would silently drop the fifth. The field wraps into
+ *     one row and the seed menu is flat, so role order is the only thing left
+ *     deciding what the eye meets first.
  *  2. THE LABEL IS THE REGISTRY'S NOUN. CLAUDE.md: the user-facing noun lives
  *     only in `CONTAINER_KINDS[kind].label`. A literal 'Project' in a component
- *     turns a rename from a string edit into a hunt.
- *  3. AN EMPTY BAND STILL RENDERS, and its affordance is actionable. That is
- *     the whole point of the layout not jumping as you fill an item in — with
- *     ONE exception (a gate with nothing to join and no console to open), which
- *     is asserted just as hard so it cannot be "fixed" by accident.
+ *     turns a rename from a string edit into a hunt. The field leans on this
+ *     HARDER than the bands did — with no band label beside it, an unset chip
+ *     carrying a bare "Add" would be a nameless control.
+ *  3. THE FIELD SHOWS WHAT IS SET, and nothing else — on EVERY surface, capture
+ *     included. That is the claim the capture modal exists to pin: it is the
+ *     one place where nothing is set yet, so a layout keyed on capability put
+ *     five empty rows between the title and the button.
+ *  4. AN EMPTY BAND STILL RENDERS IN THE READOUT, and its affordance is
+ *     actionable — with ONE exception (a gate with nothing to join and no
+ *     console to open), asserted just as hard so it cannot be "fixed" by
+ *     accident.
  */
 
 vi.mock('next/navigation', () => ({
@@ -103,7 +117,10 @@ const kindsFor = (over: Partial<ContainerBandContext> = {}) =>
   visibleContainerBands(ctx(over)).map((b) => b.kind);
 
 describe('which bands render', () => {
-  it('renders every band EMPTY — the layout is what the item can be', () => {
+  it('answers with every kind from zero — capability, never content', () => {
+    // The module is asked the same question by both surfaces; what differs is
+    // what they do with a kind the item has not joined. The readout draws it as
+    // an empty band; the field folds it into the seed.
     expect(kindsFor()).toEqual(['project', 'routine', 'program', 'goal']);
   });
 
@@ -216,18 +233,30 @@ const panel = (item: Item = task()) =>
     />
   );
 
+/** The capture modal — the surface that held the bands longest. */
+const capture = (type = 'task', over: Record<string, unknown> = {}) =>
+  render(
+    <ItemDialog state={{ mode: 'add', type, ...over }} onOpenChange={() => {}} />
+  );
+
+const field = () => screen.getByTestId('item-clearing-field');
+const seedOptions = () =>
+  Array.from(document.querySelectorAll('[data-testid="item-clearing-seed-option"]')).map(
+    (o) => o.textContent ?? ''
+  );
+
 /** The band rows on screen, top to bottom, by their label text. */
 const bandLabels = () =>
   Array.from(document.querySelectorAll('[data-testid^="item-band-"]')).map(
     (row) => row.querySelector('p')?.textContent ?? ''
   );
 
-describe('the edit panel renders the Clearing field, not bands', () => {
+describe('every item surface renders the Clearing field, not bands', () => {
   it('drops the labelled band stack for one label-less field', () => {
     panel();
     expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
-    // The band grammar belongs to the /item readout and the capture modal now;
-    // the editing panel shows only what the item actually carries.
+    // The band grammar belongs to the /item readout alone now; every surface
+    // you EDIT on shows only what the item actually carries.
     expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
   });
 
@@ -327,21 +356,85 @@ describe('a cancelled add keeps its draft across the body unmount', () => {
   });
 });
 
-describe('the capture surface keeps its bands too', () => {
-  it('renders the modal in add mode with the same rows, and a Priority chip', () => {
-    render(
-      <ItemDialog state={{ mode: 'add', type: 'task' }} onOpenChange={() => {}} />
+describe('the capture surface gets the field too', () => {
+  /**
+   * The modal held the bands longest, and it is where they cost most: NOTHING
+   * is set on a new item, so a stack keyed on what the type COULD carry was
+   * five empty labelled rows between the title and the button — "a lot of
+   * different empty rows for things you can add", which is the complaint that
+   * closed the gate.
+   */
+  it('shows one field and no band rows', () => {
+    capture();
+    expect(field()).toBeTruthy();
+    expect(bandLabels()).toEqual([]);
+  });
+
+  it('folds an unset property into the seed instead of drawing an empty row', () => {
+    capture();
+    // Priority left the header for the field, and a fresh task has none — so it
+    // is reachable BY NAME from the seed rather than parked unset on screen.
+    expect(field().textContent).not.toContain('Priority');
+    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+      expect(field().textContent).not.toContain(CONTAINER_KINDS[kind].label);
+    }
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes('Priority'))).toBe(true);
+    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+      expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS[kind].label))).toBe(true);
+    }
+  });
+
+  it('keeps what the open ALREADY set on screen — the date you added from', () => {
+    // The seed is not a diet: a capture anchored to a day carries that day, so
+    // the chip is set and shows at rest. This is why the field is not simply
+    // empty in add mode.
+    capture('task', { date: new Date(2026, 8, 18) });
+    expect(field().textContent).toContain('Sep 18');
+  });
+
+  it('shows a habit what it already carries: its file, its cadence, its count', () => {
+    // The field is not a diet — a habit reaches capture with a required
+    // container already filled (makeAddDraft seeds the first one), a default
+    // frequency and a daily count, so all three show at rest. Only the
+    // properties a new habit genuinely has none of go to the seed.
+    capture('habit');
+    expect(screen.getByTestId('item-dialog-container-chip').textContent).toContain('Onboarding');
+    expect(field().textContent).toContain('Daily');
+    // …and the chip keeps the registry noun in its accessible name, which is
+    // the only place the band label used to live.
+    expect(screen.getByTestId('item-dialog-container-chip').getAttribute('aria-label')).toBe(
+      `${CONTAINER_KINDS.project.label}: Onboarding`
     );
-    expect(bandLabels()).toEqual([
-      'When',
-      CONTAINER_KINDS.project.label,
-      CONTAINER_KINDS.routine.label,
-      CONTAINER_KINDS.program.label,
-      CONTAINER_KINDS.goal.label,
-    ]);
-    // Add is where an item's shape is decided, so the identity line carries the
-    // same priority control the panel does.
-    expect(screen.getByText('Priority')).toBeTruthy();
+  });
+
+  it('keeps a required container out of the seed even so', () => {
+    // `required` is asserted separately from `set` on purpose: a habit whose
+    // project were ever cleared must still see the chip, never a field that
+    // silently dropped the one property it cannot do without.
+    capture('habit');
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
+  });
+
+  it('offers the type as a control here and only whispers it when editing', () => {
+    capture();
+    expect(screen.getByTestId('item-dialog-type-chip')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-type-whisper')).toBeNull();
+    cleanup();
+    panel();
+    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
+  });
+
+  it('keeps its submit button in the footer — only autosave lifts Done to the rail', () => {
+    // Clearing is a LAYOUT decision; where the commit lives is a persistence
+    // one. The capture modal has a moment of commitment and still says so.
+    capture();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toContain('Add');
+    cleanup();
+    panel();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Done');
   });
 });
 
