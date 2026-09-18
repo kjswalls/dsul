@@ -203,33 +203,25 @@ function WeekScheduleColumn({
       data-date={col.dateStr}
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
-      // Hover emphasis, and it is ADDITIVE: the hovered day picks up the
-      // standard hover wash, and its six neighbours are not touched at all.
+      // The hook the recede selects on. Hovering one column mutes the other
+      // six; this column takes no mark of its own, which is the point — the
+      // wash it used to carry (`hover:bg-accent`) read as a second selection
+      // highlight next to the lime header pill rather than as a pointer echo.
       //
-      // This used to be `!selected && 'opacity-60 hover:opacity-100'` — six of
-      // seven days faded whether or not the pointer was anywhere near the grid.
-      // The obvious repair (dim the SIBLINGS of the hovered column instead) is
-      // not available here, and not as a matter of taste: a column opacity
-      // composites everything inside it, and a week column is full of lime —
+      // The recede is a TOKEN swap, never an opacity: a column opacity
+      // composites everything inside it, and this column is full of lime —
       // the block accent rail and start bead of every project-less scheduled
       // task, the completion checkbox of every done row, multi-select marks,
       // and any project whose name happens to hash to --accent-8. Lime at 0.6
       // over the dark ramp turns olive (see primitives/task-row.tsx, which
       // names that exact number), and CLAUDE.md's accent rule forbids it.
       // Excluding the selected and today columns does not save it: an ordinary
-      // Tuesday holds all of the above.
-      //
-      // So nothing recedes and the pointed-at day is what changes. `bg-accent`
-      // is the app's hover wash and this column is transparent at rest, which
-      // is the case globals.css's `hover-wash` note calls plain `hover:bg-accent`
-      // already correct for. A background paints BEHIND its element's content,
-      // so no accent mark is composited — the same reason task-row washes a
-      // hovered row instead of fading it.
-      //
-      // No pointer media guard is needed, unlike a dim: on a touch tablet wide
-      // enough for the desktop shell `:hover` sticks after a tap, and what
-      // sticks here is a wash on the column the user just tapped.
-      className="flex flex-none flex-col rounded-[10px] transition-colors hover:bg-accent"
+      // Tuesday holds all of the above. So the neutrals recede and every
+      // colour mark keeps its strength. The whole argument, the token list and
+      // the touch-device guard are in globals.css under "the other six
+      // recede"; this file only supplies the two attributes it selects on.
+      data-week-col=""
+      className="flex flex-none flex-col rounded-[10px]"
       /*
        * `flex-none` + an explicit width, where this used to be `flex-1` +
        * minWidth. That reads like a bigger change than it is: under the old
@@ -586,6 +578,11 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
         */}
         <div
           key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
+          // Scopes the recede to THIS row's columns. A pointer resting in a
+          // gap between two columns hovers neither, so `:has()` misses and
+          // nothing dims — which is why the rule keys on the columns rather
+          // than on a `:hover` of the row itself.
+          data-week-cols=""
           className={cn(
             'flex flex-none gap-2',
             navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`

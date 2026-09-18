@@ -166,6 +166,18 @@ expected to be safe to re-run.
   plain `overflow-y-auto` container when you need a real height limit.
 - **The lime accent never dims in dark mode**, and must never be faded through a parent's
   opacity — give it its own element if the container is being dimmed.
+- **The week views dim a day by re-pointing tokens, never with an opacity.** Hovering one
+  day column recedes the other six (`[data-week-cols]` / `[data-week-col]`, the rule is in
+  [globals.css](app/globals.css)). It cannot be `opacity` on the siblings, and that is the
+  accent rule above rather than a preference: a column opacity composites the block rails,
+  completion checkboxes, multi-select marks and `--accent-8` projects inside it, and
+  excluding the selected and today columns saves none of them. So the rule assigns ONLY
+  custom properties, and only the neutral ones — ink, surfaces, hairlines — each pointed at
+  a `--recede-*` twin derived at `:root` (a self-referencing custom property is a cycle, so
+  they cannot be written inline). Every chromatic token is left alone. A filter or a scrim
+  is the same violation wearing a different hat. The `(hover: hover) and (pointer: fine)`
+  guard is load-bearing too — `:hover` sticks after a tap on a tablet wide enough for the
+  desktop shell, and what would stick is six days dimmed.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)

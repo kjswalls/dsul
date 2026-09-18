@@ -27,10 +27,10 @@ import { cn } from '@/lib/utils';
 /**
  * Week × Buckets (P5b): seven columns of mini bucket cards. Drops use
  * `week:{yyyy-MM-dd}:{bucket}` per lib/dnd/CONTRACT.md. The selected day is
- * highlighted by its lime header pill; no day is ever dimmed — the day under
- * the pointer takes a hover wash instead, and nothing here carries an opacity
- * that could composite the accent marks inside a bucket card. Columns keep a
- * min width and snap-scroll so 13" screens see ~4 comfortable columns (per the
+ * highlighted by its lime header pill; hovering a day recedes the other six,
+ * and that recede is a token swap, so nothing here carries an opacity that
+ * could composite the accent marks inside a bucket card. Columns keep a min
+ * width and snap-scroll so 13" screens see ~4 comfortable columns (per the
  * mockup) instead of 7 crushed ones.
  */
 
@@ -229,24 +229,27 @@ function WeekColumn({
       // still roughly where the DEFAULT lands, but the stops either side of it
       // are distinct.
       style={{ width: colPx, gap: bucketGap(variant, 'mini') }}
-      // The same hover wash Schedule's column takes, so the two views emphasise
-      // identically — see that column for the whole argument.
+      // The same recede Schedule's column takes, so the two views emphasise
+      // identically — see that column, and globals.css, for the whole argument.
       //
       // Unselected columns here used to carry `opacity-75`, then per-element
       // muting off a `data-dim` flag; the flag existed because today's column
       // renders the lime current-bucket segment and fading lime through a
-      // parent's opacity is the one thing the accent rule forbids. Neither
-      // survives, but for the OTHER half of the reason: both keyed the recede
-      // to selection, so six days out of seven sat muted with the pointer
-      // nowhere near the grid.
+      // parent's opacity is the one thing the accent rule forbids. Both were
+      // keyed to SELECTION, so six days out of seven sat muted with the
+      // pointer nowhere near the grid. The recede is keyed to the pointer
+      // instead, and is a token swap rather than an opacity — which is what
+      // lets it dim a column that this view, more than Schedule, already knew
+      // could not be composited: a mini bucket card holds completion
+      // checkboxes, project rails and drop-target beads, all lime or
+      // accent-ramp. They keep their strength; the neutrals around them sink.
       //
-      // What replaces them is emphasis, not recession. That matters most in
-      // THIS view, which already knew a column opacity was not available to it:
-      // a mini bucket card holds completion checkboxes, project rails and
-      // drop-target beads, all lime or accent-ramp, and every one of them would
-      // composite. So no opacity, at rest or on hover, and `data-dim` is gone
-      // with nothing muted left to drive.
-      className="group/col flex flex-none snap-start flex-col rounded-[10px] transition-colors hover:bg-accent"
+      // `group/col` stays for the bucket cards that hang off it. The day
+      // header keeps its OWN hover wash (below) — that one is a button
+      // affordance, not the day emphasis, and the two do not collide: the
+      // column under the pointer is the one column that never recedes.
+      data-week-col=""
+      className="group/col flex flex-none snap-start flex-col rounded-[10px]"
     >
       <button
         onClick={() => setSelectedDate(date)}
@@ -340,6 +343,8 @@ export function WeekBuckets({ activeId }: { activeId: string | null }) {
         ref={weekColsRef}
         key={`${weekDays[0].toDateString()}-${navDirection ?? 'none'}`}
         data-wide="true"
+        // Scopes the recede to this row's columns — see week-schedule's row.
+        data-week-cols=""
         className={cn(
           'canvas-container flex snap-x snap-mandatory gap-7 py-6 pb-20',
           navDirection && `animate-slide-in-from-${navDirection === 'left' ? 'right' : 'left'}`
