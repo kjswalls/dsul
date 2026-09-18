@@ -189,7 +189,11 @@ expected to be safe to re-run.
   they cannot be written inline). Every chromatic token is left alone. A filter or a scrim
   is the same violation wearing a different hat. The `(hover: hover) and (pointer: fine)`
   guard is load-bearing too — `:hover` sticks after a tap on a tablet wide enough for the
-  desktop shell, and what would stick is six days dimmed.
+  desktop shell, and what would stick is six days dimmed. And it does NOT animate: a
+  transition on the columns' descendants makes the browser repaint every node under six
+  columns for eight frames, which measured 297ms of worst-frame jank at 40 items a column
+  against 23ms without — the cost scales with the item count, so the recede lands on one
+  frame, the way task-row's hover wash does.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)

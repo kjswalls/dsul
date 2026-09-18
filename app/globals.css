@@ -1332,20 +1332,36 @@ body {
     --bkt-spine: var(--recede-spine);
   }
 
-  /* A token swap is not a transition: the elements that consume these are
-     the columns' descendants, and only the ones already carrying a colour
-     transition (task rows, day headers) would fade — the rest would snap,
-     which is worse than either doing it or not. This gives the rest one, and
-     lives in @layer base so that any child declaring its own transition
-     utility (`transition-transform` on a dragged block) still wins: the
-     utilities layer beats base regardless of specificity, which a `:where()`
-     wrapper would NOT have bought here. */
-  @layer base {
-    [data-week-col] * {
-      transition-property: color, background-color, border-color;
-      transition-duration: 140ms;
-    }
-  }
+  /* THE RECEDE DOES NOT ANIMATE, and that is the whole point of spelling it
+     this way. It landed with a 140ms `transition-property: color,
+     background-color, border-color` on `[data-week-col] *`, so that the
+     descendants which do not own a colour transition would fade with the ones
+     that do. It reads fine on an empty week and falls apart on a full one: the
+     token swap changes the computed colour of EVERY node under six columns at
+     once, so the transition asks the compositor to interpolate and repaint all
+     of them for eight frames. Measured in Chromium against this stylesheet,
+     worst frame on hover:
+
+         items per column     with the transition     without
+         10                   93.5ms                  18.8ms
+         40                   297.3ms                 22.0ms
+
+     The cost scales with the number of items; the instant version does not.
+     A quarter-second of jank to fade something the pointer has already
+     arrived at is a bad trade at any item count, so the pointed-at day changes
+     the other six on the same frame.
+
+     This is also how the rest of the app behaves — see the note on
+     components/primitives/task-row.tsx's className, where the row hover wash
+     is deliberately untransitioned so "highlights land instantly".
+
+     The few descendants that carry their own `transition-colors` (a row's
+     checkbox border, a badge) still fade over their own duration. They are
+     small, there are one or two per row rather than one per node, and the
+     transition is theirs for their own hover states — taking it away here
+     could only be done with a rule that matches while a column is hovered and
+     stops matching when it is not, which would snap on the way in and fade on
+     the way out. Leave them. */
 }
 
 @layer base {

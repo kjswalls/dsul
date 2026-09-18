@@ -318,6 +318,27 @@ describe('the emphasis is a recede on the OTHER columns', () => {
     expect(guard).toBeLessThan(rule);
   });
 
+  it('does not animate — the recede lands on one frame', () => {
+    // It shipped with `transition-property: color, background-color,
+    // border-color` on `[data-week-col] *`, which asks the compositor to
+    // interpolate every node under six columns for eight frames. Measured worst
+    // frame on hover: 93.5ms at 10 items per column, 297.3ms at 40, against
+    // 18.8/22.0 with no transition — the cost scaled with the item count, which
+    // is exactly where a planner grid gets busy. Nothing may re-add a
+    // transition keyed to the recede's own hooks.
+    const src = css();
+    const guarded = src.slice(
+      src.indexOf('--day-recede:'),
+      src.indexOf('@layer base {\n  * {')
+    );
+    expect(guarded.length).toBeGreaterThan(100);
+    for (const decl of guarded.matchAll(/^\s*(transition[a-z-]*)\s*:/gm)) {
+      throw new Error(`the recede grew a transition again: ${decl[1]}`);
+    }
+    // And the selector that carried it is gone from the stylesheet's rules.
+    expect(src).not.toMatch(/\[data-week-col\]\s*\*\s*\{/);
+  });
+
   it('derives the receded twins at :root so every theme gets its own', () => {
     // A self-referencing custom property is a cycle and computes to nothing,
     // which is why these cannot be written inline in the rule above.
