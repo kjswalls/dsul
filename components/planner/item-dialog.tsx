@@ -1237,6 +1237,10 @@ function ItemDialogInner({
               key={p}
               selected={d.priority === p}
               onSelect={() => {
+                // Picking "None" EMPTIES the property, and the field hides what
+                // is unset — so without this the chip you just used folds back
+                // into the seed. See `clearProp` in renderChips.
+                if (p === 'none') revealProp('priority');
                 patch({ priority: p });
                 close();
               }}
@@ -1256,33 +1260,53 @@ function ItemDialogInner({
       </PropertyChip>
     ) : null;
   };
-  // ── Registry-driven bands ─────────────────────────────────────────────────
+  // ── Registry-driven properties ────────────────────────────────────────────
 
   /**
-   * Every optional property of an item, as a stack of labelled BANDS.
+   * Every optional property of an item, as ONE label-less field.
    *
    * Which chips exist has always been the type's capability config — a new
-   * custom type gets a correct dialog with no work here. What was NOT a
-   * capability question was the layout: ten chips rendered as one flat wrapping
-   * row in source order, so Project (classify) sat beside Routine (gate) sat
-   * beside Goal (aspire) with nothing between them, and the three container
-   * roles lib/container-registry.ts exists to distinguish reached the user as no
-   * distinction at all.
+   * custom type gets a correct dialog with no work here. The LAYOUT was not a
+   * capability question, and went through two answers before this one. Ten chips
+   * in one flat source-order row (Project beside Routine beside Goal, the three
+   * container roles reaching the user as no distinction at all), then a stack of
+   * labelled BANDS that fixed the ordering and paid for it in empty rows, then
+   * this: the bands' derivation kept, their labels dropped, and everything unset
+   * folded behind one "+ Add property" seed. See the field below.
    *
-   * Now the row is a stack: 'When' holds the schedule chips, and every container
-   * kind gets its own band, ordered by role and labelled with the registry's own
-   * noun (lib/item-bands.ts). Priority left the row entirely — it is neither a
-   * time nor a container, so it rides the identity line beside the type.
+   * Two consequences worth stating, because both reverse an earlier rule:
    *
-   * The chip vocabulary inside a band is unchanged with one edit: an unset chip
-   * used to carry the noun ("Routine") and now carries the verb ("Add"), because
-   * the band's label is already the noun and saying it twice on a 420px column
-   * is how a labelled layout gets wider without getting clearer. The ACCESSIBLE
-   * name stays the noun.
+   *  · An unset chip carries the NOUN again ("Routine"), not the verb ("Add").
+   *    Under the bands the label two inches left was the noun and the chip was
+   *    free to be a verb; with no label beside it, "Add" would be a nameless
+   *    control. The ACCESSIBLE name was the noun throughout and still is.
+   *  · Priority is back among the properties rather than riding the identity
+   *    line. A band of its own would have said "Priority" twice; the field says
+   *    it once, and only when it applies.
    */
   const renderChips = (type: string, d: ItemDraft) => {
     const config = getItemTypeConfig(type);
     const patch = (updates: Partial<ItemDraft>) => patchDraft(type, updates);
+    /**
+     * Emptying a property from inside its own popover, WITHOUT the chip
+     * vanishing from under the pointer.
+     *
+     * `shows` keeps a property while it is set, required, or revealed — so a
+     * cleared value fails all three and folds straight back into the seed,
+     * taking the control you are mid-edit on with it and costing two clicks to
+     * reach again. (Clearing a task's date takes the Time chip too, since
+     * `showTime` is a capability question — that part is correct and stays.)
+     *
+     * Clearing is a deliberate act on a property you are actively using, which
+     * is the same thing summoning one from the seed means, so it writes the same
+     * `revealed` set: the chip stays put, empty, for the rest of this item's
+     * session. Only the "no value" options route through here; an ordinary pick
+     * is a plain `patch` and shows because it is set.
+     */
+    const clearProp = (key: string, updates: Partial<ItemDraft>) => {
+      revealProp(key);
+      patch(updates);
+    };
     // ONE list and ONE colour resolver since 039 — the two-way pick here was
     // the last place the dialog had to know which classify kind a type used.
     const containers = projects;
@@ -1352,13 +1376,33 @@ function ItemDialogInner({
       ? goals.filter((g) => g.state === 'active' && goalItemIds(g).includes(editingItem.id))
       : goals.filter((g) => d.goalIds.includes(g.id));
     const memberGoalIds = memberGoals.map((g) => g.id);
-    const goalChipValue = membershipSummary(memberGoals.map((g) => g.name));
     // The goals this item served that have since ended. Shown under their own
     // divider rather than dropped: a still-scheduled milestone of a set-aside
     // goal is otherwise a row with no explanation anywhere in the app.
     const endedGoals = editingItem
       ? goals.filter((g) => g.state !== 'active' && goalItemIds(g).includes(editingItem.id))
       : [];
+    /**
+     * An item can serve ONLY goals that have since ended, and that is precisely
+     * the case the Ended divider exists for. The field shows what is SET, so a
+     * value read from the ACTIVE list alone would be empty here — the chip would
+     * fold into the seed and take the only explanation for a still-scheduled
+     * milestone with it, which is the sentence above describing its own defeat.
+     *
+     * So it falls back to the ended names — and MARKS them. An ended membership
+     * rendered as a bare name is indistinguishable from a live one, which trades
+     * a missing explanation for a wrong one. "(ended)" is the popover's own word
+     * for that divider, so the chip and the menu it opens agree.
+     *
+     * Only the fallback is marked: once ANY active goal exists the chip is a
+     * live membership and says so plainly, with the ended ones still listed
+     * under the divider inside.
+     */
+    const goalChipValue =
+      membershipSummary(memberGoals.map((g) => g.name)) ??
+      (endedGoals.length > 0
+        ? `${membershipSummary(endedGoals.map((g) => g.name))} (ended)`
+        : undefined);
 
     const toggleGoal = (goalId: string, on: boolean) => {
       if (!editingItem) {
@@ -1545,7 +1589,7 @@ function ItemDialogInner({
                 <ChipOption
                   selected={d.container === 'none'}
                   onSelect={() => {
-                    patch({ container: 'none' });
+                    clearProp('project', { container: 'none' });
                     close();
                   }}
                   tone="muted"
@@ -1959,7 +2003,7 @@ function ItemDialogInner({
                 <ChipOption
                   tone="muted"
                   onSelect={() => {
-                    patch({ startDate: undefined });
+                    clearProp('date', { startDate: undefined });
                     close();
                   }}
                 >
@@ -1987,7 +2031,7 @@ function ItemDialogInner({
                 tone="muted"
                 selected={d.timeBucket === 'none'}
                 onSelect={() => {
-                  patch({ timeBucket: 'none', startTime: '' });
+                  clearProp('time', { timeBucket: 'none', startTime: '' });
                   close();
                 }}
               >
@@ -2088,6 +2132,8 @@ function ItemDialogInner({
                   <ChipOption
                     selected={d.repeatFrequency === value}
                     onSelect={() => {
+                      // 'none' is this chip's clear — see `clearProp` above.
+                      if (value === 'none') revealProp('repeat');
                       patch({
                         repeatFrequency: value as RepeatFrequency,
                         // Newly switching into Custom days with nothing
@@ -2232,7 +2278,7 @@ function ItemDialogInner({
                 <ChipOption
                   tone="muted"
                   onSelect={() => {
-                    patch({ reminderTime: '', reminderAnchor: '' });
+                    clearProp('remind', { reminderTime: '', reminderAnchor: '' });
                     close();
                   }}
                 >
@@ -2316,7 +2362,10 @@ function ItemDialogInner({
       project: d.container !== 'none',
       routine: memberRoutines.length > 0,
       program: memberPrograms.length > 0,
-      goal: memberGoals.length > 0,
+      // Ended counts. A membership that has outlived its goal is still the
+      // reason this item is on the grid, so it holds the chip open — see
+      // `goalChipValue`, which is what the chip then says.
+      goal: memberGoals.length > 0 || endedGoals.length > 0,
     };
 
     interface ClearingProp {

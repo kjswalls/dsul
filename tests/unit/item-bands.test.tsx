@@ -511,6 +511,109 @@ describe('the capture surface gets the field too', () => {
   });
 });
 
+describe('emptying a property keeps its chip', () => {
+  /**
+   * The rule is "show what is SET", and taken literally it eats the control you
+   * are using: clear a date from inside the date chip and the chip fails `set`,
+   * fails `required`, fails `revealed` — and unmounts, from under the pointer,
+   * with the value you were about to replace now two clicks away behind the
+   * seed. `clearProp` writes the same `revealed` set the seed menu does, on the
+   * grounds that deliberately emptying a property is the same statement as
+   * summoning one: I am using this.
+   */
+  const openChipAndClear = (chipTestId: string, optionText: string) => {
+    fireEvent.click(screen.getByTestId(chipTestId));
+    const option = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === optionText
+    );
+    expect(option).toBeTruthy();
+    fireEvent.click(option!);
+  };
+
+  it('keeps the date chip after "No date", empty rather than gone', () => {
+    seed({ items: [task({ startDate: '2026-09-18' })] });
+    panel(task({ startDate: '2026-09-18' }));
+    expect(field().textContent).toContain('Sep 18');
+
+    openChipAndClear('item-dialog-date-chip', 'No date');
+
+    // Still there, now carrying its noun instead of a value — ready to re-pick
+    // in one click. Before `clearProp` this assertion failed: the field
+    // collapsed to a lone "+ Add property".
+    expect(screen.getByTestId('item-dialog-date-chip')).toBeTruthy();
+    expect(field().textContent).toContain('Date');
+    expect(field().textContent).not.toContain('Sep 18');
+    // …and it is NOT also sitting in the seed, which would be two ways in.
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes('Date'))).toBe(false);
+  });
+
+  it('applies on the capture modal too — where the date arrives pre-filled', () => {
+    // The surface that made this reachable: a capture anchored to a day opens
+    // with a date already set, so "change my mind about the day" is an ordinary
+    // first move rather than an edge case.
+    capture('task', { date: new Date(2026, 8, 18) });
+    expect(field().textContent).toContain('Sep 18');
+    openChipAndClear('item-dialog-date-chip', 'No date');
+    expect(screen.getByTestId('item-dialog-date-chip')).toBeTruthy();
+  });
+
+  it('leaves the TIME chip to its capability rule, which is a different question', () => {
+    // Clearing a task's date really does take Time with it: `showTime` asks
+    // whether the property applies at all, not whether it holds a value, and an
+    // undated task has no bucket to be in. That is correct and must not be
+    // "fixed" by the same mechanism — `clearProp` only answers `set`.
+    seed({ items: [task({ startDate: '2026-09-18' })] });
+    panel(task({ startDate: '2026-09-18' }));
+    expect(field().textContent).toContain('30 min');
+    openChipAndClear('item-dialog-date-chip', 'No date');
+    expect(field().textContent).not.toContain('30 min');
+  });
+});
+
+describe('a goal that ended still says so', () => {
+  /**
+   * `endedGoals` exists for one sentence, written in the dialog: "a
+   * still-scheduled milestone of a set-aside goal is otherwise a row with no
+   * explanation anywhere in the app." Reading the chip's value from ACTIVE
+   * memberships alone made the field hide the chip entirely for an item that
+   * serves only ended goals — deleting the explanation that comment describes.
+   */
+  it('names the ended goal on the chip rather than folding it into the seed', () => {
+    seed({ goals: [goal({ state: 'achieved', memberIds: ['t1'] })] });
+    panel();
+    expect(screen.getByTestId('item-dialog-goal-chip')).toBeTruthy();
+    // Named AND marked: a bare name would read as a live membership, which
+    // trades a missing explanation for a wrong one.
+    expect(field().textContent).toContain('Ship v2 (ended)');
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.goal.label))).toBe(false);
+  });
+
+  it('marks ONLY the fallback — a live membership says its name plainly', () => {
+    seed({
+      goals: [
+        goal({ memberIds: ['t1'] }),
+        goal({ id: 'g2', name: 'Old plan', state: 'achieved', memberIds: ['t1'] }),
+      ],
+    });
+    panel();
+    expect(field().textContent).toContain('Ship v2');
+    expect(field().textContent).not.toContain('(ended)');
+    // The ended one is still reachable where it always was — inside the chip.
+    expect(field().textContent).not.toContain('Old plan');
+  });
+
+  it('says nothing at all when there is no membership of either kind', () => {
+    // The fallback must not become a reason for the chip to exist: a task in no
+    // goal, ended or otherwise, still folds Goal into the seed.
+    panel();
+    expect(screen.queryByTestId('item-dialog-goal-chip')).toBeNull();
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.goal.label))).toBe(true);
+  });
+});
+
 describe('the mobile drawer: Clearing without autosave', () => {
   /**
    * The second surface the gate held back, and the one no test in this repo
@@ -575,7 +678,13 @@ describe('the /item/[id] readout', () => {
     expect(onAdd.mock.calls[0][0].kind).toBe('program');
   });
 
-  it('counts an achieved goal out — the same wind-down the chip does', () => {
+  // NOTE: the readout and the dialog's chip now DIVERGE here, deliberately. The
+  // readout draws its Goal band whether or not it holds anything, so an ended
+  // membership costs it no explanation — the row is on screen either way. The
+  // dialog's field hides what is unset, so there the ended goal has to be named
+  // on the chip or it disappears completely (see 'a goal that ended still says
+  // so' above).
+  it('counts an achieved goal out of the READOUT, whose empty band still shows', () => {
     seed({ goals: [goal({ state: 'achieved', memberIds: ['t1'] })] });
     readout(task());
     expect(screen.getByTestId(bandTestId('goal')).textContent).not.toContain('Ship v2');

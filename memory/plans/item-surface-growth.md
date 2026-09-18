@@ -344,6 +344,33 @@ adapters — growth is a presentation, not a fork.
       too, on the desktop modal only — the panel has no such X, and vaul's drag
       handle is centered ABOVE the drawer's content, so it costs no width.
 
+      **Two corners the rule bit, fixed on review (2026-09-18).** Both were
+      live on the panel since #266 and only became universal here; both are
+      "show what is SET" taken more literally than it should be.
+
+      · **Emptying a property made its chip vanish from under the pointer.**
+        Clear a date from inside the date chip and it fails `set`, `required`
+        and `revealed` at once, so it unmounts — and the value you were about
+        to replace is now two clicks away behind the seed. `clearProp` routes
+        the "no value" options through the same `revealed` set the seed menu
+        writes: deliberately emptying a property is the same statement as
+        summoning one, so the chip stays put, empty, for the rest of the
+        session. The Time chip still goes with a cleared date, and should —
+        `showTime` is a capability question, not a value one.
+
+      · **A goal that ended took its own explanation with it.** `endedGoals`
+        exists for one sentence — "a still-scheduled milestone of a set-aside
+        goal is otherwise a row with no explanation anywhere in the app" — and
+        the chip's value read ACTIVE memberships only, so an item serving only
+        ended goals showed no chip at all and the field deleted the very
+        explanation that comment describes. The value now falls back to the
+        ended names and MARKS them: `Ship v2 (ended)`, borrowing the word from
+        the popover's own divider, because a bare name would read as a live
+        membership and trade a missing explanation for a wrong one. Only the
+        fallback is marked. This DIVERGES from `/item/[id]`'s readout on
+        purpose: the readout draws its Goal band whether or not it holds
+        anything, so an ended membership costs it no explanation there.
+
       **The bands are not deleted.** `lib/item-bands.ts` and
       `components/planner/item-bands.tsx` stay, and Phase 10's derivation is still
       the answer to "which containers may this item join, in what order": the field
