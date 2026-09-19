@@ -177,23 +177,27 @@ expected to be safe to re-run.
 - **`<ScrollArea>` ignores `max-h`.** The Radix wrapper silently drops the cap; use a
   plain `overflow-y-auto` container when you need a real height limit.
 - **The lime accent never dims in dark mode**, and must never be faded through a parent's
-  opacity — give it its own element if the container is being dimmed.
-- **The week views dim a day by re-pointing tokens, never with an opacity.** Hovering one
-  day column recedes the other six (`[data-week-cols]` / `[data-week-col]`, the rule is in
-  [globals.css](app/globals.css)). It cannot be `opacity` on the siblings, and that is the
-  accent rule above rather than a preference: a column opacity composites the block rails,
-  completion checkboxes, multi-select marks and `--accent-8` projects inside it, and
-  excluding the selected and today columns saves none of them. So the rule assigns ONLY
-  custom properties, and only the neutral ones — ink, surfaces, hairlines — each pointed at
-  a `--recede-*` twin derived at `:root` (a self-referencing custom property is a cycle, so
-  they cannot be written inline). Every chromatic token is left alone. A filter or a scrim
-  is the same violation wearing a different hat. The `(hover: hover) and (pointer: fine)`
-  guard is load-bearing too — `:hover` sticks after a tap on a tablet wide enough for the
-  desktop shell, and what would stick is six days dimmed. And it does NOT animate: a
-  transition on the columns' descendants makes the browser repaint every node under six
-  columns for eight frames, which measured 297ms of worst-frame jank at 40 items a column
-  against 23ms without — the cost scales with the item count, so the recede lands on one
-  frame, the way task-row's hover wash does.
+  opacity — give it its own element if the container is being dimmed. **One exception,
+  and it is narrow:** the week views' hover recede (next bullet) is an opacity on the six
+  non-hovered day columns, and lime inside them composites for as long as the pointer
+  is on another day. It is allowed because it is transient — pointer-only, under a
+  `(hover: hover)` guard, never at rest — and because the token version that spared
+  the lime cost ~250ms a hover. Nothing else may cite this exception.
+- **The week views dim a day with a transient opacity, and nothing dims at rest.** Hovering
+  one day column recedes the other six (`[data-week-cols]` / `[data-week-col]`, the rule
+  is in [globals.css](app/globals.css), the dial is `--day-recede`). It is the accent rule's
+  one exception, taken on measurement, not preference: the recede first shipped as a
+  token swap — sixteen custom properties re-pointed per non-hovered column so every lime
+  mark kept full strength — and on a real 40-item week that was 245–309ms of main-thread
+  work per hover against ~22ms for opacity. ~50ms of it was pure style recalc with nothing
+  repainting, because a custom property change re-styles every node under six columns;
+  that is the floor for any token approach and it cannot be tuned away. Three things keep
+  the exception narrow, and a test locks each: the opacity lives ONLY in the stylesheet
+  under `:hover`, never in a className (the reverted `!selected && opacity-60` dimmed six
+  days at rest — that is the regression); the rule sits under `(hover: hover) and
+  (pointer: fine)`, because `:hover` sticks after a tap on a tablet wide enough for the
+  desktop shell; and it does not animate, so the six days grey and ungrey on the frame
+  the pointer arrives, the way task-row's hover wash does.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)

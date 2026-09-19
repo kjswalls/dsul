@@ -5,31 +5,33 @@ import { join } from 'node:path';
 import { DndContext } from '@dnd-kit/core';
 
 /**
- * Week day-column emphasis: hovering one day recedes the other six, and the
- * recede is spelled in tokens rather than in opacity.
+ * Week day-column emphasis: hovering one day recedes the other six, by a
+ * transient opacity — and this suite exists to hold that exception to exactly
+ * its stated shape.
  *
- * Week × Schedule used to render `!selected && 'opacity-60 hover:opacity-100'`,
- * so six days out of seven were faded whether or not the pointer was anywhere
- * near the grid; Week × Buckets did the same thing per-element on its header.
- * Both were replaced by a `hover:bg-accent` wash on the hovered column, which
- * read as a second selection mark beside the lime header pill — so the recede
- * is back, keyed to the POINTER this time, and spelled the one way that is
- * available to it.
+ * The history matters, because every previous shape of this feature was wrong
+ * in a different way. Week × Schedule once rendered `!selected && 'opacity-60
+ * hover:opacity-100'`, so six days out of seven were faded whether or not the
+ * pointer was anywhere near the grid — a RESTING dim, keyed to selection, and
+ * the thing PR #239 reverted. Its replacement, a `hover:bg-accent` wash on the
+ * hovered column, read as a second selection mark beside the lime header pill.
+ * The recede came back spelled in TOKENS — sixteen custom properties re-pointed
+ * per non-hovered column so every lime mark kept its strength — which honoured
+ * CLAUDE.md's accent rule and cost 245–309ms of main-thread recalc and repaint
+ * per hover on a real 40-item week, against ~22ms for opacity. A custom
+ * property change re-styles every node under six columns before a pixel moves;
+ * ~50ms of that is pure recalc with nothing repainting at all.
  *
- * Not `opacity` on the siblings, which is the bug this suite mostly exists to
- * keep from coming back: a column opacity composites everything inside it, and
- * an ordinary Tuesday is full of lime — the accent rail and start bead of every
- * project-less scheduled block, the completion checkbox of every done row, the
- * multi-select marks, and any project whose name hashes to --accent-8.
- * CLAUDE.md: the accent never fades through a parent's opacity. A filter or a
- * scrim dims lime the same way, so those are out too.
+ * So it is an opacity, under a narrow exception written into the accent rule:
+ * a transient pointer recede of the non-hovered week columns, and nothing else.
+ * What this suite locks is the BOUNDARY of that exception —
  *
- * What is in: a non-hovered column re-points the NEUTRAL half of the palette
- * (ink, surfaces, hairlines) at receded twins, and leaves every chromatic token
- * alone. The first invariant below is checked the only way that survives a
- * rewrite of the mechanism — mount the real views with real lime in an ordinary
- * column, find the accent marks, and walk up from each one asserting no
- * ancestor fades; the rest read the rule itself out of globals.css.
+ *   - nothing dims at rest: the mounted views carry no opacity in markup above
+ *     any lime mark (the resting-dim regression, asserted against the real tree
+ *     with real lime, the only way that survives a rewrite of the mechanism);
+ *   - the rule is keyed to `:hover`, never to selection or today;
+ *   - it lives under the pointer guard, so a stuck touch `:hover` cannot dim;
+ *   - it is a single opacity, no transition, so it lands with the pointer.
  */
 
 beforeAll(() => {
@@ -204,17 +206,20 @@ function ancestors(el: HTMLElement, root: ParentNode): HTMLElement[] {
 afterEach(cleanup);
 beforeEach(() => seed());
 
-describe('no accent is ever composited through a parent opacity', () => {
+describe('nothing dims at REST — the exception is pointer-only', () => {
   /**
-   * THE constraint (CLAUDE.md), and the one the first fix broke. It is asserted
-   * against the mounted views rather than against a stylesheet on purpose: a
-   * substring test passes just as happily when the selector has been moved onto
-   * the wrong compound.
+   * The boundary of the accent rule's one exception, and the regression #239
+   * reverted: `!selected && opacity-60` faded six days with the pointer
+   * nowhere near the grid. The recede's opacity lives in a stylesheet rule
+   * under `:hover`; it must never appear in the markup, where it would apply
+   * at rest. Asserted against the mounted views (which have no hover) rather
+   * than against the stylesheet on purpose: a substring test passes just as
+   * happily when a resting opacity has been moved onto a className.
    */
   it.each([
     ['Week × Schedule', () => <WeekSchedule activeId={null} />],
     ['Week × Buckets', () => <WeekBuckets activeId={null} />],
-  ])('%s: nothing above a lime mark fades', (name, ui) => {
+  ])('%s: at rest, nothing above a lime mark fades', (name, ui) => {
     const { container } = mount(ui());
 
     const marks = ([...container.querySelectorAll('*')] as HTMLElement[]).filter(paintsAccent);
@@ -245,14 +250,18 @@ describe('no accent is ever composited through a parent opacity', () => {
 
 describe('the emphasis is a recede on the OTHER columns', () => {
   const css = () => readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
+  const SELECTOR = '[data-week-cols]:has(> [data-week-col]:hover) > [data-week-col]:not(:hover)';
 
-  /** The recede rule's body — everything the non-hovered column re-points. */
+  /** The recede rule's body, comments stripped. */
   const recedeRule = () => {
     const src = css();
-    const at = src.indexOf('[data-week-cols]:has(> [data-week-col]:hover) > [data-week-col]:not(:hover)');
+    const at = src.indexOf(SELECTOR);
     expect(at, 'the week recede rule is gone from globals.css').toBeGreaterThan(-1);
     const open = src.indexOf('{', at);
-    return src.slice(open + 1, src.indexOf('}', open));
+    return src
+      .slice(open + 1, src.indexOf('}', open))
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .trim();
   };
 
   it('marks up both views with the hooks the rule selects on', () => {
@@ -283,70 +292,59 @@ describe('the emphasis is a recede on the OTHER columns', () => {
     }
   });
 
-  it('recedes with tokens, never with an opacity, filter or scrim', () => {
-    const body = recedeRule();
-    // Each of these dims lime exactly the way the reverted version did.
-    expect(body).not.toMatch(/(^|[\s;])opacity\s*:/);
-    expect(body).not.toMatch(/(^|[\s;])filter\s*:/);
-    expect(body).not.toMatch(/(^|[\s;])background(-color)?\s*:/);
-    // And it only ever assigns custom properties.
-    for (const decl of body.split(';').map((d) => d.trim()).filter(Boolean)) {
-      if (decl.startsWith('/*') || decl.startsWith('*')) continue;
-      expect(decl, `not a token swap: ${decl}`).toMatch(/^--[a-z0-9-]+\s*:/);
-    }
+  it('is one opacity and nothing else', () => {
+    // The token version was correct and slow: 245–309ms a hover on a real
+    // 40-item week, ~50ms of it pure style recalc before anything repainted.
+    // Opacity is a compositor property, ~22ms. Anything that creeps back in
+    // here — a token, a filter, a transition — is a main-thread cost again.
+    expect(recedeRule()).toBe('opacity: var(--day-recede);');
   });
 
-  it('leaves every chromatic token at full strength', () => {
-    // THE constraint, at the other end from the mounted-tree check above: the
-    // rule must not name --primary, the user-content ramp (--accent-8 IS lime),
-    // or any other colour mark. Neutrals only.
-    const named = [...recedeRule().matchAll(/^\s*(--[a-z0-9-]+)\s*:/gm)].map((m) => m[1]);
-    expect(named.length).toBeGreaterThan(5);
-
-    const CHROMATIC =
-      /^--(primary|ring|success|warning|destructive|ai|accent-\d|priority|habit|morning|afternoon|evening|anytime|lime|honey|coral|day-today|sunrise)/;
-    expect(named.filter((t) => CHROMATIC.test(t))).toEqual([]);
+  it('is keyed to the pointer — never to selection or today', () => {
+    // THE regression #239 reverted: `!selected && opacity-60` dimmed six days
+    // at rest. The exception the accent rule grants is transient, and the
+    // selector is what makes it so.
+    expect(SELECTOR).toContain(':hover');
+    const src = css();
+    const at = src.indexOf(SELECTOR);
+    // Nothing between the guard and the rule may widen it to a resting state.
+    const region = src.slice(src.lastIndexOf('@media (hover: hover)', at), at);
+    expect(region).not.toMatch(/data-selected|data-today|aria-selected/);
   });
 
   it('is guarded for touch, where :hover sticks after a tap', () => {
-    // Unlike the wash it replaces. What stuck under the wash was a highlight on
-    // the day you just tapped; what would stick here is six days dimmed.
+    // What would stick is six days dimmed until the next tap. Under the guard
+    // a touch device gets no recede at all, which is right — it has no pointer
+    // to echo.
     const src = css();
     const guard = src.lastIndexOf('@media (hover: hover) and (pointer: fine)');
-    const rule = src.indexOf('[data-week-cols]:has(> [data-week-col]:hover)');
+    const rule = src.indexOf(SELECTOR);
     expect(guard, 'the recede lost its pointer guard').toBeGreaterThan(-1);
     expect(guard).toBeLessThan(rule);
+    // And the guard actually closes AFTER the rule, so the rule is inside it.
+    const close = src.indexOf('\n}', rule);
+    expect(src.slice(guard, close)).toContain(SELECTOR);
   });
 
   it('does not animate — the recede lands on one frame', () => {
-    // It shipped with `transition-property: color, background-color,
-    // border-color` on `[data-week-col] *`, which asks the compositor to
-    // interpolate every node under six columns for eight frames. Measured worst
-    // frame on hover: 93.5ms at 10 items per column, 297.3ms at 40, against
-    // 18.8/22.0 with no transition — the cost scaled with the item count, which
-    // is exactly where a planner grid gets busy. Nothing may re-add a
-    // transition keyed to the recede's own hooks.
+    // An opacity transition would be compositor-cheap, but the ask was that
+    // the six days grey and ungrey on the frame the pointer arrives, and
+    // task-row's hover wash is untransitioned for the same reason.
     const src = css();
-    const guarded = src.slice(
-      src.indexOf('--day-recede:'),
-      src.indexOf('@layer base {\n  * {')
-    );
+    const guarded = src.slice(src.indexOf('--day-recede:'), src.indexOf('@layer base {\n  * {'));
     expect(guarded.length).toBeGreaterThan(100);
     for (const decl of guarded.matchAll(/^\s*(transition[a-z-]*)\s*:/gm)) {
       throw new Error(`the recede grew a transition again: ${decl[1]}`);
     }
-    // And the selector that carried it is gone from the stylesheet's rules.
     expect(src).not.toMatch(/\[data-week-col\]\s*\*\s*\{/);
   });
 
-  it('derives the receded twins at :root so every theme gets its own', () => {
-    // A self-referencing custom property is a cycle and computes to nothing,
-    // which is why these cannot be written inline in the rule above.
-    const src = css();
-    for (const t of ['--recede-ink-0', '--recede-ink-2', '--recede-border']) {
-      expect(src, `${t} is not derived`).toContain(`${t}: color-mix(`);
-    }
-    expect(src).toContain('--day-recede:');
+  it('has one dial, a bare number at :root', () => {
+    const m = css().match(/--day-recede:\s*([\d.]+)\s*;/);
+    expect(m, 'the --day-recede dial is gone').not.toBeNull();
+    const v = Number(m![1]);
+    expect(v).toBeGreaterThan(0);
+    expect(v).toBeLessThan(1);
   });
 });
 
