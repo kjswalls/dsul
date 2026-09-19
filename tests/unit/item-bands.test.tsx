@@ -3,28 +3,42 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
- * THE BANDS — the item surface stops rendering four questions as one row.
+ * WHICH CONTAINERS AN ITEM MAY JOIN — the pure answer, and the two surfaces
+ * that render it differently on purpose.
  *
- * Ticket D4. Every chip on the edit surface already asked lib/item-registry.ts
- * whether it may exist; nothing asked about order or grouping, so Project
- * (classify), Routine and Program (gate) and Goal (aspire) rendered as five
- * identical pills in source order and the three container ROLES that
- * lib/container-registry.ts spends four screens distinguishing reached the user
- * as no distinction at all.
+ * Ticket D4 gave the item surface a stack of labelled BANDS: Project
+ * (classify), Routine and Program (gate), Goal (aspire), ordered by the ROLE
+ * that lib/container-registry.ts spends four screens distinguishing and which,
+ * as five identical pills in source order, had reached the user as no
+ * distinction at all.
  *
- * Three claims are load-bearing here, and each one is a thing a later edit could
+ * Every EDITING surface has since dropped the band stack for the Clearing
+ * field — one label-less wrapping row of the properties the item actually
+ * carries, with the rest folded behind one "+ Add property" seed. The bands
+ * survive on /item/[id], where `ContainerBandsReadout` is a readout rather
+ * than a form and an empty row is a way in rather than a blank.
+ *
+ * Four claims are load-bearing here, and each is a thing a later edit could
  * quietly undo:
  *
  *  1. THE ORDER AND THE SET ARE DERIVED. `CONTAINER_BANDS` iterates the
  *     registry and sorts by ROLE. Hand-listing the four kinds would look
- *     identical today and would silently drop the fifth.
+ *     identical today and would silently drop the fifth. The field wraps into
+ *     one row and the seed menu is flat, so role order is the only thing left
+ *     deciding what the eye meets first.
  *  2. THE LABEL IS THE REGISTRY'S NOUN. CLAUDE.md: the user-facing noun lives
  *     only in `CONTAINER_KINDS[kind].label`. A literal 'Project' in a component
- *     turns a rename from a string edit into a hunt.
- *  3. AN EMPTY BAND STILL RENDERS, and its affordance is actionable. That is
- *     the whole point of the layout not jumping as you fill an item in — with
- *     ONE exception (a gate with nothing to join and no console to open), which
- *     is asserted just as hard so it cannot be "fixed" by accident.
+ *     turns a rename from a string edit into a hunt. The field leans on this
+ *     HARDER than the bands did — with no band label beside it, an unset chip
+ *     carrying a bare "Add" would be a nameless control.
+ *  3. THE FIELD SHOWS WHAT IS SET, and nothing else — on EVERY surface, capture
+ *     included. That is the claim the capture modal exists to pin: it is the
+ *     one place where nothing is set yet, so a layout keyed on capability put
+ *     five empty rows between the title and the button.
+ *  4. AN EMPTY BAND STILL RENDERS IN THE READOUT, and its affordance is
+ *     actionable — with ONE exception (a gate with nothing to join and no
+ *     console to open), asserted just as hard so it cannot be "fixed" by
+ *     accident.
  */
 
 vi.mock('next/navigation', () => ({
@@ -103,7 +117,10 @@ const kindsFor = (over: Partial<ContainerBandContext> = {}) =>
   visibleContainerBands(ctx(over)).map((b) => b.kind);
 
 describe('which bands render', () => {
-  it('renders every band EMPTY — the layout is what the item can be', () => {
+  it('answers with every kind from zero — capability, never content', () => {
+    // The module is asked the same question by both surfaces; what differs is
+    // what they do with a kind the item has not joined. The readout draws it as
+    // an empty band; the field folds it into the seed.
     expect(kindsFor()).toEqual(['project', 'routine', 'program', 'goal']);
   });
 
@@ -156,6 +173,20 @@ const task = (over: Partial<TaskItem> = {}): TaskItem => ({
   order: 0,
   ...over,
 });
+
+/** A habit — the one type with a REQUIRED container, hence its own fixture. */
+const habitItem = (over: Record<string, unknown> = {}): Item =>
+  ({
+    type: 'habit',
+    id: 'h1',
+    title: 'Morning pages',
+    status: 'pending',
+    repeatFrequency: 'daily',
+    completedDates: [],
+    skippedDates: [],
+    streak: 0,
+    ...over,
+  }) as unknown as Item;
 
 const routine = (over: Partial<Routine> = {}): Routine => ({
   id: 'r1',
@@ -216,18 +247,42 @@ const panel = (item: Item = task()) =>
     />
   );
 
+/** The capture modal — the surface that held the bands longest. */
+const capture = (type = 'task', over: Record<string, unknown> = {}) =>
+  render(
+    <ItemDialog state={{ mode: 'add', type, ...over }} onOpenChange={() => {}} />
+  );
+
+/**
+ * The mobile edit drawer — and the Zen edit modal, which resolves identically.
+ * The ONLY surface that is Clearing and does NOT autosave, which makes it the
+ * only fixture that can tell `autosaves` apart from `mode`: every other pairing
+ * moves both at once (the panel is edit+autosaving, capture is add+not). Without
+ * it a footer keyed on `mode === 'add'` would pass every test in this file.
+ */
+const modalEdit = (item: Item = task()) =>
+  render(
+    <ItemDialog state={{ mode: 'edit', item }} onOpenChange={() => {}} withDetailSections={false} />
+  );
+
+const field = () => screen.getByTestId('item-clearing-field');
+const seedOptions = () =>
+  Array.from(document.querySelectorAll('[data-testid="item-clearing-seed-option"]')).map(
+    (o) => o.textContent ?? ''
+  );
+
 /** The band rows on screen, top to bottom, by their label text. */
 const bandLabels = () =>
   Array.from(document.querySelectorAll('[data-testid^="item-band-"]')).map(
     (row) => row.querySelector('p')?.textContent ?? ''
   );
 
-describe('the edit panel renders the Clearing field, not bands', () => {
+describe('every item surface renders the Clearing field, not bands', () => {
   it('drops the labelled band stack for one label-less field', () => {
     panel();
     expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
-    // The band grammar belongs to the /item readout and the capture modal now;
-    // the editing panel shows only what the item actually carries.
+    // The band grammar belongs to the /item readout alone now; every surface
+    // you EDIT on shows only what the item actually carries.
     expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
   });
 
@@ -327,21 +382,268 @@ describe('a cancelled add keeps its draft across the body unmount', () => {
   });
 });
 
-describe('the capture surface keeps its bands too', () => {
-  it('renders the modal in add mode with the same rows, and a Priority chip', () => {
-    render(
-      <ItemDialog state={{ mode: 'add', type: 'task' }} onOpenChange={() => {}} />
+describe('the capture surface gets the field too', () => {
+  /**
+   * The modal held the bands longest, and it is where they cost most: NOTHING
+   * is set on a new item, so a stack keyed on what the type COULD carry was
+   * five empty labelled rows between the title and the button — "a lot of
+   * different empty rows for things you can add", which is the complaint that
+   * closed the gate.
+   */
+  it('shows one field and no band rows', () => {
+    capture();
+    expect(field()).toBeTruthy();
+    expect(bandLabels()).toEqual([]);
+  });
+
+  it('folds an unset property into the seed instead of drawing an empty row', () => {
+    capture();
+    // Priority left the header for the field, and a fresh task has none — so it
+    // is reachable BY NAME from the seed rather than parked unset on screen.
+    expect(field().textContent).not.toContain('Priority');
+    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+      expect(field().textContent).not.toContain(CONTAINER_KINDS[kind].label);
+    }
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes('Priority'))).toBe(true);
+    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+      expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS[kind].label))).toBe(true);
+    }
+  });
+
+  it('folds the WHEN cluster away too — the rows the complaint was actually about', () => {
+    /**
+     * The container nouns above are the easy half. The five schedule properties
+     * — Date, Time, Repeat, Remind, Times per day — were the `When` band, the
+     * first and widest of the five empty rows a fresh capture used to draw, and
+     * nothing in this file pinned them.
+     *
+     * MUTATION-CHECKED: flipping `set: !!d.startDate` to `set: true` on the date
+     * prop (item-dialog.tsx) leaves every other test in the repo green while the
+     * capture modal draws a valueless "Date" chip again — exactly the empty
+     * affordance this layout exists to delete. This test is what fails instead.
+     */
+    capture(); // an undated task: the braindump / omnibar capture path
+    for (const noun of ['Date', 'Repeat', 'Remind']) {
+      expect(field().textContent).not.toContain(noun);
+    }
+    // A dateless task is not date-anchored ANYWHERE yet, so Time goes with it —
+    // `showTime` is a capability question, not a value one.
+    expect(field().textContent).not.toContain('Time');
+    // Absent from the field, present in the seed: folded, never removed.
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    for (const noun of ['Date', 'Repeat', 'Remind']) {
+      expect(seedOptions().some((t) => t.includes(noun))).toBe(true);
+    }
+  });
+
+  it('keeps what the open ALREADY set on screen — the date you added from', () => {
+    // The seed is not a diet: a capture anchored to a day carries that day, so
+    // the chip is set and shows at rest. This is why the field is not simply
+    // empty in add mode.
+    capture('task', { date: new Date(2026, 8, 18) });
+    expect(field().textContent).toContain('Sep 18');
+  });
+
+  it('shows a habit what it already carries: its file, its cadence, its count', () => {
+    // The field is not a diet — a habit reaches capture with a required
+    // container already filled (makeAddDraft seeds the first one), a default
+    // frequency and a daily count, so all three show at rest. Only the
+    // properties a new habit genuinely has none of go to the seed.
+    capture('habit');
+    expect(screen.getByTestId('item-dialog-container-chip').textContent).toContain('Onboarding');
+    expect(field().textContent).toContain('Daily');
+    // The count chip is asserted BY VALUE, not just by the section it sits in:
+    // `timesPerDay` is the one prop hardcoded `set: true` (it always carries a
+    // value, defaulting to 1×), and flipping that to false silently drops it
+    // into the seed on every surface with nothing else in the suite noticing.
+    expect(field().textContent).toContain('1×');
+    // …and the chip keeps the registry noun in its accessible name, which is
+    // the only place the band label used to live.
+    expect(screen.getByTestId('item-dialog-container-chip').getAttribute('aria-label')).toBe(
+      `${CONTAINER_KINDS.project.label}: Onboarding`
     );
-    expect(bandLabels()).toEqual([
-      'When',
-      CONTAINER_KINDS.project.label,
-      CONTAINER_KINDS.routine.label,
-      CONTAINER_KINDS.program.label,
-      CONTAINER_KINDS.goal.label,
-    ]);
-    // Add is where an item's shape is decided, so the identity line carries the
-    // same priority control the panel does.
-    expect(screen.getByText('Priority')).toBeTruthy();
+  });
+
+  it("never offers a habit's own container in the seed — it cannot be un-set", () => {
+    /**
+     * Honest about WHY this passes, because the obvious reading is wrong: it is
+     * `set`, not `required`, that carries it. Neither draft builder can produce
+     * `container: 'none'` for a type that requires one — makeAddDraft seeds the
+     * first container (or legacy 'personal'), and draftFromItem falls back to
+     * `''` — and `set` is `d.container !== 'none'`, so it is true even for a
+     * habit filed nowhere. `required` is the backstop behind that, not the
+     * mechanism, and there is no state reachable from either builder that
+     * exercises it alone. What this pins is the USER-FACING guarantee: the one
+     * property a habit cannot do without is never folded out of reach.
+     */
+    capture('habit');
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
+    cleanup();
+    // The same guarantee on the edit side, where the project really IS empty:
+    // draftFromItem gives a container-requiring type `''` rather than 'none'.
+    seed({ items: [habitItem()] });
+    panel(habitItem());
+    expect(screen.getByTestId('item-dialog-container-chip')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
+  });
+
+  it('offers the type as a control here and only whispers it when editing', () => {
+    capture();
+    expect(screen.getByTestId('item-dialog-type-chip')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-type-whisper')).toBeNull();
+    cleanup();
+    panel();
+    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
+  });
+
+  it('keeps its submit button in the footer — only autosave lifts Done to the rail', () => {
+    // Clearing is a LAYOUT decision; where the commit lives is a persistence
+    // one. The capture modal has a moment of commitment and still says so.
+    capture();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toContain('Add');
+    cleanup();
+    panel();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Done');
+  });
+});
+
+describe('emptying a property keeps its chip', () => {
+  /**
+   * The rule is "show what is SET", and taken literally it eats the control you
+   * are using: clear a date from inside the date chip and the chip fails `set`,
+   * fails `required`, fails `revealed` — and unmounts, from under the pointer,
+   * with the value you were about to replace now two clicks away behind the
+   * seed. `clearProp` writes the same `revealed` set the seed menu does, on the
+   * grounds that deliberately emptying a property is the same statement as
+   * summoning one: I am using this.
+   */
+  const openChipAndClear = (chipTestId: string, optionText: string) => {
+    fireEvent.click(screen.getByTestId(chipTestId));
+    const option = Array.from(document.querySelectorAll('button')).find(
+      (b) => b.textContent?.trim() === optionText
+    );
+    expect(option).toBeTruthy();
+    fireEvent.click(option!);
+  };
+
+  it('keeps the date chip after "No date", empty rather than gone', () => {
+    seed({ items: [task({ startDate: '2026-09-18' })] });
+    panel(task({ startDate: '2026-09-18' }));
+    expect(field().textContent).toContain('Sep 18');
+
+    openChipAndClear('item-dialog-date-chip', 'No date');
+
+    // Still there, now carrying its noun instead of a value — ready to re-pick
+    // in one click. Before `clearProp` this assertion failed: the field
+    // collapsed to a lone "+ Add property".
+    expect(screen.getByTestId('item-dialog-date-chip')).toBeTruthy();
+    expect(field().textContent).toContain('Date');
+    expect(field().textContent).not.toContain('Sep 18');
+    // …and it is NOT also sitting in the seed, which would be two ways in.
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes('Date'))).toBe(false);
+  });
+
+  it('applies on the capture modal too — where the date arrives pre-filled', () => {
+    // The surface that made this reachable: a capture anchored to a day opens
+    // with a date already set, so "change my mind about the day" is an ordinary
+    // first move rather than an edge case.
+    capture('task', { date: new Date(2026, 8, 18) });
+    expect(field().textContent).toContain('Sep 18');
+    openChipAndClear('item-dialog-date-chip', 'No date');
+    expect(screen.getByTestId('item-dialog-date-chip')).toBeTruthy();
+  });
+
+  it('leaves the TIME chip to its capability rule, which is a different question', () => {
+    // Clearing a task's date really does take Time with it: `showTime` asks
+    // whether the property applies at all, not whether it holds a value, and an
+    // undated task has no bucket to be in. That is correct and must not be
+    // "fixed" by the same mechanism — `clearProp` only answers `set`.
+    seed({ items: [task({ startDate: '2026-09-18' })] });
+    panel(task({ startDate: '2026-09-18' }));
+    expect(field().textContent).toContain('30 min');
+    openChipAndClear('item-dialog-date-chip', 'No date');
+    expect(field().textContent).not.toContain('30 min');
+  });
+});
+
+describe('a goal that ended still says so', () => {
+  /**
+   * `endedGoals` exists for one sentence, written in the dialog: "a
+   * still-scheduled milestone of a set-aside goal is otherwise a row with no
+   * explanation anywhere in the app." Reading the chip's value from ACTIVE
+   * memberships alone made the field hide the chip entirely for an item that
+   * serves only ended goals — deleting the explanation that comment describes.
+   */
+  it('names the ended goal on the chip rather than folding it into the seed', () => {
+    seed({ goals: [goal({ state: 'achieved', memberIds: ['t1'] })] });
+    panel();
+    expect(screen.getByTestId('item-dialog-goal-chip')).toBeTruthy();
+    // Named AND marked: a bare name would read as a live membership, which
+    // trades a missing explanation for a wrong one.
+    expect(field().textContent).toContain('Ship v2 (ended)');
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.goal.label))).toBe(false);
+  });
+
+  it('marks ONLY the fallback — a live membership says its name plainly', () => {
+    seed({
+      goals: [
+        goal({ memberIds: ['t1'] }),
+        goal({ id: 'g2', name: 'Old plan', state: 'achieved', memberIds: ['t1'] }),
+      ],
+    });
+    panel();
+    expect(field().textContent).toContain('Ship v2');
+    expect(field().textContent).not.toContain('(ended)');
+    // The ended one is still reachable where it always was — inside the chip.
+    expect(field().textContent).not.toContain('Old plan');
+  });
+
+  it('says nothing at all when there is no membership of either kind', () => {
+    // The fallback must not become a reason for the chip to exist: a task in no
+    // goal, ended or otherwise, still folds Goal into the seed.
+    panel();
+    expect(screen.queryByTestId('item-dialog-goal-chip')).toBeNull();
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.goal.label))).toBe(true);
+  });
+});
+
+describe('the mobile drawer: Clearing without autosave', () => {
+  /**
+   * The second surface the gate held back, and the one no test in this repo
+   * mounted. It matters more than its size suggests: it is the only place where
+   * "is this Clearing?" and "does this save itself?" disagree, so it is the only
+   * fixture that can prove the layout is universal while the COMMIT affordance
+   * still tracks persistence.
+   */
+  it('gets the field and the whisper, like every other surface', () => {
+    modalEdit();
+    expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
+    expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
+    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
+  });
+
+  it('keeps Save Changes in the footer — the layout is universal, the commit is not', () => {
+    /**
+     * The discriminator is `autosaves` (isPanel && edit), NOT `mode`. This is the
+     * fixture that says so: it is mode 'edit' like the panel, but modal like the
+     * capture, and it must follow the CAPTURE on the footer. A regression that
+     * re-keyed the footer or the top-rail Done on `mode === 'add'` would satisfy
+     * every other test in this file and strand this surface with a Done button
+     * that flushes an autosave queue it never fills.
+     */
+    modalEdit();
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Save Changes');
+    cleanup();
+    panel(); // same mode, different presentation → the other answer
+    expect(screen.getByTestId('item-dialog-submit').textContent).toBe('Done');
   });
 });
 
@@ -376,7 +678,13 @@ describe('the /item/[id] readout', () => {
     expect(onAdd.mock.calls[0][0].kind).toBe('program');
   });
 
-  it('counts an achieved goal out — the same wind-down the chip does', () => {
+  // NOTE: the readout and the dialog's chip now DIVERGE here, deliberately. The
+  // readout draws its Goal band whether or not it holds anything, so an ended
+  // membership costs it no explanation — the row is on screen either way. The
+  // dialog's field hides what is unset, so there the ended goal has to be named
+  // on the chip or it disappears completely (see 'a goal that ended still says
+  // so' above).
+  it('counts an achieved goal out of the READOUT, whose empty band still shows', () => {
     seed({ goals: [goal({ state: 'achieved', memberIds: ['t1'] })] });
     readout(task());
     expect(screen.getByTestId(bandTestId('goal')).textContent).not.toContain('Ship v2');

@@ -39,10 +39,16 @@ import { cn } from '@/lib/utils';
  */
 
 /**
- * The sections' heading is the BAND label — one component, so the chips above
- * (Project, Routine, Program, Goal, When) and the sections below read as one
- * grammar instead of two that happen to look alike. See components/planner/
- * item-bands.tsx.
+ * The sections' heading is the BAND label — one component, so a section heading
+ * and a band label are one typographic voice rather than two that happen to look
+ * alike. See components/planner/item-bands.tsx.
+ *
+ * It was originally shared with the chips above, which were bands too. They are
+ * not any more — every editing surface renders them as one label-less field — so
+ * on the dialog these headings are now the only labels in the stack, which is
+ * the point: the properties are chips you read by their values, the sections are
+ * areas you read by their names. The bands themselves live on at /item/[id],
+ * where this heading still sits directly beneath them.
  */
 const SectionLabel = BandLabel;
 

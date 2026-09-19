@@ -35,18 +35,24 @@ adapters — growth is a presentation, not a fork.
    plugin safeParses and throws on drift; CI gates dist-matches-src). New webhook event
    names silently never deliver — agent progress rides `tasks.updated` or extends the
    plugin registration *and* `DsulChangeEventSchema` in lockstep.
-7. **The layout is a registry question too (locked 2026-08-27, Phase 10).** Which
-   container bands exist, their order and their labels are derived from
-   `CONTAINER_KINDS` — role for the order and the gating, kind for the noun. A band
-   list written out by hand is the defect this replaces, and the fifth kind is the
-   test of it: it must arrive as a row with no edit to a component. Its CONTROL is
-   the one thing that cannot be derived, so `bandControls` in item-dialog.tsx is a
-   full `Record<ContainerKind, …>` — the compile error that stops a new kind
-   rendering as a band with nothing in it.
-8. **An empty band renders; a missing capability does not (locked 2026-08-27).**
-   Content never decides whether a band exists — capability does. The single
-   exception is a gate with nothing to join and no console to open, which is a door
-   rule inherited from the chip, not a content rule.
+7. **The layout is a registry question too (locked 2026-08-27, Phase 10; still
+   holds).** Which container kinds an item may join, their order and their labels
+   are derived from `CONTAINER_KINDS` — role for the order and the gating, kind for
+   the noun. A list written out by hand is the defect this replaces, and the fifth
+   kind is the test of it: it must arrive with no edit to a component. Its CONTROL
+   is the one thing that cannot be derived, so `bandControls` in item-dialog.tsx is
+   a full `Record<ContainerKind, …>` — the compile error that stops a new kind
+   reaching the field with nothing behind its name. Phase 11 raised the stakes on
+   the noun rather than lowering them: with no band label beside a chip, the
+   registry noun is the ONLY thing naming an unset control.
+8. ~~**An empty band renders; a missing capability does not (locked 2026-08-27).**~~
+   — **narrowed 2026-09-18, Phase 11.** It still governs `/item/[id]`'s
+   `ContainerBandsReadout`, where an empty row is a way in. On every surface you
+   EDIT on it is reversed: an unset property is absent, folded behind one seed. The
+   rule cost most exactly where it was least true — the capture modal, where
+   nothing is set yet, so "the shape is what the item CAN be" drew the whole
+   ladder empty. The gate exception (nothing to join, no console to open) survives
+   both readings, because it is a door rule, not a content rule.
 
 ## Phase ledger
 
@@ -282,6 +288,97 @@ adapters — growth is a presentation, not a fork.
       of the document. The opener is captured on the closed→open edge (the panel
       RETARGETS without closing, so re-capturing would remember the third row you
       clicked) and restored only when nothing else has claimed the cursor.
+
+- [x] **Phase 11 — Clearing** (panel + /item editor shipped 2026-08-28, #266;
+      extended to the capture modal and the mobile drawer 2026-09-18).
+      The labelled band ladder gives way to **one label-less field** of only the
+      properties the item actually carries, with everything unset folded behind a
+      single **"+ Add property"** seed. Serif title and notes, a quiet type
+      whisper, and — on the autosaving surfaces only — Done in the top rail and
+      the edit history collapsed into one expandable line in the footer.
+
+      **Why the gate came off.** #266 shipped this gated on `clearing = isPanel &&
+      mode === 'edit'`, leaving the add-capture modal and the mobile drawer on the
+      bands deliberately — a redesign is cheaper to judge on one surface. Kirby's
+      read of the surface it was held back from: *"The new task dialog has a lot of
+      different empty rows for things you can add to the task or habit."* That is
+      Phase 10's empty-band rule stated as a complaint, and the capture modal is
+      where it is most obviously right: NOTHING is set on a new item, so a layout
+      keyed on what the type COULD carry drew five labelled rows — When, Project,
+      Routine, Program, Goal — between the title and the button, every one of them
+      holding a single dashed "Add". Discovery was the rule's whole defence, and
+      an empty band's bare "Add" never actually said what it would add. **The seed
+      discovers BY NAME**, which is strictly more than the bands offered, in one
+      chip instead of five rows.
+
+      **What the field shows in add mode, which is not nothing.** The seed is not a
+      diet: `makeAddDraft` seeds real values and they show at rest. A task captured
+      from a day carries that date, so Date and Time are chips; a habit carries a
+      required container (the first project), its default frequency and its daily
+      count. A task captured with no date — from the braindump — shows the seed
+      alone, which is correct: that item genuinely has nothing but a name yet.
+
+      **`clearing` is gone; `autosaves` does the only asking left.** They were
+      always the same boolean and always two different questions, and the flag
+      that named the layout could not survive the layout becoming universal. What
+      still differs between surfaces is PERSISTENCE, so `autosaves` is asked
+      directly at the two places it decides something: the top rail carries Done
+      (flush + close) only where there is nothing to submit, and Activity stays in
+      the body wherever `ClearingFooter` is not there to fold it into its history
+      line. The capture modal and the mobile drawer keep their Enter hint and their
+      submit button — they have a moment of commitment and still say so.
+
+      **The one thing `mode` still decides** is the identity mark. Add offers the
+      type as a control (task vs habit reshapes the whole form); edit only whispers
+      it, because converting an item is a data decision — streaks, completion
+      history — not a control. Priority left the identity line for the field, where
+      it is a property like any other: set, it is a chip; unset, it is a name in
+      the seed. That reverses Phase 10's "Priority left the row", and for the same
+      reason it was true then — a labelled row for Priority would have said the
+      word twice. The field says it once, and only when it applies.
+
+      **Caught in review, not shipped:** the desktop Dialog parks Radix's close X
+      absolutely at `top-4/right-4`, straight through the header row's right end
+      where "Open as page" and the overflow menu sit. The type-first header this
+      replaced carried `pr-8` for exactly that; the unified header has to carry it
+      too, on the desktop modal only — the panel has no such X, and vaul's drag
+      handle is centered ABOVE the drawer's content, so it costs no width.
+
+      **Two corners the rule bit, fixed on review (2026-09-18).** Both were
+      live on the panel since #266 and only became universal here; both are
+      "show what is SET" taken more literally than it should be.
+
+      · **Emptying a property made its chip vanish from under the pointer.**
+        Clear a date from inside the date chip and it fails `set`, `required`
+        and `revealed` at once, so it unmounts — and the value you were about
+        to replace is now two clicks away behind the seed. `clearProp` routes
+        the "no value" options through the same `revealed` set the seed menu
+        writes: deliberately emptying a property is the same statement as
+        summoning one, so the chip stays put, empty, for the rest of the
+        session. The Time chip still goes with a cleared date, and should —
+        `showTime` is a capability question, not a value one.
+
+      · **A goal that ended took its own explanation with it.** `endedGoals`
+        exists for one sentence — "a still-scheduled milestone of a set-aside
+        goal is otherwise a row with no explanation anywhere in the app" — and
+        the chip's value read ACTIVE memberships only, so an item serving only
+        ended goals showed no chip at all and the field deleted the very
+        explanation that comment describes. The value now falls back to the
+        ended names and MARKS them: `Ship v2 (ended)`, borrowing the word from
+        the popover's own divider, because a bare name would read as a live
+        membership and trade a missing explanation for a wrong one. Only the
+        fallback is marked. This DIVERGES from `/item/[id]`'s readout on
+        purpose: the readout draws its Goal band whether or not it holds
+        anything, so an ended membership costs it no explanation there.
+
+      **The bands are not deleted.** `lib/item-bands.ts` and
+      `components/planner/item-bands.tsx` stay, and Phase 10's derivation is still
+      the answer to "which containers may this item join, in what order": the field
+      wraps into one row and the seed menu is flat, so ROLE order is now the only
+      thing deciding what the eye meets first. `/item/[id]` keeps rendering them as
+      bands, where `ContainerBandsReadout` is a readout rather than a form and the
+      empty-band rule still reads correctly. `BandLabel` still supplies the detail
+      sections' headings.
 
 ## Open after Phase 8 (2026-07-30)
 
