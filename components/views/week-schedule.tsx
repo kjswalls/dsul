@@ -203,23 +203,25 @@ function WeekScheduleColumn({
       data-date={col.dateStr}
       data-selected={selected ? 'true' : 'false'}
       data-today={today ? 'true' : 'false'}
-      // The hook the recede selects on. Hovering one column mutes the other
+      // The hook the recede selects on. Hovering one column dims the other
       // six; this column takes no mark of its own, which is the point — the
       // wash it used to carry (`hover:bg-accent`) read as a second selection
       // highlight next to the lime header pill rather than as a pointer echo.
       //
-      // The recede is a TOKEN swap, never an opacity: a column opacity
+      // The recede is an OPACITY on the non-hovered siblings, and it is the
+      // one exception CLAUDE.md's accent rule carries: a column opacity
       // composites everything inside it, and this column is full of lime —
       // the block accent rail and start bead of every project-less scheduled
-      // task, the completion checkbox of every done row, multi-select marks,
-      // and any project whose name happens to hash to --accent-8. Lime at 0.6
-      // over the dark ramp turns olive (see primitives/task-row.tsx, which
-      // names that exact number), and CLAUDE.md's accent rule forbids it.
-      // Excluding the selected and today columns does not save it: an ordinary
-      // Tuesday holds all of the above. So the neutrals recede and every
-      // colour mark keeps its strength. The whole argument, the token list and
-      // the touch-device guard are in globals.css under "the other six
-      // recede"; this file only supplies the two attributes it selects on.
+      // task, the completion checkbox of every done row, multi-select marks.
+      // It shipped first as a token swap that left every one of those at full
+      // strength, and that was ~250ms of main-thread recalc and repaint on a
+      // busy week against ~22ms for opacity, because a custom property change
+      // re-styles every node under six columns before a pixel moves. The
+      // exception is transient on purpose — pointer only, nothing dims at
+      // rest — and the whole argument with the measurements is in globals.css
+      // under "the other six recede"; this file only supplies the two
+      // attributes it selects on. No opacity may appear in THIS className:
+      // that is how the reverted `!selected && opacity-60` dimmed at rest.
       data-week-col=""
       className="flex flex-none flex-col rounded-[10px]"
       /*

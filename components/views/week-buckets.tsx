@@ -27,9 +27,9 @@ import { cn } from '@/lib/utils';
 /**
  * Week × Buckets (P5b): seven columns of mini bucket cards. Drops use
  * `week:{yyyy-MM-dd}:{bucket}` per lib/dnd/CONTRACT.md. The selected day is
- * highlighted by its lime header pill; hovering a day recedes the other six,
- * and that recede is a token swap, so nothing here carries an opacity that
- * could composite the accent marks inside a bucket card. Columns keep a min
+ * highlighted by its lime header pill; hovering a day recedes the other six by
+ * a transient opacity — the accent rule's one exception, taken for speed over
+ * a token swap that spared the lime and cost ~300ms a hover. Columns keep a min
  * width and snap-scroll so 13" screens see ~4 comfortable columns (per the
  * mockup) instead of 7 crushed ones.
  */
@@ -237,12 +237,14 @@ function WeekColumn({
       // renders the lime current-bucket segment and fading lime through a
       // parent's opacity is the one thing the accent rule forbids. Both were
       // keyed to SELECTION, so six days out of seven sat muted with the
-      // pointer nowhere near the grid. The recede is keyed to the pointer
-      // instead, and is a token swap rather than an opacity — which is what
-      // lets it dim a column that this view, more than Schedule, already knew
-      // could not be composited: a mini bucket card holds completion
-      // checkboxes, project rails and drop-target beads, all lime or
-      // accent-ramp. They keep their strength; the neutrals around them sink.
+      // pointer nowhere near the grid — and THAT, the resting dim, is what was
+      // wrong with them. The recede is an opacity again, but keyed to the
+      // pointer and only ever transient: it is the one exception the accent
+      // rule carries, taken because the token version that spared the lime
+      // cost ~300ms of recalc and repaint on a busy week in this view (a mini
+      // bucket card is a deep tree) against ~22ms for opacity. The lime
+      // current-bucket bead and every checkbox composite while the pointer is
+      // on another day, and come straight back when it leaves.
       //
       // `group/col` stays for the bucket cards that hang off it. The day
       // header keeps its OWN hover wash (below) — that one is a button
