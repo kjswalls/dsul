@@ -196,8 +196,10 @@ expected to be safe to re-run.
   under `:hover`, never in a className (the reverted `!selected && opacity-60` dimmed six
   days at rest — that is the regression); the rule sits under `(hover: hover) and
   (pointer: fine)`, because `:hover` sticks after a tap on a tablet wide enough for the
-  desktop shell; and it does not animate, so the six days grey and ungrey on the frame
-  the pointer arrives, the way task-row's hover wash does.
+  desktop shell; and its only animation is a 150ms opacity fade whose return to rest is held
+  100ms (off under reduced motion), because the untransitioned version flickered at each
+  flex gap a sweep crosses. The fade is opacity-only, so it adds no recalc; never widen it
+  to other properties.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)
