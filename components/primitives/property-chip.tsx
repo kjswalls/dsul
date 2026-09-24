@@ -33,6 +33,8 @@ export function PropertyChip({
   alwaysChevron,
   children,
   testId,
+  defaultOpen = false,
+  onCloseAutoFocus,
 }: {
   icon?: LucideIcon;
   /** Lets a <label htmlFor> point at the trigger. Without it the association is
@@ -60,8 +62,14 @@ export function PropertyChip({
   /** Stable e2e handle. Chips are otherwise addressed by their value copy,
    *  which is registry-driven and differs per item type. */
   testId?: string;
+  /** Mount with the picker already open. Read once, at mount — a chip the user
+   *  just summoned from a menu opens itself instead of costing a second click. */
+  defaultOpen?: boolean;
+  /** Radix's close-time focus return, for a picker whose close should not pull
+   *  focus back to its own trigger. */
+  onCloseAutoFocus?: (e: Event) => void;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(defaultOpen);
   const isSet = !!value;
 
   // These pickers are portalled outside the Dialog, so the modal's scroll lock
@@ -135,6 +143,7 @@ export function PropertyChip({
         // business. (Radix portals this outside the dialog, so this is belt
         // and braces for the focus-return case.)
         onKeyDown={(e) => e.stopPropagation()}
+        onCloseAutoFocus={onCloseAutoFocus}
       >
         {children(() => setOpen(false))}
       </PopoverContent>

@@ -244,7 +244,7 @@ function WeekColumn({
       // cost ~300ms of recalc and repaint on a busy week in this view (a mini
       // bucket card is a deep tree) against ~22ms for opacity. The lime
       // current-bucket rule and every checkbox composite while the pointer is
-      // on another day, and come straight back when it leaves.
+      // on another day, and fade back (after a brief hold) when it leaves.
       //
       // `group/col` stays for the bucket cards that hang off it. The day
       // header keeps its OWN hover wash (below) — that one is a button
