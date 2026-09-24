@@ -617,7 +617,7 @@ describe('value display', () => {
     const record = settingById('look.buckets')!;
     // The stored value stays 'spine' forever — renaming it to match the label
     // would reset every user's choice.
-    expect(displayValue(record, 'spine')).toBe('Threaded seam');
+    expect(displayValue(record, 'spine')).toBe('Floating card');
   });
 
   it('renders a switch as On/Off', () => {

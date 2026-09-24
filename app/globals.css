@@ -859,27 +859,12 @@
      inset, one hair of it. */
   --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 5%);
 
-  /* ── The threaded seam (components/primitives/bucket-card.tsx) ────────────
-     One hairline runs the height of the day; each bucket is a node pinned to it
-     and a caption beside it, and the bucket's BODY is a card the rail passes
-     over — the card's left edge sits 5px outside the rail, so the line bites its
-     top-left shoulder (~4.4px below the tangent at r16) and then runs down a
-     10px blank mat before the rows start. That overlap is the whole design: a
-     comment bubble always sits BESIDE its rail with a gap, and this one's gap is
-     minus five, so it reads as threaded rather than parked alongside.
-
-     This is day-schedule's rail-and-bead rotated onto the day's axis, and the
-     tokens are deliberately its siblings.
-
+  /* ── Bucket cards (components/primitives/bucket-card.tsx) ─────────────────
      Plain custom properties, not @theme, for the reason stated at the elev
      family above: a Tailwind arbitrary value compiles the LIGHT numbers into
      the class and never sees the .dark re-tune. The var() form stays live.
-
-     --bkt-spine is pitched between --sched-rail (explicitly "carries no
-     information of its own" — too quiet for the only line in a view) and
-     --border (too loud run across ~1200px of open canvas). Light composites to
-     ~0.921 over the canvas, Δ0.075. */
-  --bkt-spine: color-mix(in oklab, var(--border) 78%, transparent);
+     (The timeline rail these once sat beside, and its --bkt-spine token, are
+     gone; see GEO.spine in bucket-card.) */
 
   /* The slot that OPENS under a drag. At rest the view has no filled box at
      all, which leaves the {bucket} droppable nothing to light up and puts four
@@ -921,9 +906,9 @@
     var(--bkt-card-ring),
     0 1px 2px oklch(0.32 0.005 272 / 5%),
     0 4px 10px -4px oklch(0.32 0.005 272 / 7%);
-  /* The current bucket is promoted a step rather than tinted — the lime already
-     lives on the rail, and a second lime mark on the card would be the ring this
-     redesign spent round 1 removing. */
+  /* The current bucket is promoted a step rather than tinted. Its lime is one
+     2px rule down the card's left wall, added in bucket-card on top of this —
+     never a lime ring around the card, which is the grammar of focus. */
   --bkt-card-shadow-now: var(--bkt-card-shadow), 0 8px 16px -8px oklch(0.32 0.005 272 / 7%);
 
   /* A project block, floating ON the bucket card. Light has nowhere left to go
@@ -1058,14 +1043,6 @@
   --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
   --sched-pocket-lip: inset 0 1px 0 oklch(0 0 0 / 25%);
 
-  /* Day spine, dark — see the light block for the whole rationale. Note this
-     does NOT mirror light's "quieter than --border" ratio. Light reduces to 78%
-     because a dark hairline on near-white paper holds its weight over a long
-     run; on the near-black ramp a pale hairline at the same relative weight
-     drops to --sched-rail's 7% and disappears, which is the wrong end of the
-     scale for the only structural line in the view. Same asymmetry --day-off
-     and --ring carry, for the same reason. */
-  --bkt-spine: oklch(1 0 0 / 13%);
   --bkt-tray: color-mix(in oklab, var(--canvas) 40%, var(--surface-0));      /* 0.1878 */
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
   --bkt-walls: inset -1px 0 0 oklch(1 0 0 / 5%), inset 0 -1px 0 oklch(1 0 0 / 6%);
@@ -1330,7 +1307,7 @@ body {
 /* Timeline day navigation slide animations */
 /* Day/week navigation. Deliberately transform-ONLY: these animate the container
    that wraps every bucket, and the current-bucket signal inside it is a lime
-   spine segment. An `opacity: 0.5 → 1` here (which is what these used to carry)
+   rule on the card. An `opacity: 0.5 → 1` here (which is what these used to carry)
    is the one place in either bucket view where a parent opacity touches the
    accent, and fading lime through a parent is exactly what the accent rule
    forbids. The travel already reads; the fade was never doing the work. */

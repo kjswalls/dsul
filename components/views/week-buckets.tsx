@@ -243,7 +243,7 @@ function WeekColumn({
       // rule carries, taken because the token version that spared the lime
       // cost ~300ms of recalc and repaint on a busy week in this view (a mini
       // bucket card is a deep tree) against ~22ms for opacity. The lime
-      // current-bucket bead and every checkbox composite while the pointer is
+      // current-bucket rule and every checkbox composite while the pointer is
       // on another day, and come straight back when it leaves.
       //
       // `group/col` stays for the bucket cards that hang off it. The day
@@ -300,7 +300,7 @@ function WeekColumn({
               ? 'font-semibold text-primary-foreground'
               : today
                 ? // `today` stays full-strength lime even on an unselected
-                  // column — it is the same mark the current-bucket bead is.
+                  // column — it is the same mark the current-bucket rule is.
                   'font-bold text-success-text'
                 : 'font-semibold text-foreground'
           )}

@@ -70,11 +70,11 @@ export type ScheduleMarkStyle = 'nodes' | 'target' | 'trim';
  * empty bucket collapses to its caption, a drag opens a recess, and both are
  * collapsible — so this only picks where the bucket's glyph lives and what the
  * body is at rest.
- *   spine — "threaded seam". One hairline runs the height of the day; the glyph
- *           is a bead pinned to it, and the body is a floating card the rail
- *           passes OVER, biting its top-left shoulder. "Now" is a lime segment
- *           of the rail with the bucket's own extent.
- *   tray  — no rail; the glyph sits inline in the caption and the rows live in a
+ *   spine — "floating card". The glyph sits inline in the caption and the body
+ *           is a card floating on the canvas. "Now" is a lime rule down the
+ *           card's left wall. (The value's name is from the timeline rail it
+ *           used to have; it stays because it is persisted.)
+ *   tray  — the glyph sits beside the caption and the rows live in a
  *           bordered, recessed tray. "Now" is a solid lime disc plus a lime rule
  *           down the tray's left wall.
  * See components/primitives/bucket-card.tsx.
