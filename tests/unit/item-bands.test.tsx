@@ -49,7 +49,7 @@ vi.mock('next/navigation', () => ({
 
 vi.mock('@/lib/db', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/db')>()),
-  fetchTrashedNames: vi.fn(async () => []),
+  fetchTrashedNames: vi.fn(async () => ({ projects: [] })),
   fetchItemEvents: vi.fn(async () => []),
   getItemEventsAvailable: () => false,
 }));
@@ -755,5 +755,100 @@ describe('closing the panel gives the cursor back', () => {
 
     view.rerender(<Harness open={false} />);
     expect(document.activeElement).toBe(opener);
+  });
+});
+
+describe('a property summoned from the seed opens its own picker', () => {
+  /**
+   * Revealing a property used to mount its chip closed, so the pick cost a
+   * second click on the chip it had just produced. Now the chip mounts with its
+   * picker open and focus inside it — for EVERY property the seed offers, on
+   * both the add and the edit surface. The seed's own close must not pull focus
+   * back to its trigger (Radix's default) and strand the new picker unfocused;
+   * that return runs on a timeout, hence the flush before the focus check.
+   */
+  const surfaces = [
+    ['the capture modal (add)', () => capture()],
+    ['the panel (edit)', () => panel()],
+  ] as const;
+
+  const seedKeys = () => {
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    const keys = screen
+      .getAllByTestId('item-clearing-seed-option')
+      .map((o) => o.getAttribute('data-value') ?? '');
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    return keys;
+  };
+
+  for (const [name, mount] of surfaces) {
+    it(`opens and focuses every revealed picker on ${name}`, async () => {
+      mount();
+      const keys = seedKeys();
+      expect(keys.length).toBeGreaterThan(3);
+      cleanup();
+      for (const key of keys) {
+        mount();
+        fireEvent.click(screen.getByTestId('item-clearing-seed'));
+        const option = screen
+          .getAllByTestId('item-clearing-seed-option')
+          .find((o) => o.getAttribute('data-value') === key);
+        fireEvent.click(option!);
+        await act(async () => {
+          await new Promise((r) => setTimeout(r, 0));
+        });
+        // The seed menu is gone and exactly one picker is open — the new one.
+        expect(screen.queryAllByTestId('item-clearing-seed-option')).toHaveLength(0);
+        const pickers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
+        expect(pickers, key).toHaveLength(1);
+        expect(pickers[0].contains(document.activeElement), `focus inside ${key}`).toBe(true);
+        cleanup();
+      }
+    });
+  }
+
+  it('still hands focus back to the seed when it closes without a pick', async () => {
+    panel();
+    const seedTrigger = screen.getByTestId('item-clearing-seed');
+    fireEvent.click(seedTrigger);
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(screen.queryAllByTestId('item-clearing-seed-option')).toHaveLength(0);
+    expect(document.activeElement).toBe(seedTrigger);
+  });
+
+  it('opens only the property just summoned, never one revealed earlier', async () => {
+    panel();
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    const option = screen
+      .getAllByTestId('item-clearing-seed-option')
+      .find((o) => o.getAttribute('data-value') === 'priority');
+    fireEvent.click(option!);
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    // Close the picker; the revealed chip stays in the field, closed.
+    fireEvent.keyDown(document.activeElement!, { key: 'Escape' });
+    // Let that close return focus to the chip, as it would long before a person
+    // could reach for the seed again.
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(document.querySelectorAll('[data-radix-popper-content-wrapper]')).toHaveLength(0);
+    // Revealing a second property opens THAT one, not the priority chip too.
+    fireEvent.click(screen.getByTestId('item-clearing-seed'));
+    fireEvent.click(
+      screen
+        .getAllByTestId('item-clearing-seed-option')
+        .find((o) => o.getAttribute('data-value') === 'date')!
+    );
+    await act(async () => {
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    const pickers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
+    expect(pickers).toHaveLength(1);
+    expect(pickers[0].querySelector('[data-testid="item-dialog-date-shortcut"]')).toBeTruthy();
   });
 });
