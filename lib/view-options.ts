@@ -156,11 +156,16 @@ export function sortByBlockedBy(layout: ViewLayout, value: SortBy): string | nul
   return layout === 'list' ? null : 'List only';
 }
 
-/** The braindump's own group-by vocabulary — a different, smaller union. */
+/**
+ * The braindump's own group-by vocabulary — a different union: it has `type`,
+ * which the canvas answers with the Type filter instead, and lacks `bucket`,
+ * since nothing in the braindump carries a time of day.
+ */
 export const BRAINDUMP_GROUP_BY_OPTIONS: ViewOption<BraindumpGroupBy>[] = [
   { value: 'none', label: 'None', icon: Layers },
   { value: 'type', label: 'Type', icon: Shapes },
   { value: 'project', label: 'Project', icon: Folder },
+  { value: 'priority', label: 'Priority', icon: Flag },
   { value: 'routine', label: 'Routine', icon: Repeat },
   { value: 'program', label: 'Program', icon: CalendarRange },
   { value: 'goal', label: 'Goal', icon: Target },

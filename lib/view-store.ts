@@ -30,12 +30,13 @@ import {
 export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
-export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'routine' | 'program' | 'goal';
+export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'priority' | 'routine' | 'program' | 'goal';
 
 const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'none',
   'type',
   'project',
+  'priority',
   'routine',
   'program',
   'goal',
@@ -50,6 +51,8 @@ const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
  * union is user-persisted in `dsul-view` and was widened after ship, so a blob
  * written when it was 'none' | 'type' | 'project' is fine, but a garbage value is
  * not — and unlike the canvas keys, this one was never coerced in `merge` before.
+ * 'priority' joined later still; a stale 'priority' that no view-store write has
+ * yet overwritten with the coerced 'none' now resolves to a real grouping.
  */
 export const isBraindumpGroupBy = (v: unknown): v is BraindumpGroupBy =>
   typeof v === 'string' && (BRAINDUMP_GROUP_BY_VALUES as readonly string[]).includes(v);

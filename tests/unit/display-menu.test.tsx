@@ -276,6 +276,23 @@ describe('grouping options carry live examples of what they would produce', () =
       'Tasks, Habits'
     );
   });
+
+  it('offers Priority on the braindump, after Project, and picks it', async () => {
+    render(<DisplayMenu surface="braindump" />);
+    openMenu('braindump');
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Grouping/ }));
+
+    const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
+    expect(priority).toHaveTextContent('High, Medium');
+    const order = ['None', 'Type', 'Project', 'Priority', 'Routine', 'Program', 'Goal'];
+    const labels = screen
+      .getAllByRole('menuitemradio')
+      .map((el) => order.find((l) => (el.textContent ?? '').startsWith(l)));
+    expect(labels.indexOf('Priority')).toBe(labels.indexOf('Project') + 1);
+
+    fireEvent.click(priority);
+    expect(view().braindumpGroupBy).toBe('priority');
+  });
 });
 
 describe('Reset display', () => {

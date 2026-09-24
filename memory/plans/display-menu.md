@@ -556,14 +556,14 @@ own. On a phone that panel lands off-screen or under the thumb that opened it, a
 there is no way back to the tier it came from short of closing the whole menu.
 
 **Drill-in, not one flattened sheet, and the deciding number is that one section is
-unbounded.** Grouping is 6 values, Ordering 3, Type 3, Priority 4 — all of which
+unbounded.** Grouping is 7 values, Ordering 3, Type 3, Priority 4 — all of which
 would flatten comfortably. Project / Group is every project plus every habit group
 plus the unset value, which is why it is the one section carrying a scroller on the
 desktop panel too (`scroll: true`, `max-h-64`). Flattened, the seeded account already
 stands ~22 rows tall at the 44px touch floor — ~970px, past an 80vh sheet on most
 phones — and it grows with the user's own data, burying Hide finished, Show paused,
 Paused scopes and Reset under a list of their projects. Drilled, no pane but that one
-exceeds six rows. **If a later pass reduces the section count, this trade should be
+exceeds seven rows. **If a later pass reduces the section count, this trade should be
 re-derived rather than assumed**: flattening wins the moment the container filter is
 the only long list left and it is gone.
 
@@ -739,6 +739,14 @@ has the mirror of that bug — undo restores the goal and the cleared clause doe
 back. It also cannot reach the third row above at all, since a table that never loaded
 fires no delete to subscribe to. One untickable row answers all three and reverses
 nothing.
+
+## Addendum (2026-09-24): the braindump groups by Priority
+
+`BraindumpGroupBy` gained **Priority**, placed after Project as on the canvas. It is the
+same `groupRows` arm the canvas uses — High, Medium, Low, then "No priority" last, empty
+levels omitted — so a habit, which carries no priority field, lands in "No priority"
+rather than a section named after its type. The union is now a different vocabulary from
+the canvas one rather than a smaller one: it has `type` and still lacks `bucket`.
 
 ## Related
 
