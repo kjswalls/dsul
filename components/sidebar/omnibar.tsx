@@ -1159,7 +1159,7 @@ export function Omnibar({
               // lands in the text and places the caret, rather than hitting the
               // wrapper. An input centres its own text, so this costs nothing
               // visually. See the wrapper's onMouseDown for the side padding.
-              className="min-w-0 flex-1 self-stretch bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
+              className="-mx-1 min-w-0 flex-1 self-stretch bg-transparent px-1 text-sm text-foreground outline-none placeholder:text-muted-foreground/70"
             />
           </div>
         </div>

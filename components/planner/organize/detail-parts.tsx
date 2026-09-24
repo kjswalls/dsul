@@ -193,7 +193,7 @@ function FilterRow({
               ?.focus();
           }
         }}
-        className="text-foreground placeholder:text-muted-foreground w-full min-w-0 border-0 bg-transparent p-0 text-sm outline-none"
+        className="text-foreground placeholder:text-muted-foreground -mx-1 w-[calc(100%+0.5rem)] min-w-0 border-0 bg-transparent px-1 py-0 text-sm outline-none"
       />
     </div>
   );
@@ -627,7 +627,7 @@ export function DraftRow({
           aria-describedby={problem ? `${testPrefix}-new-problem` : undefined}
           // Placeholder one ink brighter than the muted default: a resting
           // create row that reads as an invitation, not a disabled field.
-          className="h-[26px] flex-1 border-0 bg-transparent px-0 text-sm shadow-none placeholder:text-secondary-foreground focus-visible:ring-0"
+          className="-mx-1 h-[26px] flex-1 border-0 bg-transparent px-1 text-sm shadow-none placeholder:text-secondary-foreground focus-visible:ring-0"
         />
         <button
           type="button"

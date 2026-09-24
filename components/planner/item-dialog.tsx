@@ -2938,7 +2938,7 @@ function ItemDialogInner({
       // rather than a form. dark:bg-transparent is load-bearing: Input carries
       // dark:bg-input/30, which tailwind-merge keeps (different modifier) and
       // which outranks bg-transparent on specificity.
-      className="h-auto border-0 bg-transparent px-0 py-0 font-serif text-lg leading-snug font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-lg dark:bg-transparent"
+      className="-mx-1 h-auto w-[calc(100%+0.5rem)] border-0 bg-transparent px-1 py-0 font-serif text-lg leading-snug font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-lg dark:bg-transparent"
     />
   ) : null;
 
@@ -3138,7 +3138,7 @@ function ItemDialogInner({
                   // included (dark:bg-input/30 survives tailwind-merge).
                   // Paired with the serif title as "what you wrote", set
                   // against the sans + mono metadata around it.
-                  className="min-h-0 resize-none overflow-y-auto border-0 bg-transparent px-0 py-0 font-serif text-sm leading-relaxed shadow-none placeholder:italic focus-visible:ring-0 md:text-sm dark:bg-transparent"
+                  className="-mx-1 min-h-0 w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed shadow-none placeholder:italic focus-visible:ring-0 md:text-sm dark:bg-transparent"
                 />
               )}
 
