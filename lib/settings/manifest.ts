@@ -795,10 +795,10 @@ export const SETTINGS: SettingRecord[] = [
       // The stored values stay 'spine'/'tray'. They're persisted in the
       // dsul-view blob, and renaming one to match its label would reset
       // every user's choice for a piece of copy.
-      { value: 'spine', label: 'Threaded seam' },
+      { value: 'spine', label: 'Floating card' },
       { value: 'tray', label: 'Head & tray' },
     ],
-    keywords: ['bucket style', 'spine', 'seam', 'tray', 'morning card', 'rail'],
+    keywords: ['bucket style', 'spine', 'card', 'tray', 'morning card'],
     read: () => view().bucketStyle,
     write: (v) => view().setBucketStyle(v as BucketStyle),
     defaultValue: 'spine',

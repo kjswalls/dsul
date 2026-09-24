@@ -3,7 +3,6 @@
 import { ChevronDown, Timer, Sunrise, Sun, Moon } from 'lucide-react';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { CountBadge } from '@/components/primitives/pills';
-import { BUCKET_ORDER } from '@/lib/day-items';
 import type { TimeBucket } from '@/lib/planner-types';
 import { useViewStore, type BucketStyle } from '@/lib/view-store';
 import { cn } from '@/lib/utils';
@@ -32,8 +31,9 @@ export const BUCKET_LABEL_INK = 'text-muted-foreground/70';
  * Geometry per style × density. One table so day and week cannot drift.
  *
  * VERTICAL RHYTHM lives in two numbers, `capGap` and `gap`, plain px rather
- * than Tailwind classes because the rail reads `gap` too and a class plus a
- * duplicated literal is how those silently drift apart.
+ * than Tailwind classes because the parent views read `gap` through
+ * `bucketGap()` and a class plus a duplicated literal is how those silently
+ * drift apart.
  *
  *   capGap  caption → content
  *   gap     this bucket's content → the next bucket's caption
@@ -51,70 +51,46 @@ export const BUCKET_LABEL_INK = 'text-muted-foreground/70';
  * so a child's bottom margin cannot collapse out of it and the rect still grows.
  * Flex `gap` is the only one of the three that puts the space BETWEEN the boxes
  * instead of inside one, which is why the views read `bucketGap()` below.
- *
- * The rail then has to bridge that space itself — it is absolutely positioned,
- * so it bleeds `-gap` past the section's bottom edge to meet the next section's
- * slice. The two ENDS of the stack are the exceptions; see `isFirst`/`isLast`
- * in the render. The current-bucket mark deliberately does NOT bleed: it stops
- * at the content, so its length reports how much of the day is under you rather
- * than how much air there is.
  */
 const GEO = {
   /**
-   * Rail and dots, from day-schedule. One hairline runs the height of the day
-   * in a gutter, each bucket pins a solid bead to it, and the bucket itself is
-   * a card parked BESIDE the line — `cardX` clears the bead rather than
-   * overlapping it. An earlier pass threaded the card under the rail (the line
-   * crossing its shoulder); this is the flat reading of the same idea, and it
-   * matches how the schedule view already draws a day.
+   * Floating cards. The bucket is a card on the canvas, flush with the
+   * container's left edge like every other `canvas-container` surface. There
+   * used to be a timeline rail here — a hairline running the height of the day
+   * in an 18px gutter, with a bead pinning each bucket's start to it — and it
+   * was removed: the caption glyph already says which stretch of the day this
+   * is, so the rail was a second mark for the same fact, and its gutter was
+   * width every row paid for. The stored value stays 'spine'; see the setting.
    */
   spine: {
     full: {
-      rail: 11, // x of the 1px hairline
-      /**
-       * The schedule view's start bead, verbatim: a 6px solid disc on the line,
-       * punched out of whatever it sits on by a 1px halo. It marks WHERE on the
-       * day this bucket begins, which is the rail's job — identity moved into
-       * the caption, where the glyph now sits beside the name.
-       */
-      dot: 6,
-      /** The caption row's vertical centre from the section's top — half the
-       *  26px header. The dot is positioned against the SECTION (its x is the
-       *  rail's), so it cannot inherit that centre from the header's box. */
-      dotY: 13,
-      node: 0,   // tray-only: the spine has a dot, not an icon-bead
+      node: 0,   // tray-only: the spine's glyph is inline in the caption
       /** CategoryIcon's size — a bucket glyph and a project glyph are one thing. */
       nodeIcon: 'h-3.5 w-3.5',
-      /**
-       * The card's left edge, 4px clear of the dot's (8..14). The rail runs in
-       * the gutter BESIDE the card rather than through it: the card is parked
-       * on the line, not threaded under it.
-       */
-      cardX: 18,
+      /** The card's left edge. Flush: the gutter the rail ran in is gone. */
+      cardX: 0,
       /**
        * The caption is the rows' column HEADER, so it indents to their columns
        * rather than sitting on the card's outer edge:
        *
-       *   pl  40  = 18 cardX + 14 body pad + 8 TaskRow px-2 → the checkbox's x
-       *   pr  22  =            14 body pad + 8 TaskRow px-2 → the trailing
-       *                                                       pills' right edge
+       *   pl  22  = 0 cardX + 14 body pad + 8 TaskRow px-2 → the checkbox's x
+       *   pr  22  =           14 body pad + 8 TaskRow px-2 → the trailing
+       *                                                      pills' right edge
        *
        * The glyph lands on the checkbox column and the + on the pill column, so
        * both ends of the caption are verticals the rows already draw. Flush at
-       * cardX (what this was) aligned the LABEL to the checkbox instead, which
-       * left the glyph and the label straddling that column without either one
-       * touching it, and hung the + 14px past where any row content ends.
+       * cardX aligned the LABEL to the checkbox instead, which left the glyph
+       * and the label straddling that column without either one touching it,
+       * and hung the + 14px past where any row content ends.
        */
-      head: 'h-[26px] pl-10 pr-[22px] gap-2',
+      head: 'h-[26px] pl-[22px] pr-[22px] gap-2',
       /** Glyph → label, sized so the label lands on the TITLE's x:
-       *  40 + 16 (checkbox) + 12 (row gap-3) = 68, minus 40 + 14 (glyph). */
+       *  22 + 16 (checkbox) + 12 (row gap-3) = 50, minus 22 + 14 (glyph). */
       labelGap: 'gap-3.5',
-      /** 18 + 14 = 32 row box; TaskRow's px-2 then lands the checkbox at 40. */
+      /** 0 + 14 = 14 row box; TaskRow's px-2 then lands the checkbox at 22. */
       body: 'pl-[14px] pr-[14px] py-4',
       capGap: 6,
       gap: 30,
-      /** How far the last bucket's rail takes to dissolve. See `isLast`. */
-      tail: 24,
       slotOpen: 'min-h-11',
       slotArmed: 'min-h-[60px]',
       radius: 'rounded-[14px]',
@@ -122,19 +98,16 @@ const GEO = {
       add: 'md' as const,
     },
     mini: {
-      rail: 8,
-      dot: 5,
-      dotY: 10,  // half the 20px header
       node: 0,
       nodeIcon: 'h-3 w-3',
-      cardX: 13,
-      // Same arithmetic as full, mini's numbers: 13 + 8 + 8 = 29 (checkbox),
+      cardX: 0,
+      // Same arithmetic as full, mini's numbers: 0 + 8 + 8 = 16 (checkbox),
       // 8 + 8 = 16 (pill edge). The glyph is 12px here rather than 14, so the
       // label gap is 2px WIDER than full's — the row's own 16 + 12 to the title
       // is density-independent (TaskRow's compact mode only changes py).
-      head: 'h-5 pl-[29px] pr-4 gap-1',
-      labelGap: 'gap-4',             // 29 + 16 + 12 = 57, minus 29 + 12
-      body: 'pl-2 pr-2 py-2',        // 13 + 8 = 21 row box → checkbox at 29
+      head: 'h-5 pl-4 pr-4 gap-1',
+      labelGap: 'gap-4',             // 16 + 16 + 12 = 44, minus 16 + 12
+      body: 'pl-2 pr-2 py-2',        // 0 + 8 = 8 row box → checkbox at 16
       capGap: 4,
       // Four of these stack in a 240px column, so the day view's 30 would cost
       // 120px of a column that also has to hold a 60px header.
@@ -144,20 +117,14 @@ const GEO = {
       radius: 'rounded-[10px]',
       sliver: 6,
       add: 'sm' as const,
-      tail: 14,
     },
   },
   /**
-   * No rail; the glyph sits inline in the caption and the rows get a tray.
-   * Untouched by the parked-card rework — `dot`/`dotY` exist here only so both
-   * variants share one shape, and the render never reads them outside the
-   * spine branch.
+   * The glyph sits in an absolute node beside the caption and the rows get a
+   * bordered, recessed tray.
    */
   tray: {
     full: {
-      rail: 0,
-      dot: 0,
-      dotY: 0,
       // Only drawn as a disc when current. Absolutely positioned and pulled
       // 4px left so growing 14 → 22px cannot reflow the caption row.
       node: 22,
@@ -171,7 +138,6 @@ const GEO = {
       // no second vertical for `labelGap` to hit.
       head: 'h-[22px] pl-[23px] pr-[25px] gap-1.5',
       labelGap: 'gap-1.5',
-      tail: 0,
       cardX: 0,
       body: 'pl-[14px] pr-4 py-4',
       capGap: 6,
@@ -185,14 +151,10 @@ const GEO = {
       add: 'md' as const,
     },
     mini: {
-      rail: 0,
-      dot: 0,
-      dotY: 0,
       node: 16,
       nodeIcon: 'h-3 w-3',
       head: 'h-4 pl-[17px] pr-[15px] gap-1', // 1 (border) + 8 + 8 / 1 + 6 + 8
       labelGap: 'gap-1',
-      tail: 0,
       cardX: 0,
       body: 'pl-2 pr-1.5 py-2',
       capGap: 6,
@@ -208,27 +170,19 @@ const GEO = {
 
 /**
  * The space a stack of buckets should put BETWEEN its sections, as a flex
- * `gap`. Single-sourced here because the rail's downward bleed has to match it
- * exactly or the day's line breaks at every gap.
+ * `gap`. Single-sourced here so day and week space their stacks from the same
+ * table the cards are drawn from.
  */
 export function bucketGap(variant: BucketStyle, density: 'full' | 'mini'): number {
   return GEO[variant][density].gap;
 }
 
-/**
- * The last slice's dissolve. A hard stop needs something to stop AGAINST — the
- * top of the rail has the first bead, the bottom has nothing — and giving the
- * line an end-cap would add a mark to a view this pass has otherwise been
- * quieting. So the line runs the length of the last bucket and thins out.
- */
-const tailMask = (px: number) => `linear-gradient(to bottom, #000 calc(100% - ${px}px), #0000)`;
-
 interface BucketCardProps {
   bucket: TimeBucket;
   count: number;
   onAdd?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
-  /** "You are here". Reads as a lime rail segment ('spine') or a lime disc plus
-   *  a rule down the tray's left wall ('tray') — never a ring in either. */
+  /** "You are here". Reads as a lime rule down the card's left wall ('spine'),
+   *  plus a lime disc on the glyph ('tray') — never a ring in either. */
   isCurrent?: boolean;
   /** Drop highlight while dragging over. */
   isDropTarget?: boolean;
@@ -239,7 +193,7 @@ interface BucketCardProps {
   /** Caps the scrolling content area (week columns). */
   contentMaxH?: number;
   density?: 'full' | 'mini';
-  /** Which drawing of a bucket. Defaults to the rail; see BucketStyle. */
+  /** Which drawing of a bucket. Defaults to the card; see BucketStyle. */
   variant?: BucketStyle;
   /** False for a specimen: always open, no chevron, and the shared
    *  `collapsedBuckets` flag is ignored rather than merely unreachable. */
@@ -256,23 +210,18 @@ interface BucketCardProps {
  * everything below is shared, which is the whole reason this is a prop and not
  * two components:
  *
- *   'spine'  Rail and dots. One 1px hairline runs the height of the day in an
- *            11px gutter and this section draws its own contiguous slice of it,
- *            so the line crosses the gaps and the column reads as one
- *            continuous day. A 6px bead pins each bucket's start to that line —
- *            day-schedule's own marker, not an icon — and the rows sit beside
- *            it on a floating card, parked clear of the bead rather than
- *            threaded under it. The caption stays on the canvas, sharing the
- *            card's left edge.
- *   'tray'   No rail. The icon sits inline in the caption and the rows live in
+ *   'spine'  Floating cards. The glyph sits inline in the caption, which stays
+ *            on the canvas, and the rows sit on a card that floats on it, flush
+ *            with the container's edge. (It once had a timeline rail in a
+ *            gutter beside the cards; see GEO.spine for why it went.)
+ *   'tray'   The icon sits beside the caption and the rows live in
  *            a bordered, recessed tray — the Figma mockup's depth ordering,
  *            restored (canvas → tray is a real 0.022 L step in both themes; the
  *            mockup's own 0.010 only ever read because a #EEEDED border bounded
  *            it, and light mode keeps that border here too).
  *
- * WHY THE CARD. Rows running the container's full width with only a hairline
- * beside them is the list view with a rail added; what a bucket lacked was
- * object-ness. The card supplies it without a max-width — a narrower centred
+ * WHY THE CARD. Rows running the container's full width is the list view with
+ * captions added; what a bucket lacked was object-ness. The card supplies it without a max-width — a narrower centred
  * column was tried and reverted, because the moat read as the view having
  * shrunk rather than as the buckets having become objects.
  *
@@ -299,7 +248,7 @@ interface BucketCardProps {
  * WHY THE CAPTION IS QUIETER THAN THE ROWS. It is furniture: it names a group
  * you already know the name of, in a view whose job is scanning what is IN the
  * group. So the label takes BUCKET_LABEL_INK (shared with GroupSection), the
- * bead ring is one neutral weight rather than four tints, and the only colour
+ * glyph is one neutral weight rather than four tints, and the only colour
  * left in the column is lime for "you are here" and whatever the rows carry.
  *
  * WHY THE SLOT OPENS ON DRAG. lib/dnd/CONTRACT.md needs the bare `{bucket}`
@@ -322,16 +271,11 @@ interface BucketCardProps {
  * thing the rect-stability contract forbids.
  *
  * WHY NEITHER USES A RING FOR "NOW". A ring is the grammar of focus. Both
- * variants give the current bucket a mark with EXTENT instead — the rail slice
- * swelling to lime for the bucket's whole box, or a lime rule down the tray's
- * left wall — so a busy current bucket shows a long rule and an empty one a
- * short tick. That is the difference between position and selection.
- *
- * The rail slice is drawn per-section rather than once on the parent because
- * each section must be `relative` to host its own absolutes, which makes it a
- * positioned element later in DOM order whose opaque card would paint over a
- * parent-level line. Within the section the rail is z-2 and the card z-1, which
- * is what puts the line ON the card rather than under it.
+ * variants give the current bucket a mark with EXTENT instead — a lime rule
+ * down the left wall of its card or tray — so a busy current bucket shows a
+ * long rule and a short one a short rule. That is the difference between
+ * position and selection. An empty current bucket has no card to rule, so in
+ * 'spine' it says "now" only through its caption stepping up a tone.
  */
 export function BucketCard({
   bucket,
@@ -358,13 +302,6 @@ export function BucketCard({
   const collapsed = useViewStore((s) => s.collapsedBuckets.includes(bucket));
   const toggleCollapsed = useViewStore((s) => s.toggleBucketCollapsed);
   const expandBucket = useViewStore((s) => s.expandBucket);
-
-  // Read off BUCKET_ORDER rather than taken as props: both stacks (day-buckets
-  // and week-buckets' columns) render exactly `BUCKET_ORDER.map(...)`, so an
-  // index prop would be the same fact stated a third and fourth time, with two
-  // more places for it to go stale.
-  const isFirst = bucket === BUCKET_ORDER[0];
-  const isLast = bucket === BUCKET_ORDER[BUCKET_ORDER.length - 1];
 
   // An empty bucket has nothing to shut, so it offers no control — a chevron
   // that toggles a stored flag with no visible effect is a dead affordance, and
@@ -397,87 +334,11 @@ export function BucketCard({
       data-collapsed={collapsed ? 'true' : 'false'}
       data-drop-target={isDropTarget ? 'true' : 'false'}
       // No trailing space of its own — see the GEO note. The parent spaces
-      // these with flex `gap`, sourced from bucketGap() so the rail's bleed
-      // below and the actual space between sections cannot drift apart.
+      // these with flex `gap`, sourced from bucketGap().
       className={cn('group/bucket relative isolate', className)}
     >
-      {/* This section's slice of the day's rail. It bleeds `gap` past the
-          section's bottom edge — the gap is a margin now, so the box no longer
-          reaches — and meets the next section's slice exactly. That is what
-          keeps the line unbroken across the gaps, which is the whole point of
-          the variant.
-
-          THE TWO ENDS. The line used to start at the top of the first section
-          and run out into the container's bottom padding, so it overshot the
-          beads at both ends — 13px of rail above the first one pointing at
-          nothing, and 80-odd below the last one. Neither end is the same
-          problem, so they don't get the same fix:
-
-            top     starts at the FIRST bead's centre. There is nothing before
-                    the day's first marker, and the bead (z-3, opaque, with its
-                    1px halo) caps the line rather than being pinned to it.
-            bottom  cannot stop at the LAST bead — the evening bucket's rows all
-                    live below it, and a card with no line beside it reads as
-                    having fallen off the day. So the slice runs the length of
-                    the last bucket and dissolves over its final `tail` px: it
-                    ends where the content does, without an end-cap. */}
-      {isSpine && (
-        <span
-          aria-hidden
-          className="absolute z-[2] w-px bg-[var(--bkt-spine)]"
-          style={{
-            left: g.rail,
-            top: isFirst ? g.dotY : 0,
-            bottom: isLast ? 0 : -g.gap,
-            ...(isLast && { maskImage: tailMask(g.tail), WebkitMaskImage: tailMask(g.tail) }),
-          }}
-        />
-      )}
-
-      {/* "You are here", as a swell of the rail rather than a ring. It grows
-          RIGHTWARD from the same left edge, so the line reads as one continuous
-          edge that thickens rather than as a separate mark laid beside it.
-          Its bottom stops at the content, not at the end of the box: the
-          trailing pad belongs to the gap, and running lime through the gap
-          would make the mark's length report padding instead of how much of
-          the day is under you. An empty current bucket is a 22px tick.
-          Its top follows the rail's (the bead, if this is the first bucket);
-          its bottom does NOT take the tail dissolve, because lime never takes
-          alpha in this app — and because a mark whose job is to measure has to
-          have a definite end. It is 2px over the rail's 1px at the same x, so
-          when the last bucket is the current one the lime simply covers the
-          faded tail and the line ends crisply instead. */}
-      {isSpine && isCurrent && (
-        <span
-          aria-hidden
-          className="absolute z-[2] w-[2px] rounded-[1px] bg-primary"
-          style={{ left: g.rail, top: isFirst ? g.dotY : 0, bottom: 0 }}
-        />
-      )}
-
-      {/* The start bead, borrowed from day-schedule verbatim: a solid disc on
-          the line, punched out of the ground it sits on by a 1px halo. It says
-          WHERE on the day this bucket begins — which is all a rail marker
-          should say. Identity moved into the caption, where the glyph now sits
-          beside the name the way the Braindump's does. */}
-      {isSpine && (
-        <span
-          aria-hidden
-          className={cn(
-            'absolute z-[3] rounded-full shadow-[0_0_0_1px_var(--canvas)] transition-colors',
-            isCurrent || isDropTarget ? 'bg-primary' : 'bg-muted-foreground/45'
-          )}
-          style={{
-            width: g.dot,
-            height: g.dot,
-            left: g.rail + 0.5 - g.dot / 2,
-            top: g.dotY - g.dot / 2,
-          }}
-        />
-      )}
-
-      {/* The tray variant keeps its own inline glyph — no rail means no bead to
-          replace, and its lime disc is the only "now" mark it has. */}
+      {/* The tray variant keeps its glyph in an absolute node, which swells to
+          a lime disc for "now" alongside the rule down its left wall. */}
       {!isSpine && (
         <span
           aria-hidden
@@ -526,8 +387,9 @@ export function BucketCard({
                     <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
                   )}
                   {/* The current bucket steps up one tone, not to full ink. The
-                      lime dot and the lime rail segment already say where you
-                      are; this only keeps the caption from contradicting them. */}
+                      lime rule on the card already says where you are; this only
+                      keeps the caption from contradicting it (and is the whole
+                      signal on an empty current bucket, which has no card). */}
                   <span
                     className={cn(
                       'truncate font-sans text-xs font-medium',
@@ -613,13 +475,19 @@ export function BucketCard({
               // gives way to the recess walls, and the mouth appears. A card
               // that stayed lifted while acting as a drop target would be
               // claiming two depths at once.
+              //
+              // "Now" in both is a lime rule down the left wall — an inset
+              // shadow, so it follows the radius — joined onto whichever
+              // shadow the surface is wearing, drag or rest.
               isSpine
                 ? dragging
-                  ? 'shadow-[var(--bkt-walls)]'
+                  ? isCurrent
+                    ? 'shadow-[var(--bkt-walls),inset_2px_0_0_var(--primary)]'
+                    : 'shadow-[var(--bkt-walls)]'
                   : cn(
                       'bg-[var(--bkt-card)]',
                       isCurrent
-                        ? 'bg-[var(--bkt-card-now)] shadow-[var(--bkt-card-shadow-now)]'
+                        ? 'bg-[var(--bkt-card-now)] shadow-[var(--bkt-card-shadow-now),inset_2px_0_0_var(--primary)]'
                         : 'shadow-[var(--bkt-card-shadow)]'
                     )
                 : 'border border-border shadow-[var(--bkt-walls)]',
@@ -628,8 +496,7 @@ export function BucketCard({
                 : dragging
                   ? cn('bg-[var(--bkt-tray)]', g.slotOpen)
                   : !isSpine && 'bg-[var(--bkt-tray)]',
-              // The lime rule down the tray's left wall — extent, not a loop, and
-              // it follows the radius. 'spine' says the same thing with the rail.
+              // The lime rule down the tray's left wall — extent, not a loop.
               !isSpine && isCurrent && 'shadow-[var(--bkt-walls),inset_2px_0_0_var(--primary)]'
             )}
             style={{ marginTop: g.capGap, marginLeft: g.cardX }}
@@ -668,7 +535,13 @@ export function BucketCard({
             aria-hidden
             className={cn(
               'relative rounded-full bg-[var(--bkt-tray)]',
-              isSpine ? 'shadow-[var(--bkt-card-ring)]' : 'border border-border'
+              // A shut current card keeps its lime rule, so collapsing the
+              // bucket you are in doesn't also hide that you are in it.
+              isSpine
+                ? isCurrent
+                  ? 'shadow-[var(--bkt-card-ring),inset_2px_0_0_var(--primary)]'
+                  : 'shadow-[var(--bkt-card-ring)]'
+                : 'border border-border'
             )}
             style={{
               marginTop: g.capGap,

@@ -95,8 +95,8 @@ export function LookPreview() {
           'border-border bg-canvas pointer-events-none overflow-hidden rounded-lg border p-4',
           'shadow-[var(--shadow-elev-sm)]'
         )}
-        // The bucket's bead wears a --canvas punch-out halo, so the specimen
-        // has to sit on bg-canvas or the ring draws in the wrong colour.
+        // The bucket cards float on --canvas in the real views, so the
+        // specimen sits on bg-canvas to show them on the same ground.
         style={typeMode === 'serif' ? SERIF_VARS : undefined}
       >
         <div className="flex gap-4">

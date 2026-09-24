@@ -393,8 +393,7 @@ export function DayBuckets({ activeId }: { activeId: string | null }) {
         // section's box is the {bucket} droppable's rect, so trailing space
         // inside it drags the bare bucket's centre down onto
         // scheduled:{bucket}:empty — see the note in bucket-card's GEO table.
-        // Gap puts the space between the boxes instead of in one of them, and
-        // the rail bleeds across it to keep the day's line unbroken.
+        // Gap puts the space between the boxes instead of in one of them.
         style={{ gap: bucketGap(bucketStyle, 'full') }}
         className={cn(
           'canvas-container flex flex-col py-6 pb-20',
