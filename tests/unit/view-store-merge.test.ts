@@ -121,16 +121,24 @@ describe('the persist merge, through a real rehydrate', () => {
 
   it('coerces a braindumpGroupBy that is not a BraindumpGroupBy, even a legal canvas GroupBy', async () => {
     // The braindump axis was uncoerced until the routine/program values landed,
-    // and its union is SMALLER than the canvas one — 'priority' is a legal canvas
-    // GroupBy but not a braindump value. Left alone it reaches groupRows through
+    // and its union is not the canvas one — 'bucket' is a legal canvas GroupBy
+    // but not a braindump value. Left alone it reaches groupRows through
     // braindump.tsx and sections the braindump by an axis its menu never offers,
     // the same hazard the canvasGroupBy 'status' case guards, on the axis this
     // file otherwise never exercises.
-    seed({ braindumpGroupBy: 'priority' });
+    seed({ braindumpGroupBy: 'bucket' });
 
     await useViewStore.persist.rehydrate();
 
     expect(useViewStore.getState().braindumpGroupBy).toBe('none');
+  });
+
+  it('keeps a braindumpGroupBy of priority, which the braindump now offers', async () => {
+    seed({ braindumpGroupBy: 'priority' });
+
+    await useViewStore.persist.rehydrate();
+
+    expect(useViewStore.getState().braindumpGroupBy).toBe('priority');
   });
 
   it('keeps a braindumpGroupBy value that is still legal', async () => {

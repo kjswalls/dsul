@@ -254,7 +254,7 @@ export function groupByOptionsFor<T extends { value: string }>(list: readonly T[
   });
 }
 
-/** The braindump's own, smaller vocabulary — same resolution. */
+/** The braindump's own vocabulary — same resolution. */
 export function useBraindumpGroupBy(): BraindumpGroupBy {
   const stored = useViewStore((s) => s.braindumpGroupBy);
   return useExtensionsStore((s) => resolveGroupBy(stored, s.enabled));

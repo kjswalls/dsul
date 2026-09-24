@@ -319,3 +319,108 @@ describe('braindump: the aspire axis', () => {
     expect(screen.getByText('Apple')).toBeTruthy();
   });
 });
+
+describe('braindump: grouping by priority', () => {
+  const task = (id: string, title: string, priority: string | undefined, order: number) =>
+    ({
+      type: 'task',
+      id,
+      title,
+      priority,
+      status: 'pending',
+      isScheduled: false,
+      order,
+    }) as unknown as Item;
+
+  /**
+   * Reaches 'priority' through the persisted blob, not a bare setState: the
+   * rehydrate coercion is what used to turn it into 'none', and a setState
+   * would skip it and only exercise the shared `groupRows` arm.
+   */
+  const seedPriority = async (
+    rows: Item[],
+    braindumpSortBy: SortBy = 'default',
+    habits: Item[] = []
+  ) => {
+    usePlannerStore.setState({
+      userId: 'user-1',
+      userTimezone: 'UTC',
+      items: [...rows, ...habits],
+      tasks: rows as never,
+      habits: habits as never,
+      projects: [],
+      routines: [],
+      programs: [],
+    });
+    localStorage.setItem(
+      'dsul-view',
+      JSON.stringify({ version: 1, state: { braindumpGroupBy: 'priority', braindumpSortBy } })
+    );
+    await useViewStore.persist.rehydrate();
+    useViewStore.setState({ braindumpFilters: EMPTY_VIEW_FILTERS });
+    expect(useViewStore.getState().braindumpGroupBy).toBe('priority');
+  };
+
+  afterEach(() => localStorage.removeItem('dsul-view'));
+
+  // Anchored: a task row's PriorityGlyph is labelled "High priority", which an
+  // unanchored /High/ would also match.
+  const prioritySections = () =>
+    screen
+      .getAllByText(/^(High|Medium|Low|No priority)$/i)
+      .map((el) => el.textContent?.trim().toLowerCase());
+
+  it('sections from highest to lowest, with No priority last, whatever the store order', async () => {
+    await seedPriority([
+      task('l', 'Lemon', 'low', 0),
+      task('n', 'Nectarine', undefined, 1),
+      task('h', 'Honeydew', 'high', 2),
+      task('m', 'Mango', 'medium', 3),
+    ]);
+    renderBraindump();
+
+    expect(prioritySections()).toEqual(['high', 'medium', 'low', 'no priority']);
+    // A priority heading switches nothing.
+    expect(screen.queryByTestId('gate-switch')).toBeNull();
+  });
+
+  it('draws no heading for a level nothing sits at', async () => {
+    await seedPriority([task('l', 'Lemon', 'low', 0), task('h', 'Honeydew', 'high', 1)]);
+    renderBraindump();
+
+    expect(prioritySections()).toEqual(['high', 'low']);
+  });
+
+  it('orders rows inside a level without reordering the levels', async () => {
+    await seedPriority(
+      [task('z', 'Zebra', 'high', 0), task('a', 'Apple', 'low', 1), task('b', 'Banana', 'high', 2)],
+      'title'
+    );
+    renderBraindump();
+
+    expect(prioritySections()).toEqual(['high', 'low']);
+    const titles = screen.getAllByText(/^(Zebra|Banana|Apple)$/).map((el) => el.textContent);
+    expect(titles).toEqual(['Banana', 'Zebra', 'Apple']);
+  });
+
+  it('files a habit, which carries no priority, under No priority', async () => {
+    // Not a "Habits" section: the priority axis does not reach the type, so it
+    // takes the explicit None value like any other row without one.
+    const habit = {
+      type: 'habit',
+      id: 'hb',
+      title: 'Stretch',
+      status: 'pending',
+      repeatFrequency: 'none',
+      completedDates: [],
+      skippedDates: [],
+      streak: 0,
+    } as unknown as Item;
+    await seedPriority([task('h', 'Honeydew', 'high', 0)], 'default', [habit]);
+    renderBraindump();
+
+    expect(prioritySections()).toEqual(['high', 'no priority']);
+    const titles = screen.getAllByText(/^(Honeydew|Stretch)$/).map((el) => el.textContent);
+    expect(titles).toEqual(['Honeydew', 'Stretch']);
+  });
+});
