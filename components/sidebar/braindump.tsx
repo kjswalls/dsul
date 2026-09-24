@@ -142,7 +142,7 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
         aria-label="Add item"
         data-testid="braindump-quick-add-input"
         className={cn(
-          'min-w-0 flex-1 bg-transparent font-content text-content text-foreground focus:outline-none',
+          '-mx-1 min-w-0 flex-1 bg-transparent px-1 font-content text-content text-foreground focus:outline-none',
           // "Add item" sits grayed like a ghost row until you focus it, then
           // brightens to a real title's foreground — an invitation to type.
           focused ? 'placeholder:text-foreground' : 'placeholder:text-muted-foreground'

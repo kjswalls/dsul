@@ -113,7 +113,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
           // dark:bg-input/30, which compiles to `&:is(.dark *)` and outranks a
           // plain bg-transparent on specificity — leaving a lighter rounded-md
           // rectangle floating inside the pill in dark mode.
-          className="max-h-[120px] min-h-[22px] flex-1 resize-none border-0 bg-transparent p-0 text-sm leading-[22px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
+          className="max-h-[120px] min-h-[22px] -mx-1 flex-1 resize-none border-0 bg-transparent px-1 py-0 text-sm leading-[22px] shadow-none placeholder:text-muted-foreground focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
           disabled={isLoading}
         />
         {isLoading ? (

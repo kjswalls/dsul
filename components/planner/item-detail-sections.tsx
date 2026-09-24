@@ -160,7 +160,7 @@ function SubtasksSection({ item }: { item: Item }) {
           placeholder="Add subtask…"
           data-sub-input
           data-testid="subtask-add-input"
-          className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-sm outline-none"
+          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none"
           onKeyDown={(e) => {
             if (e.key !== 'Enter') return;
             e.preventDefault();
@@ -857,7 +857,7 @@ export function ItemThread({ item, className }: { item: Item; className?: string
           placeholder={`Ask ${agentName} about this item…`}
           data-sub-input
           data-testid="item-thread-input"
-          className="placeholder:text-muted-foreground min-w-0 flex-1 bg-transparent text-xs outline-none"
+          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
           onKeyDown={(e) => {
             if (e.key !== 'Enter' || e.shiftKey) return;
             e.preventDefault();
