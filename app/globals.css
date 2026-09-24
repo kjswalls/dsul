@@ -1299,10 +1299,21 @@ body {
    Under the guard a touch device gets no recede at all, which is correct — it
    has no pointer to echo.
 
-   It does not animate. An opacity transition would be compositor-cheap, but
-   the ask was that the six days grey and ungrey on the frame the pointer
-   arrives, and the rest of the app agrees: task-row's hover wash is
-   deliberately untransitioned so "highlights land instantly". */
+   It fades, briefly, and the un-dim waits. It first shipped untransitioned
+   so the six days would grey on the frame the pointer arrived, and in use
+   that read as flicker: sweeping across the week crosses the flex gap
+   between every pair of columns (28px in Buckets), the gap hovers no column,
+   and all seven snapped to full strength and straight back down at every
+   boundary. A fade alone only softens that — with ease-out, 60ms in the gap
+   still recovers over half the dip — so the return to rest is also delayed:
+   the transition that applies is the destination state's, and only the
+   "nothing hovered" state carries the delay. Crossing a gap never outlasts
+   it, so the six stay down; the column the pointer lands on brightens with
+   no wait, because while anything is hovered every column transitions
+   undelayed. Leaving the grid costs 100ms before the week lifts. It is
+   opacity only (compositor, no recalc — the same ~22ms the measurements
+   above rest on), it stays inside the pointer guard, and reduced motion
+   keeps the one-frame recede. */
 :root {
   /* The one dial. At 0.6 — the number the reverted `opacity-60` carried —
      lime at rest in a receded column composites toward olive over the dark
@@ -1315,6 +1326,17 @@ body {
 @media (hover: hover) and (pointer: fine) {
   [data-week-cols]:has(> [data-week-col]:hover) > [data-week-col]:not(:hover) {
     opacity: var(--day-recede);
+  }
+}
+
+@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference) {
+  /* Back to rest: held, so a flex gap crossed mid-sweep never lifts the week. */
+  [data-week-cols] > [data-week-col] {
+    transition: opacity 150ms ease-out 100ms;
+  }
+  /* Within the week: immediate, for the six dimming and the one arriving. */
+  [data-week-cols]:has(> [data-week-col]:hover) > [data-week-col] {
+    transition: opacity 150ms ease-out;
   }
 }
 

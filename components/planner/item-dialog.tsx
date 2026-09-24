@@ -780,6 +780,15 @@ function ItemDialogInner({
   const [revealed, setRevealed] = useState<ReadonlySet<string>>(() => new Set());
   const revealProp = (key: string) =>
     setRevealed((prev) => (prev.has(key) ? prev : new Set(prev).add(key)));
+  // The property just picked from the seed, for the ONE commit that mounts its
+  // chip: the chip reads it as `defaultOpen`, so the picker you asked for is
+  // already open with focus inside it rather than waiting on a second click.
+  // Cleared right after that commit — `defaultOpen` is only read at mount, and
+  // a stale key would reopen the chip on any later remount.
+  const [autoOpenProp, setAutoOpenProp] = useState<string | null>(null);
+  useEffect(() => {
+    if (autoOpenProp) setAutoOpenProp(null);
+  }, [autoOpenProp]);
 
   // Latch the last payload so content doesn't flicker to defaults while the
   // close animation plays (same render-phase pattern app-shell used for add).
@@ -795,6 +804,7 @@ function ItemDialogInner({
     setShowPauseUntil(false);
     // A revealed property is about THIS item; a fresh payload starts calm again.
     setRevealed(new Set());
+    setAutoOpenProp(null);
   }
   const open = !!state;
   const mode = last?.mode ?? 'add';
@@ -1227,6 +1237,7 @@ function ItemDialogInner({
       <PropertyChip
         icon={Flag}
         label="Priority"
+        defaultOpen={autoOpenProp === 'priority'}
         value={d.priority === 'none' ? undefined : PRIORITY_LABELS[d.priority]}
         swatch={d.priority === 'none' ? undefined : `var(--priority-${d.priority})`}
         contentClassName="w-48"
@@ -1541,6 +1552,7 @@ function ItemDialogInner({
             : `${config.form.containerLabel}: ${d.container}`
         }
         testId="item-dialog-container-chip"
+        defaultOpen={autoOpenProp === 'project'}
         value={d.container === 'none' ? undefined : d.container}
         // NO `capitalize`. The habit-group side of the axis carried it,
         // because `makeAddDraft`'s fallback writes a lowercase 'personal';
@@ -1642,6 +1654,7 @@ function ItemDialogInner({
         // itself — an unset membership reads as its kind, not as a nameless
         // "Add" — and the accessible name says the same either way.
         label={CONTAINER_KINDS.routine.label}
+        defaultOpen={autoOpenProp === 'routine'}
         ariaLabel={
           routineChipValue
             ? `${CONTAINER_KINDS.routine.label}: ${routineChipValue}`
@@ -1752,6 +1765,7 @@ function ItemDialogInner({
         // itself — an unset membership reads as its kind, not as a nameless
         // "Add" — and the accessible name says the same either way.
         label={CONTAINER_KINDS.program.label}
+        defaultOpen={autoOpenProp === 'program'}
         ariaLabel={
           programChipValue
             ? `${CONTAINER_KINDS.program.label}: ${programChipValue}`
@@ -1840,6 +1854,7 @@ function ItemDialogInner({
         // itself — an unset membership reads as its kind, not as a nameless
         // "Add" — and the accessible name says the same either way.
         label={CONTAINER_KINDS.goal.label}
+        defaultOpen={autoOpenProp === 'goal'}
         ariaLabel={
           goalChipValue
             ? `${CONTAINER_KINDS.goal.label}: ${goalChipValue}`
@@ -1960,6 +1975,7 @@ function ItemDialogInner({
       <PropertyChip
         icon={CalendarIcon}
         label="Date"
+        defaultOpen={autoOpenProp === 'date'}
         testId="item-dialog-date-chip"
         value={d.startDate ? format(d.startDate, 'MMM d') : undefined}
         contentClassName="w-auto p-0"
@@ -2021,6 +2037,7 @@ function ItemDialogInner({
       <PropertyChip
         icon={Clock}
         label="Time"
+        defaultOpen={autoOpenProp === 'time'}
         value={timeParts.length > 0 ? timeParts.join(' · ') : undefined}
         contentClassName="w-56"
       >
@@ -2118,6 +2135,7 @@ function ItemDialogInner({
       <PropertyChip
         icon={Repeat}
         label="Repeat"
+        defaultOpen={autoOpenProp === 'repeat'}
         value={repeatValue()}
         contentClassName="w-[19rem]"
       >
@@ -2231,6 +2249,7 @@ function ItemDialogInner({
       <PropertyChip
         icon={Bell}
         label="Remind"
+        defaultOpen={autoOpenProp === 'remind'}
         value={d.reminderTime || undefined}
         contentClassName="w-[19rem]"
       >
@@ -2451,6 +2470,16 @@ function ItemDialogInner({
             ariaLabel="Add property"
             testId="item-clearing-seed"
             contentClassName="w-60"
+            // Picking a property opens that property's own picker, which takes
+            // focus as it mounts. Radix would then hand focus back to this
+            // seed's trigger on close and strand the new picker unfocused, so
+            // the return is skipped whenever focus already sits inside another
+            // open popover. Escape still hands focus back to the seed.
+            onCloseAutoFocus={(e) => {
+              if (document.activeElement?.closest('[data-radix-popper-content-wrapper]')) {
+                e.preventDefault();
+              }
+            }}
           >
             {(close) => (
               <div className="max-h-72 overflow-y-auto" data-chip-scroll>
@@ -2461,6 +2490,7 @@ function ItemDialogInner({
                     value={p.key}
                     onSelect={() => {
                       revealProp(p.key);
+                      setAutoOpenProp(p.key);
                       close();
                     }}
                   >

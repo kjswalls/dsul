@@ -117,8 +117,8 @@ const pressDoor = (kind: 'routine' | 'program' | 'goal') => {
     .getAllByTestId('item-clearing-seed-option')
     .find((el) => el.getAttribute('data-value') === kind);
   if (!option) throw new Error(`no seed option for ${kind}`);
+  // Summoning a property opens its picker on its own — no second click.
   fireEvent.click(option);
-  fireEvent.click(screen.getByTestId(`item-dialog-${kind}-chip`));
   fireEvent.click(screen.getByTestId(`item-dialog-${kind}-manage`));
 };
 

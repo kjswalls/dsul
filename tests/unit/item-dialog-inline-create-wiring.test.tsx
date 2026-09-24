@@ -103,8 +103,8 @@ const revealContainer = (kind: 'routine' | 'program' | 'goal') => {
 };
 
 const inlineCreate = (kind: 'routine' | 'program' | 'goal', name: string) => {
+  // Summoning a property opens its picker on its own — no second click.
   revealContainer(kind);
-  fireEvent.click(screen.getByTestId(`item-dialog-${kind}-chip`));
   fireEvent.click(screen.getByTestId(`item-dialog-${kind}-new-open`));
   fireEvent.change(screen.getByTestId(`item-dialog-${kind}-new-name`), {
     target: { value: name },
