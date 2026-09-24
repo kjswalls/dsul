@@ -31,7 +31,8 @@ import { DndContext } from '@dnd-kit/core';
  *     with real lime, the only way that survives a rewrite of the mechanism);
  *   - the rule is keyed to `:hover`, never to selection or today;
  *   - it lives under the pointer guard, so a stuck touch `:hover` cannot dim;
- *   - it is a single opacity, no transition, so it lands with the pointer.
+ *   - it is a single opacity, and its only animation is a short opacity-only
+ *     fade whose return to rest is held, off under reduced motion.
  */
 
 beforeAll(() => {
@@ -296,7 +297,8 @@ describe('the emphasis is a recede on the OTHER columns', () => {
     // The token version was correct and slow: 245–309ms a hover on a real
     // 40-item week, ~50ms of it pure style recalc before anything repainted.
     // Opacity is a compositor property, ~22ms. Anything that creeps back in
-    // here — a token, a filter, a transition — is a main-thread cost again.
+    // here — a token, a filter — is a main-thread cost again. (The fade lives
+    // on the base column rule, not here.)
     expect(recedeRule()).toBe('opacity: var(--day-recede);');
   });
 
@@ -317,8 +319,8 @@ describe('the emphasis is a recede on the OTHER columns', () => {
     // a touch device gets no recede at all, which is right — it has no pointer
     // to echo.
     const src = css();
-    const guard = src.lastIndexOf('@media (hover: hover) and (pointer: fine)');
     const rule = src.indexOf(SELECTOR);
+    const guard = src.lastIndexOf('@media (hover: hover) and (pointer: fine)', rule);
     expect(guard, 'the recede lost its pointer guard').toBeGreaterThan(-1);
     expect(guard).toBeLessThan(rule);
     // And the guard actually closes AFTER the rule, so the rule is inside it.
@@ -326,16 +328,51 @@ describe('the emphasis is a recede on the OTHER columns', () => {
     expect(src.slice(guard, close)).toContain(SELECTOR);
   });
 
-  it('does not animate — the recede lands on one frame', () => {
-    // An opacity transition would be compositor-cheap, but the ask was that
-    // the six days grey and ungrey on the frame the pointer arrives, and
-    // task-row's hover wash is untransitioned for the same reason.
+  it('fades briefly, on opacity alone, holding the return to rest', () => {
+    // Untransitioned, a sweep across the week flickered: the flex gap between
+    // two columns hovers neither, so all seven snapped back to full and down
+    // again at every boundary. A fade alone only softens that, so the return
+    // to rest is also held: the destination state's transition applies, and
+    // only "nothing hovered" carries the delay.
     const src = css();
-    const guarded = src.slice(src.indexOf('--day-recede:'), src.indexOf('@layer base {\n  * {'));
-    expect(guarded.length).toBeGreaterThan(100);
-    for (const decl of guarded.matchAll(/^\s*(transition[a-z-]*)\s*:/gm)) {
-      throw new Error(`the recede grew a transition again: ${decl[1]}`);
-    }
+    const region = src.slice(src.indexOf('--day-recede:'), src.indexOf('@layer base {\n  * {'));
+    expect(region.length).toBeGreaterThan(100);
+
+    // Every transition in the recede's region is opacity-only and short —
+    // anything else is main-thread work again.
+    const decls = [...region.matchAll(/^\s*(transition[a-z-]*)\s*:\s*([^;]+);/gm)];
+    expect(decls.length, 'the recede lost its fade').toBe(2);
+    const timing = decls.map(([, prop, value]) => {
+      expect(prop).toBe('transition');
+      const m = value.trim().match(/^opacity\s+(\d+)ms\s+[a-z-]+(?:\s+(\d+)ms)?$/);
+      expect(m, `the fade must transition opacity alone, got "${value}"`).not.toBeNull();
+      const ms = Number(m![1]);
+      expect(ms).toBeGreaterThanOrEqual(80);
+      expect(ms).toBeLessThanOrEqual(250);
+      return { ms, delay: Number(m![2] ?? 0) };
+    });
+
+    // The fade lives in its own block, pointer-guarded AND reduced-motion
+    // gated, so reduced motion keeps the one-frame recede without an
+    // override that has to win on order or specificity.
+    const fadeAt = src.indexOf(
+      '@media (hover: hover) and (pointer: fine) and (prefers-reduced-motion: no-preference)'
+    );
+    expect(fadeAt, 'the fade escaped its guards').toBeGreaterThan(-1);
+    const fade = src.slice(fadeAt, src.indexOf('\n}', fadeAt));
+    expect(fade.match(/transition\s*:/g)).toHaveLength(2);
+
+    // Rest is held (a gap crossing must not outlast it); within the week it
+    // is not, or the column the pointer lands on would lag.
+    const rest = fade.indexOf('[data-week-cols] > [data-week-col] {');
+    const within = fade.indexOf('[data-week-cols]:has(> [data-week-col]:hover) > [data-week-col] {');
+    expect(rest, 'the held return to rest is gone').toBeGreaterThan(-1);
+    expect(within, 'the undelayed within-week fade is gone').toBeGreaterThan(-1);
+    const [restT, withinT] = rest < within ? timing : [timing[1], timing[0]];
+    expect(restT.delay).toBeGreaterThanOrEqual(60);
+    expect(restT.delay).toBeLessThanOrEqual(150);
+    expect(withinT.delay).toBe(0);
+
     expect(src).not.toMatch(/\[data-week-col\]\s*\*\s*\{/);
   });
 
