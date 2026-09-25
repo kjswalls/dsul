@@ -477,3 +477,21 @@ describe('daysToSettle', () => {
     }
   });
 });
+
+describe('birthDays (a type switch is a second birth)', () => {
+  it('moves an item’s birth to its latest type switch, and ignores switches for unknown items', async () => {
+    const { birthDays } = await import('@/lib/reminders/scan')
+    const days = birthDays(
+      [{ id: 'a', created_at: '2026-05-01T12:00:00Z' }, { id: 'b', created_at: '2026-09-01T12:00:00Z' }],
+      [
+        { item_id: 'a', created_at: '2026-09-20T12:00:00Z' },
+        { item_id: 'a', created_at: '2026-09-25T12:00:00Z' },
+        { item_id: 'ghost', created_at: '2026-09-25T12:00:00Z' },
+      ],
+      'UTC',
+    )
+    expect(days.get('a')).toBe('2026-09-25')
+    expect(days.get('b')).toBe('2026-09-01')
+    expect(days.has('ghost')).toBe(false)
+  })
+})

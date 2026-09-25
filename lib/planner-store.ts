@@ -48,6 +48,7 @@ import {
   createItems as dbCreateItems,
   updateItem as dbUpdateItem,
   deleteItem as dbDeleteItem,
+  changeItemType as dbChangeItemType,
   restoreItem as dbRestoreItem,
   setItemCompletion as dbSetItemCompletion,
   setItemSkip as dbSetItemSkip,
@@ -88,6 +89,7 @@ import {
   suppressionLabel,
 } from './active';
 import { programStateForSwitch } from './scope-rail';
+import { conversionBlock, convertItem, type ConvertRepeat } from './item-convert';
 import { recordReleased } from './sweep-grace';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle.
@@ -255,6 +257,12 @@ interface PlannerStore {
     items: Array<Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>>,
   ) => void;
   updateTask: (id: string, updates: Partial<Task>) => void;
+  /**
+   * Switch an item to another type (lib/item-convert.ts). A no-op when the
+   * switch is refused — callers show the reason from `conversionBlock`.
+   * `repeat` is the repeat a one-off takes on becoming a repeat-only type.
+   */
+  changeItemType: (id: string, toType: string, opts?: { repeat?: ConvertRepeat }) => void;
   deleteTask: (id: string) => void;
   toggleTaskStatus: (id: string, status?: TaskStatus, date?: Date) => void;
   scheduleTask: (id: string, bucket: TimeBucket, time?: string, date?: string) => void;
@@ -2629,6 +2637,28 @@ export const usePlannerStore = create<PlannerStore>()(
         updateItemAction(id, 'task', newUpdates);
       },
 
+      changeItemType: (id, toType, opts) => {
+        const state = get();
+        const found = state.items.find((i) => i.id === id);
+        if (!found) return;
+        const fromType = dbTypeOf(found);
+        if (fromType === toType) return;
+        if (conversionBlock(found, toType, { items: state.items, milestoneIds: milestoneItemIds(state.goals) })) return;
+        const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const target = convertItem(found, toType, {
+          todayStr: toDateStr(new Date(), tz),
+          repeat: opts?.repeat,
+          projectIdFor: (name) => projectIdFor(name, state.projects),
+          nextOrder: state.items.reduce((max, i) => (i.type !== 'habit' ? Math.max(max, i.order ?? 0) : max), 0) + 1,
+        });
+        setNextActionLabel(`Change type: ${found.title}`);
+        // Matched by id alone: the id is unique across types, and the type is
+        // exactly what is changing. applyHistoryState keys by id for the same
+        // reason, so ⌘Z switches it back rather than deleting it.
+        set((s) => projectItems(s.items.map((i) => (i.id === id ? target : i))));
+        queueTypeSwitch(id, () => dbChangeItemType(id, fromType, target, state.userId ?? undefined));
+      },
+
       deleteTask: (id) => {
         const found = findTaskLike(id);
         setNextActionLabel(`Delete task: ${found?.title || 'Unknown'}`);
@@ -4575,6 +4605,34 @@ export const usePlannerStore = create<PlannerStore>()(
 );
 
 /**
+ * Type switches for one item run one at a time. Each write filters on the type
+ * it expects to find, so an undo pressed before the switch it undoes has
+ * landed would match nothing and the switch would then land on top of it,
+ * leaving the table on the new type while the store shows the old. A failed
+ * switch is said out loud: the store has already moved, and every later write
+ * to the item would miss until a reload put the saved type back.
+ */
+const typeSwitchChain = new Map<string, Promise<void>>();
+function queueTypeSwitch(id: string, write: () => Promise<void>): Promise<void> {
+  const prev = typeSwitchChain.get(id) ?? Promise.resolve();
+  const next = prev.catch(() => {}).then(write);
+  typeSwitchChain.set(id, next);
+  next.then(
+    () => {
+      if (typeSwitchChain.get(id) === next) typeSwitchChain.delete(id);
+    },
+    (err) => {
+      if (typeSwitchChain.get(id) === next) typeSwitchChain.delete(id);
+      console.error(err);
+      toast.error('Couldn’t save the type change', {
+        description: 'Reload to see the saved version before editing this item again.',
+      });
+    },
+  );
+  return next;
+}
+
+/**
  * Restore a history snapshot into the store and sync the delta to the DB.
  * One generic path for both kinds (the old per-kind version synced habit
  * edits only when status changed — undoing a habit title edit never
@@ -4623,7 +4681,10 @@ function applyHistoryState(
 
   if (!userId) return;
 
-  const key = (i: Item) => `${i.type}:${i.id}`;
+  // By id alone. Ids are unique across types, and keying by type too made an
+  // undone TYPE SWITCH read as "one item gone, another appeared": the restore
+  // matched nothing and the delete soft-deleted the item itself.
+  const key = (i: Item) => i.id;
   // DB writes filter on the SLUG stored in items.type — the 'custom' envelope
   // discriminant matches zero rows and every write would silently no-op
   // (undoing a custom-item delete would "restore" it until the next reload).
@@ -4637,7 +4698,6 @@ function applyHistoryState(
       dbRestoreItem(item.id, dbType(item)).catch(console.error);
       return;
     }
-    const patch = diffItem(cur, item);
     // completedDates/skippedDates must never be written as an absolute array
     // from a snapshot — the set_item_completion / set_item_skip RPCs own those
     // columns, and a clobber here would race an in-flight toggle. Replay the
@@ -4647,8 +4707,7 @@ function applyHistoryState(
     // updateItem now reconciles these at the boundary too, so a miss here is no
     // longer data loss — but doing it in-place keeps the restore to one round
     // trip per changed date instead of a read plus the same intents.
-    if ('completedDates' in patch) {
-      delete patch.completedDates;
+    const replayDates = () => {
       const curDates = new Set(cur.completedDates ?? []);
       const restoredDates = new Set(item.completedDates ?? []);
       restoredDates.forEach((d) => {
@@ -4657,9 +4716,6 @@ function applyHistoryState(
       curDates.forEach((d) => {
         if (!restoredDates.has(d)) dbSetItemCompletion(item.id, dbType(item), d, false, false).catch(console.error);
       });
-    }
-    if ('skippedDates' in patch) {
-      delete patch.skippedDates;
       const curSkips = new Set(cur.skippedDates ?? []);
       const restoredSkips = new Set(item.skippedDates ?? []);
       restoredSkips.forEach((d) => {
@@ -4668,7 +4724,19 @@ function applyHistoryState(
       curSkips.forEach((d) => {
         if (!restoredSkips.has(d)) dbSetItemSkip(item.id, dbType(item), d, false).catch(console.error);
       });
+    };
+    if (dbType(cur) !== dbType(item)) {
+      // A type switch is undone by switching back with the snapshot's whole
+      // row, which carries every other column that moved alongside it. The
+      // date intents wait for it: they are addressed by the restored type.
+      queueTypeSwitch(item.id, () => dbChangeItemType(item.id, dbType(cur), item, userId)).then(replayDates, () => {});
+      return;
     }
+    const patch = diffItem(cur, item);
+    const datesMoved = 'completedDates' in patch || 'skippedDates' in patch;
+    delete patch.completedDates;
+    delete patch.skippedDates;
+    if (datesMoved) replayDates();
     if (Object.keys(patch).length > 0) {
       dbUpdateItem(item.id, dbType(item), patch).catch(console.error);
     }

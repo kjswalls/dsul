@@ -1095,6 +1095,83 @@ export async function updateItem(
   recordItemEvent(id, type, 'update', updates as Record<string, unknown>, userId, client);
 }
 
+/**
+ * Switch an item's type in place (lib/item-convert.ts builds `target`).
+ *
+ * One UPDATE carrying the new `type` AND the new type's full column set, for
+ * two reasons. `items_status_check` ties the status vocabulary to the type
+ * (021), so the two must land in the same statement. And every other write in
+ * this file filters on the OLD type: an autosave queued just before the switch
+ * can land after it and match zero rows, so the switch itself carries the
+ * latest title, notes, time and the rest rather than trusting that write.
+ *
+ * The per-date arrays are left out: the switch doesn't change them, and their
+ * columns belong to the completion and skip RPCs (see reconcileDateArrays).
+ * Columns only the old type reads (a habit's streak, a task's start date) stay
+ * on the row untouched; nothing reads them under the new type, and switching
+ * back overwrites them.
+ *
+ * Throws when no row matched, so a switch that raced another one surfaces
+ * instead of leaving the store and the table on different types.
+ *
+ * Webhooks: the legacy events are per kind, so a plugin mirroring tasks and
+ * habits sees a delete under the old kind and a create under the new one.
+ */
+export async function changeItemType(
+  id: string,
+  fromType: string,
+  target: Item,
+  userId?: string,
+  client?: DbClient,
+): Promise<void> {
+  const supabase = client ?? createClient();
+  const toType = itemDbType(target);
+  const row = itemToRow(userId ?? '', target) as unknown as Record<string, unknown>;
+  delete row.id;
+  delete row.user_id;
+  delete row.completed_dates;
+  delete row.skipped_dates;
+  // itemToRow leaves these out when unset (the INSERT-side PGRST204 guards),
+  // but an UPDATE that leaves them out leaves the OLD values behind — undoing a
+  // task → habit switch would keep the orphan project's id on an unfiled task,
+  // or a pause the target no longer has. A switch writes the whole shape, so
+  // unset means cleared.
+  const clearable = ['project_id', 'paused_at', 'paused_until', 'reminder_time', 'reminder_anchor'];
+  if (target.type !== 'habit') clearable.push('ai_status_at');
+  for (const column of clearable) if (!(column in row)) row[column] = null;
+
+  let { data, error } = await supabase
+    .from('items')
+    .update(row)
+    .eq('id', id)
+    .eq('type', fromType)
+    .select('id');
+  if (error && isMissingColumnError(error)) {
+    // Same schema-behind fallback as updateItem: only the reminder columns
+    // can be dropped, and only they are.
+    for (const column of REMINDER_WRITE_COLUMNS) delete row[column];
+    ({ data, error } = await supabase
+      .from('items')
+      .update(row)
+      .eq('id', id)
+      .eq('type', fromType)
+      .select('id'));
+  }
+  if (error) throw error;
+  if (!data || data.length === 0) {
+    throw new Error(`changeItemType: no ${fromType} row ${id} to switch to ${toType}`);
+  }
+
+  if (userId) {
+    notifyItemChange(userId, fromType, { action: 'delete', id });
+    notifyItemChange(userId, toType, {
+      action: 'create',
+      [getItemTypeConfig(toType).webhookPayloadKey]: legacyPayload(target),
+    });
+  }
+  recordItemEvent(id, toType, 'update', { type: toType }, userId, client);
+}
+
 export async function deleteItem(id: string, type: string, userId?: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const deletedAt = new Date().toISOString();

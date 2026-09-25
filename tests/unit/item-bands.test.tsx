@@ -490,13 +490,13 @@ describe('the capture surface gets the field too', () => {
     expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
   });
 
-  it('offers the type as a control here and only whispers it when editing', () => {
+  it('picks the type when adding and switches it when editing', () => {
     capture();
     expect(screen.getByTestId('item-dialog-type-chip')).toBeTruthy();
-    expect(screen.queryByTestId('item-dialog-type-whisper')).toBeNull();
+    expect(screen.queryByTestId('item-dialog-type-switch')).toBeNull();
     cleanup();
     panel();
-    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.getByTestId('item-dialog-type-switch')).toBeTruthy();
     expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
   });
 
@@ -622,11 +622,11 @@ describe('the mobile drawer: Clearing without autosave', () => {
    * fixture that can prove the layout is universal while the COMMIT affordance
    * still tracks persistence.
    */
-  it('gets the field and the whisper, like every other surface', () => {
+  it('gets the field and the type switch, like every other surface', () => {
     modalEdit();
     expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
     expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
-    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.getByTestId('item-dialog-type-switch')).toBeTruthy();
     expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
   });
 
@@ -850,5 +850,40 @@ describe('a property summoned from the seed opens its own picker', () => {
     const pickers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
     expect(pickers).toHaveLength(1);
     expect(pickers[0].querySelector('[data-testid="item-dialog-date-shortcut"]')).toBeTruthy();
+  });
+});
+
+describe('the edit pane: type switch and row controls', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const controls = () =>
+    Array.from(
+      screen.getByTestId('item-dialog-row-controls').querySelectorAll('button[data-testid]')
+    ).map((b) => b.getAttribute('data-testid'));
+
+  it('gives a habit the row capsule: Skip today and Delete', () => {
+    seed({ items: [habitItem({ project: 'Onboarding' })] });
+    panel(habitItem({ project: 'Onboarding' }));
+    expect(controls()).toEqual(['item-dialog-skip', 'item-dialog-delete']);
+  });
+
+  it('gives a one-off task on the grid the put-it-off pair instead of Skip', () => {
+    const t = task({ isScheduled: true, startDate: today, timeBucket: 'morning' });
+    seed({ items: [t] });
+    panel(t);
+    expect(controls()).toEqual(['item-dialog-tomorrow', 'item-dialog-unschedule', 'item-dialog-delete']);
+  });
+
+  it('switches a habit to a task through the chip and its confirm', () => {
+    const h = habitItem({ project: 'Onboarding', streak: 4 });
+    seed({ items: [h] });
+    panel(h);
+    fireEvent.click(screen.getByTestId('item-dialog-type-switch'));
+    const option = Array.from(
+      document.querySelectorAll('[data-testid="item-dialog-type-switch-option"]')
+    ).find((o) => o.getAttribute('data-value') === 'task') as HTMLElement;
+    expect(option.textContent).toContain('Drops the 4 day streak');
+    fireEvent.click(option);
+    fireEvent.click(screen.getByTestId('item-dialog-type-confirm-accept'));
+    expect(usePlannerStore.getState().items.find((i) => i.id === 'h1')?.type).toBe('task');
   });
 });
