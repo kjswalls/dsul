@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
-  closestCenter,
   TouchSensor,
   useSensor,
   useSensors,
@@ -19,6 +18,7 @@ import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { OmniLauncher } from '@/components/shell/omni-launcher';
 import { inferDropTime } from '@/lib/dnd/infer-drop-time';
+import { plannerCollision } from '@/lib/dnd/collision';
 import {
   dragInputOf,
   NonTouchPointerSensor,
@@ -558,7 +558,7 @@ export function AppShell() {
     <DndContext
       id="planner-dnd"
       sensors={sensors}
-      collisionDetection={closestCenter}
+      collisionDetection={plannerCollision}
       onDragStart={beginDrag}
       onDragEnd={handleDragEnd}
       // dnd-kit dispatches CANCEL, not end, on Escape / `touchcancel` /

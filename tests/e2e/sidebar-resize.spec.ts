@@ -443,7 +443,7 @@ test.describe('Sidebar resize', () => {
           async () => {
             await page.mouse.move(900, 400);
             await page.getByTestId('sidebar-expand-zone').hover();
-            await page.waitForTimeout(400); // the column's 300ms ease
+            await page.waitForTimeout(600); // 150ms hover intent + the 300ms ease
             return columnWidth(page);
           },
           { timeout: 20_000 }
@@ -460,6 +460,100 @@ test.describe('Sidebar resize', () => {
       // Leaving for real still closes it.
       await page.mouse.move(900, 400);
       await expect.poll(() => columnWidth(page)).toBe(0);
+    });
+
+    /**
+     * The bug this guards: the peek unmounted the expand grip, and the peeked
+     * column covered its pixels, so there was no mouse route from a peek to a
+     * docked column. The move to the pin is thrown in steps the instant the
+     * peek starts, NOT after the column settles — a pointer that outruns the
+     * column's 300ms ease used to land on <main> and shut the peek on the way.
+     */
+    test('the pin on the peeked edge docks the column open', async ({ page }) => {
+      await setUserSetting(page, { left_sidebar_hover: true });
+      await reloadApp(page);
+
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+      await expect.poll(() => columnWidth(page)).toBe(0);
+
+      const pin = page.getByTestId('sidebar-peek-pin');
+      // Same re-hover poll as above, for the same late settings push.
+      await expect
+        .poll(
+          async () => {
+            await page.mouse.move(900, 400);
+            await page.getByTestId('sidebar-expand-zone').hover();
+            await page.waitForTimeout(250); // past the 150ms hover intent
+            return pin.count();
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(1);
+
+      // Straight at the pin's final spot, mid-ease. Its box is read from the
+      // laid-out button, which is already at the column's final edge.
+      const box = (await pin.boundingBox())!;
+      const x = box.x + box.width / 2;
+      const y = box.y + box.height / 2;
+      await page.mouse.move(x, y, { steps: 10 });
+      await expect(pin).toBeVisible();
+      await page.mouse.click(x, y);
+
+      // Docked. Collapse again with the pointer still parked where the pin
+      // was — inside the wrapper, so no mouseleave has cleared the peek flag.
+      // The column must close, not drop straight back into a peek.
+      await page.waitForTimeout(400); // the column's 300ms ease
+      expect(await columnWidth(page)).toBe(DEFAULT_W);
+      await expect(page.getByTestId('sidebar-expand-zone')).toHaveCount(0);
+      await expect(pin).toHaveCount(0);
+      await page.keyboard.press('ControlOrMeta+BracketLeft');
+      await page.waitForTimeout(600);
+      expect(await columnWidth(page)).toBe(0);
+      await expect(pin).toHaveCount(0);
+
+      // Docked from there (by keyboard: a pointer on the edge would peek
+      // first), it stays docked once the pointer leaves.
+      await page.keyboard.press('ControlOrMeta+BracketLeft');
+      await page.mouse.move(900, 400);
+      await expect(sash(page)).toBeVisible();
+      await page.waitForTimeout(600);
+      expect(await columnWidth(page)).toBe(DEFAULT_W);
+
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+      await expect.poll(() => columnWidth(page)).toBe(0);
+    });
+    /**
+     * The other half of the same bug: a peek that opened the instant the
+     * pointer arrived swapped the expand zone out before a click could land,
+     * so throwing the mouse at the edge and clicking only ever peeked.
+     */
+    test('a click on the edge still docks the column', async ({ page }) => {
+      await setUserSetting(page, { left_sidebar_hover: true });
+      await reloadApp(page);
+
+      await page.getByRole('button', { name: 'Collapse sidebar' }).click();
+      await expect.poll(() => columnWidth(page)).toBe(0);
+
+      // Wait for the setting to land (a resting pointer peeks), then leave.
+      await expect
+        .poll(
+          async () => {
+            await page.mouse.move(900, 400);
+            await page.getByTestId('sidebar-expand-zone').hover();
+            await page.waitForTimeout(250);
+            return page.getByTestId('sidebar-peek-pin').count();
+          },
+          { timeout: 20_000 }
+        )
+        .toBe(1);
+      await page.mouse.move(900, 400);
+      await expect.poll(() => columnWidth(page)).toBe(0);
+
+      await page.getByTestId('sidebar-expand-zone').click();
+      await page.mouse.move(900, 400);
+      await expect(sash(page)).toBeVisible();
+      await page.waitForTimeout(600);
+      expect(await columnWidth(page)).toBe(DEFAULT_W);
     });
   });
 
