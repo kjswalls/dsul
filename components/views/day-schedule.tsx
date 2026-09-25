@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
-import { SkipForward, Undo2 } from 'lucide-react';
+import { ArrowLeftToLine, Redo2, SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
@@ -33,6 +33,10 @@ import { planLanes, isReceded } from '@/lib/schedule-lanes';
 import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
 import { LaneCapRow } from '@/components/primitives/lane-cap';
 import { getItemTypeConfig } from '@/lib/item-registry';
+import { milestoneItemIds } from '@/lib/goals';
+import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { RowControl, RowControlGroup } from '@/components/primitives/row-control';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
 import { useViewStore, type ScheduleMarkStyle } from '@/lib/view-store';
@@ -582,8 +586,14 @@ export function ScheduleBlock({
     setItemSkipped,
     updateTask,
     updateHabit,
+    moveTaskToDate,
+    unscheduleTask,
+    goals,
   } = usePlannerStore();
   const timeFormatStr = useTimeFormat();
+  const isMobile = useIsMobile();
+  // Raw goals, not the display list: this gates a write (lib/row-moves.ts).
+  const milestoneIds = useMemo(() => milestoneItemIds(goals ?? []), [goals]);
   // Multi-select membership for this block. Modifier-click selects; a plain
   // click still opens the editor. The grid has no hover checkbox (the list
   // surfaces do) — its dense pane leaves no safe slot — so selection here is a
@@ -638,6 +648,14 @@ export function ScheduleBlock({
   const skipped =
     typeConfig.skippable && isRecurring(item) && isSkippedOnDate(item, dateStr);
   const [preview, setPreview] = useState<{ startMin: number; duration: number } | null>(null);
+
+  // Put-it-off verbs, same gates as the row (lib/row-moves.ts). Timed blocks
+  // keep their clock time through the carry, so this one reappears at the same
+  // hour on the next day; the braindump drops the time with the date.
+  const todayStr = toDateStr(new Date(), timezone);
+  const nextDay = nextDayTarget(dateStr, todayStr);
+  const canNextDay = canMoveToNextDay(item, itemType, dateStr);
+  const canBraindump = canSendToBraindump(item, itemType, dateStr, milestoneIds);
   // Which edge is under an active resize — drives the one lime glyph the target/
   // trim mark styles light on the handle being dragged (see HandleGrip). A ref
   // alone won't do: the grip has to re-render to recolour.
@@ -994,6 +1012,45 @@ export function ScheduleBlock({
     />
   ) : null;
 
+  /*
+   * The block's hover controls. Revealed only under a real hover pointer —
+   * `:hover` sticks after a tap on a touch screen, and an invisible button that
+   * takes the first tap would carry the item off unasked (the same guard the
+   * week recede sits under) — and on keyboard focus of the pane. Never while
+   * resizing, where the pane's shape is the thing being edited, and never on a
+   * phone, where a tap opens the editor instead. The capsule is opaque so it
+   * reads cleanly over the duration it covers on a wide pane.
+   */
+  const showControls = (canNextDay || canBraindump) && !preview && !isMobile;
+  const controls = showControls ? (
+    <RowControlGroup
+      data-testid="block-controls"
+      onPointerDown={(e) => e.stopPropagation()}
+      onTouchStart={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {canNextDay && (
+        <RowControl
+          icon={Redo2}
+          label={nextDayLabel(nextDay, todayStr)}
+          detail={formatTargetDay(nextDay)}
+          testId="item-tomorrow-button"
+          onClick={() => moveTaskToDate(item.id, nextDay)}
+        />
+      )}
+      {canBraindump && (
+        <RowControl
+          icon={ArrowLeftToLine}
+          label="Move to Braindump"
+          testId="item-unschedule-button"
+          onClick={() => unscheduleTask(item.id)}
+        />
+      )}
+    </RowControlGroup>
+  ) : null;
+  const revealControls =
+    'pointer-events-none opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:pointer-events-auto [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:opacity-100 group-has-[:focus-visible]/blk:pointer-events-auto group-has-[:focus-visible]/blk:opacity-100';
+
   const titleClass = cn(
     'min-w-0 flex-1 font-content text-content text-foreground',
     // Set aside (showPausedOnGrid). Muted, never struck through and never a
@@ -1273,23 +1330,38 @@ export function ScheduleBlock({
                allowed to spill; hovering releases the clamp and grows the block
                (see canExpand), which is what makes the whole title readable
                without a tooltip. */
-            <div className="flex min-w-0 items-start gap-1.5">
-              {checkbox}
-              <span
-                className={cn(
-                  titleClass,
-                  'break-words',
-                  LINE_CLAMP[Math.min(titleLines, LINE_CLAMP.length) - 1],
-                  canExpand && 'group-hover/blk:line-clamp-none'
-                )}
-                title={item.title}
-              >
-                {item.title}
-              </span>
-            </div>
+            <>
+              <div className="flex min-w-0 items-start gap-1.5">
+                {checkbox}
+                <span
+                  className={cn(
+                    titleClass,
+                    'break-words',
+                    LINE_CLAMP[Math.min(titleLines, LINE_CLAMP.length) - 1],
+                    canExpand && 'group-hover/blk:line-clamp-none'
+                  )}
+                  title={item.title}
+                >
+                  {item.title}
+                </span>
+              </div>
+              {/* No width to overlay here without covering the title, so the
+                  controls take their own row under it, shown only on hover. The
+                  row is part of what hover grows the block to fit (canExpand is
+                  always on here, since controls never show mid-resize), the same
+                  transient grow a clipped title already gets. Hover only, not
+                  keyboard focus: focus doesn't grow the block, so a focus-shown
+                  row would sit clipped below the pane; while hidden it is out of
+                  the tab order. */}
+              {controls && (
+                <div className="hidden pt-1 pl-[22px] [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:flex">
+                  {controls}
+                </div>
+              )}
+            </>
           ) : tall ? (
             <>
-              <div className="flex min-w-0 items-center gap-2">
+              <div className="relative flex min-w-0 items-center gap-2">
                 {checkbox}
                 <span className={cn(titleClass, 'truncate')}>{item.title}</span>
                 {effDuration > 0 && (
@@ -1299,6 +1371,9 @@ export function ScheduleBlock({
                     active={!!preview}
                     className={cn('flex-shrink-0', done && 'opacity-60')}
                   />
+                )}
+                {controls && (
+                  <span className={cn('absolute right-0 top-1/2 -translate-y-1/2', revealControls)}>{controls}</span>
                 )}
               </div>
               <div className="flex min-w-0 items-center gap-2">
@@ -1310,7 +1385,7 @@ export function ScheduleBlock({
               </div>
             </>
           ) : (
-            <div className="flex min-w-0 items-center gap-2">
+            <div className="relative flex min-w-0 items-center gap-2">
               {checkbox}
               <span className={cn(titleClass, 'truncate')}>{item.title}</span>
               <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
@@ -1319,6 +1394,9 @@ export function ScheduleBlock({
                   <RollingMetaText value={effDuration} format={formatDuration} active={!!preview} />
                 )}
               </span>
+              {controls && (
+                <span className={cn('absolute right-0 top-1/2 -translate-y-1/2', revealControls)}>{controls}</span>
+              )}
             </div>
           )}
         </div>

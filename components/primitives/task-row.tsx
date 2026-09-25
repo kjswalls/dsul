@@ -1,14 +1,16 @@
 'use client';
 
 import { useEffect, useRef, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
-import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon,
+import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
-import { goalRolesByItem } from '@/lib/goals';
+import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
+import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -73,6 +75,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     deleteTask,
     deleteHabit,
     unscheduleTask,
+    moveTaskToDate,
     getProjectColor,
     selectedDate,
     userTimezone,
@@ -211,6 +214,15 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * see handleTaskToggle / handleHabitToggle below.
    */
   const setSkipped = (next: boolean) => setItemSkipped(item.id, next, rowDate);
+
+  // Put-it-off verbs (lib/row-moves.ts). Milestones from the RAW goals, not the
+  // display list: that one is empty while the Goals extension is off, and this
+  // is a write gate, not a mark.
+  const todayStr = toDateStr(new Date(), timezone);
+  const milestoneIds = useMemo(() => milestoneItemIds(goals ?? []), [goals]);
+  const nextDay = nextDayTarget(dateStr, todayStr);
+  const canNextDay = !inBraindump && canMoveToNextDay(item, itemType, dateStr);
+  const canBraindump = !inBraindump && canSendToBraindump(item, itemType, dateStr, milestoneIds);
 
   // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
   // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
@@ -612,47 +624,62 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             of the columns so it reserves no space. pointer-events gate off until
             reveal so the invisible buttons aren't clickable while idle. */}
         {!inBraindump && !isMobile && (
-          <span className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
-            {/* Multi-count stepper — leads the cluster, so the destructive
-                delete stays at the far end away from the one control here that
-                gets clicked repeatedly. mr-1 doubles the 4px gap into 8px,
-                separating the value editor from the action buttons. The count
-                it edits reads live as `n/target` in the rail to the right. */}
-            {multiTarget > 0 && (
-              <span className="mr-1 flex items-center gap-1">
+          <span className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
+            <RowControlGroup>
+              {/* Multi-count stepper — leads the capsule, so the destructive
+                  delete stays at the far end away from the one control here that
+                  gets clicked repeatedly. A hairline separates the value editor
+                  from the actions. The count it edits reads live as `n/target`
+                  in the rail to the right. */}
+              {multiTarget > 0 && (
+                <>
+                  <RowControl
+                    icon={Minus}
+                    label="Decrease count"
+                    testId="item-stepper-dec"
+                    disabled={habitEffectiveCount <= 0}
+                    onClick={handleHabitDecrement}
+                  />
+                  <RowControl
+                    icon={Plus}
+                    label="Increase count"
+                    testId="item-stepper-inc"
+                    disabled={habitEffectiveCount >= multiTarget}
+                    onClick={handleHabitIncrement}
+                  />
+                  <RowControlDivider />
+                </>
+              )}
+              {/* Put it off: the next day, or back to the braindump. Never on a
+                  recurring row (Skip today is its answer), and gated in one
+                  place — lib/row-moves.ts — so the blocks and the sheet agree. */}
+              {canNextDay && (
                 <RowControl
-                  icon={Minus}
-                  label="Decrease count"
-                  testId="item-stepper-dec"
-                  disabled={habitEffectiveCount <= 0}
-                  onClick={handleHabitDecrement}
+                  icon={Redo2}
+                  label={nextDayLabel(nextDay, todayStr)}
+                  detail={formatTargetDay(nextDay)}
+                  testId="item-tomorrow-button"
+                  onClick={() => moveTaskToDate(item.id, nextDay)}
                 />
+              )}
+              {canBraindump && (
                 <RowControl
-                  icon={Plus}
-                  label="Increase count"
-                  testId="item-stepper-inc"
-                  disabled={habitEffectiveCount >= multiTarget}
-                  onClick={handleHabitIncrement}
+                  icon={ArrowLeftToLine}
+                  label="Move to Braindump"
+                  testId="item-unschedule-button"
+                  onClick={() => unscheduleTask(item.id)}
                 />
-              </span>
-            )}
-            {isTask && (
-              <RowControl
-                icon={ArrowLeftToLine}
-                label="Move to Braindump"
-                testId="item-unschedule-button"
-                onClick={() => unscheduleTask(item.id)}
-              />
-            )}
-            {skippable && !completed && (
-              <RowControl
-                icon={SkipForward}
-                label="Skip today"
-                testId="item-skip-button"
-                onClick={() => setSkipped(true)}
-              />
-            )}
-            <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
+              )}
+              {skippable && !completed && (
+                <RowControl
+                  icon={SkipForward}
+                  label="Skip today"
+                  testId="item-skip-button"
+                  onClick={() => setSkipped(true)}
+                />
+              )}
+              <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
+            </RowControlGroup>
           </span>
         )}
 
@@ -660,9 +687,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             inline and always-on for multi-count habits (the leading checkbox
             still increments; this is the only way back DOWN). Always present,
             so it shifts nothing either. 28px to match the ellipsis beside it,
-            since 22px is too small a touch target. */}
+            since 20px is too small a touch target; no tooltips on touch. */}
         {!inBraindump && isMobile && multiTarget > 0 && (
-          <span className="flex items-center gap-1">
+          <RowControlGroup>
             <RowControl
               icon={Minus}
               label="Decrease count"
@@ -670,6 +697,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               disabled={habitEffectiveCount <= 0}
               onClick={handleHabitDecrement}
               className="h-7 w-7"
+              iconClassName="h-3.5 w-3.5"
+              tooltip={false}
             />
             <RowControl
               icon={Plus}
@@ -678,8 +707,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               disabled={habitEffectiveCount >= multiTarget}
               onClick={handleHabitIncrement}
               className="h-7 w-7"
+              iconClassName="h-3.5 w-3.5"
+              tooltip={false}
             />
-          </span>
+          </RowControlGroup>
         )}
 
         {/* Mobile: always-visible ellipsis → schedule/action sheet (touch has
@@ -691,7 +722,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             className="h-7 w-7 text-muted-foreground"
             aria-label="Actions"
             data-testid="item-actions-button"
-            onClick={() => useScheduleSheet.getState().open(row)}
+            onClick={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
           >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
@@ -818,7 +849,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     return (
       <SwipeRow
         onComplete={isTask ? handleTaskToggle : handleHabitToggle}
-        onSchedule={() => useScheduleSheet.getState().open(row)}
+        onSchedule={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
         onDelete={handleDelete}
       >
         {rowContent}
@@ -826,63 +857,4 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     );
   }
   return rowContent;
-}
-
-/**
- * Boxed row action (delete / unschedule / skip) — the rounded-square hairline
- * language of AddIconButton (Figma node 67:268), but a lighter border so a
- * cluster of them stays quiet until the row is hovered. `destructive` swaps the
- * hover wash to the destructive tone (delete).
- */
-function RowControl({
-  icon: Icon,
-  label,
-  destructive,
-  disabled,
-  onClick,
-  className,
-  testId,
-}: {
-  icon: LucideIcon;
-  label: string;
-  destructive?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  className?: string;
-  /**
-   * Stable handle for e2e. These controls are otherwise addressed by their
-   * `label` copy, and 'Delete' alone collides with the confirm dialog's button,
-   * the mobile swipe action and the schedule sheet — four elements, one name.
-   */
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[5px] border border-border bg-surface-3 text-muted-foreground transition-colors',
-        // Hover styles are dropped entirely rather than overridden when
-        // disabled: :hover still fires on a disabled button, so leaving them in
-        // would light up a control that does nothing.
-        disabled
-          ? 'cursor-not-allowed opacity-40'
-          : cn(
-              // hover-wash, not hover:bg-accent: this control sits ON the well
-              // (bg-surface-3). Swapping to the wash would composite it onto the
-              // row behind and make the button LIGHTEN on hover while the row
-              // beside it darkens — the exact mismatch the token change fixed.
-              'hover-wash hover:border-muted-foreground hover:text-foreground',
-              destructive && 'hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive'
-            ),
-        className
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
-  );
 }
