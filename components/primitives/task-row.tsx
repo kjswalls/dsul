@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
 import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
@@ -344,6 +344,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const clusterRef = useRef<HTMLSpanElement>(null);
   const [titleHidden, setTitleHidden] = useState(false);
   const titleTip = useQuietTip();
+  const rowHovered = useRef(false);
   const measureTitle = () => {
     const p = titleRef.current;
     if (!p) return;
@@ -367,6 +368,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     }
     setTitleHidden(clamped || covered);
   };
+  // Re-measure while hovered when anything that moves the capsule's edge or
+  // changes the text does (a tick removes Skip, a stepper click, a rename):
+  // otherwise the fade stays sized for the capsule as it was on entry.
+  useLayoutEffect(() => {
+    if (rowHovered.current) measureTitle();
+  }, [item.title, completed, canNextDay, canBraindump, skippable, multiTarget, habitEffectiveCount]);
+  const tipAllowed = !isMobile && !isDragging && (titleHidden || suppressed);
 
   const handleRowClick = (e: ReactMouseEvent) => {
     if (wasDraggedRef.current) return;
@@ -504,9 +512,15 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
       onClick={handleRowClick}
       onMouseEnter={() => {
         setHoveredItemRef(item.id, itemType);
+        rowHovered.current = true;
         measureTitle();
       }}
-      onMouseLeave={() => setHoveredItemRef(null, null)}
+      onMouseLeave={() => {
+        setHoveredItemRef(null, null);
+        rowHovered.current = false;
+        titleTip.reset();
+      }}
+      onPointerDownCapture={titleTip.reset}
       onFocusCapture={measureTitle}
     >
 
@@ -556,8 +570,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           it now shares the rail tooltip with the full title (pills.tsx: no
           native titles). */}
       <Tooltip
-        open={titleTip.open && !isMobile && (titleHidden || suppressed)}
-        onOpenChange={titleTip.onOpenChange}
+        // The gate goes into the state, not only the prop: Radix's delay timer
+        // would otherwise latch `open` while the tip was gated off, and it
+        // would spring open unasked the moment the title became hidden.
+        open={titleTip.open && tipAllowed}
+        onOpenChange={(next) => titleTip.onOpenChange(next && tipAllowed)}
       >
         <TooltipTrigger asChild {...titleTip.triggerProps}>
           <p
@@ -593,6 +610,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           )}
         </TooltipContent>
       </Tooltip>
+      {/* The tooltip only describes the title while it is open, so the reason
+          a row is set aside stays readable to assistive tech here. */}
+      {suppression && <span className="sr-only">{suppressionLabel(suppression, { long: true })}</span>}
 
       {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
           column.
@@ -700,7 +720,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             of the columns so it reserves no space. pointer-events gate off until
             reveal so the invisible buttons aren't clickable while idle. */}
         {!inBraindump && !isMobile && (
-          <span ref={clusterRef} className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
+          <span ref={clusterRef} className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100">
             <RowControlGroup>
               {/* Multi-count stepper — leads the capsule, so the destructive
                   delete stays at the far end away from the one control here that

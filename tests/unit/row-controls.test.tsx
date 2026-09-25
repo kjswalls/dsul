@@ -269,6 +269,25 @@ describe('title under the hover controls', () => {
     expect(screen.queryByRole('tooltip')).toBeNull();
     expect(p).not.toHaveAttribute('title');
   });
+
+  it('does not latch open while gated off and spring open later', async () => {
+    layout(200);
+    renderRow('one-off');
+    const card = screen.getByTestId('item-card');
+    fireEvent.mouseEnter(card);
+    const p = title('one-off');
+    fireEvent.pointerEnter(p);
+    fireEvent.pointerMove(p);
+    await new Promise((r) => setTimeout(r, 400));
+    fireEvent.pointerLeave(p);
+    fireEvent.mouseLeave(card);
+    // The title grows under the controls; entering the row elsewhere must
+    // not pop the tip open with the pointer nowhere near the title.
+    layout(480);
+    fireEvent.mouseEnter(card);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+  });
 });
 
 describe('row controls: tooltips', () => {
