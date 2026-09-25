@@ -166,7 +166,7 @@ already does), and a spec that needs a *timed* drop has to ensure the target buc
 expanded first — `[data-testid=bucket-card][data-bucket=X][data-collapsed=false]`.
 
 `app-shell.tsx` expands the target bucket after any drop that carries one, so a drop never
-lands behind a closed sliver.
+lands in a bucket that stays shut.
 
 ### Known-flaky: leftover rows change every bucket drag's geometry
 

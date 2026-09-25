@@ -94,7 +94,6 @@ const GEO = {
       slotOpen: 'min-h-11',
       slotArmed: 'min-h-[60px]',
       radius: 'rounded-[14px]',
-      sliver: 8,
       add: 'md' as const,
     },
     mini: {
@@ -115,7 +114,6 @@ const GEO = {
       slotOpen: 'min-h-7',
       slotArmed: 'min-h-[38px]',
       radius: 'rounded-[10px]',
-      sliver: 6,
       add: 'sm' as const,
     },
   },
@@ -147,7 +145,6 @@ const GEO = {
       slotOpen: 'min-h-11',
       slotArmed: 'min-h-[60px]',
       radius: 'rounded-[20px]',
-      sliver: 8,
       add: 'md' as const,
     },
     mini: {
@@ -162,7 +159,6 @@ const GEO = {
       slotOpen: 'min-h-7',
       slotArmed: 'min-h-[38px]',
       radius: 'rounded-xl',
-      sliver: 6,
       add: 'sm' as const,
     },
   },
@@ -182,7 +178,8 @@ interface BucketCardProps {
   count: number;
   onAdd?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
   /** "You are here". Reads as a lime rule down the card's left wall ('spine'),
-   *  plus a lime disc on the glyph ('tray') — never a ring in either. */
+   *  plus a lime disc on the glyph ('tray') — never a ring in either. A shut
+   *  'spine' card has no wall, so its chevron takes the lime instead. */
   isCurrent?: boolean;
   /** Drop highlight while dragging over. */
   isDropTarget?: boolean;
@@ -198,6 +195,10 @@ interface BucketCardProps {
   /** False for a specimen: always open, no chevron, and the shared
    *  `collapsedBuckets` flag is ignored rather than merely unreachable. */
   collapsible?: boolean;
+  /** What is inside, as titles in display order. Read only while shut, where
+   *  it is drawn as a faint run-on line in the caption — see "WHAT A SHUT
+   *  BUCKET SHOWS" below. */
+  peek?: readonly string[];
   children: React.ReactNode;
   className?: string;
 }
@@ -270,12 +271,26 @@ interface BucketCardProps {
  * under a drag — would reflow the whole column at drag start, which is the one
  * thing the rect-stability contract forbids.
  *
+ * WHAT A SHUT BUCKET SHOWS. Its caption, and in the caption's free middle a
+ * faint run-on line of what is inside ("Groceries · Call mom · Stretch"),
+ * truncated to whatever width the caption has left. It used to draw an 8px
+ * sliver of the closed card under the caption instead, which read as an empty
+ * container rather than a full one put away. The peek says both halves at
+ * once: there is something here (the titles), and it is folded (they are one
+ * dim line, not rows). It is part of the toggle's hit area, so clicking what
+ * you can half-see opens it, and the chevron still points right. With no peek
+ * given (a specimen), a shut bucket is just its caption.
+ *
  * WHY NEITHER USES A RING FOR "NOW". A ring is the grammar of focus. Both
  * variants give the current bucket a mark with EXTENT instead — a lime rule
  * down the left wall of its card or tray — so a busy current bucket shows a
  * long rule and a short one a short rule. That is the difference between
  * position and selection. An empty current bucket has no card to rule, so in
- * 'spine' it says "now" only through its caption stepping up a tone.
+ * 'spine' it says "now" only through its caption stepping up a tone. A SHUT
+ * current bucket is not empty, and folding the bucket you are in must not also
+ * hide that you are in it, so in 'spine' its chevron turns lime: the one mark
+ * on the caption that already means "there is more here". ('tray' keeps its
+ * lime disc shut or open.)
  */
 export function BucketCard({
   bucket,
@@ -289,6 +304,7 @@ export function BucketCard({
   density = 'full',
   variant = 'spine',
   collapsible = true,
+  peek,
   children,
   className,
 }: BucketCardProps) {
@@ -305,8 +321,8 @@ export function BucketCard({
 
   // An empty bucket has nothing to shut, so it offers no control — a chevron
   // that toggles a stored flag with no visible effect is a dead affordance, and
-  // worse here, because "shut" draws a sliver and an empty bucket draws
-  // nothing, so collapsing would visibly ADD a mark. The stored flag survives a
+  // worse here, because "shut" draws a peek of what is inside and an empty
+  // bucket has nothing to peek at. The stored flag survives a
   // bucket emptying and re-filling; it just isn't reachable while there is
   // nothing in there.
   // A specimen (the settings Look preview) must be a function of the settings
@@ -318,12 +334,14 @@ export function BucketCard({
 
   // What sits under the caption, in priority order:
   //   dragging  → the slot (children suppressed while shut — see the note above)
-  //   shut      → the sliver: this card, closed
+  //   shut      → nothing; the caption carries the peek instead
   //   empty     → nothing. An empty bucket is its caption, which is the 22px
   //               that made the redesign worth doing.
   //   otherwise → the card
   const showSlot = dragging || (!isShut && !isEmpty);
-  const showSliver = !dragging && isShut;
+  // Not under a drag: the slot is open then, and a peek above an open slot
+  // would describe rows that are not the ones on screen.
+  const peekText = isShut && !dragging && peek?.length ? peek.join(' · ') : null;
 
   return (
     <section
@@ -372,7 +390,9 @@ export function BucketCard({
             helping of it landed between the count and the +, which is why those
             two read as unrelated controls rather than one cluster. Now `gap` is
             only the minimum between the name and the cluster, and the cluster
-            sets its own. */}
+            sets its own. A shut bucket's peek is a third, middle child that
+            takes the free width (flex-1) and truncates into it; the name and
+            the cluster keep their ends either way. */}
         <header className={cn('flex items-center justify-between', g.head)}>
           {/* h3 wrapping the button, not the other way round: a heading is flow
               content and a button only takes phrasing content, so the usual
@@ -420,8 +440,10 @@ export function BucketCard({
                   <ChevronDown
                     aria-hidden
                     className={cn(
-                      'h-3 w-3 flex-none text-muted-foreground/50 transition-transform',
-                      isShut && '-rotate-90'
+                      'h-3 w-3 flex-none transition-transform',
+                      isShut && '-rotate-90',
+                      // Its own element at full strength — lime is never faded.
+                      isShut && isCurrent && isSpine ? 'text-primary' : 'text-muted-foreground/50'
                     )}
                   />
                 </button>
@@ -430,6 +452,28 @@ export function BucketCard({
               );
             })()}
           </h3>
+
+          {/* The peek. A second hit target for the same toggle, so it stays out
+              of the tab order and the accessibility tree — the chevron button
+              above is the one control, and it already says expanded/collapsed. */}
+          {peekText && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              data-testid="bucket-peek"
+              // A click must not take focus: the button unmounts as the bucket
+              // opens, which would drop focus to <body>.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleCollapsed(bucket)}
+              className={cn(
+                'min-w-0 flex-1 truncate text-left font-sans text-muted-foreground/40 transition-colors hover:text-muted-foreground/70',
+                density === 'full' ? 'text-xs' : 'text-2xs'
+              )}
+            >
+              {peekText}
+            </button>
+          )}
 
           {/* Count and add live on the RIGHT edge, the Braindump header's
               arrangement: the name owns the left, the controls own the right,
@@ -446,8 +490,8 @@ export function BucketCard({
             {onAdd && (
               <AddIconButton
                 size={g.add}
-                // Adding into a shut bucket would drop the new row behind the
-                // sliver — same swallow as a drop, same fix.
+                // Adding into a shut bucket would hide the new row the moment
+                // it lands — same swallow as a drop, same fix.
                 onClick={() => {
                   expandBucket(bucket);
                   onAdd(bucket, 'task');
@@ -524,31 +568,6 @@ export function BucketCard({
               {!collapsed && children}
             </div>
           </div>
-        )}
-
-        {/* The card, shut. Same edges and the same fill the slot takes under a
-            drag — so collapsing reads as the lid coming down on the object that
-            was there, rather than as the object being deleted and a rule drawn
-            in its place. */}
-        {showSliver && (
-          <div
-            aria-hidden
-            className={cn(
-              'relative rounded-full bg-[var(--bkt-tray)]',
-              // A shut current card keeps its lime rule, so collapsing the
-              // bucket you are in doesn't also hide that you are in it.
-              isSpine
-                ? isCurrent
-                  ? 'shadow-[var(--bkt-card-ring),inset_2px_0_0_var(--primary)]'
-                  : 'shadow-[var(--bkt-card-ring)]'
-                : 'border border-border'
-            )}
-            style={{
-              marginTop: g.capGap,
-              marginLeft: g.cardX,
-              height: g.sliver,
-            }}
-          />
         )}
       </>
     </section>

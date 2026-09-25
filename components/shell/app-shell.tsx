@@ -413,7 +413,7 @@ export function AppShell() {
 
     // A shut bucket still takes drops (see bucket-card's collapse note), so it
     // has to open to show what just landed — otherwise the count ticks up
-    // behind a closed sliver and the drag reads as having failed. Placed before
+    // on a shut bucket and the drag reads as having failed. Placed before
     // the switch so it covers every bucket-bearing verb, and it no-ops (same
     // array back) when the bucket was already open.
     if ('bucket' in command) {
