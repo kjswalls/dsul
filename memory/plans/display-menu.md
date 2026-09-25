@@ -754,8 +754,10 @@ the canvas one rather than a smaller one: it has `type` and still lacks `bucket`
 pill, saying in words what the Display menu has set: "Grouped by …", "Sorted by …", the
 priority values (the menu's dots; No priority is the hollow ring), the project values (the
 menu's colour squares; No project is the ring), the goal values (lucide `Target`), and
-"Hide finished" last. It always follows the menu's order, never the order things were
-toggled in. It is there exactly when the trigger's lime dot is lit, in the sidebar and in
+"Hide finished" last. Values follow the menu's rows, never the order they were toggled in;
+a value the store cannot resolve (a deleted project, a goal id nothing answers to, a string
+no Priority row offers) comes after the rest, in the order it was stored. It is there
+exactly when the trigger's lime dot is lit, in the sidebar and in
 the phone's Braindump tab alike, so a braindump with nothing set keeps the bare capsule.
 Clicking the text opens the Display menu; the ✕ beside it resets. The dot says THAT the list
 is shaped and the shelf says how, and one case makes it more than a convenience: a filter
@@ -794,7 +796,9 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   Goal grouping (off is lossless), and it never touches Show paused, which is app-wide. The
   ✕ moves focus to the trigger BEFORE it resets: a reset always takes the count to zero, so
   the shelf unmounts under the pressed button, and a focused element that unmounts leaves
-  focus on `<body>`.
+  focus on `<body>`. On a pointer the ✕ wears the header's `RailTooltip` ("Reset display"),
+  as every icon-only control in that header does, and never a native `title`, which would
+  fire a second tooltip; on the phone it has none.
 - **The text opens the menu through a handle, never a second trigger or lifted state.**
   `DisplayMenu` takes a React 19 `ref` prop exposing `open(from?)` and `focus()`. Radix keeps
   one trigger ref and one anchor per menu, so a second `DropdownMenuTrigger` would take both
@@ -806,12 +810,16 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   path, where vaul records the sheet as opened and the drilled pane resets, so a sheet opened
   from the shelf lands on the root however the last one closed. The dropdown stays anchored
   to the icon, so it opens where an icon-opened one does.
-- **Focus goes back to whoever opened it.** `open(from)` records the shelf's button. Both
-  shells' close sends focus there if it is still connected, and otherwise lets Radix send it
-  to the trigger, which is what happens when a pick clears the last setting and takes the
-  shelf with it. An opening through the trigger itself clears the record. So does a right- or
-  ctrl-click outside, mirroring Radix's own rule that such a click leaves focus where it
-  lands.
+- **Focus goes back to whoever opened it.** `open(from)` takes a REF to the shelf's button,
+  held by `DisplayShelf`, which stays mounted while its body comes and goes, and the menu
+  reads it only as it closes. So both shells' close sends focus to whichever shelf is on
+  screen by then: unticking the one priority takes the shelf away and ticking another brings
+  a new one back, all while the menu stays open, and focus lands on the new one. With no
+  shelf left, Radix sends focus to the trigger, which is what happens when a pick clears the
+  last setting. An opening through the trigger itself clears the record, since a trigger
+  can reopen a menu still playing its exit, whose close never reached its focus return. So
+  does a right- or ctrl-click outside, mirroring Radix's own rule that such a click leaves
+  focus where it lands.
 - **Fit is imperative, and it is not state.** Whether the text fits changes on every frame of
   a sash drag, and React never hears about that: the column resizes through `--sidebar-w`
   precisely so the braindump does not re-render. So the shelf writes `data-fit` on its own
@@ -819,13 +827,25 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   `group-data-[fit=stack]/shelf:`, and with no attribute the one-line layout applies. The
   one-line width is MEASURED: force `line`, then take the span from the first `[data-line]`'s
   left edge to the last one's right (not `scrollWidth`, which clamps to `clientWidth` whenever
-  the content fits). That happens in a layout effect keyed on the FULL text, and once more
-  when `document.fonts.ready` settles, since a late font swap resizes nothing. Keying on the
-  full text rather than the clause labels is what re-fits when a value joins a multi-select
-  that is already showing. A resize only COMPARES: a ResizeObserver on a zero-height probe
-  (`absolute inset-x-0 top-0 h-0`, whose size is the root's width and never the fit's)
-  re-applies the cached width against the lines box. Its one exception is to measure once
-  when the cached width is still 0, for a shelf that mounted where nothing was laid out.
+  the content fits). That happens in a layout effect keyed on the FULL text, and again, per
+  text, when `document.fonts.ready` settles: a late font swap resizes nothing the probe could
+  hear, and a new text can ask for a subset the page has not loaded (a Cyrillic goal name
+  landing with the planner), which the layout effect measures in the fallback face. Keying on
+  the full text rather than the clause labels is what re-fits when a value joins a
+  multi-select that is already showing. A resize only COMPARES: a ResizeObserver on a
+  zero-height probe (`absolute inset-x-0 top-0 h-0`, whose size is the root's width and never
+  the fit's) re-applies the cached width against the lines box. Its one exception is to
+  measure once when the cached width is still 0, for a shelf that mounted where nothing was
+  laid out. The same observer watches the `[data-line]` spans. A line that resizes in a
+  delivery the probe is not part of resized with the column standing still, so its text
+  changed size with its string unchanged (a WCAG 1.4.12 text-spacing override, text-only
+  zoom, a late font), and that re-measures a frame later, outside the observer's delivery,
+  in either fit: a shelf stacks when an override widens its text, and goes back to one line
+  when the override comes off. A drag resizes the probe on every frame, and a stacked shelf's
+  lines with it in the same delivery, so a drag only ever compares. The comparison allows one
+  layout unit (1/64px) and no more: nothing on the one line truncates, so any overflow is a
+  glyph cut off with no ellipsis, and neither side of the comparison depends on the fit, so
+  there is no oscillation for a wider margin to damp.
 - **The sidebar mount has a width floor, `SIDEBAR_MIN_WIDTH - 20` (260px).** Collapse and
   hover-peek animate the column between `w-0` and its width over 300ms with the braindump
   still mounted. Without a floor, every frame of the fold would re-fit, and the collapsed
@@ -844,7 +864,10 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
 - **The loaded gate.** A goal id that nothing answers to reads `…` until the planner's first
   load lands (`!!userId && !isLoading`), and "Unknown goal" only after that. "Unknown goal"
   reads as "gone", and before the load the store simply has not answered yet. The count is
-  the same either way, so the dot and the shelf agree while it waits.
+  the same either way, so the dot and the shelf agree while it waits. A load that FAILED
+  counts as landed, on purpose: the menu names the same id "Unknown goal" (its row for a
+  goals table that could not be reached), and `…` would have the shelf disagree with the
+  menu it opens for as long as the failure lasted.
 - **The accessible name is the visible text** (WCAG 2.5.3, Label in Name), so an `aria-label`
   here would trip axe's `label-content-name-mismatch`. sr-only `"; "` and `", "` separators
   give the name its pauses. The nouns the glyphs stand for go in `aria-describedby` ("Display
@@ -858,12 +881,14 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
 
 ### Gotchas from the shelf
 
-- **jsdom reports every width as 0, so the fit is always `line` there** (`0 > 0 + 0.5` is
+- **jsdom reports every width as 0, so the fit is always `line` there** (`0 > 0 + 1/64` is
   false). That is deterministic, and useless for testing a stack.
   `tests/unit/display-shelf.test.tsx` stubs `Element.prototype.getBoundingClientRect`, giving
-  the lines box a chosen width and laying the `[data-line]` spans end to end, and restores it
-  after each case. It delivers the shelf's observer by hand, finding it by the probe it
-  watches, because dnd-kit builds observers of its own around the braindump.
+  the lines box a chosen width and laying the `[data-line]` spans out in whichever fit the
+  root holds as they are read (end to end on one line; each at 0, no wider than the box,
+  when stacked, so a measure that forgot to force the one line reads the stack), and
+  restores it after each case. It delivers the shelf's observer by hand, finding it by the
+  probe it watches, because dnd-kit builds observers of its own around the braindump.
 - **The `typeof ResizeObserver === 'undefined'` guard is load-bearing.** jsdom has no
   ResizeObserver, and `tests/unit/braindump-grouping.test.tsx` mounts an ACTIVE braindump (a
   grouping is set, so the shelf renders) without stubbing one. Without the guard, all 11 of
@@ -873,10 +898,14 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   `useRef` or on a prop named `…Ref`, and this prop is `menu`. Read it in handlers only.
 - **A stacked multi-select must `shrink`.** A clause that keeps `shrink-0` in the stack holds
   its one-line width, so the values past the column's edge are clipped instead of wrapped.
-  jsdom cannot lay this out, so the test asserts the class.
+  jsdom cannot lay this out, so the test asserts the classes, every one the stack lays out
+  by: `flex-col` on the lines box, `shrink`/`min-w-0`/`flex-wrap` on each line and each
+  multi-select, `min-w-0 max-w-full` on each value with `truncate` on its label, and
+  `min-w-0 max-w-full truncate` on each single phrase.
 - **Never measure inside the observer's delivery.** Forcing the one-line layout there starts a
   measure, resize, measure loop, and the "ResizeObserver loop" errors it raises land on every
-  other observer on the page. The observer compares; a change of text measures.
+  other observer on the page. The observer compares; a change of text measures, and so does
+  the frame the observer schedules when a line resized with the column standing still.
 - **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
   The tests query `[data-clause="…"]` instead.
 - **jsdom's accessible-name computation trims each element's text.** So the space inside an
@@ -885,12 +914,19 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   checks the separators' own text instead.
 - **vaul keeps a closed sheet mounted in jsdom and leaves the page `aria-hidden`.** Steps after
   a close therefore go by test id and `data-state`, never by role. The sheet's focus return
-  cannot be observed there, so it is not asserted.
+  CAN be observed, though: Radix's Presence holds the closed content until an `animationend`
+  naming its exit animation arrives, and jsdom computes vaul's (`slideToBottom`) from vaul's
+  own stylesheet. Dispatch `animationend` with `animationName` set to
+  `getComputedStyle(node).animationName`, wait for the node to unmount, and read
+  `document.activeElement` a tick later (`finishExit` in the shelf test). A `<style>` that
+  gives the dropdown's closed content an animation holds it mounted the same way, which is
+  how a trigger reopening a menu mid-exit is tested.
 
 **Manual QA states:** 406px and 280px sidebar and a 390px phone: one setting; everything on;
 a 4+ value priority or project filter at 280px (wraps between values); a long project name
 at 280px (ellipsizes); collapse and hover-peek with the shelf showing; open from the shelf and
-Escape (focus back on the shelf).
+Escape (focus back on the shelf); a text-spacing bookmarklet or text-only zoom applied with the
+shelf on one line (it stacks rather than clip).
 
 ## Related
 

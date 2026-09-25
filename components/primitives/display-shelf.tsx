@@ -58,13 +58,26 @@ export function DisplayShelf({
    */
   touch?: boolean;
 }) {
+  // Held out here, where it outlives any one body: a pick can take the shelf
+  // away and another bring it back while the menu stays open, and the menu
+  // reads this ref only as it closes, so focus goes to whichever opener is
+  // on screen by then.
+  const openerRef = useRef<HTMLButtonElement>(null);
   const { clauses } = useDisplaySummary(surface);
   // The summary guarantees `activeCount > 0` exactly when there are clauses, so
   // this is the dot's own condition.
   if (clauses.length === 0) return null;
   // The body is its own component so its measuring effects mount and unmount
   // with the shelf rather than idling behind a null render.
-  return <ShelfBody surface={surface} menu={menu} touch={touch} clauses={clauses} />;
+  return (
+    <ShelfBody
+      surface={surface}
+      menu={menu}
+      touch={touch}
+      clauses={clauses}
+      openerRef={openerRef}
+    />
+  );
 }
 
 /* ── the lines ──────────────────────────────────────────────────────────────
@@ -181,11 +194,14 @@ function Clause({ clause: c }: { clause: DisplayClause }) {
  * root, React never renders the attribute (so no render can reset it), and with
  * no attribute at all the one-line layout applies.
  *
- * The one-line width is MEASURED once per change of text, and a resize only
- * COMPARES that number with the width on offer. Measuring means forcing the
- * one-line layout; doing that inside ResizeObserver delivery is how a measure →
- * resize → measure loop starts, and the "ResizeObserver loop" errors it raises
- * land on every other observer on the page.
+ * The one-line width is MEASURED when the text changes, and a resize only
+ * COMPARES that number with the width on offer. The text changes when its
+ * string does, and also when its size does with the string unchanged: a font
+ * that loads late, or a text-spacing or text-only-zoom override. Measuring
+ * means forcing the one-line layout; doing that inside ResizeObserver delivery
+ * is how a measure → resize → measure loop starts, and the "ResizeObserver
+ * loop" errors it raises land on every other observer on the page. So what the
+ * observer hears that needs a measure is measured a frame later, outside it.
  */
 
 /**
@@ -208,9 +224,14 @@ function measureLineWidth(root: HTMLElement, lines: HTMLElement): number {
  * The box is flex-1 min-w-0 in both layouts, so its width is the column's answer
  * and never the fit's own. Written only on a change, so a drag that crosses no
  * threshold writes nothing at all.
+ *
+ * Compared to within one layout unit (1/64px, the engine's own grain) and no
+ * more. There is nothing to damp: the box never depends on the fit and the
+ * line's width is cached, so the fit cannot oscillate, and a looser margin
+ * would only let the one line clip its last glyph, with no ellipsis to say so.
  */
 function applyFit(root: HTMLElement, lines: HTMLElement, lineWidth: number): void {
-  const fit = lineWidth > lines.getBoundingClientRect().width + 0.5 ? 'stack' : 'line';
+  const fit = lineWidth > lines.getBoundingClientRect().width + 1 / 64 ? 'stack' : 'line';
   if (root.dataset.fit !== fit) root.dataset.fit = fit;
 }
 
@@ -219,11 +240,13 @@ function ShelfBody({
   menu,
   touch,
   clauses,
+  openerRef,
 }: {
   surface: DisplaySurface;
   menu: React.RefObject<DisplayMenuHandle | null>;
   touch: boolean;
   clauses: DisplayClause[];
+  openerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   // The hook DisplayMenu picks its shell with, so the popup this announces is
   // the one that opens. `touch` is the mount's, and only sizes targets.
@@ -251,9 +274,15 @@ function ShelfBody({
     applyFit(root, box, lineWidth.current);
   }, [text]);
 
-  // Once on mount: a web font that swaps in late changes every width without
-  // resizing anything, so no observer would hear of it. (jsdom has no
-  // `document.fonts`.)
+  // Again once the fonts the text needs have loaded. A web font that swaps in
+  // late changes every width without resizing the column, and a string can
+  // need a subset the page has not loaded yet — a Cyrillic goal name arriving
+  // with the planner is measured in the fallback face above. The measure above
+  // is what asks for that subset, so `ready` here waits on it. Per text, not
+  // once, since each text can ask for a subset of its own. The observer below
+  // hears most swaps as its lines resize, but not one that leaves every line's
+  // box as it was, as a stacked line already as wide as the column can be.
+  // (jsdom has no `document.fonts`.)
   useEffect(() => {
     let alive = true;
     document.fonts?.ready.then(() => {
@@ -266,31 +295,60 @@ function ShelfBody({
     return () => {
       alive = false;
     };
-  }, []);
+  }, [text]);
 
-  // The observer watches the zero-height probe rather than the shelf: the
-  // probe's width is the root's and nothing else, where the shelf's own box
-  // changes height with the very fit this is deciding. Guarded: jsdom has no
-  // ResizeObserver, suites mount an active braindump without stubbing one
-  // (tests/unit/braindump-grouping.test.tsx), and a shelf with no observer
-  // simply keeps the fit it measured.
+  // One observer, two jobs. It watches the zero-height probe rather than the
+  // shelf, because the probe's width is the root's and nothing else, where the
+  // shelf's own box changes height with the very fit this is deciding; a probe
+  // resize only compares. And it watches the lines. A line that resized while
+  // the probe did not resized with the column standing still, so its text
+  // changed size with its string unchanged (a late font, a text-spacing or
+  // text-only-zoom override), and that re-measures, a frame later, in either
+  // fit. A drag resizes the probe on every frame, and a stacked shelf's lines
+  // with it in the same delivery, so a drag only ever compares.
+  // Guarded: jsdom has no ResizeObserver, suites mount an active braindump
+  // without stubbing one (tests/unit/braindump-grouping.test.tsx), and a shelf
+  // with no observer simply keeps the fit it measured.
+  const observer = useRef<ResizeObserver | null>(null);
   useEffect(() => {
     const root = rootRef.current;
     const probe = probeRef.current;
     const box = linesRef.current;
     if (typeof ResizeObserver === 'undefined' || !root || !probe || !box) return;
-    const ro = new ResizeObserver(() => {
-      // The one exception to comparing only: a shelf that mounted where
-      // nothing is laid out (display:none, jsdom) measured 0, and measures once
-      // here, the first time its lines box has a width to measure against.
+    let frame = 0;
+    const ro = new ResizeObserver((entries) => {
+      // The one measure in the observer's own delivery: a shelf that mounted
+      // where nothing is laid out (display:none, jsdom) measured 0, and
+      // measures once here, the first time its lines box has a width.
       if (lineWidth.current === 0 && box.getBoundingClientRect().width > 0) {
         lineWidth.current = measureLineWidth(root, box);
       }
       applyFit(root, box, lineWidth.current);
+      if (frame || entries.some((e) => e.target === probe)) return;
+      frame = requestAnimationFrame(() => {
+        frame = 0;
+        lineWidth.current = measureLineWidth(root, box);
+        applyFit(root, box, lineWidth.current);
+      });
     });
     ro.observe(probe);
-    return () => ro.disconnect();
+    observer.current = ro;
+    return () => {
+      cancelAnimationFrame(frame);
+      ro.disconnect();
+      observer.current = null;
+    };
   }, []);
+
+  // The lines come and go with their clauses, so the observer follows them.
+  useEffect(() => {
+    const ro = observer.current;
+    const box = linesRef.current;
+    if (!ro || !box) return;
+    const rows = Array.from(box.children).filter((el) => el.hasAttribute('data-line'));
+    rows.forEach((el) => ro.observe(el));
+    return () => rows.forEach((el) => ro.unobserve(el));
+  }, [text]);
 
   const resetButton = (
     <button
@@ -345,9 +403,10 @@ function ShelfBody({
         aria-haspopup={isTouch ? 'dialog' : 'menu'}
         aria-describedby={descId}
         // The menu the trigger opens, opened the way the trigger opens it: the
-        // handle picks the shell. Handing itself over brings focus back here
+        // handle picks the shell. Handing over the ref brings focus back here
         // on close, while this text is still on screen to take it.
-        onClick={(e) => menu.current?.open(e.currentTarget)}
+        ref={openerRef}
+        onClick={() => menu.current?.open(openerRef)}
         className={cn(
           'relative flex min-w-0 flex-1 text-left hover:text-foreground',
           // The hit area rides on the BUTTON, while the clipping is the lines
@@ -372,6 +431,12 @@ function ShelfBody({
           ))}
         </span>
       </button>
+      {/* sr-only rather than `hidden`, though aria-describedby would read a
+          hidden node just the same: NVDA and JAWS speak a description only in
+          focus mode, so for anyone arrowing through the header in browse mode
+          this line in the reading order is the one place the nouns are said.
+          The cost is VoiceOver with hints on, which hears the sentence as the
+          button's hint and again as the next stop. */}
       <span id={descId} className="sr-only">
         {shelfDescription(clauses)}
       </span>

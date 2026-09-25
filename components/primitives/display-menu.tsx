@@ -44,6 +44,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { NO_PRIORITY, type PriorityFilterValue, type ViewFilters } from '@/lib/filters';
 import {
+  PRIORITY_FILTER_ORDER,
   UNKNOWN_GOAL_LABEL,
   goalMenuOrder,
   priorityFilterLabel,
@@ -458,8 +459,12 @@ function SheetSectionRow({ section, onOpen }: { section: Section; onOpen: () => 
  * the ref is null on the first pass and a commit behind after that.
  */
 export interface DisplayMenuHandle {
-  /** Open this surface's menu as if its trigger had been used; `from` gets focus back on close. */
-  open(from?: HTMLElement | null): void;
+  /**
+   * Open this surface's menu as if its trigger had been used. Focus goes back
+   * to `from` on close — a ref, read as the menu closes, so an opener that was
+   * swapped for a new one while the menu was open still gets it.
+   */
+  open(from?: React.RefObject<HTMLElement | null> | null): void;
   /** Focus the trigger — where focus goes when the thing that held it is about to unmount. */
   focus(): void;
 }
@@ -810,7 +815,8 @@ export function DisplayMenu({
       set: filters.priorities.length > 0,
       width: 'w-56',
       entries: [
-        ...(['high', 'medium', 'low'] as Priority[]).map((p) =>
+        // The shared order, so the shelf lists values as these rows stand.
+        ...PRIORITY_FILTER_ORDER.filter((v): v is Priority => v !== NO_PRIORITY).map((p) =>
           rowEntry({
             key: p,
             leading: <PriorityDot value={p} />,
@@ -980,7 +986,7 @@ export function DisplayMenu({
   /** The one trigger button, in either shell; Radix's Slot composes this with its own ref. */
   const triggerRef = useRef<HTMLButtonElement>(null);
   /** Whatever opened the menu when the trigger did not — focus goes back to it on close. */
-  const returnTo = useRef<HTMLElement | null>(null);
+  const returnTo = useRef<React.RefObject<HTMLElement | null> | null>(null);
 
   useImperativeHandle(
     ref,
@@ -1007,12 +1013,12 @@ export function DisplayMenu({
   );
 
   /**
-   * Both shells' close: focus goes back to whatever opened the menu, if it is
-   * still on the page. Otherwise the default runs, and that is Radix sending it
-   * to the trigger.
+   * Both shells' close: focus goes back to whatever opened the menu, if one is
+   * on the page as it closes. Otherwise the default runs, and that is Radix
+   * sending it to the trigger.
    */
   const restoreFocus = (e: Event) => {
-    const el = returnTo.current;
+    const el = returnTo.current?.current;
     returnTo.current = null;
     if (el?.isConnected) {
       e.preventDefault();

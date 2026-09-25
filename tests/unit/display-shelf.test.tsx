@@ -212,19 +212,44 @@ const trigger = () => screen.getByTestId('display-trigger-braindump');
 /** By attribute rather than getByText: 'Priority' is a group-by label AND a sort label. */
 const clause = (id: string) => shelf().querySelector<HTMLElement>(`[data-clause="${id}"]`);
 
+/**
+ * Let a closing menu go. jsdom plays no animation, so where a stylesheet gives
+ * the closed content one (vaul's own does, for the sheet), Radix's Presence
+ * holds it mounted until an `animationend` naming it arrives. The focus return
+ * rides that unmount, a tick after it.
+ */
+async function finishExit() {
+  const menu = screen.getByTestId('display-menu');
+  await waitFor(() => expect(menu).toHaveAttribute('data-state', 'closed'));
+  const end = new Event('animationend');
+  Object.defineProperty(end, 'animationName', { value: getComputedStyle(menu).animationName });
+  act(() => {
+    menu.dispatchEvent(end);
+  });
+  await waitFor(() => expect(screen.queryByTestId('display-menu')).toBeNull());
+}
+
 /* ── a hand-drawn layout, for the fit cases ─────────────────────────────── */
 
-/** The lines box's width, and each line's; the lines lie end to end from 0. */
+/** The lines box's width, and each line's own. */
 let boxWidth = 0;
 let lineWidthOf: (line: Element) => number = () => 100;
 
 const rect = (left: number, width: number) =>
   ({ left, right: left + width, width, top: 0, bottom: 18, height: 18, x: left, y: 0 }) as DOMRect;
 
-/** jsdom lays nothing out, so the shelf's two measurements are drawn here. */
+/**
+ * jsdom lays nothing out, so the shelf's two measurements are drawn here, in
+ * whichever fit its root holds as they are read. On one line the lines lie end
+ * to end from 0. Stacked, each starts at 0, no wider than the box, so a measure
+ * that did not force the one line first would read the stack's width instead.
+ */
 function layOut() {
   Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
     if (this.hasAttribute('data-shelf-lines')) return rect(0, boxWidth);
+    if (this.hasAttribute('data-line') && this.closest('[data-fit="stack"]')) {
+      return rect(0, Math.min(lineWidthOf(this), boxWidth));
+    }
     if (this.hasAttribute('data-line') && this.parentElement) {
       let left = 0;
       for (const line of Array.from(this.parentElement.children)) {
@@ -508,6 +533,50 @@ describe('opening the menu from the shelf', () => {
     await waitFor(() => expect(document.activeElement).toBe(trigger()));
   });
 
+  it('brings focus back to the shelf showing as it closes, even one a later pick put back', async () => {
+    // Untick the one priority and the shelf goes; tick another and a new one
+    // comes. The button that opened the menu is gone, but a shelf is there.
+    seed({ braindumpFilters: filters({ priorities: ['high'] }) });
+    renderBraindump();
+
+    fireEvent.click(opener());
+    fireEvent.click(await screen.findByRole('menuitem', { name: /Priority/ }));
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /High/ }));
+    expect(queryShelf()).toBeNull();
+    fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /Medium/ }));
+    expect(clause('priority')).toHaveTextContent(/^Medium$/);
+
+    fireEvent.keyDown(screen.getByTestId('display-menu'), { key: 'Escape' });
+    await waitFor(() => expect(screen.queryByTestId('display-menu')).toBeNull());
+    await waitFor(() => expect(document.activeElement).toBe(opener()));
+  });
+
+  it('forgets the text when the trigger opens the menu again before it has gone', async () => {
+    // Held mounted through an exit animation, as a browser plays one: the
+    // close never reached its focus return, and the trigger's own opening has
+    // nothing to give focus back to but itself.
+    const exit = document.createElement('style');
+    exit.textContent = '[data-testid="display-menu"][data-state="closed"] { animation-name: exit; }';
+    document.head.append(exit);
+    try {
+      seed({ braindumpGroupBy: 'project' });
+      renderBraindump();
+      const menu = () => screen.getByTestId('display-menu');
+
+      fireEvent.click(opener());
+      fireEvent.keyDown(menu(), { key: 'Escape' });
+      await waitFor(() => expect(menu()).toHaveAttribute('data-state', 'closed'));
+      fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false });
+      expect(menu()).toHaveAttribute('data-state', 'open');
+
+      fireEvent.keyDown(menu(), { key: 'Escape' });
+      await finishExit();
+      await waitFor(() => expect(document.activeElement).toBe(trigger()));
+    } finally {
+      exit.remove();
+    }
+  });
+
   it('leaves focus where a right-click outside put it, as Radix does for its trigger', async () => {
     seed({ braindumpGroupBy: 'project' });
     renderBraindump();
@@ -548,18 +617,98 @@ describe('opening the menu from the shelf', () => {
     expect(sheet()).toHaveAttribute('data-state', 'open');
     expect(pane()).toHaveAttribute('data-pane', 'root');
   });
+
+  describe('the phone sheet, once it has gone', () => {
+    const sheet = () => screen.getByTestId('display-menu');
+
+    beforeEach(() => {
+      touch.current = true;
+    });
+
+    it('brings focus back to the text that opened it', async () => {
+      seed({ braindumpGroupBy: 'project' });
+      renderBraindump('mobile');
+
+      fireEvent.click(opener());
+      fireEvent.keyDown(sheet(), { key: 'Escape' });
+      await finishExit();
+
+      await waitFor(() => expect(document.activeElement).toBe(opener()));
+    });
+
+    it('sends focus to the trigger when the trigger opened it', async () => {
+      seed({ braindumpGroupBy: 'project' });
+      renderBraindump('mobile');
+
+      fireEvent.click(trigger());
+      fireEvent.keyDown(sheet(), { key: 'Escape' });
+      await finishExit();
+
+      await waitFor(() => expect(document.activeElement).toBe(trigger()));
+    });
+
+    it('brings focus back to the shelf showing as it closes, even one a later pick put back', async () => {
+      seed({ braindumpFilters: filters({ priorities: ['high'] }) });
+      renderBraindump('mobile');
+
+      fireEvent.click(opener());
+      fireEvent.click(screen.getByTestId('display-section-priority'));
+      fireEvent.click(within(sheet()).getByRole('menuitemcheckbox', { name: /High/ }));
+      expect(queryShelf()).toBeNull();
+      fireEvent.click(within(sheet()).getByRole('menuitemcheckbox', { name: /Medium/ }));
+      expect(clause('priority')).toHaveTextContent(/^Medium$/);
+
+      fireEvent.keyDown(sheet(), { key: 'Escape' });
+      await finishExit();
+
+      await waitFor(() => expect(document.activeElement).toBe(opener()));
+    });
+
+    it('forgets the text when the trigger opens it again before it has gone', async () => {
+      seed({ braindumpGroupBy: 'project' });
+      renderBraindump('mobile');
+
+      fireEvent.click(opener());
+      fireEvent.keyDown(sheet(), { key: 'Escape' });
+      await waitFor(() => expect(sheet()).toHaveAttribute('data-state', 'closed'));
+      // Still sliding out, so that close never reached its focus return.
+      fireEvent.click(trigger());
+      expect(sheet()).toHaveAttribute('data-state', 'open');
+
+      fireEvent.keyDown(sheet(), { key: 'Escape' });
+      await finishExit();
+      await waitFor(() => expect(document.activeElement).toBe(trigger()));
+    });
+  });
 });
 
 describe('fit: one line, or the stack', () => {
   const fit = () => shelf().getAttribute('data-fit');
+  const lineEls = () => [...shelf().querySelectorAll('[data-line]')];
 
-  /** Deliver the shelf's own ResizeObserver callback: the one watching its probe. */
-  function resize() {
+  /** The shelf's own ResizeObserver: the one watching its probe. */
+  function shelfObserver() {
     const probe = shelf().querySelector('[data-shelf-probe]');
     const mine = observations.filter((o) => probe !== null && o.els.includes(probe));
     expect(mine).toHaveLength(1);
-    act(() => mine[0].cb([], {} as ResizeObserver));
+    return mine[0];
   }
+
+  /** Deliver the shelf's observation: the probe's resize, unless other targets are named. */
+  function resize(targets?: Element[]) {
+    const observer = shelfObserver();
+    const resized = targets ?? [shelf().querySelector('[data-shelf-probe]')!];
+    act(() =>
+      observer.cb(
+        resized.map((target) => ({ target }) as ResizeObserverEntry),
+        {} as ResizeObserver
+      )
+    );
+  }
+
+  /** Let one animation frame run, and whatever the shelf asked of it first. */
+  const nextFrame = () =>
+    act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
   it('is one line in jsdom, where every width is 0', () => {
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
@@ -589,9 +738,10 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('stack');
   });
 
-  it('only compares on a resize — the width it measured is not re-read there', () => {
+  it('only compares on a resize — the width it measured is not re-read there, or after', async () => {
     // Forcing the one-line layout to measure inside observer delivery is how a
-    // resize loop starts; a resize reuses the width the text last measured.
+    // resize loop starts; a resize reuses the width the text last measured. And
+    // not a frame later either: the column resizes on every frame of a drag.
     layOut();
     boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
@@ -601,6 +751,102 @@ describe('fit: one line, or the stack', () => {
     lineWidthOf = () => 150;
     resize();
     expect(fit()).toBe('line');
+    await nextFrame();
+    expect(fit()).toBe('line');
+  });
+
+  it('measures the one line even while it stands stacked', () => {
+    // Read in the stack, every line is at most the box's width, and a new text
+    // measured that way would fold the shelf onto one clipped line.
+    layOut();
+    boxWidth = 150;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe('stack');
+
+    act(() =>
+      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
+    );
+    expect(fit()).toBe('stack');
+  });
+
+  // Nothing truncates on the one line, so any overflow there is a glyph cut off
+  // with no ellipsis to say so. The one allowance is the engine's own grain.
+  it.each([
+    { over: 0, expected: 'line' },
+    { over: 1 / 64, expected: 'line' },
+    { over: 1 / 32, expected: 'stack' },
+    { over: 1 / 4, expected: 'stack' },
+    { over: 1, expected: 'stack' },
+  ])('is $expected when the line is $over px wider than its box', ({ over, expected }) => {
+    layOut();
+    boxWidth = 200 - over;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe(expected);
+  });
+
+  it('measures again, a frame later, when a line changes size with its text unchanged', async () => {
+    // A text-spacing override, or text-only zoom: the same string, set wider,
+    // in a column that has not moved.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe('line');
+
+    lineWidthOf = () => 150;
+    resize(lineEls());
+    // Never inside the observer's own delivery, where it only compares.
+    expect(fit()).toBe('line');
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('measures a stacked shelf again when its text shrinks with the column standing still', async () => {
+    // The override taken off again: the stack goes back to one line.
+    layOut();
+    boxWidth = 150;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe('stack');
+
+    lineWidthOf = () => 50;
+    resize(lineEls());
+    expect(fit()).toBe('stack');
+    await nextFrame();
+    expect(fit()).toBe('line');
+  });
+
+  it('leaves lines that resized with the column unmeasured, as a drag resizes them on every frame', async () => {
+    layOut();
+    boxWidth = 150;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe('stack');
+
+    // Measured, these would fit on one line. A stacked shelf's lines resize in
+    // the same delivery as the probe, which is how a drag reads.
+    lineWidthOf = () => 50;
+    resize([shelf().querySelector('[data-shelf-probe]')!, ...lineEls()]);
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('watches every line the text has, and no line it has lost', () => {
+    seed({ braindumpGroupBy: 'project' });
+    renderBraindump();
+    const watched = () =>
+      shelfObserver()
+        .els.filter((el) => el.hasAttribute('data-line'))
+        .map((el) => el.getAttribute('data-line'));
+    expect(watched()).toEqual(['arrange']);
+
+    act(() => useViewStore.setState({ braindumpFilters: filters({ hideFinished: true }) }));
+    expect(watched()).toEqual(['arrange', 'hide-finished']);
+
+    act(() => useViewStore.setState({ braindumpGroupBy: 'none' }));
+    expect(watched()).toEqual(['hide-finished']);
   });
 
   it('re-fits when a value joins a clause that is already showing', () => {
@@ -637,15 +883,86 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('stack');
   });
 
-  it('lets a stacked multi-select shrink, so its values wrap instead of clipping', () => {
-    // jsdom cannot lay this out, so the class is the assertion: a clause that
-    // stays shrink-0 in the stack holds its one-line width and clips.
+  it('measures again when the fonts a new text asks for land after it', async () => {
+    // The page's fonts had landed by mount. A text arriving later can ask for
+    // a subset nothing has loaded yet (a Cyrillic goal name, landing with the
+    // planner), and the change of text measures it in the fallback face.
+    let ready = Promise.resolve();
+    Object.defineProperty(document, 'fonts', { configurable: true, get: () => ({ ready }) });
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    await act(async () => {
+      await ready;
+    });
+    expect(fit()).toBe('line');
+
+    let fontsLand = () => {};
+    ready = new Promise<void>((resolve) => {
+      fontsLand = resolve;
+    });
+    // Three lines in the fallback face fit where two in Inter did.
+    lineWidthOf = () => 70;
+    act(() =>
+      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
+    );
+    expect(fit()).toBe('line');
+
+    lineWidthOf = () => 100;
+    await act(async () => {
+      fontsLand();
+      await ready;
+    });
+    expect(fit()).toBe('stack');
+  });
+
+  it('carries every rule the stack lays out by, as classes on the one DOM', () => {
+    // jsdom cannot lay any of this out, so the classes are the assertion, and
+    // each is load-bearing. Without flex-col the stack never stacks. A line that
+    // cannot shrink and wrap cannot share a row between its clauses. A
+    // multi-select that stays shrink-0 holds its one-line width, and one that
+    // cannot wrap or drop below its content clips its values at the column's
+    // edge instead of wrapping them. A value that cannot shrink clips its name
+    // rather than ellipsizing it, and so does a single phrase.
     seed({
-      braindumpFilters: filters({ priorities: ['high'], containers: ['project:Work'], goals: ['g1'] }),
+      braindumpGroupBy: 'project',
+      braindumpSortBy: 'title',
+      braindumpFilters: filters({
+        priorities: ['high'],
+        containers: ['project:Work'],
+        goals: ['g1'],
+        hideFinished: true,
+      }),
     });
     renderBraindump();
+    const stacked = (...rules: string[]) => rules.map((r) => `group-data-[fit=stack]/shelf:${r}`);
+
+    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass(
+      'flex',
+      'min-w-0',
+      'flex-1',
+      'overflow-hidden',
+      ...stacked('flex-col')
+    );
+    for (const line of lineEls()) {
+      expect(line).toHaveClass('flex', 'shrink-0', ...stacked('shrink', 'min-w-0', 'flex-wrap'));
+    }
+    for (const id of ['group', 'sort', 'hide-finished']) {
+      expect(clause(id)).toHaveClass(
+        'shrink-0',
+        'whitespace-nowrap',
+        ...stacked('min-w-0', 'max-w-full', 'truncate')
+      );
+    }
     for (const id of ['priority', 'project', 'goal']) {
-      expect(clause(id)).toHaveClass('shrink-0', 'group-data-[fit=stack]/shelf:shrink');
+      expect(clause(id)).toHaveClass('flex', 'shrink-0', ...stacked('shrink', 'min-w-0', 'flex-wrap'));
+      const values = clause(id)!.querySelectorAll(':scope > span:not(.sr-only)');
+      expect(values.length).toBeGreaterThan(0);
+      for (const value of values) {
+        expect(value).toHaveClass('min-w-0', 'max-w-full');
+        expect(value.lastElementChild).toHaveClass('truncate');
+      }
     }
   });
 

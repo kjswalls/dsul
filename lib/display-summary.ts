@@ -72,9 +72,10 @@ export type DisplaySurface = 'canvas' | 'braindump';
 /* ── the vocabulary the menu and the shelf share ─────────────────────────── */
 
 /**
- * The Priority section's rows, top to bottom — and the shelf's order, which is
- * this and never the stored one: a filter array is in the order its values
- * were clicked.
+ * The Priority section's rows, top to bottom. The menu builds its rows from
+ * this, and a menu test holds the rows it draws to it. It is the shelf's order
+ * too, which is this and never the stored one: a filter array is in the order
+ * its values were clicked.
  */
 export const PRIORITY_FILTER_ORDER: readonly PriorityFilterValue[] = [
   'high',
@@ -137,8 +138,11 @@ export function goalMenuOrder(goals: readonly Goal[], selected: readonly string[
  * `dot` and `square` are the menu rows' own PriorityDot and ContainerSquare, so
  * a value wears one mark wherever it appears. `ring` is PriorityDot's hollow
  * form, which the menu already gives both unset values ("No priority", "No
- * project"); here it also marks a stored value that resolves to nothing.
- * `target` is lucide's Target, the glyph the app names goals with.
+ * project"); here it also marks the two stored values no row could ever have
+ * offered, a priority string outside the list and a ref of no classify kind.
+ * A value that had a row keeps its mark after the row is gone: a deleted
+ * project its square, a goal id nothing answers to its Target. `target` is
+ * lucide's Target, the glyph the app names goals with.
  */
 export type DisplayGlyph =
   | { kind: 'dot'; value: Priority }
@@ -189,6 +193,12 @@ export interface DisplaySummaryInput {
    * The planner's first load has landed: `!!userId && !isLoading`. `!isLoading`
    * alone is also true before the load begins, which is the store's initial
    * state (components/shell/app-shell.tsx reads it the same way).
+   *
+   * A load that FAILED has landed too, on purpose. The store has answered, if
+   * badly, and the Display menu already names such an id "Unknown goal" (its
+   * row for a goals table that could not be reached). Holding '…' until a load
+   * succeeded would have the shelf and the menu it opens disagree about one
+   * value for as long as the failure lasted.
    */
   loaded: boolean;
   projects: readonly { name: string }[];
@@ -234,8 +244,10 @@ function priorityValues(stored: readonly string[]): DisplayValue[] {
  *      not inert — selected alone it empties the list — so this is the one
  *      place it gets named. Deduped on the folded name, as the menu's one
  *      checkbox would take them.
- *   3. Refs of no kind the registry knows, a bare legacy name or an unknown
- *      prefix: nothing resolves them, so they are named raw, with the ring.
+ *   3. Refs of no classify kind, a bare legacy name or any other prefix
+ *      (`routine:` and `program:` among them, which this filter never
+ *      writes): nothing here resolves them, so each is named by what follows
+ *      its first colon (`containerName`), with the ring.
  *   4. The unset value, last, where its row is. It needs a label of its own:
  *      `containerName(NO_CONTAINER)` is ''.
  *

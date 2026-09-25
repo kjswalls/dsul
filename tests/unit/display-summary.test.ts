@@ -492,6 +492,10 @@ describe('duplicates collapse into one value, and still count as stored', () => 
     ['the unset value twice', filters({ containers: [NO_CONTAINER, NO_CONTAINER] }), 'project', ['No project']],
     ['a repeated goal', filters({ goals: ['g1', 'g1'] }), 'goal', ['Learn Chinese']],
     ['a repeated unknown goal', filters({ goals: ['gone', 'gone'] }), 'goal', [UNKNOWN_GOAL_LABEL]],
+    // Neither resolves to anything, so each is keyed by what was stored — and
+    // two values on one key would be two React children under one key too.
+    ['a repeated junk priority', filters({ priorities: stored(['urgent', 'urgent']) }), 'priority', ['urgent']],
+    ['a repeated bare ref', filters({ containers: ['Bare', 'Bare'] }), 'project', ['Bare']],
   ] as const)('%s', (_name, f, id, expected) => {
     const s = summarize({ filters: f });
     expect(labels(s, id)).toEqual(expected);

@@ -81,6 +81,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
+import { PRIORITY_FILTER_ORDER, priorityFilterLabel } from '@/lib/display-summary';
 import { enableGoalsAndOrganize } from './support/extensions';
 import type { Goal, Routine, Program } from '@dsul/types';
 
@@ -204,6 +205,16 @@ describe('what the Display menu writes', () => {
     fireEvent.click(await screen.findByRole('menuitemcheckbox', { name: /No project/ }));
 
     expect(view().canvasFilters.containers).toEqual(['none:']);
+  });
+
+  it('draws its Priority rows in the one order the shelf lists them in', async () => {
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Priority');
+    const high = await screen.findByRole('menuitemcheckbox', { name: /High/ });
+    const rows = within(high.closest<HTMLElement>('[role="menu"]')!).getAllByRole('menuitemcheckbox');
+
+    expect(rows.map((r) => r.textContent)).toEqual(PRIORITY_FILTER_ORDER.map(priorityFilterLabel));
   });
 });
 
