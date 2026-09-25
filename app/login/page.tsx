@@ -247,42 +247,6 @@ function LoginPageInner() {
               </div>
 
               <div className="space-y-3 delay-200 duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none">
-                <form onSubmit={handleMagicLink} className="space-y-3">
-                  {/* No label: the placeholder, the button beside it and the
-                      type=email keyboard all say the same thing, and a lone
-                      "Email" above a lone field is a caption for an audience of
-                      one. aria-label keeps it named for assistive tech. */}
-                  <Input
-                    id="email"
-                    type="email"
-                    aria-label="Email address"
-                    placeholder="you@example.com"
-                    autoFocus
-                    autoComplete="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    disabled={loading}
-                    className="h-10 rounded-[10px] text-[13.5px]"
-                  />
-                  <Button
-                    type="submit"
-                    className="h-10 w-full rounded-[10px] text-[13.5px]"
-                    disabled={loading || !email}
-                  >
-                    {loading ? 'Sending…' : 'Continue with email'}
-                  </Button>
-                </form>
-
-                {/* Two hairlines, not the usual rule-with-a-knockout: the
-                    knockout is an opaque `bg-background` chip, which on a
-                    translucent pane stamps a solid patch over the frost. */}
-                <div className="flex items-center gap-3 text-[11px] uppercase text-muted-foreground">
-                  <span className="h-px flex-1 bg-border" />
-                  or
-                  <span className="h-px flex-1 bg-border" />
-                </div>
-
                 {/* bg-card/55 replaces the outline variant's opaque
                     `bg-background`, which was the one solid patch on the whole
                     frost — the glass died inside the button's rectangle, which
@@ -314,6 +278,42 @@ function LoginPageInner() {
                   </svg>
                   Continue with Google
                 </Button>
+
+                {/* Two hairlines, not the usual rule-with-a-knockout: the
+                    knockout is an opaque `bg-background` chip, which on a
+                    translucent pane stamps a solid patch over the frost. */}
+                <div className="flex items-center gap-3 text-[11px] uppercase text-muted-foreground">
+                  <span className="h-px flex-1 bg-border" />
+                  or
+                  <span className="h-px flex-1 bg-border" />
+                </div>
+
+                <form onSubmit={handleMagicLink} className="space-y-3">
+                  {/* No label: the placeholder, the button beside it and the
+                      type=email keyboard all say the same thing, and a lone
+                      "Email" above a lone field is a caption for an audience of
+                      one. aria-label keeps it named for assistive tech. */}
+                  <Input
+                    id="email"
+                    type="email"
+                    aria-label="Email address"
+                    placeholder="you@example.com"
+                    autoFocus
+                    autoComplete="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    required
+                    disabled={loading}
+                    className="h-10 rounded-[10px] text-[13.5px]"
+                  />
+                  <Button
+                    type="submit"
+                    className="h-10 w-full rounded-[10px] text-[13.5px]"
+                    disabled={loading || !email}
+                  >
+                    {loading ? 'Sending…' : 'Continue with email'}
+                  </Button>
+                </form>
 
                 {error && (
                   <p className="text-[12.5px] leading-relaxed text-destructive">
