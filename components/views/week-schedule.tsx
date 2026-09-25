@@ -23,7 +23,7 @@ import {
   type TimedEntry,
 } from '@/components/views/day-schedule';
 import { layoutOverlaps } from '@/lib/schedule-overlap';
-import { LANE_CAP_Z, MIN_CHANNEL_PX, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
+import { LANE_CAP_Z, MIN_CHANNEL_PX, WEEK_GUTTER_Z, WEEK_HEAD_Z } from '@/lib/schedule-constants';
 import { CANVAS_PAD_PX } from '@/lib/week-columns';
 import { useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
 import { useWeekColumns } from '@/lib/use-week-columns';
@@ -33,7 +33,7 @@ import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { groupRows } from '@/lib/grouping';
 import { planLanes, isReceded, type LanePlan } from '@/lib/schedule-lanes';
 import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
-import { LaneCapRow } from '@/components/primitives/lane-cap';
+import { LaneCapRow, LANE_CAP_H } from '@/components/primitives/lane-cap';
 import { groupBySupport } from '@/lib/view-options';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
@@ -132,6 +132,7 @@ function WeekScheduleColumn({
   lanePlan,
   anytimeH,
   onAnytimeHeight,
+  headTop,
 }: {
   col: ColumnData;
   hours: number[];
@@ -161,6 +162,8 @@ function WeekScheduleColumn({
   /** Reports this day's natural strip height (null on unmount), so the week
    *  can size every strip to the tallest one. */
   onAnytimeHeight: (dateStr: string, px: number | null) => void;
+  /** Where the pinned head sticks: under the lane cap row when there is one. */
+  headTop: number;
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const routines = usePlannerStore((s) => s.routines);
@@ -278,95 +281,110 @@ function WeekScheduleColumn({
        */
       style={{ width: Math.max(colPx, minColPx), minWidth: minColPx }}
     >
-      {/* Program boundary rail. Muted and unbordered — a handover is not a
-          warning, and the guilt-free law applies to the grid too. */}
-      {showBoundaryRail && (
-        <div
-          style={{ height: BOUNDARY_H }}
-          className="flex items-center justify-center overflow-hidden"
-          data-testid={col.boundary ? 'week-program-boundary' : undefined}
-          data-date={col.boundary ? col.dateStr : undefined}
-        >
-          {col.boundary && (
-            <span
-              className="text-muted-foreground truncate text-2xs font-medium"
-              title={col.boundary}
-            >
-              {col.boundary}
-            </span>
-          )}
-        </div>
-      )}
-
-      {/* Day header card */}
-      <button
-        onClick={() => setSelectedDate(col.date)}
-        style={{ height: HEADER_H }}
-        className={cn(
-          'flex flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
-          // On the lime fill the label takes the INK role (-foreground), not the
-          // lime-as-text one: -text tracks the fill, so it was lime on lime.
-          selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
-        )}
-        title={`Select ${format(col.date, 'EEEE, MMMM d')}`}
-      >
-        <span
-          className={cn('text-xs font-medium uppercase', selected ? 'text-primary-foreground' : 'text-muted-foreground')}
-        >
-          {format(col.date, 'EEE')}
-        </span>
-        <span
-          className={cn(
-            'text-sm',
-            selected
-              ? 'font-semibold text-primary-foreground'
-              : today
-                ? 'font-bold text-success-text'
-                : 'font-semibold text-foreground'
-          )}
-        >
-          {format(col.date, 'MMM d')}
-        </span>
-      </button>
-
-      {/* Per-day Anytime strip */}
+      {/* PINNED head: rail, day header and Anytime strip stay put while the
+          hour grid scrolls under them, the way a calendar's all-day row does.
+          Affordable only because the strip is capped (ANYTIME_MAX_H), so the
+          pin costs a bounded slice of the pane. The column is its containing
+          block and spans the whole grid, which is what gives it travel. Opaque
+          so the grid disappears under it, and pb-2 rather than the grid's old
+          mt-2 so that gap is covered too. */}
       <div
-        ref={setNodeRef}
-        data-dnd-id={`week:${col.dateStr}:anytime`}
-        data-dnd-over={isOver ? 'true' : 'false'}
-        style={{ height: anytimeH }}
-        className={cn(
-          'mt-2 overflow-y-auto rounded-[8px] border border-dashed border-border/40 p-1 transition-colors',
-          isOver && 'border-primary bg-primary/5'
-        )}
+        // Read by lib/dnd/collision.ts (hour cells under it are not drop
+        // targets) and the resize auto-scroll in day-schedule.tsx.
+        data-week-head=""
+        className="sticky flex flex-col bg-canvas pb-2"
+        style={{ top: headTop, zIndex: WEEK_HEAD_Z }}
       >
-        {/* Same rule as Day × Schedule: the hour grid below cannot take
-            headings, this strip can. It is capped and scrolls past the cap, so
-            a grouped strip shows fewer rows at rest — that is the cost of
-            having asked. */}
-        <div ref={anytimeContentRef}>
-          {untimedGroups.map((g) =>
-            g.label ? (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                {g.rows.map((row) => (
+        {/* Program boundary rail. Muted and unbordered — a handover is not a
+            warning, and the guilt-free law applies to the grid too. */}
+        {showBoundaryRail && (
+          <div
+            style={{ height: BOUNDARY_H }}
+            className="flex items-center justify-center overflow-hidden"
+            data-testid={col.boundary ? 'week-program-boundary' : undefined}
+            data-date={col.boundary ? col.dateStr : undefined}
+          >
+            {col.boundary && (
+              <span
+                className="text-muted-foreground truncate text-2xs font-medium"
+                title={col.boundary}
+              >
+                {col.boundary}
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* Day header card */}
+        <button
+          onClick={() => setSelectedDate(col.date)}
+          style={{ height: HEADER_H }}
+          className={cn(
+            'flex flex-col items-center justify-center gap-0.5 rounded-[10px] border shadow-soft-sm transition-colors',
+            // On the lime fill the label takes the INK role (-foreground), not the
+            // lime-as-text one: -text tracks the fill, so it was lime on lime.
+            selected ? 'border-primary-foreground bg-primary' : 'border-surface-3 bg-surface-2'
+          )}
+          title={`Select ${format(col.date, 'EEEE, MMMM d')}`}
+        >
+          <span
+            className={cn('text-xs font-medium uppercase', selected ? 'text-primary-foreground' : 'text-muted-foreground')}
+          >
+            {format(col.date, 'EEE')}
+          </span>
+          <span
+            className={cn(
+              'text-sm',
+              selected
+                ? 'font-semibold text-primary-foreground'
+                : today
+                  ? 'font-bold text-success-text'
+                  : 'font-semibold text-foreground'
+            )}
+          >
+            {format(col.date, 'MMM d')}
+          </span>
+        </button>
+
+        {/* Per-day Anytime strip */}
+        <div
+          ref={setNodeRef}
+          data-dnd-id={`week:${col.dateStr}:anytime`}
+          data-dnd-over={isOver ? 'true' : 'false'}
+          style={{ height: anytimeH }}
+          className={cn(
+            'mt-2 overflow-y-auto rounded-[8px] border border-dashed border-border/40 p-1 transition-colors',
+            isOver && 'border-primary bg-primary/5'
+          )}
+        >
+          {/* Same rule as Day × Schedule: the hour grid below cannot take
+              headings, this strip can. It is capped and scrolls past the cap, so
+              a grouped strip shows fewer rows at rest — that is the cost of
+              having asked. */}
+          <div ref={anytimeContentRef}>
+            {untimedGroups.map((g) =>
+              g.label ? (
+                <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
+                  ))}
+                </GroupSection>
+              ) : (
+                g.rows.map((row) => (
                   <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
-                ))}
-              </GroupSection>
-            ) : (
-              g.rows.map((row) => (
-                <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
-              ))
-            )
-          )}
-          {col.untimed.length === 0 && (
-            <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
-          )}
+                ))
+              )
+            )}
+            {col.untimed.length === 0 && (
+              <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
+            )}
+          </div>
         </div>
       </div>
 
       {/* Hour grid. Every column carries its own lane: rail, beads, and — on
           today — the now-marker. */}
-      <div className="relative mt-2">
+      <div className="relative">
         <div>
           {hours.map((h) => (
             <WeekHourCell key={h} dateStr={col.dateStr} hour={h} isActive={dragging} hourPx={hourPx} />
@@ -501,6 +519,10 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
     setAnytimeH((prev) => (prev === next ? prev : next));
   }, []);
 
+  // The heads pin just under the lane cap row, which is itself sticky at the
+  // top whenever the canvas is grouped.
+  const headTop = lanePlan.mode === 'none' ? 0 : LANE_CAP_H;
+
   // How wide the day columns are, and the ⌘-wheel gesture that changes it.
   const { colPx, scrolledX, ref: weekColsRef } = useWeekColumns('schedule');
 
@@ -580,10 +602,16 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
           {/* The gutter matches the columns' vertical offsets exactly, so it
               pays the boundary rail's 18px too — otherwise every hour label
               sits 18px above the grid line it names. */}
-          {showBoundaryRail && <div style={{ height: BOUNDARY_H }} />}
-          <div style={{ height: HEADER_H }} />
-          <div style={{ height: anytimeH }} className="mt-2" />
-          <div ref={anchorRef} className="relative mt-2">
+          {/* Pinned with the column heads, and opaque, so the hour labels
+              scroll under it rather than over the corner. The z matters: the
+              label stack below is positioned too and comes later, so without
+              one it paints over this, live clock (z-6) included. */}
+          <div className="sticky bg-canvas pb-2" style={{ top: headTop, zIndex: 7 }}>
+            {showBoundaryRail && <div style={{ height: BOUNDARY_H }} />}
+            <div style={{ height: HEADER_H }} />
+            <div style={{ height: anytimeH }} className="mt-2" />
+          </div>
+          <div ref={anchorRef} className="relative">
             {hours.map((h) => (
               <div
                 key={h}
@@ -668,6 +696,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               lanePlan={lanePlan}
               anytimeH={anytimeH}
               onAnytimeHeight={onAnytimeHeight}
+              headTop={headTop}
             />
           ))}
           </div>

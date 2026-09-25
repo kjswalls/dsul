@@ -697,11 +697,17 @@ export function ScheduleBlock({
       return;
     }
     const rect = r.viewport.getBoundingClientRect();
+    // Week × Schedule pins its column heads over the grid, so the grid's
+    // visible top is the heads' bottom, not the viewport's: measured from the
+    // viewport, a top edge dragged upward vanished under the heads well before
+    // anything scrolled.
+    const head = r.viewport.querySelector('[data-week-head]');
+    const top = head ? Math.max(rect.top, head.getBoundingClientRect().bottom) : rect.top;
     const EDGE = 56;
     const y = pointerYRef.current;
     let dy = 0;
     if (y > rect.bottom - EDGE) dy = Math.min(16, (y - (rect.bottom - EDGE)) / 3);
-    else if (y < rect.top + EDGE) dy = -Math.min(16, (rect.top + EDGE - y) / 3);
+    else if (y < top + EDGE) dy = -Math.min(16, (top + EDGE - y) / 3);
     if (dy !== 0) {
       r.viewport.scrollTop += dy;
       applyResize();

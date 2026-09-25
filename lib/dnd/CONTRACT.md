@@ -184,7 +184,8 @@ share one test user.
 
 - `NonTouchPointerSensor` — activationConstraint `{ distance: 5 }`
 - `TouchSensor` — activationConstraint `{ delay: 250, tolerance: 5 }`
-- `collisionDetection` — `closestCenter`
+- `collisionDetection` — `plannerCollision` (`lib/dnd/collision.ts`): `closestCenter`, minus
+  Week × Schedule hour cells hidden under a pinned column head
 
 `NonTouchPointerSensor` is `PointerSensor` with one extra line in its activator:
 it returns `false` for `pointerType === 'touch'`. That line is the whole reason

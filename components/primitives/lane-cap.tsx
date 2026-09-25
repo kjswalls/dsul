@@ -21,7 +21,9 @@ import { cn } from '@/lib/utils';
  * having the entire grid to itself.
  */
 
-const CAP_H = 18;
+/** Exported for Week, whose pinned column heads stick just under the row. */
+export const LANE_CAP_H = 18;
+const CAP_H = LANE_CAP_H;
 
 /**
  * The group's own colour, when the key names something that has one.

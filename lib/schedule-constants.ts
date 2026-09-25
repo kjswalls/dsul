@@ -92,6 +92,14 @@ export const HOVER_Z = 15;
 export const NOW_MARKER_Z = 20;
 
 /**
+ * The week columns' pinned heads (boundary rail, day header, Anytime strip) sit
+ * above the marker too: the hour grid scrolls UNDER them, and on today's column
+ * that includes the marker and any hovered block. They stay below the gutter,
+ * because sideways the heads are what scroll under it.
+ */
+export const WEEK_HEAD_Z = 21;
+
+/**
  * …and the week grid's pinned hour gutter sits above even that.
  *
  * One above NOW_MARKER_Z, deliberately, because this is the one thing that must
@@ -106,7 +114,7 @@ export const NOW_MARKER_Z = 20;
  * The bug is therefore invisible until you scroll the selected day under the
  * gutter — which is exactly the case the pin exists for.
  */
-export const WEEK_GUTTER_Z = 21;
+export const WEEK_GUTTER_Z = 22;
 
 /**
  * …and the grouping cap row sits above even the gutter.
@@ -117,7 +125,7 @@ export const WEEK_GUTTER_Z = 21;
  * opaque background slide over the lane captions on the first vertical scroll,
  * which is precisely the case the caps exist for.
  */
-export const LANE_CAP_Z = 22;
+export const LANE_CAP_Z = 23;
 
 /** One line of content (12/17). A free band shorter than this cannot hold a
  *  title at all. */
