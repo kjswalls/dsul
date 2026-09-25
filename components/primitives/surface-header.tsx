@@ -5,8 +5,9 @@ import { cn } from '@/lib/utils';
 
 /**
  * The double-card header: a flat `surface-3` capsule framing a shadowed 37px
- * `surface-2` row-pill. Dims from Figma — gray 406×50 r10; pill 385×37 r10,
- * inset (10,6), shadow `--shadow-elev-sm`; title Inter Medium 13.
+ * `surface-2` row-pill. Dims from Figma — gray 406×50 r10 at rest, and `below`
+ * grows it; pill 385×37 r10, inset (10,6), shadow `--shadow-elev-sm`; title
+ * Inter Medium 13.
  *
  * Extracted because the mobile redesign gave it a second home rather than a
  * second copy. On desktop it heads the sidebar's Braindump; on a phone the two
@@ -19,6 +20,7 @@ export function SurfaceHeader({
   title,
   className,
   children,
+  below,
 }: {
   /** Leading glyph. Beacon runs without one — the artboard gives it the title alone. */
   icon?: ReactNode;
@@ -27,6 +29,14 @@ export function SurfaceHeader({
   className?: string;
   /** Trailing controls, laid out in the row-pill after the title. */
   children?: ReactNode;
+  /**
+   * Content under the row-pill, inside the capsule — the braindump's Display
+   * shelf. Rendered bare, with no wrapper and no spacing of its own: a caller
+   * that passes nothing (Beacon) renders exactly as it did, the pill stays the
+   * capsule's first child, and whatever goes here owns its padding and its own
+   * absence, since an element that renders null is still a truthy prop.
+   */
+  below?: ReactNode;
 }) {
   return (
     <div
@@ -47,6 +57,7 @@ export function SurfaceHeader({
         </h2>
         {children}
       </div>
+      {below}
     </div>
   );
 }
