@@ -1522,7 +1522,11 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             ref={setAnytimeRef}
             data-dnd-id="unscheduled:anytime"
             data-dnd-over={isOverAnytime ? 'true' : 'false'}
-            className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
+            // mb-8 rather than padding, so the drop ring hugs the rows and not
+            // the gap. It overrides the parent's space-y-4 bottom margin (a
+            // zero-specificity :where rule), so the list sits 32px above the
+            // timeline instead of 16px.
+            className={cn('mb-8 rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
             {/* The grid below cannot take headings — a row's y position IS its
                 time, so a section either breaks the axis or floats free of it.

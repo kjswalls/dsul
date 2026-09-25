@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { format, startOfWeek, addDays, isSameDay } from 'date-fns';
 import { useDroppable } from '@dnd-kit/core';
 import { ScrollArea, ScrollBar } from '@/components/ui/scroll-area';
@@ -53,7 +53,20 @@ import { cn } from '@/lib/utils';
  */
 
 const HEADER_H = 60;
-const ANYTIME_H = 88;
+/**
+ * The Anytime strips' height band. The strips share one height (the hour grids
+ * below them must start on the same baseline), and that height is the TALLEST
+ * day's content clamped to this band. A light week keeps the old 88px; a week
+ * of habits grows until about six compact rows show, and only past that does a
+ * strip scroll. Growing costs the hour grid: useFitHourPx fits the hours to
+ * what is left of the pane, so the cap is what stops a busy Anytime from
+ * squeezing the day down to its 40px-an-hour floor.
+ */
+const ANYTIME_MIN_H = 88;
+const ANYTIME_MAX_H = 168;
+/** The strip's chrome around its rows: `p-1` top and bottom plus the 1px
+ *  dashed border. What gets measured is the rows alone. */
+const ANYTIME_CHROME_PX = 10;
 /**
  * The program-boundary rail. Rendered on EVERY column of a week that has any
  * boundary at all — including the empty ones, and including the hour gutter —
@@ -117,6 +130,8 @@ function WeekScheduleColumn({
   nowY,
   showBoundaryRail,
   lanePlan,
+  anytimeH,
+  onAnytimeHeight,
 }: {
   col: ColumnData;
   hours: number[];
@@ -141,6 +156,11 @@ function WeekScheduleColumn({
   /** Y of the live-time marker, or null when this column isn't today (or the
    *  clock falls outside the visible window). */
   nowY: number | null;
+  /** The week's shared Anytime strip height — see ANYTIME_MIN_H. */
+  anytimeH: number;
+  /** Reports this day's natural strip height (null on unmount), so the week
+   *  can size every strip to the tallest one. */
+  onAnytimeHeight: (dateStr: string, px: number | null) => void;
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const routines = usePlannerStore((s) => s.routines);
@@ -150,6 +170,23 @@ function WeekScheduleColumn({
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
+
+  // Measured before paint, so a busy week opens at its grown height instead of
+  // flashing at 88px for a frame. The observer catches every later change: a
+  // row ticked into its taller skipped look, a group heading, a new item.
+  const anytimeContentRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const el = anytimeContentRef.current;
+    if (!el) return;
+    const report = () => onAnytimeHeight(col.dateStr, el.getBoundingClientRect().height + ANYTIME_CHROME_PX);
+    report();
+    const ro = new ResizeObserver(report);
+    ro.observe(el);
+    return () => {
+      ro.disconnect();
+      onAnytimeHeight(col.dateStr, null);
+    };
+  }, [col.dateStr, onAnytimeHeight]);
 
   // Per column, like the overlap pass below: seven strips are seven independent
   // lists. `'none'` comes back as one unlabelled group — today's flat strip.
@@ -297,31 +334,34 @@ function WeekScheduleColumn({
         ref={setNodeRef}
         data-dnd-id={`week:${col.dateStr}:anytime`}
         data-dnd-over={isOver ? 'true' : 'false'}
-        style={{ height: ANYTIME_H }}
+        style={{ height: anytimeH }}
         className={cn(
           'mt-2 overflow-y-auto rounded-[8px] border border-dashed border-border/40 p-1 transition-colors',
           isOver && 'border-primary bg-primary/5'
         )}
       >
         {/* Same rule as Day × Schedule: the hour grid below cannot take
-            headings, this strip can. It is 88px and scrolls, so a grouped strip
-            shows fewer rows at rest — that is the cost of having asked. */}
-        {untimedGroups.map((g) =>
-          g.label ? (
-            <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-              {g.rows.map((row) => (
+            headings, this strip can. It is capped and scrolls past the cap, so
+            a grouped strip shows fewer rows at rest — that is the cost of
+            having asked. */}
+        <div ref={anytimeContentRef}>
+          {untimedGroups.map((g) =>
+            g.label ? (
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                {g.rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
+                ))}
+              </GroupSection>
+            ) : (
+              g.rows.map((row) => (
                 <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
-              ))}
-            </GroupSection>
-          ) : (
-            g.rows.map((row) => (
-              <TaskRow key={row.item.id} row={row} density="compact" date={col.date} />
-            ))
-          )
-        )}
-        {col.untimed.length === 0 && (
-          <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
-        )}
+              ))
+            )
+          )}
+          {col.untimed.length === 0 && (
+            <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
+          )}
+        </div>
       </div>
 
       {/* Hour grid. Every column carries its own lane: rail, beads, and — on
@@ -446,6 +486,21 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
   const { hourPx, anchorRef } = useFitHourPx(hours.length, resizing);
   useResizeScrollCompensation(gridStartHour, hourPx, resizing, anchorRef);
 
+  // Every strip reports its natural height and all seven take the tallest,
+  // clamped to the band. The reports live in a ref, so one only re-renders the
+  // week when the shared height actually moves.
+  const [anytimeH, setAnytimeH] = useState(ANYTIME_MIN_H);
+  const anytimeHeights = useRef(new Map<string, number>());
+  const onAnytimeHeight = useCallback((dateStr: string, px: number | null) => {
+    const heights = anytimeHeights.current;
+    if (px === null) heights.delete(dateStr);
+    else heights.set(dateStr, px);
+    let tallest = 0;
+    for (const h of heights.values()) tallest = Math.max(tallest, h);
+    const next = Math.min(ANYTIME_MAX_H, Math.max(ANYTIME_MIN_H, Math.ceil(tallest)));
+    setAnytimeH((prev) => (prev === next ? prev : next));
+  }, []);
+
   // How wide the day columns are, and the ⌘-wheel gesture that changes it.
   const { colPx, scrolledX, ref: weekColsRef } = useWeekColumns('schedule');
 
@@ -527,7 +582,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               sits 18px above the grid line it names. */}
           {showBoundaryRail && <div style={{ height: BOUNDARY_H }} />}
           <div style={{ height: HEADER_H }} />
-          <div style={{ height: ANYTIME_H }} className="mt-2" />
+          <div style={{ height: anytimeH }} className="mt-2" />
           <div ref={anchorRef} className="relative mt-2">
             {hours.map((h) => (
               <div
@@ -611,6 +666,8 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
               nowY={col.dateStr === todayStr ? nowY : null}
               showBoundaryRail={showBoundaryRail}
               lanePlan={lanePlan}
+              anytimeH={anytimeH}
+              onAnytimeHeight={onAnytimeHeight}
             />
           ))}
           </div>
