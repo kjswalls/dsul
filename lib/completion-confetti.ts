@@ -65,11 +65,10 @@ function nextPaint(): Promise<void> {
  * so the celebration sits on the receipt for the thing that earned it rather
  * than in the middle of the screen.
  *
- * Only a row raised by this completion counts. Not every completion raises
- * one (a recurring task's "Complete task on <date>: …" is not in
- * use-undo-toast's list), and a row still standing from an earlier action —
- * "Delete task: A" — is a receipt for something else; both fall back to the
- * old centre origin. Both docks mount an UndoStrip, but only the one in the
+ * Only a row raised by this completion counts. A completion whose label
+ * use-undo-toast's list leaves out raises none, and a row still standing
+ * from an earlier action — "Delete task: A" — is a receipt for something
+ * else; both fall back to the old centre origin. Both docks mount an UndoStrip, but only the one in the
  * visible shell has a box, and an off-screen row falls back too.
  *
  * Exported for the unit test.

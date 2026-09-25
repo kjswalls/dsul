@@ -448,9 +448,15 @@ already goes. A recovery feature only reachable from a rail nobody has opened is
   (`item-panel.spec.ts:104` asserts a second `role="dialog"` cannot coexist with the panel.)
 - **The common membership add-path.** Bulk `Collect` already exists in the selection bulk
   bar and is tri-state and correct. The console's member lists are for *curation*.
-- **Container creation, exclusively.** Creation stays distributed — the item dialog mints
-  projects, groups, routines, programs and types inline. The console owns the *destructive
-  and structural* verbs.
+- **Container creation, exclusively.** Creation stays distributed. *(Updated 2026-09-25.)*
+  The "new" dialog makes goals, routines, programs and projects: its type chip's menu lists
+  them under an "Organizers" heading after the item types, and picking one swaps the body
+  (`ContainerDialog`, components/planner/container-dialog.tsx, its own `new-container`
+  slot in the same shell) — reached by `n`, an empty omnibar `+`, and the palette's New
+  goal / routine / program. The item dialog's membership chips still mint them inline, and
+  the console keeps its own "+ New". Item *types* are made in the console only; the four
+  organizer nouns are reserved as slugs for new types so the menu never lists two "Goal"s.
+  The console owns the *destructive and structural* verbs.
 - **An Archive state** — refused. Paused/off is already the app's way of setting something
   down, and a second inactive state would double every object's vocabulary.
 

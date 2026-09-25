@@ -362,7 +362,17 @@ interface PlannerStore {
   setTimelineItemFilter: (filter: 'all' | 'tasks' | 'habits') => void;
 
   // Project actions
-  addProject: (name: string, emoji: string) => void;
+  /**
+   * Returns the new project's id, or null when the name is already taken
+   * (case-folded) and nothing was created. `extra` rides the same set() and the
+   * same insert — a colour picked in the "new" dialog is part of the arrival,
+   * not a second write the undo stack would split off.
+   */
+  addProject: (
+    name: string,
+    emoji: string,
+    extra?: Partial<Omit<Project, 'id' | 'name' | 'emoji'>>
+  ) => string | null;
   /** First-run starter containers. See seedStarterContainers for the guards. */
   seedStarterContainers: (plan: SeedPlan, forUserId: string) => CommitResult;
   updateProject: (id: string, updates: Partial<Project>) => void;
@@ -867,6 +877,20 @@ export type ActionLogEntry = {
    */
   batch?: number;
 };
+
+/**
+ * Slugs `addItemType` refuses for a NEW type: the three built-ins, and since
+ * 2026-09-25 the four organizer nouns the "new" dialog's type menu lists beside
+ * the item types. The two halves are exported separately because the console's
+ * refusal (labels.tsx `slugProblem`) says a different sentence for each — and
+ * builds both from these, so the copy and this guard can't drift apart silently.
+ */
+export const BUILTIN_ITEM_TYPE_NAMES: readonly string[] = ['task', 'habit', 'custom'];
+export const ORGANIZER_TYPE_NAMES: readonly string[] = ['goal', 'routine', 'program', 'project'];
+export const RESERVED_ITEM_TYPE_NAMES: readonly string[] = [
+  ...BUILTIN_ITEM_TYPE_NAMES,
+  ...ORGANIZER_TYPE_NAMES,
+];
 
 const MAX_HISTORY_SIZE = 50;
 let historyStack: HistoryState[] = [];
@@ -1824,7 +1848,12 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         if (!get().itemTypesAvailable) return;
         const name = def.name.trim().toLowerCase();
-        if (!name || ['task', 'habit', 'custom'].includes(name)) return;
+        // The organizer nouns are reserved for NEW types (2026-09-25): the "new"
+        // dialog's type menu lists Goal / Routine / Program / Project beside the
+        // item types, and a same-named type would read as the organizer. Types
+        // that already carry one of these names keep it; this only refuses new
+        // ones. Mirrored, with a sentence, by the console's slugProblem.
+        if (!name || RESERVED_ITEM_TYPE_NAMES.includes(name)) return;
         if (get().itemTypes.some((t) => t.name === name)) return;
         const full: ItemTypeDef = { ...def, name, id: crypto.randomUUID() };
         const next = [...get().itemTypes, full];
@@ -3635,15 +3664,15 @@ export const usePlannerStore = create<PlannerStore>()(
       clearFilters: () => set({ filters: {} }),
       setTimelineItemFilter: (timelineItemFilter) => set({ timelineItemFilter }),
 
-      addProject: (name, emoji) => {
+      addProject: (name, emoji, extra) => {
         // The label goes AFTER the guard. Armed before it, a no-op create
         // leaves `Add project: Foo` pending on a module-level variable and the
         // user's next unlabelled mutation is logged and undone under that name.
         const alreadyExists = get().projects.some((p) => sameContainerName('project', p.name, name));
-        if (alreadyExists) return;
+        if (alreadyExists) return null;
         setNextActionLabel(`Add project: ${name}`);
 
-        const project: Project = { id: crypto.randomUUID(), name, emoji };
+        const project: Project = { ...extra, id: crypto.randomUUID(), name, emoji };
         set((state) => ({ projects: [...state.projects, project] }));
         const entryId = lastHistoryEntryId();
 
@@ -3653,6 +3682,7 @@ export const usePlannerStore = create<PlannerStore>()(
             undoFailedCreate(error, entryId, project.id, name);
           });
         }
+        return project.id;
       },
 
       /**

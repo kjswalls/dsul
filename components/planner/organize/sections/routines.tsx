@@ -1,6 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { Layers, Moon, Trash2 } from 'lucide-react';
+import {
+  ChoiceChip,
+  ColorChip,
+  OrganizerSection,
+} from '@/components/primitives/organizer-chips';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 // The shell's shared AlertDialog, rendered once in AppShell. Using it rather
@@ -24,16 +30,16 @@ import {
   useLiveItemIds,
   useToday,
 } from '@/lib/collections';
-import { Eyebrow, ObjectRow, Segmented, SegmentedOption, SettingRow } from '../primitives';
+import { ObjectRow } from '../primitives';
 import {
-  BackRow,
   CreateForm,
-  DangerZone,
-  DayField,
+  DayChip,
   DetailColumn,
-  IdentityRow,
+  DetailHead,
   ListColumn,
   SectionWelcome,
+  StatusStrip,
+  TitleRow,
 } from '../detail-parts';
 import { makeIconToken } from '@/lib/category-icons';
 import { ItemMemberList } from '../member-list';
@@ -66,14 +72,7 @@ function ProgramHolders({
   onOpen: (id: string) => void;
 }) {
   return (
-    <div className="flex flex-col gap-1.5" data-testid="routine-holders">
-      <div className="flex h-[22px] items-center">
-        <Eyebrow>
-          In <span className="font-num">{holders.length}</span>{' '}
-          {holders.length === 1 ? 'program' : 'programs'}
-        </Eyebrow>
-      </div>
-
+    <OrganizerSection label="In programs" count={holders.length} testId="routine-holders">
       {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
       <div className="max-h-32 space-y-px overflow-y-auto">
         {holders.map((program) => {
@@ -110,7 +109,7 @@ function ProgramHolders({
           );
         })}
       </div>
-    </div>
+    </OrganizerSection>
   );
 }
 
@@ -313,100 +312,74 @@ function RoutineDetail({
   /** Of this routine's members, the ones its being held off is actually costing. */
   const hiddenHere = routine.itemIds.filter((id) => hiddenIds.has(id)).length;
 
-  return (
-    <div className="flex flex-col" data-testid="routine-detail" data-routine-id={routine.id}>
-      <BackRow label="Routines" testId="routine-detail-back" onBack={onBack} />
+  const consequence = `“${routine.name}” is removed, but its ${liveCount} ${
+    liveCount === 1 ? 'item stays' : 'items stay'
+  } exactly as ${liveCount === 1 ? 'it is' : 'they are'} — ${
+    liveCount === 1 ? 'it' : 'they'
+  } just stop being grouped${reappear ? ', and they come back into view' : ''}.`;
 
-      <IdentityRow
+  return (
+    <div
+      className="flex flex-col gap-4"
+      data-testid="routine-detail"
+      data-routine-id={routine.id}
+    >
+      <DetailHead
+        kind="Routine"
+        color={routine.color}
+        name={routine.name}
+        testPrefix="routine"
+        back={{ label: 'Routines', testId: 'routine-detail-back', onBack }}
+        menu={[
+          /* `reappear` reads EFFECTIVE, not the local pause. Deleting the
+             routine removes the whole activation path, so items held out of
+             sight by a PROGRAM come back exactly as ones held out by the
+             routine's own switch do — and the local-only version stayed silent
+             about it, which is the half of the sentence a user would want
+             before pressing Delete. */
+          {
+            label: 'Delete routine',
+            icon: <Trash2 className="size-3.5" />,
+            testId: 'routine-delete',
+            destructive: true,
+            onSelect: () =>
+              confirm({
+                title: 'Delete this routine?',
+                description: consequence,
+                confirmLabel: 'Delete',
+                destructive: true,
+                onConfirm: () => {
+                  removeRoutine(routine.id);
+                  onBack();
+                },
+              }),
+          },
+        ]}
+      />
+
+      <TitleRow
         id={routine.id}
         name={routine.name}
         icon={routine.icon}
-        color={routine.color}
         label="Routine"
         testPrefix="routine"
-        meta={
-          <>
-            Routine · <span className="font-num">{liveCount}</span>{' '}
-            {liveCount === 1 ? 'item' : 'items'}
-            {heldBy.length > 0 && (
-              <>
-                {' · in '}
-                <span className="font-num">{heldBy.length}</span>{' '}
-                {heldBy.length === 1 ? 'program' : 'programs'}
-              </>
-            )}
-          </>
-        }
         onPatch={(patch) => updateRoutine(routine.id, patch)}
       />
 
-      <div className="bg-border my-4 h-px" />
-
-      <SettingRow label="Status">
-        <Segmented>
-          {/* setRoutinePaused DIRECTLY, never through updateRoutine: it stamps
-              its own history label, and routing through the generic update
-              stamps "Edit routine" and lands the intended label on the user's
-              NEXT action. */}
-          <SegmentedOption
-            active={!paused}
-            onClick={() => setRoutinePaused(routine.id, false)}
-            testId="routine-state-active"
-          >
-            Active
-          </SegmentedOption>
-          <SegmentedOption
-            active={paused}
-            onClick={() => setRoutinePaused(routine.id, true)}
-            testId="routine-state-paused"
-          >
-            Paused
-          </SegmentedOption>
-        </Segmented>
-      </SettingRow>
-
       {paused && (
-        <SettingRow label="Comes back" description="Its items return on their own.">
-          {/* The store has always taken this third argument and no call site in
-              the app has ever passed it, while `pausedUntil` is READ in three
-              places — so a routine could be "paused until" a date only the agent
-              API could set.
-
-              Today is disabled along with the past, and that matches the rule
-              the store already enforces on the API side: the pause interval's
-              upper bound is EXCLUSIVE, so `pausedUntil = today` is live today.
-              resolvePauseWrite rejects it out loud ("the pause would end
-              immediately"); offering it here would be a control that silently
-              undoes the pause you are configuring. */}
-          <DayField
-            value={routine.pausedUntil}
-            placeholder="pick a day"
-            testId="routine-resume"
-            clearLabel="Clear resume date"
-            disabledDays={{ before: tomorrow }}
-            align="end"
-            // `?? null` and not `?? undefined`: clearing the date is a request,
-            // and undefined means "I did not say", which the store correctly
-            // treats as a no-op. Without this the ✕ would be a dead button.
-            onChange={(next) => setRoutinePaused(routine.id, true, next ?? null)}
-          />
-        </SettingRow>
-      )}
-
-      {paused && (
-        <p className="text-muted-foreground mt-3 max-w-[62ch] text-xs" data-testid="routine-paused-note">
+        <StatusStrip testId="routine-paused-note" icon={<Moon className="size-3.5" aria-hidden />}>
           {routine.pausedUntil
             ? `Its items come back on ${formatShort(routine.pausedUntil)}, on their own.`
             : 'Its items are hidden until you resume.'}{' '}
           Streaks and history stay exactly as they are.
-        </p>
+        </StatusStrip>
       )}
 
       {/* The override, and the whole reason this pane needed the effective
-          split. The switch above says Active and is telling the truth about the
-          value it writes; this says what that value is currently achieving,
-          which is nothing. Rendered only when the two disagree — a routine that
-          is simply on has nothing to explain.
+          split. The chip says Active and is telling the truth about the value
+          it writes; this says what that value is currently achieving, which is
+          nothing. Rendered only when the two disagree — a routine that is
+          simply on has nothing to explain.
 
           TWO SENTENCES, AND THEY ARE ABOUT DIFFERENT SUBJECTS. The first is
           about the ROUTINE and is always true here: every program holding it is
@@ -415,10 +388,7 @@ function RoutineDetail({
           them together as "so its items are hidden anyway", which lied for every
           member some other routine was still carrying. */}
       {standing.localOn && !standing.effectiveOn && standing.soonestBlocker && (
-        <p
-          className="text-muted-foreground mt-3 max-w-[62ch] text-xs"
-          data-testid="routine-held-note"
-        >
+        <StatusStrip testId="routine-held-note" icon={<Layers className="size-3.5" aria-hidden />}>
           {standing.blockers.length === 1 ? (
             <>
               &ldquo;{standing.soonestBlocker.name}&rdquo; is off, so this routine isn&rsquo;t
@@ -445,25 +415,55 @@ function RoutineDetail({
                 : 'They come back when one of those programs does.'}
             </>
           )}
-        </p>
+        </StatusStrip>
       )}
 
-      {heldBy.length > 0 && (
-        <div className="mt-5">
-          <ProgramHolders
-            holders={heldBy}
-            blockerIds={new Set(standing.blockers.map((p) => p.id))}
-            // A live program carries this routine only if the routine's own
-            // switch is on. Without this the pane said "Its items are hidden
-            // until you resume" and "carrying" three lines apart.
-            routineOn={standing.localOn}
-            onOpen={onOpenProgram}
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* setRoutinePaused DIRECTLY, never through updateRoutine: it stamps
+            its own history label, and routing through the generic update stamps
+            "Edit routine" and lands the intended label on the user's NEXT
+            action. The chip shows and writes LOCAL — the value it owns. */}
+        <ChoiceChip
+          label="Status"
+          value={paused ? 'paused' : 'active'}
+          options={ROUTINE_STATES}
+          testIdPrefix="routine-state"
+          onChange={(next) => setRoutinePaused(routine.id, next === 'paused')}
+        />
+        {paused && (
+          /* The store has always taken this third argument and no call site in
+             the app had ever passed it, while `pausedUntil` is READ in three
+             places — so a routine could be "paused until" a date only the agent
+             API could set.
+
+             Today is disabled along with the past, and that matches the rule
+             the store already enforces on the API side: the pause interval's
+             upper bound is EXCLUSIVE, so `pausedUntil = today` is live today.
+             resolvePauseWrite rejects it out loud ("the pause would end
+             immediately"); offering it here would be a control that silently
+             undoes the pause you are configuring. */
+          <DayChip
+            label="Comes back"
+            value={routine.pausedUntil}
+            testId="routine-resume"
+            clearLabel="Clear resume date"
+            disabledDays={{ before: tomorrow }}
+            // `?? null` and not `?? undefined`: clearing the date is a request,
+            // and undefined means "I did not say", which the store correctly
+            // treats as a no-op. Without this the clear would be a dead button.
+            onChange={(next) => setRoutinePaused(routine.id, true, next ?? null)}
           />
-        </div>
-      )}
+        )}
+        <ColorChip
+          value={routine.color}
+          testId="routine-color"
+          onChange={(color) => updateRoutine(routine.id, { color })}
+        />
+      </div>
 
-      <div className="mt-5">
+      <div className="mt-1.5 flex flex-col gap-5">
         <ItemMemberList
+          label="Items"
           ownerId={routine.id}
           ownerName={routine.name}
           memberIds={routine.itemIds}
@@ -476,41 +476,24 @@ function RoutineDetail({
           orderable
           onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
         />
-      </div>
 
-      {/* `reappear` reads EFFECTIVE, not the local pause. Deleting the routine
-          removes the whole activation path, so items held out of sight by a
-          PROGRAM come back exactly as ones held out by the routine's own switch
-          do — and the local-only version stayed silent about it, which is the
-          half of the sentence a user would want before pressing Delete. */}
-      <DangerZone
-        label="Delete this routine"
-        testId="routine-delete"
-        consequence={
-          <>
-            &ldquo;{routine.name}&rdquo; is removed, but its {liveCount}{' '}
-            {liveCount === 1 ? 'item stays' : 'items stay'} exactly as{' '}
-            {liveCount === 1 ? 'it is' : 'they are'} — {liveCount === 1 ? 'it' : 'they'} just stop
-            being grouped{reappear ? ', and they come back into view' : ''}.
-          </>
-        }
-        onDelete={() =>
-          confirm({
-            title: 'Delete this routine?',
-            description: `“${routine.name}” is removed, but its ${liveCount} ${
-              liveCount === 1 ? 'item stays' : 'items stay'
-            } exactly as ${liveCount === 1 ? 'it is' : 'they are'} — ${
-              liveCount === 1 ? 'it' : 'they'
-            } just stop being grouped${reappear ? ', and they come back into view' : ''}.`,
-            confirmLabel: 'Delete',
-            destructive: true,
-            onConfirm: () => {
-              removeRoutine(routine.id);
-              onBack();
-            },
-          })
-        }
-      />
+        {heldBy.length > 0 && (
+          <ProgramHolders
+            holders={heldBy}
+            blockerIds={new Set(standing.blockers.map((p) => p.id))}
+            // A live program carries this routine only if the routine's own
+            // switch is on. Without this the pane said "Its items are hidden
+            // until you resume" and "carrying" three lines apart.
+            routineOn={standing.localOn}
+            onOpen={onOpenProgram}
+          />
+        )}
+      </div>
     </div>
   );
 }
+
+const ROUTINE_STATES = [
+  { value: 'active', label: 'Active', dot: 'lime' },
+  { value: 'paused', label: 'Paused', dot: 'muted' },
+] as const;

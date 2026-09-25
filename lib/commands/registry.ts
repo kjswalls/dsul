@@ -57,7 +57,7 @@ import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
-import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
+import { useUIStore, openAddDialog, openBulkAdd, openNewContainer } from '../ui-store';
 import {
   goalsEnabled,
   groupByOptionsFor,
@@ -238,6 +238,47 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'bulk multiple paste import csv list batch many',
     aliases: ['bulk', 'import'],
     run: () => openBulkAdd(),
+  },
+  /* The three organizers the "new" dialog makes (2026-09-25). Palette rows
+     only: shortcut ids are frozen and cost a settings id each, and `n` already
+     reaches the same dialog, whose type menu lists them. No aliases either —
+     a custom type named "goal" was promised the `goal` token first, and
+     customTypeCommands yields to the static list, so claiming it here would
+     silently take it from that type's row. `create.project` keeps its inline
+     text argument: a project is often just a name.
+
+     `availableWhen` is the extension, like the console doors below it: greyed,
+     not gone. Table availability is the dialog's to explain — it disables its
+     own submit with a sentence rather than the palette hiding the row. */
+  {
+    id: 'create.goal',
+    label: 'New goal',
+    description: 'Set a long-term goal',
+    group: 'create',
+    icon: Target,
+    keywords: 'add create goal aim ambition target long term why',
+    availableWhen: () => goalsEnabled(),
+    run: () => openNewContainer('goal'),
+  },
+  {
+    id: 'create.routine',
+    label: 'New routine',
+    description: 'Group habits that run together',
+    group: 'create',
+    icon: RepeatIcon,
+    keywords: 'add create routine stack habits together pause',
+    availableWhen: () => organizeEnabled(),
+    run: () => openNewContainer('routine'),
+  },
+  {
+    id: 'create.program',
+    label: 'New program',
+    description: 'Plan a season',
+    group: 'create',
+    icon: CalendarRange,
+    keywords: 'add create program season period term block dates',
+    availableWhen: () => organizeEnabled(),
+    run: () => openNewContainer('program'),
   },
   {
     id: 'create.project',

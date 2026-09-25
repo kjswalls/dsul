@@ -23,6 +23,7 @@ export function PropertyChip({
   ariaLabel,
   label,
   value,
+  display,
   swatch,
   swatchShape = 'dot',
   glyph,
@@ -46,6 +47,9 @@ export function PropertyChip({
   label: string;
   /** The set value. Empty/undefined renders the unset (dashed) state. */
   value?: string;
+  /** Rich rendering of a SET value (a date range with its arrow glyph). `value`
+   *  still decides set vs unset and stays the plain-text form. */
+  display?: ReactNode;
   /** Small colour dot, for properties whose value carries a colour. */
   swatch?: string;
   /** Swatch form — 'square' marks identity (type, project), 'dot' a value (priority). */
@@ -129,7 +133,7 @@ export function PropertyChip({
           ) : Icon ? (
             <Icon className="size-3 shrink-0" aria-hidden />
           ) : null}
-          <span className="truncate">{value || label}</span>
+          <span className="truncate">{(isSet && display) || value || label}</span>
           {!isSet || alwaysChevron ? (
             <ChevronDown className="size-3 shrink-0 opacity-60" aria-hidden />
           ) : null}

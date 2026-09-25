@@ -118,9 +118,9 @@ function WeekBucketCell({
    * which is the bug the braindump shipped for one commit (lib/grouping.ts,
    * rule 1).
    *
-   * Only ONE of the two ever runs: the ungrouped pass is applied at its own
-   * render branch below rather than hoisted here, since the grouped path would
-   * discard it — and an O(n) partition spent for nothing, 28 cells deep and on
+   * Only ONE of the two ever runs: the ungrouped pass (`flatRows`) is gated on
+   * `grouped` being null rather than computed unconditionally, since the grouped
+   * path would discard it — and an O(n) partition spent for nothing, 28 cells deep and on
    * every dnd re-render, is the cost the memo above exists to avoid.
    */
   const { completedAs, rootRef } = useSinkHold(setNodeRef);
@@ -131,6 +131,9 @@ function WeekBucketCell({
           rows: sinkCompleted(g.rows, completionDateStr, completedAs),
         }))
       : null;
+  // The ungrouped render's rows, sunk once and shared with the shut caption's
+  // peek so the two agree on order. Still skipped entirely on the grouped path.
+  const flatRows = grouped ? null : sinkCompleted(allRows, completionDateStr, completedAs);
 
   return (
     <div
@@ -155,6 +158,11 @@ function WeekBucketCell({
         isCurrent={isCurrent}
         variant={variant}
         contentMaxH={isEmpty ? undefined : WEEK_BUCKET_MAX_H}
+        // Blocks lead the cell, so they lead the shut caption's peek too.
+        peek={[
+          ...bucketProjects.map((p) => p.name),
+          ...(grouped ? grouped.flatMap((g) => g.rows) : flatRows!).map((r) => r.item.title),
+        ]}
       >
         {!isEmpty && (
           <>
@@ -181,7 +189,7 @@ function WeekBucketCell({
                     ))}
                   </GroupSection>
                 ))
-              : sinkCompleted(allRows, completionDateStr, completedAs).map((row) => (
+              : flatRows!.map((row) => (
                   <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                 ))}
           </>
