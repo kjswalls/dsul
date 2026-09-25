@@ -754,10 +754,11 @@ the canvas one rather than a smaller one: it has `type` and still lacks `bucket`
 pill, saying in words what the Display menu has set: "Grouped by …", "Sorted by …", the
 priority values (the menu's dots; No priority is the hollow ring), the project values (the
 menu's colour squares; No project is the ring), the goal values (lucide `Target`), and
-"Hide finished" last. Values follow the menu's rows, never the order they were toggled in;
-a value the store cannot resolve (a deleted project, a goal id nothing answers to, a string
-no Priority row offers) comes after the rest, in the order it was stored. It is there
-exactly when the trigger's lime dot is lit, in the sidebar and in
+"Hide finished" last. Values follow the menu's rows, never the order they were toggled in.
+A value with no row comes after those with one, in the order it was stored: a string no
+Priority row offers, a goal id nothing answers to, and for projects a deleted project, then a
+ref of no project kind. No project is the exception, and stays last, where its row is. It is
+there exactly when the trigger's lime dot is lit, in the sidebar and in
 the phone's Braindump tab alike, so a braindump with nothing set keeps the bare capsule.
 Clicking the text opens the Display menu; the ✕ beside it resets. The dot says THAT the list
 is shaped and the shelf says how, and one case makes it more than a convenience: a filter
@@ -816,10 +817,14 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   screen by then: unticking the one priority takes the shelf away and ticking another brings
   a new one back, all while the menu stays open, and focus lands on the new one. With no
   shelf left, Radix sends focus to the trigger, which is what happens when a pick clears the
-  last setting. An opening through the trigger itself clears the record, since a trigger
-  can reopen a menu still playing its exit, whose close never reached its focus return. So
-  does a right- or ctrl-click outside, mirroring Radix's own rule that such a click leaves
-  focus where it lands.
+  last setting. An opening through the trigger itself clears the record, and so does a
+  right- or ctrl-click outside, mirroring Radix's own rule that such a click leaves focus
+  where it lands. The opening's clear is for a press on the trigger while the menu plays its
+  exit, a close that has not reached its focus return yet. In Chromium that press also lands
+  on the closing menu's outside-press listener, still armed, so the menu stays shut; with the
+  clear, focus ends on the trigger just pressed, and without it, on the shelf. On the phone
+  the overlay covers the trigger through the sheet's exit, so the sheet's clear is the same
+  rule with no tap that reaches it.
 - **Fit is imperative, and it is not state.** Whether the text fits changes on every frame of
   a sash drag, and React never hears about that: the column resizes through `--sidebar-w`
   precisely so the braindump does not re-render. So the shelf writes `data-fit` on its own
@@ -828,21 +833,29 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   one-line width is MEASURED: force `line`, then take the span from the first `[data-line]`'s
   left edge to the last one's right (not `scrollWidth`, which clamps to `clientWidth` whenever
   the content fits). That happens in a layout effect keyed on the FULL text, and again, per
-  text, when `document.fonts.ready` settles: a late font swap resizes nothing the probe could
-  hear, and a new text can ask for a subset the page has not loaded (a Cyrillic goal name
-  landing with the planner), which the layout effect measures in the fallback face. Keying on
+  text, when `document.fonts.ready` settles: a new text can ask for a subset the page has not
+  loaded (a Cyrillic goal name landing with the planner), which the layout effect measures in
+  the fallback face, and the sample below is Latin, so another script's subset landing
+  changes nothing it can hear. Keying on
   the full text rather than the clause labels is what re-fits when a value joins a
   multi-select that is already showing. A resize only COMPARES: a ResizeObserver on a
   zero-height probe (`absolute inset-x-0 top-0 h-0`, whose size is the root's width and never
   the fit's) re-applies the cached width against the lines box. Its one exception is to
   measure once when the cached width is still 0, for a shelf that mounted where nothing was
-  laid out. The same observer watches the `[data-line]` spans. A line that resizes in a
-  delivery the probe is not part of resized with the column standing still, so its text
-  changed size with its string unchanged (a WCAG 1.4.12 text-spacing override, text-only
-  zoom, a late font), and that re-measures a frame later, outside the observer's delivery,
-  in either fit: a shelf stacks when an override widens its text, and goes back to one line
-  when the override comes off. A drag resizes the probe on every frame, and a stacked shelf's
-  lines with it in the same delivery, so a drag only ever compares. The comparison allows one
+  laid out. The same observer watches a SAMPLE: an invisible, out-of-flow,
+  `whitespace-nowrap` span that draws "Hide finished" through `::before` (so it adds no text
+  to the page) in the shelf's own type. Its width answers to the font and to spacing, never
+  to the column or the fit, so a sample resize is the text changing size with its string
+  unchanged (a WCAG 1.4.12 text-spacing override, text-only zoom, a minimum font size, a late
+  font). That re-measures a frame later, outside the observer's delivery, in either fit and
+  whatever else the delivery holds: a shelf stacks when an override widens its text and goes
+  back to one line when it comes off, mid-drag or not. A drag never touches the sample, so it
+  only ever compares, and a sample gone to 0 is the shelf being hidden, which has nothing to
+  fit until the sample's return, itself a resize, measures it. The first version watched the
+  `[data-line]` spans and took a line resizing with no probe in the delivery for the text
+  changing size. A review in Chromium found two holes in that: a stacked line stretches
+  across the column, so a change that only narrowed the text resized nothing there, and a
+  change in a frame where the column also moved looked like a drag. The comparison allows one
   layout unit (1/64px) and no more: nothing on the one line truncates, so any overflow is a
   glyph cut off with no ellipsis, and neither side of the comparison depends on the fit, so
   there is no oscillation for a wider margin to damp.
@@ -885,10 +898,11 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   false). That is deterministic, and useless for testing a stack.
   `tests/unit/display-shelf.test.tsx` stubs `Element.prototype.getBoundingClientRect`, giving
   the lines box a chosen width and laying the `[data-line]` spans out in whichever fit the
-  root holds as they are read (end to end on one line; each at 0, no wider than the box,
-  when stacked, so a measure that forgot to force the one line reads the stack), and
-  restores it after each case. It delivers the shelf's observer by hand, finding it by the
-  probe it watches, because dnd-kit builds observers of its own around the braindump.
+  root holds as they are read (end to end on one line; stacked, each stretched across the
+  box, as a column's children are, so a measure that forgot to force the one line reads the
+  stack), and restores it after each case. It delivers the shelf's observer by hand, finding
+  it by the probe it watches, because dnd-kit builds observers of its own around the
+  braindump, and gives each entry the `contentRect.width` the shelf reads off the sample.
 - **The `typeof ResizeObserver === 'undefined'` guard is load-bearing.** jsdom has no
   ResizeObserver, and `tests/unit/braindump-grouping.test.tsx` mounts an ACTIVE braindump (a
   grouping is set, so the shelf renders) without stubbing one. Without the guard, all 11 of
@@ -905,7 +919,7 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
 - **Never measure inside the observer's delivery.** Forcing the one-line layout there starts a
   measure, resize, measure loop, and the "ResizeObserver loop" errors it raises land on every
   other observer on the page. The observer compares; a change of text measures, and so does
-  the frame the observer schedules when a line resized with the column standing still.
+  the frame the observer schedules when its sample resized.
 - **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
   The tests query `[data-clause="…"]` instead.
 - **jsdom's accessible-name computation trims each element's text.** So the space inside an
@@ -926,7 +940,7 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
 a 4+ value priority or project filter at 280px (wraps between values); a long project name
 at 280px (ellipsizes); collapse and hover-peek with the shelf showing; open from the shelf and
 Escape (focus back on the shelf); a text-spacing bookmarklet or text-only zoom applied with the
-shelf on one line (it stacks rather than clip).
+shelf on one line (it stacks rather than clip), then taken off (it goes back to one line).
 
 ## Related
 

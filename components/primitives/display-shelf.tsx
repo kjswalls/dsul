@@ -255,6 +255,7 @@ function ShelfBody({
   const rootRef = useRef<HTMLDivElement>(null);
   const probeRef = useRef<HTMLSpanElement>(null);
   const linesRef = useRef<HTMLSpanElement>(null);
+  const sampleRef = useRef<HTMLSpanElement>(null);
   /** The current text's one-line width; 0 until something laid out has been measured. */
   const lineWidth = useRef(0);
 
@@ -280,9 +281,8 @@ function ShelfBody({
   // with the planner is measured in the fallback face above. The measure above
   // is what asks for that subset, so `ready` here waits on it. Per text, not
   // once, since each text can ask for a subset of its own. The observer below
-  // hears most swaps as its lines resize, but not one that leaves every line's
-  // box as it was, as a stacked line already as wide as the column can be.
-  // (jsdom has no `document.fonts`.)
+  // hears a swap through its sample, which is Latin, so a subset for another
+  // script changes nothing it can see. (jsdom has no `document.fonts`.)
   useEffect(() => {
     let alive = true;
     document.fonts?.ready.then(() => {
@@ -297,24 +297,32 @@ function ShelfBody({
     };
   }, [text]);
 
-  // One observer, two jobs. It watches the zero-height probe rather than the
-  // shelf, because the probe's width is the root's and nothing else, where the
-  // shelf's own box changes height with the very fit this is deciding; a probe
-  // resize only compares. And it watches the lines. A line that resized while
-  // the probe did not resized with the column standing still, so its text
-  // changed size with its string unchanged (a late font, a text-spacing or
-  // text-only-zoom override), and that re-measures, a frame later, in either
-  // fit. A drag resizes the probe on every frame, and a stacked shelf's lines
-  // with it in the same delivery, so a drag only ever compares.
+  // One observer, two jobs, and neither is the shelf itself, whose height
+  // changes with the very fit this is deciding. The zero-height probe's width
+  // is the root's and nothing else, so a probe resize is the column moving, and
+  // that only compares. The sample's width is a fixed phrase in the shelf's own
+  // type and nothing else, never the column's or the fit's, so a sample resize
+  // is the text changing size with its string unchanged (a late font, a
+  // text-spacing or text-only-zoom override, a minimum font size). That
+  // re-measures, a frame later, in either fit and whatever else the delivery
+  // holds: a change that lands mid-drag is not taken for the drag. A drag never
+  // touches the sample, so it only ever compares. A sample gone to nothing is
+  // the shelf being hidden, with nothing to fit until the sample's return,
+  // itself a resize, measures it.
+  //
+  // Not the lines, the obvious thing to watch: a stacked line stretches to the
+  // column, so a change that only narrows the text resizes nothing there, and a
+  // change in a frame where the column also moves looks like a drag.
+  //
   // Guarded: jsdom has no ResizeObserver, suites mount an active braindump
   // without stubbing one (tests/unit/braindump-grouping.test.tsx), and a shelf
   // with no observer simply keeps the fit it measured.
-  const observer = useRef<ResizeObserver | null>(null);
   useEffect(() => {
     const root = rootRef.current;
     const probe = probeRef.current;
+    const sample = sampleRef.current;
     const box = linesRef.current;
-    if (typeof ResizeObserver === 'undefined' || !root || !probe || !box) return;
+    if (typeof ResizeObserver === 'undefined' || !root || !probe || !sample || !box) return;
     let frame = 0;
     const ro = new ResizeObserver((entries) => {
       // The one measure in the observer's own delivery: a shelf that mounted
@@ -324,7 +332,8 @@ function ShelfBody({
         lineWidth.current = measureLineWidth(root, box);
       }
       applyFit(root, box, lineWidth.current);
-      if (frame || entries.some((e) => e.target === probe)) return;
+      const resized = entries.some((e) => e.target === sample && e.contentRect.width > 0);
+      if (frame || !resized) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
         lineWidth.current = measureLineWidth(root, box);
@@ -332,23 +341,12 @@ function ShelfBody({
       });
     });
     ro.observe(probe);
-    observer.current = ro;
+    ro.observe(sample);
     return () => {
       cancelAnimationFrame(frame);
       ro.disconnect();
-      observer.current = null;
     };
   }, []);
-
-  // The lines come and go with their clauses, so the observer follows them.
-  useEffect(() => {
-    const ro = observer.current;
-    const box = linesRef.current;
-    if (!ro || !box) return;
-    const rows = Array.from(box.children).filter((el) => el.hasAttribute('data-line'));
-    rows.forEach((el) => ro.observe(el));
-    return () => rows.forEach((el) => ro.unobserve(el));
-  }, [text]);
 
   const resetButton = (
     <button
@@ -391,6 +389,16 @@ function ShelfBody({
         data-shelf-probe=""
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-0"
+      />
+      {/* The text's size, sampled (see the observer above): a phrase in the
+          shelf's own type, placed out of flow and unbreakable, so its width
+          answers to the font and to spacing and never to the column. Drawn
+          through ::before, so it adds no text to the page. */}
+      <span
+        ref={sampleRef}
+        data-shelf-sample=""
+        aria-hidden
+        className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:content-['Hide_finished']"
       />
       {/* No aria-label: the name is the visible text, so what a voice-control
           user reads off the screen is what they can say (WCAG 2.5.3, Label in

@@ -241,14 +241,15 @@ const rect = (left: number, width: number) =>
 /**
  * jsdom lays nothing out, so the shelf's two measurements are drawn here, in
  * whichever fit its root holds as they are read. On one line the lines lie end
- * to end from 0. Stacked, each starts at 0, no wider than the box, so a measure
- * that did not force the one line first would read the stack's width instead.
+ * to end from 0. Stacked, each stretches across the box, as a column's children
+ * do, so a measure that did not force the one line first would read the stack's
+ * width instead, and a stacked line's size says nothing about its text's.
  */
 function layOut() {
   Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
     if (this.hasAttribute('data-shelf-lines')) return rect(0, boxWidth);
     if (this.hasAttribute('data-line') && this.closest('[data-fit="stack"]')) {
-      return rect(0, Math.min(lineWidthOf(this), boxWidth));
+      return rect(0, boxWidth);
     }
     if (this.hasAttribute('data-line') && this.parentElement) {
       let left = 0;
@@ -566,8 +567,11 @@ describe('opening the menu from the shelf', () => {
       fireEvent.click(opener());
       fireEvent.keyDown(menu(), { key: 'Escape' });
       await waitFor(() => expect(menu()).toHaveAttribute('data-state', 'closed'));
+      // The opening edge. In a browser the same press also lands on the
+      // closing menu's outside-press listener, still armed through the exit,
+      // which shuts it again at once; jsdom leaves it open. Either way the
+      // opening has cleared the text, and the Escape closes whatever is up.
       fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false });
-      expect(menu()).toHaveAttribute('data-state', 'open');
 
       fireEvent.keyDown(menu(), { key: 'Escape' });
       await finishExit();
@@ -671,7 +675,10 @@ describe('opening the menu from the shelf', () => {
       fireEvent.click(opener());
       fireEvent.keyDown(sheet(), { key: 'Escape' });
       await waitFor(() => expect(sheet()).toHaveAttribute('data-state', 'closed'));
-      // Still sliding out, so that close never reached its focus return.
+      // Still sliding out, so that close never reached its focus return. On a
+      // phone the overlay still covers the trigger here and takes the tap, so
+      // this pins the opening edge's rule where a click can reach it: an
+      // opening clears whatever an earlier one asked for.
       fireEvent.click(trigger());
       expect(sheet()).toHaveAttribute('data-state', 'open');
 
@@ -686,25 +693,34 @@ describe('fit: one line, or the stack', () => {
   const fit = () => shelf().getAttribute('data-fit');
   const lineEls = () => [...shelf().querySelectorAll('[data-line]')];
 
+  const probe = () => shelf().querySelector('[data-shelf-probe]')!;
+  const sample = () => shelf().querySelector('[data-shelf-sample]')!;
+
   /** The shelf's own ResizeObserver: the one watching its probe. */
   function shelfObserver() {
-    const probe = shelf().querySelector('[data-shelf-probe]');
-    const mine = observations.filter((o) => probe !== null && o.els.includes(probe));
+    const mine = observations.filter((o) => o.els.includes(probe()));
     expect(mine).toHaveLength(1);
     return mine[0];
   }
 
-  /** Deliver the shelf's observation: the probe's resize, unless other targets are named. */
-  function resize(targets?: Element[]) {
+  /**
+   * Deliver the shelf's observation by hand, one [target, width] per entry. The
+   * shelf reads an entry's width only off the sample, which is as wide as its
+   * phrase whenever the shelf is laid out at all, and 0 when it is hidden.
+   */
+  function deliver(...entries: [Element, number][]) {
     const observer = shelfObserver();
-    const resized = targets ?? [shelf().querySelector('[data-shelf-probe]')!];
     act(() =>
       observer.cb(
-        resized.map((target) => ({ target }) as ResizeObserverEntry),
+        entries.map(([target, width]) => ({ target, contentRect: { width } }) as unknown as ResizeObserverEntry),
         {} as ResizeObserver
       )
     );
   }
+  /** The column moved. */
+  const resize = () => deliver([probe(), boxWidth]);
+  /** The text changed size with its string unchanged. */
+  const resample = (width: number) => deliver([sample(), width]);
 
   /** Let one animation frame run, and whatever the shelf asked of it first. */
   const nextFrame = () =>
@@ -756,8 +772,8 @@ describe('fit: one line, or the stack', () => {
   });
 
   it('measures the one line even while it stands stacked', () => {
-    // Read in the stack, every line is at most the box's width, and a new text
-    // measured that way would fold the shelf onto one clipped line.
+    // Read in the stack, every line is the box's width, and a new text measured
+    // that way would fold the shelf onto one clipped line.
     layOut();
     boxWidth = 150;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
@@ -786,7 +802,7 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe(expected);
   });
 
-  it('measures again, a frame later, when a line changes size with its text unchanged', async () => {
+  it('measures again, a frame later, when its text changes size with its string unchanged', async () => {
     // A text-spacing override, or text-only zoom: the same string, set wider,
     // in a column that has not moved.
     layOut();
@@ -796,15 +812,17 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('line');
 
     lineWidthOf = () => 150;
-    resize(lineEls());
+    resample(80);
     // Never inside the observer's own delivery, where it only compares.
     expect(fit()).toBe('line');
     await nextFrame();
     expect(fit()).toBe('stack');
   });
 
-  it('measures a stacked shelf again when its text shrinks with the column standing still', async () => {
-    // The override taken off again: the stack goes back to one line.
+  it('measures a stacked shelf again when its text shrinks, which resizes none of its lines', async () => {
+    // The override taken off again: the stack goes back to one line. Every
+    // stacked line stretches across the column, so the lines stay the size
+    // they were, and only the sample says the text has changed.
     layOut();
     boxWidth = 150;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
@@ -812,41 +830,93 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('stack');
 
     lineWidthOf = () => 50;
-    resize(lineEls());
+    resample(60);
     expect(fit()).toBe('stack');
     await nextFrame();
     expect(fit()).toBe('line');
   });
 
-  it('leaves lines that resized with the column unmeasured, as a drag resizes them on every frame', async () => {
+  it('measures in a frame where the column moved too, which a drag alone never is', async () => {
     layOut();
-    boxWidth = 150;
+    boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
-    expect(fit()).toBe('stack');
+    expect(fit()).toBe('line');
 
-    // Measured, these would fit on one line. A stacked shelf's lines resize in
-    // the same delivery as the probe, which is how a drag reads.
-    lineWidthOf = () => 50;
-    resize([shelf().querySelector('[data-shelf-probe]')!, ...lineEls()]);
+    // One delivery: the column widens by 10 as the text widens by half.
+    boxWidth = 260;
+    lineWidthOf = () => 150;
+    deliver([probe(), boxWidth], [sample(), 105]);
+    // The delivery only compares, and the width it has is the old text's...
+    expect(fit()).toBe('line');
+    // ...until the frame after, which measures the new one.
     await nextFrame();
     expect(fit()).toBe('stack');
   });
 
-  it('watches every line the text has, and no line it has lost', () => {
+  it('measures nothing for a sample gone to nothing, which is the shelf being hidden', async () => {
+    // A hidden shelf has nothing to fit, and its sample coming back is a
+    // resize of its own, which measures then. The stub still lays the lines
+    // out, wider now, so a measure here would show as a stack.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe('line');
+
+    lineWidthOf = () => 150;
+    resample(0);
+    await nextFrame();
+    expect(fit()).toBe('line');
+
+    resample(80);
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('watches its probe and its sample, and nothing whose size the fit decides', () => {
+    // Not the lines: a stacked line stretches across the column, so a text that
+    // narrowed there resized nothing, and a line resizing in a frame the column
+    // also moved could not be told from a drag.
     seed({ braindumpGroupBy: 'project' });
     renderBraindump();
-    const watched = () =>
-      shelfObserver()
-        .els.filter((el) => el.hasAttribute('data-line'))
-        .map((el) => el.getAttribute('data-line'));
-    expect(watched()).toEqual(['arrange']);
+    const watchesExactlyTheTwo = () => {
+      const { els } = shelfObserver();
+      expect(els).toHaveLength(2);
+      expect(els).toContain(probe());
+      expect(els).toContain(sample());
+    };
+    watchesExactlyTheTwo();
 
-    act(() => useViewStore.setState({ braindumpFilters: filters({ hideFinished: true }) }));
-    expect(watched()).toEqual(['arrange', 'hide-finished']);
+    act(() =>
+      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
+    );
+    watchesExactlyTheTwo();
+  });
 
-    act(() => useViewStore.setState({ braindumpGroupBy: 'none' }));
-    expect(watched()).toEqual(['hide-finished']);
+  it('samples the text in its own type, out of flow and unbreakable, and adds no text', () => {
+    // Its width has to answer to the font and to spacing and never to the
+    // column: out of flow, unbreakable, from the root's top-left corner. Its
+    // phrase comes through ::before, so the shelf's text and name stay the
+    // visible text, and nothing about it shows or takes a pointer.
+    seed({ braindumpGroupBy: 'project' });
+    renderBraindump();
+    const s = sample();
+
+    expect(s.parentElement).toBe(shelf());
+    expect(s).toHaveClass(
+      'invisible',
+      'pointer-events-none',
+      'absolute',
+      'left-0',
+      'top-0',
+      'h-0',
+      'overflow-hidden',
+      'whitespace-nowrap'
+    );
+    expect(s.className).toMatch(/(^| )before:content-\['[^'\s]+'\]( |$)/);
+    expect(s).toHaveAttribute('aria-hidden', 'true');
+    expect(s.textContent).toBe('');
   });
 
   it('re-fits when a value joins a clause that is already showing', () => {
