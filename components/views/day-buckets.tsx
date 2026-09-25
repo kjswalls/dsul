@@ -277,6 +277,14 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
         dragging={dragging}
         isEmpty={totalItems === 0 && bucketProjects.length === 0}
         variant={variant}
+        // What a shut card lists in its caption, in the order the open card
+        // draws it: untimed rows (grouped and sunk), then project blocks, then
+        // the timed spine.
+        peek={[
+          ...untimedGroups.flatMap((g) => g.rows.map((r) => r.item.title)),
+          ...bucketProjects.map((p) => p.name),
+          ...timedRows.map((r) => r.item.title),
+        ]}
       >
         {/* Unscheduled section — dedicated drop target, mounted whenever
             dragging so the rect is measurable (see CONTRACT.md). */}
