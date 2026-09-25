@@ -279,10 +279,10 @@ export function Sidebar() {
             and a mark in flow would push the header down by its own height
             plus the column's gap — so it is drawn over that band instead, and
             the one number keeps guaranteeing the line-up. The 25px inset is
-            the capsule's 10px plus the pill's 15px, so the bolt stands over
+            the capsule's 10px plus the pill's 15px, so the word starts over
             the count's first figure. Out of the braindump <section> on purpose:
             it names the app, not the list, and stays out of that section's
-            testid scope. No opacity on it or any parent — the bolt is lime. */}
+            testid scope. No opacity on it or any parent — its dot is lime. */}
         <Wordmark
           className="pointer-events-none absolute inset-x-0 top-0 h-[31px] px-[25px] text-foreground select-none"
           data-testid="sidebar-wordmark"
