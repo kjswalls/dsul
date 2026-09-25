@@ -7,7 +7,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type ComponentProps,
   type ReactNode,
 } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -36,12 +35,20 @@ import {
 import { Button } from '@/components/ui/button';
 import { Calendar } from '@/components/ui/calendar';
 import {
-  ResponsiveModal,
-  ResponsiveModalContent,
-  ResponsiveModalHeader,
   ResponsiveModalTitle,
   ResponsiveModalDescription,
 } from '@/components/ui/responsive-modal';
+import {
+  ADD_MODAL_CLASS,
+  ColorSquare,
+  EnterHint,
+  NewTypeMenu,
+  SERIF_NOTES_CLASS,
+  SERIF_TITLE_CLASS,
+  SurfaceA11yHeader,
+  SurfaceContent,
+  SurfaceRoot,
+} from '@/components/planner/surface';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -73,7 +80,7 @@ import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/ex
 import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
-import { useUIStore, openBulkAdd } from '@/lib/ui-store';
+import { useUIStore, openBulkAdd, openNewContainer } from '@/lib/ui-store';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
@@ -145,21 +152,6 @@ const DATE_SHORTCUTS = [
   { label: 'Tomorrow', days: 1 },
   { label: 'Next week', days: 7 },
 ];
-
-/**
- * Identity mark for a type or container — the mockup's 9px color square, as
- * opposed to the round dot that marks a *value* (priority). Same vocabulary as
- * PropertyChip's swatchShape="square".
- */
-function ColorSquare({ color }: { color: string }) {
-  return (
-    <span
-      className="size-[9px] shrink-0 rounded-[3px]"
-      style={{ background: color }}
-      aria-hidden
-    />
-  );
-}
 
 /**
  * The "create one from here" affordance inside a membership chip's popover (C2).
@@ -241,104 +233,9 @@ function recentStreakDays(habit: HabitItem): boolean[] {
     habit.completedDates.includes(format(subDays(today, 13 - i), 'yyyy-MM-dd'))
   );
 }
-
 // ── The two shapes of the surface ────────────────────────────────────────────
-// Same children either way. `modal` is the Radix dialog (desktop) / vaul drawer
-// (mobile); `panel` is a bare <aside> the shell lays out BESIDE the canvas — no
-// portal, no overlay, no focus trap, no scroll lock, so the app stays workable
-// behind it. Splitting at the wrapper rather than forking the body is what keeps
-// "growth is a presentation, not a fork" true (memory/plans/item-surface-growth.md).
-
-function SurfaceRoot({
-  panel,
-  open,
-  onOpenChange,
-  isMobile,
-  children,
-}: {
-  panel: boolean;
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Settled in the permanent wrapper — this tree mounts fresh per open. */
-  isMobile: boolean;
-  children: ReactNode;
-}) {
-  if (panel) return <>{children}</>;
-  return (
-    <ResponsiveModal open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
-      {children}
-    </ResponsiveModal>
-  );
-}
-
-function SurfaceContent({
-  panel,
-  open,
-  flat,
-  panelLabel,
-  className,
-  overlayClassName,
-  children,
-  ...props
-}: ComponentProps<typeof ResponsiveModalContent> & {
-  panel: boolean;
-  open: boolean;
-  /** Docked on the backdrop (shell column) vs floating as an overlay card
-   *  (the /item page). Flat drops the card chrome; floating keeps it. */
-  flat: boolean;
-  panelLabel: string;
-}) {
-  if (panel) {
-    // Unmounts when closed: the shell's column animates its own width, and the
-    // e2e suite asserts the surface reaches count 0 after a close.
-    if (!open) return null;
-    return (
-      <aside
-        aria-label={panelLabel}
-        // Focusable as a container so ⌘\ can land here and Tab can continue
-        // into it — the panel never takes focus on its own (see autoFocus).
-        tabIndex={-1}
-        // Deliberately NOT role="dialog" — it isn't modal, and the suite's bare
-        // getByRole('dialog') must keep resolving to exactly one node.
-        //
-        // Two surfaces, one body:
-        //  · flat (shell) — a surface on the surface-0 backdrop, NOT a card: it
-        //    reads as the paper plane BELOW the floating <main> card, mirroring
-        //    the braindump column on the left (whose list sits directly on
-        //    paper). So no bg-canvas fill, no border, no rounded card edge —
-        //    the backdrop shows through. pt-[42px] drops the title's cap-top
-        //    onto the same line as the "Braindump" and date headers (~59px from
-        //    the window top); this column has no header capsule to add the
-        //    offset those two get for free.
-        //  · floating (/item page) — the same card recipe as <main>, because
-        //    there it is a fixed overlay ABOVE the page's own content, so it
-        //    must stay opaque and framed. No drop shadow either way: the shell
-        //    column clips (overflow-hidden) for its width animation, which would
-        //    eat an outer cast.
-        className={
-          flat
-            ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
-            : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'
-        }
-        {...props}
-      >
-        {children}
-      </aside>
-    );
-  }
-  return (
-    <ResponsiveModalContent className={className} overlayClassName={overlayClassName} {...props}>
-      {children}
-    </ResponsiveModalContent>
-  );
-}
-
-/** Radix needs a title/description in the a11y tree; the <aside> labels itself
- *  (and a DialogTitle rendered outside a Dialog throws). */
-function SurfaceHeader({ panel, children }: { panel: boolean; children: ReactNode }) {
-  if (panel) return null;
-  return <ResponsiveModalHeader className="sr-only">{children}</ResponsiveModalHeader>;
-}
+// SurfaceRoot / SurfaceContent / SurfaceA11yHeader live in ./surface, shared
+// with ContainerDialog so an organizer's "new" body wears this exact shell.
 
 /** `type` is the registry name ('task', 'habit', or a custom slug like 'goal'). */
 export type ItemDialogState =
@@ -696,7 +593,6 @@ function ItemDialogInner({
     projects,
     getProjectColor,
     addProject,
-    itemTypesAvailable,
     defaultTimeBucket,
     itemTypes,
     userTimezone,
@@ -2863,48 +2759,37 @@ function ItemDialogInner({
       testId="item-dialog-type-chip"
       alwaysChevron
       className="font-medium"
-      contentClassName="w-56"
+      contentClassName="w-60"
     >
       {(close) => (
-        <>
-          {typeNames.map((t) => (
-            <ChipOption
-              key={t}
-              selected={t === activeTypeName}
-              testId="item-dialog-type-option"
-              value={t}
-              onSelect={() => {
-                switchType(t);
-                close();
-              }}
-            >
-              <ColorSquare color={getItemTypeConfig(t).accent} />
-              {getItemTypeConfig(t).label}
-              {t === activeTypeName && <Check className="ml-auto size-3.5" />}
-            </ChipOption>
-          ))}
-          {itemTypesAvailable && (
-            <>
-              {organizeOn && (
-                <>
-                  <div className="bg-border -mx-1 my-1 h-px" />
-                  <ChipOption
-                    tone="muted"
-                    onSelect={() => {
-                      close();
-                      // Replaces this dialog rather than stacking on it: openDialog
-                      // swaps the single active slot.
-                      openConsole({ section: 'types' });
-                    }}
-                  >
-                    <Plus className="size-3.5" />
-                    Organize types…
-                  </ChipOption>
-                </>
-              )}
-            </>
-          )}
-        </>
+        // Shared with ContainerDialog: the organizers ride this same menu, and
+        // picking one hands the title and notes typed so far to that dialog
+        // (the single slot swaps; this one closes). Never offered on a seeded
+        // open — a bucket's or a day's "+" is asking for an item there.
+        <NewTypeMenu
+          active={activeTypeName}
+          showOrganizers={!addPayload?.bucket && !addPayload?.date}
+          onPickType={switchType}
+          onPickOrganizer={(kind) => {
+            // The text MOVES to the organizer, so it leaves the add drafts —
+            // every type's, since switchType and a seeded open copy the title
+            // across them. Drafts outlive a close (the stash), and a title left
+            // behind would be waiting in the next plain "new", one Enter from a
+            // duplicate item; a successful save clears them for the same reason.
+            // Switching back re-seeds it through openAddDialog's title. The
+            // stash is written directly too, not left to the effect, since the
+            // slot swap may unmount this body before the effect runs.
+            const title = activeDraft?.title || undefined;
+            const notes = activeDraft?.notes || undefined;
+            const next = Object.fromEntries(
+              Object.entries(addDrafts).map(([t, d]) => [t, { ...d, title: '', notes: '' }])
+            );
+            setAddDrafts(next);
+            writeDraftStash(next);
+            openNewContainer(kind, title, notes);
+          }}
+          close={close}
+        />
       )}
     </PropertyChip>
   );
@@ -2968,7 +2853,7 @@ function ItemDialogInner({
       // rather than a form. dark:bg-transparent is load-bearing: Input carries
       // dark:bg-input/30, which tailwind-merge keeps (different modifier) and
       // which outranks bg-transparent on specificity.
-      className="-mx-1 h-auto w-[calc(100%+0.5rem)] border-0 bg-transparent px-1 py-0 font-serif text-lg leading-snug font-medium shadow-none placeholder:font-normal focus-visible:ring-0 md:text-lg dark:bg-transparent"
+      className={SERIF_TITLE_CLASS}
     />
   ) : null;
 
@@ -3001,7 +2886,7 @@ function ItemDialogInner({
           // Desktop only — the mobile drawer ignores both.
           className={
             mode === 'add'
-              ? 'top-[14vh] w-[calc(100vw-2rem)] translate-y-0 sm:max-w-[460px] max-h-[80vh] overflow-y-auto overflow-x-hidden'
+              ? ADD_MODAL_CLASS
               : 'inset-y-3 right-3 left-auto w-[460px] max-w-[calc(100vw-1.5rem)] translate-x-0 translate-y-0 content-start rounded-[20px] overflow-y-auto overflow-x-hidden data-[state=open]:zoom-in-100 data-[state=closed]:zoom-out-100 data-[state=open]:slide-in-from-right-6 data-[state=closed]:slide-out-to-right-6'
           }
           overlayClassName={
@@ -3035,7 +2920,7 @@ function ItemDialogInner({
           {/* The visible heading is the title field itself; Radix still needs a
               real title and description in the a11y tree. The panel doesn't —
               it labels itself, and DialogTitle outside a Dialog would throw. */}
-          <SurfaceHeader panel={isPanel}>
+          <SurfaceA11yHeader panel={isPanel}>
             <ResponsiveModalTitle>
               {mode === 'add' ? 'Add New' : `Edit ${editConfig?.label ?? 'Item'}`}
             </ResponsiveModalTitle>
@@ -3044,7 +2929,7 @@ function ItemDialogInner({
                 ? 'Add a new task or habit to your daily planner.'
                 : editConfig?.form.editDescription}
             </ResponsiveModalDescription>
-          </SurfaceHeader>
+          </SurfaceA11yHeader>
 
           {activeDraft && (
             <div className="flex flex-col gap-4">
@@ -3168,7 +3053,7 @@ function ItemDialogInner({
                   // included (dark:bg-input/30 survives tailwind-merge).
                   // Paired with the serif title as "what you wrote", set
                   // against the sans + mono metadata around it.
-                  className="-mx-1 min-h-0 w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed shadow-none placeholder:italic focus-visible:ring-0 md:text-sm dark:bg-transparent"
+                  className={SERIF_NOTES_CLASS}
                 />
               )}
 
@@ -3199,12 +3084,7 @@ function ItemDialogInner({
                 // saving-indicator arm here: this surface commits on submit and
                 // the button is the whole promise.
                 <div className="flex items-center justify-between gap-3 border-t pt-3">
-                  <span className="text-muted-foreground hidden items-center gap-1.5 text-xs sm:flex">
-                    <kbd className="border-border text-muted-foreground rounded-xs border px-1 font-mono text-[10px]">
-                      ↵
-                    </kbd>
-                    to {mode === 'add' ? 'add' : 'save'}
-                  </span>
+                  <EnterHint verb={mode === 'add' ? 'add' : 'save'} />
                   <Button
                     onClick={handleSubmit}
                     data-testid="item-dialog-submit"

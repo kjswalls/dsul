@@ -152,6 +152,7 @@ test.describe('programs', () => {
       // Asserted in here rather than by closing and re-opening: each manager
       // round trip costs several seconds, and this proves the same thing.
       await expect(page.getByTestId('program-state-pill')).toHaveCount(0);
+      await page.getByTestId('program-state-chip').click();
       await page.getByTestId('program-state-paused').click();
       await expect(page.getByTestId('program-state-pill')).toHaveCount(1);
       await closeManager(page);
@@ -169,6 +170,7 @@ test.describe('programs', () => {
 
       await openManager(page, 'programs');
       await page.getByTestId('program-row').first().click();
+      await page.getByTestId('program-state-chip').click();
       await page.getByTestId('program-state-active').click();
       await closeManager(page);
 
@@ -200,6 +202,7 @@ test.describe('programs', () => {
 
       await openManager(page, 'programs');
       await createContainer(page, 'program', scope.title('Term'));
+      await page.getByTestId('program-state-chip').click();
       await page.getByTestId('program-state-paused').click();
 
       // Attaching a LIVE standalone routine to a program that is off is the
@@ -245,6 +248,7 @@ test.describe('programs', () => {
       const offName = scope.title('Off');
       await createContainer(page, 'program', offName);
       await addItemToOpenContainer(page, 'program', title);
+      await page.getByTestId('program-state-chip').click();
       await page.getByTestId('program-state-paused').click();
       await closeManager(page);
       await expect(itemCardIn(timeline(page), habitId)).toHaveCount(0);

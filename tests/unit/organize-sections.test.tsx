@@ -112,6 +112,36 @@ const pick = (triggerTestId: string, option: string) => {
   fireEvent.click(screen.getByRole('option', { name: option }));
 };
 
+/**
+ * Pick from a status chip — a PropertyChip popover, which opens on click. The
+ * option ids are `${chip prefix}-${value}` and only exist while it is open.
+ */
+const choose = (chipPrefix: string, value: string) => {
+  click(`${chipPrefix}-chip`);
+  click(`${chipPrefix}-${value}`);
+};
+
+/**
+ * The delete sentence, as the confirm behind the pane's ⋯ menu states it. The
+ * goal, program and routine panes carry their delete there (2026-09-25), so
+ * the consequence is said once, in the prompt, instead of under a red zone.
+ * Radix's DropdownMenuTrigger opens on pointerdown; the pane runs the action
+ * once the menu has closed, which FocusScope schedules on a timer.
+ */
+const deleteSentence = (prefix: string): string => {
+  fireEvent.pointerDown(id(`${prefix}-more`), { pointerType: 'mouse', button: 0, ctrlKey: false });
+  click(`${prefix}-delete`);
+  // Not yet: the confirm waits for the menu to hand focus back, or the menu's
+  // focus return would land after the dialog opened and steal its focus.
+  expect(useUIStore.getState().confirmRequest).toBeNull();
+  act(() => {
+    vi.runOnlyPendingTimers();
+  });
+  const request = useUIStore.getState().confirmRequest;
+  expect(request).not.toBeNull();
+  return String(request?.description ?? '');
+};
+
 beforeEach(() => {
   // The sections are the console's, and the console ships off — see
   // tests/unit/support/extensions.ts for why this is stated per suite.
@@ -163,7 +193,7 @@ describe('the routines section', () => {
     // control with nothing to do.
     expect(maybe('routine-resume')).toBeNull();
 
-    click('routine-state-paused');
+    choose('routine-state', 'paused');
     expect(usePlannerStore.getState().routines[0].pausedAt).toBeTruthy();
     expect(id('routine-resume')).toBeInTheDocument();
   });
@@ -185,6 +215,8 @@ describe('the routines section', () => {
     click('routine-row');
     expect(id('routine-resume')).toHaveTextContent('Sep 1');
 
+    // The clear lives under the chip's calendar.
+    click('routine-resume');
     click('routine-resume-clear');
     expect(usePlannerStore.getState().routines[0].pausedUntil).toBeUndefined();
     // Still paused — clearing the return date is not a resume.
@@ -217,9 +249,9 @@ describe('the routines section', () => {
     });
     open('routines');
     click('routine-row');
-    const zone = id('routine-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('its 2 items stay exactly as they are');
-    expect(zone).toHaveTextContent('they come back into view');
+    const sentence = deleteSentence('routine');
+    expect(sentence).toContain('its 2 items stay exactly as they are');
+    expect(sentence).toContain('they come back into view');
   });
 
   it('drops the come-back clause when the routine was never hiding anything', () => {
@@ -229,9 +261,9 @@ describe('the routines section', () => {
     });
     open('routines');
     click('routine-row');
-    const zone = id('routine-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('its 1 item stays exactly as it is');
-    expect(zone).not.toHaveTextContent('come back into view');
+    const sentence = deleteSentence('routine');
+    expect(sentence).toContain('its 1 item stays exactly as it is');
+    expect(sentence).not.toContain('come back into view');
   });
 });
 
@@ -267,8 +299,10 @@ describe('a routine a program is holding off', () => {
     // Rendering this as Paused would be a lie about the stored value, and
     // turning the program back on would hand back a routine the user believes
     // they switched off.
-    expect(id('routine-state-active')).toHaveAttribute('aria-pressed', 'true');
-    expect(id('routine-state-paused')).toHaveAttribute('aria-pressed', 'false');
+    expect(id('routine-state-chip')).toHaveTextContent('Active');
+    click('routine-state-chip');
+    expect(id('routine-state-active')).toHaveAttribute('data-selected');
+    expect(id('routine-state-paused')).not.toHaveAttribute('data-selected');
     // And no resume field, which belongs to the routine's own pause.
     expect(maybe('routine-resume')).toBeNull();
   });
@@ -343,8 +377,7 @@ describe('a routine a program is holding off', () => {
     // Deleting the routine removes the whole activation path, so these items
     // are on screen again the moment it goes — and the old copy, keyed on the
     // local pause, said nothing at all.
-    const zone = id('routine-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('they come back into view');
+    expect(deleteSentence('routine')).toContain('they come back into view');
   });
 
   it('greys the members on EFFECTIVE state, not the local switch', () => {
@@ -395,8 +428,7 @@ describe('a member the routine is NOT the only path to', () => {
     twoRoutines();
     open('routines');
     fireEvent.click(screen.getAllByTestId('routine-row')[0]);
-    const zone = id('routine-delete').closest('div')?.parentElement;
-    expect(zone).not.toHaveTextContent('come back into view');
+    expect(deleteSentence('routine')).not.toContain('come back into view');
   });
 
   it('says the routine is not carrying them, without claiming they are hidden', () => {
@@ -424,8 +456,7 @@ describe('a member the routine is NOT the only path to', () => {
     });
     open('routines');
     click('routine-row');
-    const zone = id('routine-delete').closest('div')?.parentElement;
-    expect(zone).not.toHaveTextContent('come back into view');
+    expect(deleteSentence('routine')).not.toContain('come back into view');
     // …and it IS greyed, because it is genuinely not on the grid.
     expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-muted-foreground');
   });
@@ -513,11 +544,13 @@ describe('the programs section', () => {
     click('program-row');
     // On and Off are manual overrides that always win, so pickers beside them
     // would be controls with no effect.
-    expect(maybe('program-starts-on')).toBeNull();
+    expect(maybe('program-runs-chip')).toBeNull();
 
-    click('program-state-auto');
-    expect(id('program-starts-on')).toBeInTheDocument();
-    expect(id('program-ends-on')).toBeInTheDocument();
+    choose('program-state', 'auto');
+    expect(id('program-runs-chip')).toBeInTheDocument();
+    click('program-runs-chip');
+    expect(id('program-runs-start')).toBeInTheDocument();
+    expect(id('program-runs-end')).toBeInTheDocument();
   });
 
   it.each([
@@ -850,7 +883,15 @@ describe('the label sections', () => {
     expect(id('type-new-problem')).toHaveTextContent('“task” is a built-in name');
 
     fireEvent.change(field, { target: { value: 'Goal' } });
+    // A pre-existing type named after an organizer is a duplicate first: to its
+    // owner "you already have one" is the truer sentence.
     expect(id('type-new-problem')).toHaveTextContent('You already have a type called “Goal”');
+
+    // An organizer noun nobody has as a type is refused with its own sentence —
+    // the "new" dialog lists the Routine organizer one row away.
+    fireEvent.change(field, { target: { value: 'Routine' } });
+    expect(id('type-add')).toBeDisabled();
+    expect(id('type-new-problem')).toHaveTextContent('“routine” is an organizer, not a type');
 
     // The derivation is where the surprise is, so the message names the slug.
     fireEvent.change(field, { target: { value: '99 Bottles' } });
@@ -1431,6 +1472,38 @@ describe('the member picker', () => {
 });
 
 /* ── making something (N1) ────────────────────────────────────────────────── */
+
+describe('making a program in the console', () => {
+  const day = (label: string) =>
+    screen.getAllByRole('button').find((b) => b.getAttribute('aria-label')?.includes(label))!;
+
+  it('writes the Runs range in the one addProgram, as auto', () => {
+    // `auto`, so the dates ARE the switch; one call, so it is one undo entry.
+    seed({ programs: [] });
+    const addProgram = vi.fn(() => 'p-new');
+    usePlannerStore.setState({ addProgram });
+    open('programs');
+    click('program-new');
+    fireEvent.change(id('program-new-name'), { target: { value: 'Autumn term' } });
+    click('program-new-runs-chip');
+    fireEvent.click(day('August 20th, 2026'));
+    // Setting the start flips the calendar to the end, for the second half.
+    fireEvent.click(day('August 30th, 2026'));
+    click('program-add');
+
+    expect(addProgram).toHaveBeenCalledTimes(1);
+    expect(addProgram).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'Autumn term',
+        state: 'auto',
+        startsOn: '2026-08-20',
+        endsOn: '2026-08-30',
+        itemIds: [],
+        routineIds: [],
+      })
+    );
+  });
+});
 
 describe('the create flow lives in the detail pane', () => {
   const three = () =>

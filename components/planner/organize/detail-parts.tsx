@@ -1,12 +1,17 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronLeft, Plus, X } from 'lucide-react';
-import { Input } from '@/components/ui/input';
+import { ChevronLeft, MoreHorizontal, Plus, X } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { IconPicker } from '@/components/primitives/icon-picker';
+import { ChipOption, PropertyChip } from '@/components/primitives/property-chip';
 import { ColorSwatchPicker } from '@/components/primitives/color-swatch-picker';
 import { accentColorForName } from '@/lib/accent-colors';
 import { formatShort, parseDay, useNameDraft } from '@/lib/collections';
@@ -371,18 +376,219 @@ export function IdentityRow({
   );
 }
 
-/* ── create ───────────────────────────────────────────────────────────── */
+/* ── the edit-pane head ──────────────────────────────────────────────── */
 
 /**
- * The create row, pinned at the FOOT of the list column and outside the
- * scroller, so the list never jumps under the cursor and the row never scrolls
- * away.
+ * The top of a goal, program or routine pane, in the ITEM edit pane's grammar
+ * (item-dialog.tsx): a whisper — the colour square and the kind, 11px muted —
+ * with the pane's quiet verbs on the right, ending in a ⋯ menu.
  *
- * UNCONDITIONALLY MOUNTED — this is law, not preference. The e2e suite fills
- * `{kind}-new-name` with no preceding click (`programs.spec.ts:111-112`), so
- * making it conditional times out every container-creating test in both spec
- * files. `disabled` gates the button, never the row's existence.
+ * Delete lives in that menu and nowhere else. A goal, program or routine goes
+ * to the trash and comes back from it, so a labelled red zone at the foot of
+ * every pane was spending the loudest thing in the console on an undoable act;
+ * the item pane already keeps its Delete one tap behind ⋯ for the same reason.
+ *
+ * Below `md` the detail replaces the list, so BackRow stands above it.
+ *
+ * MENU ACTIONS RUN AFTER THE MENU HAS HANDED FOCUS BACK, not in `onSelect`.
+ * Every one of them opens the shared confirm, and ConfirmDialog remembers
+ * whatever holds focus the moment it opens so Cancel can put the cursor back.
+ * Run from `onSelect`, that is the menu item — unmounted a frame later — so
+ * reading the prompt and deciding not to delete dropped the cursor on <body>.
+ * Deferred to the menu's close, it is the ⋯ trigger, which is still there.
  */
+export interface DetailMenuAction {
+  label: string;
+  icon: React.ReactNode;
+  testId: string;
+  destructive?: boolean;
+  onSelect: () => void;
+}
+
+export function DetailHead({
+  kind,
+  color,
+  name,
+  testPrefix,
+  back,
+  actions,
+  menu,
+}: {
+  /** "Goal", "Program", "Routine". */
+  kind: string;
+  color?: string;
+  /** Hashed for the square when no colour is stored, as ObjectRow does. */
+  name: string;
+  testPrefix: string;
+  back: { label: string; testId: string; onBack: () => void };
+  /** Quiet verbs before the ⋯ — a goal's "Open as page". */
+  actions?: React.ReactNode;
+  menu: DetailMenuAction[];
+}) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const pending = useRef<(() => void) | null>(null);
+
+  return (
+    <div className="flex flex-col">
+      <BackRow {...back} />
+      <div className="flex min-h-7 items-center gap-2">
+        <span
+          data-testid={`${testPrefix}-whisper`}
+          className="text-muted-foreground inline-flex min-w-0 flex-1 items-center gap-1.5 text-[11px]"
+        >
+          <span
+            className="size-[9px] shrink-0 rounded-[3px]"
+            style={{ background: color ?? accentColorForName(name) }}
+            aria-hidden
+          />
+          {kind}
+        </span>
+        {actions}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              ref={triggerRef}
+              type="button"
+              data-testid={`${testPrefix}-more`}
+              aria-label={`More ${kind.toLowerCase()} actions`}
+              className="text-muted-foreground hover:text-foreground hover-wash focus-visible:ring-ring flex size-7 shrink-0 items-center justify-center rounded-md focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <MoreHorizontal className="size-4" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            className="w-52"
+            onCloseAutoFocus={(event) => {
+              const run = pending.current;
+              pending.current = null;
+              if (!run) return;
+              // Focus home FIRST, then act — see above.
+              event.preventDefault();
+              triggerRef.current?.focus();
+              run();
+            }}
+          >
+            {menu.map((action) => (
+              <DropdownMenuItem
+                key={action.testId}
+                variant={action.destructive ? 'destructive' : 'default'}
+                data-testid={action.testId}
+                onSelect={() => {
+                  pending.current = action.onSelect;
+                }}
+              >
+                {action.icon}
+                {action.label}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Icon + name, as the item pane draws its title: a 30px glyph button and a
+ * borderless SERIF heading. Colour is not here — it is a chip in the row below,
+ * the way an item's project is.
+ *
+ * Buffered exactly as IdentityRow is, and for the same reason (see there):
+ * committed on blur and on Enter, Escape resets, blank or unchanged reverts.
+ */
+export function TitleRow({
+  id,
+  name,
+  icon,
+  label,
+  testPrefix,
+  onPatch,
+  validate,
+}: {
+  id: string;
+  name: string;
+  icon?: string;
+  /** "Routine", "Program", … — the field's accessible name. */
+  label: string;
+  testPrefix: string;
+  onPatch: (patch: { name?: string; icon?: string }) => void;
+  validate?: (next: string) => string | null;
+}) {
+  const nameDraft = useNameDraft(id, name, (next) => onPatch({ name: next }), validate);
+  const ref = useRef<HTMLInputElement>(null);
+
+  useEscapeRung(() => {
+    if (nameDraft.draft === name || document.activeElement !== ref.current) return false;
+    nameDraft.reset();
+    return true;
+  });
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <div className="flex items-center gap-2.5">
+        <IconPicker
+          value={icon}
+          name={name}
+          onSelect={(next) => onPatch({ icon: next })}
+          className="h-[30px] w-[30px] [&_svg]:size-4"
+        />
+        <input
+          ref={ref}
+          value={nameDraft.draft}
+          onChange={(e) => nameDraft.setDraft(e.target.value)}
+          onBlur={nameDraft.commit}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              // Blur only on acceptance — see IdentityRow.
+              if (nameDraft.commit()) e.currentTarget.blur();
+            }
+          }}
+          aria-label={`${label} name`}
+          data-testid={`${testPrefix}-name-input`}
+          className="text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 font-serif text-lg leading-snug font-medium outline-none"
+        />
+      </div>
+      {nameDraft.problem && (
+        <p
+          className="text-destructive max-w-[58ch] text-xs"
+          data-testid={`${testPrefix}-name-problem`}
+        >
+          {nameDraft.problem}
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * A state the pane has to explain — a paused routine, a program on its dates, a
+ * goal's wind-down — in the item pane's paused-note dress: a quiet filled strip
+ * with a leading glyph. Muted, never a warning colour: it states a fact.
+ */
+export function StatusStrip({
+  icon,
+  testId,
+  children,
+}: {
+  icon: React.ReactNode;
+  testId: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="bg-surface-2 text-muted-foreground flex items-start gap-2.5 rounded-md px-2.5 py-2 text-xs"
+    >
+      <span className="mt-px flex shrink-0">{icon}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+/* ── create ───────────────────────────────────────────────────────────── */
+
 /**
  * MAKING SOMETHING, in the detail pane — the console's create surface.
  *
@@ -392,10 +598,15 @@ export function IdentityRow({
  * and now looks like one — the same shape as the add-item dialog, where the app
  * already teaches that a name and an icon make a thing.
  *
- * It KEEPS DraftRow's testids (`{prefix}-new-name`, `{prefix}-add`,
+ * It KEEPS the old create row's testids (`{prefix}-new-name`, `{prefix}-add`,
  * `{prefix}-new-problem`) because it is the same gesture in a better place: the
  * suites that drive creation only have to open it first, and the validate
  * contract — a SENTENCE, never a silent disabled button — is unchanged.
+ *
+ * `fields` is the kind's own part of making one — a goal's why and window, a
+ * program's run — so the things that DEFINE the object are asked for at birth
+ * rather than left as post-create edits. The section owns their state and
+ * reads it in `onCreate`; the form only places them.
  *
  * An EMPTY section opens straight into this, which is why `onCancel` is
  * optional: with no rows behind it there is nothing to cancel back to, and a
@@ -411,6 +622,7 @@ export function CreateForm({
   disabled,
   autoFocus,
   validate,
+  fields,
   onCreate,
   onCancel,
 }: {
@@ -436,6 +648,8 @@ export function CreateForm({
    */
   autoFocus?: boolean;
   validate?: (name: string) => string | null;
+  /** The kind's own fields, under the name — see above. */
+  fields?: React.ReactNode;
   onCreate: (name: string, icon: string | undefined) => void;
   onCancel?: () => void;
 }) {
@@ -528,6 +742,8 @@ export function CreateForm({
         </p>
       )}
 
+      {fields && <div className="mt-3 flex flex-col gap-3">{fields}</div>}
+
       <p className="text-muted-foreground mt-3 max-w-[46ch] text-sm">{hint}</p>
 
       <div className="mt-5 flex items-center gap-2">
@@ -552,116 +768,6 @@ export function CreateForm({
         )}
         <span className="text-muted-foreground font-num ml-auto text-2xs">↵ to create</span>
       </div>
-    </div>
-  );
-}
-
-export function DraftRow({
-  placeholder,
-  addLabel,
-  testPrefix,
-  disabled,
-  validate,
-  autoFocus,
-  onAdd,
-}: {
-  placeholder: string;
-  addLabel: string;
-  testPrefix: string;
-  /** Creation is unavailable (feature flag off, or the store is still loading). */
-  disabled?: boolean;
-  /**
-   * Why this name cannot be used, or null. Item types use it for the slug rules
-   * (shape, reserved words, uniqueness).
-   *
-   * IT RETURNS A SENTENCE, not a boolean, and that is the whole point. The
-   * dialog this replaced disabled the add button silently, so typing "Task" — a
-   * reserved slug — produced a dead button and no explanation anywhere on the
-   * screen. A rule the user cannot see is a rule they can only discover by
-   * failing.
-   */
-  validate?: (name: string) => string | null;
-  autoFocus?: boolean;
-  onAdd: (name: string, icon: string | undefined) => void;
-}) {
-  const [name, setName] = useState('');
-  const [icon, setIcon] = useState<string | undefined>(undefined);
-  const ref = useRef<HTMLInputElement>(null);
-
-  const trimmed = name.trim();
-  // Only speaks once there is something to judge — an empty field is not an
-  // error, it is the resting state.
-  const problem = trimmed && validate ? validate(trimmed) : null;
-  const valid = !!trimmed && !disabled && !problem;
-
-  // Rung: clearing a half-typed name is a step back; leaving is the next one.
-  useEscapeRung(() => {
-    if (!name || document.activeElement !== ref.current) return false;
-    setName('');
-    return true;
-  });
-
-  const submit = () => {
-    if (!valid) return;
-    onAdd(trimmed, icon);
-    setName('');
-    setIcon(undefined);
-  };
-
-  return (
-    <div className="border-border shrink-0 border-t">
-      <div className="flex h-11 items-center gap-2 px-[15px]">
-        <IconPicker value={icon} name={name} onSelect={setIcon} />
-        <Input
-          ref={ref}
-          autoFocus={autoFocus}
-          placeholder={placeholder}
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit();
-          }}
-          aria-label={`${addLabel} name`}
-          data-testid={`${testPrefix}-new-name`}
-          aria-invalid={!!problem || undefined}
-          aria-describedby={problem ? `${testPrefix}-new-problem` : undefined}
-          // Placeholder one ink brighter than the muted default: a resting
-          // create row that reads as an invitation, not a disabled field.
-          className="-mx-1 h-[26px] flex-1 border-0 bg-transparent px-1 text-sm shadow-none placeholder:text-secondary-foreground focus-visible:ring-0"
-        />
-        <button
-          type="button"
-          onClick={submit}
-          disabled={!valid}
-          aria-label={addLabel}
-          data-testid={`${testPrefix}-add`}
-          className={cn(
-            'flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[5px] disabled:opacity-40',
-            // Goes lime the moment the name is valid — the app's one "this is the
-            // primary action now" signal, and the single spot the console spends
-            // its accent on a fill. At rest it is the same quiet grey the row
-            // always was, so an empty create row adds no colour to the plate.
-            valid
-              ? 'bg-primary text-primary-foreground hover:bg-primary/90'
-              : 'bg-surface-3 text-muted-foreground hover:text-foreground hover-wash'
-          )}
-        >
-          <Plus className="h-3 w-3" />
-        </button>
-      </div>
-      {/* Below the row, not in a tooltip and not in a toast: the sentence has to
-          be readable at the moment the button refuses, next to the field it is
-          about. It appears only while a name is actually rejected, so the
-          settled row keeps its 44px. */}
-      {problem && (
-        <p
-          id={`${testPrefix}-new-problem`}
-          data-testid={`${testPrefix}-new-problem`}
-          className="text-muted-foreground px-[15px] pb-2 text-xs"
-        >
-          {problem}
-        </p>
-      )}
     </div>
   );
 }
@@ -693,6 +799,10 @@ export function DraftRow({
  *
  * No Enter-to-commit: Enter is a newline in a textarea, which is the whole point
  * of using one. Escape reverts, matching its sibling.
+ *
+ * It is BORDERLESS SERIF and grows with its text — the item pane's notes recipe
+ * (item-dialog.tsx), because in the edit-pane grammar the why is "what you
+ * wrote", set against the chips' sans metadata, not a form field in a box.
  */
 export function BufferedTextarea({
   value,
@@ -700,7 +810,7 @@ export function BufferedTextarea({
   testId,
   ariaLabel,
   placeholder,
-  rows = 2,
+  rows = 1,
   className,
 }: {
   value: string;
@@ -734,6 +844,8 @@ export function BufferedTextarea({
     return true;
   });
 
+  useAutoGrow(ref, draft);
+
   return (
     <textarea
       ref={ref}
@@ -745,11 +857,68 @@ export function BufferedTextarea({
       onChange={(e) => setDraft(e.target.value)}
       onBlur={commit}
       className={cn(
-        'border-border bg-background text-foreground focus-visible:outline-ring placeholder:text-muted-foreground/60',
-        'w-full resize-none rounded-[5px] border px-2 py-1.5 text-sm leading-relaxed',
-        'focus-visible:outline-1 focus-visible:outline-solid',
+        // The item pane's notes recipe, minus the shadcn Textarea it undoes.
+        'text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed outline-none placeholder:italic',
         className
       )}
+    />
+  );
+}
+
+/**
+ * One line tall, growing with the text. `field-sizing` alone would do it in
+ * Chrome; measuring keeps Safari from trapping a long why inside one scrolling
+ * row. 'auto' first so it also SHRINKS on delete. Same cap as item notes.
+ */
+function useAutoGrow(ref: React.RefObject<HTMLTextAreaElement | null>, text: string) {
+  useLayoutEffect(() => {
+    const ta = ref.current;
+    if (!ta) return;
+    ta.style.height = 'auto';
+    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
+  }, [ref, text]);
+}
+
+/**
+ * An UNBUFFERED serif notes field, for a create form — nothing exists to write
+ * to yet, so the draft is the section's own state and commits with the object.
+ */
+export function NotesField({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  testId,
+}: {
+  value: string;
+  onChange: (next: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+  testId: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  useAutoGrow(ref, value);
+
+  // Rung: clear the field, as FilterRow does. Without it, Escape here found no
+  // claimant — CreateForm's rung only answers for its name input — and closed
+  // the console with the name, the why and the window all in it.
+  useEscapeRung(() => {
+    if (!value || document.activeElement !== ref.current) return false;
+    onChange('');
+    return true;
+  });
+
+  return (
+    <textarea
+      ref={ref}
+      rows={1}
+      value={value}
+      placeholder={placeholder}
+      aria-label={ariaLabel}
+      data-testid={testId}
+      onChange={(e) => onChange(e.target.value)}
+      // BufferedTextarea's recipe — spelled out, so caret-room can read it.
+      className="text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed outline-none placeholder:italic"
     />
   );
 }
@@ -830,11 +999,11 @@ export function BufferedInput({
 /* ── a day ────────────────────────────────────────────────────────────── */
 
 /**
- * The console's ONE calendar control — a routine's resume date and both ends of
- * a program's range.
+ * One day as a chip — a routine's "Comes back". (A program's run and a goal's
+ * window are ranges, and use DateRangeChip.)
  *
- * One component rather than three near-copies, because each carries the same
- * two rules and each would be wrong in a different way if it drifted:
+ * Two rules it shares with every day picker in the console, each wrong in a
+ * different way if it drifted:
  *
  * 1. WRITES WITH `format`, never `toDateStr`. react-day-picker hands back a
  *    browser-LOCAL-midnight Date, and re-reading that instant in another zone
@@ -844,67 +1013,74 @@ export function BufferedInput({
  *    than `{before?, after?}` — both-optional matches no member of the library's
  *    Matcher union, and `DateInterval` (which requires both) disables the days
  *    BETWEEN them, the exact opposite of what a bound wants.
+ *
+ * Unset reads as the dashed noun, like every PropertyChip; set reads as the
+ * muted key and the day. Clearing lives in the popover, under the calendar.
  */
-export function DayField({
+export function DayChip({
   label,
-  placeholder,
   value,
   testId,
   clearLabel,
   disabledDays,
-  align = 'start',
   onChange,
 }: {
-  /** Inline prefix inside the trigger ("Starts", "Ends"). Omit for a bare date. */
-  label?: string;
-  placeholder: string;
+  /** The noun unset, the muted key set — "Comes back". */
+  label: string;
   value?: string;
   testId: string;
   clearLabel: string;
   disabledDays?: { before: Date } | { after: Date };
-  align?: 'start' | 'end';
   onChange: (next: string | undefined) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="flex shrink-0 items-center gap-1">
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            data-testid={testId}
-            className="border-border text-foreground hover:bg-accent flex h-[26px] items-center gap-1.5 rounded-[5px] border px-2 text-sm"
-          >
-            {label && <span className="text-muted-foreground">{label}</span>}
-            {value ? formatShort(value) : <span className="text-muted-foreground">{placeholder}</span>}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent className="w-auto rounded-[10px] p-0" align={align}>
+    <PropertyChip
+      label={label}
+      value={value ? formatShort(value) : undefined}
+      display={
+        value ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-num">{formatShort(value)}</span>
+          </span>
+        ) : undefined
+      }
+      ariaLabel={value ? `${label}: ${formatShort(value)}` : label}
+      testId={testId}
+      contentClassName="w-auto p-0"
+    >
+      {(close) => (
+        <div>
           <Calendar
             mode="single"
             selected={parseDay(value)}
+            defaultMonth={parseDay(value)}
             disabled={disabledDays}
             onSelect={(date) => {
-              onChange(date ? format(date, 'yyyy-MM-dd') : undefined);
-              setOpen(false);
+              if (!date) return;
+              onChange(format(date, 'yyyy-MM-dd'));
+              close();
             }}
             initialFocus
           />
-        </PopoverContent>
-      </Popover>
-      {value && (
-        <button
-          type="button"
-          onClick={() => onChange(undefined)}
-          aria-label={clearLabel}
-          data-testid={`${testId}-clear`}
-          className="text-muted-foreground hover:text-foreground flex h-5 w-5 shrink-0 items-center justify-center rounded-[4px]"
-        >
-          <X className="h-3 w-3" />
-        </button>
+          {value && (
+            <div className="border-t p-1">
+              <ChipOption
+                tone="muted"
+                testId={`${testId}-clear`}
+                onSelect={() => {
+                  onChange(undefined);
+                  close();
+                }}
+              >
+                <X className="size-3.5" />
+                {clearLabel}
+              </ChipOption>
+            </div>
+          )}
+        </div>
       )}
-    </div>
+    </PropertyChip>
   );
 }
 
