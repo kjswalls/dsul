@@ -587,13 +587,15 @@ export function Omnibar({
    * lit — the accent spent once, on the active row. Returns null in the dock,
    * which keeps its plain right-aligned key hints. The `ml-auto` right-aligns it;
    * where a row also has a CommandShortcut, the pill sits just left of it.
+   * `leading-none` keeps it shorter than the row's 17px line: with the inherited
+   * line-height it measured 21px and grew the highlighted row by 4px on hover.
    */
   const enterPill = (verb: string) =>
     isLauncher ? (
       <span
         aria-hidden
         data-testid="omnibar-enter-pill"
-        className="ml-auto hidden items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] font-medium text-primary-foreground group-data-[selected=true]:inline-flex"
+        className="ml-auto hidden items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] leading-none font-medium text-primary-foreground group-data-[selected=true]:inline-flex"
       >
         <CornerDownLeft className="size-3" />
         {verb}

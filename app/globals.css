@@ -1101,16 +1101,6 @@
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
 }
 
-/* Launcher card: a straight, full-width hairline between adjacent result rows.
-   Scoped to the launcher variant so the dock's floating panel is untouched. The
-   `+ [cmdk-item]` combinator only matches items that are siblings — i.e. within
-   the same cmdk group — so it never draws a line across a group heading, and the
-   first row of each group (and of the panel) has none. It sits on the item's top
-   edge as a straight line, independent of the row's rounded hover highlight. */
-[data-omnibar-variant='launcher'] [cmdk-item] + [cmdk-item] {
-  border-top: 1px solid var(--border);
-}
-
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
    look of item/content titles only — density, labels, and chrome stay
    identical in both modes. `data-type-mode` is stamped on <html> by
