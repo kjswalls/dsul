@@ -37,12 +37,16 @@ function KbdHint() {
  * variant, so each is just an `openDialog` call. A row lands here only once it
  * points somewhere real — a menu whose items dead-end reads as more broken than
  * no menu at all — so Changelog / Guides / Support wait until they exist.
+ *
+ * Inset 24px so the whole bubble, focus ring included, clears the body panel's
+ * rounded corner: the shell's p-3 gutter plus the panel's 30px radius puts the
+ * corner arc's centre 42px in, and a 36px bubble at 24px shares that centre.
  */
 export function HelpMenu() {
   const openDialog = useUIStore((s) => s.openDialog);
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 hidden md:block">
+    <div className="fixed bottom-6 right-6 z-30 hidden md:block">
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button
