@@ -43,6 +43,12 @@ vi.mock('@/lib/db', () => ({
   restoreGoal: vi.fn(async () => {}),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
+/**
+ * Which shell the Edit menu draws. `touch.current` is flipped per describe: the
+ * drill-in Popover for a phone, the hover-flyout dropdown for a pointer.
+ */
+const touch = vi.hoisted(() => ({ current: true }));
+vi.mock('@/hooks/use-mobile', () => ({ useIsMobile: () => touch.current }));
 
 import { BulkActionBar } from '@/components/shell/bulk-action-bar';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -131,7 +137,11 @@ afterEach(() => {
   useSelectionStore.setState({ selectedIds: new Set() });
 });
 
-describe('BulkActionBar — Edit menu', () => {
+describe('BulkActionBar — Edit menu (touch: drilled in place)', () => {
+  beforeEach(() => {
+    touch.current = true;
+  });
+
   it('replaces Collect with one Edit button', () => {
     seed({ items: [task('a'), task('b')] });
     render(<BulkActionBar />);
@@ -321,5 +331,110 @@ describe('BulkActionBar — Edit menu', () => {
     render(<BulkActionBar />);
     expect(screen.getByTestId('bulk-action-bar')).toBeInTheDocument();
     expect(screen.queryByTestId('bulk-edit')).toBeNull();
+  });
+});
+
+/**
+ * Radix's DropdownMenuTrigger opens on POINTERDOWN, not click; sub-triggers and
+ * items do respond to click (see display-menu.test.tsx).
+ */
+const openMenu = () =>
+  fireEvent.pointerDown(screen.getByTestId('bulk-edit'), { button: 0, ctrlKey: false });
+
+describe('BulkActionBar — Edit menu (pointer: flyouts, like the Display menu)', () => {
+  beforeEach(() => {
+    touch.current = false;
+  });
+
+  it('draws a dropdown whose property rows are real submenu triggers', async () => {
+    seed({ items: [task('a'), task('b')] });
+    render(<BulkActionBar />);
+    openMenu();
+    const menu = await screen.findByTestId('bulk-edit-menu');
+    expect(menu).toHaveAttribute('data-bulk-edit-variant', 'menu');
+    expect(screen.getByTestId('bulk-edit-row-priority').getAttribute('data-slot')).toBe(
+      'dropdown-menu-sub-trigger'
+    );
+    expect(screen.queryByLabelText('Back')).toBeNull();
+  });
+
+  it('a priority picked in the flyout calls the verb and closes the menu', async () => {
+    seed({ items: [task('a'), habit('h')] });
+    render(<BulkActionBar />);
+    openMenu();
+    fireEvent.click(await screen.findByTestId('bulk-edit-row-priority'));
+    const high = (await screen.findAllByTestId('bulk-priority-option')).find(
+      (el) => el.getAttribute('data-value') === 'high'
+    )!;
+    expect(high).toHaveAttribute('role', 'menuitemradio');
+    fireEvent.click(high);
+    expect(setItemsPriority).toHaveBeenCalledWith(['a'], 'high');
+    expect(screen.queryByTestId('bulk-edit-menu')).toBeNull();
+  });
+
+  it('keeps the menu open while toggling several routines', async () => {
+    const routine = { id: 'r1', name: 'Morning', itemIds: ['a'] } as unknown as Routine;
+    const routine2 = { id: 'r2', name: 'Evening', itemIds: [] } as unknown as Routine;
+    seed({ items: [task('a'), task('b')], routines: [routine, routine2] });
+    render(<BulkActionBar />);
+    openMenu();
+    fireEvent.click(await screen.findByTestId('bulk-edit-row-routine'));
+    const rows = await screen.findAllByTestId('bulk-collect-option');
+    expect(rows[0]).toHaveAttribute('aria-checked', 'mixed');
+    fireEvent.click(rows[1]);
+    expect(setItemsCollected).toHaveBeenCalledWith(['a', 'b'], 'routine', 'r2', true);
+    expect(screen.getByTestId('bulk-edit-menu')).toBeInTheDocument();
+  });
+
+  it('the Remind flyout keeps its keys: typing and Enter set the time', async () => {
+    seed({ items: [task('a', { startDate: '2026-09-25' }), task('b', { startDate: '2026-09-25' })] });
+    render(<BulkActionBar />);
+    openMenu();
+    fireEvent.click(await screen.findByTestId('bulk-edit-row-remind'));
+    const field = await screen.findByTestId('bulk-remind-time');
+    fireEvent.change(field, { target: { value: '08:30' } });
+    // Radix's menu content preventDefaults Tab (and runs typeahead on letters)
+    // from its own onKeyDown; the pane stops the bubble before it gets there,
+    // so Tab still walks from the field to Apply.
+    expect(fireEvent.keyDown(field, { key: 'Tab' })).toBe(true);
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(setItemsReminder).toHaveBeenCalledWith(['a', 'b'], '08:30');
+    expect(screen.queryByTestId('bulk-edit-menu')).toBeNull();
+  });
+
+  it('prefills the shared time, and No reminder clears and closes', async () => {
+    seed({ items: [task('a', { reminderTime: '07:15' }), task('b', { reminderTime: '07:15' })] });
+    render(<BulkActionBar />);
+    openMenu();
+    fireEvent.click(await screen.findByTestId('bulk-edit-row-remind'));
+    expect(await screen.findByTestId('bulk-remind-time')).toHaveValue('07:15');
+    fireEvent.click(screen.getByTestId('bulk-remind-clear'));
+    expect(setItemsReminder).toHaveBeenCalledWith(['a', 'b'], undefined);
+    expect(screen.queryByTestId('bulk-edit-menu')).toBeNull();
+  });
+
+  it('a keyboard-opened Remind flyout steps into the time field', async () => {
+    seed({ items: [task('a'), task('b')] });
+    render(<BulkActionBar />);
+    openMenu();
+    const row = await screen.findByTestId('bulk-edit-row-remind');
+    row.focus();
+    fireEvent.keyDown(row, { key: 'ArrowRight' });
+    const field = await screen.findByTestId('bulk-remind-time');
+    const flyout = field.closest<HTMLElement>('[data-slot="dropdown-menu-sub-content"]')!;
+    fireEvent.keyDown(flyout, { key: 'ArrowDown' });
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('files under a project from its flyout', async () => {
+    seed({ items: [task('a'), task('b')] });
+    render(<BulkActionBar />);
+    openMenu();
+    fireEvent.click(await screen.findByTestId('bulk-edit-row-project'));
+    const work = (await screen.findAllByTestId('bulk-project-option')).find(
+      (el) => el.getAttribute('data-project-id') === 'p-work'
+    )!;
+    fireEvent.click(work);
+    expect(setItemsProject).toHaveBeenCalledWith(['a', 'b'], 'Work');
   });
 });
