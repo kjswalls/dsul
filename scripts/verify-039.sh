@@ -24,9 +24,10 @@
 # touches a real project. It does NOT need Supabase credentials and cannot reach
 # a remote database.
 #
-# THE SCHEMA BELOW IS A RECONSTRUCTION, and the one thing to keep honest. No
-# migration in supabase/migrations/ creates `projects` or `habit_groups` — they
-# predate the ledger — so their shape here is taken from lib/db.ts's ProjectRow
+# THE SCHEMA BELOW IS A RECONSTRUCTION, and the one thing to keep honest.
+# `projects` and `habit_groups` predate the ledger (prod got them from the old
+# schema.sql bootstrap; on an empty database 000_baseline.sql creates them), so
+# their shape here is taken from lib/db.ts's ProjectRow
 # and HabitGroupRow, 013's `deleted_at`, and the `(user_id, name)` unique indexes
 # that 027 and lib/seed-containers.ts both name. `items` is the subset of 019 +
 # 027 that 039 touches. If the real shape ever contradicts this, the migration is

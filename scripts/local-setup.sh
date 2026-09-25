@@ -99,7 +99,8 @@ echo "▶ Applying all migrations to a clean LOCAL database (supabase db reset) 
 supabase db reset
 
 # Read the local URL + keys straight from the running stack — never hardcoded,
-# so this stays correct across CLI versions and any config.toml overrides.
+# so config.toml overrides carry through. The key NAMES are CLI-version
+# dependent; CI pins the CLI (.github/workflows/test.yml).
 eval "$(supabase status -o env)"
 : "${API_URL:?supabase status did not report API_URL — is the stack up?}"
 : "${ANON_KEY:?supabase status did not report ANON_KEY}"
