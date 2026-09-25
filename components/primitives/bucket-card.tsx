@@ -28,6 +28,36 @@ export const BUCKET_META: Record<
 export const BUCKET_LABEL_INK = 'text-muted-foreground/70';
 
 /**
+ * The "you are here" glyph's halo: a soft lime glow that breathes behind the
+ * icon (`.bucket-now-glow` in globals.css, the zen room's now-bead breath at
+ * caption scale). `bleed` is how far past the glyph's box it reaches on each
+ * side.
+ *
+ * A thumbnail RelayField was tried here first. At a 14px glyph the field can't
+ * go below six columns, so its tiles land at ~6px and read as a ring of
+ * scattered specks — the default palette's teal and orange included — rather
+ * than as light. A gradient is the glow those tiles were trying to be.
+ *
+ * It is its own element, so the pulse dims only itself and the lime mark it
+ * sits behind never composites through it. The caller owns the stacking: the
+ * halo is `-z-10`, so its parent must be `relative isolate`, or it drops behind
+ * the caption button's hover fill. CSS handles both motion vetoes (reduced
+ * motion and the animations setting), holding the glow at rest.
+ */
+function CurrentGlyphHalo({ bleed }: { bleed: number }) {
+  return (
+    // Inline inset, not a class: the bleed differs per density and Tailwind
+    // cannot see a computed `-inset-[…]`.
+    <span
+      aria-hidden
+      data-testid="bucket-current-halo"
+      className="bucket-now-glow pointer-events-none absolute -z-10 rounded-full"
+      style={{ inset: -bleed }}
+    />
+  );
+}
+
+/**
  * Geometry per style × density. One table so day and week cannot drift.
  *
  * VERTICAL RHYTHM lives in two numbers, `capGap` and `gap`, plain px rather
@@ -302,6 +332,9 @@ export function BucketCard({
   const collapsed = useViewStore((s) => s.collapsedBuckets.includes(bucket));
   const toggleCollapsed = useViewStore((s) => s.toggleBucketCollapsed);
   const expandBucket = useViewStore((s) => s.expandBucket);
+  // The breathing glow behind the current glyph. See CurrentGlyphHalo.
+  const showHalo = !!isCurrent;
+  const haloBleed = density === 'full' ? 8 : 6;
 
   // An empty bucket has nothing to shut, so it offers no control — a chevron
   // that toggles a stored flag with no visible effect is a dead affordance, and
@@ -339,6 +372,18 @@ export function BucketCard({
     >
       {/* The tray variant keeps its glyph in an absolute node, which swells to
           a lime disc for "now" alongside the rule down its left wall. */}
+      {/* The tray's halo sits under its node rather than inside it: inside,
+          the glow would paint over the lime disc's own fill. Same box as the
+          current node, one layer down. */}
+      {!isSpine && showHalo && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-0 left-[-4px] z-[2] isolate"
+          style={{ width: g.node, height: g.node }}
+        >
+          <CurrentGlyphHalo bleed={haloBleed} />
+        </span>
+      )}
       {!isSpine && (
         <span
           aria-hidden
@@ -383,9 +428,17 @@ export function BucketCard({
             {(() => {
               const inner = (
                 <>
-                  {isSpine && (
-                    <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
-                  )}
+                  {isSpine &&
+                    (showHalo ? (
+                      // `isolate` keeps the halo's -z-10 above the caption
+                      // button's hover fill instead of under it.
+                      <span className="relative isolate flex flex-none">
+                        <CurrentGlyphHalo bleed={haloBleed} />
+                        <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
+                      </span>
+                    ) : (
+                      <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
+                    ))}
                   {/* The current bucket steps up one tone, not to full ink. The
                       lime rule on the card already says where you are; this only
                       keeps the caption from contradicting it (and is the whole

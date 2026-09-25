@@ -1462,6 +1462,45 @@ body {
   }
 }
 
+/* The current bucket's glyph halo (CurrentGlyphHalo in bucket-card.tsx). The
+   zen now-bead's breath at caption scale: a lime radial on its OWN element,
+   so the pulse dims only the glow and never the mark it sits behind. Opacity
+   and a small scale, both compositor-only, so a breath costs no layout or
+   paint. At rest (reduced motion, or animations off in settings) it holds
+   its mid value rather than vanishing: the glow is part of "you are here",
+   only the breathing is motion. */
+.bucket-now-glow {
+  background: radial-gradient(
+    circle closest-side,
+    color-mix(in oklab, var(--lime-solid) 45%, transparent),
+    transparent
+  );
+  animation: bucket-now-breathe 2.8s ease-in-out infinite alternate;
+}
+
+@keyframes bucket-now-breathe {
+  from {
+    opacity: 0.25;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bucket-now-glow {
+    animation: none;
+    opacity: 0.5;
+  }
+}
+
+[data-reduce-motion='true'] .bucket-now-glow {
+  animation: none;
+  opacity: 0.5;
+}
+
 /* Hide scrollbar while keeping scroll functionality */
 .scrollbar-hide {
   -ms-overflow-style: none;
