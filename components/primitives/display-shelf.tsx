@@ -7,6 +7,7 @@ import {
   PriorityDot,
   type DisplayMenuHandle,
 } from '@/components/primitives/display-menu';
+import { RailTooltip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
   clauseText,
@@ -291,6 +292,27 @@ function ShelfBody({
     return () => ro.disconnect();
   }, []);
 
+  const resetButton = (
+    <button
+      type="button"
+      data-testid={`display-shelf-reset-${surface}`}
+      aria-label="Reset display"
+      onClick={() => {
+        // Focus goes to the trigger FIRST. A reset always takes the count to
+        // zero, so the shelf unmounts under the pressed button, and a focused
+        // element that unmounts leaves focus on <body>.
+        menu.current?.focus();
+        resetDisplay(surface);
+      }}
+      className={cn(
+        'grid h-[18px] w-4 shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
+        touch && "relative before:absolute before:-inset-x-[6px] before:-inset-y-[5px] before:content-['']"
+      )}
+    >
+      <X className="size-[11px]" aria-hidden />
+    </button>
+  );
+
   return (
     <div
       ref={rootRef}
@@ -353,25 +375,16 @@ function ShelfBody({
       <span id={descId} className="sr-only">
         {shelfDescription(clauses)}
       </span>
-      <button
-        type="button"
-        data-testid={`display-shelf-reset-${surface}`}
-        aria-label="Reset display"
-        title="Reset display"
-        onClick={() => {
-          // Focus goes to the trigger FIRST. A reset always takes the count to
-          // zero, so the shelf unmounts under the pressed button, and a focused
-          // element that unmounts leaves focus on <body>.
-          menu.current?.focus();
-          resetDisplay(surface);
-        }}
-        className={cn(
-          'grid h-[18px] w-4 shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
-          touch && "relative before:absolute before:-inset-x-[6px] before:-inset-y-[5px] before:content-['']"
-        )}
-      >
-        <X className="size-[11px]" aria-hidden />
-      </button>
+      {/* The header's tooltip, which every icon-only control in it wears; the
+          text beside it names itself, so it has none. None on the phone, where
+          no hover earns one and a tap would pop it over the thumb. */}
+      {touch ? (
+        resetButton
+      ) : (
+        <RailTooltip side="bottom" label="Reset display">
+          {resetButton}
+        </RailTooltip>
+      )}
     </div>
   );
 }

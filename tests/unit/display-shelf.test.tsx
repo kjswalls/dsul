@@ -731,6 +731,27 @@ describe('the two mounts', () => {
     renderBraindump('mobile');
     expect(opener()).toHaveAttribute('aria-haspopup', 'dialog');
   });
+
+  it("gives the × the header's own tooltip on a pointer, never a native title", async () => {
+    seed({ braindumpGroupBy: 'project' });
+    renderBraindump();
+    // A native title as well would fire two tooltips for one hover.
+    expect(resetX()).not.toHaveAttribute('title');
+    fireEvent.pointerEnter(resetX());
+    fireEvent.pointerMove(resetX());
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Reset display');
+  });
+
+  it('gives the phone × no tooltip, as the rest of that header has none', async () => {
+    touch.current = true;
+    seed({ braindumpGroupBy: 'project' });
+    renderBraindump('mobile');
+    fireEvent.pointerEnter(resetX());
+    fireEvent.pointerMove(resetX());
+    await new Promise((r) => setTimeout(r, 300));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(resetX()).not.toHaveAttribute('title');
+  });
 });
 
 describe("before the planner's first load", () => {
