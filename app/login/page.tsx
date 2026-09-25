@@ -214,8 +214,9 @@ function LoginPageInner() {
           ref={columnRef}
           className="w-full max-w-xs space-y-7 duration-700 animate-in fade-in fill-mode-both motion-reduce:animate-none"
         >
-          {/* Identity — see components/primitives/wordmark.tsx. */}
-          <Wordmark />
+          {/* Identity — see components/primitives/wordmark.tsx. The fixed
+              height keeps the form still while a larger hover flavor is up. */}
+          <Wordmark className="h-[13px]" />
 
           {sent ? (
             <div className="space-y-3 duration-500 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none">

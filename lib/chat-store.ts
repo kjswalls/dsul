@@ -256,9 +256,8 @@ export function createChatStore(config: ChatThreadConfig) {
           const { provider, apiKey, model, systemPrompt } = useAISettingsStore.getState();
           // Custom-type nouns reach the model through the default prompt; a
           // user-customized prompt wins untouched.
-          const effectiveSystemPrompt =
-            systemPrompt ||
-            buildBeaconSystemPrompt(itemTypes.map((t) => t.labelPlural.toLowerCase()));
+          const typeNouns = itemTypes.map((t) => t.labelPlural.toLowerCase());
+          const effectiveSystemPrompt = systemPrompt || buildBeaconSystemPrompt(typeNouns);
 
           // Wait for the transport answer if it is still in flight, so the
           // first message of a session cannot take the wrong path.
@@ -344,6 +343,10 @@ export function createChatStore(config: ChatThreadConfig) {
               apiKey,
               model,
               systemPrompt: effectiveSystemPrompt,
+              // The raw pieces, for when the deployment's key pays: the server
+              // then builds Beacon's prompt itself and ignores `systemPrompt`.
+              customInstructions: systemPrompt,
+              typeNouns,
               // Which THREAD this is, never the session key itself. The server
               // derives the gateway key from this plus the authenticated user,
               // so a browser can't address another thread or the gateway's

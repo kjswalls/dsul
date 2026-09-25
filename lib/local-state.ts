@@ -221,6 +221,9 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
       // the room open would find the planner instead with nothing on screen to
       // explain why.
       'zenOpen',
+      // Whether the Zen switch animation is mid-flight. Persisted only because
+      // the store persists every field; the merge forces it off on load.
+      'zenMoving',
     ],
     clear: ({ scope }) => useViewStore.getState().clearUserScopedState(scope),
   },

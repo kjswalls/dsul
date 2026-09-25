@@ -17,6 +17,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { ContainerSquare } from '@/components/primitives/display-menu';
 import { ColorSquare } from '@/components/planner/surface';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useGoalsEnabled } from '@/lib/extension-gates';
@@ -39,11 +50,12 @@ import { cn } from '@/lib/utils';
  * The multiselect bar's Edit menu — the item dialog's property chips, applied
  * to a whole selection.
  *
- * One Popover with two levels drilled IN PLACE (a root list of properties, then
- * one property's pane with a Back button) rather than hover submenus: a submenu
- * needs a pointer to open and a phone has none, and a Radix DropdownMenu would
- * steal the time input's keys with its typeahead. Plain buttons in a Popover are
- * what the Collect menu this replaced already used, for the same reasons.
+ * Two shells, split the way the sidebar's Display menu splits
+ * (components/primitives/display-menu.tsx): a POINTER gets a dropdown whose
+ * property rows open flyouts on hover, matching that menu; TOUCH gets one
+ * Popover drilled IN PLACE (a root list, then one property's pane with Back),
+ * because a hover submenu opens off-screen or under the thumb on a phone. Both
+ * draw the same option descriptions (`optionsFor`), so they cannot drift.
  *
  * Every row answers to lib/bulk-edit.ts for its eligible subset — the same
  * predicate the store verb filters by, so the " · n" beside a row is exactly
@@ -111,47 +123,122 @@ function EligibleCount({ n, of }: { n: number; of: number }) {
 }
 
 /**
- * One tri-state row of a many-valued membership (routine, program, goal).
- * Tri-state, because a selection is rarely all-in or all-out of a container
- * and a plain checkbox would have to lie about the middle: `all` clears the
- * whole selection out, anything less collects the whole selection in. That
- * asymmetry is deliberate — the menu is reached from a selection you just
- * made, so the intent is nearly always "put these there", and only the
- * already-satisfied case can safely mean the opposite.
+ * One option in a property's pane, described once and drawn by either shell.
+ * `checked: 'mixed'` is the membership panes' middle state: a selection is
+ * rarely all-in or all-out of a container, and a plain checkbox would have to
+ * lie about it. Picking a tri-state row with `all` clears the whole selection
+ * out; anything less collects the whole selection in. That asymmetry is
+ * deliberate — the menu is reached from a selection you just made, so the
+ * intent is nearly always "put these there", and only the already-satisfied
+ * case can safely mean the opposite.
  */
-function CollectRow({
-  container,
-  state,
-  testId = 'bulk-collect-option',
-  onToggle,
+type OptionSpec = {
+  key: string;
+  label: string;
+  role: 'menuitemradio' | 'menuitemcheckbox';
+  checked: boolean | 'mixed';
+  testId: string;
+  data?: Record<string, string>;
+  leading?: ReactNode;
+  trailing?: ReactNode;
+  muted?: boolean;
+  keepOpen?: boolean;
+  onSelect: () => void;
+};
+
+/** The desktop row and panel: the sidebar Display menu's own. */
+const MENU_ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';
+const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
+
+/** A trailing check for all, a dash for some — the house selection grammar. */
+function OptionBody({ o }: { o: OptionSpec }) {
+  return (
+    <>
+      {o.leading}
+      <span className="truncate">{o.label}</span>
+      {o.trailing}
+      <span className="ml-auto flex size-3.5 shrink-0 items-center justify-center">
+        {o.checked === true && <Check className="size-3.5" />}
+        {o.checked === 'mixed' && <Minus className="size-3.5 text-muted-foreground" />}
+      </span>
+    </>
+  );
+}
+
+/**
+ * The Remind pane, the one pane that is a form rather than a list. In the
+ * desktop flyout it sits inside a Radix menu, which claims Tab and every
+ * printable key (typeahead) at the content, so the wrapper keeps key events
+ * from bubbling out: the field owns its keys, and Tab reaches Apply.
+ */
+function RemindPane({
+  value,
+  onChange,
+  undated,
+  anySet,
+  onApply,
+  onClear,
 }: {
-  container: { id: string; name: string; color?: string };
-  state: Membership;
-  testId?: string;
-  onToggle: (member: boolean) => void;
+  value: string;
+  onChange: (v: string) => void;
+  undated: number;
+  anySet: boolean;
+  onApply: () => void;
+  onClear: () => void;
 }) {
   return (
-    <button
-      type="button"
-      role="menuitemcheckbox"
-      aria-checked={state === 'all' ? 'true' : state === 'some' ? 'mixed' : 'false'}
-      data-testid={testId}
-      data-container-id={container.id}
-      data-state={state}
-      onClick={() => onToggle(state !== 'all')}
-      className={optionClass}
+    <div role="group" aria-label="Reminder" onKeyDown={(e) => {
+        // Escape still closes, and ArrowLeft off the buttons still steps back
+        // to the trigger; inside the field the arrows belong to the time.
+        if (e.key === 'Escape') return;
+        if (e.key === 'ArrowLeft' && (e.target as HTMLElement).tagName !== 'INPUT') return;
+        e.stopPropagation();
+      }}
     >
-      <span
-        aria-hidden
-        className="size-2.5 shrink-0 rounded-[2px]"
-        style={{ background: container.color ?? accentColorForName(container.name) }}
-      />
-      <span className="truncate">{container.name}</span>
-      <span className="ml-auto flex size-3.5 shrink-0 items-center justify-center">
-        {state === 'all' && <Check className="size-3.5" />}
-        {state === 'some' && <Minus className="size-3.5 text-muted-foreground" />}
-      </span>
-    </button>
+      <div className={sectionClass}>Nudge me at</div>
+      <div className="flex gap-1 px-2 pb-2">
+        <Input
+          type="time"
+          value={value}
+          data-testid="bulk-remind-time"
+          aria-label="Reminder time"
+          className="h-8 flex-1 text-sm"
+          onChange={(e) => onChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              onApply();
+            }
+          }}
+        />
+        <Button
+          size="sm"
+          className="h-8 px-2.5 text-xs"
+          data-testid="bulk-remind-apply"
+          disabled={!value}
+          onClick={onApply}
+        >
+          Apply
+        </Button>
+      </div>
+      {/* The dialog's reminderNeedsDate, counted: a cue fires only on a day the
+          item occurs, and an undated anchored item has none. */}
+      {undated > 0 && (
+        <p className="px-2 pb-2 text-[10px] text-muted-foreground">
+          {undated} have no date. Give them one and they will fire.
+        </p>
+      )}
+      {anySet && (
+        <button
+          type="button"
+          data-testid="bulk-remind-clear"
+          className={cn(optionClass, 'text-muted-foreground')}
+          onClick={onClear}
+        >
+          No reminder
+        </button>
+      )}
+    </div>
   );
 }
 
@@ -169,6 +256,8 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
   const setItemsCollected = usePlannerStore((s) => s.setItemsCollected);
   const setItemsGoal = usePlannerStore((s) => s.setItemsGoal);
   const goalsOn = useGoalsEnabled();
+  // Which shell — the same live breakpoint the sidebar's Display menu uses.
+  const isTouch = useIsMobile();
 
   const [open, setOpen] = useState(false);
   const [pane, setPane] = useState<PaneKey | null>(null);
@@ -294,221 +383,239 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
 
   if (visibleRows.length === 0) return null;
 
+  // The Remind field starts from the time the selection shares, recomputed on
+  // every entry so a Clear or an abandoned draft never lingers.
+  const prefillRemind = () => {
+    const shared = sharedSummary(remindable, (i) => i.reminderTime || undefined);
+    setRemindTime(shared && shared !== MIXED ? shared : '');
+  };
+
   const drill = (key: PaneKey) => {
-    if (key === 'remind') {
-      const shared = sharedSummary(remindable, (i) => i.reminderTime || undefined);
-      setRemindTime(shared && shared !== MIXED ? shared : '');
-    }
+    if (key === 'remind') prefillRemind();
     setDrilledFrom(key);
     setPane(key);
   };
 
-  const applyReminder = () => {
-    if (!remindTime) return;
-    setItemsReminder(allIds(remindable), remindTime);
-    setPane(null);
-  };
-
   const current = rows.find((r) => r.key === pane);
 
-  const paneBody = (): ReactNode => {
-    switch (pane) {
+  // ── each pane's options, as DATA, drawn by whichever shell is live ────────
+  // Two shells, one description (display-menu.tsx's lesson: two bodies drift).
+  // `keepOpen` is the multi-valued membership panes — several containers are
+  // toggled in one visit — and a picked single value completes the choice.
+  const optionsFor = (key: PaneKey): OptionSpec[] => {
+    switch (key) {
       case 'priority': {
         const values = prioritizable.map((i) => (i as { priority?: Priority }).priority ?? 'none');
-        return PRIORITY_ORDER.map((p) => (
-          <button
-            key={p}
-            type="button"
-            role="menuitemradio"
-            aria-checked={values.every((v) => v === p)}
-            data-testid="bulk-priority-option"
-            data-value={p}
-            className={optionClass}
-            onClick={() => {
-              setItemsPriority(allIds(prioritizable), p === 'none' ? undefined : p);
-              setPane(null);
-            }}
-          >
+        return PRIORITY_ORDER.map((p) => ({
+          key: p,
+          label: PRIORITY_LABELS[p],
+          role: 'menuitemradio',
+          checked: values.every((v) => v === p),
+          testId: 'bulk-priority-option',
+          data: { 'data-value': p },
+          leading: (
             <span
               aria-hidden
               className={cn('size-2 shrink-0 rounded-full', p === 'none' && 'opacity-50')}
               style={{ background: p === 'none' ? 'var(--muted-foreground)' : `var(--priority-${p})` }}
             />
-            {PRIORITY_LABELS[p]}
-            {values.every((v) => v === p) && <Check className="ml-auto size-3.5" />}
-          </button>
-        ));
-      }
-      case 'remind': {
-        const anySet = remindable.some((i) => !!i.reminderTime);
-        return (
-          <>
-            <div className={sectionClass}>Nudge me at</div>
-            <div className="flex gap-1 px-2 pb-2">
-              <Input
-                type="time"
-                value={remindTime}
-                data-testid="bulk-remind-time"
-                aria-label="Reminder time"
-                className="h-8 flex-1 text-sm"
-                onChange={(e) => setRemindTime(e.target.value)}
-                onKeyDown={(e) => {
-                  // The field owns its keys: nothing global may act on a digit
-                  // or a letter typed into the time.
-                  e.stopPropagation();
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    applyReminder();
-                  }
-                }}
-              />
-              <Button
-                size="sm"
-                className="h-8 px-2.5 text-xs"
-                data-testid="bulk-remind-apply"
-                disabled={!remindTime}
-                onClick={applyReminder}
-              >
-                Apply
-              </Button>
-            </div>
-            {/* The dialog's reminderNeedsDate, counted: a cue fires only on a
-                day the item occurs, and an undated anchored item has none. */}
-            {undatedReminders > 0 && (
-              <p className="px-2 pb-2 text-[10px] text-muted-foreground">
-                {undatedReminders} have no date. Give them one and they will fire.
-              </p>
-            )}
-            {anySet && (
-              <button
-                type="button"
-                data-testid="bulk-remind-clear"
-                className={cn(optionClass, 'text-muted-foreground')}
-                onClick={() => {
-                  setItemsReminder(allIds(remindable), undefined);
-                  setPane(null);
-                }}
-              >
-                No reminder
-              </button>
-            )}
-          </>
-        );
+          ),
+          onSelect: () => setItemsPriority(allIds(prioritizable), p === 'none' ? undefined : p),
+        }));
       }
       case 'project': {
         const folded = fileable.map((i) => (i.project ? foldContainerName('project', i.project) : undefined));
         const allIn = (name: string) => folded.every((f) => f === foldContainerName('project', name));
-        return (
-          <div className="max-h-64 overflow-y-auto">
-            {unfileable.length > 0 && (
-              <button
-                type="button"
-                role="menuitemradio"
-                aria-checked={unfileable.every((i) => !i.project)}
-                data-testid="bulk-project-option"
-                data-project-id=""
-                className={cn(optionClass, 'text-muted-foreground')}
-                onClick={() => {
-                  setItemsProject(allIds(unfileable), undefined);
-                  setPane(null);
-                }}
-              >
-                No {CONTAINER_KINDS.project.label.toLowerCase()}
-                <EligibleCount n={unfileable.length} of={fileable.length} />
-                {unfileable.every((i) => !i.project) && <Check className="ml-auto size-3.5 shrink-0" />}
-              </button>
-            )}
-            {projects.map((p) => (
-              <button
-                key={p.id}
-                type="button"
-                role="menuitemradio"
-                aria-checked={allIn(p.name)}
-                data-testid="bulk-project-option"
-                data-project-id={p.id}
-                className={optionClass}
-                onClick={() => {
-                  setItemsProject(allIds(fileable), p.name);
-                  setPane(null);
-                }}
-              >
-                <ColorSquare color={getProjectColor(p.name)} />
-                <span className="truncate">{p.name}</span>
-                {allIn(p.name) && <Check className="ml-auto size-3.5 shrink-0" />}
-              </button>
-            ))}
-          </div>
-        );
+        const none: OptionSpec[] =
+          unfileable.length > 0
+            ? [
+                {
+                  key: '',
+                  label: `No ${CONTAINER_KINDS.project.label.toLowerCase()}`,
+                  role: 'menuitemradio',
+                  checked: unfileable.every((i) => !i.project),
+                  testId: 'bulk-project-option',
+                  data: { 'data-project-id': '' },
+                  muted: true,
+                  trailing: <EligibleCount n={unfileable.length} of={fileable.length} />,
+                  onSelect: () => setItemsProject(allIds(unfileable), undefined),
+                },
+              ]
+            : [];
+        return [
+          ...none,
+          ...projects.map(
+            (p): OptionSpec => ({
+              key: p.id,
+              label: p.name,
+              role: 'menuitemradio',
+              checked: allIn(p.name),
+              testId: 'bulk-project-option',
+              data: { 'data-project-id': p.id },
+              leading: <ColorSquare color={getProjectColor(p.name)} />,
+              onSelect: () => setItemsProject(allIds(fileable), p.name),
+            })
+          ),
+        ];
       }
       case 'routine':
-        return (
-          <div className="max-h-64 overflow-y-auto">
-            {routines.map((r) => (
-              <CollectRow
-                key={r.id}
-                container={r}
-                state={containerState(r)}
-                onToggle={(member) => setItemsCollected(collectibleIds, 'routine', r.id, member)}
-              />
-            ))}
-          </div>
-        );
       case 'program':
-        return (
-          <div className="max-h-64 overflow-y-auto">
-            {programs.map((p) => (
-              <CollectRow
-                key={p.id}
-                container={p}
-                state={containerState(p)}
-                onToggle={(member) => setItemsCollected(collectibleIds, 'program', p.id, member)}
-              />
-            ))}
-          </div>
-        );
-      case 'goal':
-        return (
-          <div className="max-h-64 overflow-y-auto">
-            {activeGoals.map((g) => (
-              <CollectRow
-                key={g.id}
-                container={g}
-                state={goalState(g)}
-                testId="bulk-goal-option"
-                onToggle={(member) => setItemsGoal(collectibleIds, g.id, member)}
-              />
-            ))}
-          </div>
-        );
+      case 'goal': {
+        const list: readonly { c: { id: string; name: string; color?: string }; state: Membership }[] =
+          key === 'routine'
+            ? routines.map((c) => ({ c, state: containerState(c) }))
+            : key === 'program'
+              ? programs.map((c) => ({ c, state: containerState(c) }))
+              : activeGoals.map((c) => ({ c, state: goalState(c) }));
+        return list.map(({ c, state }): OptionSpec => {
+          return {
+            key: c.id,
+            label: c.name,
+            role: 'menuitemcheckbox',
+            checked: state === 'all' ? true : state === 'some' ? 'mixed' : false,
+            testId: key === 'goal' ? 'bulk-goal-option' : 'bulk-collect-option',
+            data: { 'data-container-id': c.id, 'data-state': state },
+            keepOpen: true,
+            leading: <ContainerSquare color={c.color ?? accentColorForName(c.name)} />,
+            // Tri-state: `all` clears the whole selection out, anything less
+            // collects it in — see OptionSpec.
+            onSelect: () => {
+              const member = state !== 'all';
+              if (key === 'goal') setItemsGoal(collectibleIds, c.id, member);
+              else setItemsCollected(collectibleIds, key, c.id, member);
+            },
+          };
+        });
+      }
       default:
-        return null;
+        return [];
     }
   };
 
-  return (
-    <Popover
-      open={open}
-      onOpenChange={(next) => {
-        setOpen(next);
-        // Every opening starts at the top, not in whichever pane was left.
-        if (!next) {
-          setPane(null);
-          setDrilledFrom(null);
-        }
+  const remindBody = (onDone: () => void): ReactNode => (
+    <RemindPane
+      value={remindTime}
+      onChange={setRemindTime}
+      undated={undatedReminders}
+      anySet={remindable.some((i) => !!i.reminderTime)}
+      onApply={() => {
+        if (!remindTime) return;
+        setItemsReminder(allIds(remindable), remindTime);
+        onDone();
       }}
+      onClear={() => {
+        setItemsReminder(allIds(remindable), undefined);
+        onDone();
+      }}
+    />
+  );
+
+  const trigger = (
+    <Button
+      variant="ghost"
+      size="sm"
+      className="h-8 gap-1.5 rounded-full px-2.5 text-xs"
+      data-testid="bulk-edit"
     >
-      <PopoverTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-8 gap-1.5 rounded-full px-2.5 text-xs"
-          data-testid="bulk-edit"
+      <SlidersHorizontal className="h-3.5 w-3.5" />
+      Edit
+    </Button>
+  );
+
+  const reset = (next: boolean) => {
+    setOpen(next);
+    // Every opening starts at the top, not in whichever pane was left.
+    if (!next) {
+      setPane(null);
+      setDrilledFrom(null);
+    }
+    // The pointer shell has no drill step to prefill on.
+    if (next) prefillRemind();
+  };
+
+  /* ── the pointer shell: flyouts on hover, like the sidebar's Display menu ─ */
+  if (!isTouch) {
+    return (
+      <DropdownMenu open={open} onOpenChange={reset}>
+        <DropdownMenuTrigger asChild>{trigger}</DropdownMenuTrigger>
+        <DropdownMenuContent
+          align="center"
+          side="top"
+          className={PANEL}
+          data-testid="bulk-edit-menu"
+          data-bulk-edit-variant="menu"
         >
-          <SlidersHorizontal className="h-3.5 w-3.5" />
-          Edit
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent align="center" className="w-60 p-1">
+          {visibleRows.map((r) => (
+            <DropdownMenuSub key={r.key}>
+              <DropdownMenuSubTrigger
+                className={cn(MENU_ROW, '[&>svg:last-child]:size-3.5')}
+                data-testid={`bulk-edit-row-${r.key}`}
+              >
+                <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground">
+                  {r.icon}
+                </span>
+                {/* The trigger appends its own ml-auto chevron, so the label takes
+                    the slack and the value sits on the rail beside it. */}
+                <span className="flex-1 truncate">
+                  {r.label} <EligibleCount n={r.eligible} of={count} />
+                </span>
+                {r.summary && (
+                  <span className="max-w-24 shrink-0 truncate text-muted-foreground">{r.summary}</span>
+                )}
+              </DropdownMenuSubTrigger>
+              <DropdownMenuSubContent
+                className={PANEL}
+                // A keyboard-opened flyout focuses its own content, and Remind's
+                // content holds no menu items for the arrows to walk: step into
+                // the form instead. Radix would otherwise eat the Tab too.
+                onKeyDown={
+                  r.key === 'remind'
+                    ? (e) => {
+                        if (e.target !== e.currentTarget) return;
+                        if (e.key !== 'ArrowDown' && e.key !== 'Home' && e.key !== 'Tab') return;
+                        e.preventDefault();
+                        e.currentTarget
+                          .querySelector<HTMLElement>('[data-testid="bulk-remind-time"]')
+                          ?.focus();
+                      }
+                    : undefined
+                }
+              >
+                {r.key === 'remind' ? (
+                  remindBody(() => reset(false))
+                ) : (
+                  <div className="scrollbar-hide max-h-[min(20rem,60vh)] overflow-x-hidden overflow-y-auto">
+                    {optionsFor(r.key).map((o) => (
+                      <DropdownMenuItem
+                        key={o.key}
+                        role={o.role}
+                        aria-checked={o.checked === 'mixed' ? 'mixed' : o.checked}
+                        data-testid={o.testId}
+                        {...o.data}
+                        className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
+                        onSelect={(e) => {
+                          if (o.keepOpen) e.preventDefault();
+                          o.onSelect();
+                        }}
+                      >
+                        <OptionBody o={o} />
+                      </DropdownMenuItem>
+                    ))}
+                  </div>
+                )}
+              </DropdownMenuSubContent>
+            </DropdownMenuSub>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
+    );
+  }
+
+  /* ── the touch shell: one popover, drilled in place ─────────────────────── */
+  return (
+    <Popover open={open} onOpenChange={reset}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent align="center" className="w-60 p-1" data-bulk-edit-variant="sheet">
         {/* Remind holds a text field and a plain Apply button, neither of which
             a menu may contain, so that pane is a group; the others are menus of
             menuitem rows. */}
@@ -535,7 +642,31 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
                   <EligibleCount n={current.eligible} of={count} />
                 </span>
               </div>
-              {paneBody()}
+              {pane === 'remind' ? (
+                remindBody(() => setPane(null))
+              ) : (
+                <div className="max-h-64 overflow-y-auto">
+                  {optionsFor(pane!).map((o) => (
+                    <button
+                      key={o.key}
+                      type="button"
+                      role={o.role}
+                      aria-checked={o.checked === 'mixed' ? 'mixed' : o.checked}
+                      data-testid={o.testId}
+                      {...o.data}
+                      className={cn(optionClass, o.muted && 'text-muted-foreground')}
+                      onClick={() => {
+                        o.onSelect();
+                        // A single value completes the choice: back to the list,
+                        // so the next property is one tap away.
+                        if (!o.keepOpen) setPane(null);
+                      }}
+                    >
+                      <OptionBody o={o} />
+                    </button>
+                  ))}
+                </div>
+              )}
             </>
           ) : (
             visibleRows.map((r) => (

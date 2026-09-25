@@ -8,6 +8,7 @@ import {
   getGatewayConfig,
   proposeSessionKey,
 } from '@/lib/openclaw-gateway'
+import { MAX_CONTEXT_CHARS, resolveModel, SERVER_KEY_MAX_OUTPUT_TOKENS } from '@/lib/ai-limits'
 
 /**
  * POST /api/ai/propose — turn a free-form ask into a planner diff.
@@ -31,26 +32,10 @@ import {
 const PROPOSE_TIMEOUT_MS = 45_000
 
 /**
- * Ceilings on caller-controlled input.
- *
- * Generous enough that no honest request notices — the planner context is
- * capped at 60 items upstream, and the longest real prompt is a clipped chat
- * exchange — and small enough that a loop cannot bill six-figure token counts.
+ * Ceilings on caller-controlled input and the models the deployment's key may
+ * be spent on are shared with /api/chat — see lib/ai-limits.ts.
  */
-const MAX_CONTEXT_CHARS = 24_000
 const MAX_PROMPT_CHARS = 8_000
-
-/**
- * Models the DEPLOYMENT's key may be spent on.
- *
- * Only enforced on the server-key fallback. A user who brought their own key is
- * spending their own money and may name whatever model they like; a caller
- * spending the owner's key may not, because `model` travels verbatim from the
- * request body and "o1-pro" costs a great deal more than the default. Mirrors
- * the two options the settings UI actually offers (lib/settings/manifest.ts).
- */
-const SERVER_KEY_MODELS = new Set(['gpt-4o-mini', 'gpt-4o'])
-const DEFAULT_MODEL = 'gpt-4o-mini'
 
 export const maxDuration = 60
 
@@ -254,7 +239,7 @@ export async function POST(req: NextRequest) {
   const key = apiKey || process.env.OPENAI_API_KEY
   if (!key) {
     return NextResponse.json(
-      { error: 'Add an OpenAI API key in Settings → AI Assistant to ask for a plan.' },
+      { error: 'Add an OpenAI API key in Settings → Beacon to ask for a plan.' },
       { status: 400 }
     )
   }
@@ -263,12 +248,7 @@ export async function POST(req: NextRequest) {
   // deployment's key does not — `model` arrives verbatim from the request body,
   // and a session only proves SOME account, not the owner's.
   const onOwnKey = Boolean(apiKey)
-  const resolvedModel =
-    onOwnKey && model
-      ? model
-      : SERVER_KEY_MODELS.has(model ?? '')
-        ? (model as string)
-        : DEFAULT_MODEL
+  const resolvedModel = resolveModel(onOwnKey, model)
 
   // Same deadline the gateway branch takes, and for the same reason: the SDK
   // defaults to a TEN MINUTE timeout with retries, and a hung call here leaves
@@ -282,6 +262,7 @@ export async function POST(req: NextRequest) {
       // json_object rather than a strict json_schema: the client drops
       // individual bad operations anyway, so tolerance beats brittleness here.
       response_format: { type: 'json_object' },
+      ...(onOwnKey ? {} : { max_tokens: SERVER_KEY_MAX_OUTPUT_TOKENS }),
       messages: [
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userTurn },

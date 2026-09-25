@@ -55,3 +55,33 @@ if (!window.matchMedia) {
       dispatchEvent: () => false,
     }) as MediaQueryList;
 }
+
+/**
+ * next/font loaders are compiled away by Next; under Vitest they are bare
+ * imports that are not functions. Anything that mounts the wordmark (the
+ * sidebar, the login page) pulls its flavor faces in, so every loader answers
+ * with an empty font here: the faces are CSS, and no test asserts on them. A new
+face imported anywhere a test mounts needs its name added to this list.
+ */
+vi.mock('next/font/google', () => {
+  const font = () => ({
+    className: '',
+    variable: '',
+    style: { fontFamily: '' },
+  });
+  return Object.fromEntries(
+    [
+      'Inter',
+      'Source_Serif_4',
+      'Rubik_Bubbles',
+      'Silkscreen',
+      'JetBrains_Mono',
+      'Permanent_Marker',
+      'Tilt_Neon',
+      'Instrument_Serif',
+      'Fredoka',
+      'Space_Mono',
+      'Bungee',
+    ].map((name) => [name, font]),
+  );
+});

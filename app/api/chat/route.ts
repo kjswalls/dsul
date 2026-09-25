@@ -3,6 +3,15 @@ import OpenAI from 'openai'
 import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
 import { createClient } from '@/lib/supabase-server'
 import {
+  clipText,
+  framedPlannerContext,
+  MAX_CHAT_CONTEXT_CHARS,
+  resolveModel,
+  sanitizeChatMessages,
+  SERVER_KEY_MAX_OUTPUT_TOKENS,
+  serverKeySystemPrompt,
+} from '@/lib/ai-limits'
+import {
   chatSessionKey,
   getGatewayConfig,
   itemSessionKey,
@@ -10,10 +19,10 @@ import {
 } from '@/lib/openclaw-gateway'
 
 const COMING_SOON_MESSAGE =
-  'This provider is coming soon! For now, add an OpenAI API key in Settings → AI Assistant.'
+  'This provider is coming soon! For now, add an OpenAI API key in Settings → Beacon.'
 
 const MOCK_RESPONSE =
-  "Hi! I'm your dsul AI assistant. (AI not configured — add your OpenAI API key in Settings → AI Assistant to enable me.)"
+  "Hi! I'm your dsul AI assistant. (AI not configured — add your OpenAI API key in Settings → Beacon to enable me.)"
 
 function streamText(text: string, encoder: TextEncoder) {
   return new ReadableStream({
@@ -44,16 +53,32 @@ function streamChars(text: string, delayMs = 18): ReadableStream {
   })
 }
 
+/**
+ * Our own deadline, inside `maxDuration`, so a hung upstream ends in an error
+ * frame rather than a platform-killed stream. The OpenAI SDK defaults to ten
+ * minutes with retries.
+ */
+const CHAT_TIMEOUT_MS = 50_000
+export const maxDuration = 60
+
 export async function POST(req: NextRequest) {
-  const {
-    messages,
-    provider,
-    model,
-    apiKey,
-    systemPrompt,
-    context,
-    threadItemId,
-  } = await req.json()
+  let body: Record<string, unknown>
+  try {
+    body = await req.json()
+  } catch {
+    return new Response(streamChars('That request could not be read.', 0), { headers: SSE_HEADERS })
+  }
+  const { provider, model, systemPrompt, customInstructions, typeNouns, threadItemId } = body
+  const apiKey = typeof body.apiKey === 'string' ? body.apiKey : ''
+  // Who pays decides what the caller controls. On the deployment's key (the
+  // OpenAI branch with no key of the caller's own) every size is capped and the
+  // prompt is built here; on the caller's own key or gateway only the roles are
+  // narrowed. See lib/ai-limits.ts.
+  const onServerKey = provider !== 'openclaw' && !apiKey
+  const messages = sanitizeChatMessages(body.messages, onServerKey)
+  const rawContext = typeof body.context === 'string' ? body.context : ''
+  const context = onServerKey ? clipText(rawContext, MAX_CHAT_CONTEXT_CHARS) : rawContext
+  const ownPrompt = typeof systemPrompt === 'string' ? systemPrompt : ''
 
   const encoder = new TextEncoder()
 
@@ -77,12 +102,13 @@ export async function POST(req: NextRequest) {
         // path yet, and the client only routes here when it believes a gateway
         // is configured.
         return new Response(
-          streamChars('No OpenClaw gateway configured — add one in Settings → AI Assistant.'),
+          streamChars('No OpenClaw gateway configured — add one in Settings → Beacon.'),
           { headers: SSE_HEADERS }
         )
       }
 
-      const resolvedPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
+      // The user's own gateway: their prompt, their bill.
+      const resolvedPrompt = ownPrompt || BEACON_SYSTEM_PROMPT
       const stream = await streamGatewayChat({
         config,
         // Derived from the authenticated user, never taken from the body. The
@@ -138,19 +164,39 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const resolvedSystemPrompt = systemPrompt || BEACON_SYSTEM_PROMPT
-  const systemMessage = context ? `${resolvedSystemPrompt}\n\n${context}` : resolvedSystemPrompt
+  // On the deployment's key the prompt is built HERE, never taken from the
+  // body — otherwise any signed-in account holds a general-purpose proxy to the
+  // owner's OpenAI account. Custom instructions are appended, not substituted.
+  const onOwnKey = Boolean(apiKey)
+  const openaiMessages = onOwnKey
+    ? [
+        {
+          role: 'system',
+          content: context
+            ? `${ownPrompt || BEACON_SYSTEM_PROMPT}\n\n${context}`
+            : ownPrompt || BEACON_SYSTEM_PROMPT,
+        },
+        ...messages,
+      ]
+    : [
+        { role: 'system', content: serverKeySystemPrompt(typeNouns, customInstructions) },
+        ...(context ? [{ role: 'system', content: framedPlannerContext(context) }] : []),
+        ...messages,
+      ]
 
-  const openaiMessages = [{ role: 'system', content: systemMessage }, ...messages]
-
-  const openai = new OpenAI({ apiKey: apiKey || process.env.OPENAI_API_KEY })
+  const openai = new OpenAI({
+    apiKey: apiKey || process.env.OPENAI_API_KEY,
+    timeout: CHAT_TIMEOUT_MS,
+    maxRetries: 1,
+  })
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
         const completion = await openai.chat.completions.create({
-          model: model || 'gpt-4o-mini',
-          messages: openaiMessages,
+          model: resolveModel(onOwnKey, model),
+          messages: openaiMessages as OpenAI.Chat.ChatCompletionMessageParam[],
+          ...(onOwnKey ? {} : { max_tokens: SERVER_KEY_MAX_OUTPUT_TOKENS }),
           stream: true,
         })
 

@@ -639,6 +639,9 @@ describe('nothing persists per-user state outside the registry', () => {
       // The palette mirror the pre-paint script reads. Presentation, explicitly
       // out of scope — see the theme/palette note in lib/local-state.ts.
       'components/providers/supabase-provider.tsx',
+      // `dsul.wordmark.nextFlavor`: which hover flavor the logo shows next.
+      // One small integer, per device on purpose, and says nothing about anyone.
+      'lib/wordmark-flavors.ts',
     ].sort());
   });
 });
