@@ -922,17 +922,9 @@ describe('fit: one line, or the stack', () => {
     const s = sample();
 
     expect(s.parentElement).toBe(shelf());
+    // One string: jest-dom's types take `exact` only beside a single argument.
     expect(s).toHaveClass(
-      'invisible',
-      'pointer-events-none',
-      'absolute',
-      'left-0',
-      'top-0',
-      'h-0',
-      'overflow-hidden',
-      'whitespace-nowrap',
-      'before:pl-4',
-      "before:content-['Hide_finished']",
+      "pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:pl-4 before:content-['Hide_finished']",
       { exact: true }
     );
     expect(s).toHaveAttribute('aria-hidden', 'true');
