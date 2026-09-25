@@ -193,6 +193,8 @@ export interface SeedDeps {
   snapshot: () => {
     userId: string | null;
     isLoading: boolean;
+    /** The account whose most recent load failed, if any (planner-store). */
+    loadFailedUserId: string | null;
     items: readonly Item[];
     projects: readonly { name: string }[];
   };
@@ -203,7 +205,14 @@ export async function runFirstRunSeed(userId: string, deps: SeedDeps): Promise<S
   if (await deps.hasSeeded(userId)) return 'none';
 
   const before = deps.snapshot();
-  if (before.userId !== userId || before.isLoading) return 'none';
+  // A FAILED load settles like a finished one, with every array empty, and the
+  // plan below is made from this snapshot. Planned here, it reads an account
+  // with a year of items as brand new; the commit's own refusal cannot catch
+  // that if a retry lands the real items first, because an account whose
+  // containers exist only as names on its items still has no project rows.
+  if (before.userId !== userId || before.isLoading || before.loadFailedUserId === userId) {
+    return 'none';
+  }
 
   if (before.projects.length > 0) {
     await deps.markSeeded(userId);
@@ -218,9 +227,9 @@ export async function runFirstRunSeed(userId: string, deps: SeedDeps): Promise<S
   });
 
   const result = deps.commit(plan, userId);
-  // A refusal means the store moved under us — a load re-entered, the account
-  // switched, containers appeared. Nothing was written and nothing is known, so
-  // the account stays unlatched and the next load asks again.
+  // A refusal means the store moved under us — a load re-entered or failed, the
+  // account switched, containers appeared. Nothing was written and nothing is
+  // known, so the account stays unlatched and the next load asks again.
   if (result === 'refused') return 'none';
 
   await deps.markSeeded(userId);
