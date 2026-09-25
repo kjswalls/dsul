@@ -59,26 +59,17 @@ jobs:
       - name: Run unit tests
         run: pnpm run test:unit
 
-  # OFF until it can run against a Supabase stack on the runner itself.
-  #
-  # This job used to take its Supabase keys from repo secrets, which were
-  # PRODUCTION's. On 2026-09-24 four PRs' E2E runs overlapped, each retried for
-  # hours with no timeout, and the load took the live project down (do.dsul.app
-  # could not log in). The keys are gone from this file and the suite now refuses
-  # any non-loopback Supabase URL (assertLocalTarget, tests/e2e/helpers/env.ts),
-  # so even with this re-enabled it can only reach a local stack.
-  #
-  # To turn it back on: a step that runs `./scripts/local-setup.sh e2e` (after
-  # supabase/setup-cli) before "Run E2E tests", then flip the `if:` back to
-  # `github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'`.
-  # That needs the migrations to replay onto an empty database first; today
-  # `supabase db reset` stops early (see scripts/README.md).
+  # Runs against a throwaway Supabase stack started ON THE RUNNER, never a
+  # hosted project. This job used to take its keys from repo secrets, which were
+  # PRODUCTION's; on 2026-09-24 four PRs' runs overlapped, retried for hours
+  # with no timeout, and took the live project down (do.dsul.app could not log
+  # in). The suite now refuses any non-loopback Supabase URL (assertLocalTarget,
+  # tests/e2e/helpers/env.ts). Never give this job hosted keys back.
   e2e-tests:
     name: E2E tests (Playwright)
     runs-on: ubuntu-latest
-    continue-on-error: true
-    if: false
-    timeout-minutes: 60
+    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v4
 
@@ -120,16 +111,37 @@ jobs:
         uses: actions/cache@v4
         with:
           path: .next/cache
-          key: nextjs-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
+          # `localsb-` so no cache built while the job baked prod's URL into the
+          # bundle is ever restored.
+          key: nextjs-localsb-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-${{ hashFiles('**.[jt]s', '**.[jt]sx') }}
           restore-keys: |
-            nextjs-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-
+            nextjs-localsb-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-
+
+      - uses: supabase/setup-cli@v1
+        with:
+          # Pinned: local-setup.sh relies on `-x mailpit` and on the
+          # `status -o env` key names, both of which have changed across CLIs.
+          version: 2.117.0
+
+      # Starts the stack, replays every migration onto an empty database, creates
+      # the e2e user and writes .env.test. A failure here is a real failure (a
+      # migration that no longer replays), so this step is NOT continue-on-error.
+      - name: Start local Supabase
+        run: ./scripts/local-setup.sh e2e
 
       # No job-level Supabase env on purpose: playwright.config.ts loads .env.test
       # with `override: false`, so any job env would silently win over the local
       # stack's file. The webServer (`pnpm build && pnpm start`) inherits the
       # values from the Playwright process.
 
+      # Advisory until the suite is reliably green: its failures do not fail the
+      # workflow, but a broken stack above still does.
+      # Its own timeout, under the job's: a step that times out is a step
+      # failure (absorbed by continue-on-error), a job that does is a red job.
+      # ~20m locally with 4 workers; CI runs 1 worker with 2 retries.
       - name: Run E2E tests
+        continue-on-error: true
+        timeout-minutes: 45
         run: pnpm run e2e
 
       - name: Upload Playwright report

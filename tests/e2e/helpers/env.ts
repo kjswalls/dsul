@@ -75,8 +75,7 @@ export function assertLocalTarget(env: Record<string, string | undefined>): void
   if (!supabaseUrl) {
     throw new Error(
       'E2E: NEXT_PUBLIC_SUPABASE_URL is not set. Run ./scripts/local-setup.sh e2e ' +
-        'to start a local Supabase and write .env.test (it needs a baseline migration ' +
-        'first; see scripts/README.md).'
+        'to start a local Supabase and write .env.test.'
     );
   }
   const targets: [string, string][] = [['NEXT_PUBLIC_SUPABASE_URL', supabaseUrl]];
@@ -92,8 +91,7 @@ export function assertLocalTarget(env: Record<string, string | undefined>): void
         .join(', ')}.\n` +
         'The suite creates and deletes data and hammers auth; pointed at a hosted ' +
         'project it is a load test on production. Run ./scripts/local-setup.sh e2e ' +
-        'and use the .env.test it writes (it needs a baseline migration first; see ' +
-        'scripts/README.md).'
+        'and use the .env.test it writes.'
     );
   }
 }

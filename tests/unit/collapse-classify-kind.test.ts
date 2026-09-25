@@ -331,8 +331,9 @@ const SQL = readFileSync(
 
 describe('migration 039 is safe to re-run', () => {
   it('guards every statement on the tables actually existing', () => {
-    // Neither `projects` nor `habit_groups` is created by any migration in the
-    // directory — they predate the ledger. 027 takes the same posture.
+    // `projects` and `habit_groups` predate the ledger: prod got them from the old
+    // schema.sql bootstrap, and only 000_baseline.sql creates them on an empty
+    // database. 027 takes the same posture.
     expect(SQL).toContain("to_regclass('public.projects')");
     expect(SQL).toContain("to_regclass('public.habit_groups')");
   });

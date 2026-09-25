@@ -21,7 +21,9 @@ sessions on prod — a real Disk-IO cost, see
 ### Prerequisites
 
 - Docker running
-- Supabase CLI (`supabase`) — <https://supabase.com/docs/guides/cli>
+- Supabase CLI (`supabase`) — <https://supabase.com/docs/guides/cli>. CI pins
+  2.117.0 (`.github/workflows/test.yml`); an older CLI calls the mail service
+  `inbucket` and rejects `-x mailpit`.
 - Memory: budget ~1–1.5 GB RAM for the `e2e` target (trimmed), closer to ~2.5 GB
   for `dev`/`both`, which keep Studio and realtime.
 - No `supabase/config.toml` needed up front — the script runs `supabase init` if
@@ -65,18 +67,20 @@ supabase stop       # shut the stack down (frees the RAM)
 - Changing target between `e2e` and `dev`/`both` needs a `supabase stop` first —
   they use different service exclusion lists, and `supabase start` will not
   reconfigure a stack that is already up.
-- The URL and keys are read live from `supabase status`, never hardcoded, so this
-  stays correct across CLI versions.
-- CI no longer has hosted values: the E2E job's secrets were production's and
-  its runs took prod down on 2026-09-24, so the job is off until it can run this
-  script on the runner. The suite refuses any non-loopback Supabase URL
-  (`assertLocalTarget` in `tests/e2e/helpers/env.ts`), with no override.
-- **Known blocker, so the script does not work today** (for CI or locally): `supabase db reset` cannot replay the
-  migrations onto an empty database yet. `001` calls `update_updated_at()` and
-  `007`/`013` alter `tasks`, `habits`, `projects` and `habit_groups`, none of
-  which any migration creates (they predate the migrations tree; see
-  `supabase/schema.sql`), and `002` re-creates a trigger `001` already made. A
-  baseline migration is the fix.
+- The URL and keys are read live from `supabase status`, never hardcoded (the
+  key names it prints have changed across CLI versions — see the pin above).
+- CI runs this script too (`e2e` target, on the runner), in place of the hosted
+  values it used to get from repo secrets — those were production's, and its
+  runs took prod down on 2026-09-24. The suite refuses any non-loopback Supabase
+  URL (`assertLocalTarget` in `tests/e2e/helpers/env.ts`), with no override.
+- The replay onto an empty database works because of
+  `supabase/migrations/000_baseline.sql`: `001` onward assumed `tasks`, `habits`,
+  `projects`, `habit_groups` and `update_updated_at()` from the old `schema.sql`
+  bootstrap, which no migration created. Before it, this script stopped at
+  `supabase db reset` and had never worked.
+- If Docker can't pull from `public.ecr.aws` (some sandboxes block its CDN),
+  `SUPABASE_INTERNAL_IMAGE_REGISTRY=docker.io` pulls the same images from
+  Docker Hub.
 
 ## `verify-039.sh`
 
@@ -96,8 +100,8 @@ collapse:
 ```
 
 It needs no Supabase credentials and cannot reach a remote database. The schema
-it stands up is a RECONSTRUCTION — `projects` and `habit_groups` are created by
-no migration in the tree — so keep the fixture honest first if the real shape
-ever disagrees. `tests/unit/collapse-classify-kind.test.ts` covers the same
+it stands up is a RECONSTRUCTION of `projects` and `habit_groups` (now also created
+by `000_baseline.sql`), so keep the fixture honest first if the real shape ever
+disagrees. `tests/unit/collapse-classify-kind.test.ts` covers the same
 migration in CI, but only as text: it cannot catch a syntax error or a wrong
 join, which is exactly what this finds.

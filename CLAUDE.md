@@ -29,8 +29,7 @@ is republished.
 ```bash
 pnpm install
 vercel env pull .env.local        # gitignored, Vercel-generated — don't hand-copy
-./scripts/local-setup.sh dev      # point dev at a LOCAL Supabase — currently fails
-                                  # at `supabase db reset`; see below
+./scripts/local-setup.sh dev      # then point dev at a LOCAL Supabase (needs Docker)
 ```
 
 Then run `/mcp` to authenticate. `.mcp.json` is committed but holds only hosted OAuth
@@ -41,9 +40,7 @@ you run `local-setup.sh`.** Every hot-reload remount re-runs the planner's conta
 fan-out against the live project. `local-setup.sh dev` stands up a local stack and
 swaps only the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the
 VAPID pair and `CRON_SECRET` through untouched. `vercel env pull .env.local` puts
-prod back. **It does not work yet:** `supabase db reset` cannot replay the migrations
-onto an empty database until a baseline migration lands (see
-[scripts/README.md](scripts/README.md)).
+prod back.
 
 The same script covers the e2e suite (`./scripts/local-setup.sh e2e`, writing
 `.env.test` — see `.env.test.example`), or `both` from one stack.
@@ -59,9 +56,8 @@ for hours and took the live project down (do.dsul.app logins timed out with a
 Cloudflare 522). `localhost:3000` in the Supabase logs is the Playwright browser's
 origin as much as a dev server's: the 5,917 requests once measured from it on
 2026-09-18 were likely CI too, since several PRs ran E2E against prod that night.
-The CI E2E job is off (`if: false` in `.github/workflows/test.yml`) until it can
-start its own stack; the comment there says what re-enabling it takes. Never give
-it hosted keys back.
+CI's E2E job now starts its own stack on the runner with the same script (Supabase
+CLI pinned in `.github/workflows/test.yml`). Never give it hosted keys back.
 
 ## Git workflow
 
@@ -187,6 +183,16 @@ something out-of-band via the SQL editor or MCP, record it in the ledger with th
 `NNN` version, or `db push` will try to replay it later. Write migrations idempotently
 (`add column if not exists`, `drop … if exists`, `do $$ … end$$` guards) — they're
 expected to be safe to re-run.
+
+**Every migration must also replay onto an EMPTY database**, because CI's E2E job and
+`local-setup.sh` build one from scratch with `supabase db reset`; a migration that only
+works on top of prod's history turns that job red. `000_baseline.sql` creates what the
+tree assumed from the pre-migrations `schema.sql` bootstrap (`tasks`, `habits`,
+`projects`, `habit_groups`, `update_updated_at()`). It must never RUN on prod: it is
+marked applied in the remote ledger instead (`supabase migration repair --status
+applied 000`, or an insert into `supabase_migrations.schema_migrations`), and if
+`db push` ever offers `--include-all` for 000, the ledger row is missing — add it
+rather than taking the flag.
 
 ## Conventions and gotchas
 
