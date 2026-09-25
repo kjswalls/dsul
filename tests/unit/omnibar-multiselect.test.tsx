@@ -376,7 +376,7 @@ describe.each<Variant>(['dock', 'launcher'])('omnibar multiselect (%s)', (varian
     openPicker(variant);
     const b = rowFor(variant, 'b')!;
     expect(fireEvent.mouseDown(b, { ctrlKey: true })).toBe(false);
-    fireEvent.click(b);
+    fireEvent.click(b, { ctrlKey: true });
     expect(b).toHaveAttribute('data-checked', 'true');
     const d = rowFor(variant, 'd')!;
     expect(fireEvent.mouseDown(d)).toBe(false);
@@ -386,21 +386,29 @@ describe.each<Variant>(['dock', 'launcher'])('omnibar multiselect (%s)', (varian
     expect(chipCount(variant)).toBe('· 2');
   });
 
-  it('a slow modifier click still toggles instead of running', () => {
+  it('a Ctrl-click toggles even while the held Ctrl key auto-repeats', () => {
     openPicker(variant);
-    const now = vi.spyOn(performance, 'now');
-    try {
-      const b = rowFor(variant, 'b')!;
-      now.mockReturnValue(1000);
-      fireEvent.mouseDown(b, { ctrlKey: true, metaKey: true });
-      now.mockReturnValue(1700);
-      fireEvent.mouseUp(b, { ctrlKey: true, metaKey: true });
-      fireEvent.click(b, { ctrlKey: true, metaKey: true });
-      expect(b).toHaveAttribute('data-checked', 'true');
-      expect(run).not.toHaveBeenCalled();
-    } finally {
-      now.mockRestore();
-    }
+    const input = inputIn(variant);
+    const b = rowFor(variant, 'b')!;
+    // Holding Ctrl fires repeated keydowns at the focused input, before, during
+    // and after the press — the regression that turned every Ctrl-click into a run.
+    fireEvent.keyDown(input, { key: 'Control', ctrlKey: true });
+    fireEvent.mouseDown(b, { ctrlKey: true });
+    fireEvent.keyDown(input, { key: 'Control', ctrlKey: true, repeat: true });
+    fireEvent.mouseUp(b, { ctrlKey: true });
+    fireEvent.keyDown(input, { key: 'Control', ctrlKey: true, repeat: true });
+    fireEvent.click(b, { ctrlKey: true });
+    expect(b).toHaveAttribute('data-checked', 'true');
+    expect(run).not.toHaveBeenCalled();
+  });
+
+  it('a plain click with nothing marked still runs on that one item', () => {
+    openPicker(variant);
+    const b = rowFor(variant, 'b')!;
+    fireEvent.mouseDown(b);
+    fireEvent.click(b);
+    expect(run).toHaveBeenCalledTimes(1);
+    expect(run.mock.calls[0][1]).toBe('b');
   });
 
   it('a modifier mousedown that never became a click does not turn a later Enter into a toggle', () => {
