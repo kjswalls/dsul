@@ -10,7 +10,8 @@ import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { RelayField } from '@/components/primitives/relay-field';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { NoticeSlot } from '@/components/notices/notice-slot';
-import { DisplayMenu } from '@/components/primitives/display-menu';
+import { DisplayMenu, type DisplayMenuHandle } from '@/components/primitives/display-menu';
+import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { RailTooltip } from '@/components/primitives/pills';
 import { KeyCap } from '@/components/planner/organize/primitives';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
@@ -270,10 +271,13 @@ function HeaderTip({
 
 interface BraindumpProps {
   /**
-   * 'mobile' is the phone's Braindump TAB. It differs from the sidebar in one
-   * thing only — the header capsule is inset off the screen edge, so it lines
-   * up with the dated tabs' header card and with the dock. Everything below it
-   * already sits on the paper backdrop on both shells.
+   * 'mobile' is the phone's Braindump TAB. It differs from the sidebar only at
+   * the top, where this header is the tab's whole chrome: the capsule, and the
+   * notice slot under it, are inset off the screen edge so they line up with
+   * the dated tabs' header card and with the dock; and every control in the
+   * header — the Display shelf's text and ✕ included — reaches 28px for a
+   * thumb. Everything below that already sits on the paper backdrop on both
+   * shells.
    */
   variant?: 'sidebar' | 'mobile';
   /**
@@ -300,6 +304,12 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   // The scroll port — QuickAddRow drops it to the bottom after each add so the
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
+  // The Display menu's handle, shared with the shelf under the header: the
+  // shelf's text opens the menu through it, and its ✕ parks focus on the
+  // trigger before the reset takes the shelf away. A ref rather than open state
+  // held here, so opening and closing the menu re-render the menu alone and not
+  // every row of this list.
+  const displayRef = useRef<DisplayMenuHandle>(null);
 
   const { isOver, setNodeRef } = useDroppable({ id: 'sidebar' });
 
@@ -595,6 +605,16 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           )
         }
         className={cn(isMobile && 'mx-[10px]')}
+        // The Display shelf: what the menu has set, in words, under the pill —
+        // and when a filter matches nothing, the only thing on screen that says
+        // why the list below is showing its empty-state poem. It sits IN FLOW,
+        // which the canvas header could not afford: there it would stand over an
+        // hour grid that derives its row height from the column's remaining
+        // height, and every hour row would re-scale as the first filter went
+        // on. This header stands over a scrolling list, which only starts
+        // scrolling a line sooner. And the shelf is there only while something
+        // is set, so a braindump with nothing set keeps the bare capsule.
+        below={<DisplayShelf surface="braindump" menu={displayRef} touch={isMobile} />}
       >
         {/* On the phone this row is the Braindump tab's ONLY header, so these
             controls are the whole surface's chrome and they were still wearing
@@ -606,12 +626,11 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             around this component's canvas twin.
 
             The menu itself is portalled, so the sidebar's 280px minimum never
-            constrains the 240px panel — which is the decisive advantage over a
-            persistent chip bar. A bar would sit IN FLOW above a grid whose hour
-            height is derived from remaining column height, so adding your first
-            filter would visibly re-scale every hour row of the day. */}
+            constrains its 240px panel. The shelf under the pill is the one
+            part of the Display surface that spends the column's width, and it
+            stacks rather than overflow. */}
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
-          <DisplayMenu surface="braindump" trigger="icon" align="start" />
+          <DisplayMenu ref={displayRef} surface="braindump" trigger="icon" align="start" />
         </span>
         {/* A disabled button takes no pointer events (disabled:pointer-events-none
             in ui/button), so while Organize is off the tooltip hangs on a span

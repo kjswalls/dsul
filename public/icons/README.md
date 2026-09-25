@@ -1,7 +1,9 @@
 # dsul PWA icons
 
-The mark is the lucide `Zap` glyph in `--lime-ink` on a `--lime-solid` ground —
-the same lockup as the login wordmark (`app/login/page.tsx`).
+The mark is the lucide `Zap` glyph in `--lime-ink` on a `--lime-solid` ground.
+It was the login wordmark's lockup until the wordmark became a lowercase "dsul"
+with a lime dot after it (`components/primitives/wordmark.tsx`); the icons still
+carry the Zap.
 
 These are **maskable** (`purpose: "any maskable"` in `public/manifest.json`), so
 the ground fills the whole square and the glyph sits inside the centre 80%; the

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   ArrowUpDown,
@@ -42,13 +42,16 @@ import { RailTipContent, useQuietTip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
+import { NO_PRIORITY, type PriorityFilterValue, type ViewFilters } from '@/lib/filters';
 import {
-  EMPTY_VIEW_FILTERS,
-  NO_PRIORITY,
-  activeFilterCount,
-  type PriorityFilterValue,
-  type ViewFilters,
-} from '@/lib/filters';
+  PRIORITY_FILTER_ORDER,
+  UNKNOWN_GOAL_LABEL,
+  goalMenuOrder,
+  priorityFilterLabel,
+  resetDisplay,
+  useDisplaySummary,
+  type DisplaySurface,
+} from '@/lib/display-summary';
 import {
   CONTAINER_KINDS,
   NO_CONTAINER,
@@ -128,7 +131,11 @@ import { cn } from '@/lib/utils';
  * the pane below.
  */
 
-export type DisplaySurface = 'canvas' | 'braindump';
+/**
+ * Declared beside the display model (lib/display-summary.ts), which reads it as
+ * well; re-exported for the callers that name it from here.
+ */
+export type { DisplaySurface };
 
 /* ── the row idiom ──────────────────────────────────────────────────────────
  *
@@ -175,8 +182,12 @@ function Tick({ on, className }: { on: boolean; className?: string }) {
   return on ? <Check className={cn('size-3.5', className)} /> : null;
 }
 
-/** 8px dot in the real priority token, or a hollow ring for "no priority". */
-function PriorityDot({ value }: { value: PriorityFilterValue }) {
+/**
+ * 8px dot in the real priority token, or a hollow ring for "no priority".
+ * Exported so the braindump's Display shelf marks a value the way its row here
+ * does.
+ */
+export function PriorityDot({ value }: { value: PriorityFilterValue }) {
   if (value === NO_PRIORITY) {
     return (
       <span className="size-2 shrink-0 rounded-full border border-muted-foreground/55" aria-hidden="true" />
@@ -194,9 +205,10 @@ function PriorityDot({ value }: { value: PriorityFilterValue }) {
 /**
  * Colour is quarantined to a glyph, never a fill — a 9px rounded square in the
  * container's own colour. The lime budget is exactly one mark per surface (the
- * trigger dot), so a lime-filled selected chip like today's is out.
+ * trigger dot), so a lime-filled selected chip like today's is out. Exported for
+ * the braindump's Display shelf, like PriorityDot.
  */
-function ContainerSquare({ color }: { color: string }) {
+export function ContainerSquare({ color }: { color: string }) {
   return (
     <span
       className="size-[9px] shrink-0 rounded-[3px]"
@@ -449,11 +461,27 @@ function SheetSectionRow({ section, onOpen }: { section: Section; onOpen: () => 
 
 /* ── the menu ───────────────────────────────────────────────────────────────*/
 
+/**
+ * What DisplayMenu's `ref` exposes. Call it from handlers only: during render
+ * the ref is null on the first pass and a commit behind after that.
+ */
+export interface DisplayMenuHandle {
+  /**
+   * Open this surface's menu as if its trigger had been used. Focus goes back
+   * to `from` on close — a ref, read as the menu closes, so an opener that was
+   * swapped for a new one while the menu was open still gets it.
+   */
+  open(from?: React.RefObject<HTMLElement | null> | null): void;
+  /** Focus the trigger — where focus goes when the thing that held it is about to unmount. */
+  focus(): void;
+}
+
 export function DisplayMenu({
   surface,
   trigger = 'label',
   align = 'end',
   scope: scopeProp,
+  ref,
 }: {
   surface: DisplaySurface;
   /** Labelled pill for the canvas capsule; 24px icon for the braindump header. */
@@ -472,10 +500,27 @@ export function DisplayMenu({
    * that honours it, with nothing on that surface able to correct it.
    */
   scope?: ViewScope;
+  /**
+   * A second way in, for the braindump's Display shelf: open this menu from
+   * something other than its trigger, and move focus to the trigger before that
+   * something goes away.
+   *
+   * A handle, not a second trigger and not open state lifted into the mount.
+   * Radix keeps one trigger ref and one anchor per menu, so a second
+   * DropdownMenuTrigger would take both over (and duplicate the trigger's test
+   * id). Open state held by the braindump would re-render its whole list on
+   * every open and close, and held in a store it would outlive the menu it
+   * describes — an armed slot that springs open later is the ui-store bug the
+   * Organize console already had to route around. Behind a handle, each shell
+   * keeps its open state where it already lives.
+   */
+  ref?: React.Ref<DisplayMenuHandle>;
 }) {
   // The icon trigger's tooltip, and the menu's own open state so the tooltip
-  // can stand down while the panel is out. Held here, above the touch branch's
-  // early return, so the hook order never depends on the input device.
+  // can stand down while the panel is out — and so the handle below can open
+  // the dropdown, which Radix's trigger alone cannot be asked to do. Held here,
+  // above the touch branch's early return, so the hook order never depends on
+  // the input device.
   const tip = useQuietTip();
   const [menuOpen, setMenuOpen] = useState(false);
   const projects = usePlannerStore((s) => s.projects);
@@ -528,14 +573,13 @@ export function DisplayMenu({
   /* ── what is set ──────────────────────────────────────────────────────── */
 
   const selectedProjects = namesOfKind(filters.containers, 'project');
-  /** The goal selection AS THE APP READS IT — empty while Goals is off. */
-  const goalClause = goalsOn ? filters.goals : [];
 
   /**
    * The Goal clause's rows, described as DATA before anything draws them.
    *
    * ACTIVE goals (lib/goals.ts `displayGoals`), plus any SELECTED goal that is
-   * no longer active, plus a placeholder row for any selected id the store can
+   * no longer active — `goalMenuOrder`, the order the braindump's shelf lists
+   * them in too — plus a placeholder row for any selected id the store can
    * no longer name at all. None of the three halves is tidiness: this menu's
    * rule is that hiding a row STRANDS the clause — the trigger keeps counting
    * something the panel has nothing to account for — and a goal can leave the
@@ -562,10 +606,7 @@ export function DisplayMenu({
    */
   const unknownGoalIds = filters.goals.filter((id) => !goals.some((g) => g.id === id));
   const goalRows: RowSpec[] = [
-    ...[
-      ...displayGoals(goals),
-      ...goals.filter((g) => filters.goals.includes(g.id) && g.state !== 'active'),
-    ].map((goal: Goal) => ({
+    ...goalMenuOrder(goals, filters.goals).map((goal: Goal) => ({
       key: goal.id,
       label: goal.name,
       leading: <ContainerSquare color={goal.color ?? accentColorForName(goal.name)} />,
@@ -575,7 +616,7 @@ export function DisplayMenu({
     })),
     ...unknownGoalIds.map((id) => ({
       key: id,
-      label: 'Unknown goal',
+      label: UNKNOWN_GOAL_LABEL,
       // The rail says what the row cannot: this id names nothing the store
       // holds. It narrows nothing either way, so the only thing left to do with
       // it is untick it, which this row exists to allow.
@@ -587,50 +628,19 @@ export function DisplayMenu({
   ];
 
   /**
-   * The count behind the trigger dot and the Reset badge.
-   *
-   * Grouping and the type filter are IN it. Today's braindump counts grouping
-   * for the dot but its "Clear filters" resets neither — so the dot stays lit
-   * after clearing, with no way to put it out from the panel that lit it.
+   * The count behind the trigger dot and the Reset badge, from the one summary
+   * the braindump's shelf renders too — so the dot and the shelf cannot
+   * disagree about what is set. What it counts, and why, is in
+   * lib/display-summary.ts.
    */
+  const { activeCount } = useDisplaySummary(surface);
+  // What bolds each section's label — per section, where the count is the sum.
   const typeSet = isCanvas && view.typeFilter !== 'all';
   const groupSet = groupBy !== 'none';
   const sortSet = (isCanvas ? view.canvasSortBy : view.braindumpSortBy) !== 'default';
-  const activeCount =
-    activeFilterCount({ ...filters, goals: goalClause }) +
-    (groupSet ? 1 : 0) +
-    (sortSet ? 1 : 0) +
-    (typeSet ? 1 : 0);
 
-  /**
-   * Reset clears everything this menu OWNS for this surface. `showPausedOnGrid`
-   * is deliberately excluded and captioned "Everywhere" for the same reason —
-   * it is an app-wide setting that happens to be reachable here, not a display
-   * preference of this surface, and resetting one surface must not silently
-   * change what the other five show.
-   */
-  const reset = () => {
-    // RESET CLEARS WHAT THE MENU IS SHOWING, and a gated clause is not showing.
-    //
-    // While Goals is off this menu renders no row for the goal filter and no
-    // Goal value under Grouping, and the trigger deliberately does not count
-    // either — the argument being that the menu does not own them. Clearing
-    // them here would contradict that in the most annoying possible way:
-    // Reset would silently destroy a selection the user cannot see, so
-    // switching Goals back on would return an empty filter rather than the one
-    // they left. Off has to be lossless, and this is the one path where it
-    // nearly was not.
-    setFilters({ ...EMPTY_VIEW_FILTERS, goals: goalsOn ? [] : filters.goals });
-    const keepGroupBy = (stored: string) => !goalsOn && stored === 'goal';
-    if (isCanvas) {
-      if (!keepGroupBy(view.canvasGroupBy)) view.setCanvasGroupBy('none');
-      view.setCanvasSortBy('default');
-      view.setTypeFilter('all');
-    } else {
-      if (!keepGroupBy(view.braindumpGroupBy)) view.setBraindumpGroupBy('none');
-      view.setBraindumpSortBy('default');
-    }
-  };
+  /** Both shells' Reset row: the function the shelf's ✕ calls, not a copy of it. */
+  const reset = () => resetDisplay(surface);
 
   /* ── grouping ─────────────────────────────────────────────────────────── */
 
@@ -812,11 +822,12 @@ export function DisplayMenu({
       set: filters.priorities.length > 0,
       width: 'w-56',
       entries: [
-        ...(['high', 'medium', 'low'] as Priority[]).map((p) =>
+        // The shared order, so the shelf lists values as these rows stand.
+        ...PRIORITY_FILTER_ORDER.filter((v): v is Priority => v !== NO_PRIORITY).map((p) =>
           rowEntry({
             key: p,
             leading: <PriorityDot value={p} />,
-            label: p[0].toUpperCase() + p.slice(1),
+            label: priorityFilterLabel(p),
             checked: filters.priorities.includes(p),
             keepOpen: true,
             onToggle: () => patch({ priorities: toggle(filters.priorities, p) }),
@@ -828,7 +839,7 @@ export function DisplayMenu({
         rowEntry({
           key: NO_PRIORITY,
           leading: <PriorityDot value={NO_PRIORITY} />,
-          label: 'No priority',
+          label: priorityFilterLabel(NO_PRIORITY),
           checked: filters.priorities.includes(NO_PRIORITY),
           keepOpen: true,
           onToggle: () => patch({ priorities: toggle(filters.priorities, NO_PRIORITY) }),
@@ -977,6 +988,61 @@ export function DisplayMenu({
       : []),
   ];
 
+  /* ── opening, from the trigger or through the handle ──────────────────── */
+
+  /** The one trigger button, in either shell; Radix's Slot composes this with its own ref. */
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  /** Whatever opened the menu when the trigger did not — focus goes back to it on close. */
+  const returnTo = useRef<React.RefObject<HTMLElement | null> | null>(null);
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      open: (from) => {
+        if (isTouch) {
+          // Through vaul's OWN trigger, the sheet's one opening path: that is
+          // where vaul records the sheet as opened (its scroll lock and Safari
+          // fix key off it) and where DisplaySheet resets its drilled pane. A
+          // click, because a Drawer trigger opens on click.
+          triggerRef.current?.click();
+          // Set AFTER the click, whose opening edge clears it.
+          returnTo.current = from ?? null;
+        } else {
+          // Radix's dropdown trigger opens on pointerdown and on keys, never on
+          // click, so this shell opens through its state instead.
+          returnTo.current = from ?? null;
+          setMenuOpen(true);
+        }
+      },
+      focus: () => triggerRef.current?.focus(),
+    }),
+    [isTouch]
+  );
+
+  /**
+   * Both shells' close: focus goes back to whatever opened the menu, if one is
+   * on the page as it closes. Otherwise the default runs, and that is Radix
+   * sending it to the trigger.
+   */
+  const restoreFocus = (e: Event) => {
+    const el = returnTo.current?.current;
+    returnTo.current = null;
+    if (el?.isConnected) {
+      e.preventDefault();
+      el.focus();
+    }
+  };
+
+  /**
+   * Both dropdowns' open state, as Radix reports it. Radix reports an opening
+   * only when its own trigger did it, and then nothing else is waiting for
+   * focus back; the handle opens through the state, which Radix does not report.
+   */
+  const onMenuOpenChange = (next: boolean) => {
+    if (next) returnTo.current = null;
+    setMenuOpen(next);
+  };
+
   /* ── trigger ──────────────────────────────────────────────────────────── */
 
   const dot = activeCount > 0 && (
@@ -993,6 +1059,7 @@ export function DisplayMenu({
   const triggerButton =
     trigger === 'label' ? (
       <button
+        ref={triggerRef}
         aria-label={ariaLabel}
         data-testid={`display-trigger-${surface}`}
         data-active={activeCount > 0 ? 'true' : 'false'}
@@ -1008,6 +1075,7 @@ export function DisplayMenu({
       </button>
     ) : (
       <button
+        ref={triggerRef}
         aria-label={ariaLabel}
         data-testid={`display-trigger-${surface}`}
         data-active={activeCount > 0 ? 'true' : 'false'}
@@ -1030,6 +1098,10 @@ export function DisplayMenu({
         showEntries={showEntries}
         activeCount={activeCount}
         reset={reset}
+        onOpening={() => {
+          returnTo.current = null;
+        }}
+        onCloseAutoFocus={restoreFocus}
       />
     );
   }
@@ -1040,6 +1112,13 @@ export function DisplayMenu({
       className={PANEL}
       data-testid="display-menu"
       data-display-variant="menu"
+      onCloseAutoFocus={restoreFocus}
+      // Mirror Radix's own rule: a right- or ctrl-click outside leaves focus
+      // where it lands, so it is not pulled back to the opener either.
+      onInteractOutside={(e) => {
+        const o = e.detail.originalEvent as PointerEvent;
+        if (o.button === 2 || (o.button === 0 && o.ctrlKey)) returnTo.current = null;
+      }}
     >
       <Cap>Structure</Cap>
       {structure.map((s) => (
@@ -1089,7 +1168,7 @@ export function DisplayMenu({
         <DropdownMenu
           open={menuOpen}
           onOpenChange={(next) => {
-            setMenuOpen(next);
+            onMenuOpenChange(next);
             // Put the tooltip down on BOTH edges. Opening, the menu trigger's
             // pointerdown preventDefaults and so skips the tooltip's own close;
             // while the menu is out the tooltip is held shut by the prop, and a
@@ -1120,7 +1199,7 @@ export function DisplayMenu({
   }
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
       <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
       {menuContent}
     </DropdownMenu>
@@ -1149,6 +1228,8 @@ function DisplaySheet({
   showEntries,
   activeCount,
   reset,
+  onOpening,
+  onCloseAutoFocus,
 }: {
   trigger: React.ReactNode;
   structure: Section[];
@@ -1156,6 +1237,10 @@ function DisplaySheet({
   showEntries: Entry[];
   activeCount: number;
   reset: () => void;
+  /** Called on the opening edge, beside the pane reset — every opening passes it. */
+  onOpening?: () => void;
+  /** Where focus goes as the sheet closes; handed through vaul to Radix's Dialog. */
+  onCloseAutoFocus?: (e: Event) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [paneId, setPaneId] = useState<string | null>(null);
@@ -1215,12 +1300,15 @@ function DisplaySheet({
         // sliding out, so clearing there swaps the body under the exit
         // animation. Opening is one path, vaul's own trigger, and this lands in
         // the same batch as `setOpen(true)` — the first frame of the new sheet
-        // is already the root, whichever way the last one closed.
+        // is already the root, whichever way the last one closed. The
+        // braindump's Display shelf opens the sheet by clicking that same
+        // trigger, through DisplayMenu's handle, so it comes this way too.
         if (next) {
           setPaneId(null);
           // The focus effect would otherwise read the last opening's pane as a
           // change and pull focus onto a section row behind vaul's own.
           lastPane.current = null;
+          onOpening?.();
         }
       }}
       // vaul defaults autoFocus to false, which leaves focus on the trigger
@@ -1231,7 +1319,11 @@ function DisplaySheet({
     >
       <DrawerTrigger asChild>{trigger}</DrawerTrigger>
 
-      <DrawerContent data-testid="display-menu" data-display-variant="sheet">
+      <DrawerContent
+        data-testid="display-menu"
+        data-display-variant="sheet"
+        onCloseAutoFocus={onCloseAutoFocus}
+      >
         <DrawerHeader className="pb-1">
           <div className="flex items-center gap-1">
             {pane && (

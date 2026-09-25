@@ -748,6 +748,217 @@ levels omitted — so a habit, which carries no priority field, lands in "No pri
 rather than a section named after its type. The union is now a different vocabulary from
 the canvas one rather than a smaller one: it has `type` and still lacks `bucket`.
 
+## Addendum (2026-09-25): the braindump's Display shelf
+
+**What it is.** A line of text inside the braindump header's grey capsule, under the white
+pill, saying in words what the Display menu has set: "Grouped by …", "Sorted by …", the
+priority values (the menu's dots; No priority is the hollow ring), the project values (the
+menu's colour squares; No project is the ring), the goal values (lucide `Target`), and
+"Hide finished" last. Values follow the menu's rows, never the order they were toggled in,
+and that includes a goal id nothing answers to, which follows its "Unknown goal" row, after
+the goals the store can name. A value with no row comes after those with one, in the order it
+was stored: a string no Priority row offers, and for projects a deleted project, then a ref of
+no project kind. No project is the exception, and stays last, where its row is. It is
+there exactly when the trigger's lime dot is lit, in the sidebar and in
+the phone's Braindump tab alike, so a braindump with nothing set keeps the bare capsule.
+Clicking the text opens the Display menu; the ✕ beside it resets. The dot says THAT the list
+is shaped and the shelf says how, and one case makes it more than a convenience: a filter
+that matches nothing leaves the list showing its "A clear head." empty-state poem, and the
+shelf is then the only thing on screen that says why. The component is
+[components/primitives/display-shelf.tsx](../../components/primitives/display-shelf.tsx). It
+hangs in SurfaceHeader's `below` slot, which renders straight after the pill with no
+wrapper, so a header that passes nothing (Beacon's) is unchanged and the pill stays the
+capsule's first child.
+
+**It sits IN FLOW, which is why it is the braindump's and not the canvas's.** The canvas
+header stands over an hour grid that derives its row height from the column's remaining
+height, so a shelf there would re-scale every hour row as the first filter went on. The
+braindump's header stands over a scrolling list, which only starts scrolling a line sooner.
+The model supports a canvas shelf; none is mounted.
+
+**One line while everything fits, then a stack.** On one line the settings sit 16px apart
+with no separators. When that does not fit, grouping and ordering share the first line, each
+filter gets a line of its own, and Hide finished comes last, 5px apart. A multi-value
+setting wraps only between its values; a single overlong value ellipsizes. Heights, for
+checking by eye: one line makes the capsule 78px (6 + 37 pill + 8 + 18 + 3 + 6), each further
+line of the stack adds 23px, and a wrap inside a setting adds 18px.
+
+**Locked decisions:**
+
+- **One derivation.** `useDisplaySummary(surface)` in
+  [lib/display-summary.ts](../../lib/display-summary.ts) returns `{ activeCount, clauses }`,
+  and the trigger's dot, its aria-label count and the shelf all read it. `activeCount > 0 ⇔
+  clauses.length > 0` is an invariant of the model, so "visible exactly when the dot is lit"
+  is structural, not two formulas that happen to agree. The model takes the EFFECTIVE
+  group-by and the Goals gate, so a grouping or goal selection the switch is keeping is
+  neither counted nor named. `clauseText` is the one spelling of each clause: the fit is keyed
+  on it, and the tests read the screen against it.
+- **The ✕ IS Reset display.** Both shells' Reset row and the ✕ call `resetDisplay(surface)`,
+  so they cannot drift. With Goals off it keeps the stranded goal selection and the stored
+  Goal grouping (off is lossless), and it never touches Show paused, which is app-wide. The
+  ✕ moves focus to the trigger BEFORE it resets: a reset always takes the count to zero, so
+  the shelf unmounts under the pressed button, and a focused element that unmounts leaves
+  focus on `<body>`. On a pointer the ✕ wears the header's `RailTooltip` ("Reset display"),
+  as every icon-only control in that header does, and never a native `title`, which would
+  fire a second tooltip; on the phone it has none.
+- **The text opens the menu through a handle, never a second trigger or lifted state.**
+  `DisplayMenu` takes a React 19 `ref` prop exposing `open(from?)` and `focus()`. Radix keeps
+  one trigger ref and one anchor per menu, so a second `DropdownMenuTrigger` would take both
+  over (and duplicate `display-trigger-braindump`). Open state held by Braindump would
+  re-render every row of its list on each open and close; held in a store it would outlive
+  the menu, the armed-slot bug `useOpenConsole` exists to route around. The pointer shell
+  opens through its local `menuOpen` state, because Radix's trigger opens on pointerdown and
+  keys, never on click. The touch shell CLICKS vaul's own trigger, the sheet's one opening
+  path, where vaul records the sheet as opened and the drilled pane resets, so a sheet opened
+  from the shelf lands on the root however the last one closed. The dropdown stays anchored
+  to the icon, so it opens where an icon-opened one does.
+- **Focus goes back to whoever opened it.** `open(from)` takes a REF to the shelf's button,
+  held by `DisplayShelf`, which stays mounted while its body comes and goes, and the menu
+  reads it only as it closes. So both shells' close sends focus to whichever shelf is on
+  screen by then: unticking the one priority takes the shelf away and ticking another brings
+  a new one back, all while the menu stays open, and focus lands on the new one. With no
+  shelf left, Radix sends focus to the trigger, which is what happens when a pick clears the
+  last setting. An opening through the trigger itself clears the record, and so does a
+  right- or ctrl-click outside, mirroring Radix's own rule that such a click leaves focus
+  where it lands. The opening's clear is for a press on the trigger while the menu plays its
+  exit, a close that has not reached its focus return yet. In Chromium that press also lands
+  on the closing menu's outside-press listener, still armed, so the menu stays shut; with the
+  clear, focus ends on the trigger just pressed, and without it, on the shelf. On the phone
+  the overlay covers the trigger through the sheet's exit, so the sheet's clear is the same
+  rule with no tap that reaches it.
+- **Fit is imperative, and it is not state.** Whether the text fits changes on every frame of
+  a sash drag, and React never hears about that: the column resizes through `--sidebar-w`
+  precisely so the braindump does not re-render. So the shelf writes `data-fit` on its own
+  root, React never renders the attribute, every stack rule keys off
+  `group-data-[fit=stack]/shelf:`, and with no attribute the one-line layout applies. The
+  one-line width is MEASURED: force `line`, then take the span from the first `[data-line]`'s
+  left edge to the last one's right (not `scrollWidth`, which clamps to `clientWidth` whenever
+  the content fits). That happens in a layout effect keyed on the FULL text, and again, per
+  text, when `document.fonts.ready` settles: a new text can ask for a subset the page has not
+  loaded (a Cyrillic goal name landing with the planner), which the layout effect measures in
+  the fallback face. The sample below is drawn in the basic Latin face alone, so a face that
+  loads for any other characters (another script, or accented Latin such as a Polish name)
+  changes nothing it can hear. Keying on
+  the full text rather than the clause labels is what re-fits when a value joins a
+  multi-select that is already showing. A resize only COMPARES: a ResizeObserver on a
+  zero-height probe (`absolute inset-x-0 top-0 h-0`, whose size is the root's width and never
+  the fit's) re-applies the cached width against the lines box. Its one exception is to
+  measure once when the cached width is still 0, for a shelf that mounted where nothing was
+  laid out. The same observer watches a SAMPLE: an invisible, out-of-flow,
+  `whitespace-nowrap` span whose `::before` draws "Hide finished" in the shelf's own type
+  with 1rem of left padding (on the pseudo-element, so the phrase adds no text to the page
+  and the padding sits inside the box the observer reads). Its width answers to the font,
+  to spacing and to the rem, never to the column or the fit, so a sample resize is the line
+  changing size with its string unchanged: a WCAG 1.4.12 text-spacing override, text-only
+  zoom, a minimum font size, a late font, or the browser's default font size, which leaves
+  the 11px text alone and moves every rem-sized gap, priority dot and the ✕. That
+  re-measures a frame later, outside the observer's delivery, in either fit and whatever else
+  the delivery holds: a shelf stacks when an override widens its text and goes back to one
+  line when it comes off, mid-drag or not. A drag never touches the sample, so it only ever
+  compares. The first delivery carries the sample too, so a shelf that mounts laid out
+  measures once more a frame later and finds the width it already had. A sample gone to 0 is
+  the shelf being hidden, which has nothing to fit until the sample's return, itself a
+  resize, measures it. The first version watched the `[data-line]` spans and took a line
+  resizing with no probe in the delivery for the text changing size. A review in Chromium
+  found two holes in that: a stacked line stretches across the column, so the text changing
+  size resized nothing there, and a change in a frame where the column also moved looked like
+  a drag. The next review found one in the sample's first cut, a bare phrase: the browser's
+  font-size setting moves the gaps and dots but not the 11px phrase, so it went unheard and
+  the one line clipped its last glyphs. The rem of padding is that fix. The comparison allows one
+  layout unit (1/64px) and no more: nothing on the one line truncates, so any overflow is a
+  glyph cut off with no ellipsis, and neither side of the comparison depends on the fit, so
+  there is no oscillation for a wider margin to damp.
+- **The sidebar mount has a width floor, `SIDEBAR_MIN_WIDTH - 20` (260px).** Collapse and
+  hover-peek animate the column between `w-0` and its width over 300ms with the braindump
+  still mounted. Without a floor, every frame of the fold would re-fit, and the collapsed
+  shelf would sit in a one-value-per-row stack that every expand unfolds from. At rest the
+  floor never binds: the column is never narrower than 280px, less the capsule's 10px sides.
+  During the fold the column's own overflow clips. A shelf that is one line at rest still
+  flips once mid-expand, which is accepted. The phone mount has no floor because it has no
+  collapsing column.
+- **Goals wear `Target`, in ink-2**, not the goal's colour. Goal colours can hash to lime
+  `--accent-8`, and that would put a lime mark per goal on the resting surface.
+- **Data glyphs may be lime at rest; the lime CHROME budget is unchanged.** The Low dot is
+  `--priority-low` and a project square can be `--accent-8`. Both are data, as the list's
+  priority bars and the menu's own squares already are, and the surface's lime chrome is
+  still the trigger dot alone. Nothing in the shelf carries an opacity or a transition, and
+  nothing between those glyphs and the section may fade them; a test walks up and checks.
+- **The loaded gate.** A goal id that nothing answers to reads `…` until the planner's first
+  load lands (`!!userId && !isLoading`), and "Unknown goal" only after that. "Unknown goal"
+  reads as "gone", and before the load the store simply has not answered yet. The count is
+  the same either way, so the dot and the shelf agree while it waits. A load that FAILED
+  counts as landed, on purpose: the menu names the same id "Unknown goal" (its row for a
+  goals table that could not be reached), and `…` would have the shelf disagree with the
+  menu it opens for as long as the failure lasted.
+- **The accessible name is the visible text** (WCAG 2.5.3, Label in Name), so an `aria-label`
+  here would trip axe's `label-content-name-mismatch`. sr-only `"; "` and `", "` separators
+  give the name its pauses. The nouns the glyphs stand for go in `aria-describedby` ("Display
+  settings. Priority: High, Low. Project: Work, No project. …"). `aria-haspopup` comes from
+  `useIsMobile()`, the hook DisplayMenu picks its shell with, and is `menu` or `dialog`. There
+  is no `aria-expanded`, because what opens is modal and hides the section while it is up.
+  There is also no live region and no heading.
+- **The phone's targets are 28px, through a `::before` hit area** (the header's existing
+  idiom) on the BUTTONS. The clipping `overflow-hidden` is on the lines box inside the opener,
+  so it never cuts the reach off.
+
+### Gotchas from the shelf
+
+- **jsdom reports every width as 0, so the fit is always `line` there** (`0 > 0 + 1/64` is
+  false). That is deterministic, and useless for testing a stack.
+  `tests/unit/display-shelf.test.tsx` stubs `Element.prototype.getBoundingClientRect`, giving
+  the lines box a chosen width and laying the `[data-line]` spans out in whichever fit the
+  root holds as they are read (end to end on one line; stacked, each stretched across the
+  box, as a column's children are, so a measure that forgot to force the one line reads the
+  stack), and restores it after each case. It delivers the shelf's observer by hand, finding
+  it by the probe it watches, because dnd-kit builds observers of its own around the
+  braindump, and gives each entry the `contentRect.width` the shelf reads off the sample.
+  A case that resizes the sample starts with `firstDelivery()`, the delivery a real
+  observer makes at `observe()`, since that one asks for a frame of its own: a shelf that
+  could re-measure only once would pass a case that skipped it.
+- **The sample's classes are asserted EXACTLY.** A class that stretches it from `left-0`
+  (`right-0`, `inset-x-0`, `w-full`) makes its width the column's, and then every frame of a
+  drag resizes it and forces a one-line measure. A subset match would let one through.
+- **The `typeof ResizeObserver === 'undefined'` guard is load-bearing.** jsdom has no
+  ResizeObserver, and `tests/unit/braindump-grouping.test.tsx` mounts an ACTIVE braindump (a
+  grouping is set, so the shelf renders) without stubbing one. Without the guard, all 11 of
+  its tests throw `ReferenceError`. A shelf with no observer keeps the fit it measured.
+- **Never read the handle in render.** `menu.current` is null on the first render and a
+  commit behind after that. `react-hooks/refs` does not catch it: it flags `.current` on a
+  `useRef` or on a prop named `…Ref`, and this prop is `menu`. Read it in handlers only.
+- **A stacked multi-select must `shrink`.** A clause that keeps `shrink-0` in the stack holds
+  its one-line width, so the values past the column's edge are clipped instead of wrapped.
+  jsdom cannot lay this out, so the test asserts the classes, every one the stack lays out
+  by: `flex-col` on the lines box, `shrink`/`min-w-0`/`flex-wrap` on each line and each
+  multi-select, `min-w-0 max-w-full` on each value with `truncate` on its label, and
+  `min-w-0 max-w-full truncate` on each single phrase.
+- **Never measure inside the observer's delivery.** Forcing the one-line layout there starts a
+  measure, resize, measure loop, and the "ResizeObserver loop" errors it raises land on every
+  other observer on the page. The observer compares; a change of text measures, and so does
+  the frame the observer schedules when its sample resized.
+- **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
+  The tests query `[data-clause="…"]` instead.
+- **jsdom's accessible-name computation trims each element's text.** So the space inside an
+  sr-only separator does not survive it, and the computed name reads
+  `Grouped by Project;High,Low;…`. The test lets those spaces be missing from the name and
+  checks the separators' own text instead.
+- **vaul keeps a closed sheet mounted in jsdom and leaves the page `aria-hidden`.** Steps after
+  a close therefore go by test id and `data-state`, never by role. The sheet's focus return
+  CAN be observed, though: Radix's Presence holds the closed content until an `animationend`
+  naming its exit animation arrives, and jsdom computes vaul's (`slideToBottom`) from vaul's
+  own stylesheet. Dispatch `animationend` with `animationName` set to
+  `getComputedStyle(node).animationName`, wait for the node to unmount, and read
+  `document.activeElement` a tick later (`finishExit` in the shelf test). A `<style>` that
+  gives the dropdown's closed content an animation holds it mounted the same way, which is
+  how a trigger reopening a menu mid-exit is tested.
+
+**Manual QA states:** 406px and 280px sidebar and a 390px phone: one setting; everything on;
+a 4+ value priority or project filter at 280px (wraps between values); a long project name
+at 280px (ellipsizes); collapse and hover-peek with the shelf showing; open from the shelf and
+Escape (focus back on the shelf); a text-spacing bookmarklet or text-only zoom applied with the
+shelf on one line (it stacks rather than clip), then taken off (it goes back to one line);
+the browser's default font size (Chrome: Settings, Appearance, Font size) raised with the shelf
+on one line and a little room to spare (it stacks), then put back (one line).
+
 ## Related
 
 `unified-items.md` (the registry this extends), `organize-console.md` (shares Phase B),
