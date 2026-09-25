@@ -19,6 +19,7 @@ import type {
   TimeBucket,
   TaskStatus,
   HabitStatus,
+  Priority,
   Project,
   ItemTypeDef,
   Routine,
@@ -27,9 +28,10 @@ import type {
   GoalRole,
   Proposal,
 } from './planner-types';
-import { TIME_BUCKET_RANGES } from './planner-types';
+import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from './planner-types';
 import { validateProposalOperations } from './proposal';
 import {
+  goalItemIds,
   goalProgress,
   milestoneItemIds,
   resolveGoalStateWrite,
@@ -100,6 +102,14 @@ import { saveSettings } from './settings-service';
 import { isRecurring, isCompletedOnDate, toDateStr } from './recurrence';
 import { accentColorForName } from './accent-colors';
 import { CONTAINER_KINDS, foldContainerName, sameContainerName } from './container-registry';
+import {
+  canBulkClearProject,
+  canBulkCollect,
+  canBulkSetPriority,
+  canBulkSetProject,
+  canBulkSetReminder,
+  itemCount,
+} from './bulk-edit';
 
 interface PlannerStore {
   /**
@@ -328,6 +338,30 @@ interface PlannerStore {
     containerId: string,
     member: boolean,
   ) => void;
+  /**
+   * Bulk property edits — the multiselect bar's Edit menu. Each asks
+   * lib/bulk-edit.ts for its eligible subset, drops the items already in the
+   * requested state, and writes the rest in one set() ⇒ one undo. A request
+   * nothing would change writes nothing and logs nothing.
+   */
+  /** `undefined` clears. Habits (no priority field) and cancelled items are skipped. */
+  setItemsPriority: (ids: string[], priority: Priority | undefined) => void;
+  /**
+   * Re-file under a project by name (`undefined` unfiles). The id is resolved
+   * once, case-folded. Unfiling skips types whose container is required.
+   */
+  setItemsProject: (ids: string[], name: string | undefined) => void;
+  /**
+   * Set every eligible item's cue to `time` (HH:mm), keeping each one's own
+   * anchor phrase; `undefined` clears both halves.
+   */
+  setItemsReminder: (ids: string[], time: string | undefined) => void;
+  /**
+   * Add a selection to a goal as plain members, or strip it from the goal in
+   * whatever role each item held. setItemsCollected's shape, for the third
+   * container role.
+   */
+  setItemsGoal: (ids: string[], goalId: string, member: boolean) => void;
   /**
    * Bulk schedule a mixed selection AT a clock time (group drag onto a timed
    * grid slot) so they land as visible blocks, not untimed rows. Task-likes take
@@ -3289,6 +3323,205 @@ export const usePlannerStore = create<PlannerStore>()(
               : dbUpdateProgram(userId, containerId, { itemIds: nextIds });
           write.catch(console.error);
         }
+      },
+
+      /**
+       * The bulk PROPERTY edits (the bar's Edit menu). One shape for all four:
+       * eligible subset from lib/bulk-edit.ts → drop the items already there →
+       * label → ONE set() → one DB write per changed item with its own slug.
+       *
+       * Filtering the no-ops is not tidiness. The count in the label is what the
+       * undo strip reads out, and "Set priority: High · 5 items" over a selection
+       * where three were already High would claim writes that never happened —
+       * and a request that changes nothing must push no history entry at all.
+       */
+      setItemsPriority: (ids, priority) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter(
+          (i) =>
+            idSet.has(i.id) &&
+            canBulkSetPriority(i) &&
+            (i as { priority?: Priority }).priority !== priority
+        );
+        if (targets.length === 0) return;
+
+        setNextActionLabel(
+          priority
+            ? `Set priority: ${PRIORITY_LABELS[priority]} · ${itemCount(targets.length)}`
+            : `Clear priority · ${itemCount(targets.length)}`
+        );
+        // Key present with `undefined` on a clear: the spread must erase the
+        // field locally, and taskUpdatesToRow turns it into a null.
+        const patch = { priority };
+        const targetIds = new Set(targets.map((i) => i.id));
+        set((state) =>
+          projectItems(
+            state.items.map((i) => (targetIds.has(i.id) ? ({ ...i, ...patch } as Item) : i))
+          )
+        );
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), patch).catch(console.error)
+        );
+      },
+
+      /**
+       * Re-file a selection. The id follows the name exactly as in
+       * updateTask/updateHabit — resolved ONCE here, since every item is going
+       * to the same place.
+       *
+       * An item sitting in its old project's time block has to come out of it.
+       * `inProjectBlock` parks it inside the block with its own time stashed in
+       * previousStartTime/Date (moveTasksToProjectBlock), and the block it is
+       * parked in is the one it no longer belongs to — left alone, it would
+       * render in no block at all and vanish from the day. So the release is
+       * moveTaskOutOfProjectBlock's, folded into the same patch.
+       */
+      setItemsProject: (ids, name) => {
+        const idSet = new Set(ids);
+        const projectId = projectIdFor(name, get().projects);
+        const patchById = new Map<string, Partial<Task>>();
+        for (const item of get().items) {
+          if (!idSet.has(item.id)) continue;
+          if (name ? !canBulkSetProject(item) : !canBulkClearProject(item)) continue;
+          const current = item.project;
+          const sameName = name
+            ? current != null && sameContainerName('project', current, name)
+            : current == null;
+          // Name AND id: a folded match whose id is stale (or missing, from
+          // before 027) is still worth the write — it repairs the link.
+          if (sameName && item.projectId === projectId) continue;
+
+          const patch: Partial<Task> = { project: name, projectId };
+          const parked = item as Partial<TaskItem>;
+          if (parked.inProjectBlock && !sameName) {
+            patch.inProjectBlock = false;
+            patch.startTime = parked.previousStartTime;
+            patch.startDate = parked.previousStartDate;
+            patch.previousStartTime = undefined;
+            patch.previousStartDate = undefined;
+          }
+          patchById.set(item.id, patch);
+        }
+        if (patchById.size === 0) return;
+
+        setNextActionLabel(
+          name
+            ? `Set project: ${name} · ${itemCount(patchById.size)}`
+            : `Clear project · ${itemCount(patchById.size)}`
+        );
+        const targets = get().items.filter((i) => patchById.has(i.id));
+        set((state) =>
+          projectItems(
+            state.items.map((i) => {
+              const patch = patchById.get(i.id);
+              return patch ? ({ ...i, ...patch } as Item) : i;
+            })
+          )
+        );
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), patchById.get(item.id)!).catch(console.error)
+        );
+      },
+
+      /**
+       * One cue time across a selection. SETTING writes `reminderTime` alone,
+       * so each item keeps the anchor phrase it was given — "after I pour my
+       * coffee" is about that item, not about the hour. CLEARING writes both
+       * halves, the dialog's "No reminder": an anchor with no time is a sentence
+       * the scan will never say.
+       *
+       * Nothing else rides along. The dedupe stamp (reminder_sent_key) carries
+       * the time it was sent for, so a retime re-arms by itself — see the
+       * reminder note in lib/db.ts's allowlists.
+       */
+      setItemsReminder: (ids, time) => {
+        const idSet = new Set(ids);
+        const targets = get().items.filter(
+          (i) =>
+            idSet.has(i.id) &&
+            canBulkSetReminder(i) &&
+            (time ? i.reminderTime !== time : !!(i.reminderTime || i.reminderAnchor))
+        );
+        if (targets.length === 0) return;
+
+        setNextActionLabel(
+          time
+            ? `Set reminder: ${time} · ${itemCount(targets.length)}`
+            : `Clear reminder · ${itemCount(targets.length)}`
+        );
+        const patch: Partial<Task> = time
+          ? { reminderTime: time }
+          : { reminderTime: undefined, reminderAnchor: undefined };
+        const targetIds = new Set(targets.map((i) => i.id));
+        set((state) =>
+          projectItems(
+            state.items.map((i) => (targetIds.has(i.id) ? ({ ...i, ...patch } as Item) : i))
+          )
+        );
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), patch).catch(console.error)
+        );
+      },
+
+      /**
+       * setItemsCollected for the third container role, with the role arrays
+       * the goal carries.
+       *
+       * ADDING grants the plain `member` role only, and skips anything the goal
+       * already holds in ANY role — the arrays are disjoint (goal_items' PK), so
+       * appending a milestone to memberIds too would be the two-roles write
+       * updateGoal refuses. Milestone and check-in are the goal's own decisions,
+       * made where its timeline is visible; the item dialog's chip holds the same
+       * line.
+       *
+       * REMOVING strips all three arrays, like the dialog's toggleGoal: taking
+       * a milestone "out of the goal" must take it out, not quietly leave it
+       * counting behind a list the user cannot see.
+       *
+       * No release grace and no receipt: a goal suppresses nothing (see
+       * updateGoal), so no membership change here moves an item on the canvas.
+       */
+      setItemsGoal: (ids, goalId, member) => {
+        const userId = get().userId;
+        const goal = get().goals.find((g) => g.id === goalId);
+        if (!goal) return;
+        const idSet = new Set(ids);
+        const eligible = get()
+          .items.filter((i) => idSet.has(i.id) && canBulkCollect(i))
+          .map((i) => i.id);
+        if (eligible.length === 0) return;
+
+        let patch: Pick<Goal, 'memberIds'> | Pick<Goal, 'memberIds' | 'milestoneIds' | 'checkinIds'>;
+        let changed: number;
+        if (member) {
+          const held = new Set(goalItemIds(goal));
+          const adding = eligible.filter((id) => !held.has(id));
+          changed = adding.length;
+          patch = { memberIds: [...goal.memberIds, ...adding] };
+        } else {
+          const strip = new Set(eligible);
+          const without = (xs: string[]) => xs.filter((x) => !strip.has(x));
+          const next = {
+            memberIds: without(goal.memberIds),
+            milestoneIds: without(goal.milestoneIds),
+            checkinIds: without(goal.checkinIds),
+          };
+          changed =
+            goal.memberIds.length - next.memberIds.length +
+            goal.milestoneIds.length - next.milestoneIds.length +
+            goal.checkinIds.length - next.checkinIds.length;
+          patch = next;
+        }
+        // Already satisfied — bail before the label, as setItemsCollected does.
+        if (changed === 0) return;
+
+        setNextActionLabel(
+          member
+            ? `Add to ${goal.name}: ${itemCount(changed)}`
+            : `Remove from ${goal.name}: ${itemCount(changed)}`
+        );
+        set({ goals: get().goals.map((g) => (g.id === goalId ? { ...g, ...patch } : g)) });
+        if (userId) dbUpdateGoal(userId, goalId, patch).catch(console.error);
       },
 
       /**

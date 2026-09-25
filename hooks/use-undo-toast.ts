@@ -36,6 +36,14 @@ const SIGNIFICANT_ACTIONS = [
   // carries the same receipt — it needs the toast to show it.
   'Add to ',
   'Remove from ',
+  // Bulk property edits from the bar's Edit menu: one tap rewrites a field on
+  // every selected item, so it earns the same one-⌘/Ctrl+Z offer.
+  'Set priority:',
+  'Clear priority',
+  'Set project:',
+  'Clear project',
+  'Set reminder:',
+  'Clear reminder',
   // A goal role that stopped being true of its item — a milestone made
   // recurring, a check-in made one-shot. The membership yields rather than the
   // edit (goals never constrain their members), which means the user's item
