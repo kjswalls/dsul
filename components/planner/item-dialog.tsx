@@ -22,12 +22,16 @@ import {
   Bell,
   Pause as PauseIcon,
   Play as PlayIcon,
+  ArrowLeftToLine,
   Maximize2,
+  Minus,
   MoreHorizontal,
   Plus,
+  Redo2,
   Repeat,
   Repeat2,
   RotateCcw,
+  SkipForward,
   Trash2,
   X,
   type LucideIcon,
@@ -78,7 +82,7 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/extension-gates';
 import { accentColorForName } from '@/lib/accent-colors';
-import { goalItemIds, nextMilestone } from '@/lib/goals';
+import { goalItemIds, milestoneItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd, openNewContainer } from '@/lib/ui-store';
 import { useOpenConsole } from '@/lib/console-door';
@@ -99,14 +103,37 @@ import {
   isPausable,
   isCollectible,
   isRemindable,
+  isSkippable,
 } from '@/lib/item-registry';
+import {
+  CONVERT_REPEAT_CHOICES,
+  conversionBlock,
+  conversionHint,
+  summarizeConversion,
+  type ConvertRepeat,
+} from '@/lib/item-convert';
+import {
+  canMoveToNextDay,
+  canSendToBraindump,
+  formatTargetDay,
+  nextDayLabel,
+  nextDayTarget,
+} from '@/lib/row-moves';
+import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import {
   CONTAINER_KINDS,
   classifyKindForItemType,
   type ContainerKind,
 } from '@/lib/container-registry';
 import { membershipSummary, visibleContainerBands } from '@/lib/item-bands';
-import { currentDayOfWeek, toDateStr } from '@/lib/recurrence';
+import {
+  currentDayOfWeek,
+  isCompletedOnDate,
+  isRecurring,
+  isSkippedOnDate,
+  shouldShowOnDate,
+  toDateStr,
+} from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { makeIconToken } from '@/lib/category-icons';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
@@ -586,6 +613,10 @@ function ItemDialogInner({
     updateHabit,
     deleteTask,
     deleteHabit,
+    changeItemType,
+    moveTaskToDate,
+    setItemSkipped,
+    toggleHabitStatus,
     scheduleTask,
     unscheduleTask,
     scheduleHabit,
@@ -666,6 +697,10 @@ function ItemDialogInner({
   );
 
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  // The type a switch is waiting on the confirm for, and the repeat a one-off
+  // picks up when it becomes a repeat-only type (lib/item-convert.ts).
+  const [pendingType, setPendingType] = useState<string | null>(null);
+  const [convertRepeat, setConvertRepeat] = useState<ConvertRepeat>('daily');
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showPauseUntil, setShowPauseUntil] = useState(false);
   // Clearing layout only: the unset properties the user has summoned back from
@@ -757,6 +792,9 @@ function ItemDialogInner({
       })
     : null;
   const canPause = !!editItem && isPausable(editItem);
+  // Goal milestones, for the type switch's refusals and the Braindump gate
+  // (a milestone's date is its target — lib/row-moves.ts).
+  const typeSwitchMilestones = useMemo(() => milestoneItemIds(goals ?? []), [goals]);
 
   const [activeType, setActiveType] = useState<string>('task');
   // Re-seeded from the wrapper's stash: this component unmounts after close,
@@ -1097,6 +1135,41 @@ function ItemDialogInner({
     else deleteTask(editItem.id);
     setShowDeleteConfirm(false);
     onOpenChange(false);
+  };
+
+  /**
+   * Switch the item's type. Whatever the surface is holding goes first — the
+   * panel's queued autosave, or the modal's unsaved draft — so the switch
+   * carries it rather than dropping it, and the form then re-seeds from the
+   * item in its new shape (the draft's repeat and container were the old
+   * type's). A switch that costs nothing happens at once; anything else waits
+   * on the confirm.
+   */
+  const applyTypeChange = (toType: string, repeat?: ConvertRepeat) => {
+    if (!state || state.mode !== 'edit' || !editItem) return;
+    if (autosaves) flushNow();
+    else if (editDraft && editDraft.title.trim()) commitEdit(editItem, editDraft, DRAFT_KEYS);
+    changeItemType(editItem.id, toType, { repeat });
+    setPendingType(null);
+    setSeededId(null);
+  };
+
+  const requestTypeChange = (toType: string) => {
+    if (!editItem) return;
+    const summary = summarizeConversion(editItem, toType);
+    if (summary.drops.length === 0 && summary.changes.length === 0 && !summary.needsRepeat) {
+      applyTypeChange(toType);
+      return;
+    }
+    setConvertRepeat('daily');
+    setPendingType(toType);
+  };
+
+  const pendingConfig = pendingType ? getItemTypeConfig(pendingType) : null;
+  const pendingSummary = pendingType && editItem ? summarizeConversion(editItem, pendingType) : null;
+  const handleConfirmTypeChange = () => {
+    if (!pendingType) return;
+    applyTypeChange(pendingType, pendingSummary?.needsRepeat ? convertRepeat : undefined);
   };
 
   const handleResetStreak = () => {
@@ -2641,8 +2714,120 @@ function ItemDialogInner({
     </Button>
   );
 
+  // ── The row's controls, in the header ────────────────────────────────────
+  // The same capsule, icons, order and gates as a row's hover cluster
+  // (task-row.tsx), so the pane and the row never disagree about what can be
+  // done to an item. A row is drawn for a day; the pane is not, so the
+  // per-day verbs answer for TODAY (skip, the count) and the put-it-off pair for
+  // the day the item sits on. Only what a row offers is here: Pause, Pause
+  // until and Reset streak stay in the ⋯ menu.
+  const paneToday = toDateStr(new Date(), activationTz);
+  const paneHabit = editItem?.type === 'habit' ? editItem : null;
+  const paneRecurring = !!editItem && isRecurring(editItem);
+  const occursToday =
+    !!editItem &&
+    paneRecurring &&
+    shouldShowOnDate(editItem, paneToday, activationTz) &&
+    (editItem.type === 'habit' || !editItem.startDate || editItem.startDate.slice(0, 10) <= paneToday);
+  const doneToday = !!editItem && paneRecurring && isCompletedOnDate(editItem as Task, paneToday);
+  const canSkipToday =
+    !!editItem && isSkippable(editItem) && occursToday && !doneToday && !isSkippedOnDate(editItem, paneToday) && !pausedNow;
+  // The day a one-off task sits on; an unscheduled one is already in the braindump.
+  const paneDay =
+    editItem && editItem.type !== 'habit' && editItem.isScheduled && editItem.startDate
+      ? editItem.startDate.slice(0, 10)
+      : null;
+  const paneNextDay = paneDay ? nextDayTarget(paneDay, paneToday) : null;
+  const canPaneNextDay = !!editItem && !!paneDay && canMoveToNextDay(editItem, 'task', paneDay);
+  const canPaneBraindump =
+    !!editItem && !!paneDay && canSendToBraindump(editItem, 'task', paneDay, typeSwitchMilestones);
+  const paneTarget = paneHabit?.timesPerDay && paneHabit.timesPerDay > 1 ? paneHabit.timesPerDay : 0;
+  const paneCountRaw = paneHabit ? ((paneHabit.dailyCounts ?? {})[paneToday] ?? 0) : 0;
+  const paneCount = paneHabit && paneHabit.completedDates.includes(paneToday) ? paneCountRaw || paneTarget || 1 : paneCountRaw;
+  const stepCount = (next: number) => {
+    if (!paneHabit) return;
+    if (next >= paneTarget) toggleHabitStatus(paneHabit.id, 'done', paneTarget, new Date());
+    else toggleHabitStatus(paneHabit.id, 'pending', Math.max(0, next), new Date());
+  };
+
+  const rowControls =
+    mode === 'edit' && editItem ? (
+      <RowControlGroup data-testid="item-dialog-row-controls" className="mr-1">
+        {paneTarget > 0 && occursToday && (
+          <>
+            <RowControl
+              icon={Minus}
+              label="Decrease count"
+              testId="item-dialog-stepper-dec"
+              disabled={paneCount <= 0}
+              onClick={() => stepCount(paneCount - 1)}
+            />
+            <RowControl
+              icon={Plus}
+              label="Increase count"
+              testId="item-dialog-stepper-inc"
+              disabled={paneCount >= paneTarget}
+              onClick={() => stepCount(paneCount + 1)}
+            />
+            <RowControlDivider />
+          </>
+        )}
+        {canPaneNextDay && paneNextDay && (
+          <RowControl
+            icon={Redo2}
+            label={nextDayLabel(paneNextDay, paneToday)}
+            detail={formatTargetDay(paneNextDay)}
+            testId="item-dialog-tomorrow"
+            onClick={() => {
+              flushNow();
+              moveTaskToDate(editItem.id, paneNextDay);
+              // The modal commits its whole draft on Save and never re-reads
+              // the item underneath it, so its date follows the move here —
+              // or Save would put the task straight back.
+              if (!autosaves) {
+                const [y, m, d] = paneNextDay.split('-').map(Number);
+                setEditDraft((dr) => dr && { ...dr, startDate: new Date(y, m - 1, d) });
+              }
+            }}
+          />
+        )}
+        {canPaneBraindump && (
+          <RowControl
+            icon={ArrowLeftToLine}
+            label="Move to Braindump"
+            testId="item-dialog-unschedule"
+            onClick={() => {
+              flushNow();
+              unscheduleTask(editItem.id);
+              // Same as the carry above: Save must not reschedule it.
+              if (!autosaves) {
+                setEditDraft((dr) => dr && { ...dr, startDate: undefined, timeBucket: 'none', startTime: '' });
+              }
+            }}
+          />
+        )}
+        {canSkipToday && (
+          <RowControl
+            icon={SkipForward}
+            label="Skip today"
+            testId="item-dialog-skip"
+            onClick={() => setItemSkipped(editItem.id, true, new Date())}
+          />
+        )}
+        <RowControl
+          icon={Trash2}
+          label={`Delete ${activeConfig.label.toLowerCase()}`}
+          testId="item-dialog-delete"
+          destructive
+          onClick={() => setShowDeleteConfirm(true)}
+        />
+      </RowControlGroup>
+    ) : null;
+  const hasMoreActions = canPause || (streaksOn && !!editConfig?.counters.streak);
+
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
+      {rowControls}
       {mode === 'edit' && editItem && pathname !== `/item/${editItem.id}` && (
         <Button
           variant="ghost"
@@ -2659,7 +2844,7 @@ function ItemDialogInner({
         </Button>
       )}
 
-      {mode === 'edit' && (
+      {mode === 'edit' && hasMoreActions && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button
@@ -2711,14 +2896,6 @@ function ItemDialogInner({
                 Reset streak
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem
-              variant="destructive"
-              data-testid="item-dialog-delete"
-              onSelect={() => setShowDeleteConfirm(true)}
-            >
-              <Trash2 className="size-3.5" />
-              Delete {activeConfig.label.toLowerCase()}
-            </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
       )}
@@ -2794,19 +2971,69 @@ function ItemDialogInner({
     </PropertyChip>
   );
 
-  // Edit's Zone 0 identity mark: the same colour square + type name, whispered
-  // (11px, muted) rather than worn as a filled chip, and non-interactive — see
-  // `typeControl` above for why edit shows the type but never offers to change
-  // it.
-  const typeWhisper = (
-    <span
-      data-testid="item-dialog-type-whisper"
-      className="text-muted-foreground inline-flex items-center gap-1.5 text-[11px]"
+  // Edit's Zone 0 identity mark: the same chip Add wears, and it changes the
+  // type of the item you're looking at. Each type in its menu says what the
+  // switch keeps or costs; a type the item can't become says why and is
+  // disabled. Conversion rules live in lib/item-convert.ts.
+  const typeSwitch = editItem ? (
+    <PropertyChip
+      swatch={activeConfig.accent}
+      swatchShape="square"
+      label={activeConfig.label}
+      value={activeConfig.label}
+      ariaLabel={`Type: ${activeConfig.label}. Change type`}
+      testId="item-dialog-type-switch"
+      alwaysChevron
+      className="font-medium"
+      contentClassName="w-72"
     >
-      <ColorSquare color={activeConfig.accent} />
-      {activeConfig.label}
-    </span>
-  );
+      {(close) => (
+        <>
+          <ChipSectionLabel>Change type</ChipSectionLabel>
+          {typeNames.map((t) => {
+            const config = getItemTypeConfig(t);
+            const current = t === activeTypeName;
+            const blocked = current
+              ? null
+              : conversionBlock(editItem, t, { items, milestoneIds: typeSwitchMilestones });
+            return (
+              <button
+                key={t}
+                type="button"
+                disabled={!!blocked}
+                data-testid="item-dialog-type-switch-option"
+                data-value={t}
+                data-selected={current || undefined}
+                onClick={() => {
+                  close();
+                  if (!current) requestTypeChange(t);
+                }}
+                className={cn(
+                  'flex w-full items-start gap-2 rounded-sm px-2 py-1.5 text-left text-sm',
+                  'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                  blocked ? 'cursor-not-allowed opacity-50' : 'hover-wash',
+                  current && 'font-medium'
+                )}
+              >
+                <span className="mt-[5px] flex">
+                  <ColorSquare color={config.accent} />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block">{config.label}</span>
+                  {!current && (
+                    <span className="text-muted-foreground block text-xs leading-snug">
+                      {blocked ?? conversionHint(editItem, t)}
+                    </span>
+                  )}
+                </span>
+                {current && <Check className="mt-0.5 size-3.5" />}
+              </button>
+            );
+          })}
+        </>
+      )}
+    </PropertyChip>
+  ) : null;
 
   // The title — the only required field, so it carries the dialog.
   const titleInput = activeDraft ? (
@@ -2959,7 +3186,7 @@ function ItemDialogInner({
                     !isPanel && !isMobile && 'pr-8'
                   )}
                 >
-                  {mode === 'add' ? typeControl : typeWhisper}
+                  {mode === 'add' ? typeControl : typeSwitch}
                   {headerActions}
                   {autosaves && doneButton}
                 </div>
@@ -3165,6 +3392,66 @@ function ItemDialogInner({
           </AlertDialogContent>
         </AlertDialog>
       )}
+
+      <AlertDialog open={!!pendingType} onOpenChange={(o) => !o && setPendingType(null)}>
+        {pendingType && pendingConfig && pendingSummary && (
+            <AlertDialogContent data-testid="item-dialog-type-confirm">
+              <AlertDialogHeader>
+                <AlertDialogTitle>Change to {pendingConfig.label.toLowerCase()}?</AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div className="flex flex-col gap-2">
+                    <ul className="list-disc space-y-0.5 pl-4">
+                      {pendingSummary.drops.map((d) => (
+                        <li key={d}>{d} goes away.</li>
+                      ))}
+                      {pendingSummary.changes.map((c) => (
+                        <li key={c}>{c}.</li>
+                      ))}
+                      <li>Its title, notes, time, repeat and past check-offs stay.</li>
+                    </ul>
+                    {pendingSummary.needsRepeat && (
+                      <div className="flex flex-col gap-1.5 pt-1">
+                        <span className="text-foreground text-sm">
+                          {pendingConfig.labelPlural} repeat. How often should this one?
+                        </span>
+                        <div className="flex flex-wrap gap-1.5" role="radiogroup">
+                          {CONVERT_REPEAT_CHOICES.map((r) => (
+                            <button
+                              key={r}
+                              type="button"
+                              role="radio"
+                              aria-checked={convertRepeat === r}
+                              data-testid="item-dialog-type-confirm-repeat"
+                              data-value={r}
+                              onClick={() => setConvertRepeat(r)}
+                              className={cn(
+                                'rounded-md border px-2.5 py-1 text-xs',
+                                convertRepeat === r
+                                  ? 'border-foreground text-foreground font-medium'
+                                  : 'border-border text-muted-foreground hover-wash'
+                              )}
+                            >
+                              {REPEAT_FREQUENCY_LABELS[r]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  data-testid="item-dialog-type-confirm-accept"
+                  onClick={handleConfirmTypeChange}
+                >
+                  Change to {pendingConfig.label.toLowerCase()}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+        )}
+      </AlertDialog>
 
       <AlertDialog open={showDeleteConfirm} onOpenChange={setShowDeleteConfirm}>
         <AlertDialogContent data-testid="item-dialog-delete-confirm">

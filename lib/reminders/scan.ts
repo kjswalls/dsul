@@ -478,7 +478,33 @@ export async function runReminderScan(
 }
 
 /**
- * Each item's creation day, in the user's timezone.
+ * Each item's birth day in `timezone`: the later of its creation and its latest
+ * type switch. A switch is only counted for an item that has a creation row.
+ */
+export function birthDays(
+  items: readonly { id: string; created_at: string | null }[],
+  switches: readonly { item_id: string; created_at: string | null }[],
+  timezone: string,
+): Map<string, string> {
+  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: timezone })
+  const byId = new Map<string, string>()
+  const stamp = (id: string, iso: string | null, onlyKnown: boolean) => {
+    if (!iso) return
+    const at = new Date(iso)
+    if (Number.isNaN(at.getTime())) return
+    const day = formatter.format(at)
+    const known = byId.get(id)
+    if (onlyKnown && !known) return
+    if (!known || day > known) byId.set(id, day)
+  }
+  for (const row of items) stamp(row.id, row.created_at, false)
+  for (const row of switches) stamp(row.item_id, row.created_at, true)
+  return byId
+}
+
+/**
+ * Each item's creation day, in the user's timezone — or the day it last
+ * changed type, when that is later.
  *
  * A lookup rather than a map at the call site so a failed read degrades to
  * "unknown", which settleDay treats as "do not exclude" — the same answer it
@@ -499,14 +525,25 @@ async function loadCreatedOn(
 
   if (error || !data) return () => undefined
 
-  const formatter = new Intl.DateTimeFormat('en-CA', { timeZone: timezone })
-  const byId = new Map<string, string>()
-  for (const row of data as { id: string; created_at: string | null }[]) {
-    if (!row.created_at) continue
-    const at = new Date(row.created_at)
-    if (Number.isNaN(at.getTime())) continue
-    byId.set(row.id, formatter.format(at))
-  }
+  // A type switch is a second birth. A task made months ago and switched to a
+  // habit this morning was never owed yesterday, but created_at says it
+  // existed then, and the settlement would bill it as a miss. The edit pane
+  // records every switch as an update event carrying the new `type`
+  // (db.changeItemType), so the latest one moves the birth forward. Forgiving
+  // by construction: a failed read keeps created_at, the answer given before
+  // switches existed.
+  const { data: switches, error: switchError } = await service
+    .from('item_events')
+    .select('item_id, created_at')
+    .eq('user_id', userId)
+    .eq('action', 'update')
+    .not('payload->>type', 'is', null)
+
+  const byId = birthDays(
+    data as { id: string; created_at: string | null }[],
+    switchError || !switches ? [] : (switches as { item_id: string; created_at: string | null }[]),
+    timezone,
+  )
   return (itemId: string) => byId.get(itemId)
 }
 
