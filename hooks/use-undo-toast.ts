@@ -11,6 +11,11 @@ const SIGNIFICANT_ACTIONS = [
   'Delete project:',
   'Complete task:',
   'Uncomplete task:',
+  // A recurring task's tick names the day it was ticked for — "Complete task
+  // on 2026-09-25: Swim" — so the one-shot prefixes above never matched it,
+  // and the most common completion of all raised no row.
+  'Complete task on ',
+  'Uncomplete task on ',
   'Complete habit:',
   'Skip habit:',
   'Reset habit:',
