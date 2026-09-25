@@ -305,7 +305,10 @@ describe('Organize switched off — the doors are inert, not absent', () => {
     braindump();
     const shut = screen.getByLabelText('Organize projects & groups');
     expect(shut).toBeDisabled();
-    expect(shut).toHaveAttribute('title', expect.stringContaining('Settings'));
+    // Why it is shut: a tooltip on a pointer (hover-only, so not asserted here)
+    // and this for a screen reader. The native title is the phone's alone.
+    expect(shut).toHaveAttribute('aria-description', expect.stringContaining('Settings'));
+    expect(shut).not.toHaveAttribute('title');
     cleanup();
 
     enableExtensions(EXT_ORGANIZE);
@@ -313,6 +316,7 @@ describe('Organize switched off — the doors are inert, not absent', () => {
     const open = screen.getByLabelText('Organize projects & groups');
     expect(open).toBeEnabled();
     expect(open).not.toHaveAttribute('title');
+    expect(open).not.toHaveAttribute('aria-description');
   });
 
   it('keeps the program notice REPORTING while it stops being a button', () => {

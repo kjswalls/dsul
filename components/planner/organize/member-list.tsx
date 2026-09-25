@@ -1,13 +1,13 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, Plus, Trash2 } from 'lucide-react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { Input } from '@/components/ui/input';
+import { LinkExistingPill, OrganizerSection } from '@/components/primitives/organizer-chips';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
 import { countLive, swapMembers, useLiveItemIds } from '@/lib/collections';
-import { Eyebrow } from './primitives';
 import { inActiveSection, useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
 import type { Item, Routine } from '@/lib/planner-types';
@@ -21,9 +21,12 @@ import type { Item, Routine } from '@/lib/planner-types';
  * geometry is re-cut to console scale (30px rows, 5px radii, a reserved control
  * rail) but no behaviour changes here.
  *
- * Two things deliberately NOT done yet, both Phase 5: the type glyph and meta
- * column on member rows, and the picker rewrite (browse on empty query, a
- * visible ↑/↓ cursor, staying open after an add).
+ * Each list is a SECTION in the item edit pane's grammar (2026-09-25): one
+ * heading, "Items · 3", with a "Link existing" pill beside it that opens the
+ * picker, the rows, and then whatever the owner adds at the foot (a goal's
+ * "Add milestone…"). An empty list is the heading and that foot — no "0 items"
+ * eyebrow under a heading that already names the list, and no "Nothing in here
+ * yet" block saying what the empty rows already say.
  */
 
 /* ── the row's shared control rail ────────────────────────────────────── */
@@ -150,7 +153,23 @@ const BUCKET_TEXT: Record<string, string> = {
 
 /* ── items ────────────────────────────────────────────────────────────── */
 
+/** What a member row draws in its leading slot and meta column, when the owner knows better. */
+export interface MemberRowParts {
+  /** Replaces the type glyph — a milestone's checkbox, a check-in's repeat mark. */
+  leading?: (item: Item) => ReactNode;
+  /** Replaces the when-column — a milestone's date, a check-in's "last Sep 20". */
+  meta?: (item: Item) => { text: string; numeric: boolean };
+  /** Done, not hidden: the title goes muted (never struck through). */
+  done?: (item: Item) => boolean;
+}
+
 export function ItemMemberList({
+  label,
+  count,
+  lead,
+  footer,
+  pickerHint,
+  row,
   ownerId,
   ownerName,
   memberIds,
@@ -162,6 +181,17 @@ export function ItemMemberList({
   emptyPoolLabel,
   onChange,
 }: {
+  /** The section heading — "Items", "Milestones". */
+  label: string;
+  /** After the dot. Defaults to the member count; omitted entirely when empty. */
+  count?: ReactNode;
+  /** Directly under the heading, above the rows — a goal's progress track. */
+  lead?: ReactNode;
+  /** The section's foot — an InlineAddRow that makes a new member. */
+  footer?: ReactNode;
+  /** One muted line at the top of the open picker saying who qualifies. */
+  pickerHint?: string;
+  row?: MemberRowParts;
   /** Only used to disarm the search when the selection changes. */
   ownerId: string;
   ownerName: string;
@@ -309,235 +339,259 @@ export function ItemMemberList({
     activeRef.current?.scrollIntoView({ block: 'nearest' });
   }, [active, query]);
 
+  const closePicker = () => {
+    setAdding(false);
+    setQuery('');
+    setCursor(0);
+  };
+
   return (
-    <div ref={rootRef} className="flex flex-col gap-1.5">
-      <div className="flex h-[22px] items-center">
-        <Eyebrow>
-          {members.length} {members.length === 1 ? 'item' : 'items'}
-        </Eyebrow>
-      </div>
-
-      {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
-      <div className="max-h-44 space-y-px overflow-y-auto">
-        {members.length === 0 && (
-          <p className="text-muted-foreground px-[7px] py-1 text-xs">Nothing in here yet.</p>
-        )}
-        {members.map((item, i) => (
-          <div
-            key={item.id}
-            data-testid={`${testPrefix}-member`}
-            data-item-id={item.id}
-            data-member-index={i}
-            className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
-          >
-            <TypeGlyph item={item} />
-
-            {/* Greyed while the container is off, NOT struck through — struck
-                through means done, and this isn't done, it's set aside. */}
-            <span
-              title={item.title}
-              className={cn(
-                'font-content text-content min-w-0 flex-1 truncate',
-                hiddenIds.has(item.id) ? 'text-muted-foreground' : 'text-foreground'
-              )}
-            >
-              {item.title}
-            </span>
-
-            {(() => {
-              const meta = memberMeta(item);
-              return (
-                <span
-                  data-testid={`${testPrefix}-member-meta`}
-                  className={cn(
-                    'text-muted-foreground w-[64px] shrink-0 text-right text-2xs',
-                    meta.numeric && 'font-num'
-                  )}
-                >
-                  {meta.text}
-                </span>
-              );
-            })()}
-
-            {/* Buttons, not drag. The console renders inside the shell's
-                DndContext, so a sortable list here would need a nested one and
-                would compete with the item-drag sensors for the same pointer.
-                Two buttons are also the only version a keyboard can reach.
-
-                Swaps by ID, never by index: `members` drops ids that name a
-                TRASHED item (join rows survive an item's soft delete by
-                design), so visible position and array position diverge the
-                moment one member is in the bin. */}
-            <ControlRail>
-              {orderable && (
-                <>
-                  <RailButton
-                    onClick={() => onChange(swapMembers(memberIds, item.id, members[i - 1].id))}
-                    disabled={i === 0}
-                    label={`Move ${item.title} up in ${ownerName}`}
-                    testId={`${testPrefix}-member-up`}
-                  >
-                    <ChevronUp className="h-3.5 w-3.5" />
-                  </RailButton>
-                  <RailButton
-                    onClick={() => onChange(swapMembers(memberIds, item.id, members[i + 1].id))}
-                    disabled={i === members.length - 1}
-                    label={`Move ${item.title} down in ${ownerName}`}
-                    testId={`${testPrefix}-member-down`}
-                  >
-                    <ChevronDown className="h-3.5 w-3.5" />
-                  </RailButton>
-                </>
-              )}
-              <RailButton
-                onClick={() => onChange(memberIds.filter((m) => m !== item.id))}
-                label={`Remove ${item.title} from ${ownerName}`}
-                testId={`${testPrefix}-member-remove`}
-              >
-                <Trash2 className="h-3.5 w-3.5" />
-              </RailButton>
-            </ControlRail>
-          </div>
-        ))}
-      </div>
-
-      {adding ? (
-        <div className="flex flex-col gap-1">
-          <Input
-            ref={searchRef}
-            autoFocus
-            placeholder="Find an item…"
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              // Home on every keystroke: the list under the cursor is a
-              // different list now, so the old index points at nothing the user
-              // chose.
-              setCursor(0);
-            }}
-            /**
-             * The whole keyboard contract, on the input rather than the rows.
-             *
-             * The rows are buttons and could take focus themselves, but then ↓
-             * from the field moves focus OUT of it and the next character typed
-             * goes nowhere. This is the combobox pattern for exactly that
-             * reason: focus never leaves the input, `aria-activedescendant`
-             * tells a screen reader which row is current, and the highlight is
-             * ours to draw.
-             */
-            role="combobox"
-            aria-expanded
-            aria-controls={`${testPrefix}-member-candidates`}
-            aria-activedescendant={
-              candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
-            }
-            onKeyDown={(e) => {
-              if (e.key === 'ArrowDown') {
-                e.preventDefault();
-                setCursor(Math.min(active + 1, candidates.length - 1));
-              } else if (e.key === 'ArrowUp') {
-                e.preventDefault();
-                setCursor(Math.max(active - 1, 0));
-              } else if (e.key === 'Enter') {
-                // Guarded on the row existing, not on the list being non-empty:
-                // Enter on "Nothing matches" must do nothing, not add whatever
-                // happens to be at index 0 of a stale render.
-                if (candidates[active]) {
-                  e.preventDefault();
-                  add(candidates[active].id);
-                }
+    <div ref={rootRef}>
+      <OrganizerSection
+        label={label}
+        count={members.length > 0 ? (count ?? members.length) : undefined}
+        testId={`${testPrefix}-members`}
+        action={
+          <LinkExistingPill
+            testId={`${testPrefix}-member-add`}
+            aria-expanded={adding}
+            onClick={() => {
+              if (adding) closePicker();
+              else {
+                setAdding(true);
+                setCursor(0);
               }
             }}
-            className="bg-background border-border h-8"
-            data-testid={`${testPrefix}-member-search`}
           />
+        }
+      >
+        {lead}
 
-          {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
-          <div
-            id={`${testPrefix}-member-candidates`}
-            role="listbox"
-            className="max-h-[148px] space-y-px overflow-y-auto"
-          >
-            {candidates.map((item, i) => (
-              <button
-                key={item.id}
-                ref={i === active ? activeRef : undefined}
-                type="button"
-                role="option"
-                id={`${testPrefix}-cand-${item.id}`}
-                aria-selected={i === active}
-                // Pointer and keyboard drive the SAME cursor, so moving the
-                // mouse over a row and pressing Enter does what the highlight
-                // says. Two independent "current" notions is the classic way a
-                // picker adds the wrong thing.
-                onMouseMove={() => i !== active && setCursor(i)}
-                onClick={() => add(item.id)}
-                data-testid={`${testPrefix}-member-candidate`}
-                data-item-id={item.id}
-                data-active={i === active || undefined}
-                className={cn(
-                  'flex h-8 w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left text-sm',
-                  i === active && 'bg-accent'
-                )}
-              >
-                {/* The same glyph as the row it will become. Without it, choosing
-                    between two same-titled items is a coin flip — and this is the
-                    half where getting it wrong is a write. */}
-                <TypeGlyph item={item} />
-                <span className="min-w-0 flex-1 truncate">{item.title}</span>
-              </button>
-            ))}
+        {members.length > 0 && (
+          /* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */
+          <div className="max-h-44 space-y-px overflow-y-auto">
+            {members.map((item, i) => {
+              const meta = (row?.meta ?? memberMeta)(item);
+              const done = row?.done?.(item) ?? false;
+              return (
+                <div
+                  key={item.id}
+                  data-testid={`${testPrefix}-member`}
+                  data-item-id={item.id}
+                  data-member-index={i}
+                  data-done={done || undefined}
+                  className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
+                >
+                  {row?.leading ? (
+                    <span className="flex w-[18px] shrink-0 justify-center">{row.leading(item)}</span>
+                  ) : (
+                    <TypeGlyph item={item} />
+                  )}
 
-            {/* Inside the list, never a replacement screen, so ↑/↓/↵ keep meaning
-                something and the field keeps focus. Two different empties: one
-                is a query that found nothing, the other is a pool with nothing
-                left in it, and telling someone to refine a search that cannot
-                succeed is the worse of the two wrong answers. */}
-            {candidates.length === 0 && (
-              <p
-                className="text-muted-foreground px-[7px] py-1 text-xs"
-                data-testid={`${testPrefix}-member-none`}
-              >
-                {pool.length === 0
-                  ? (emptyPoolLabel ?? 'Everything is already in here.')
-                  : `Nothing matches “${query.trim()}”.`}
+                  {/* Greyed while the container is off, NOT struck through —
+                      struck through means done, and this isn't done, it's set
+                      aside. A DONE milestone is muted the same way and for the
+                      mirror reason: its check already says done, and a strike
+                      on top would say it twice. */}
+                  <span
+                    title={item.title}
+                    className={cn(
+                      'font-content text-content min-w-0 flex-1 truncate',
+                      hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
+                    )}
+                  >
+                    {item.title}
+                  </span>
+
+                  <span
+                    data-testid={`${testPrefix}-member-meta`}
+                    className={cn(
+                      'text-muted-foreground w-[64px] shrink-0 text-right text-2xs',
+                      meta.numeric && 'font-num'
+                    )}
+                  >
+                    {meta.text}
+                  </span>
+
+                  {/* Buttons, not drag. The console renders inside the shell's
+                      DndContext, so a sortable list here would need a nested one
+                      and would compete with the item-drag sensors for the same
+                      pointer. Two buttons are also the only version a keyboard
+                      can reach.
+
+                      Swaps by ID, never by index: `members` drops ids that name
+                      a TRASHED item (join rows survive an item's soft delete by
+                      design), so visible position and array position diverge
+                      the moment one member is in the bin. */}
+                  <ControlRail>
+                    {orderable && (
+                      <>
+                        <RailButton
+                          onClick={() =>
+                            onChange(swapMembers(memberIds, item.id, members[i - 1].id))
+                          }
+                          disabled={i === 0}
+                          label={`Move ${item.title} up in ${ownerName}`}
+                          testId={`${testPrefix}-member-up`}
+                        >
+                          <ChevronUp className="h-3.5 w-3.5" />
+                        </RailButton>
+                        <RailButton
+                          onClick={() =>
+                            onChange(swapMembers(memberIds, item.id, members[i + 1].id))
+                          }
+                          disabled={i === members.length - 1}
+                          label={`Move ${item.title} down in ${ownerName}`}
+                          testId={`${testPrefix}-member-down`}
+                        >
+                          <ChevronDown className="h-3.5 w-3.5" />
+                        </RailButton>
+                      </>
+                    )}
+                    <RailButton
+                      onClick={() => onChange(memberIds.filter((m) => m !== item.id))}
+                      label={`Remove ${item.title} from ${ownerName}`}
+                      testId={`${testPrefix}-member-remove`}
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </RailButton>
+                  </ControlRail>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {adding && (
+          <div className="flex flex-col gap-1">
+            {pickerHint && (
+              <p className="text-muted-foreground px-[7px] text-xs" data-testid={`${testPrefix}-member-hint`}>
+                {pickerHint}
               </p>
             )}
-          </div>
+            <Input
+              ref={searchRef}
+              autoFocus
+              placeholder="Find an item…"
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                // Home on every keystroke: the list under the cursor is a
+                // different list now, so the old index points at nothing the user
+                // chose.
+                setCursor(0);
+              }}
+              /**
+               * The whole keyboard contract, on the input rather than the rows.
+               *
+               * The rows are buttons and could take focus themselves, but then ↓
+               * from the field moves focus OUT of it and the next character typed
+               * goes nowhere. This is the combobox pattern for exactly that
+               * reason: focus never leaves the input, `aria-activedescendant`
+               * tells a screen reader which row is current, and the highlight is
+               * ours to draw.
+               */
+              role="combobox"
+              aria-expanded
+              aria-controls={`${testPrefix}-member-candidates`}
+              aria-activedescendant={
+                candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
+              }
+              onKeyDown={(e) => {
+                if (e.key === 'ArrowDown') {
+                  e.preventDefault();
+                  setCursor(Math.min(active + 1, candidates.length - 1));
+                } else if (e.key === 'ArrowUp') {
+                  e.preventDefault();
+                  setCursor(Math.max(active - 1, 0));
+                } else if (e.key === 'Enter') {
+                  // Guarded on the row existing, not on the list being non-empty:
+                  // Enter on "Nothing matches" must do nothing, not add whatever
+                  // happens to be at index 0 of a stale render.
+                  if (candidates[active]) {
+                    e.preventDefault();
+                    add(candidates[active].id);
+                  }
+                }
+              }}
+              className="bg-background border-border h-8"
+              data-testid={`${testPrefix}-member-search`}
+            />
 
-          {/* THE WAY OUT, and it became load-bearing when the picker started
-              staying open across adds. Before that, adding something closed it;
-              now the only other exits are the Escape rung and switching
-              container — and the console is a vaul bottom SHEET below `md`,
-              where there is no Escape key at all. RoutineMemberList has shipped
-              this row since Phase 2 for the same reason. */}
-          <button
-            type="button"
-            onClick={() => {
-              setAdding(false);
-              setQuery('');
-              setCursor(0);
-            }}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center self-start rounded-[5px] px-[7px] text-left text-sm"
-            data-testid={`${testPrefix}-member-add-done`}
-          >
-            Done
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => {
-            setAdding(true);
-            setCursor(0);
-          }}
-          className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center gap-2 self-start rounded-[5px] px-[7px] text-sm"
-          data-testid={`${testPrefix}-member-add`}
-        >
-          <Plus className="h-3.5 w-3.5" />
-          Add an item
-        </button>
-      )}
+            {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
+            <div
+              id={`${testPrefix}-member-candidates`}
+              role="listbox"
+              className="max-h-[148px] space-y-px overflow-y-auto"
+            >
+              {candidates.map((item, i) => (
+                <button
+                  key={item.id}
+                  ref={i === active ? activeRef : undefined}
+                  type="button"
+                  role="option"
+                  id={`${testPrefix}-cand-${item.id}`}
+                  aria-selected={i === active}
+                  // Pointer and keyboard drive the SAME cursor, so moving the
+                  // mouse over a row and pressing Enter does what the highlight
+                  // says. Two independent "current" notions is the classic way a
+                  // picker adds the wrong thing.
+                  onMouseMove={() => i !== active && setCursor(i)}
+                  onClick={() => add(item.id)}
+                  data-testid={`${testPrefix}-member-candidate`}
+                  data-item-id={item.id}
+                  data-active={i === active || undefined}
+                  className={cn(
+                    'flex h-8 w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left text-sm',
+                    i === active && 'bg-accent'
+                  )}
+                >
+                  {/* The same glyph as the row it will become. Without it, choosing
+                      between two same-titled items is a coin flip — and this is the
+                      half where getting it wrong is a write. */}
+                  <TypeGlyph item={item} />
+                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
+                </button>
+              ))}
+
+              {/* Inside the list, never a replacement screen, so ↑/↓/↵ keep meaning
+                  something and the field keeps focus. Two different empties: one
+                  is a query that found nothing, the other is a pool with nothing
+                  left in it, and telling someone to refine a search that cannot
+                  succeed is the worse of the two wrong answers. */}
+              {candidates.length === 0 && (
+                <p
+                  className="text-muted-foreground px-[7px] py-1 text-xs"
+                  data-testid={`${testPrefix}-member-none`}
+                >
+                  {pool.length === 0
+                    ? (emptyPoolLabel ?? 'Everything is already in here.')
+                    : `Nothing matches “${query.trim()}”.`}
+                </p>
+              )}
+            </div>
+
+            {/* THE WAY OUT, and it became load-bearing when the picker started
+                staying open across adds. Before that, adding something closed it;
+                now the only other exits are the Escape rung and switching
+                container — and the console is a vaul bottom SHEET below `md`,
+                where there is no Escape key at all. RoutineMemberList has shipped
+                this row since Phase 2 for the same reason. */}
+            <button
+              type="button"
+              onClick={closePicker}
+              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center self-start rounded-[5px] px-[7px] text-left text-sm"
+              data-testid={`${testPrefix}-member-add-done`}
+            >
+              Done
+            </button>
+          </div>
+        )}
+
+        {/* px-2, not the rows' 7px: the add row's plus is 16px to the glyph
+            column's 18, and 8px puts the two on one centre line. */}
+        {footer && <div className="px-2">{footer}</div>}
+      </OrganizerSection>
     </div>
   );
 }
@@ -593,90 +647,95 @@ export function RoutineMemberList({
     return true;
   });
 
+  const none = candidates.length === 0;
+
   return (
-    <div ref={rootRef} className="flex flex-col gap-1.5">
-      <div className="flex h-[22px] items-center">
-        <Eyebrow>
-          {members.length} {members.length === 1 ? 'routine' : 'routines'}
-        </Eyebrow>
-      </div>
-
-      <div className="max-h-32 space-y-px overflow-y-auto">
-        {members.map((routine) => (
-          <div
-            key={routine.id}
-            data-testid="program-routine-member"
-            data-routine-id={routine.id}
-            className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
-          >
-            <span className="flex w-[18px] shrink-0 justify-center">
-              <CategoryIcon glyph={routine.icon} name={routine.name} className="h-3.5 w-3.5" />
-            </span>
-            <span
-              className={cn(
-                'min-w-0 flex-1 truncate text-sm',
-                live ? 'text-foreground' : 'text-muted-foreground'
-              )}
-            >
-              {routine.name}
-            </span>
-            <span className="text-muted-foreground font-num w-[22px] shrink-0 text-right text-2xs">
-              {countLive(routine.itemIds, liveIds)}
-            </span>
-            <ControlRail>
-              <RailButton
-                onClick={() => onRemove(routine.id)}
-                label={`Remove ${routine.name} from ${program.name}`}
-                testId="program-routine-remove"
+    <div ref={rootRef}>
+      <OrganizerSection
+        label="Routines"
+        count={members.length > 0 ? members.length : undefined}
+        testId="program-routines"
+        action={
+          <LinkExistingPill
+            testId="program-routine-add"
+            aria-expanded={adding}
+            // Disabled with its reason on hover, rather than hidden: a missing
+            // pill reads as "programs cannot hold routines".
+            disabled={none}
+            title={none ? 'Every routine is already here' : undefined}
+            className="disabled:pointer-events-none disabled:opacity-50"
+            onClick={() => setAdding((a) => !a)}
+          />
+        }
+      >
+        {members.length > 0 && (
+          <div className="max-h-32 space-y-px overflow-y-auto">
+            {members.map((routine) => (
+              <div
+                key={routine.id}
+                data-testid="program-routine-member"
+                data-routine-id={routine.id}
+                className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
               >
-                <Trash2 className="h-3.5 w-3.5" />
-              </RailButton>
-            </ControlRail>
+                <span className="flex w-[18px] shrink-0 justify-center">
+                  <CategoryIcon glyph={routine.icon} name={routine.name} className="h-3.5 w-3.5" />
+                </span>
+                <span
+                  className={cn(
+                    'min-w-0 flex-1 truncate text-sm',
+                    live ? 'text-foreground' : 'text-muted-foreground'
+                  )}
+                >
+                  {routine.name}
+                </span>
+                <span className="text-muted-foreground font-num w-[22px] shrink-0 text-right text-2xs">
+                  {countLive(routine.itemIds, liveIds)}
+                </span>
+                <ControlRail>
+                  <RailButton
+                    onClick={() => onRemove(routine.id)}
+                    label={`Remove ${routine.name} from ${program.name}`}
+                    testId="program-routine-remove"
+                  >
+                    <Trash2 className="h-3.5 w-3.5" />
+                  </RailButton>
+                </ControlRail>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        )}
 
-      {adding && candidates.length > 0 ? (
-        <div className="flex flex-col gap-1">
-          {candidates.map((routine) => (
+        {adding && !none && (
+          <div className="flex flex-col gap-1">
+            {candidates.map((routine) => (
+              <button
+                key={routine.id}
+                type="button"
+                onClick={() => {
+                  setAdding(false);
+                  onRequestAttach(routine);
+                }}
+                data-testid="program-routine-candidate"
+                data-routine-id={routine.id}
+                className="hover:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm"
+              >
+                <CategoryIcon glyph={routine.icon} name={routine.name} className="h-3.5 w-3.5" />
+                <span className="truncate">{routine.name}</span>
+              </button>
+            ))}
+            {/* The way out. Without it the only exits are attaching a routine you
+                may not have wanted, or closing the whole console. */}
             <button
-              key={routine.id}
               type="button"
-              onClick={() => {
-                setAdding(false);
-                onRequestAttach(routine);
-              }}
-              data-testid="program-routine-candidate"
-              data-routine-id={routine.id}
-              className="hover:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm"
+              onClick={() => setAdding(false)}
+              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center rounded-[5px] px-[7px] text-left text-sm"
+              data-testid="program-routine-add-cancel"
             >
-              <CategoryIcon glyph={routine.icon} name={routine.name} className="h-3.5 w-3.5" />
-              <span className="truncate">{routine.name}</span>
+              Cancel
             </button>
-          ))}
-          {/* The way out. Without it the only exits are attaching a routine you
-              may not have wanted, or closing the whole console. */}
-          <button
-            type="button"
-            onClick={() => setAdding(false)}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center rounded-[5px] px-[7px] text-left text-sm"
-            data-testid="program-routine-add-cancel"
-          >
-            Cancel
-          </button>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={() => setAdding(true)}
-          disabled={candidates.length === 0}
-          className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center gap-2 self-start rounded-[5px] px-[7px] text-sm disabled:opacity-50 disabled:hover:bg-transparent"
-          data-testid="program-routine-add"
-        >
-          <Plus className="h-3.5 w-3.5" />
-          {candidates.length === 0 ? 'Every routine is already here' : 'Add a routine'}
-        </button>
-      )}
+          </div>
+        )}
+      </OrganizerSection>
     </div>
   );
 }

@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { ProjectTimeBlock } from '../project-time-block';
-import { usePlannerStore } from '@/lib/planner-store';
+import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { byName, matching } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
@@ -595,8 +595,6 @@ const slugForLabel = (label: string) =>
     .replace(/\s+/g, '-')
     .replace(/[^a-z0-9_-]/g, '');
 
-const RESERVED_TYPE_NAMES = ['task', 'habit', 'custom'];
-
 /**
  * The store's own rules, restated so the row can refuse BEFORE it writes — and
  * say which rule was broken.
@@ -615,12 +613,21 @@ function slugProblem(label: string, existing: ItemTypeDef[]): string | null {
   if (!/^[a-z][a-z0-9_-]{0,31}$/.test(slug)) {
     return slug.length > 32 ? 'A bit shorter — 32 characters at most.' : 'Letters, numbers and dashes.';
   }
-  if (RESERVED_TYPE_NAMES.includes(slug)) return `“${slug}” is a built-in name — pick another.`;
+  if (BUILTIN_ITEM_TYPE_NAMES.includes(slug)) return `“${slug}” is a built-in name — pick another.`;
+  // The duplicate check runs before the organizer one: types made before the
+  // organizer nouns were reserved keep those names, and to their owner "you
+  // already have one" is the truer sentence.
   const clash = existing.find((t) => t.name === slug);
   if (clash) {
     return clash.label.toLowerCase() === label.toLowerCase()
       ? `You already have a type called “${clash.label}”.`
       : `“${clash.label}” already uses the name “${slug}”.`;
+  }
+  // Organizer nouns are refused for NEW types since the "new" dialog's type menu
+  // started listing organizers beside item types (2026-09-25): a type called
+  // "goal" would sit one row above the Goal organizer and mean something else.
+  if (ORGANIZER_TYPE_NAMES.includes(slug)) {
+    return `“${slug}” is an organizer, not a type — make one from the “new” dialog, or pick another name.`;
   }
   return null;
 }

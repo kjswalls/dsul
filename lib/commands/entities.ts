@@ -2,7 +2,7 @@ import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { CheckCircle2, Flame } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
-import { usePlannerStore } from '../planner-store';
+import { batchHistory, usePlannerStore } from '../planner-store';
 import { parseSearchQuery, searchItems } from '../search';
 import { isCompletedOnDate, isRecurring, toDateStr } from '../recurrence';
 import { isPausedOn } from '../active';
@@ -262,6 +262,21 @@ export interface ItemCommandSpec {
   detail?: (item: Item, dateStr: string) => string | undefined;
   /** Receives the item re-read from the store, never the painted snapshot. */
   run: (item: Item, dateStr: string) => void;
+  /** False keeps the picker single-select. Defaults to true. */
+  multi?: boolean;
+  /**
+   * A batch collects the per-item celebration and offers and fires them once
+   * at the end, instead of a confetti burst and a toast per item.
+   */
+  quietBatch?: boolean;
+  /** History label for a batch. Defaults to `${label} · ${n} items`. */
+  batchLabel?: (n: number) => string;
+  /**
+   * Replaces the default loop for a batch — for a verb that cannot be looped,
+   * like one that raises a single-slot confirm. Receives re-read, eligible
+   * items (two or more; one goes through `run`).
+   */
+  runMany?: (items: Item[], dateStr: string) => void;
 }
 
 /**
@@ -309,6 +324,45 @@ export function itemCommand(spec: ItemCommandSpec): Command {
           .slice(0, limit)
           .map(({ item }) => toOption(item, dateStr, spec.detail));
       },
+      resolve: (ids) => {
+        const dateStr = activeDateStr();
+        const byId = new Map(allItems().map((i) => [i.id, i]));
+        return ids
+          .map((id) => byId.get(id))
+          .filter((i): i is Item => !!i && spec.eligible(i, dateStr))
+          .map((i) => toOption(i, dateStr, spec.detail));
+      },
+      runMany:
+        spec.multi === false
+          ? undefined
+          : (_ctx, ids) => {
+              // The date is read ONCE, so a batch cannot straddle a day change
+              // halfway through; each target is re-read and re-checked, as run() does.
+              const dateStr = activeDateStr();
+              const byId = new Map(allItems().map((i) => [i.id, i]));
+              const targets = [...new Set(ids)]
+                .map((id) => byId.get(id))
+                .filter((i): i is Item => !!i && spec.eligible(i, dateStr));
+              if (targets.length === 0) return;
+              // One target is a single pick: same label, same effects, same entry.
+              if (targets.length === 1) return spec.run(targets[0], dateStr);
+              if (spec.runMany) return spec.runMany(targets, dateStr);
+              const label =
+                spec.batchLabel?.(targets.length) ?? `${spec.label} · ${targets.length} items`;
+              batchHistory(
+                label,
+                targets.length,
+                () => {
+                  for (const target of targets) {
+                    // Re-read per item: an earlier verb in the loop may have
+                    // cascaded onto this one (a parent's delete, a completion).
+                    const fresh = allItems().find((i) => i.id === target.id);
+                    if (fresh && spec.eligible(fresh, dateStr)) spec.run(fresh, dateStr);
+                  }
+                },
+                { quiet: !!spec.quietBatch },
+              );
+            },
     },
     run: (_ctx, id) => {
       if (!id) return;

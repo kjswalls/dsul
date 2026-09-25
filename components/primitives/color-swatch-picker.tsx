@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
  */
 
 /** Display names for --accent-1..8, from the ramp comments in globals.css. */
-const ACCENT_NAMES = ['Moss', 'Teal', 'Indigo', 'Plum', 'Coral', 'Honey', 'Slate', 'Lime'];
+export const ACCENT_NAMES = ['Moss', 'Teal', 'Indigo', 'Plum', 'Coral', 'Honey', 'Slate', 'Lime'];
 
 interface ColorSwatchPickerProps {
   /** Stored color (a var(--accent-N) token, or legacy free text). Unset = Auto. */
@@ -66,36 +66,50 @@ export function ColorSwatchPicker({
         </Button>
       </PopoverTrigger>
       <PopoverContent className="w-auto p-2" align="end">
-        <div className="flex items-center gap-1">
-          {ACCENT_RAMP.map((color, i) => (
-            <button
-              key={color}
-              type="button"
-              title={ACCENT_NAMES[i]}
-              aria-label={ACCENT_NAMES[i]}
-              onClick={() => pick(color)}
-              className={cn(
-                'flex size-7 items-center justify-center rounded-md hover:bg-accent',
-                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-                value === color && 'bg-secondary ring-1 ring-primary'
-              )}
-            >
-              <span className="size-[13px] rounded-[4px]" style={{ background: color }} aria-hidden />
-            </button>
-          ))}
-          <button
-            type="button"
-            onClick={() => pick(undefined)}
-            className={cn(
-              'ml-1 h-7 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent',
-              'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-              !value && 'bg-secondary font-medium text-foreground'
-            )}
-          >
-            Auto
-          </button>
-        </div>
+        <ColorSwatchGrid value={value} onPick={pick} />
       </PopoverContent>
     </Popover>
+  );
+}
+
+/** The palette row itself — eight ramp swatches and Auto — for a picker that
+ *  brings its own trigger (the organizer ColorChip). `undefined` = Auto. */
+export function ColorSwatchGrid({
+  value,
+  onPick,
+}: {
+  value?: string;
+  onPick: (color: string | undefined) => void;
+}) {
+  return (
+    <div className="flex items-center gap-1">
+      {ACCENT_RAMP.map((color, i) => (
+        <button
+          key={color}
+          type="button"
+          title={ACCENT_NAMES[i]}
+          aria-label={ACCENT_NAMES[i]}
+          onClick={() => onPick(color)}
+          className={cn(
+            'flex size-7 items-center justify-center rounded-md hover:bg-accent',
+            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+            value === color && 'bg-secondary ring-1 ring-primary'
+          )}
+        >
+          <span className="size-[13px] rounded-[4px]" style={{ background: color }} aria-hidden />
+        </button>
+      ))}
+      <button
+        type="button"
+        onClick={() => onPick(undefined)}
+        className={cn(
+          'ml-1 h-7 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent',
+          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+          !value && 'bg-secondary font-medium text-foreground'
+        )}
+      >
+        Auto
+      </button>
+    </div>
   );
 }

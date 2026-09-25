@@ -37,6 +37,8 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer';
+import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip';
+import { RailTipContent, useQuietTip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
@@ -464,6 +466,11 @@ export function DisplayMenu({
    */
   scope?: ViewScope;
 }) {
+  // The icon trigger's tooltip, and the menu's own open state so the tooltip
+  // can stand down while the panel is out. Held here, above the touch branch's
+  // early return, so the hook order never depends on the input device.
+  const tip = useQuietTip();
+  const [menuOpen, setMenuOpen] = useState(false);
   const projects = usePlannerStore((s) => s.projects);
   // Read purely to seed the grouping options' example lines — the Routine and
   // Program group-by values name these, the way Project names `projects`.
@@ -1020,49 +1027,95 @@ export function DisplayMenu({
     );
   }
 
+  const menuContent = (
+    <DropdownMenuContent
+      align={align}
+      className={PANEL}
+      data-testid="display-menu"
+      data-display-variant="menu"
+    >
+      <Cap>Structure</Cap>
+      {structure.map((s) => (
+        <SubRow key={s.id} section={s} />
+      ))}
+      <DropdownMenuSeparator />
+
+      <Cap>Filter</Cap>
+      {filterSections.map((s) => (
+        <SubRow key={s.id} section={s} />
+      ))}
+
+      <MenuEntries entries={showEntries} />
+
+      <PausedScopesSection variant="menu" />
+
+      <DropdownMenuSeparator />
+      {/* Permanently mounted, disabled when nothing is set. That is what stops
+          the panel jumping height, which today's conditionally-mounted "Clear
+          filters" does on the first tick — and it is a view preference, so it
+          loses the destructive red styling with it. */}
+      <DropdownMenuItem
+        className={cn(ROW, 'text-muted-foreground')}
+        disabled={activeCount === 0}
+        onSelect={() => reset()}
+        data-testid="display-reset"
+      >
+        <RotateCcw className="size-4" />
+        <span className="flex-1">Reset display</span>
+        {activeCount > 0 && (
+          <span className="shrink-0 font-mono text-[10.5px] tabular-nums">{activeCount}</span>
+        )}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  );
+
+  // The icon trigger is a bare glyph, so on a pointer it gets the rail tooltip
+  // every header control wears. The label trigger says "Display" already.
+  //
+  // Nesting order is load-bearing: the MENU trigger is the outer one. Both
+  // stamp `data-state`, and Radix hands the outer trigger's props to the inner
+  // one, which spreads them over its own — tooltip-outside, the button would
+  // report the tooltip's closed/delayed-open instead of the menu's open/closed.
+  if (trigger === 'icon') {
+    return (
+      <Tooltip open={tip.open && !menuOpen} onOpenChange={tip.onOpenChange}>
+        <DropdownMenu
+          open={menuOpen}
+          onOpenChange={(next) => {
+            setMenuOpen(next);
+            // Put the tooltip down on BOTH edges. Opening, the menu trigger's
+            // pointerdown preventDefaults and so skips the tooltip's own close;
+            // while the menu is out the tooltip is held shut by the prop, and a
+            // controlled Radix root never reports a close it is already showing.
+            // Left alone, tip.open stays true and the tooltip springs back the
+            // moment the menu closes, wherever the pointer went. The hover is
+            // forgotten too: the pointer went into the menu, and the focus the
+            // menu hands back on close must pass the keyboard test on its own.
+            tip.reset();
+          }}
+        >
+          <DropdownMenuTrigger asChild>
+            <TooltipTrigger asChild {...tip.triggerProps}>
+              {triggerButton}
+            </TooltipTrigger>
+          </DropdownMenuTrigger>
+          <RailTipContent
+            side="bottom"
+            label="Display"
+            detail={
+              activeCount > 0 ? `${activeCount} active · Filter, group & sort` : 'Filter, group & sort'
+            }
+          />
+          {menuContent}
+        </DropdownMenu>
+      </Tooltip>
+    );
+  }
+
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
-
-      <DropdownMenuContent
-        align={align}
-        className={PANEL}
-        data-testid="display-menu"
-        data-display-variant="menu"
-      >
-        <Cap>Structure</Cap>
-        {structure.map((s) => (
-          <SubRow key={s.id} section={s} />
-        ))}
-        <DropdownMenuSeparator />
-
-        <Cap>Filter</Cap>
-        {filterSections.map((s) => (
-          <SubRow key={s.id} section={s} />
-        ))}
-
-        <MenuEntries entries={showEntries} />
-
-        <PausedScopesSection variant="menu" />
-
-        <DropdownMenuSeparator />
-        {/* Permanently mounted, disabled when nothing is set. That is what stops
-            the panel jumping height, which today's conditionally-mounted "Clear
-            filters" does on the first tick — and it is a view preference, so it
-            loses the destructive red styling with it. */}
-        <DropdownMenuItem
-          className={cn(ROW, 'text-muted-foreground')}
-          disabled={activeCount === 0}
-          onSelect={() => reset()}
-          data-testid="display-reset"
-        >
-          <RotateCcw className="size-4" />
-          <span className="flex-1">Reset display</span>
-          {activeCount > 0 && (
-            <span className="shrink-0 font-mono text-[10.5px] tabular-nums">{activeCount}</span>
-          )}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+      {menuContent}
     </DropdownMenu>
   );
 }

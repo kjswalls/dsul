@@ -19,6 +19,7 @@ import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { sinkCompleted } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
 import { toDateStr } from '@/lib/recurrence';
 import type { TimeBucket } from '@/lib/planner-types';
@@ -117,22 +118,26 @@ function WeekBucketCell({
    * which is the bug the braindump shipped for one commit (lib/grouping.ts,
    * rule 1).
    *
-   * Only ONE of the two ever runs: the ungrouped pass is applied at its own
-   * render branch below rather than hoisted here, since the grouped path would
-   * discard it — and an O(n) partition spent for nothing, 28 cells deep and on
+   * Only ONE of the two ever runs: the ungrouped pass (`flatRows`) is gated on
+   * `grouped` being null rather than computed unconditionally, since the grouped
+   * path would discard it — and an O(n) partition spent for nothing, 28 cells deep and on
    * every dnd re-render, is the cost the memo above exists to avoid.
    */
+  const { completedAs, rootRef } = useSinkHold(setNodeRef);
   const grouped =
     canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
       ? groupRows(allRows, canvasGroupBy, { routines, programs, goals }).map((g) => ({
           ...g,
-          rows: sinkCompleted(g.rows, completionDateStr),
+          rows: sinkCompleted(g.rows, completionDateStr, completedAs),
         }))
       : null;
+  // The ungrouped render's rows, sunk once and shared with the shut caption's
+  // peek so the two agree on order. Still skipped entirely on the grouped path.
+  const flatRows = grouped ? null : sinkCompleted(allRows, completionDateStr, completedAs);
 
   return (
     <div
-      ref={setNodeRef}
+      ref={rootRef}
       data-dnd-id={`week:${dateStr}:${bucket}`}
       data-dnd-over={isOver ? 'true' : 'false'}
     >
@@ -153,6 +158,11 @@ function WeekBucketCell({
         isCurrent={isCurrent}
         variant={variant}
         contentMaxH={isEmpty ? undefined : WEEK_BUCKET_MAX_H}
+        // Blocks lead the cell, so they lead the shut caption's peek too.
+        peek={[
+          ...bucketProjects.map((p) => p.name),
+          ...(grouped ? grouped.flatMap((g) => g.rows) : flatRows!).map((r) => r.item.title),
+        ]}
       >
         {!isEmpty && (
           <>
@@ -179,7 +189,7 @@ function WeekBucketCell({
                     ))}
                   </GroupSection>
                 ))
-              : sinkCompleted(allRows, completionDateStr).map((row) => (
+              : flatRows!.map((row) => (
                   <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                 ))}
           </>

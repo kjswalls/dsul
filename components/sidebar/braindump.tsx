@@ -2,7 +2,7 @@
 
 import { useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
-import { AlignLeft, FolderOpen, Moon, ChevronRight } from 'lucide-react';
+import { FolderOpen, Moon, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -11,18 +11,23 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { NoticeSlot } from '@/components/notices/notice-slot';
 import { DisplayMenu } from '@/components/primitives/display-menu';
+import { RailTooltip } from '@/components/primitives/pills';
+import { KeyCap } from '@/components/planner/organize/primitives';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
+import { formatKeys } from '@/lib/commands/keys';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
-import { passesFilters } from '@/lib/filters';
+import { narrowingClauseCount, passesFilters } from '@/lib/filters';
 import {
   useBraindumpGroupBy,
   useGoalFilterIds,
   useOrganizeEnabled,
 } from '@/lib/extension-gates';
 import { groupRows, type RowGroup } from '@/lib/grouping';
-import { orderRows } from '@/lib/sort-rows';
+import { isRowCompletedOn, orderRows } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -236,6 +241,33 @@ function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number
   );
 }
 
+const ORGANIZE_OFF = 'Organize is off — switch it on in Settings → Extensions';
+const ORGANIZE_OFF_SHORT = 'Off — switch it on in Settings → Extensions';
+
+/**
+ * The header controls' tooltip: the rail tooltip's shape (muted eyebrow over
+ * the value), dropped below the row. `off` on the phone, where a tap would pop
+ * one over the thumb that made it and there is no hover to earn it.
+ */
+function HeaderTip({
+  off,
+  label,
+  detail,
+  children,
+}: {
+  off?: boolean;
+  label: string;
+  detail?: React.ReactNode;
+  children: React.ReactNode;
+}) {
+  if (off) return <>{children}</>;
+  return (
+    <RailTooltip side="bottom" label={label} detail={detail}>
+      {children}
+    </RailTooltip>
+  );
+}
+
 interface BraindumpProps {
   /**
    * 'mobile' is the phone's Braindump TAB. It differs from the sidebar in one
@@ -302,12 +334,16 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    */
   const goalMemberIds = useGoalFilterIds(goals, braindumpFilters.goals);
 
-  const rows: RowItem[] = useMemo(() => {
+  /**
+   * `base` is MEMBERSHIP — what belongs in the braindump at all — and `rows` is
+   * base narrowed by the Display menu. They are split so the header can say
+   * "8 of 23": both numbers come from one predicate, rather than the header
+   * re-deriving what the list already decided.
+   */
+  const { base, rows } = useMemo(() => {
     const unscheduledTasks = tasks.filter((task) => {
       if (suppressedIds.has(task.id)) return false;
       if (task.isScheduled || task.timeBucket) return false;
-      if (braindumpFilters.hideFinished && task.status === 'completed') return false;
-      if (!passesFilters(task, braindumpFilters, undefined, goalMemberIds)) return false;
       return true;
     });
 
@@ -320,15 +356,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     // UI path today. The branch stays because habit DRAFTS are meant to live
     // here eventually (memory/plans/display-menu.md); it now narrows by the
     // same rule as everything else instead of vanishing wholesale.
-    //
-    // No hideSkipped term: a skip is per-date and the braindump is dateless.
     const unscheduledHabits = habits.filter((habit) => {
       if (suppressedIds.has(habit.id)) return false;
       if (habit.timeBucket) return false;
       if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
-      if (braindumpFilters.hideFinished && habit.status === 'done') return false;
-      // 'habit' explicitly — see the note in lib/day-items.ts.
-      if (!passesFilters(habit, braindumpFilters, 'habit', goalMemberIds)) return false;
       return true;
     });
 
@@ -336,11 +367,73 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     // habits is an accidental type grouping baked into the sort — nobody chose
     // it; it is what building the list in two passes produces. The ordering is
     // applied in `grouped` below, per group, NOT here: see the note there.
-    return [
+    const base: RowItem[] = [
       ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
       ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
     ];
+
+    // No hideSkipped term: a skip is per-date and the braindump is dateless.
+    const rows = base.filter((row) => {
+      if (row.itemType === 'task') {
+        if (braindumpFilters.hideFinished && row.item.status === 'completed') return false;
+        return passesFilters(row.item, braindumpFilters, undefined, goalMemberIds);
+      }
+      if (braindumpFilters.hideFinished && row.item.status === 'done') return false;
+      // 'habit' explicitly — see the note in lib/day-items.ts.
+      return passesFilters(row.item, braindumpFilters, 'habit', goalMemberIds);
+    });
+
+    return { base, rows };
   }, [tasks, habits, braindumpFilters, suppressedIds, goalMemberIds]);
+
+  /**
+   * The header's count: OPEN items, "23 undated", or "8 of 23" while a filter
+   * narrows the list. Open, because the number is what is still waiting on a
+   * day — finished rows sink to the foot of the list and are struck through,
+   * and counting them would make ticking one off change nothing. Built on
+   * `isRowCompletedOn` with no date, the same predicate that sinks and strikes
+   * those rows, so a recurring row counts as open exactly as it draws.
+   *
+   * Hidden until the planner has loaded: the store starts empty, and "0
+   * undated" over a list that is about to fill is a small lie on every launch.
+   * `!isLoading` alone is not loaded (see app-shell.tsx), and a failed load
+   * leaves an empty store too.
+   */
+  const loaded = usePlannerStore((s) => !!s.userId && !s.isLoading && !s.error);
+  const openTotal = useMemo(() => base.filter((r) => !isRowCompletedOn(r, null)).length, [base]);
+  const openShown = useMemo(() => rows.filter((r) => !isRowCompletedOn(r, null)).length, [rows]);
+  const narrowed = narrowingClauseCount(braindumpFilters, goalMemberIds) > 0;
+  // "0 undated" beside the empty state's own line reads flat, so an empty,
+  // unfiltered list keeps the word. A filter that leaves nothing still counts
+  // ("0 of 23"): that zero is news.
+  const countLabel = !loaded ? null : narrowed ? (
+    <>
+      <span className="font-num">{openShown}</span>
+      <span className="font-normal text-muted-foreground"> of </span>
+      <span className="font-num">{openTotal}</span>
+    </>
+  ) : openTotal > 0 ? (
+    <>
+      <span className="font-num">{openTotal}</span>
+      <span className="font-normal text-muted-foreground"> undated</span>
+    </>
+  ) : null;
+
+  // The live binding, never a printed "N": new_task is rebindable, and a hint
+  // that doesn't follow the rebinding starts lying the moment it moves. isMac
+  // is read at render: the Braindump never server-renders (AppShell holds a
+  // skeleton until mount), so there is no server pass for it to disagree with.
+  const newTaskKeys = useShortcutKeys('new_task');
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.platform);
+  const addKeys =
+    newTaskKeys.length > 0 ? (
+      <span className="flex items-center">
+        Shortcut
+        {formatKeys(newTaskKeys, isMac).map((k) => (
+          <KeyCap key={k}>{k}</KeyCap>
+        ))}
+      </span>
+    ) : undefined;
 
   /**
    * Everything currently set aside — the home paused work would otherwise not
@@ -423,6 +516,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * shows no completion mark must not move as though it had one, so only
    * one-shot rows — which are what this list is almost entirely made of — sink.
    */
+  const { completedAs, rootRef: sinkRootRef } = useSinkHold<HTMLElement>(setNodeRef);
   const grouped: RowGroup<RowItem>[] = useMemo(() => {
     // 'type' is the braindump's own value and has no canvas counterpart — the
     // canvas answers "what is in here" with the Type FILTER instead. Everything
@@ -438,12 +532,38 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // goals the aspire one; each is inert for the values it does not
           // answer, so passing all three always is harmless.
           groupRows(rows, braindumpGroupBy, { routines, programs, goals });
-    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals]);
+    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null, completedAs) }));
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals, completedAs]);
+
+  const organizeButton = (
+    <Button
+      variant="ghost"
+      size="icon"
+      className={cn(
+        'h-6 w-6 text-muted-foreground hover:text-foreground',
+        isMobile && 'size-7'
+      )}
+      onClick={() => openDialog({ type: 'organize', section: 'projects' })}
+      // INERT, not absent, while the Organize console is off. A door that
+      // vanishes teaches nothing; a door that is visibly shut and says why
+      // is the "extension store" posture (lib/extension-gates.ts). The
+      // console's own gate is the guard of last resort — this one is here so
+      // the click never opens an empty room in the first place.
+      disabled={!organizeOn}
+      // Why it is shut: the tooltip says it on a pointer, this says it to a
+      // screen reader, and the phone — which gets no tooltips — keeps the
+      // native title it has always had.
+      aria-description={organizeOn ? undefined : ORGANIZE_OFF}
+      title={isMobile && !organizeOn ? ORGANIZE_OFF : undefined}
+      aria-label="Organize projects & groups"
+    >
+      <FolderOpen className="h-4 w-4" />
+    </Button>
+  );
 
   return (
     <section
-      ref={setNodeRef}
+      ref={sinkRootRef}
       data-dnd-id="sidebar"
       data-dnd-over={isOver ? 'true' : 'false'}
       // Separates the CONTENT scope from the DnD hook: data-dnd-id="sidebar"
@@ -455,9 +575,25 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       {/* Header — the shared double-card capsule (SurfaceHeader). The phone
           shell insets it off the screen edge; the sidebar column has no gutter
           of its own, so it stays flush there. */}
+      {/* The title is a live count now, not the word. The list under it
+          already says what it is; the header says how much of it is waiting.
+          The name stays in the heading as screen-reader text, so the region is
+          still called "Braindump" to anything that reads it rather than sees
+          it — and the word itself comes back until there is a number worth
+          showing (before the planner loads, and on an empty list). The lines
+          glyph that used to lead the row went with it: it was decoration that
+          drew exactly like a menu button and did nothing when clicked. */}
       <SurfaceHeader
-        title="Braindump"
-        icon={<AlignLeft className="h-4 w-4 shrink-0 text-muted-foreground" />}
+        title={
+          countLabel ? (
+            <>
+              <span className="sr-only">Braindump, </span>
+              <span data-testid="braindump-count">{countLabel}</span>
+            </>
+          ) : (
+            'Braindump'
+          )
+        }
         className={cn(isMobile && 'mx-[10px]')}
       >
         {/* On the phone this row is the Braindump tab's ONLY header, so these
@@ -477,27 +613,17 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu surface="braindump" trigger="icon" align="start" />
         </span>
-        <Button
-          variant="ghost"
-          size="icon"
-          className={cn(
-            'h-6 w-6 text-muted-foreground hover:text-foreground',
-            isMobile && 'size-7'
-          )}
-          onClick={() => openDialog({ type: 'organize', section: 'projects' })}
-          // INERT, not absent, while the Organize console is off. A door that
-          // vanishes teaches nothing; a door that is visibly shut and says why
-          // is the "extension store" posture (lib/extension-gates.ts). The
-          // console's own gate is the guard of last resort — this one is here so
-          // the click never opens an empty room in the first place.
-          disabled={!organizeOn}
-          title={
-            organizeOn ? undefined : 'Organize is off — switch it on in Settings → Extensions'
-          }
-          aria-label="Organize projects & groups"
+        {/* A disabled button takes no pointer events (disabled:pointer-events-none
+            in ui/button), so while Organize is off the tooltip hangs on a span
+            around it — hover-only, not a tab stop, since the button it wraps is
+            not one either. */}
+        <HeaderTip
+          off={isMobile}
+          label="Organize"
+          detail={organizeOn ? 'Projects & item types' : ORGANIZE_OFF_SHORT}
         >
-          <FolderOpen className="h-4 w-4" />
-        </Button>
+          {organizeOn ? organizeButton : <span className="flex">{organizeButton}</span>}
+        </HeaderTip>
         {/* No routines button here on purpose. This row is width-critical at
             the 280px minimum — the collapse control moved off it to buy the
             title ~30px, and a fifth control spends exactly that back. The
@@ -514,12 +640,16 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             would read as a fourth well in the row — so the phone gets the
             reach through a pseudo-element instead: 16px drawn, 28px tappable,
             which lands inside the 8px gap without covering its neighbour. */}
-        <AddIconButton
-          size="md"
-          onClick={() => openAddDialog('task')}
-          aria-label="Add task"
-          className={cn(isMobile && "relative before:absolute before:-inset-[6px] before:content-['']")}
-        />
+        <HeaderTip off={isMobile} label="Add task" detail={addKeys}>
+          <AddIconButton
+            size="md"
+            onClick={() => openAddDialog('task')}
+            aria-label="Add task"
+            className={cn(
+              isMobile && "relative before:absolute before:-inset-[6px] before:content-['']"
+            )}
+          />
+        </HeaderTip>
         {headerAccessory}
       </SurfaceHeader>
 

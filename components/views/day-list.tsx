@@ -12,6 +12,7 @@ import { flattenDayRows } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { ProgramNotice } from '@/components/views/program-notice';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -49,6 +50,7 @@ export function DayList() {
     usePlannerStore();
   const canvasGroupBy = useCanvasGroupBy();
   const sortBy = useViewStore((s) => s.canvasSortBy);
+  const { completedAs, rootRef } = useSinkHold();
 
   /**
    * Sorted WITHIN each group, after grouping — the two axes are independent and
@@ -75,11 +77,12 @@ export function DayList() {
     canvasGroupBy === 'none'
       ? defaultListGroups(rows)
       : groupRows(rows, canvasGroupBy, { routines, programs, goals })
-  ).map((g) => ({ ...g, rows: orderRows(g.rows, sortBy, dateStr) }));
+  ).map((g) => ({ ...g, rows: orderRows(g.rows, sortBy, dateStr, completedAs) }));
 
   return (
     <ScrollArea className="h-full flex-1">
       <div
+        ref={rootRef}
         key={`${selectedDate.toDateString()}-${navDirection ?? 'none'}`}
         className={cn(
           'canvas-container space-y-5 py-6 pb-20',

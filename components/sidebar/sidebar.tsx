@@ -46,6 +46,7 @@ function GripDots() {
 import { Braindump } from '@/components/sidebar/braindump';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Wordmark } from '@/components/primitives/wordmark';
 import {
   clampSidebarWidth,
   SIDEBAR_DEFAULT_WIDTH,
@@ -264,7 +265,7 @@ export function Sidebar() {
           // pt-[31px] matches the canvas header so the Braindump title row lines
           // up vertically with the date selector (both 43px from window top per
           // Figma). pb-[16px] lifts the bottom dock capsule 28px off the window.
-          'flex h-full flex-col gap-3 overflow-hidden pt-[31px] pb-[16px] transition-all duration-300',
+          'relative flex h-full flex-col gap-3 overflow-hidden pt-[31px] pb-[16px] transition-all duration-300',
           isVisible ? 'w-[var(--sidebar-w)]' : 'w-0',
           // The 300ms ease is what makes the collapse read as a fold. On a drag
           // it reads as lag, so the column goes to direct manipulation for the
@@ -273,6 +274,19 @@ export function Sidebar() {
           leftSidebarHovered && !leftSidebarOpen && 'absolute left-0 top-0 bottom-0 z-20 rounded-card bg-surface-0 shadow-soft-lg'
         )}
       >
+        {/* The wordmark lives IN the top padding, not in the flow. pt-[31px] is
+            what lines the Braindump capsule up with the canvas's date capsule,
+            and a mark in flow would push the header down by its own height
+            plus the column's gap — so it is drawn over that band instead, and
+            the one number keeps guaranteeing the line-up. The 25px inset is
+            the capsule's 10px plus the pill's 15px, so the bolt stands over
+            the count's first figure. Out of the braindump <section> on purpose:
+            it names the app, not the list, and stays out of that section's
+            testid scope. No opacity on it or any parent — the bolt is lime. */}
+        <Wordmark
+          className="pointer-events-none absolute inset-x-0 top-0 h-[31px] px-[25px] text-foreground select-none"
+          data-testid="sidebar-wordmark"
+        />
         <Braindump />
         <SidebarDock />
       </div>

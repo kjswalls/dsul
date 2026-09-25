@@ -59,17 +59,26 @@ jobs:
       - name: Run unit tests
         run: pnpm run test:unit
 
+  # OFF until it can run against a Supabase stack on the runner itself.
+  #
+  # This job used to take its Supabase keys from repo secrets, which were
+  # PRODUCTION's. On 2026-09-24 four PRs' E2E runs overlapped, each retried for
+  # hours with no timeout, and the load took the live project down (do.dsul.app
+  # could not log in). The keys are gone from this file and the suite now refuses
+  # any non-loopback Supabase URL (assertLocalTarget, tests/e2e/helpers/env.ts),
+  # so even with this re-enabled it can only reach a local stack.
+  #
+  # To turn it back on: a step that runs `./scripts/local-setup.sh e2e` (after
+  # supabase/setup-cli) before "Run E2E tests", then flip the `if:` back to
+  # `github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'`.
+  # That needs the migrations to replay onto an empty database first; today
+  # `supabase db reset` stops early (see scripts/README.md).
   e2e-tests:
     name: E2E tests (Playwright)
     runs-on: ubuntu-latest
     continue-on-error: true
-    if: github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
-    env:
-      NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-      NEXT_PUBLIC_SUPABASE_ANON_KEY: ${{ secrets.NEXT_PUBLIC_SUPABASE_ANON_KEY }}
-      SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
-      TEST_USER_EMAIL: ${{ secrets.TEST_USER_EMAIL }}
-      TEST_USER_PASSWORD: ${{ secrets.TEST_USER_PASSWORD }}
+    if: false
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
 
@@ -115,10 +124,10 @@ jobs:
           restore-keys: |
             nextjs-${{ runner.os }}-${{ hashFiles('**/pnpm-lock.yaml') }}-
 
-      # No .env.test is written here on purpose. playwright.config.ts loads that
-      # file with `override: false`, so the job-level `env:` above already wins —
-      # and the step that used to write it was dead either way, since `next build`
-      # runs with NODE_ENV=production and never reads .env.test.
+      # No job-level Supabase env on purpose: playwright.config.ts loads .env.test
+      # with `override: false`, so any job env would silently win over the local
+      # stack's file. The webServer (`pnpm build && pnpm start`) inherits the
+      # values from the Playwright process.
 
       - name: Run E2E tests
         run: pnpm run e2e
