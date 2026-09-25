@@ -28,6 +28,36 @@ export const BUCKET_META: Record<
 export const BUCKET_LABEL_INK = 'text-muted-foreground/70';
 
 /**
+ * The "you are here" glyph's halo: a soft lime glow that breathes behind the
+ * icon (`.bucket-now-glow` in globals.css, the zen room's now-bead breath at
+ * caption scale). `bleed` is how far past the glyph's box it reaches on each
+ * side.
+ *
+ * A thumbnail RelayField was tried here first. At a 14px glyph the field can't
+ * go below six columns, so its tiles land at ~6px and read as a ring of
+ * scattered specks — the default palette's teal and orange included — rather
+ * than as light. A gradient is the glow those tiles were trying to be.
+ *
+ * It is its own element, so the pulse dims only itself and the lime mark it
+ * sits behind never composites through it. The caller owns the stacking: the
+ * halo is `-z-10`, so its parent must be `relative isolate`, or it drops behind
+ * the caption button's hover fill. CSS handles both motion vetoes (reduced
+ * motion and the animations setting), holding the glow at rest.
+ */
+function CurrentGlyphHalo({ bleed }: { bleed: number }) {
+  return (
+    // Inline inset, not a class: the bleed differs per density and Tailwind
+    // cannot see a computed `-inset-[…]`.
+    <span
+      aria-hidden
+      data-testid="bucket-current-halo"
+      className="bucket-now-glow pointer-events-none absolute -z-10 rounded-full"
+      style={{ inset: -bleed }}
+    />
+  );
+}
+
+/**
  * Geometry per style × density. One table so day and week cannot drift.
  *
  * VERTICAL RHYTHM lives in two numbers, `capGap` and `gap`, plain px rather
@@ -94,7 +124,6 @@ const GEO = {
       slotOpen: 'min-h-11',
       slotArmed: 'min-h-[60px]',
       radius: 'rounded-[14px]',
-      sliver: 8,
       add: 'md' as const,
     },
     mini: {
@@ -115,7 +144,6 @@ const GEO = {
       slotOpen: 'min-h-7',
       slotArmed: 'min-h-[38px]',
       radius: 'rounded-[10px]',
-      sliver: 6,
       add: 'sm' as const,
     },
   },
@@ -147,7 +175,6 @@ const GEO = {
       slotOpen: 'min-h-11',
       slotArmed: 'min-h-[60px]',
       radius: 'rounded-[20px]',
-      sliver: 8,
       add: 'md' as const,
     },
     mini: {
@@ -162,7 +189,6 @@ const GEO = {
       slotOpen: 'min-h-7',
       slotArmed: 'min-h-[38px]',
       radius: 'rounded-xl',
-      sliver: 6,
       add: 'sm' as const,
     },
   },
@@ -182,7 +208,8 @@ interface BucketCardProps {
   count: number;
   onAdd?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
   /** "You are here". Reads as a lime rule down the card's left wall ('spine'),
-   *  plus a lime disc on the glyph ('tray') — never a ring in either. */
+   *  plus a lime disc on the glyph ('tray') — never a ring in either. A shut
+   *  card has no wall, so there the caption carries "now" on its own. */
   isCurrent?: boolean;
   /** Drop highlight while dragging over. */
   isDropTarget?: boolean;
@@ -198,6 +225,10 @@ interface BucketCardProps {
   /** False for a specimen: always open, no chevron, and the shared
    *  `collapsedBuckets` flag is ignored rather than merely unreachable. */
   collapsible?: boolean;
+  /** What is inside, as titles in display order. Read only while shut, where
+   *  it is drawn as a faint run-on line in the caption — see "WHAT A SHUT
+   *  BUCKET SHOWS" below. */
+  peek?: readonly string[];
   children: React.ReactNode;
   className?: string;
 }
@@ -270,12 +301,24 @@ interface BucketCardProps {
  * under a drag — would reflow the whole column at drag start, which is the one
  * thing the rect-stability contract forbids.
  *
+ * WHAT A SHUT BUCKET SHOWS. Its caption, and in the caption's free middle a
+ * faint run-on line of what is inside ("Groceries · Call mom · Stretch"),
+ * truncated to whatever width the caption has left. It used to draw an 8px
+ * sliver of the closed card under the caption instead, which read as an empty
+ * container rather than a full one put away. The peek says both halves at
+ * once: there is something here (the titles), and it is folded (they are one
+ * dim line, not rows). It is part of the toggle's hit area, so clicking what
+ * you can half-see opens it, and the chevron still points right. With no peek
+ * given (a specimen), a shut bucket is just its caption.
+ *
  * WHY NEITHER USES A RING FOR "NOW". A ring is the grammar of focus. Both
  * variants give the current bucket a mark with EXTENT instead — a lime rule
  * down the left wall of its card or tray — so a busy current bucket shows a
  * long rule and a short one a short rule. That is the difference between
  * position and selection. An empty current bucket has no card to rule, so in
- * 'spine' it says "now" only through its caption stepping up a tone.
+ * 'spine' it says "now" only through its caption stepping up a tone. A SHUT
+ * current bucket has no card either, so the same holds: its caption is where
+ * "now" lives, and no second lime mark is added for the fold.
  */
 export function BucketCard({
   bucket,
@@ -289,6 +332,7 @@ export function BucketCard({
   density = 'full',
   variant = 'spine',
   collapsible = true,
+  peek,
   children,
   className,
 }: BucketCardProps) {
@@ -302,11 +346,14 @@ export function BucketCard({
   const collapsed = useViewStore((s) => s.collapsedBuckets.includes(bucket));
   const toggleCollapsed = useViewStore((s) => s.toggleBucketCollapsed);
   const expandBucket = useViewStore((s) => s.expandBucket);
+  // The breathing glow behind the current glyph. See CurrentGlyphHalo.
+  const showHalo = !!isCurrent;
+  const haloBleed = density === 'full' ? 8 : 6;
 
   // An empty bucket has nothing to shut, so it offers no control — a chevron
   // that toggles a stored flag with no visible effect is a dead affordance, and
-  // worse here, because "shut" draws a sliver and an empty bucket draws
-  // nothing, so collapsing would visibly ADD a mark. The stored flag survives a
+  // worse here, because "shut" draws a peek of what is inside and an empty
+  // bucket has nothing to peek at. The stored flag survives a
   // bucket emptying and re-filling; it just isn't reachable while there is
   // nothing in there.
   // A specimen (the settings Look preview) must be a function of the settings
@@ -318,12 +365,14 @@ export function BucketCard({
 
   // What sits under the caption, in priority order:
   //   dragging  → the slot (children suppressed while shut — see the note above)
-  //   shut      → the sliver: this card, closed
+  //   shut      → nothing; the caption carries the peek instead
   //   empty     → nothing. An empty bucket is its caption, which is the 22px
   //               that made the redesign worth doing.
   //   otherwise → the card
   const showSlot = dragging || (!isShut && !isEmpty);
-  const showSliver = !dragging && isShut;
+  // Not under a drag: the slot is open then, and a peek above an open slot
+  // would describe rows that are not the ones on screen.
+  const peekText = isShut && !dragging && peek?.length ? peek.join(' · ') : null;
 
   return (
     <section
@@ -339,6 +388,18 @@ export function BucketCard({
     >
       {/* The tray variant keeps its glyph in an absolute node, which swells to
           a lime disc for "now" alongside the rule down its left wall. */}
+      {/* The tray's halo sits under its node rather than inside it: inside,
+          the glow would paint over the lime disc's own fill. Same box as the
+          current node, one layer down. */}
+      {!isSpine && showHalo && (
+        <span
+          aria-hidden
+          className="pointer-events-none absolute top-0 left-[-4px] z-[2] isolate"
+          style={{ width: g.node, height: g.node }}
+        >
+          <CurrentGlyphHalo bleed={haloBleed} />
+        </span>
+      )}
       {!isSpine && (
         <span
           aria-hidden
@@ -372,7 +433,9 @@ export function BucketCard({
             helping of it landed between the count and the +, which is why those
             two read as unrelated controls rather than one cluster. Now `gap` is
             only the minimum between the name and the cluster, and the cluster
-            sets its own. */}
+            sets its own. A shut bucket's peek is a third, middle child that
+            takes the free width (flex-1) and truncates into it; the name and
+            the cluster keep their ends either way. */}
         <header className={cn('flex items-center justify-between', g.head)}>
           {/* h3 wrapping the button, not the other way round: a heading is flow
               content and a button only takes phrasing content, so the usual
@@ -383,9 +446,17 @@ export function BucketCard({
             {(() => {
               const inner = (
                 <>
-                  {isSpine && (
-                    <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
-                  )}
+                  {isSpine &&
+                    (showHalo ? (
+                      // `isolate` keeps the halo's -z-10 above the caption
+                      // button's hover fill instead of under it.
+                      <span className="relative isolate flex flex-none">
+                        <CurrentGlyphHalo bleed={haloBleed} />
+                        <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
+                      </span>
+                    ) : (
+                      <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
+                    ))}
                   {/* The current bucket steps up one tone, not to full ink. The
                       lime rule on the card already says where you are; this only
                       keeps the caption from contradicting it (and is the whole
@@ -431,6 +502,28 @@ export function BucketCard({
             })()}
           </h3>
 
+          {/* The peek. A second hit target for the same toggle, so it stays out
+              of the tab order and the accessibility tree — the chevron button
+              above is the one control, and it already says expanded/collapsed. */}
+          {peekText && (
+            <button
+              type="button"
+              tabIndex={-1}
+              aria-hidden
+              data-testid="bucket-peek"
+              // A click must not take focus: the button unmounts as the bucket
+              // opens, which would drop focus to <body>.
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => toggleCollapsed(bucket)}
+              className={cn(
+                'min-w-0 flex-1 truncate text-left font-sans text-muted-foreground/40 transition-colors hover:text-muted-foreground/70',
+                density === 'full' ? 'text-xs' : 'text-2xs'
+              )}
+            >
+              {peekText}
+            </button>
+          )}
+
           {/* Count and add live on the RIGHT edge, the Braindump header's
               arrangement: the name owns the left, the controls own the right,
               and the space between them is what tells you the caption spans an
@@ -446,8 +539,8 @@ export function BucketCard({
             {onAdd && (
               <AddIconButton
                 size={g.add}
-                // Adding into a shut bucket would drop the new row behind the
-                // sliver — same swallow as a drop, same fix.
+                // Adding into a shut bucket would hide the new row the moment
+                // it lands — same swallow as a drop, same fix.
                 onClick={() => {
                   expandBucket(bucket);
                   onAdd(bucket, 'task');
@@ -524,31 +617,6 @@ export function BucketCard({
               {!collapsed && children}
             </div>
           </div>
-        )}
-
-        {/* The card, shut. Same edges and the same fill the slot takes under a
-            drag — so collapsing reads as the lid coming down on the object that
-            was there, rather than as the object being deleted and a rule drawn
-            in its place. */}
-        {showSliver && (
-          <div
-            aria-hidden
-            className={cn(
-              'relative rounded-full bg-[var(--bkt-tray)]',
-              // A shut current card keeps its lime rule, so collapsing the
-              // bucket you are in doesn't also hide that you are in it.
-              isSpine
-                ? isCurrent
-                  ? 'shadow-[var(--bkt-card-ring),inset_2px_0_0_var(--primary)]'
-                  : 'shadow-[var(--bkt-card-ring)]'
-                : 'border border-border'
-            )}
-            style={{
-              marginTop: g.capGap,
-              marginLeft: g.cardX,
-              height: g.sliver,
-            }}
-          />
         )}
       </>
     </section>

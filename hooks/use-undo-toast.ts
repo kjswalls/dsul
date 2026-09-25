@@ -11,6 +11,11 @@ const SIGNIFICANT_ACTIONS = [
   'Delete project:',
   'Complete task:',
   'Uncomplete task:',
+  // A recurring task's tick names the day it was ticked for — "Complete task
+  // on 2026-09-25: Swim" — so the one-shot prefixes above never matched it,
+  // and the most common completion of all raised no row.
+  'Complete task on ',
+  'Uncomplete task on ',
   'Complete habit:',
   'Skip habit:',
   'Reset habit:',
@@ -92,7 +97,12 @@ const SIGNIFICANT_ACTIONS = [
  * moves it makes every future failure ambiguous about which change caused it.
  * The `morning-bar` testid was kept across its own move for the same reason.
  */
-export function isToastWorthy(action: { label: string; receipt?: string }): boolean {
+export function isToastWorthy(action: { label: string; receipt?: string; batch?: number }): boolean {
+  // A picker batch (lib/planner-store.ts batchHistory) changed several items in
+  // one entry whose single Undo reverts all of them — the one-⌘Z offer is the
+  // point of batching. The structured flag, never the label, so no item title
+  // can spoof it.
+  if (action.batch && action.batch > 1) return true;
   if (action.receipt && action.label.startsWith('Add ')) return true;
   return SIGNIFICANT_ACTIONS.some((prefix) => action.label.startsWith(prefix));
 }

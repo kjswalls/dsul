@@ -301,3 +301,18 @@ export const isEmptyFilters = (f: ViewFilters): boolean =>
 /** How many clauses are active — the trigger's dot and the reset row's count. */
 export const activeFilterCount = (f: ViewFilters): number =>
   f.containers.length + f.priorities.length + f.goals.length + (f.hideFinished ? 1 : 0);
+
+/**
+ * How many clauses actually NARROW the list, for a count that reads "8 of 23".
+ *
+ * Not `activeFilterCount`, which answers "is the Display dot lit" and so counts
+ * two things this must not: `hideFinished`, which only removes finished rows
+ * and so never changes a count of OPEN ones, and a goal selection that
+ * resolves to nothing (`goalMemberIds` null — no live goal named, or the Goals
+ * extension off), which `passesGoalFilter` treats as inert. Counting either
+ * would print "23 of 23" over a list nothing has narrowed.
+ */
+export const narrowingClauseCount = (
+  f: ViewFilters,
+  goalMemberIds: ReadonlySet<string> | null | undefined
+): number => f.containers.length + f.priorities.length + (goalMemberIds ? f.goals.length : 0);

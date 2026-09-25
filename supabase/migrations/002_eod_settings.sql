@@ -31,7 +31,10 @@ begin
 end;
 $$;
 
--- Trigger (reuse the existing update_updated_at function from the main schema)
+-- Trigger (reuse the existing update_updated_at function from the main schema).
+-- 001 already creates this trigger, so a clean replay (`supabase db reset`)
+-- stopped here until the drop was added; applied databases never re-run this.
+drop trigger if exists user_settings_updated_at on user_settings;
 create trigger user_settings_updated_at before update on user_settings
   for each row execute function update_updated_at();
 

@@ -2,9 +2,9 @@
 
 import { useRouter } from 'next/navigation';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X,
-  Target, Search, CornerDownLeft,
+  Target, Search, CornerDownLeft, Check,
 } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
 import {
@@ -84,6 +84,21 @@ export type OmnibarVariant = 'dock' | 'launcher';
 const CAPTURE_SWELL_MS = 700;
 
 /**
+ * The results panel's outer chrome. Dock: the floating card above the pill,
+ * holding the scrolling list AND the multiselect run bar, so the bar stays
+ * pinned under the list instead of scrolling with it. Launcher: nothing — the
+ * card is the whole Command, and `order` places the list and bar inside it.
+ */
+function PanelShell({ isLauncher, children }: { isLauncher: boolean; children: ReactNode }) {
+  if (isLauncher) return <>{children}</>;
+  return (
+    <div className="absolute left-0 right-0 bottom-full z-50 mb-2 flex flex-col overflow-hidden rounded-card border border-border bg-popover shadow-soft-lg">
+      {children}
+    </div>
+  );
+}
+
+/**
  * @param variant which shell is hosting this instance — 'dock' (sidebar,
  *   default) or 'launcher' (the summoned command modal). Exposed as
  *   `data-omnibar-variant` so tests can target one shell unambiguously when
@@ -156,6 +171,22 @@ export function Omnibar({
   const [focused, setFocused] = useState(false);
   /** Set once a command needing an argument is picked — the "chip" state. */
   const [activeCommand, setActiveCommand] = useState<DsulCommand | null>(null);
+  /**
+   * Multiselect in an entity picker: the ids marked so far, in mark order.
+   * Held as raw ids and re-resolved every render (`livePicked`), so an item that
+   * stops qualifying mid-selection silently drops out of every count and run.
+   */
+  const [picked, setPicked] = useState<string[]>([]);
+  /** What the sr-only live region says after a keyboard edit to the marks. */
+  const [announce, setAnnounce] = useState('');
+  // When a modifier press on a row was last seen (mousedown, re-stamped at
+  // mouseup). cmdk's onSelect carries no event, so the modifier rides here; the
+  // timestamp (not a boolean) keeps a mousedown that never became a click from
+  // turning a later Enter into a toggle.
+  const modClickRef = useRef(0);
+  // True from an unmarking Backspace until the key is released, so a HELD key
+  // stops after one pick instead of walking the selection and popping the chip.
+  const backspaceHoldRef = useRef(false);
   const [isMac, setIsMac] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -290,6 +321,46 @@ export function Omnibar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeCommand, argument, query, ctx, tasks, habits]);
 
+  /**
+   * Multiselect is a capability of the ARGUMENT (`runMany` present), never a
+   * check on a command id — every itemCommand has it unless its spec opts out.
+   */
+  const canMulti = !!activeCommand && argument?.kind === 'entity' && !!argument.runMany;
+
+  /**
+   * The marks as live options. Resolved through the argument, not looked up in
+   * `entityOptions`: the rows are capped and filtered by the query, and a mark
+   * has to outlive the query that surfaced it. Same deps (and the same reason
+   * for tasks/habits) as `entityOptions`.
+   */
+  const resolvedPicked = useMemo(() => {
+    if (!activeCommand || argument?.kind !== 'entity' || !argument.runMany) return [];
+    if (picked.length === 0) return [];
+    return argument.resolve
+      ? argument.resolve(picked, ctx)
+      : entityOptions.filter((o) => picked.includes(o.value));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeCommand, argument, picked, ctx, entityOptions, tasks, habits]);
+  /** Every count, row state, key gate and run reads this, never `picked`. */
+  const livePicked = useMemo(() => resolvedPicked.map((o) => o.value), [resolvedPicked]);
+  /** Marked rows the current query hides — shown under "Also selected". */
+  const hiddenPicked = useMemo(
+    () => resolvedPicked.filter((o) => !entityOptions.some((e) => e.value === o.value)),
+    [resolvedPicked, entityOptions],
+  );
+  const pickedCount = livePicked.length;
+
+  const setMarks = (next: string[], message = '') => {
+    setPicked(next);
+    setAnnounce(message);
+  };
+
+  /** Marks or unmarks one row, pruning ids that no longer resolve on the way. */
+  const toggle = (id: string) => {
+    const live = picked.filter((x) => livePicked.includes(x));
+    setMarks(live.includes(id) ? live.filter((x) => x !== id) : [...live, id]);
+  };
+
   const argError = useMemo(() => {
     if (argument?.kind !== 'text' || !query.trim()) return null;
     return argument.validate?.(query) ?? null;
@@ -393,11 +464,13 @@ export function Omnibar({
   const closeAndClear = () => {
     setQuery('');
     setActiveCommand(null);
+    setMarks([]);
     setOpen(false);
   };
 
   const clearArgument = () => {
     setActiveCommand(null);
+    setMarks([]);
     setQuery('');
     inputRef.current?.focus();
   };
@@ -419,6 +492,7 @@ export function Omnibar({
     // Needs a value and doesn't have one yet — chip it and wait.
     if (command.argument && arg === undefined) {
       setActiveCommand(command);
+      setMarks([]);
       setQuery('');
       inputRef.current?.focus();
       return;
@@ -429,6 +503,37 @@ export function Omnibar({
     closeAndClear();
     closeLauncher();
   };
+
+  /**
+   * Runs the chip's command on every marked id as ONE undo step (the argument's
+   * `runMany` owns the batching). Usage is recorded once, not per item, so a
+   * batch doesn't inflate the command's ranking. The picker closes even on a
+   * throw: a partially applied selection left open invites a retry that would
+   * toggle the already-done items straight back.
+   */
+  const runPicked = (ids: string[]) => {
+    if (!activeCommand || argument?.kind !== 'entity' || !argument.runMany) return;
+    const unique = [...new Set(ids)];
+    if (unique.length === 0 || !isAvailable(activeCommand, ctx)) {
+      setMarks([], 'Nothing selected can take this now');
+      return;
+    }
+    let ok = false;
+    try {
+      argument.runMany(ctx, unique);
+      ok = true;
+    } finally {
+      if (ok) useCommandUsageStore.getState().record(activeCommand.id);
+      closeAndClear();
+      closeLauncher();
+    }
+  };
+
+  /** The cmdk-highlighted picker row's id, read off the DOM (cmdk's value is uncontrolled). */
+  const highlightedArg = () =>
+    containerRef.current
+      ?.querySelector('[cmdk-item][data-selected="true"]')
+      ?.getAttribute('data-arg') ?? null;
 
   const quickAdd = () => {
     if (!addTitle) {
@@ -558,18 +663,84 @@ export function Omnibar({
    */
   const renderEntityOption = (option: CommandEntityOption) => {
     const Icon = option.icon;
+    const id = option.value;
+    const checked = canMulti && livePicked.includes(id);
     return (
       <CommandItem
-        key={option.value}
-        value={`arg:${option.value}`}
+        key={id}
+        value={`arg:${id}`}
+        className="group"
+        data-testid="omnibar-entity-row"
         // Addressable for the same reason renderCommandRow is: an entity row's
         // only other handle is its label, and item titles are user data. The
         // command id rides along so a picker row is unambiguous about which
         // command it would run.
         data-command-id={activeCommand?.id}
-        data-arg={option.value}
-        onSelect={() => activeCommand && runCommand(activeCommand, option.value)}
+        data-arg={id}
+        // Its own attribute: data-selected / aria-selected are cmdk's CURSOR, and
+        // a mark has to read differently from the highlighted row.
+        data-checked={checked || undefined}
+        aria-checked={canMulti ? checked : undefined}
+        // mousedown, not click: cmdk overwrites a caller's onClick. No Shift (it
+        // reads as a range) and no Ctrl on a Mac (that's the context menu).
+        onMouseDown={(e) => {
+          const mod = isMac ? e.metaKey : e.metaKey || e.ctrlKey;
+          modClickRef.current = mod ? performance.now() : 0;
+          // Keep focus (and the phone's keyboard) in the input while toggling.
+          if (canMulti && (mod || pickedCount > 0)) e.preventDefault();
+        }}
+        // Re-stamped at release, so the window runs from the end of the gesture:
+        // a slow press (a dwell, a force-click) is still a modifier click.
+        onMouseUp={() => {
+          if (modClickRef.current) modClickRef.current = performance.now();
+        }}
+        onSelect={() => {
+          if (!activeCommand) return;
+          const mod = performance.now() - modClickRef.current < 500;
+          modClickRef.current = 0;
+          // Once anything is marked, a plain click or tap toggles too — nothing
+          // marked, and it runs on this one item exactly as it always has.
+          if (canMulti && (mod || pickedCount > 0)) toggle(id);
+          else runCommand(activeCommand, id);
+        }}
       >
+        {canMulti && (
+          <span
+            aria-hidden="true"
+            data-testid="omnibar-entity-check"
+            // The hit area is the row's full height and wider than the square;
+            // 44pt on the phone, where it is the only way into a selection.
+            className={cn(
+              '-my-1.5 -ml-2 flex shrink-0 cursor-pointer items-center justify-center self-stretch',
+              ctx.isMobile ? 'w-11' : 'w-8',
+            )}
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              modClickRef.current = 0;
+              toggle(id);
+            }}
+          >
+            {/* A square, so it never reads as the done glyph. Shown and hidden
+                with visibility, never opacity — the checked fill is the lime
+                accent, which must not fade (CLAUDE.md). */}
+            <span
+              className={cn(
+                'flex size-4 items-center justify-center rounded-sm',
+                checked
+                  ? 'bg-primary text-primary-foreground'
+                  : cn(
+                      'border border-border',
+                      ctx.isMobile || pickedCount > 0
+                        ? 'visible'
+                        : 'invisible group-hover:visible group-data-[selected=true]:visible',
+                    ),
+              )}
+            >
+              {checked && <Check className="size-3 text-primary-foreground" />}
+            </span>
+          </span>
+        )}
         <Icon
           className={cn('h-4 w-4', option.done ? 'text-success' : 'text-muted-foreground/50')}
         />
@@ -631,214 +802,82 @@ export function Omnibar({
         {/* Results panel. Dock: floats above the pill (absolute). Launcher: a
             flush section inside the card, below the input, divided by a hairline. */}
         {open && (
-          <CommandList
-            data-testid="omnibar-panel"
-            className={cn(
-              'overflow-y-auto p-1',
-              isLauncher
-                ? 'order-2 max-h-[min(20rem,55vh)] border-t border-border'
-                : 'absolute left-0 right-0 bottom-full z-50 mb-2 max-h-80 rounded-card border border-border bg-popover shadow-soft-lg',
-            )}
-          >
-            {/* Argument mode owns the whole panel — nothing else is relevant
-                while a command is waiting for its value. */}
-            {activeCommand ? (
-              <CommandGroup heading={argument?.placeholder ?? 'Value'}>
-                {argument?.kind === 'text' ? (
-                  <CommandItem
-                    value="arg-submit"
-                    disabled={!!argError || !query.trim()}
-                    onSelect={() => runCommand(activeCommand, query.trim())}
-                  >
-                    <activeCommand.icon className="h-4 w-4 text-muted-foreground" />
-                    <span className="truncate">
-                      {argError ? (
-                        <span className="text-destructive">{argError}</span>
-                      ) : query.trim() ? (
-                        <>
-                          {resolveLabel(activeCommand, ctx)}{' '}
-                          <span className="font-content">“{query.trim()}”</span>
-                        </>
-                      ) : (
-                        <span className="text-muted-foreground">{argument.placeholder}</span>
-                      )}
-                    </span>
-                  </CommandItem>
-                ) : argument?.kind === 'entity' ? (
-                  entityOptions.length > 0 ? (
-                    entityOptions.map(renderEntityOption)
-                  ) : (
-                    // The command's own copy, not "No match": the picker is
-                    // pre-filtered to what this command can act on, so an empty
-                    // list usually means nothing QUALIFIES, not that the query
-                    // was wrong.
-                    <div className="px-3 py-2 text-sm text-muted-foreground">
-                      {argument.emptyLabel}
-                    </div>
-                  )
-                ) : argOptions.length > 0 ? (
-                  argOptions.map(renderArgOption)
-                ) : (
-                  <div className="px-3 py-2 text-sm text-muted-foreground">No match</div>
-                )}
-              </CommandGroup>
-            ) : (
-              <>
-                {isChatMode && (
-                  <CommandGroup heading="Chat">
-                    <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
-                      <Sparkles className="h-4 w-4 text-ai" />
-                      <span className="truncate">
-                        Ask Beacon
-                        {chatText ? (
-                          <>
-                            {' '}
-                            <span className="font-content">“{chatText}”</span>
-                          </>
-                        ) : (
-                          '…'
-                        )}
-                      </span>
-                      {enterPill('ask')}
-                    </CommandItem>
-                  </CommandGroup>
-                )}
-
-                {/* Goals first: they are containers, so a hit here reframes
-                    every item row beneath it. Four at most — this is a jump,
-                    not a browse. */}
-                {goalHits.length > 0 && (
-                  <CommandGroup heading="Goals">
-                    {goalHits.map((goal) => (
+          <PanelShell isLauncher={isLauncher}>
+            <CommandList
+              data-testid="omnibar-panel"
+              className={cn(
+                'overflow-y-auto p-1',
+                isLauncher ? 'order-2 max-h-[min(20rem,55vh)] border-t border-border' : 'max-h-80',
+              )}
+            >
+              {/* Argument mode owns the whole panel — nothing else is relevant
+                  while a command is waiting for its value. */}
+              {activeCommand ? (
+                <>
+                  <CommandGroup heading={argument?.placeholder ?? 'Value'}>
+                    {argument?.kind === 'text' ? (
                       <CommandItem
-                        key={goal.id}
-                        value={`goal-${goal.id}`}
-                        data-testid="omnibar-goal-result"
-                        className="group"
-                        data-goal-id={goal.id}
-                        onSelect={() => {
-                          closeAndClear();
-                          closeLauncher();
-                          router.push(`/goal/${goal.id}`);
-                        }}
+                        value="arg-submit"
+                        disabled={!!argError || !query.trim()}
+                        onSelect={() => runCommand(activeCommand, query.trim())}
                       >
-                        <Target className="size-4 shrink-0" />
-                        <span className="truncate">{goal.name}</span>
-                        {enterPill('open')}
-                        {goal.state !== 'active' && (
-                          <span className="text-muted-foreground ml-auto text-[11px]">
-                            {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
-                          </span>
-                        )}
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                )}
-
-                {/* One section per item type, in registry order. A custom type
-                    gets its own heading and its own glyph instead of being
-                    filed under Tasks because it rides the task pipeline. */}
-                {results.map((group) => (
-                  <CommandGroup key={group.type} heading={group.heading}>
-                    {group.items.map((item) => {
-                      const Icon = itemIcon(item);
-                      const container = itemContainer(item);
-                      // Task-shaped only. A habit's completion is per-DATE
-                      // (completedDates), not the scalar status, and these rows
-                      // carry no date — so habits render undone, as before.
-                      const done =
-                        item.type !== 'habit' &&
-                        item.status === getItemTypeConfig(group.type).doneStatus;
-                      // Search deliberately keeps finding paused items — looking
-                      // something up by name is explicit intent, and this is one
-                      // of the few places a set-aside item can still be reached.
-                      // It just says so, quietly.
-                      const paused = !!suppressionReason(item, searchTodayStr, {
-                        userTimezone: searchTz,
-                        routines,
-                        programs,
-                      });
-                      return (
-                        <CommandItem
-                          key={item.id}
-                          value={`${group.type}-${item.id}`}
-                          data-testid="omnibar-result"
-                          className="group"
-                          data-item-id={item.id}
-                          data-item-type={group.type}
-                          data-paused={paused || undefined}
-                          onSelect={() => {
-                            openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
-                            closeAndClear();
-                          }}
-                        >
-                          <Icon
-                            className={cn(
-                              'h-4 w-4',
-                              group.type === 'habit'
-                                ? 'text-warning'
-                                : done
-                                  ? 'text-success'
-                                  : 'text-muted-foreground/50'
-                            )}
-                          />
-                          {container && (
-                            <CategoryIcon glyph={container.glyph} name={container.name} />
-                          )}
-                          <span
-                            className={cn(
-                              'truncate font-content text-content',
-                              done && 'text-muted-foreground line-through'
-                            )}
-                          >
-                            {item.title}
-                          </span>
-                          {/* Short on purpose: the panel is ~320px and the
-                              title truncates against it. */}
-                          {enterPill('open')}
-                          {paused && <CommandShortcut>Paused</CommandShortcut>}
-                        </CommandItem>
-                      );
-                    })}
-                  </CommandGroup>
-                ))}
-
-                {/* Recents on top when they're the point: /command mode, and
-                    the launcher's resting root (command-first — Enter runs the
-                    first recent rather than adding a task). */}
-                {(isCommandMode || isLauncher) && recentGroup}
-
-                {/* Grouped palette — /command mode on desktop */}
-                {grouped?.map((group) => (
-                  <CommandGroup key={group.id} heading={group.heading}>
-                    {group.rows.map(renderCommandRow)}
-                  </CommandGroup>
-                ))}
-
-                {/* Flat list: mobile, or the free-text slice beside search.
-                    Rendered before the recents so Enter at rest still lands on
-                    Add task rather than on whatever you last ran. */}
-                {!grouped && !isChatMode && (
-                  <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
-                    {!isCommandMode && (
-                      <CommandItem value="action-add" data-testid="omnibar-add-row" className="group" onSelect={quickAdd}>
-                        <Plus className="h-4 w-4 text-success-text" />
+                        <activeCommand.icon className="h-4 w-4 text-muted-foreground" />
                         <span className="truncate">
-                          Add task
-                          {addTitle ? (
+                          {argError ? (
+                            <span className="text-destructive">{argError}</span>
+                          ) : query.trim() ? (
                             <>
-                              {' '}
-                              <span className="font-content">“{addTitle}”</span>
+                              {resolveLabel(activeCommand, ctx)}{' '}
+                              <span className="font-content">“{query.trim()}”</span>
                             </>
                           ) : (
-                            '…'
+                            <span className="text-muted-foreground">{argument.placeholder}</span>
                           )}
                         </span>
-                        {enterPill('add')}
                       </CommandItem>
+                    ) : argument?.kind === 'entity' ? (
+                      entityOptions.length > 0 ? (
+                        entityOptions.map(renderEntityOption)
+                      ) : (
+                        // The command's own copy, not "No match": the picker is
+                        // pre-filtered to what this command can act on, so an empty
+                        // list usually means nothing QUALIFIES, not that the query
+                        // was wrong.
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          {argument.emptyLabel}
+                        </div>
+                      )
+                    ) : argOptions.length > 0 ? (
+                      argOptions.map(renderArgOption)
+                    ) : (
+                      <div className="px-3 py-2 text-sm text-muted-foreground">No match</div>
                     )}
-                    {commandRows.map(renderCommandRow)}
-                    {!isCommandMode && !isAddMode && (
+                  </CommandGroup>
+                  {/* Marked rows the query now hides, so a mark never vanishes from
+                      view. AFTER the results on purpose: cmdk highlights the first
+                      item in DOM order on every search, and a marked row up top
+                      would take the cursor — Tab would then unmark it. */}
+                  {hiddenPicked.length > 0 && (
+                    <CommandGroup heading="Also selected">
+                      {hiddenPicked.map(renderEntityOption)}
+                    </CommandGroup>
+                  )}
+                  {/* Dock, desktop: the one key worth teaching in the picker. The
+                      launcher says it in its footer; the phone teaches by its
+                      visible checkboxes and run bar instead. */}
+                  {canMulti && !isLauncher && !ctx.isMobile && (
+                    <div
+                      data-testid="omnibar-multi-hint"
+                      className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70"
+                    >
+                      {pickedCount > 0 ? `↵ run on ${pickedCount}` : '⇥ select several'}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  {isChatMode && (
+                    <CommandGroup heading="Chat">
                       <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
                         <Sparkles className="h-4 w-4 text-ai" />
                         <span className="truncate">
@@ -854,38 +893,229 @@ export function Omnibar({
                         </span>
                         {enterPill('ask')}
                       </CommandItem>
-                    )}
-                    {isCommandMode && commandRows.length === 0 && (
-                      <div className="px-3 py-2 text-sm text-muted-foreground">
-                        No matching command
-                      </div>
-                    )}
-                  </CommandGroup>
-                )}
+                    </CommandGroup>
+                  )}
 
-                {/* Dock rests capture-first: recents sit BELOW the Add/Ask rows
-                    so Enter still adds a task. The launcher puts them on top
-                    (above), so this branch is dock-only. */}
-                {!isCommandMode && !isLauncher && recentGroup}
+                  {/* Goals first: they are containers, so a hit here reframes
+                      every item row beneath it. Four at most — this is a jump,
+                      not a browse. */}
+                  {goalHits.length > 0 && (
+                    <CommandGroup heading="Goals">
+                      {goalHits.map((goal) => (
+                        <CommandItem
+                          key={goal.id}
+                          value={`goal-${goal.id}`}
+                          data-testid="omnibar-goal-result"
+                          className="group"
+                          data-goal-id={goal.id}
+                          onSelect={() => {
+                            closeAndClear();
+                            closeLauncher();
+                            router.push(`/goal/${goal.id}`);
+                          }}
+                        >
+                          <Target className="size-4 shrink-0" />
+                          <span className="truncate">{goal.name}</span>
+                          {enterPill('open')}
+                          {goal.state !== 'active' && (
+                            <span className="text-muted-foreground ml-auto text-[11px]">
+                              {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
+                            </span>
+                          )}
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  )}
 
-                {/* Dock-only: the launcher shows the same affordances in its
-                    persistent footer bar below the panel (see the card footer). */}
-                {!isChatMode && !isCommandMode && !trimmed && !isLauncher && (
-                  <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
-                    <span className="flex items-center gap-1">
-                      <Plus className="h-3 w-3" /> add
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <SlashSquare className="h-3 w-3" /> commands
-                    </span>
-                    <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> ? chat
-                    </span>
-                  </div>
+                  {/* One section per item type, in registry order. A custom type
+                      gets its own heading and its own glyph instead of being
+                      filed under Tasks because it rides the task pipeline. */}
+                  {results.map((group) => (
+                    <CommandGroup key={group.type} heading={group.heading}>
+                      {group.items.map((item) => {
+                        const Icon = itemIcon(item);
+                        const container = itemContainer(item);
+                        // Task-shaped only. A habit's completion is per-DATE
+                        // (completedDates), not the scalar status, and these rows
+                        // carry no date — so habits render undone, as before.
+                        const done =
+                          item.type !== 'habit' &&
+                          item.status === getItemTypeConfig(group.type).doneStatus;
+                        // Search deliberately keeps finding paused items — looking
+                        // something up by name is explicit intent, and this is one
+                        // of the few places a set-aside item can still be reached.
+                        // It just says so, quietly.
+                        const paused = !!suppressionReason(item, searchTodayStr, {
+                          userTimezone: searchTz,
+                          routines,
+                          programs,
+                        });
+                        return (
+                          <CommandItem
+                            key={item.id}
+                            value={`${group.type}-${item.id}`}
+                            data-testid="omnibar-result"
+                            className="group"
+                            data-item-id={item.id}
+                            data-item-type={group.type}
+                            data-paused={paused || undefined}
+                            onSelect={() => {
+                              openEditFor(item, item.type === 'habit' ? 'habit' : 'task');
+                              closeAndClear();
+                            }}
+                          >
+                            <Icon
+                              className={cn(
+                                'h-4 w-4',
+                                group.type === 'habit'
+                                  ? 'text-warning'
+                                  : done
+                                    ? 'text-success'
+                                    : 'text-muted-foreground/50'
+                              )}
+                            />
+                            {container && (
+                              <CategoryIcon glyph={container.glyph} name={container.name} />
+                            )}
+                            <span
+                              className={cn(
+                                'truncate font-content text-content',
+                                done && 'text-muted-foreground line-through'
+                              )}
+                            >
+                              {item.title}
+                            </span>
+                            {/* Short on purpose: the panel is ~320px and the
+                                title truncates against it. */}
+                            {enterPill('open')}
+                            {paused && <CommandShortcut>Paused</CommandShortcut>}
+                          </CommandItem>
+                        );
+                      })}
+                    </CommandGroup>
+                  ))}
+
+                  {/* Recents on top when they're the point: /command mode, and
+                      the launcher's resting root (command-first — Enter runs the
+                      first recent rather than adding a task). */}
+                  {(isCommandMode || isLauncher) && recentGroup}
+
+                  {/* Grouped palette — /command mode on desktop */}
+                  {grouped?.map((group) => (
+                    <CommandGroup key={group.id} heading={group.heading}>
+                      {group.rows.map(renderCommandRow)}
+                    </CommandGroup>
+                  ))}
+
+                  {/* Flat list: mobile, or the free-text slice beside search.
+                      Rendered before the recents so Enter at rest still lands on
+                      Add task rather than on whatever you last ran. */}
+                  {!grouped && !isChatMode && (
+                    <CommandGroup heading={isCommandMode ? 'Commands' : 'Actions'}>
+                      {!isCommandMode && (
+                        <CommandItem value="action-add" data-testid="omnibar-add-row" className="group" onSelect={quickAdd}>
+                          <Plus className="h-4 w-4 text-success-text" />
+                          <span className="truncate">
+                            Add task
+                            {addTitle ? (
+                              <>
+                                {' '}
+                                <span className="font-content">“{addTitle}”</span>
+                              </>
+                            ) : (
+                              '…'
+                            )}
+                          </span>
+                          {enterPill('add')}
+                        </CommandItem>
+                      )}
+                      {commandRows.map(renderCommandRow)}
+                      {!isCommandMode && !isAddMode && (
+                        <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
+                          <Sparkles className="h-4 w-4 text-ai" />
+                          <span className="truncate">
+                            Ask Beacon
+                            {chatText ? (
+                              <>
+                                {' '}
+                                <span className="font-content">“{chatText}”</span>
+                              </>
+                            ) : (
+                              '…'
+                            )}
+                          </span>
+                          {enterPill('ask')}
+                        </CommandItem>
+                      )}
+                      {isCommandMode && commandRows.length === 0 && (
+                        <div className="px-3 py-2 text-sm text-muted-foreground">
+                          No matching command
+                        </div>
+                      )}
+                    </CommandGroup>
+                  )}
+
+                  {/* Dock rests capture-first: recents sit BELOW the Add/Ask rows
+                      so Enter still adds a task. The launcher puts them on top
+                      (above), so this branch is dock-only. */}
+                  {!isCommandMode && !isLauncher && recentGroup}
+
+                  {/* Dock-only: the launcher shows the same affordances in its
+                      persistent footer bar below the panel (see the card footer). */}
+                  {!isChatMode && !isCommandMode && !trimmed && !isLauncher && (
+                    <div className="flex items-center gap-3 px-3 py-1.5 text-2xs text-muted-foreground/70">
+                      <span className="flex items-center gap-1">
+                        <Plus className="h-3 w-3" /> add
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <SlashSquare className="h-3 w-3" /> commands
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Sparkles className="h-3 w-3" /> ? chat
+                      </span>
+                    </div>
+                  )}
+                </>
+              )}
+            </CommandList>
+            {/* Run bar: OUTSIDE the list, because a button inside role="listbox"
+                is invalid markup and cmdk's highlight could land on it. In the
+                launcher it shares the footer's order-3 and sits above it by DOM
+                order; in the dock it is the floating panel's bottom edge. */}
+            {canMulti && pickedCount > 0 && activeCommand && (
+              <div
+                data-testid="omnibar-run-bar"
+                className={cn(
+                  'flex items-center justify-between gap-2 border-t border-border bg-popover px-3 py-2',
+                  isLauncher && 'order-3',
                 )}
-              </>
+              >
+                <span className="min-w-0 truncate text-xs text-muted-foreground">
+                  {resolveLabel(activeCommand, ctx)} · {pickedCount} {pickedCount === 1 ? 'item' : 'items'}
+                </span>
+                <div className="flex shrink-0 items-center gap-1.5">
+                  <button
+                    type="button"
+                    data-testid="omnibar-clear-selection"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => setMarks([], 'Selection cleared')}
+                    className="h-7 rounded-md px-2 text-xs text-muted-foreground hover:bg-accent hover:text-foreground"
+                  >
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="omnibar-run-selection"
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => runPicked(livePicked)}
+                    className="h-7 rounded-md bg-primary px-2.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+                  >
+                    {ctx.isMobile ? 'Run' : 'Run ↵'}
+                  </button>
+                </div>
+              </div>
             )}
-          </CommandList>
+          </PanelShell>
         )}
 
         <div className={cn('relative isolate', isLauncher && 'order-1')}>
@@ -1004,13 +1234,27 @@ export function Omnibar({
               <button
                 type="button"
                 onClick={clearArgument}
-                aria-label={`Cancel ${activeCommand.label}`}
+                aria-label={
+                  pickedCount > 0
+                    ? `Cancel ${activeCommand.label}, ${pickedCount} selected`
+                    : `Cancel ${activeCommand.label}`
+                }
                 // A real hit target, not just Escape: phones have no Escape key
                 // and backspace-on-empty is not reliable under an IME.
                 className="flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-primary/15 pl-2 pr-1.5 text-xs font-medium text-foreground"
               >
                 <activeCommand.icon className="h-3.5 w-3.5" />
-                <span className="max-w-[140px] truncate">{resolveLabel(activeCommand, ctx)}</span>
+                {/* On a 320pt phone the column is 184px (see the placeholder's
+                    width budget), so with marks up the label yields to the count
+                    — the run bar already spells the command out in full. */}
+                {!(ctx.isMobile && pickedCount > 0) && (
+                  <span className="max-w-[140px] truncate">{resolveLabel(activeCommand, ctx)}</span>
+                )}
+                {pickedCount > 0 && (
+                  <span className="shrink-0 tabular-nums" data-testid="omnibar-chip-count">
+                    · {pickedCount}
+                  </span>
+                )}
                 <X className="h-3 w-3 text-muted-foreground" />
               </button>
             )}
@@ -1028,6 +1272,62 @@ export function Omnibar({
               }}
               onBlur={() => setFocused(false)}
               onKeyDown={(e) => {
+                // Any key ends a pending modifier click: see modClickRef.
+                modClickRef.current = 0;
+                // Multiselect keys. All local to this input — none is a global
+                // binding, so the frozen shortcut ids are untouched. preventDefault
+                // is what keeps cmdk's own root handler out of it (its Enter has
+                // no modifier check, so Shift/⌘+Enter would otherwise run one).
+                if (canMulti && !e.nativeEvent.isComposing && e.keyCode !== 229) {
+                  const mod = e.metaKey || e.ctrlKey;
+                  if (e.key === 'Tab' && open && !mod && !e.altKey && !e.shiftKey) {
+                    e.preventDefault();
+                    // Radix FocusScope (the launcher's Dialog) ignores
+                    // defaultPrevented and would move focus to the chip or the
+                    // run bar, so stop it reaching the dialog at all.
+                    e.stopPropagation();
+                    const id = highlightedArg();
+                    if (id) toggle(id);
+                    return;
+                  }
+                  if (e.key === 'Enter' && e.shiftKey && !mod && open) {
+                    e.preventDefault();
+                    const id = highlightedArg();
+                    if (id) toggle(id);
+                    return;
+                  }
+                  // With marks up, Enter runs exactly what the count says — the
+                  // highlighted row is NOT added. ⌘Enter is the one that adds it.
+                  if (e.key === 'Enter' && !e.shiftKey && !e.altKey && pickedCount > 0) {
+                    e.preventDefault();
+                    const ids = mod ? [...livePicked, highlightedArg()] : livePicked;
+                    runPicked(ids.filter((x): x is string => !!x));
+                    return;
+                  }
+                  if (e.key === 'Backspace' && query === '') {
+                    // A repeat never edits the marks or pops the chip: not after
+                    // an unmark, and not when a held key has just emptied the
+                    // query (that first repeat set no hold, the key was deleting).
+                    if (e.repeat && (backspaceHoldRef.current || pickedCount > 0)) {
+                      e.preventDefault();
+                      return;
+                    }
+                    if (!e.repeat && pickedCount > 0) {
+                      e.preventDefault();
+                      backspaceHoldRef.current = true;
+                      setMarks(livePicked.slice(0, -1), `${pickedCount - 1} selected`);
+                      return;
+                    }
+                  }
+                  // First Escape drops the marks and keeps the chip; the next
+                  // one behaves as it always has.
+                  if (e.key === 'Escape' && pickedCount > 0) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setMarks([], 'Selection cleared');
+                    return;
+                  }
+                }
                 if (e.key === 'Escape') {
                   e.preventDefault();
                   // Consumed here, not left to bubble: an enclosing surface
@@ -1084,6 +1384,10 @@ export function Omnibar({
                   quickAdd();
                 }
               }}
+              // Releasing Backspace ends a hold: see backspaceHoldRef.
+              onKeyUp={(e) => {
+                if (e.key === 'Backspace') backspaceHoldRef.current = false;
+              }}
               // A multi-line paste can't be a search and can't be typed into a
               // single-line input without folding — treat it as a list and hand
               // it to the bulk-add dialog. Chat mode keeps native paste (a
@@ -1139,6 +1443,9 @@ export function Omnibar({
                       // before lengthening.
                       'Add a task, search, or chat…'
               }
+              // The phone keyboard's return key reads "go" while marks are up,
+              // since it runs the selection rather than picking a row.
+              enterKeyHint={pickedCount > 0 ? 'go' : undefined}
               aria-label="Omnibar"
               // cmdk gives this input role="combobox", and Playwright's
               // getByLabel does not resolve aria-label on it (verified: 0
@@ -1173,27 +1480,60 @@ export function Omnibar({
             data-testid="omnibar-launcher-footer"
             className="order-3 flex items-center justify-between gap-3 border-t border-border px-4 py-2 text-2xs text-muted-foreground/70"
           >
-            <div className="flex items-center gap-3">
-              <span className="flex items-center gap-1">
-                <Plus className="h-3 w-3" /> add
-              </span>
-              <span className="flex items-center gap-1">
-                <SlashSquare className="h-3 w-3" /> commands
-              </span>
-              <span className="flex items-center gap-1">
-                <Sparkles className="h-3 w-3" /> chat
-              </span>
-            </div>
-            <div className="flex items-center gap-2 font-mono tracking-normal">
-              <span>↵ open</span>
-              <span aria-hidden>·</span>
-              <span>{isMac ? '⌘' : 'Ctrl'}↵ Beacon</span>
-              <span aria-hidden>·</span>
-              <span>esc</span>
-            </div>
+            {activeCommand ? (
+              // Chip state: the prefixes are suspended and ⌘↵ no longer asks
+              // Beacon, so the resting copy would be wrong on both sides.
+              <div
+                data-testid="omnibar-picker-hint"
+                className="flex min-w-0 items-center gap-2 truncate font-mono tracking-normal"
+              >
+                {(canMulti && pickedCount > 0
+                  ? [
+                      `↵ run on ${pickedCount}`,
+                      `${isMac ? '⌘' : 'Ctrl'}↵ include highlighted`,
+                      '⇥ toggle',
+                      '⌫ unselect',
+                      'esc clear',
+                    ]
+                  : canMulti
+                    ? ['↵ pick', '⇥ select several', 'esc back']
+                    : ['↵ pick', 'esc back']
+                ).map((hint, i) => (
+                  <span key={hint} className="flex items-center gap-2 whitespace-nowrap">
+                    {i > 0 && <span aria-hidden>·</span>}
+                    {hint}
+                  </span>
+                ))}
+              </div>
+            ) : (
+              <>
+                <div className="flex items-center gap-3">
+                  <span className="flex items-center gap-1">
+                    <Plus className="h-3 w-3" /> add
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <SlashSquare className="h-3 w-3" /> commands
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> chat
+                  </span>
+                </div>
+                <div className="flex items-center gap-2 font-mono tracking-normal">
+                  <span>↵ open</span>
+                  <span aria-hidden>·</span>
+                  <span>{isMac ? '⌘' : 'Ctrl'}↵ Beacon</span>
+                  <span aria-hidden>·</span>
+                  <span>esc</span>
+                </div>
+              </>
+            )}
           </div>
         )}
       </Command>
+      {/* Outside the listbox, so it is never read as one of the options. */}
+      <div className="sr-only" aria-live="polite" data-testid="omnibar-live">
+        {announce || (pickedCount > 0 ? `${pickedCount} selected` : '')}
+      </div>
     </div>
   );
 }

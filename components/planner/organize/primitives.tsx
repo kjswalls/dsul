@@ -218,7 +218,8 @@ export function ObjectRow({
 
 /**
  * Label left, control flush right — two clean vertical rules down the detail
- * pane. Used by every stateful control (Status, Comes back, Runs, Time block).
+ * pane. The project time block's controls use it; the goal, program and routine
+ * panes moved to the item edit pane's chip row (2026-09-25).
  */
 export function SettingRow({
   label,

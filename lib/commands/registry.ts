@@ -57,7 +57,7 @@ import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
-import { useUIStore, openAddDialog, openBulkAdd } from '../ui-store';
+import { useUIStore, openAddDialog, openBulkAdd, openNewContainer } from '../ui-store';
 import {
   goalsEnabled,
   groupByOptionsFor,
@@ -239,6 +239,47 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['bulk', 'import'],
     run: () => openBulkAdd(),
   },
+  /* The three organizers the "new" dialog makes (2026-09-25). Palette rows
+     only: shortcut ids are frozen and cost a settings id each, and `n` already
+     reaches the same dialog, whose type menu lists them. No aliases either —
+     a custom type named "goal" was promised the `goal` token first, and
+     customTypeCommands yields to the static list, so claiming it here would
+     silently take it from that type's row. `create.project` keeps its inline
+     text argument: a project is often just a name.
+
+     `availableWhen` is the extension, like the console doors below it: greyed,
+     not gone. Table availability is the dialog's to explain — it disables its
+     own submit with a sentence rather than the palette hiding the row. */
+  {
+    id: 'create.goal',
+    label: 'New goal',
+    description: 'Set a long-term goal',
+    group: 'create',
+    icon: Target,
+    keywords: 'add create goal aim ambition target long term why',
+    availableWhen: () => goalsEnabled(),
+    run: () => openNewContainer('goal'),
+  },
+  {
+    id: 'create.routine',
+    label: 'New routine',
+    description: 'Group habits that run together',
+    group: 'create',
+    icon: RepeatIcon,
+    keywords: 'add create routine stack habits together pause',
+    availableWhen: () => organizeEnabled(),
+    run: () => openNewContainer('routine'),
+  },
+  {
+    id: 'create.program',
+    label: 'New program',
+    description: 'Plan a season',
+    group: 'create',
+    icon: CalendarRange,
+    keywords: 'add create program season period term block dates',
+    availableWhen: () => organizeEnabled(),
+    run: () => openNewContainer('program'),
+  },
   {
     id: 'create.project',
     label: 'Add project',
@@ -284,6 +325,12 @@ export const STATIC_COMMANDS: Command[] = [
       isHabit(item)
         ? planner().toggleHabitStatus(item.id, 'done')
         : planner().toggleTaskStatus(item.id, 'completed'),
+    // A batch loops the single verbs rather than calling setItemsCompleted:
+    // they keep per-date completion for recurring items, the +1 streak per
+    // habit and the live Beeminder post. Quiet so the loop celebrates once and
+    // raises one offer per goal, not one per item.
+    quietBatch: true,
+    batchLabel: (n) => `Complete items (${n})`,
   }),
   itemCommand({
     id: 'items.delete',
@@ -307,6 +354,31 @@ export const STATIC_COMMANDS: Command[] = [
         destructive: true,
         onConfirm: () =>
           isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id),
+      });
+    },
+    // Not the default loop: `confirm` is a single slot, so N prompts would
+    // leave only the last standing and delete one item. One prompt, then one
+    // deleteItems — a single entry that raises the undo strip, which is why
+    // this copy says undo where the bulk bar's still says it cannot be undone.
+    runMany: (items) => {
+      const habits = items.filter(isHabit).length;
+      useUIStore.getState().confirm({
+        title: `Delete ${items.length} items?`,
+        description:
+          'They’ll be removed along with any subtasks.' +
+          (habits
+            ? ` ${habits === 1 ? 'One is a habit' : `${habits} are habits`} — ${
+                habits === 1 ? 'its' : 'their'
+              } completion history goes too.`
+            : '') +
+          ' You can undo this right after.',
+        confirmLabel: `Delete ${items.length}`,
+        destructive: true,
+        onConfirm: () => {
+          // Re-read at confirm time: the prompt can sit open across a sync.
+          const live = new Set(planner().items.map((i) => i.id));
+          planner().deleteItems(items.map((i) => i.id).filter((id) => live.has(id)));
+        },
       });
     },
   }),

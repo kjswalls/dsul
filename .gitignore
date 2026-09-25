@@ -18,6 +18,10 @@ node_modules/
 .DS_Store
 .env.test
 supabase/.temp/
+# Written by `supabase init` (scripts/local-setup.sh): per-machine stack config.
+supabase/config.toml
+supabase/.gitignore
+supabase/.branches/
 test-results/
 playwright-report/
 # Authenticated session + resolved API key written by tests/e2e/global-setup.ts.

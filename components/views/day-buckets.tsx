@@ -18,6 +18,7 @@ import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow, type RowGroup } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { sinkCompleted } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { toDateStr } from '@/lib/recurrence';
 import type { Task, HabitItem, Project, TimeBucket } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -244,11 +245,12 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
    * timed row staying put is not the sink failing there; it is that the spine's
    * position already means something else.
    */
+  const { completedAs, rootRef } = useSinkHold(setBucketRef);
   const untimedGroups = (
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
       ? groupRows(untimedRows, canvasGroupBy, { routines, programs, goals })
       : defaultBucketGroups(untimedRows)
-  ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, dateStr) }));
+  ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, dateStr, completedAs) }));
 
   // Timed rows flat, sorted by time (already time-sorted from deriveDayItems)
   const timedRows = [
@@ -258,7 +260,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
 
   return (
     <div
-      ref={setBucketRef}
+      ref={rootRef}
       data-dnd-bucket={bucket}
       data-dnd-id={bucket}
       // `isOver` on the bare bucket only — the untimed section reports its own
@@ -275,6 +277,14 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
         dragging={dragging}
         isEmpty={totalItems === 0 && bucketProjects.length === 0}
         variant={variant}
+        // What a shut card lists in its caption, in the order the open card
+        // draws it: untimed rows (grouped and sunk), then project blocks, then
+        // the timed spine.
+        peek={[
+          ...untimedGroups.flatMap((g) => g.rows.map((r) => r.item.title)),
+          ...bucketProjects.map((p) => p.name),
+          ...timedRows.map((r) => r.item.title),
+        ]}
       >
         {/* Unscheduled section — dedicated drop target, mounted whenever
             dragging so the rect is measurable (see CONTRACT.md). */}

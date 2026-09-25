@@ -13,6 +13,22 @@ export type ActiveDialog =
   | { type: 'add'; tab: string; bucket?: TimeBucket; date?: Date; title?: string }
   | { type: 'edit-item'; item: Item }
   /**
+   * The "new" dialog, making an ORGANIZER rather than an item (2026-09-25).
+   *
+   * Its own slot, not a `kind` on `add`: everything downstream of `add.tab` —
+   * the per-type drafts, getItemTypeConfig, the chip field, the save adapters —
+   * is item-shaped, and getItemTypeConfig('goal') would quietly synthesize a
+   * custom type. ContainerDialog (components/planner/container-dialog.tsx)
+   * renders it in the same shell. `title`/`notes` carry what was typed when
+   * the type menu switched over; `notes` becomes a goal's why.
+   */
+  | {
+      type: 'new-container';
+      kind: NewContainerKind;
+      title?: string;
+      notes?: string;
+    }
+  /**
    * The Organize console — one surface for every container and label. Replaced
    * `manage-categories` and `manage-collections`, which are gone rather than
    * kept as aliases: two variants pointing at one component is how a caller
@@ -62,6 +78,9 @@ export type ActiveDialog =
    * binding opens it already in command mode).
    */
   | { type: 'launcher'; query?: string };
+
+/** The organizers the "new" dialog can make. Item types are console-only. */
+export type NewContainerKind = 'goal' | 'routine' | 'program' | 'project';
 
 export interface ConfirmRequest {
   title: string;
@@ -143,6 +162,10 @@ export const openAddDialog = (
   date?: Date,
   title?: string
 ) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date, title });
+
+/** Open the "new" dialog on an organizer, carrying what was already typed. */
+export const openNewContainer = (kind: NewContainerKind, title?: string, notes?: string) =>
+  useUIStore.getState().openDialog({ type: 'new-container', kind, title, notes });
 
 /** Open the bulk-add dialog, optionally seeded with pasted text and hand-off
  *  context (see the ActiveDialog variant for field meanings). */

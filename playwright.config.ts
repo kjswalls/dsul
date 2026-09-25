@@ -3,12 +3,23 @@ import dotenv from 'dotenv';
 
 // Load .env.test BEFORE importing anything that reads the env contract, so
 // `pnpm e2e` works with no wrapper command. `override: false` means real
-// environment variables always win, so CI — which injects the same keys as
-// job-level `env:` from GitHub secrets — is unaffected.
+// environment variables always win over the file.
 dotenv.config({ path: '.env.test', override: false, quiet: true });
 
 // eslint-disable-next-line import/first -- must follow dotenv.config()
-import { TEST_TZ, STORAGE_STATE, BASE_URL, E2E_PORT } from './tests/e2e/helpers/env';
+import {
+  TEST_TZ,
+  STORAGE_STATE,
+  BASE_URL,
+  E2E_PORT,
+  assertLocalTarget,
+} from './tests/e2e/helpers/env';
+
+// Loopback only, before the webServer builds or starts anything. A call, not a
+// side effect of importing env.ts: imports are hoisted above dotenv.config(), so
+// an import-time check would run before .env.test loads. See env.ts for the
+// 2026-09-24 incident this exists for.
+assertLocalTarget(process.env);
 
 export default defineConfig({
   testDir: './tests/e2e',
@@ -157,16 +168,21 @@ export default defineConfig({
     // `workspace:*` dependency that npm cannot resolve.
     // The port comes from BASE_URL so the server started and the server tested
     // cannot drift — see tests/e2e/helpers/env.ts on why that matters in a
-    // multi-worktree checkout, where `reuseExistingServer` will otherwise adopt
-    // whichever branch's dev server owns the port.
+    // multi-worktree checkout.
+    // Never adopt a server that is already running. assertLocalTarget can only
+    // vouch for the server this config starts with .env.test's values; a `pnpm
+    // dev` already on the port loaded its own .env.local, which `vercel env
+    // pull` points at prod. A busy port now fails fast — pick another with
+    // E2E_BASE_URL=http://localhost:3100.
     command: process.env.CI
       ? `pnpm build && pnpm start --port ${E2E_PORT}`
       : `pnpm dev --port ${E2E_PORT}`,
     url: BASE_URL,
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: false,
     timeout: (process.env.CI ? 300 : 120) * 1000,
     // Env vars (NEXT_PUBLIC_SUPABASE_URL, TEST_USER_EMAIL, etc.) come from
-    // .env.test, loaded by the dotenv.config() call at the top of this file.
-    // In CI they are injected as job-level env from GitHub Actions secrets.
+    // .env.test, loaded by the dotenv.config() call at the top of this file and
+    // written by ./scripts/local-setup.sh e2e. The server inherits them from this
+    // process, which is how the NEXT_PUBLIC_* values reach a CI `next build`.
   },
 });

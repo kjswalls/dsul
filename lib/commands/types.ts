@@ -122,6 +122,17 @@ export type CommandArgument =
       emptyLabel: string;
       /** Candidates for the typed query, already filtered to what is eligible. */
       search: (query: string, ctx: CommandContext) => CommandEntityOption[];
+      /**
+       * Re-resolve marked ids, in any number (not capped like `search`, since a
+       * mark outlives the query that surfaced it). Keeps input order; drops ids
+       * that are missing or no longer eligible.
+       */
+      resolve?: (ids: readonly string[], ctx: CommandContext) => CommandEntityOption[];
+      /**
+       * Present = the picker is multi-select. Runs the command on every id as
+       * ONE undo step, so one ⌘Z takes back the whole selection.
+       */
+      runMany?: (ctx: CommandContext, ids: readonly string[]) => void;
     }
   | {
       kind: 'enum';

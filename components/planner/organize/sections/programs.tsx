@@ -1,6 +1,13 @@
 'use client';
 
 import { useState } from 'react';
+import { CalendarRange, Trash2 } from 'lucide-react';
+import {
+  ChoiceChip,
+  ColorChip,
+  DateRangeChip,
+  type ChoiceOption,
+} from '@/components/primitives/organizer-chips';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { inactiveItemIdsOn, isProgramActiveOn } from '@/lib/active';
@@ -9,22 +16,20 @@ import {
   countLive,
   formatShort,
   matching,
-  parseDay,
   programPillLabel,
   useLiveItemIds,
   useLiveRoutineIds,
   useToday,
 } from '@/lib/collections';
-import { ObjectRow, Segmented, SegmentedOption, SettingRow } from '../primitives';
+import { ObjectRow } from '../primitives';
 import {
-  BackRow,
-  DangerZone,
-  DayField,
   CreateForm,
   DetailColumn,
-  IdentityRow,
+  DetailHead,
   ListColumn,
   SectionWelcome,
+  StatusStrip,
+  TitleRow,
 } from '../detail-parts';
 import { ItemMemberList, RoutineMemberList } from '../member-list';
 import { makeIconToken } from '@/lib/category-icons';
@@ -127,20 +132,23 @@ export function ProgramsSection({
 
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
-          <CreateForm
-            eyebrow="NEW PROGRAM"
-            placeholder="Name your program…"
-            addLabel="Create program"
-            icon={makeIconToken('CalendarRange')}
-            testPrefix="program"
+          <ProgramCreateForm
             autoFocus={creating}
-            hint="A program is a stretch of life — a summer, a term — that switches whole routines on and off. It starts always-on, hiding nothing."
-            onCreate={(name, icon) =>
+            onCreate={(name, icon, run) =>
               onCreated(
-                // `auto` with no dates, never 'active': a program you just made
-                // must not hide anything, and an always-on default is the one
-                // state that cannot.
-                addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] })
+                // `auto`, never 'active': with no dates that is always-on, the
+                // one state that cannot hide anything a program you just made
+                // holds; with dates it follows them, which is what giving it a
+                // run asked for. One addProgram — never a create then a patch.
+                addProgram({
+                  name,
+                  icon,
+                  state: 'auto',
+                  startsOn: run.startsOn,
+                  endsOn: run.endsOn,
+                  itemIds: [],
+                  routineIds: [],
+                })
               )
             }
             onCancel={programs.length > 0 ? () => onCreated(null) : undefined}
@@ -156,6 +164,67 @@ export function ProgramsSection({
       </DetailColumn>
     </>
   );
+}
+
+/**
+ * "+ New" for a program: the name, and optionally its run — the one thing
+ * beyond a name that makes a program a stretch of life rather than a folder.
+ * Both ends optional; unset is always-on.
+ */
+function ProgramCreateForm({
+  autoFocus,
+  onCreate,
+  onCancel,
+}: {
+  autoFocus: boolean;
+  onCreate: (
+    name: string,
+    icon: string | undefined,
+    run: { startsOn?: string; endsOn?: string }
+  ) => void;
+  onCancel?: () => void;
+}) {
+  const [run, setRun] = useState<{ startsOn?: string; endsOn?: string }>({});
+  return (
+    <CreateForm
+      eyebrow="NEW PROGRAM"
+      placeholder="Name your program…"
+      addLabel="Create program"
+      icon={makeIconToken('CalendarRange')}
+      testPrefix="program"
+      autoFocus={autoFocus}
+      hint="A program is a stretch of life — a summer, a term — that switches whole routines on and off. Without dates it starts always-on, hiding nothing."
+      fields={
+        <div className="flex flex-wrap items-center gap-1.5">
+          <DateRangeChip
+            label="Runs"
+            start={run.startsOn}
+            end={run.endsOn}
+            startLabel="Starts"
+            endLabel="Ends"
+            emptyLabel="Runs"
+            testIdPrefix="program-new-runs"
+            onChange={(startsOn, endsOn) => setRun({ startsOn, endsOn })}
+          />
+        </div>
+      }
+      onCreate={(name, icon) => onCreate(name, icon, run)}
+      onCancel={onCancel}
+    />
+  );
+}
+
+/**
+ * The three states as a chip. `auto` is "Dates", and its dot follows whether
+ * the dates have it on today — the chip then says at a glance what the
+ * program is doing, not only how it was set.
+ */
+function programStates(live: boolean): ChoiceOption<Program['state']>[] {
+  return [
+    { value: 'active', label: 'On', dot: 'lime' },
+    { value: 'paused', label: 'Off', dot: 'muted' },
+    { value: 'auto', label: 'Dates', dot: live ? 'lime' : 'muted' },
+  ];
 }
 
 function ProgramDetail({ program, onBack }: { program: Program; onBack: () => void }) {
@@ -253,82 +322,99 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
     });
   };
 
-  return (
-    <div className="flex flex-col" data-testid="program-detail" data-program-id={program.id}>
-      <BackRow label="Programs" testId="program-detail-back" onBack={onBack} />
+  const requestDelete = () =>
+    confirm({
+      title: 'Delete this program?',
+      description: deleteConsequence(program, itemCount, routineCount, live),
+      confirmLabel: 'Delete',
+      destructive: true,
+      onConfirm: () => {
+        removeProgram(program.id);
+        onBack();
+      },
+    });
 
-      <IdentityRow
+  return (
+    <div
+      className="flex flex-col gap-4"
+      data-testid="program-detail"
+      data-program-id={program.id}
+    >
+      <DetailHead
+        kind="Program"
+        color={program.color}
+        name={program.name}
+        testPrefix="program"
+        back={{ label: 'Programs', testId: 'program-detail-back', onBack }}
+        menu={[
+          {
+            label: 'Delete program',
+            icon: <Trash2 className="size-3.5" />,
+            testId: 'program-delete',
+            destructive: true,
+            onSelect: requestDelete,
+          },
+        ]}
+      />
+
+      <TitleRow
         id={program.id}
         name={program.name}
         icon={program.icon}
-        color={program.color}
         label="Program"
         testPrefix="program"
-        meta={
-          <>
-            Program · <span className="font-num">{itemCount}</span>{' '}
-            {itemCount === 1 ? 'item' : 'items'} · <span className="font-num">{routineCount}</span>{' '}
-            {routineCount === 1 ? 'routine' : 'routines'}
-          </>
-        }
         onPatch={(patch) => updateProgram(program.id, patch)}
       />
 
-      <div className="bg-border my-4 h-px" />
-
-      <SettingRow label="Status">
-        <Segmented>
-          {/* setProgramState DIRECTLY, never through updateProgram: it stamps
-              its own history label and its own optimistic `updatedAt`, and
-              routing through the generic update stamps "Edit program" and lands
-              the intended label on the user's NEXT action. */}
-          <SegmentedOption
-            active={program.state === 'active'}
-            onClick={() => setProgramState(program.id, 'active')}
-            testId="program-state-active"
-          >
-            On
-          </SegmentedOption>
-          <SegmentedOption
-            active={program.state === 'paused'}
-            onClick={() => setProgramState(program.id, 'paused')}
-            testId="program-state-paused"
-          >
-            Off
-          </SegmentedOption>
-          <SegmentedOption
-            active={program.state === 'auto'}
-            onClick={() => setProgramState(program.id, 'auto')}
-            testId="program-state-auto"
-          >
-            Dates
-          </SegmentedOption>
-        </Segmented>
-      </SettingRow>
-
-      {program.state === 'auto' && (
-        <SettingRow label="Runs" description="Both ends included.">
-          <RunsRange
-            startsOn={program.startsOn}
-            endsOn={program.endsOn}
-            onChange={(patch) => updateProgram(program.id, patch)}
-          />
-        </SettingRow>
-      )}
-
-      <p
-        className="text-muted-foreground mt-3 max-w-[62ch] text-xs"
-        data-testid="program-state-note"
+      <StatusStrip
+        testId="program-state-note"
+        icon={<CalendarRange className="size-3.5" aria-hidden />}
       >
         <ProgramStateNote program={program} live={live} />
-      </p>
+      </StatusStrip>
+
+      <div className="flex flex-wrap items-center gap-1.5">
+        {/* setProgramState DIRECTLY, never through updateProgram: it stamps its
+            own history label and its own optimistic `updatedAt`, and routing
+            through the generic update stamps "Edit program" and lands the
+            intended label on the user's NEXT action. */}
+        <ChoiceChip
+          label="Status"
+          value={program.state}
+          options={programStates(live)}
+          testIdPrefix="program-state"
+          onChange={(state) => setProgramState(program.id, state)}
+        />
+        {/* Under Dates alone: On and Off are manual overrides that always win,
+            so a range beside them would be a control with no effect. The dates
+            stay on the row meanwhile, waiting. The chip fences start ≤ end — an
+            inverted range is live on NO date, so every member would vanish
+            while the note cheerfully reported "Runs Sep 1 to Aug 1". Both ends
+            are included, as the note says. */}
+        {program.state === 'auto' && (
+          <DateRangeChip
+            start={program.startsOn}
+            end={program.endsOn}
+            startLabel="Starts"
+            endLabel="Ends"
+            emptyLabel="Runs"
+            testIdPrefix="program-runs"
+            onChange={(startsOn, endsOn) => updateProgram(program.id, { startsOn, endsOn })}
+          />
+        )}
+        <ColorChip
+          value={program.color}
+          testId="program-color"
+          onChange={(color) => updateProgram(program.id, { color })}
+        />
+      </div>
 
       {!live && displaced.length > 0 && (
         <button
           type="button"
           onClick={() => swapToProgram(program.id)}
           data-testid="program-swap"
-          className="border-border hover:bg-accent mt-4 flex flex-col items-start gap-0.5 rounded-[5px] border px-3 py-2 text-left"
+          className="border-border hover:bg-accent flex flex-col items-start gap-0.5 self-start rounded-[5px] border px-3 py-2 text-left"
         >
           <span className="text-foreground text-sm font-medium">Switch to this program</span>
           <span className="text-muted-foreground text-xs">
@@ -337,7 +423,7 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
         </button>
       )}
 
-      <div className="mt-5">
+      <div className="mt-1.5 flex flex-col gap-5">
         <RoutineMemberList
           program={program}
           live={live}
@@ -350,14 +436,13 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
             })
           }
         />
-      </div>
 
-      <div className="mt-5">
         {/* NOT orderable, and not a taste call: `routine_items` carries a
             `sort_order` column and `program_items` does not, so an order
             arranged here would survive until the next fetch and then silently
             reshuffle. */}
         <ItemMemberList
+          label="Items"
           ownerId={program.id}
           ownerName={program.name}
           memberIds={program.itemIds}
@@ -375,24 +460,6 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
           onChange={(itemIds) => updateProgram(program.id, { itemIds })}
         />
       </div>
-
-      <DangerZone
-        label="Delete this program"
-        testId="program-delete"
-        consequence={deleteConsequence(program, itemCount, routineCount, live)}
-        onDelete={() =>
-          confirm({
-            title: 'Delete this program?',
-            description: deleteConsequence(program, itemCount, routineCount, live),
-            confirmLabel: 'Delete',
-            destructive: true,
-            onConfirm: () => {
-              removeProgram(program.id);
-              onBack();
-            },
-          })
-        }
-      />
     </div>
   );
 }
@@ -446,52 +513,5 @@ function ProgramStateNote({ program, live }: { program: Program; live: boolean }
     <>
       Runs {span}, inclusive. {live ? 'On now.' : 'Off right now — nothing it holds is showing.'}
     </>
-  );
-}
-
-/**
- * The date range, where each field STRICTLY BOUNDS the other.
- *
- * Without the bounds these are two independent single-day pickers and an
- * inverted range (starts after ends) is one careless click away — a range that
- * is live on NO date, so every member vanishes permanently while the console
- * cheerfully reports "Runs Sep 1 to Aug 1, inclusive."
- *
- * The matchers are `{before}`/`{after}`, which are STRICT, and that is exactly
- * what an inclusive range wants: starts and ends may legitimately be the same
- * day (a one-day program), and only crossing is forbidden.
- */
-function RunsRange({
-  startsOn,
-  endsOn,
-  onChange,
-}: {
-  startsOn?: string;
-  endsOn?: string;
-  onChange: (patch: { startsOn?: string; endsOn?: string }) => void;
-}) {
-  return (
-    <div className="flex shrink-0 items-center gap-1.5">
-      <DayField
-        label="Starts"
-        placeholder="any day"
-        value={startsOn}
-        testId="program-starts-on"
-        clearLabel="Clear starts date"
-        disabledDays={endsOn ? { after: parseDay(endsOn)! } : undefined}
-        onChange={(next) => onChange({ startsOn: next })}
-      />
-      <span className="text-muted-foreground text-xs">→</span>
-      <DayField
-        label="Ends"
-        placeholder="any day"
-        value={endsOn}
-        testId="program-ends-on"
-        clearLabel="Clear ends date"
-        disabledDays={startsOn ? { before: parseDay(startsOn)! } : undefined}
-        align="end"
-        onChange={(next) => onChange({ endsOn: next })}
-      />
-    </div>
   );
 }

@@ -37,6 +37,8 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer';
+import { Tooltip, TooltipTrigger } from '@/components/ui/tooltip';
+import { RailTipContent, useQuietTip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
@@ -502,6 +504,13 @@ export function DisplayMenu({
    */
   ref?: React.Ref<DisplayMenuHandle>;
 }) {
+  // The icon trigger's tooltip, and the menu's own open state so the tooltip
+  // can stand down while the panel is out — and so the handle below can open
+  // the dropdown, which Radix's trigger alone cannot be asked to do. Held here,
+  // above the touch branch's early return, so the hook order never depends on
+  // the input device.
+  const tip = useQuietTip();
+  const [menuOpen, setMenuOpen] = useState(false);
   const projects = usePlannerStore((s) => s.projects);
   // Read purely to seed the grouping options' example lines — the Routine and
   // Program group-by values name these, the way Project names `projects`.
@@ -968,8 +977,6 @@ export function DisplayMenu({
 
   /* ── opening, from the trigger or through the handle ──────────────────── */
 
-  /** The dropdown's open state. Held here rather than inside Radix so the handle can open it. */
-  const [menuOpen, setMenuOpen] = useState(false);
   /** The one trigger button, in either shell; Radix's Slot composes this with its own ref. */
   const triggerRef = useRef<HTMLButtonElement>(null);
   /** Whatever opened the menu when the trigger did not — focus goes back to it on close. */
@@ -1011,6 +1018,16 @@ export function DisplayMenu({
       e.preventDefault();
       el.focus();
     }
+  };
+
+  /**
+   * Both dropdowns' open state, as Radix reports it. Radix reports an opening
+   * only when its own trigger did it, and then nothing else is waiting for
+   * focus back; the handle opens through the state, which Radix does not report.
+   */
+  const onMenuOpenChange = (next: boolean) => {
+    if (next) returnTo.current = null;
+    setMenuOpen(next);
   };
 
   /* ── trigger ──────────────────────────────────────────────────────────── */
@@ -1076,65 +1093,102 @@ export function DisplayMenu({
     );
   }
 
-  return (
-    <DropdownMenu
-      open={menuOpen}
-      onOpenChange={(next) => {
-        // Radix reports an opening only when its own trigger did it, and then
-        // nothing else is waiting for focus back. The handle opens through the
-        // state, which Radix does not report.
-        if (next) returnTo.current = null;
-        setMenuOpen(next);
+  const menuContent = (
+    <DropdownMenuContent
+      align={align}
+      className={PANEL}
+      data-testid="display-menu"
+      data-display-variant="menu"
+      onCloseAutoFocus={restoreFocus}
+      // Mirror Radix's own rule: a right- or ctrl-click outside leaves focus
+      // where it lands, so it is not pulled back to the opener either.
+      onInteractOutside={(e) => {
+        const o = e.detail.originalEvent as PointerEvent;
+        if (o.button === 2 || (o.button === 0 && o.ctrlKey)) returnTo.current = null;
       }}
     >
-      <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
+      <Cap>Structure</Cap>
+      {structure.map((s) => (
+        <SubRow key={s.id} section={s} />
+      ))}
+      <DropdownMenuSeparator />
 
-      <DropdownMenuContent
-        align={align}
-        className={PANEL}
-        data-testid="display-menu"
-        data-display-variant="menu"
-        onCloseAutoFocus={restoreFocus}
-        // Mirror Radix's own rule: a right- or ctrl-click outside leaves focus
-        // where it lands, so it is not pulled back to the opener either.
-        onInteractOutside={(e) => {
-          const o = e.detail.originalEvent as PointerEvent;
-          if (o.button === 2 || (o.button === 0 && o.ctrlKey)) returnTo.current = null;
-        }}
+      <Cap>Filter</Cap>
+      {filterSections.map((s) => (
+        <SubRow key={s.id} section={s} />
+      ))}
+
+      <MenuEntries entries={showEntries} />
+
+      <PausedScopesSection variant="menu" />
+
+      <DropdownMenuSeparator />
+      {/* Permanently mounted, disabled when nothing is set. That is what stops
+          the panel jumping height, which today's conditionally-mounted "Clear
+          filters" does on the first tick — and it is a view preference, so it
+          loses the destructive red styling with it. */}
+      <DropdownMenuItem
+        className={cn(ROW, 'text-muted-foreground')}
+        disabled={activeCount === 0}
+        onSelect={() => reset()}
+        data-testid="display-reset"
       >
-        <Cap>Structure</Cap>
-        {structure.map((s) => (
-          <SubRow key={s.id} section={s} />
-        ))}
-        <DropdownMenuSeparator />
+        <RotateCcw className="size-4" />
+        <span className="flex-1">Reset display</span>
+        {activeCount > 0 && (
+          <span className="shrink-0 font-mono text-[10.5px] tabular-nums">{activeCount}</span>
+        )}
+      </DropdownMenuItem>
+    </DropdownMenuContent>
+  );
 
-        <Cap>Filter</Cap>
-        {filterSections.map((s) => (
-          <SubRow key={s.id} section={s} />
-        ))}
-
-        <MenuEntries entries={showEntries} />
-
-        <PausedScopesSection variant="menu" />
-
-        <DropdownMenuSeparator />
-        {/* Permanently mounted, disabled when nothing is set. That is what stops
-            the panel jumping height, which today's conditionally-mounted "Clear
-            filters" does on the first tick — and it is a view preference, so it
-            loses the destructive red styling with it. */}
-        <DropdownMenuItem
-          className={cn(ROW, 'text-muted-foreground')}
-          disabled={activeCount === 0}
-          onSelect={() => reset()}
-          data-testid="display-reset"
+  // The icon trigger is a bare glyph, so on a pointer it gets the rail tooltip
+  // every header control wears. The label trigger says "Display" already.
+  //
+  // Nesting order is load-bearing: the MENU trigger is the outer one. Both
+  // stamp `data-state`, and Radix hands the outer trigger's props to the inner
+  // one, which spreads them over its own — tooltip-outside, the button would
+  // report the tooltip's closed/delayed-open instead of the menu's open/closed.
+  if (trigger === 'icon') {
+    return (
+      <Tooltip open={tip.open && !menuOpen} onOpenChange={tip.onOpenChange}>
+        <DropdownMenu
+          open={menuOpen}
+          onOpenChange={(next) => {
+            onMenuOpenChange(next);
+            // Put the tooltip down on BOTH edges. Opening, the menu trigger's
+            // pointerdown preventDefaults and so skips the tooltip's own close;
+            // while the menu is out the tooltip is held shut by the prop, and a
+            // controlled Radix root never reports a close it is already showing.
+            // Left alone, tip.open stays true and the tooltip springs back the
+            // moment the menu closes, wherever the pointer went. The hover is
+            // forgotten too: the pointer went into the menu, and the focus the
+            // menu hands back on close must pass the keyboard test on its own.
+            tip.reset();
+          }}
         >
-          <RotateCcw className="size-4" />
-          <span className="flex-1">Reset display</span>
-          {activeCount > 0 && (
-            <span className="shrink-0 font-mono text-[10.5px] tabular-nums">{activeCount}</span>
-          )}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
+          <DropdownMenuTrigger asChild>
+            <TooltipTrigger asChild {...tip.triggerProps}>
+              {triggerButton}
+            </TooltipTrigger>
+          </DropdownMenuTrigger>
+          <RailTipContent
+            side="bottom"
+            label="Display"
+            detail={
+              activeCount > 0 ? `${activeCount} active · Filter, group & sort` : 'Filter, group & sort'
+            }
+          />
+          {menuContent}
+        </DropdownMenu>
+      </Tooltip>
+    );
+  }
+
+  return (
+    <DropdownMenu open={menuOpen} onOpenChange={onMenuOpenChange}>
+      <DropdownMenuTrigger asChild>{triggerButton}</DropdownMenuTrigger>
+      {menuContent}
     </DropdownMenu>
   );
 }

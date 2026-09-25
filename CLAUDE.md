@@ -29,23 +29,35 @@ is republished.
 ```bash
 pnpm install
 vercel env pull .env.local        # gitignored, Vercel-generated — don't hand-copy
-./scripts/local-setup.sh dev      # then point dev at a LOCAL Supabase
+./scripts/local-setup.sh dev      # then point dev at a LOCAL Supabase (needs Docker)
 ```
 
 Then run `/mcp` to authenticate. `.mcp.json` is committed but holds only hosted OAuth
 URLs (Figma + Supabase), no secrets, so it works from any machine.
 
 **`vercel env pull` writes PRODUCTION credentials, so `pnpm dev` talks to prod until
-you run `local-setup.sh`.** That is not theoretical: of the API requests in one
-ten-minute window on 2026-09-18, 5,917 came from `localhost:3000` and two came from
-the deployed app — every hot-reload remount re-runs the planner's container fan-out
-against the live project. `local-setup.sh dev` stands up a local stack and swaps only
-the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the VAPID pair and
-`CRON_SECRET` through untouched. `vercel env pull .env.local` puts prod back.
+you run `local-setup.sh`.** Every hot-reload remount re-runs the planner's container
+fan-out against the live project. `local-setup.sh dev` stands up a local stack and
+swaps only the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the
+VAPID pair and `CRON_SECRET` through untouched. `vercel env pull .env.local` puts
+prod back.
 
 The same script covers the e2e suite (`./scripts/local-setup.sh e2e`, writing
-`.env.test` — see `.env.test.example`), or `both` from one stack. See
-[scripts/README.md](scripts/README.md).
+`.env.test` — see `.env.test.example`), or `both` from one stack.
+
+**The e2e suite runs against loopback only, and has no override.**
+`assertLocalTarget` ([tests/e2e/helpers/env.ts](tests/e2e/helpers/env.ts)), called
+from `playwright.config.ts` before the web server starts, refuses a missing or
+non-local `NEXT_PUBLIC_SUPABASE_URL`, and a non-local `E2E_BASE_URL` when one is set.
+The config never adopts an already-running server (`reuseExistingServer: false`),
+because a `pnpm dev` it did not start may be pointed at prod. CI used to run the
+suite against PRODUCTION from repo secrets; on 2026-09-24 four PRs' runs overlapped
+for hours and took the live project down (do.dsul.app logins timed out with a
+Cloudflare 522). `localhost:3000` in the Supabase logs is the Playwright browser's
+origin as much as a dev server's: the 5,917 requests once measured from it on
+2026-09-18 were likely CI too, since several PRs ran E2E against prod that night.
+CI's E2E job now starts its own stack on the runner with the same script (Supabase
+CLI pinned in `.github/workflows/test.yml`). Never give it hosted keys back.
 
 ## Git workflow
 
@@ -171,6 +183,16 @@ something out-of-band via the SQL editor or MCP, record it in the ledger with th
 `NNN` version, or `db push` will try to replay it later. Write migrations idempotently
 (`add column if not exists`, `drop … if exists`, `do $$ … end$$` guards) — they're
 expected to be safe to re-run.
+
+**Every migration must also replay onto an EMPTY database**, because CI's E2E job and
+`local-setup.sh` build one from scratch with `supabase db reset`; a migration that only
+works on top of prod's history turns that job red. `000_baseline.sql` creates what the
+tree assumed from the pre-migrations `schema.sql` bootstrap (`tasks`, `habits`,
+`projects`, `habit_groups`, `update_updated_at()`). It must never RUN on prod: it is
+marked applied in the remote ledger instead (`supabase migration repair --status
+applied 000`, or an insert into `supabase_migrations.schema_migrations`), and if
+`db push` ever offers `--include-all` for 000, the ledger row is missing — add it
+rather than taking the flag.
 
 ## Conventions and gotchas
 

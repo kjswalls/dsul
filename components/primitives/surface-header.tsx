@@ -24,7 +24,12 @@ export function SurfaceHeader({
 }: {
   /** Leading glyph. Beacon runs without one — the artboard gives it the title alone. */
   icon?: ReactNode;
-  title: string;
+  /**
+   * The heading's content. A string for Beacon; the Braindump passes a live
+   * count with its name kept as screen-reader-only text, so the heading still
+   * names the surface to assistive tech after the visible word went.
+   */
+  title: ReactNode;
   /** Outer capsule only — the phone shell insets it off the screen edge. */
   className?: string;
   /** Trailing controls, laid out in the row-pill after the title. */
