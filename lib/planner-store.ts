@@ -179,6 +179,28 @@ interface PlannerStore {
   userId: string | null;
   isLoading: boolean;
   error: string | null;
+  /**
+   * The account whose most recent load FAILED, or null.
+   *
+   * A failed load leaves `userId` stamped and `isLoading` false, which is
+   * exactly what a finished load looks like, so `initializeStore`'s opening
+   * guard used to read a failed account as loaded and refuse every retry: the
+   * notice's Retry and the provider's next SIGNED_IN both did nothing, and only
+   * a page reload, or signing out and back in, recovered. The guard reads this
+   * field now, and so does the notice, so the row offers a Retry exactly when
+   * a retry will load.
+   *
+   * Both read this and not `error`, which is a message slot. Keyed on `error`,
+   * a later writer of it for some other failure would have the notice offer a
+   * Retry, and the guard grant it, that resets a planner that loaded fine. (The
+   * provider's unlatch, the sweep's gate and the braindump's count still read
+   * `error` as "the load failed", which holds while the load is its only
+   * writer.)
+   *
+   * The first-run seed reads it too: after a failed load the store's empty
+   * arrays mean "the fetch broke", not "a brand-new account".
+   */
+  loadFailedUserId: string | null;
 
   // Store lifecycle
   /**
@@ -203,8 +225,8 @@ interface PlannerStore {
    * it false would hand every one of those an EMPTY store that claims to be
    * complete, which is how a sweep unschedules a year of work in one silent
    * batch. It also keeps `initializeStore`'s own early-return open: that guard
-   * skips a re-entry only when the account is already loaded AND not loading,
-   * so the stamp must not look like a finished load.
+   * skips a re-entry only when the account is stamped, not loading, and its
+   * last load did not fail, so the stamp must not look like a finished load.
    */
   identifyUser: (userId: string) => void;
   initializeStore: (userId: string) => Promise<void>;
@@ -568,9 +590,9 @@ const emptyAccountData = () => ({
   collectionsAvailable: true,
   // Goals reset with every other slice. Missed, the previous account's goal
   // names, whys and target dates stay in memory after SIGNED_OUT — and
-  // initializeStore's catch branch sets only isLoading/error, so a FAILED next
-  // sign-in leaves user B looking at user A's goals in the chip and the
-  // console, with updateGoal firing user-B writes at user-A ids.
+  // initializeStore's catch branch sets only its status flags, never the data,
+  // so a FAILED next sign-in leaves user B looking at user A's goals in the
+  // chip and the console, with updateGoal firing user-B writes at user-A ids.
   goals: [],
   goalsAvailable: true,
   // Its two siblings above were here and this was not — a gap inherited from
@@ -580,6 +602,7 @@ const emptyAccountData = () => ({
   // types until their own fetch resolves.
   itemTypesAvailable: true,
   error: null,
+  loadFailedUserId: null,
   canUndo: false,
   canRedo: false,
   actionLog: [],
@@ -1874,6 +1897,7 @@ export const usePlannerStore = create<PlannerStore>()(
       userId: null,
       isLoading: false,
       error: null,
+      loadFailedUserId: null,
 
       // ── Item type definitions (Phase 6) ────────────────────────────────────
       itemTypes: [],
@@ -2271,8 +2295,21 @@ export const usePlannerStore = create<PlannerStore>()(
         // `isLoading` is part of the condition so a genuine in-flight load is
         // never mistaken for a settled one — a second call while the first is
         // still running must be allowed through to replace it.
+        //
+        // And `loadFailedUserId`, so a FAILED load is not mistaken for a
+        // finished one (see the field). Letting that account through is the
+        // retry, and what it resets is the empty store the failure left: no
+        // fetched data arrived, and the history recorded since was recorded
+        // against that store, so undoing into it after the reload lands would
+        // soft-delete every row the reload brought in. A row TYPED into that
+        // store is replaced like the rest, and the reload brings it back only
+        // if its write committed before the reload read. That is the load
+        // window loadPlanner's comment in supabase-provider.tsx describes, and
+        // this does not close it.
         const current = get();
-        if (current.userId === userId && !current.isLoading) return;
+        if (current.userId === userId && !current.isLoading && current.loadFailedUserId !== userId) {
+          return;
+        }
 
         // Block subscriber during initialization to prevent poisoned history entries
         const generation = ++loadGeneration;
@@ -2285,7 +2322,22 @@ export const usePlannerStore = create<PlannerStore>()(
         actionLog = [];
         prevStateJson = null;
 
-        set({ userId, isLoading: true, error: null });
+        set({
+          userId,
+          isLoading: true,
+          error: null,
+          loadFailedUserId: null,
+          // The published side of the reset just above. A first load follows
+          // identifyUser or clearStore, which have already emptied these; a
+          // RETRY follows a failed load, where the history subscriber was live
+          // and recorded entries, so without this the undo button and the
+          // action log would offer that history for the whole of the retry
+          // while ⌘Z, reading the emptied module state, did nothing.
+          canUndo: false,
+          canRedo: false,
+          actionLog: [],
+          historyIndex: -1,
+        });
 
         try {
           const [
@@ -2405,9 +2457,14 @@ export const usePlannerStore = create<PlannerStore>()(
           // their screen — and leave this function's opening guard reading the
           // new account as settled, so its own load could never start.
           if (get().userId !== userId) return;
+          // The fetchers rethrow Supabase's plain error objects, which are not
+          // Errors, so the message below is nearly always the fallback text.
+          // This line is the only record of the cause.
+          console.error('planner load failed', err);
           set({
             isLoading: false,
             error: err instanceof Error ? err.message : 'Failed to load data',
+            loadFailedUserId: userId,
           });
         }
       },
@@ -3927,15 +3984,19 @@ export const usePlannerStore = create<PlannerStore>()(
        * first ⌘Z would delete one starter container while leaving five. This is
        * a single arrival, so it undoes as one.
        *
-       * GUARDS, ALL THREE. `userId` because a create without one writes nothing
+       * GUARDS, ALL FOUR. `userId` because a create without one writes nothing
        * and leaves an optimistic row that vanishes on reload. `isLoading`
        * because `initializeStore` REPLACES `projects` and `items`
        * wholesale when its fetch resolves — anything seeded inside that window
        * is silently discarded, which is the same trap `canCreate` guards in the
-       * console and the one the e2e suite found the hard way. And the container
-       * arrays being empty, re-checked HERE rather than trusted from the plan:
-       * the plan was computed before two awaits (the latch read and the bin
-       * read), and a fetch resolving in between is exactly how an account with
+       * console and the one the e2e suite found the hard way. `loadFailedUserId`
+       * because the emptiness check below is only evidence when a load filled
+       * the arrays: after a failed one they are empty because nothing arrived,
+       * not because the account has no containers, so a plan made before the
+       * failure would commit on no evidence at all. And the container arrays
+       * being empty, re-checked HERE rather than trusted from the plan: the
+       * plan was computed before two awaits (the latch read and the bin read),
+       * and a fetch resolving in between is exactly how an account with
        * containers gets a second set of them.
        *
        * ADOPTION IS PART OF THE SAME `set()`. When a container is created for a
@@ -3955,6 +4016,7 @@ export const usePlannerStore = create<PlannerStore>()(
         // account's store, and with adoption in the mix that meant creating a
         // container named after someone else's data.
         if (!userId || userId !== forUserId || state.isLoading) return 'refused';
+        if (state.loadFailedUserId === userId) return 'refused';
         if (state.projects.length > 0) return 'refused';
         // Distinguished from a refusal on purpose: this is a stable answer, and
         // the caller latches on it so the account stops being asked. A refusal

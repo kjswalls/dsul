@@ -201,6 +201,7 @@ describe('runFirstRunSeed', () => {
       snapshot: () => ({
         userId: 'u1',
         isLoading: false,
+        loadFailedUserId: null,
         items: [] as Item[],
         projects: [] as { name: string }[],
         ...state,
@@ -256,6 +257,19 @@ describe('runFirstRunSeed', () => {
     expect(deps.commit).not.toHaveBeenCalled();
   });
 
+  it('does not PLAN from a failed load, and does not latch — the retry asks again', async () => {
+    // A failed load settles with isLoading false and every array empty, which
+    // planSeed reads as a brand-new account. Refused here, before the plan: the
+    // commit's own check cannot see it once a retry has landed the real items,
+    // because an account whose containers are only names on its items still
+    // has no project rows by then.
+    const { deps, calls } = harness({}, { loadFailedUserId: 'u1' });
+    expect(await runFirstRunSeed('u1', deps)).toBe('none');
+    expect(calls).toEqual(['read-latch']);
+    expect(deps.commit).not.toHaveBeenCalled();
+    expect(deps.markSeeded).not.toHaveBeenCalled();
+  });
+
   it('drops out if the account had already switched', async () => {
     const { deps } = harness({}, { userId: 'someone-else' });
     expect(await runFirstRunSeed('u1', deps)).toBe('none');
@@ -282,6 +296,7 @@ describe('runFirstRunSeed', () => {
     deps.snapshot = () => ({
       userId,
       isLoading: false,
+      loadFailedUserId: null,
       items: [] as Item[],
       projects: [] as { name: string }[],
     });

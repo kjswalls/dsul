@@ -296,7 +296,10 @@ function OverflowRow({
  * Renders nothing while the sidebar is away. This is the accepted cost of the
  * placement and it is deliberately NOT patched with a force-open: a rule where
  * some notices reopen your collapsed sidebar and others don't is one no user
- * can hold in their head, and the palette still reaches every one of these.
+ * can hold in their head, and the palette still reaches every one of these but
+ * the failed load. That one has no command; the provider retries it on the
+ * next SIGNED_IN, which Supabase sends when the tab is shown with a live
+ * session.
  */
 export function DockNotices() {
   const notices = useDockNotices();

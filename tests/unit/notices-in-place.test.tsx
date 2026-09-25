@@ -551,11 +551,13 @@ describe('the dock', () => {
     resetNoticeAnchors();
     useSidebarStore.setState({ leftSidebarOpen: true, chatExpanded: false });
     seedSweepReceipt();
-    usePlannerStore.setState({ error: 'network' });
+    // A failed load, as the store's catch records one: the row keys on the
+    // account whose load failed, not on the message.
+    usePlannerStore.setState({ error: 'Failed to load data', loadFailedUserId: 'u1' });
   });
   afterEach(() => {
     cleanup();
-    usePlannerStore.setState({ error: null });
+    usePlannerStore.setState({ error: null, loadFailedUserId: null });
     useMorningStore.setState({ morningAutoAgeReceiptByUser: {} });
   });
 
@@ -577,7 +579,7 @@ describe('the dock', () => {
   it('still folds everything when nothing is blocked', () => {
     // The overrun is for `blocked` alone. Two ordinary notices get the one row
     // the cap allows, spent on the summary rather than on one of them.
-    usePlannerStore.setState({ error: null });
+    usePlannerStore.setState({ error: null, loadFailedUserId: null });
     useEODStore.setState({
       _hasHydrated: true,
       eodReviewEnabled: true,

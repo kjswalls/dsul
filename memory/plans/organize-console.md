@@ -1186,6 +1186,22 @@ net this console's delete confirms promise. **The unlatch reads `error`, not a r
 the first version hung it on `.catch()` and was dead code, because `initializeStore` catches
 internally and RESOLVES on failure. A net that cannot fire is worse than none.
 
+**And it still could not fire, until 2026-09-25.** The unlatch worked; the load it led to
+did not. `initializeStore`'s opening guard read only `userId` and `isLoading`, and a failed
+load leaves the first stamped and the second false, which is exactly a finished load. So
+the next `SIGNED_IN` re-entered the store and was turned away as an account already loaded,
+and so were the dock's "Couldn't load your data" → Retry and the provider's re-entry on
+arriving back at a route that needs the planner: only a page reload, or signing out and
+back in, recovered. The store now records `loadFailedUserId` in the catch and clears it
+when a load starts, the guard lets exactly that account through, and the first-run seed
+refuses to plan or commit while it is set (a failed load's empty arrays read as a
+brand-new account). The notice keys on the same field, so it offers a Retry exactly when
+the guard will grant one, and a dismissal lasts one failure rather than every failure with
+the same fallback text. Neither is keyed on `error`: a later writer of it for some other
+failure would otherwise put up a Retry that resets a planner that loaded fine. Covered in
+`tests/unit/load-retry.test.ts` (the store) and `tests/unit/planner-load-retry.test.tsx`
+(the provider, the store and both docks together).
+
 Deferred items **(a)** and **(b)** close here: the rename guard can see the trash, and the
 agent API's rename fans out — chained after the container write, never in parallel, since
 the two do not fail together. Both agent routes now answer **409** with a sentence naming
@@ -1213,6 +1229,15 @@ show the caller.
   unbuilt.
 - **`item_types` can never appear in Trash** — the table has no `deleted_at`. Their delete
   already says so, and it is the only one wearing the filled destructive button.
+- **What the load retry does not cover** (2026-09-25). A desktop user with the sidebar
+  collapsed sees no row, and the palette has no retry command; the provider's retry on the
+  next `SIGNED_IN` is their way back. That event does not come on a tab show inside the
+  token's expiry margin, where GoTrue sends `TOKEN_REFRESHED` instead. The Retry button
+  goes straight to the store, so after it recovers the first-run seed waits for the next
+  `SIGNED_IN`. Settings that failed in the same outage stay at their defaults until a
+  reload. A row typed into the failed store comes back with the retry only if its write
+  committed before the retry read (the load window above). And every `SIGNED_IN` reloads
+  every failed tab, with no backoff: human-paced, not a loop.
 
 *Gate:* delete → find in Trash → restore → the row is back on the canvas without a reload,
 and `⌘Z` re-deletes it. **Met, and the member half nearly was not tested.** The first

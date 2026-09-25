@@ -45,14 +45,23 @@ function useToday(): { todayStr: string; tz: string } {
  * pins every `blocked` notice to the dock whatever anchor it grows later.
  */
 export function useSyncErrorNotice(): DockNotice | null {
-  const error = usePlannerStore((s) => s.error);
-  const userId = usePlannerStore((s) => s.userId);
+  // The field initializeStore's guard reads, so this row offers a Retry
+  // exactly when a retry will load. `error` says the same thing today, but it
+  // is a message slot: a row keyed on it would offer a Retry that does nothing
+  // for any failure that was not the load's.
+  const failedUserId = usePlannerStore((s) =>
+    s.loadFailedUserId !== null && s.loadFailedUserId === s.userId ? s.loadFailedUserId : null
+  );
   const initializeStore = usePlannerStore((s) => s.initializeStore);
-  // Keyed on the message, not a boolean: dismissing one failure must not
-  // suppress the next, different one.
-  const [dismissed, setDismissed] = useState<string | null>(null);
+  // A dismissal lasts one failure. A retry starting clears the field, and the
+  // dismissal with it, so the next failure shows. It used to be keyed on the
+  // message, but every failure stores the same fallback text (the fetchers
+  // throw Supabase's plain error objects, not Errors), so one ✕ hid every
+  // later failure, including the retries the provider makes on its own.
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed && !failedUserId) setDismissed(false);
 
-  if (!error || error === dismissed) return null;
+  if (!failedUserId || dismissed) return null;
 
   return {
     id: 'sync-error',
@@ -61,10 +70,8 @@ export function useSyncErrorNotice(): DockNotice | null {
     iconClassName: 'text-destructive',
     label: <span className="font-semibold">Couldn’t load your data</span>,
     actionLabel: 'Retry',
-    onSelect: () => {
-      if (userId) void initializeStore(userId);
-    },
-    onDismiss: () => setDismissed(error),
+    onSelect: () => void initializeStore(failedUserId),
+    onDismiss: () => setDismissed(true),
     dismissLabel: 'Dismiss this warning',
   };
 }
