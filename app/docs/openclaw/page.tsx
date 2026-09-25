@@ -116,7 +116,7 @@ export default function OpenClawDocsPage() {
             <CopyableCommand command="openclaw gateway restart" />
             <p>
               Then turn on <span className="text-foreground">OpenClaw</span> under
-              Settings → AI Assistant. That is it — your agent now sees your day from
+              Settings → Beacon. That is it — your agent now sees your day from
               wherever you talk to it.
             </p>
           </Step>
