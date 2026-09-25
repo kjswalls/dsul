@@ -486,6 +486,15 @@ describe('the toast rule', () => {
     expect(isToastWorthy({ label: 'Edit program: Summer', receipt })).toBe(false);
   });
 
+  it('announces a picker batch by its flag, never by its label', () => {
+    // batchHistory sets `batch`; one Undo on the strip reverts the lot.
+    expect(isToastWorthy({ label: 'Set priority: High · 3 items', batch: 3 })).toBe(true);
+    expect(isToastWorthy({ label: 'Complete items (3)', batch: 3 })).toBe(true);
+    // A title that merely LOOKS like a batch label cannot spoof it.
+    expect(isToastWorthy({ label: 'Edit task: Buy milk · 3 items' })).toBe(false);
+    expect(isToastWorthy({ label: 'Edit task: Swim' })).toBe(false);
+  });
+
   it('still announces the listed verbs with no receipt', () => {
     expect(isToastWorthy({ label: 'Add to Summer: 2 items' })).toBe(true);
     expect(isToastWorthy({ label: 'Delete task: Swim' })).toBe(true);

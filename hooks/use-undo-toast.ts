@@ -92,7 +92,12 @@ const SIGNIFICANT_ACTIONS = [
  * moves it makes every future failure ambiguous about which change caused it.
  * The `morning-bar` testid was kept across its own move for the same reason.
  */
-export function isToastWorthy(action: { label: string; receipt?: string }): boolean {
+export function isToastWorthy(action: { label: string; receipt?: string; batch?: number }): boolean {
+  // A picker batch (lib/planner-store.ts batchHistory) changed several items in
+  // one entry whose single Undo reverts all of them — the one-⌘Z offer is the
+  // point of batching. The structured flag, never the label, so no item title
+  // can spoof it.
+  if (action.batch && action.batch > 1) return true;
   if (action.receipt && action.label.startsWith('Add ')) return true;
   return SIGNIFICANT_ACTIONS.some((prefix) => action.label.startsWith(prefix));
 }
