@@ -325,6 +325,12 @@ export const STATIC_COMMANDS: Command[] = [
       isHabit(item)
         ? planner().toggleHabitStatus(item.id, 'done')
         : planner().toggleTaskStatus(item.id, 'completed'),
+    // A batch loops the single verbs rather than calling setItemsCompleted:
+    // they keep per-date completion for recurring items, the +1 streak per
+    // habit and the live Beeminder post. Quiet so the loop celebrates once and
+    // raises one offer per goal, not one per item.
+    quietBatch: true,
+    batchLabel: (n) => `Complete items (${n})`,
   }),
   itemCommand({
     id: 'items.delete',
@@ -348,6 +354,31 @@ export const STATIC_COMMANDS: Command[] = [
         destructive: true,
         onConfirm: () =>
           isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id),
+      });
+    },
+    // Not the default loop: `confirm` is a single slot, so N prompts would
+    // leave only the last standing and delete one item. One prompt, then one
+    // deleteItems — a single entry that raises the undo strip, which is why
+    // this copy says undo where the bulk bar's still says it cannot be undone.
+    runMany: (items) => {
+      const habits = items.filter(isHabit).length;
+      useUIStore.getState().confirm({
+        title: `Delete ${items.length} items?`,
+        description:
+          'They’ll be removed along with any subtasks.' +
+          (habits
+            ? ` ${habits === 1 ? 'One is a habit' : `${habits} are habits`} — ${
+                habits === 1 ? 'its' : 'their'
+              } completion history goes too.`
+            : '') +
+          ' You can undo this right after.',
+        confirmLabel: `Delete ${items.length}`,
+        destructive: true,
+        onConfirm: () => {
+          // Re-read at confirm time: the prompt can sit open across a sync.
+          const live = new Set(planner().items.map((i) => i.id));
+          planner().deleteItems(items.map((i) => i.id).filter((id) => live.has(id)));
+        },
       });
     },
   }),

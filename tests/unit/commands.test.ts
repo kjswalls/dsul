@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
 import {
   STATIC_COMMANDS,
   findCommand,
@@ -13,7 +13,8 @@ import {
   type CommandContext,
 } from '@/lib/commands';
 import { DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
-import { usePlannerStore } from '@/lib/planner-store';
+import { getActionLog, usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
 
 /**
@@ -423,6 +424,159 @@ describe('entity arguments', () => {
 
     seedStore([]);
     expect(() => complete.run(ctx, 't1')).not.toThrow();
+  });
+});
+
+describe('entity arguments: several at once', () => {
+  /** The multi-select half of the entity argument, which only itemCommand builds. */
+  function entityArg(id: string) {
+    const argument = commandById(id).argument;
+    if (argument?.kind !== 'entity' || !argument.runMany || !argument.resolve) {
+      throw new Error(`${id} is not multi-select`);
+    }
+    return argument as typeof argument & {
+      runMany: NonNullable<typeof argument.runMany>;
+      resolve: NonNullable<typeof argument.resolve>;
+    };
+  }
+  const priorityOf = (id: string) =>
+    (usePlannerStore.getState().items.find((i) => i.id === id) as { priority?: string } | undefined)
+      ?.priority;
+
+  it('gives every entity command a resolve and a runMany', () => {
+    const entity = resolveCommands(ctx).filter((c) => c.argument?.kind === 'entity');
+    expect(entity.length).toBeGreaterThan(0);
+    for (const command of entity) {
+      const argument = command.argument as { resolve?: unknown; runMany?: unknown };
+      expect(typeof argument.resolve, command.id).toBe('function');
+      expect(typeof argument.runMany, command.id).toBe('function');
+    }
+  });
+
+  it('runs every id as ONE history entry', () => {
+    seedStore([task({ id: 't1', title: 'One' }), task({ id: 't2', title: 'Two' })]);
+    const entries = getActionLog().length;
+    entityArg('items.priority.high').runMany(ctx, ['t1', 't2']);
+    expect(priorityOf('t1')).toBe('high');
+    expect(priorityOf('t2')).toBe('high');
+    expect(getActionLog()).toHaveLength(entries + 1);
+    expect(getActionLog()[0]).toMatchObject({ label: 'Set priority: High · 2 items', batch: 2 });
+  });
+
+  it('runs a single id exactly as run() does', () => {
+    seedStore([task({ id: 't1', title: 'One' }), task({ id: 't2', title: 'Two' })]);
+    commandById('items.priority.high').run(ctx, 't1');
+    const single = getActionLog()[0];
+    entityArg('items.priority.high').runMany(ctx, ['t2']);
+    const viaMany = getActionLog()[0];
+    expect(viaMany.label).toBe(single.label.replace('One', 'Two'));
+    expect(viaMany.batch).toBeUndefined();
+  });
+
+  it('drops duplicate, missing and ineligible ids before mutating anything', () => {
+    seedStore([
+      task({ id: 't1', title: 'One' }),
+      task({ id: 'already', title: 'Already', priority: 'high' }),
+      habit({ id: 'h1', title: 'Stretch' }),
+    ]);
+    const entries = getActionLog().length;
+    entityArg('items.priority.high').runMany(ctx, ['t1', 't1', 'gone', 'already', 'h1']);
+    // One survivor is a single pick: no batch, and one entry.
+    expect(getActionLog()).toHaveLength(entries + 1);
+    expect(getActionLog()[0].batch).toBeUndefined();
+    expect(priorityOf('t1')).toBe('high');
+  });
+
+  it('snoozes each item from its own date', () => {
+    seedStore([
+      task({ id: 't1', title: 'One', startDate: TODAY }),
+      task({ id: 't2', title: 'Two', startDate: '2026-03-20' }),
+    ]);
+    entityArg('items.snooze').runMany(ctx, ['t1', 't2']);
+    const dates = usePlannerStore.getState().items.map((i) => ('startDate' in i ? i.startDate : null));
+    expect(dates).toEqual(['2026-03-11', '2026-03-21']);
+  });
+
+  it('labels a batch complete the way the bulk bar does', () => {
+    seedStore([task({ id: 't1', title: 'One' }), task({ id: 't2', title: 'Two' })]);
+    entityArg('items.complete').runMany(ctx, ['t1', 't2']);
+    expect(getActionLog()[0]).toMatchObject({ label: 'Complete items (2)', batch: 2 });
+    expect(usePlannerStore.getState().items.every((i) => i.status === 'completed')).toBe(true);
+  });
+
+  it('resets streaks without touching completion history', () => {
+    seedStore([
+      habit({ id: 'h1', title: 'Stretch', streak: 4, completedDates: ['2026-03-09'] }),
+      habit({ id: 'h2', title: 'Read', streak: 2, completedDates: ['2026-03-08'] }),
+    ]);
+    entityArg('items.resetStreak').runMany(ctx, ['h1', 'h2']);
+    const habits = usePlannerStore.getState().items as { streak: number; completedDates: string[] }[];
+    expect(habits.map((h) => h.streak)).toEqual([0, 0]);
+    expect(habits.map((h) => h.completedDates)).toEqual([['2026-03-09'], ['2026-03-08']]);
+  });
+
+  describe('delete', () => {
+    const original = useUIStore.getState().confirm;
+    let confirm: ReturnType<typeof vi.fn<typeof original>>;
+    beforeEach(() => {
+      confirm = vi.fn<typeof original>();
+      useUIStore.setState({ confirm });
+      return () => useUIStore.setState({ confirm: original });
+    });
+    const request = () =>
+      confirm.mock.calls[0][0] as { title: string; description: string; onConfirm: () => void };
+
+    it('asks ONCE for the whole selection, and says it can be undone', () => {
+      seedStore([
+        task({ id: 't1', title: 'One' }),
+        task({ id: 't2', title: 'Two' }),
+        habit({ id: 'h1', title: 'Stretch' }),
+      ]);
+      entityArg('items.delete').runMany(ctx, ['t1', 't2', 'h1']);
+      expect(confirm).toHaveBeenCalledTimes(1);
+      expect(request().title).toBe('Delete 3 items?');
+      expect(request().description).toContain('completion history');
+      expect(request().description).toContain('undo');
+      expect(request().description).not.toContain('cannot be undone');
+    });
+
+    it('deletes only what is still there when confirmed', () => {
+      seedStore([
+        task({ id: 't1', title: 'One' }),
+        task({ id: 't2', title: 'Two' }),
+        task({ id: 't3', title: 'Three' }),
+      ]);
+      const deleteItems = vi.spyOn(usePlannerStore.getState(), 'deleteItems');
+      entityArg('items.delete').runMany(ctx, ['t1', 't2', 't3']);
+      // Deleted elsewhere while the prompt was up.
+      usePlannerStore.setState({
+        items: usePlannerStore.getState().items.filter((i) => i.id !== 't2'),
+      });
+      request().onConfirm();
+      expect(deleteItems).toHaveBeenCalledWith(['t1', 't3']);
+      deleteItems.mockRestore();
+    });
+
+    it('does not double-delete a subtask marked with its parent', () => {
+      seedStore([
+        task({ id: 'parent', title: 'Parent' }),
+        task({ id: 'child', title: 'Child', parentItemId: 'parent' }),
+      ]);
+      entityArg('items.delete').runMany(ctx, ['parent', 'child']);
+      request().onConfirm();
+      expect(usePlannerStore.getState().items).toEqual([]);
+      expect(getActionLog()[0].label).toBe('Delete items (2)');
+    });
+  });
+
+  it('resolves marks in input order, dropping the deleted and the ineligible', () => {
+    seedStore([
+      task({ id: 'a', title: 'A' }),
+      task({ id: 'b', title: 'B' }),
+      task({ id: 'done', title: 'Done', status: 'completed' }),
+    ]);
+    const resolved = entityArg('items.complete').resolve(['b', 'gone', 'done', 'a'], ctx);
+    expect(resolved.map((o) => o.value)).toEqual(['b', 'a']);
   });
 });
 

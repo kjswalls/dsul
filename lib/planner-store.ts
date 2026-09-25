@@ -870,6 +870,12 @@ export type ActionLogEntry = {
    * ignored everywhere else — the action log itself renders labels only.
    */
   receipt?: string;
+  /**
+   * How many items one entry covers, set only by `batchHistory`. A structured
+   * flag rather than a label pattern, so the undo strip can ask "was this a
+   * batch?" without a title that happens to end in "· 3 items" spoofing it.
+   */
+  batch?: number;
 };
 
 /**
@@ -893,6 +899,26 @@ let isUndoRedoAction = false;
 let actionLog: ActionLogEntry[] = [];
 let pendingActionLabel: string | null = null;
 let pendingActionReceipt: string | undefined;
+let pendingActionBatch: number | undefined;
+
+/*
+ * Batch state (see batchHistory). `batchReceipts` collects the landing receipts
+ * the looped verbs write, so the one entry can carry them. While `quietDepth`
+ * is above zero the completion verbs collect their celebration and offers here
+ * instead of firing them per item; the outermost quiet batch flushes them once.
+ */
+let batchReceipts: string[] | null = null;
+let quietDepth = 0;
+let batchCompleted = false;
+let deferredAchievementIds: string[] = [];
+let deferredCheckins: { item: Item; dateStr: string }[] = [];
+type BatchEffects = {
+  completed: boolean;
+  achievementIds: string[];
+  checkins: { item: Item; dateStr: string }[];
+};
+// Assigned inside the store creator, where the offer helpers live.
+let flushBatchEffects: (e: BatchEffects) => void = () => {};
 
 /**
  * What a restored row is CALLED in its history entry.
@@ -913,6 +939,7 @@ const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
 export const setNextActionLabel = (label: string, receipt?: string) => {
   pendingActionLabel = label;
   pendingActionReceipt = receipt;
+  if (batchReceipts && receipt) batchReceipts.push(receipt);
 };
 
 // Get the current action log
@@ -959,9 +986,11 @@ const saveToHistory = (state: HistoryState) => {
     label: pendingActionLabel || 'Unknown action',
     timestamp: Date.now(),
     receipt: pendingActionReceipt,
+    batch: pendingActionBatch,
   });
   pendingActionLabel = null;
   pendingActionReceipt = undefined;
+  pendingActionBatch = undefined;
 
   // Limit history size
   if (historyStack.length > MAX_HISTORY_SIZE) {
@@ -1434,7 +1463,7 @@ export const usePlannerStore = create<PlannerStore>()(
        * agent routes (which do not touch the store), so a redo can't re-fire it
        * and a background write can't fire it at a screen nobody is looking at.
        */
-      const offerAchievementFor = (itemId: string) => {
+      const offerAchievementFor = (itemId: string, offered?: Set<string>) => {
         const state = get();
         // ONE zone for the whole function. The `far` comparison below already
         // asked this question of the user's setting; formatGoalDay was asking
@@ -1469,6 +1498,9 @@ export const usePlannerStore = create<PlannerStore>()(
         for (const goal of state.goals) {
           if (goal.state !== 'active') continue;
           if (!goal.milestoneIds.includes(itemId)) continue;
+          // A batch passes the goals it has already offered, so three
+          // milestones of one goal closed together raise one toast, not three.
+          if (offered?.has(goal.id)) continue;
           const { achieved, total } = goalProgress(goal, itemsById);
           if (total === 0) continue;
           // Decision 5's word is DATED: no un-achieved *dated* milestone
@@ -1516,8 +1548,12 @@ export const usePlannerStore = create<PlannerStore>()(
                 },
               },
               duration: 8000,
+              // Second guard behind `offered`: sonner replaces a toast with the
+              // same id rather than stacking another.
+              id: `achieve:${goal.id}`,
             },
           );
+          offered?.add(goal.id);
           // One goal per completion. An item can be a milestone of several, but
           // a stack of toasts for one checkbox is noise, and the first is the
           // one whose list the user was most likely looking at.
@@ -1599,6 +1635,81 @@ export const usePlannerStore = create<PlannerStore>()(
           },
           duration: 8000,
         });
+      };
+
+      /**
+       * The check-in bridge for a batch: ONE toast for every check-in a batch
+       * completed, and one note written to every (item, date) pair and every
+       * goal it serves — the same one-reflection-per-sitting rule as above.
+       * A single pair is not a summary, so it takes the ordinary offer.
+       */
+      const offerCheckinSummary = (pairs: { item: Item; dateStr: string }[]) => {
+        const seen = new Set<string>();
+        const unique = pairs.filter(({ item, dateStr }) => {
+          const key = `${item.id}|${dateStr}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+        const goalsFor = (item: Item) =>
+          get().goals.filter((g) => g.state === 'active' && g.checkinIds.includes(item.id));
+        const relevant = unique.filter(({ item }) => goalsFor(item).length > 0);
+        if (relevant.length === 0) return;
+        if (relevant.length === 1) {
+          offerCheckinNote(relevant[0].item, relevant[0].dateStr);
+          return;
+        }
+        const goalIds = new Set(relevant.flatMap(({ item }) => goalsFor(item).map((g) => g.id)));
+        const goals = get().goals.filter((g) => goalIds.has(g.id));
+        toast(`Checked in on ${goals[0].name}${goals.length > 1 ? ` +${goals.length - 1}` : ''}`, {
+          description: 'Anything worth remembering about these?',
+          action: {
+            label: 'Add a note',
+            onClick: () => {
+              const note = window.prompt('How is it going?');
+              if (!note?.trim()) return;
+              // Re-read at click time per item, as offerCheckinNote does.
+              for (const { item, dateStr } of relevant) {
+                for (const goal of goalsFor(item)) {
+                  dbRecordCheckin(item.id, dbTypeOf(item), goal.id, dateStr, note.trim());
+                }
+              }
+            },
+          },
+          cancel: {
+            label: 'View goal',
+            onClick: () => {
+              if (typeof window !== 'undefined') window.location.assign(`/goal/${goals[0].id}`);
+            },
+          },
+          duration: 8000,
+        });
+      };
+
+      /*
+       * The completion verbs' side effects, routed through a quiet batch when
+       * one is open. Outside a batch these are exactly the per-item calls.
+       */
+      const celebrate = () => {
+        if (quietDepth > 0) batchCompleted = true;
+        else celebrateCompletion();
+      };
+      const offerCheckin = (item: Item, dateStr: string) => {
+        if (quietDepth > 0) deferredCheckins.push({ item, dateStr });
+        else offerCheckinNote(item, dateStr);
+      };
+      const offerAchievement = (itemId: string) => {
+        if (quietDepth > 0) deferredAchievementIds.push(itemId);
+        else offerAchievementFor(itemId);
+      };
+      flushBatchEffects = ({ completed, achievementIds, checkins }) => {
+        // Fired after the batch's history entry exists, so the confetti aims at
+        // the undo strip that entry raises (except when a quiet batch nests in a
+        // loud one: see batchHistory).
+        if (completed) celebrateCompletion();
+        const offered = new Set<string>();
+        for (const id of new Set(achievementIds)) offerAchievementFor(id, offered);
+        if (checkins.length) offerCheckinSummary(checkins);
       };
 
       const updateItemAction = (id: string, type: ItemType, updates: Partial<Task> | Partial<HabitItem>) => {
@@ -2527,8 +2638,8 @@ export const usePlannerStore = create<PlannerStore>()(
           ));
           dbSetItemCompletion(id, dbTypeOf(found), dateStr, !alreadyDone).catch(console.error);
           if (!alreadyDone) {
-            celebrateCompletion();
-            offerCheckinNote(task, dateStr);
+            celebrate();
+            offerCheckin(task, dateStr);
           }
         } else {
           // One-off task — existing behavior unchanged
@@ -2538,8 +2649,8 @@ export const usePlannerStore = create<PlannerStore>()(
           // Transition-only, like the recurring/habit taps: an explicit
           // status='completed' on an already-completed task must not celebrate.
           if (newStatus === 'completed' && task.status !== 'completed') {
-            celebrateCompletion();
-            offerAchievementFor(id);
+            celebrate();
+            offerAchievement(id);
           }
         }
       },
@@ -3507,11 +3618,11 @@ export const usePlannerStore = create<PlannerStore>()(
         }
         dbUpdateItem(id, 'habit', rest).catch(console.error);
         if (status === 'done' && !wasCompleted) {
-          celebrateCompletion();
+          celebrate();
           // Habits can serve as check-ins too — `isCheckinEligible` asks only
           // that the item recurs — so the bridge belongs on both completion
           // verbs, not just the task one.
-          offerCheckinNote(habit, dateStr);
+          offerCheckin(habit, dateStr);
         }
       },
 
@@ -4491,3 +4602,89 @@ usePlannerStore.subscribe((state) => {
 
   prevStateJson = currentStateJson;
 });
+
+/* ── batches ───────────────────────────────────────────────────────────── */
+
+/** One receipt for a batch, by landingReceipt's own rule: say it once, or count. */
+function mergeReceipts(receipts: string[]): string | undefined {
+  if (receipts.length === 0) return undefined;
+  return new Set(receipts).size === 1
+    ? receipts[0]
+    : `${receipts.length} of these are hidden where they landed`;
+}
+
+/**
+ * Run several single verbs as ONE history entry, so one ⌘Z (or the one undo
+ * strip) takes back the whole batch. The verbs keep their own side effects and
+ * database writes; only the history is folded.
+ *
+ * It holds the subscriber off for the length of `fn`, so prevStateJson stays at
+ * the pre-batch state, then pokes the store once: the subscriber diffs before
+ * against after and saves a single entry under `label`. A batch that changed
+ * nothing saves nothing, and its label does not leak onto the next action.
+ *
+ * `quiet` collects the completion verbs' celebration and offers and fires them
+ * once, after the entry exists and judged on the final state — one burst and
+ * one offer per goal instead of one per item.
+ *
+ * Nested inside another batch (or inside anything else holding the subscriber
+ * off), `fn` runs inline and the outer scope records it. One exception to the
+ * ordering above: a quiet batch nested in a loud one owns the quiet scope but
+ * not the entry, so its effects fire before the outer entry is saved (no
+ * caller nests today). A throw still records what was applied as one entry and
+ * rethrows; its quiet effects are dropped.
+ */
+export function batchHistory(
+  label: string,
+  n: number,
+  fn: () => void,
+  opts?: { quiet?: boolean },
+): void {
+  // Quiet bookkeeping applies on every path, including the nested one: an
+  // inner quiet batch joins the outermost quiet scope.
+  const ownsQuiet = !!opts?.quiet && quietDepth === 0;
+  if (opts?.quiet) quietDepth++;
+  if (ownsQuiet) {
+    batchCompleted = false;
+    deferredAchievementIds = [];
+    deferredCheckins = [];
+  }
+
+  const recordsHistory = !(isUndoRedoAction || isUpdatingUndoRedo);
+  const outerReceipts = batchReceipts;
+  if (recordsHistory) batchReceipts = [];
+  let failed = false;
+  try {
+    if (recordsHistory) isUpdatingUndoRedo = true;
+    fn();
+  } catch (err) {
+    failed = true;
+    throw err;
+  } finally {
+    if (recordsHistory) {
+      // It was false on entry, or recordsHistory would be false.
+      isUpdatingUndoRedo = false;
+      const receipts = batchReceipts ?? [];
+      batchReceipts = outerReceipts;
+      pendingActionLabel = label;
+      pendingActionReceipt = mergeReceipts(receipts);
+      pendingActionBatch = n;
+      usePlannerStore.setState({});
+      pendingActionLabel = null;
+      pendingActionReceipt = undefined;
+      pendingActionBatch = undefined;
+    }
+    if (opts?.quiet) quietDepth--;
+    if (ownsQuiet) {
+      const effects: BatchEffects = {
+        completed: batchCompleted,
+        achievementIds: deferredAchievementIds,
+        checkins: deferredCheckins,
+      };
+      batchCompleted = false;
+      deferredAchievementIds = [];
+      deferredCheckins = [];
+      if (!failed) flushBatchEffects(effects);
+    }
+  }
+}
