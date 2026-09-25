@@ -80,7 +80,9 @@ export function SwipeRow({ onComplete, onSchedule, onDelete, children }: SwipeRo
   };
 
   return (
-    <div className="relative overflow-hidden rounded-[5px]">
+    // data-sink-row: useSinkHold slides THIS box, not the row inside it — the
+    // overflow-hidden here would clip a row translated out of its own strip.
+    <div data-sink-row className="relative overflow-hidden rounded-[5px]">
       {/* The tray is CLIPPED to the strip the row has vacated, rather than
           standing still under an opaque row that hides it.
 

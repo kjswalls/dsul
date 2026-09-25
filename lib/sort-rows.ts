@@ -160,6 +160,14 @@ export function isRowCompletedOn(row: SortableRow, dateStr: string | null): bool
 }
 
 /**
+ * Which side of the sink a row sorts on. {@link isRowCompletedOn} by default;
+ * a surface passes `useSinkHold`'s `completedAs` (hooks/use-sink-hold.ts) so a
+ * row just ticked keeps its place for a moment and then slides down, rather
+ * than vanishing to the foot of the group in the frame its checkbox fills.
+ */
+export type CompletedAs = (row: SortableRow, dateStr: string | null) => boolean;
+
+/**
  * Finished work sinks to the foot of its own group.
  *
  * ALWAYS ON, and not a fourth setting. The app already has two controls for
@@ -198,10 +206,14 @@ export function isRowCompletedOn(row: SortableRow, dateStr: string | null): bool
  *    the sink alone through would make it the single working-list rule that
  *    leaks in.
  */
-export function sinkCompleted<T extends SortableRow>(rows: T[], dateStr: string | null): T[] {
+export function sinkCompleted<T extends SortableRow>(
+  rows: T[],
+  dateStr: string | null,
+  completedAs: CompletedAs = isRowCompletedOn,
+): T[] {
   const open: T[] = [];
   const done: T[] = [];
-  for (const row of rows) (isRowCompletedOn(row, dateStr) ? done : open).push(row);
+  for (const row of rows) (completedAs(row, dateStr) ? done : open).push(row);
   if (done.length === 0 || open.length === 0) return rows;
   return [...open, ...done];
 }
@@ -219,6 +231,7 @@ export function orderRows<T extends SortableRow>(
   rows: T[],
   sortBy: SortBy,
   dateStr: string | null,
+  completedAs?: CompletedAs,
 ): T[] {
-  return sinkCompleted(sortRows(rows, sortBy), dateStr);
+  return sinkCompleted(sortRows(rows, sortBy), dateStr, completedAs);
 }
