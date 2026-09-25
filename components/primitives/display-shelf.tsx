@@ -197,7 +197,8 @@ function Clause({ clause: c }: { clause: DisplayClause }) {
  * The one-line width is MEASURED when the text changes, and a resize only
  * COMPARES that number with the width on offer. The text changes when its
  * string does, and also when its size does with the string unchanged: a font
- * that loads late, or a text-spacing or text-only-zoom override. Measuring
+ * that loads late, a text-spacing or text-only-zoom override, or the browser's
+ * font-size setting, which moves its rem-sized gaps and dots. Measuring
  * means forcing the one-line layout; doing that inside ResizeObserver delivery
  * is how a measure → resize → measure loop starts, and the "ResizeObserver
  * loop" errors it raises land on every other observer on the page. So what the
@@ -281,8 +282,10 @@ function ShelfBody({
   // with the planner is measured in the fallback face above. The measure above
   // is what asks for that subset, so `ready` here waits on it. Per text, not
   // once, since each text can ask for a subset of its own. The observer below
-  // hears a swap through its sample, which is Latin, so a subset for another
-  // script changes nothing it can see. (jsdom has no `document.fonts`.)
+  // hears a swap only in the face its sample is drawn in, the basic Latin one,
+  // so a face that loads for any other characters (another script, or accented
+  // Latin such as a Polish name) changes nothing it can see. (jsdom has no
+  // `document.fonts`.)
   useEffect(() => {
     let alive = true;
     document.fonts?.ready.then(() => {
@@ -301,18 +304,21 @@ function ShelfBody({
   // changes with the very fit this is deciding. The zero-height probe's width
   // is the root's and nothing else, so a probe resize is the column moving, and
   // that only compares. The sample's width is a fixed phrase in the shelf's own
-  // type and nothing else, never the column's or the fit's, so a sample resize
-  // is the text changing size with its string unchanged (a late font, a
-  // text-spacing or text-only-zoom override, a minimum font size). That
-  // re-measures, a frame later, in either fit and whatever else the delivery
-  // holds: a change that lands mid-drag is not taken for the drag. A drag never
-  // touches the sample, so it only ever compares. A sample gone to nothing is
-  // the shelf being hidden, with nothing to fit until the sample's return,
-  // itself a resize, measures it.
+  // type plus one rem, never the column's or the fit's, so a sample resize is
+  // the line changing size with its string unchanged: a late font, a
+  // text-spacing or text-only-zoom override, a minimum font size, or the
+  // browser's font-size setting, which leaves the 11px text alone and moves
+  // every rem-sized gap, priority dot and the ✕. That re-measures, a frame
+  // later, in either fit and whatever else the delivery holds: a change that
+  // lands mid-drag is not taken for the drag. A drag never touches the sample,
+  // so it only ever compares. The first delivery carries the sample too, so a
+  // shelf that mounts laid out measures once more a frame later and finds the
+  // width it already had. A sample gone to nothing is the shelf being hidden,
+  // with nothing to fit until the sample's return, itself a resize, measures it.
   //
   // Not the lines, the obvious thing to watch: a stacked line stretches to the
-  // column, so a change that only narrows the text resizes nothing there, and a
-  // change in a frame where the column also moves looks like a drag.
+  // column, so the text changing size resizes nothing there, and a change in a
+  // frame where the column also moves looks like a drag.
   //
   // Guarded: jsdom has no ResizeObserver, suites mount an active braindump
   // without stubbing one (tests/unit/braindump-grouping.test.tsx), and a shelf
@@ -390,15 +396,17 @@ function ShelfBody({
         aria-hidden
         className="pointer-events-none absolute inset-x-0 top-0 h-0"
       />
-      {/* The text's size, sampled (see the observer above): a phrase in the
+      {/* The line's size, sampled (see the observer above): a phrase in the
           shelf's own type, placed out of flow and unbreakable, so its width
-          answers to the font and to spacing and never to the column. Drawn
-          through ::before, so it adds no text to the page. */}
+          answers to the font and to spacing and never to the column. Its rem
+          of padding answers for the rest of the line, whose gaps and dots are
+          sized in rem. Both are on ::before, so the phrase adds no text to the
+          page and the padding sits inside the box the observer reads. */}
       <span
         ref={sampleRef}
         data-shelf-sample=""
         aria-hidden
-        className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:content-['Hide_finished']"
+        className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:pl-4 before:content-['Hide_finished']"
       />
       {/* No aria-label: the name is the visible text, so what a voice-control
           user reads off the screen is what they can say (WCAG 2.5.3, Label in

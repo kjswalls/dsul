@@ -722,6 +722,17 @@ describe('fit: one line, or the stack', () => {
   /** The text changed size with its string unchanged. */
   const resample = (width: number) => deliver([sample(), width]);
 
+  /**
+   * What a real observer delivers the moment it starts watching: the probe at
+   * the column's width and the sample at its phrase's, which asks for a frame
+   * to measure in. A case that resizes the sample starts here, so a shelf that
+   * could only ever ask for one frame has spent it before the case begins.
+   */
+  async function firstDelivery() {
+    deliver([probe(), boxWidth], [sample(), 70]);
+    await nextFrame();
+  }
+
   /** Let one animation frame run, and whatever the shelf asked of it first. */
   const nextFrame = () =>
     act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
@@ -809,6 +820,7 @@ describe('fit: one line, or the stack', () => {
     boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
+    await firstDelivery();
     expect(fit()).toBe('line');
 
     lineWidthOf = () => 150;
@@ -827,6 +839,7 @@ describe('fit: one line, or the stack', () => {
     boxWidth = 150;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
+    await firstDelivery();
     expect(fit()).toBe('stack');
 
     lineWidthOf = () => 50;
@@ -841,6 +854,7 @@ describe('fit: one line, or the stack', () => {
     boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
+    await firstDelivery();
     expect(fit()).toBe('line');
 
     // One delivery: the column widens by 10 as the text widens by half.
@@ -862,6 +876,7 @@ describe('fit: one line, or the stack', () => {
     boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
+    await firstDelivery();
     expect(fit()).toBe('line');
 
     lineWidthOf = () => 150;
@@ -875,9 +890,9 @@ describe('fit: one line, or the stack', () => {
   });
 
   it('watches its probe and its sample, and nothing whose size the fit decides', () => {
-    // Not the lines: a stacked line stretches across the column, so a text that
-    // narrowed there resized nothing, and a line resizing in a frame the column
-    // also moved could not be told from a drag.
+    // Not the lines: a stacked line stretches across the column, so the text
+    // changing size resized nothing there, and a line resizing in a frame the
+    // column also moved could not be told from a drag.
     seed({ braindumpGroupBy: 'project' });
     renderBraindump();
     const watchesExactlyTheTwo = () => {
@@ -894,11 +909,14 @@ describe('fit: one line, or the stack', () => {
     watchesExactlyTheTwo();
   });
 
-  it('samples the text in its own type, out of flow and unbreakable, and adds no text', () => {
-    // Its width has to answer to the font and to spacing and never to the
-    // column: out of flow, unbreakable, from the root's top-left corner. Its
-    // phrase comes through ::before, so the shelf's text and name stay the
-    // visible text, and nothing about it shows or takes a pointer.
+  it('samples the line in its own type, out of flow and unbreakable, and adds no text', () => {
+    // Its width has to answer to the font, to spacing and to the rem, and never
+    // to the column: out of flow, unbreakable, pinned at the root's top-left
+    // corner and never stretched from it, which is why the list is exact. The
+    // rem of padding stands for the gaps and dots, which are sized in rem.
+    // Phrase and padding both come through ::before, so the shelf's text content
+    // stays the visible text; aria-hidden and invisible keep the sample out of
+    // the accessibility tree, and nothing about it shows or takes a pointer.
     seed({ braindumpGroupBy: 'project' });
     renderBraindump();
     const s = sample();
@@ -912,9 +930,11 @@ describe('fit: one line, or the stack', () => {
       'top-0',
       'h-0',
       'overflow-hidden',
-      'whitespace-nowrap'
+      'whitespace-nowrap',
+      'before:pl-4',
+      "before:content-['Hide_finished']",
+      { exact: true }
     );
-    expect(s.className).toMatch(/(^| )before:content-\['[^'\s]+'\]( |$)/);
     expect(s).toHaveAttribute('aria-hidden', 'true');
     expect(s.textContent).toBe('');
   });
