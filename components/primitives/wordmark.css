@@ -1,0 +1,578 @@
+/*
+ * The wordmark and its hover flavors (components/primitives/wordmark.tsx,
+ * lib/wordmark-flavors.ts).
+ *
+ * At rest only the four initials show; every other letter is a .wordmark-fill
+ * held at max-width 0. [data-open] grows them in, staggered by --wm-fi so the
+ * phrase unrolls left to right, while each letter's color flashes --wm-shine
+ * staggered by --wm-i: that is the shimmer. Closing reverses the stagger.
+ * Each flavor is a block keyed off [data-flavor] below.
+ *
+ * The dot is the accent. It is its own element in every flavor and nothing
+ * here puts opacity on anything that contains it (CLAUDE.md, the lime rule):
+ * neon's flicker runs on .wordmark-word, not the mark. Its own blinks (pixel,
+ * terminal) are the dot's own opacity, not a parent's.
+ */
+
+.wordmark {
+  --wm-size: 13px;
+  --wm-fg: var(--foreground);
+  --wm-shine: oklch(0.74 0.2 130);
+  --wm-neon: oklch(0.62 0.2 138);
+  --wm-neon-glow: oklch(0.8 0.2 130 / 70%);
+  --wm-tape: oklch(0.22 0.01 272);
+  --wm-stagger: 16ms;
+  --wm-reveal: 220ms;
+  --wm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+  font:
+    600 var(--wm-size) / 1 var(--font-inter),
+    'Inter',
+    system-ui,
+    sans-serif;
+  letter-spacing: -0.01em;
+  color: var(--wm-fg);
+  white-space: nowrap;
+  /* The sidebar's band is pointer-events-none so it never catches a click
+     meant for what sits under it; the word itself takes the pointer. */
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+.dark .wordmark {
+  --wm-shine: var(--primary);
+  --wm-neon: var(--primary);
+  --wm-neon-glow: oklch(0.87 0.19 125 / 75%);
+  --wm-tape: oklch(0.1 0.005 272);
+}
+
+.wordmark-word {
+  position: relative;
+  display: inline-flex;
+  align-items: baseline;
+}
+.wordmark-char {
+  position: relative;
+  display: inline-block;
+  color: var(--wm-fg);
+}
+.wordmark-fill {
+  max-width: 0;
+  opacity: 0;
+  overflow: hidden;
+  transition:
+    max-width var(--wm-reveal) var(--wm-ease),
+    opacity calc(var(--wm-reveal) * 0.8) linear;
+  transition-delay: calc((var(--wm-fill-count) - 1 - var(--wm-fi)) * 7ms);
+}
+.wordmark[data-open] .wordmark-fill {
+  max-width: 1.2em;
+  opacity: 1;
+  transition-delay: calc(var(--wm-fi) * var(--wm-stagger));
+}
+/* Once every letter is in, let glows and shadows spill past their boxes. */
+.wordmark[data-settled] .wordmark-fill {
+  overflow: visible;
+}
+.wordmark[data-open] .wordmark-char {
+  animation: wm-shine 700ms calc(var(--wm-i) * 32ms + 80ms) ease-out both;
+}
+@keyframes wm-shine {
+  0%,
+  100% {
+    color: var(--wm-fg);
+  }
+  35% {
+    color: var(--wm-shine);
+  }
+}
+
+.wordmark-dot {
+  flex: none;
+  width: calc(var(--wm-size) * 0.46);
+  height: calc(var(--wm-size) * 0.46);
+  margin-left: calc(var(--wm-size) * 0.23);
+  border-radius: 50%;
+  background: var(--primary);
+  transform: translateY(calc(var(--wm-size) * -0.08));
+}
+
+/* 1 · classic: today's mark; the shimmer, and the dot pulses once. */
+.wordmark[data-flavor='classic'][data-open] .wordmark-dot {
+  animation: wm-pulse 600ms 450ms var(--wm-ease);
+}
+@keyframes wm-pulse {
+  40% {
+    transform: translateY(calc(var(--wm-size) * -0.08)) scale(1.6);
+  }
+}
+
+/* 2 · pixel: hard steps like an 8-bit dialog box; the dot is a square pixel. */
+.wordmark[data-flavor='pixel'] {
+  --wm-stagger: 30ms;
+  font:
+    400 calc(var(--wm-size) * 0.92) / 1 var(--font-wm-pixel),
+    monospace;
+  letter-spacing: 0;
+}
+.wordmark[data-flavor='pixel'] .wordmark-fill {
+  transition-timing-function: steps(3, end), steps(2, end);
+}
+.wordmark[data-flavor='pixel'] .wordmark-dot {
+  border-radius: 0;
+  width: calc(var(--wm-size) * 0.42);
+  height: calc(var(--wm-size) * 0.42);
+  transform: none;
+}
+.wordmark[data-flavor='pixel'][data-open] .wordmark-char {
+  animation: wm-shine-step 600ms calc(var(--wm-i) * 40ms + 80ms) steps(1) both;
+}
+.wordmark[data-flavor='pixel'][data-open] .wordmark-dot {
+  animation: wm-blink 900ms 300ms steps(1) 3;
+}
+@keyframes wm-shine-step {
+  0%,
+  100% {
+    color: var(--wm-fg);
+  }
+  30% {
+    color: var(--wm-shine);
+  }
+  60% {
+    color: var(--wm-fg);
+  }
+}
+@keyframes wm-blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+/* 3 · terminal: types itself out after a prompt; the dot is the cursor. */
+.wordmark[data-flavor='terminal'] {
+  --wm-stagger: 42ms;
+  font:
+    500 calc(var(--wm-size) * 0.95) / 1 var(--font-wm-mono),
+    ui-monospace,
+    monospace;
+  letter-spacing: 0;
+}
+.wordmark[data-flavor='terminal'] .wordmark-fill {
+  transition-duration: 0s, 0s;
+}
+.wordmark[data-flavor='terminal'] .wordmark-word::before {
+  content: '>';
+  display: inline-block;
+  max-width: 0;
+  overflow: hidden;
+  color: var(--muted-foreground);
+}
+.wordmark[data-flavor='terminal'][data-open] .wordmark-word::before {
+  max-width: 1.6em;
+  margin-right: 0.45em;
+}
+.wordmark[data-flavor='terminal'] .wordmark-dot {
+  align-self: center;
+  width: 0.55em;
+  height: 1.05em;
+  margin-left: 0.15em;
+  border-radius: 1px;
+  transform: none;
+}
+.wordmark[data-flavor='terminal'][data-open] .wordmark-char {
+  animation: none;
+}
+.wordmark[data-flavor='terminal'][data-open] .wordmark-dot {
+  animation: wm-blink 1s steps(1) infinite;
+}
+
+/* 4 · marker: a lime highlighter swiped under Permanent Marker; the dot splats. */
+.wordmark[data-flavor='marker'] {
+  font:
+    400 calc(var(--wm-size) * 1.12) / 1 var(--font-wm-marker),
+    cursive;
+  letter-spacing: 0.01em;
+}
+.wordmark[data-flavor='marker'] .wordmark-word {
+  padding-inline: 0.15em;
+}
+.wordmark[data-flavor='marker'] .wordmark-word::before {
+  content: '';
+  position: absolute;
+  left: -0.1em;
+  right: -0.1em;
+  top: 0.42em;
+  bottom: -0.05em;
+  z-index: 0;
+  border-radius: 0.25em 0.5em 0.3em 0.45em;
+  background: var(--primary);
+  transform: scaleX(0) skewX(-8deg);
+  transform-origin: left;
+  transition: transform 380ms var(--wm-ease);
+}
+.wordmark[data-flavor='marker'][data-open] .wordmark-word::before {
+  transform: scaleX(1) skewX(-8deg);
+  transition-duration: 520ms;
+}
+.wordmark[data-flavor='marker'] .wordmark-char {
+  z-index: 1;
+}
+.wordmark[data-flavor='marker'][data-open] .wordmark-char {
+  color: var(--lime-ink);
+  animation: none;
+}
+.wordmark[data-flavor='marker'] .wordmark-dot {
+  width: calc(var(--wm-size) * 0.4);
+  height: calc(var(--wm-size) * 0.4);
+  border-radius: 45% 55% 50% 40%;
+}
+.wordmark[data-flavor='marker'][data-open] .wordmark-dot {
+  animation: wm-splat 400ms 500ms var(--wm-ease) both;
+}
+@keyframes wm-splat {
+  50% {
+    transform: translateY(calc(var(--wm-size) * -0.08)) scale(1.7, 1.2);
+  }
+}
+
+/* 5 · bubble: letters pop in; the dot is a hollow bubble that floats. */
+.wordmark[data-flavor='bubble'] {
+  font:
+    400 calc(var(--wm-size) * 1.15) / 1 var(--font-wm-bubble),
+    var(--font-inter),
+    'Inter',
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.01em;
+}
+.wordmark[data-flavor='bubble'] .wordmark-dot {
+  width: calc(var(--wm-size) * 0.55);
+  height: calc(var(--wm-size) * 0.55);
+  border: calc(var(--wm-size) * 0.1) solid var(--primary);
+  background: transparent;
+}
+.wordmark[data-flavor='bubble'][data-open] .wordmark-char {
+  animation:
+    wm-shine 700ms calc(var(--wm-i) * 32ms + 80ms) ease-out both,
+    wm-pop 420ms calc(var(--wm-i) * 26ms) var(--wm-ease) both;
+}
+.wordmark[data-flavor='bubble'][data-open] .wordmark-dot {
+  animation: wm-float 1.6s 300ms ease-in-out infinite;
+}
+@keyframes wm-pop {
+  0% {
+    transform: scale(0.4);
+  }
+  60% {
+    transform: scale(1.18);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+@keyframes wm-float {
+  0%,
+  100% {
+    transform: translateY(calc(var(--wm-size) * -0.08));
+  }
+  50% {
+    transform: translateY(calc(var(--wm-size) * -0.45)) scale(1.12);
+  }
+}
+
+/* 6 · tape: embossed label-maker tape in caps; the dot is its punched hole. */
+.wordmark[data-flavor='tape'] {
+  --wm-fg: oklch(0.97 0 0);
+  --wm-shine: var(--primary);
+  font:
+    700 calc(var(--wm-size) * 0.82) / 1 var(--font-wm-mono),
+    ui-monospace,
+    monospace;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  text-shadow: 0 1px 0 oklch(0 0 0 / 55%);
+}
+.wordmark[data-flavor='tape'] .wordmark-word {
+  padding: 0.42em 0.55em 0.42em 0.9em;
+  border-radius: 0.18em;
+  background: var(--wm-tape);
+  box-shadow:
+    inset 0 -1px 0 oklch(0 0 0 / 40%),
+    0 1px 2px oklch(0 0 0 / 20%);
+  transform: rotate(-1.2deg);
+}
+.wordmark[data-flavor='tape'] .wordmark-dot {
+  position: absolute;
+  left: 0.4em;
+  top: 50%;
+  z-index: 1;
+  width: 0.28em;
+  height: 0.28em;
+  margin: 0;
+  transform: translateY(-50%);
+}
+.wordmark[data-flavor='tape'][data-open] .wordmark-word {
+  animation: wm-punch 500ms var(--wm-ease);
+}
+@keyframes wm-punch {
+  0% {
+    transform: rotate(-1.2deg) translateX(-0.2em);
+  }
+}
+
+/* 7 · neon: tubes flicker on and hold a glow, the dot with them. */
+.wordmark[data-flavor='neon'] {
+  font:
+    400 calc(var(--wm-size) * 1.12) / 1 var(--font-wm-neon),
+    var(--font-inter),
+    'Inter',
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.02em;
+}
+.wordmark[data-flavor='neon'][data-open] {
+  --wm-fg: var(--wm-neon);
+  text-shadow:
+    0 0 0.15em var(--wm-neon-glow),
+    0 0 0.5em var(--wm-neon-glow);
+}
+.wordmark[data-flavor='neon'][data-open] .wordmark-char {
+  animation: none;
+}
+.wordmark[data-flavor='neon'][data-open] .wordmark-word {
+  animation: wm-flicker 900ms linear both;
+}
+.wordmark[data-flavor='neon'][data-open] .wordmark-dot {
+  box-shadow:
+    0 0 0.3em var(--wm-neon-glow),
+    0 0 0.8em var(--wm-neon-glow);
+}
+@keyframes wm-flicker {
+  0% {
+    opacity: 0.3;
+  }
+  8% {
+    opacity: 1;
+  }
+  12% {
+    opacity: 0.4;
+  }
+  18% {
+    opacity: 1;
+  }
+  40% {
+    opacity: 0.75;
+  }
+  44%,
+  100% {
+    opacity: 1;
+  }
+}
+
+/* 8 · serif: Instrument Serif italic, slow and airy; the dot drifts down. */
+.wordmark[data-flavor='serif'] {
+  --wm-stagger: 20ms;
+  --wm-reveal: 320ms;
+  font:
+    italic 400 calc(var(--wm-size) * 1.45) / 1 var(--font-wm-serif),
+    Georgia,
+    serif;
+  letter-spacing: 0;
+}
+.wordmark[data-flavor='serif'] .wordmark-dot {
+  width: calc(var(--wm-size) * 0.36);
+  height: calc(var(--wm-size) * 0.36);
+}
+.wordmark[data-flavor='serif'][data-open] .wordmark-dot {
+  animation: wm-drift 700ms 400ms var(--wm-ease) both;
+}
+@keyframes wm-drift {
+  0% {
+    transform: translate(-0.3em, -1em) scale(0.2);
+  }
+}
+
+/* 9 · glitch: heavy Inter, a quick red and cyan split; the dot jitters. */
+.wordmark[data-flavor='glitch'] {
+  font-weight: 800;
+  letter-spacing: -0.02em;
+}
+.wordmark[data-flavor='glitch'][data-open] .wordmark-word {
+  animation: wm-glitch 520ms steps(1) both;
+}
+.wordmark[data-flavor='glitch'][data-open] .wordmark-dot {
+  animation: wm-jump 520ms steps(1) both;
+}
+@keyframes wm-glitch {
+  0% {
+    text-shadow:
+      0.08em 0 oklch(0.65 0.25 25),
+      -0.08em 0 oklch(0.75 0.15 210);
+    transform: translateX(0.04em);
+  }
+  20% {
+    text-shadow:
+      -0.06em 0.02em oklch(0.65 0.25 25),
+      0.06em -0.02em oklch(0.75 0.15 210);
+    transform: translateX(-0.05em) skewX(-6deg);
+  }
+  40% {
+    text-shadow:
+      0.1em 0 oklch(0.65 0.25 25),
+      -0.04em 0 oklch(0.75 0.15 210);
+    transform: none;
+  }
+  60% {
+    text-shadow:
+      -0.03em 0 oklch(0.65 0.25 25),
+      0.03em 0 oklch(0.75 0.15 210);
+    transform: translateX(0.03em);
+  }
+  80%,
+  100% {
+    text-shadow: none;
+    transform: none;
+  }
+}
+@keyframes wm-jump {
+  0% {
+    transform: translate(0.4em, -0.5em);
+  }
+  25% {
+    transform: translate(-0.3em, 0.1em);
+  }
+  50% {
+    transform: translate(0.2em, -0.2em);
+  }
+  75%,
+  100% {
+    transform: translateY(calc(var(--wm-size) * -0.08));
+  }
+}
+
+/* 10 · wavy: Fredoka letters roll up in a wave; the dot bounces in last. */
+.wordmark[data-flavor='wavy'] {
+  font:
+    600 calc(var(--wm-size) * 1.08) / 1 var(--font-wm-round),
+    var(--font-inter),
+    'Inter',
+    system-ui,
+    sans-serif;
+  letter-spacing: 0;
+}
+.wordmark[data-flavor='wavy'][data-open] .wordmark-char {
+  animation:
+    wm-shine 700ms calc(var(--wm-i) * 32ms + 80ms) ease-out both,
+    wm-wave 700ms calc(var(--wm-i) * 45ms + 120ms) ease-in-out both;
+}
+.wordmark[data-flavor='wavy'][data-open] .wordmark-dot {
+  animation: wm-bounce 800ms 810ms cubic-bezier(0.3, 0, 0.4, 1) both;
+}
+@keyframes wm-wave {
+  30% {
+    transform: translateY(-0.28em);
+  }
+  60% {
+    transform: translateY(0.06em);
+  }
+}
+@keyframes wm-bounce {
+  35% {
+    transform: translateY(-0.7em);
+  }
+  70% {
+    transform: translateY(-0.15em);
+  }
+}
+
+/* 11 · scramble: Space Mono letters decode left to right (the component
+   swaps the glyphs); the dot is a diamond that spins once. */
+.wordmark[data-flavor='scramble'] {
+  --wm-stagger: 10ms;
+  font:
+    700 calc(var(--wm-size) * 0.95) / 1 var(--font-wm-code),
+    ui-monospace,
+    monospace;
+  letter-spacing: -0.02em;
+}
+.wordmark[data-flavor='scramble'] .wordmark-char[data-scrambling] {
+  color: var(--muted-foreground);
+  animation: none;
+}
+.wordmark[data-flavor='scramble'] .wordmark-dot {
+  border-radius: 1px;
+  transform: rotate(45deg);
+}
+.wordmark[data-flavor='scramble'][data-open] .wordmark-dot {
+  animation: wm-spin 600ms 500ms var(--wm-ease) both;
+}
+@keyframes wm-spin {
+  from {
+    transform: rotate(45deg);
+  }
+  to {
+    transform: rotate(405deg);
+  }
+}
+
+/* 12 · arcade: Bungee blocks drop in with a lime shadow; the dot is a coin. */
+.wordmark[data-flavor='arcade'] {
+  font:
+    400 calc(var(--wm-size) * 1.05) / 1 var(--font-wm-block),
+    var(--font-inter),
+    'Inter',
+    system-ui,
+    sans-serif;
+  letter-spacing: 0.01em;
+}
+/* The lime shadow sits on the initials, and on the growing letters only once
+   they have settled, so it is never faded in through a letter's opacity. */
+.wordmark[data-flavor='arcade'] .wordmark-char:not(.wordmark-fill),
+.wordmark[data-flavor='arcade'][data-settled] .wordmark-fill {
+  text-shadow: 0.09em 0.09em 0 var(--primary);
+}
+.wordmark[data-flavor='arcade'][data-open] .wordmark-char {
+  animation:
+    wm-shine 700ms calc(var(--wm-i) * 32ms + 80ms) ease-out both,
+    wm-drop 360ms calc(var(--wm-i) * 22ms) var(--wm-ease) both;
+}
+.wordmark[data-flavor='arcade'] .wordmark-dot {
+  width: 0.36em;
+  height: 0.36em;
+  border-radius: 0;
+  box-shadow: 0.09em 0.09em 0 var(--foreground);
+}
+.wordmark[data-flavor='arcade'][data-open] .wordmark-dot {
+  animation: wm-coin 700ms 300ms linear both;
+}
+@keyframes wm-drop {
+  0% {
+    transform: translateY(-0.5em);
+  }
+}
+@keyframes wm-coin {
+  25% {
+    transform: translateY(-0.5em) scaleX(0.1);
+  }
+  50% {
+    transform: translateY(-0.7em) scaleX(1);
+  }
+  75% {
+    transform: translateY(-0.4em) scaleX(0.1);
+  }
+}
+
+/* Reduced motion keeps the flavor and the spelled-out name, and drops every
+   movement: letters appear at once, nothing shimmers, blinks or bounces. */
+@media (prefers-reduced-motion: reduce) {
+  .wordmark-fill,
+  .wordmark-word::before {
+    transition: none !important;
+  }
+  .wordmark-char,
+  .wordmark-dot,
+  .wordmark-word {
+    animation: none !important;
+  }
+}
