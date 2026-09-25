@@ -179,7 +179,7 @@ interface BucketCardProps {
   onAdd?: (bucket: TimeBucket, type: 'task' | 'habit') => void;
   /** "You are here". Reads as a lime rule down the card's left wall ('spine'),
    *  plus a lime disc on the glyph ('tray') — never a ring in either. A shut
-   *  'spine' card has no wall, so its chevron takes the lime instead. */
+   *  card has no wall, so there the caption carries "now" on its own. */
   isCurrent?: boolean;
   /** Drop highlight while dragging over. */
   isDropTarget?: boolean;
@@ -287,10 +287,8 @@ interface BucketCardProps {
  * long rule and a short one a short rule. That is the difference between
  * position and selection. An empty current bucket has no card to rule, so in
  * 'spine' it says "now" only through its caption stepping up a tone. A SHUT
- * current bucket is not empty, and folding the bucket you are in must not also
- * hide that you are in it, so in 'spine' its chevron turns lime: the one mark
- * on the caption that already means "there is more here". ('tray' keeps its
- * lime disc shut or open.)
+ * current bucket has no card either, so the same holds: its caption is where
+ * "now" lives, and no second lime mark is added for the fold.
  */
 export function BucketCard({
   bucket,
@@ -440,10 +438,8 @@ export function BucketCard({
                   <ChevronDown
                     aria-hidden
                     className={cn(
-                      'h-3 w-3 flex-none transition-transform',
-                      isShut && '-rotate-90',
-                      // Its own element at full strength — lime is never faded.
-                      isShut && isCurrent && isSpine ? 'text-primary' : 'text-muted-foreground/50'
+                      'h-3 w-3 flex-none text-muted-foreground/50 transition-transform',
+                      isShut && '-rotate-90'
                     )}
                   />
                 </button>

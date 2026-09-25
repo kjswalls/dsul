@@ -69,20 +69,6 @@ describe('BucketCard — shut', () => {
   });
 });
 
-describe('BucketCard — shut and current', () => {
-  it('turns the chevron lime, since there is no card wall to carry the rule', () => {
-    const { getByTestId } = card({ isCurrent: true });
-    const chevron = getByTestId('bucket-toggle').querySelector('svg:last-child')!;
-    expect(chevron.getAttribute('class')).toContain('text-primary');
-  });
-
-  it('leaves a shut bucket that is not current quiet', () => {
-    const { getByTestId } = card();
-    const chevron = getByTestId('bucket-toggle').querySelector('svg:last-child')!;
-    expect(chevron.getAttribute('class')).not.toContain('text-primary');
-  });
-});
-
 describe('BucketCard — open', () => {
   it('never shows the peek', () => {
     useViewStore.setState({ collapsedBuckets: [] });
