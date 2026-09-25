@@ -11,6 +11,7 @@ import { flattenDayRows } from '@/lib/day-items';
 import { toDateStr } from '@/lib/recurrence';
 import { groupRows } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useViewStore } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
 import { cn } from '@/lib/utils';
@@ -56,13 +57,14 @@ function DaySection({ date }: { date: Date }) {
     () => toDateStr(date, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone),
     [date, userTimezone]
   );
+  const { completedAs, rootRef } = useSinkHold<HTMLElement>();
   const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs, goals }).map((g) => ({
     ...g,
-    rows: orderRows(g.rows, sortBy, dateStr),
+    rows: orderRows(g.rows, sortBy, dateStr, completedAs),
   }));
 
   return (
-    <section>
+    <section ref={rootRef}>
       <button
         onClick={() => setSelectedDate(date)}
         className={cn(

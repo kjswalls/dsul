@@ -23,6 +23,7 @@ import {
 } from '@/lib/extension-gates';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
@@ -423,6 +424,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * shows no completion mark must not move as though it had one, so only
    * one-shot rows — which are what this list is almost entirely made of — sink.
    */
+  const { completedAs, rootRef: sinkRootRef } = useSinkHold<HTMLElement>(setNodeRef);
   const grouped: RowGroup<RowItem>[] = useMemo(() => {
     // 'type' is the braindump's own value and has no canvas counterpart — the
     // canvas answers "what is in here" with the Type FILTER instead. Everything
@@ -438,12 +440,12 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // goals the aspire one; each is inert for the values it does not
           // answer, so passing all three always is harmless.
           groupRows(rows, braindumpGroupBy, { routines, programs, goals });
-    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals]);
+    return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null, completedAs) }));
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals, completedAs]);
 
   return (
     <section
-      ref={setNodeRef}
+      ref={sinkRootRef}
       data-dnd-id="sidebar"
       data-dnd-over={isOver ? 'true' : 'false'}
       // Separates the CONTENT scope from the DnD hook: data-dnd-id="sidebar"

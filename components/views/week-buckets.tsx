@@ -19,6 +19,7 @@ import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows, type GroupableRow } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { sinkCompleted } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { WEEK_BUCKET_MAX_H } from '@/lib/schedule-constants';
 import { toDateStr } from '@/lib/recurrence';
 import type { TimeBucket } from '@/lib/planner-types';
@@ -122,17 +123,18 @@ function WeekBucketCell({
    * discard it — and an O(n) partition spent for nothing, 28 cells deep and on
    * every dnd re-render, is the cost the memo above exists to avoid.
    */
+  const { completedAs, rootRef } = useSinkHold(setNodeRef);
   const grouped =
     canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
       ? groupRows(allRows, canvasGroupBy, { routines, programs, goals }).map((g) => ({
           ...g,
-          rows: sinkCompleted(g.rows, completionDateStr),
+          rows: sinkCompleted(g.rows, completionDateStr, completedAs),
         }))
       : null;
 
   return (
     <div
-      ref={setNodeRef}
+      ref={rootRef}
       data-dnd-id={`week:${dateStr}:${bucket}`}
       data-dnd-over={isOver ? 'true' : 'false'}
     >
@@ -179,7 +181,7 @@ function WeekBucketCell({
                     ))}
                   </GroupSection>
                 ))
-              : sinkCompleted(allRows, completionDateStr).map((row) => (
+              : sinkCompleted(allRows, completionDateStr, completedAs).map((row) => (
                   <TaskRow key={row.item.id} row={row as never} density="compact" date={date} />
                 ))}
           </>
