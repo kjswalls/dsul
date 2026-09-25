@@ -6,15 +6,16 @@ Points `pnpm dev` and/or the Playwright e2e suite at a **local** Supabase instea
 of production.
 
 **Why:** `vercel env pull .env.local` writes PRODUCTION credentials, so a plain
-`pnpm dev` talks to the production project — and hot reload makes that loud.
-Measured 2026-09-18: of the API requests in a ten-minute window, **5,917 came
-from `http://localhost:3000/` and two came from the deployed app**. Every HMR
-remount re-runs the planner's container fan-out and its `getUser()` calls,
-against prod.
+`pnpm dev` talks to the production project — and hot reload makes that loud:
+every HMR remount re-runs the planner's container fan-out and its `getUser()`
+calls, against prod.
 
-The e2e suite had the same problem for the same reason (thousands of throwaway
-auth sessions on prod — a real Disk-IO cost, see
-`supabase/migrations/037_disk_io_hygiene.sql`). This script replaces the old
+The e2e suite had the same problem, and worse (thousands of throwaway auth
+sessions on prod — a real Disk-IO cost, see
+`supabase/migrations/037_disk_io_hygiene.sql`). CI ran it against prod until
+2026-09-24, when overlapping runs took the project down. The 5,917 requests from
+`http://localhost:3000/` measured on 2026-09-18 were likely those CI runs too:
+`localhost:3000` is the Playwright browser's origin wherever it runs. This script replaces the old
 `e2e-local-setup.sh` and covers both from one stack.
 
 ### Prerequisites
@@ -66,8 +67,16 @@ supabase stop       # shut the stack down (frees the RAM)
   reconfigure a stack that is already up.
 - The URL and keys are read live from `supabase status`, never hardcoded, so this
   stays correct across CLI versions.
-- CI still uses the hosted values injected from GitHub Actions secrets; wiring CI
-  to a local (or Supabase-branch) database is a separate follow-up.
+- CI no longer has hosted values: the E2E job's secrets were production's and
+  its runs took prod down on 2026-09-24, so the job is off until it can run this
+  script on the runner. The suite refuses any non-loopback Supabase URL
+  (`assertLocalTarget` in `tests/e2e/helpers/env.ts`), with no override.
+- **Known blocker, so the script does not work today** (for CI or locally): `supabase db reset` cannot replay the
+  migrations onto an empty database yet. `001` calls `update_updated_at()` and
+  `007`/`013` alter `tasks`, `habits`, `projects` and `habit_groups`, none of
+  which any migration creates (they predate the migrations tree; see
+  `supabase/schema.sql`), and `002` re-creates a trigger `001` already made. A
+  baseline migration is the fix.
 
 ## `verify-039.sh`
 
