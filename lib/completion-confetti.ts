@@ -23,19 +23,61 @@ export function celebrateCompletion(): void {
   if (document.documentElement.hasAttribute('data-reduce-motion')) return;
   import('canvas-confetti')
     .then(({ default: confetti }) => {
-      confetti({
-        particleCount: 70,
-        spread: 60,
-        startVelocity: 28,
-        origin: { y: 0.7 },
-        // Lime-family hexes — a canvas can't read CSS custom properties, and
-        // the burst should read as dsul, not a generic party (the onboarding
-        // tour's purple burst predates the brand rule).
-        colors: ['#b8e45c', '#8fd14f', '#5a8f22', '#e8c96a'],
-        disableForReducedMotion: true,
+      // Aimed after the next paint, not now: completing raises the activity
+      // row through an effect (hooks/use-undo-toast.ts), so at call time it
+      // is not on screen yet — and the import can resolve before React commits.
+      return nextPaint().then(() => {
+        confetti({
+          particleCount: 70,
+          spread: 60,
+          startVelocity: 28,
+          origin: burstOrigin(),
+          // Lime-family hexes — a canvas can't read CSS custom properties, and
+          // the burst should read as dsul, not a generic party (the onboarding
+          // tour's purple burst predates the brand rule).
+          colors: ['#b8e45c', '#8fd14f', '#5a8f22', '#e8c96a'],
+          disableForReducedMotion: true,
+        });
       });
     })
     .catch(() => {
       // Some mobile browsers refuse the canvas — a celebration is never an error.
     });
+}
+
+/** Where the burst starts today when there is no activity row to stand on. */
+const DEFAULT_ORIGIN = { x: 0.5, y: 0.7 };
+
+function nextPaint(): Promise<void> {
+  // Two frames: the first runs before the pending commit's paint, the second
+  // after it, so the row the completion raised has a box by then.
+  return new Promise((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
+
+/**
+ * The burst rises from the top edge of the activity row ("Complete task: …"),
+ * so the celebration sits on the receipt for the thing that earned it rather
+ * than in the middle of the screen. Both docks mount an UndoStrip, but only
+ * the one in the visible shell has a box; a row that is hidden or scrolled
+ * off-screen falls back to the old centre origin.
+ *
+ * Exported for the unit test.
+ */
+export function burstOrigin(): { x: number; y: number } {
+  const w = window.innerWidth;
+  const h = window.innerHeight;
+  if (!w || !h) return DEFAULT_ORIGIN;
+  const rows = document.querySelectorAll<HTMLElement>('[data-testid="undo-strip"]');
+  for (const row of rows) {
+    const r = row.getBoundingClientRect();
+    if (r.width === 0 || r.height === 0) continue;
+    if (r.bottom <= 0 || r.top >= h || r.right <= 0 || r.left >= w) continue;
+    return {
+      x: (r.left + r.width / 2) / w,
+      y: Math.max(0, r.top) / h,
+    };
+  }
+  return DEFAULT_ORIGIN;
 }
