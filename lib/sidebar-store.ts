@@ -109,8 +109,14 @@ export const useSidebarStore = create<SidebarState>()(
         if (scope !== 'all') return
         set({ ...USER_SCOPED_DEFAULTS })
       },
-      setLeftSidebarOpen: (open) => set({ leftSidebarOpen: open }),
-      toggleLeftSidebar: () => set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen })),
+      // Docking or collapsing ends any hover-peek in the same write. The flag
+      // is otherwise only cleared by the wrapper's mouseleave, and a pointer
+      // that docks the column from inside it (the peek's pin, or ⌘[ mid-peek)
+      // never leaves — so a later collapse would drop straight back into a
+      // peek under that same pointer instead of closing.
+      setLeftSidebarOpen: (open) => set({ leftSidebarOpen: open, leftSidebarHovered: false }),
+      toggleLeftSidebar: () =>
+        set((state) => ({ leftSidebarOpen: !state.leftSidebarOpen, leftSidebarHovered: false })),
       setChatExpanded: (expanded) => set({ chatExpanded: expanded }),
       toggleChat: () => set((state) => ({ chatExpanded: !state.chatExpanded })),
       setLeftSidebarHovered: (hovered) => set({ leftSidebarHovered: hovered }),

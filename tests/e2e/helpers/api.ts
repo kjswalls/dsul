@@ -483,6 +483,10 @@ export async function resetUserSettings(page: Page | APIRequestContext): Promise
       default_view: 'day',
       time_format: '12h',
       week_start_day: 'sunday',
+      // The sidebar spec's hover-peek tests switch this on. Left out of the
+      // upsert, it stayed on for every later run against the same database,
+      // and each expand-zone click after that peeked instead of expanding.
+      left_sidebar_hover: false,
     }),
   });
   if (!res.ok) console.warn(`[settings-reset] ${res.status}: ${await res.text()}`);

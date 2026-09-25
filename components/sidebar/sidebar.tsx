@@ -60,6 +60,9 @@ import { cn } from '@/lib/utils';
 const NUDGE_PX = 8;
 const NUDGE_COARSE_PX = 48;
 
+/** How long the pointer rests on the collapsed edge before the column peeks. */
+const PEEK_DELAY_MS = 150;
+
 /** Never fires — `mounted` below only needs the server-vs-client snapshot split. */
 const noopSubscribe = () => () => {};
 
@@ -83,11 +86,13 @@ export function Sidebar() {
     leftSidebarHovered,
     leftSidebarHoverEnabled,
     setLeftSidebarHovered,
+    setLeftSidebarOpen,
     leftSidebarWidth,
     setLeftSidebarWidth,
     toggleLeftSidebar,
   } = useSidebarStore();
-  const isVisible = leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
+  const peeking = leftSidebarHoverEnabled && leftSidebarHovered && !leftSidebarOpen;
+  const isVisible = leftSidebarOpen || peeking;
 
   const columnRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ startX: number; startWidth: number; onButton: boolean } | null>(null);
@@ -202,6 +207,24 @@ export function Sidebar() {
     []
   );
 
+  // Hover intent on the expand zone. A peek that opened the instant the
+  // pointer arrived would swap the zone for the peeked column before a click
+  // could land, so throwing the mouse at the edge and clicking — the obvious
+  // way to reopen — only ever peeked. A pointer that clicks within this window
+  // docks the column; one that rests on the edge peeks (PEEK_DELAY_MS).
+  const peekTimerRef = useRef<number | null>(null);
+  const cancelPeek = () => {
+    if (peekTimerRef.current !== null) window.clearTimeout(peekTimerRef.current);
+    peekTimerRef.current = null;
+  };
+  useEffect(() => cancelPeek, []);
+  // The zone unmounts when anything else shows the column (⌘[, a command),
+  // and an unmounted zone hears no mouseleave — so a pending peek would land
+  // on a docked column and outlive the next collapse.
+  useEffect(() => {
+    if (isVisible) cancelPeek();
+  }, [isVisible]);
+
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
@@ -256,7 +279,10 @@ export function Sidebar() {
     <div
       data-tour="left-sidebar"
       className="relative flex h-full"
-      onMouseLeave={() => leftSidebarHovered && setLeftSidebarHovered(false)}
+      onMouseLeave={() => {
+        cancelPeek();
+        if (leftSidebarHovered) setLeftSidebarHovered(false);
+      }}
     >
       <div
         ref={columnRef}
@@ -271,7 +297,7 @@ export function Sidebar() {
           // it reads as lag, so the column goes to direct manipulation for the
           // duration and picks the transition back up on release.
           resizing && 'transition-none',
-          leftSidebarHovered && !leftSidebarOpen && 'absolute left-0 top-0 bottom-0 z-20 rounded-card bg-surface-0 shadow-soft-lg'
+          peeking && 'absolute left-0 top-0 bottom-0 z-[24] rounded-card bg-surface-0 shadow-soft-lg'
         )}
       >
         {/* The wordmark lives IN the top padding, not in the flow. pt-[31px] is
@@ -290,6 +316,76 @@ export function Sidebar() {
         <Braindump />
         <SidebarDock />
       </div>
+
+      {/* The peek's footprint, claimed the instant the peek starts. The column
+          eases its width in over 300ms, and a pointer thrown at the pin below
+          outruns that growing edge: it lands on <main>, the wrapper hears a
+          mouseleave, and the peek shuts before the pin is reached. This
+          transparent layer spans the column's FINAL width under the column
+          (just under it), so everything between the edge and the pin
+          is inside the wrapper from the first frame. It only ever covers
+          pixels the column is about to cover anyway.
+
+          The peek's three layers sit at 23–25, not 10–30, because <main> makes
+          no stacking context: its children's z-indexes compete with these in
+          the root layer, and Week × Schedule's pinned hour gutter
+          (WEEK_GUTTER_Z = 22) would otherwise paint over the peeked card and
+          catch the pointer on its way to the pin, ending the peek. */}
+      {mounted && peeking && (
+        <div aria-hidden className="absolute left-0 top-0 z-[23] h-full w-[var(--sidebar-w)]" />
+      )}
+
+      {/* Keep open — the peek's own way to become permanent. Hovering the
+          edge unmounts the expand zone (see below) and the peeked column
+          covers its pixels, so without this the only route from a peek to a
+          docked column was ⌘[. It sits on the peeked card's right edge at the
+          collapse grip's height, with its chevron: the same object in the same
+          place as its two twins.
+
+          The hit box is deliberately lopsided: 18px over the column, 6px past
+          its edge. Docking moves the edge 12px right (the gutter reappears),
+          and the collapse grip lands centred there, starting 6px past where
+          this edge was — so nothing here overlaps it, and an impatient second
+          click can't dock and then collapse in one gesture. 48px tall rather
+          than full-height, so it takes no clicks from the list's right edge.
+
+          It fades in over the column's own 300ms rather than sitting at its
+          final x ahead of the card. The fade is on the zone and nothing in it
+          carries a transform: tw-animate-css's enter keyframe animates
+          transform too, and would slide a translated grip in from its offset.
+          It is a descendant of the wrapper, so reaching it keeps the peek. */}
+      {mounted && peeking && (
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              data-testid="sidebar-peek-pin"
+              aria-label="Keep sidebar open"
+              onClick={() => setLeftSidebarOpen(true)}
+              className={cn(
+                'group absolute left-[calc(var(--sidebar-w)-18px)] top-[calc(50%-24px)] z-[25] flex h-12 w-6 cursor-pointer items-center pl-3',
+                'animate-in fade-in duration-300 focus-visible:outline-none'
+              )}
+            >
+              <span
+                aria-hidden
+                data-testid="sidebar-peek-pin-grip"
+                className={cn(
+                  GRIP_CLASS,
+                  'group-hover:text-foreground group-hover:shadow-[var(--shadow-elev-md)]',
+                  'group-focus-visible:text-foreground group-focus-visible:border-primary'
+                )}
+              >
+                <ChevronRight className="h-2.5 w-2.5 shrink-0" />
+              </span>
+            </button>
+          </TooltipTrigger>
+          <TooltipContent side="right" align="center">
+            <div className="px-0.5 text-2xs font-medium text-muted-foreground">Sidebar</div>
+            <div className="mt-0.5 px-0.5 text-xs text-foreground">Keep open ({collapseHint})</div>
+          </TooltipContent>
+        </Tooltip>
+      )}
 
       {/* The sash. It occupies the shell's 12px gutter exactly (left-full w-3),
           overlapping neither the sidebar's contents nor the body panel's
@@ -502,12 +598,27 @@ export function Sidebar() {
               type="button"
               data-testid="sidebar-expand-zone"
               aria-label="Expand sidebar"
-              onClick={toggleLeftSidebar}
+              onClick={() => {
+                cancelPeek();
+                toggleLeftSidebar();
+              }}
               // Takes over the hover-peek trigger that used to be its own strip
               // inside <main> (desktop-shell.tsx). This zone covers those pixels
               // now, so leaving both would mean the strip simply never fired —
-              // one edge, one owner.
-              onMouseEnter={() => leftSidebarHoverEnabled && setLeftSidebarHovered(true)}
+              // one edge, one owner. Delayed by PEEK_DELAY_MS so a click can
+              // still land on it.
+              onMouseEnter={() => {
+                if (!leftSidebarHoverEnabled) return;
+                cancelPeek();
+                peekTimerRef.current = window.setTimeout(() => {
+                  peekTimerRef.current = null;
+                  // Live state, not this render's: the setting or the column
+                  // may have changed in the last 150ms.
+                  const s = useSidebarStore.getState();
+                  if (!s.leftSidebarOpen && s.leftSidebarHoverEnabled) setLeftSidebarHovered(true);
+                }, PEEK_DELAY_MS);
+              }}
+              onMouseLeave={cancelPeek}
               className={cn(
                 'group absolute -left-3 top-0 z-50 h-full w-8 cursor-pointer',
                 'focus-visible:outline-none'
