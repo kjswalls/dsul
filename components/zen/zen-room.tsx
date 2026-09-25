@@ -70,7 +70,10 @@ export function ZenRoom() {
   return <ZenSurface />;
 }
 
-function ZenSurface() {
+/** The room itself, ungated. The desktop mounts it through ZenStage
+ *  (components/zen/zen-stage.tsx), which keeps it mounted through the exit
+ *  animation after the flag has already gone false. */
+export function ZenSurface() {
   const setZenOpen = useViewStore((s) => s.setZenOpen);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
@@ -255,6 +258,9 @@ function ZenSurface() {
                   {heroDone && <Check className="h-3 w-3 text-primary-foreground" />}
                 </button>
                 <h1
+                  // The item the room is about — components/zen/zen-stage.tsx
+                  // flies it here from its slot in the planner and back.
+                  data-zen-hero={hero.row.item.id}
                   className={cn(
                     'm-0 font-serif text-[clamp(2rem,5.5vw,3.15rem)] font-semibold leading-[1.16] tracking-[-0.01em] text-balance',
                     heroDone && 'text-muted-foreground line-through opacity-60'

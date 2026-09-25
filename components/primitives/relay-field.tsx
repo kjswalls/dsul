@@ -194,7 +194,7 @@ function roundRect(ctx: CanvasRenderingContext2D, size: number, radius: number):
 }
 
 /** Bake one tile sprite (glow + nested rounded squares) for a color + theme. */
-function buildSprite(color: string, dark: boolean): HTMLCanvasElement {
+export function buildSprite(color: string, dark: boolean): HTMLCanvasElement {
   const c = document.createElement('canvas');
   c.width = c.height = 64;
   const g = c.getContext('2d');
@@ -269,7 +269,7 @@ function readPalette(
  * island (e.g. the dock capsule marked `.dark` while the app is in light mode)
  * glow additively, matching that island rather than the page.
  */
-function isDarkContext(el: Element): boolean {
+export function isDarkContext(el: Element): boolean {
   const bg = getComputedStyle(el).getPropertyValue('--background').trim();
   // Lightness is oklch()'s first component, but its SERIALISATION is not
   // stable: the authored token is a 0–1 number (`oklch(0.173 …)`) and the

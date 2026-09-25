@@ -8,6 +8,7 @@ import {
   ChevronRight,
   ChevronDown,
   Check,
+  Leaf,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
@@ -23,6 +24,9 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { LAYOUT_OPTIONS, SCOPE_OPTIONS, type ViewOption } from '@/lib/view-options';
 import { goToDate, stepScope } from '@/lib/nav-commands';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
+import { formatKeys, isApplePlatform } from '@/lib/commands/keys';
 
 /**
  * Floating header capsule at the top of the canvas (Figma view controls
@@ -76,6 +80,43 @@ function SelectMenu<T extends string>({
         })}
       </DropdownMenuContent>
     </DropdownMenu>
+  );
+}
+
+/**
+ * The door into Zen, at the end of the view pill: Zen is one more way of
+ * looking at the day, so it sits with the controls that choose the view.
+ * `data-zen-toggle` is also where the Relay Lift wave starts when the item Zen
+ * will show is not on screen to lift (components/zen/zen-stage.tsx).
+ *
+ * The hint reads the live binding — every shortcut is rebindable — and prints
+ * it per platform, so a Ctrl user never sees a ⌘.
+ */
+function ZenButton() {
+  const toggleZen = useViewStore((s) => s.toggleZen);
+  const keys = useShortcutKeys('toggle_zen');
+  // Safe to read the platform in render: tooltip content only mounts on hover,
+  // on the client, so there is no server markup for it to disagree with.
+  const hint = formatKeys(keys, isApplePlatform()).join(' + ');
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          onClick={toggleZen}
+          aria-label="Enter zen"
+          data-zen-toggle
+          data-testid="header-zen"
+          className="inline-flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+        >
+          <Leaf className="h-4 w-4" />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="flex items-center gap-2">
+        Enter zen
+        {hint && <kbd className="font-sans text-[11px] opacity-70">{hint}</kbd>}
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -197,6 +238,8 @@ export function HeaderCapsule() {
         <div className="ml-auto flex items-center">
           <div className="mx-1 h-4 w-px bg-border" />
           <DisplayMenu surface="canvas" />
+          <div className="mx-1 h-4 w-px bg-border" />
+          <ZenButton />
         </div>
       </div>
     </div>

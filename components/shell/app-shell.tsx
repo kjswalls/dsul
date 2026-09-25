@@ -33,7 +33,7 @@ import { OrganizeConsole } from '@/components/planner/organize/organize-console'
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { EODReview } from '@/components/ai/eod-review';
 import { MobileShell } from '@/components/shell/mobile-shell';
-import { ZenRoom } from '@/components/zen/zen-room';
+import { ZenStage } from '@/components/zen/zen-stage';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
@@ -577,8 +577,11 @@ export function AppShell() {
     >
       {/* One shell mounts at a time (post-hydration) so the shared view
           components don't register duplicate dnd-kit droppable ids across the
-          two trees — and mobile no longer pays for the desktop tree, or v.v. */}
-      {isMobile ? <MobileShell /> : zenOpen ? <ZenRoom /> : <DesktopShell />}
+          two trees — and mobile no longer pays for the desktop tree, or v.v.
+          Planner and Zen are one slot: ZenStage mounts one of them at rest and
+          both only for the second the Relay Lift switch takes. Zen has no
+          droppables, so the brief overlap registers no duplicate ids. */}
+      {isMobile ? <MobileShell /> : <ZenStage planner={<DesktopShell />} />}
 
       <DragGhost />
 
