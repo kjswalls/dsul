@@ -10,8 +10,8 @@
  *
  * The dot is the accent. It is its own element in every flavor and nothing
  * here puts opacity on anything that contains it (CLAUDE.md, the lime rule):
- * neon's flicker runs on .wordmark-word, not the mark. Its own blinks (pixel,
- * terminal) are the dot's own opacity, not a parent's.
+ * neon flickers by switching its letters' color, never their opacity. Its
+ * own blinks (pixel, terminal) are the dot's own opacity, not a parent's.
  */
 
 .wordmark {
@@ -337,36 +337,33 @@
     0 0 0.15em var(--wm-neon-glow),
     0 0 0.5em var(--wm-neon-glow);
 }
-.wordmark[data-flavor='neon'][data-open] .wordmark-char {
-  animation: none;
+.wordmark[data-flavor='neon'] .wordmark-fill {
+  /* Revealed by the width clip alone, so no lime letter fades in. */
+  opacity: 1;
 }
-.wordmark[data-flavor='neon'][data-open] .wordmark-word {
-  animation: wm-flicker 900ms linear both;
+.wordmark[data-flavor='neon'][data-open] .wordmark-char {
+  animation: wm-flicker 900ms steps(1, end) both;
 }
 .wordmark[data-flavor='neon'][data-open] .wordmark-dot {
   box-shadow:
     0 0 0.3em var(--wm-neon-glow),
     0 0 0.8em var(--wm-neon-glow);
 }
+/* The tubes flicker by switching off, not by fading: a dark frame is the
+   unlit tube's muted color with no glow, a lit frame is the full neon. The
+   letters are lime in dark mode, so an opacity flicker would fade the accent. */
 @keyframes wm-flicker {
-  0% {
-    opacity: 0.3;
-  }
-  8% {
-    opacity: 1;
-  }
-  12% {
-    opacity: 0.4;
-  }
-  18% {
-    opacity: 1;
-  }
+  0%,
+  12%,
   40% {
-    opacity: 0.75;
+    color: var(--muted-foreground);
+    text-shadow: none;
   }
+  8%,
+  18%,
   44%,
   100% {
-    opacity: 1;
+    color: var(--wm-neon);
   }
 }
 
