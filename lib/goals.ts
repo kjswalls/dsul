@@ -27,7 +27,7 @@ import type { Goal, GoalRole, Item } from './planner-types';
  */
 
 /** `2026-08-21` + 3 → `2026-08-24`, in pure calendar terms. */
-function addDaysToDateStr(dateStr: string, days: number): string {
+export function addDaysToDateStr(dateStr: string, days: number): string {
   const [y, m, d] = dateStr.split('-').map(Number);
   return new Date(Date.UTC(y, m - 1, d + days)).toISOString().slice(0, 10);
 }

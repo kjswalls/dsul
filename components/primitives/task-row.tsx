@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useRef, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
-import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Undo2, MoreHorizontal, type LucideIcon,
+import { useEffect, useLayoutEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
+import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
-import { goalRolesByItem } from '@/lib/goals';
+import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
+import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -25,6 +27,7 @@ import {
   AgentPill,
   PriorityGlyph,
   RailTooltip,
+  useQuietTip,
   StreakFlame,
   MetaText,
   TagDot,
@@ -33,6 +36,7 @@ import {
   formatDurationLong,
 } from '@/components/primitives/pills';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -65,6 +69,9 @@ interface TaskRowProps {
   date?: Date;
 }
 
+/** How long the title's fade runs before the hover controls, in px. */
+const TITLE_FADE_PX = 24;
+
 export function TaskRow({ row, context = 'bucket', density = 'default', date }: TaskRowProps) {
   const {
     toggleTaskStatus,
@@ -73,6 +80,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     deleteTask,
     deleteHabit,
     unscheduleTask,
+    moveTaskToDate,
     getProjectColor,
     selectedDate,
     userTimezone,
@@ -212,6 +220,18 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    */
   const setSkipped = (next: boolean) => setItemSkipped(item.id, next, rowDate);
 
+  // Put-it-off verbs (lib/row-moves.ts). Milestones from the RAW goals, not the
+  // display list: that one is empty while the Goals extension is off, and this
+  // is a write gate, not a mark.
+  const todayStr = toDateStr(new Date(), timezone);
+  const milestoneIds = useMemo(() => milestoneItemIds(goals ?? []), [goals]);
+  const nextDay = nextDayTarget(dateStr, todayStr);
+  const canNextDay = !inBraindump && canMoveToNextDay(item, itemType, dateStr);
+  const canBraindump = !inBraindump && canSendToBraindump(item, itemType, dateStr, milestoneIds);
+  // The desktop hover cluster renders on every non-braindump row (Delete is
+  // always in it), so this is also "does the title need its fade".
+  const hasHoverControls = !inBraindump && !isMobile;
+
   // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
   // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
   // leading slot therefore holds one 16px checkbox on EVERY row in EVERY state,
@@ -308,6 +328,54 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // Cmd/Ctrl adds/removes a row from a multi-selection WITHOUT opening it, and
   // Shift extends a range from the anchor (DOM order == visual order, no
   // virtualization). The wasDragged guard keeps a drop from firing a click.
+  /*
+   * The title under the hover controls. The controls sit at one x on every row
+   * (pinned to the rail's left edge) and overlap the end of a long title, so on
+   * hover the title fades out just before them instead of running under the
+   * capsule. How far it has to fade depends on this row's title width and how
+   * many controls it has, so it is measured when the row is entered or focused
+   * and handed to CSS as a mask (--title-mask); `none` when nothing overlaps.
+   *
+   * The same measurement answers "is any of the title hidden" — clamped, or
+   * under the controls — which is when hovering the title shows it whole, the
+   * way the Claude sidebar does. A title that fits gets no tooltip.
+   */
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const clusterRef = useRef<HTMLSpanElement>(null);
+  const [titleHidden, setTitleHidden] = useState(false);
+  const titleTip = useQuietTip();
+  const rowHovered = useRef(false);
+  const measureTitle = () => {
+    const p = titleRef.current;
+    if (!p) return;
+    const pr = p.getBoundingClientRect();
+    const cluster = clusterRef.current;
+    // 6px of air between the faded text and the capsule.
+    const cover = cluster ? Math.max(0, pr.right - cluster.getBoundingClientRect().left + 6) : 0;
+    p.style.setProperty(
+      '--title-mask',
+      cover > 0
+        ? `linear-gradient(to left, transparent ${cover}px, black ${cover + TITLE_FADE_PX}px)`
+        : 'none'
+    );
+    const clamped = p.scrollHeight > p.clientHeight + 1 || p.scrollWidth > p.clientWidth + 1;
+    let covered = false;
+    if (cover > 0 && typeof document.createRange === 'function') {
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      const rects = range.getClientRects?.() ?? [];
+      for (const r of Array.from(rects)) if (r.right > pr.right - cover - TITLE_FADE_PX / 2) covered = true;
+    }
+    setTitleHidden(clamped || covered);
+  };
+  // Re-measure while hovered when anything that moves the capsule's edge or
+  // changes the text does (a tick removes Skip, a stepper click, a rename):
+  // otherwise the fade stays sized for the capsule as it was on entry.
+  useLayoutEffect(() => {
+    if (rowHovered.current) measureTitle();
+  }, [item.title, completed, canNextDay, canBraindump, skippable, multiTarget, habitEffectiveCount]);
+  const tipAllowed = !isMobile && !isDragging && (titleHidden || suppressed);
+
   const handleRowClick = (e: ReactMouseEvent) => {
     if (wasDraggedRef.current) return;
     const selection = useSelectionStore.getState();
@@ -442,8 +510,18 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // opacity only ever goes down a tree, so a child can't opt back out.
       )}
       onClick={handleRowClick}
-      onMouseEnter={() => setHoveredItemRef(item.id, itemType)}
-      onMouseLeave={() => setHoveredItemRef(null, null)}
+      onMouseEnter={() => {
+        setHoveredItemRef(item.id, itemType);
+        rowHovered.current = true;
+        measureTitle();
+      }}
+      onMouseLeave={() => {
+        setHoveredItemRef(null, null);
+        rowHovered.current = false;
+        titleTip.reset();
+      }}
+      onPointerDownCapture={titleTip.reset}
+      onFocusCapture={measureTitle}
     >
 
       {/* Checkbox — 16px on EVERY row of both types in every state, so the
@@ -488,23 +566,53 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
       </button>
 
-      {/* Title */}
-      <p
-        className={cn(
-          // Content typeface via tokens: sans = Inter Regular 11.5,
-          // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
-          'min-w-0 flex-1 font-content text-foreground',
-          // Both densities take text-content: the week views render compact
-          // rows and the day view default ones, and a title that changed size
-          // between the two would break the token's whole purpose.
-          compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
-          suppressed && 'text-muted-foreground',
-          completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60'
-        )}
-        title={suppression ? suppressionLabel(suppression, { long: true }) : undefined}
+      {/* Title. The suppression reason used to ride a native `title` here;
+          it now shares the rail tooltip with the full title (pills.tsx: no
+          native titles). */}
+      <Tooltip
+        // The gate goes into the state, not only the prop: Radix's delay timer
+        // would otherwise latch `open` while the tip was gated off, and it
+        // would spring open unasked the moment the title became hidden.
+        open={titleTip.open && tipAllowed}
+        onOpenChange={(next) => titleTip.onOpenChange(next && tipAllowed)}
       >
-        {item.title}
-      </p>
+        <TooltipTrigger asChild {...titleTip.triggerProps}>
+          <p
+            ref={titleRef}
+            className={cn(
+              // Content typeface via tokens: sans = Inter Regular 11.5,
+              // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
+              'min-w-0 flex-1 font-content text-foreground',
+              // Both densities take text-content: the week views render compact
+              // rows and the day view default ones, and a title that changed size
+              // between the two would break the token's whole purpose.
+              compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
+              suppressed && 'text-muted-foreground',
+              completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60',
+              // The fade under the hover controls (measureTitle). A mask, not an
+              // opacity: nothing lime lives in the title, but the fade has to
+              // fall off along the text, not dim all of it.
+              hasHoverControls &&
+                'group-hover:[mask-image:var(--title-mask,none)] group-has-[:focus-visible]:[mask-image:var(--title-mask,none)]'
+            )}
+          >
+            {item.title}
+          </p>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start" className="max-w-sm">
+          {(titleHidden || !suppression) && (
+            <div className={cn('px-0.5 text-xs text-foreground', suppression && 'mb-1')}>{item.title}</div>
+          )}
+          {suppression && (
+            <div className="px-0.5 text-2xs font-medium text-muted-foreground">
+              {suppressionLabel(suppression, { long: true })}
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
+      {/* The tooltip only describes the title while it is open, so the reason
+          a row is set aside stays readable to assistive tech here. */}
+      {suppression && <span className="sr-only">{suppressionLabel(suppression, { long: true })}</span>}
 
       {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
           column.
@@ -612,47 +720,62 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             of the columns so it reserves no space. pointer-events gate off until
             reveal so the invisible buttons aren't clickable while idle. */}
         {!inBraindump && !isMobile && (
-          <span className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center gap-1 opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
-            {/* Multi-count stepper — leads the cluster, so the destructive
-                delete stays at the far end away from the one control here that
-                gets clicked repeatedly. mr-1 doubles the 4px gap into 8px,
-                separating the value editor from the action buttons. The count
-                it edits reads live as `n/target` in the rail to the right. */}
-            {multiTarget > 0 && (
-              <span className="mr-1 flex items-center gap-1">
+          <span ref={clusterRef} className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100">
+            <RowControlGroup>
+              {/* Multi-count stepper — leads the capsule, so the destructive
+                  delete stays at the far end away from the one control here that
+                  gets clicked repeatedly. A hairline separates the value editor
+                  from the actions. The count it edits reads live as `n/target`
+                  in the rail to the right. */}
+              {multiTarget > 0 && (
+                <>
+                  <RowControl
+                    icon={Minus}
+                    label="Decrease count"
+                    testId="item-stepper-dec"
+                    disabled={habitEffectiveCount <= 0}
+                    onClick={handleHabitDecrement}
+                  />
+                  <RowControl
+                    icon={Plus}
+                    label="Increase count"
+                    testId="item-stepper-inc"
+                    disabled={habitEffectiveCount >= multiTarget}
+                    onClick={handleHabitIncrement}
+                  />
+                  <RowControlDivider />
+                </>
+              )}
+              {/* Put it off: the next day, or back to the braindump. Never on a
+                  recurring row (Skip today is its answer), and gated in one
+                  place — lib/row-moves.ts — so the blocks and the sheet agree. */}
+              {canNextDay && (
                 <RowControl
-                  icon={Minus}
-                  label="Decrease count"
-                  testId="item-stepper-dec"
-                  disabled={habitEffectiveCount <= 0}
-                  onClick={handleHabitDecrement}
+                  icon={Redo2}
+                  label={nextDayLabel(nextDay, todayStr)}
+                  detail={formatTargetDay(nextDay)}
+                  testId="item-tomorrow-button"
+                  onClick={() => moveTaskToDate(item.id, nextDay)}
                 />
+              )}
+              {canBraindump && (
                 <RowControl
-                  icon={Plus}
-                  label="Increase count"
-                  testId="item-stepper-inc"
-                  disabled={habitEffectiveCount >= multiTarget}
-                  onClick={handleHabitIncrement}
+                  icon={ArrowLeftToLine}
+                  label="Move to Braindump"
+                  testId="item-unschedule-button"
+                  onClick={() => unscheduleTask(item.id)}
                 />
-              </span>
-            )}
-            {isTask && (
-              <RowControl
-                icon={ArrowLeftToLine}
-                label="Move to Braindump"
-                testId="item-unschedule-button"
-                onClick={() => unscheduleTask(item.id)}
-              />
-            )}
-            {skippable && !completed && (
-              <RowControl
-                icon={SkipForward}
-                label="Skip today"
-                testId="item-skip-button"
-                onClick={() => setSkipped(true)}
-              />
-            )}
-            <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
+              )}
+              {skippable && !completed && (
+                <RowControl
+                  icon={SkipForward}
+                  label="Skip today"
+                  testId="item-skip-button"
+                  onClick={() => setSkipped(true)}
+                />
+              )}
+              <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
+            </RowControlGroup>
           </span>
         )}
 
@@ -660,9 +783,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             inline and always-on for multi-count habits (the leading checkbox
             still increments; this is the only way back DOWN). Always present,
             so it shifts nothing either. 28px to match the ellipsis beside it,
-            since 22px is too small a touch target. */}
+            since 20px is too small a touch target; no tooltips on touch. */}
         {!inBraindump && isMobile && multiTarget > 0 && (
-          <span className="flex items-center gap-1">
+          <RowControlGroup>
             <RowControl
               icon={Minus}
               label="Decrease count"
@@ -670,6 +793,8 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               disabled={habitEffectiveCount <= 0}
               onClick={handleHabitDecrement}
               className="h-7 w-7"
+              iconClassName="h-3.5 w-3.5"
+              tooltip={false}
             />
             <RowControl
               icon={Plus}
@@ -678,8 +803,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               disabled={habitEffectiveCount >= multiTarget}
               onClick={handleHabitIncrement}
               className="h-7 w-7"
+              iconClassName="h-3.5 w-3.5"
+              tooltip={false}
             />
-          </span>
+          </RowControlGroup>
         )}
 
         {/* Mobile: always-visible ellipsis → schedule/action sheet (touch has
@@ -691,7 +818,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             className="h-7 w-7 text-muted-foreground"
             aria-label="Actions"
             data-testid="item-actions-button"
-            onClick={() => useScheduleSheet.getState().open(row)}
+            onClick={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
           >
             <MoreHorizontal className="h-4 w-4" />
           </Button>
@@ -818,7 +945,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     return (
       <SwipeRow
         onComplete={isTask ? handleTaskToggle : handleHabitToggle}
-        onSchedule={() => useScheduleSheet.getState().open(row)}
+        onSchedule={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
         onDelete={handleDelete}
       >
         {rowContent}
@@ -826,63 +953,4 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     );
   }
   return rowContent;
-}
-
-/**
- * Boxed row action (delete / unschedule / skip) — the rounded-square hairline
- * language of AddIconButton (Figma node 67:268), but a lighter border so a
- * cluster of them stays quiet until the row is hovered. `destructive` swaps the
- * hover wash to the destructive tone (delete).
- */
-function RowControl({
-  icon: Icon,
-  label,
-  destructive,
-  disabled,
-  onClick,
-  className,
-  testId,
-}: {
-  icon: LucideIcon;
-  label: string;
-  destructive?: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-  className?: string;
-  /**
-   * Stable handle for e2e. These controls are otherwise addressed by their
-   * `label` copy, and 'Delete' alone collides with the confirm dialog's button,
-   * the mobile swipe action and the schedule sheet — four elements, one name.
-   */
-  testId?: string;
-}) {
-  return (
-    <button
-      type="button"
-      title={label}
-      aria-label={label}
-      data-testid={testId}
-      disabled={disabled}
-      onClick={onClick}
-      className={cn(
-        'flex h-[22px] w-[22px] flex-shrink-0 items-center justify-center rounded-[5px] border border-border bg-surface-3 text-muted-foreground transition-colors',
-        // Hover styles are dropped entirely rather than overridden when
-        // disabled: :hover still fires on a disabled button, so leaving them in
-        // would light up a control that does nothing.
-        disabled
-          ? 'cursor-not-allowed opacity-40'
-          : cn(
-              // hover-wash, not hover:bg-accent: this control sits ON the well
-              // (bg-surface-3). Swapping to the wash would composite it onto the
-              // row behind and make the button LIGHTEN on hover while the row
-              // beside it darkens — the exact mismatch the token change fixed.
-              'hover-wash hover:border-muted-foreground hover:text-foreground',
-              destructive && 'hover:border-destructive/40 hover:bg-destructive/10 hover:text-destructive'
-            ),
-        className
-      )}
-    >
-      <Icon className="h-3.5 w-3.5" />
-    </button>
-  );
 }

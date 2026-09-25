@@ -1,6 +1,6 @@
 'use client';
 
-import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, SkipForward, Trash2, Undo2, ListChecks, Pause, Play } from 'lucide-react';
+import { Clock, Sunrise, Sun, Sunset, ArrowLeftToLine, Redo2, SkipForward, Trash2, Undo2, ListChecks, Pause, Play } from 'lucide-react';
 import {
   Drawer,
   DrawerContent,
@@ -18,6 +18,8 @@ import { getItemTypeConfig, isPausable } from '@/lib/item-registry';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { isPausedOn, suppressionReason, suppressionLabel } from '@/lib/active';
+import { milestoneItemIds } from '@/lib/goals';
+import { canMoveToNextDay, canSendToBraindump, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import type { TimeBucket, Task } from '@/lib/planner-types';
 
 const BUCKET_META: Record<TimeBucket, { label: string; icon: typeof Clock }> = {
@@ -37,10 +39,12 @@ const BUCKET_META: Record<TimeBucket, { label: string; icon: typeof Clock }> = {
 export function ScheduleSheet() {
   const row = useScheduleSheet((s) => s.row);
   const close = useScheduleSheet((s) => s.close);
+  const rowDateStr = useScheduleSheet((s) => s.dateStr);
   const {
     scheduleTask,
     assignHabitToBucket,
     unscheduleTask,
+    moveTaskToDate,
     setItemSkipped,
     setItemPaused,
     deleteTask,
@@ -50,6 +54,7 @@ export function ScheduleSheet() {
     items,
     routines,
     programs,
+    goals,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
   // Mobile multi-select entry: no long-press (that gesture belongs to dnd-kit's
@@ -96,6 +101,21 @@ export function ScheduleSheet() {
     ? suppressionReason(liveItem, todayStr, { userTimezone: tz, routines, programs })
     : null;
   const containerReason = reason && reason.kind !== 'paused' ? reason : null;
+
+  // Put-it-off verbs, gated exactly as the desktop row's (lib/row-moves.ts),
+  // off the live item. The next day is only offered for a dated row: a
+  // braindump row opens with no date, and has no day to put off.
+  // Asked at the row's own day (a week column's, not the selected one) — the
+  // same date the desktop row carries from.
+  const moveDateStr = rowDateStr ?? dateStr;
+  const nextDay = nextDayTarget(moveDateStr, todayStr);
+  const canNextDay =
+    !!rowDateStr && !!liveItem && !!row && canMoveToNextDay(liveItem, row.itemType, moveDateStr);
+  const canBraindump =
+    taskScheduled &&
+    !!liveItem &&
+    !!row &&
+    canSendToBraindump(liveItem, row.itemType, moveDateStr, milestoneItemIds(goals ?? []));
 
   const schedule = (bucket: TimeBucket) => {
     if (!row) return;
@@ -203,7 +223,20 @@ export function ScheduleSheet() {
               {suppressionLabel(containerReason, { long: true })}
             </p>
           )}
-          {taskScheduled && (
+          {canNextDay && (
+            <Button
+              variant="ghost"
+              className="justify-start"
+              data-testid="sheet-tomorrow-button"
+              onClick={() => {
+                if (row) moveTaskToDate(row.item.id, nextDay);
+                close();
+              }}
+            >
+              <Redo2 className="mr-2 h-4 w-4" /> {nextDayLabel(nextDay, todayStr)}
+            </Button>
+          )}
+          {canBraindump && (
             <Button
               variant="ghost"
               className="justify-start"
