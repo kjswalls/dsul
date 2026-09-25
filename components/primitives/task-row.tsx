@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent, useMemo } from 'react';
 import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2, MoreHorizontal,
   Flag,
   Repeat,
@@ -27,6 +27,7 @@ import {
   AgentPill,
   PriorityGlyph,
   RailTooltip,
+  useQuietTip,
   StreakFlame,
   MetaText,
   TagDot,
@@ -35,6 +36,7 @@ import {
   formatDurationLong,
 } from '@/components/primitives/pills';
 import type { Task, HabitItem, HabitStatus, Item } from '@/lib/planner-types';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { cn } from '@/lib/utils';
 
 /**
@@ -66,6 +68,9 @@ interface TaskRowProps {
   /** The day this row is rendered for (week columns); defaults to the selected day. */
   date?: Date;
 }
+
+/** How long the title's fade runs before the hover controls, in px. */
+const TITLE_FADE_PX = 24;
 
 export function TaskRow({ row, context = 'bucket', density = 'default', date }: TaskRowProps) {
   const {
@@ -223,6 +228,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const nextDay = nextDayTarget(dateStr, todayStr);
   const canNextDay = !inBraindump && canMoveToNextDay(item, itemType, dateStr);
   const canBraindump = !inBraindump && canSendToBraindump(item, itemType, dateStr, milestoneIds);
+  // The desktop hover cluster renders on every non-braindump row (Delete is
+  // always in it), so this is also "does the title need its fade".
+  const hasHoverControls = !inBraindump && !isMobile;
 
   // Multi-count habits (timesPerDay > 1). Progress reads as a fill rising
   // inside the 16px checkbox; the -/+ stepper lives in the trailing rail. The
@@ -320,6 +328,46 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // Cmd/Ctrl adds/removes a row from a multi-selection WITHOUT opening it, and
   // Shift extends a range from the anchor (DOM order == visual order, no
   // virtualization). The wasDragged guard keeps a drop from firing a click.
+  /*
+   * The title under the hover controls. The controls sit at one x on every row
+   * (pinned to the rail's left edge) and overlap the end of a long title, so on
+   * hover the title fades out just before them instead of running under the
+   * capsule. How far it has to fade depends on this row's title width and how
+   * many controls it has, so it is measured when the row is entered or focused
+   * and handed to CSS as a mask (--title-mask); `none` when nothing overlaps.
+   *
+   * The same measurement answers "is any of the title hidden" — clamped, or
+   * under the controls — which is when hovering the title shows it whole, the
+   * way the Claude sidebar does. A title that fits gets no tooltip.
+   */
+  const titleRef = useRef<HTMLParagraphElement>(null);
+  const clusterRef = useRef<HTMLSpanElement>(null);
+  const [titleHidden, setTitleHidden] = useState(false);
+  const titleTip = useQuietTip();
+  const measureTitle = () => {
+    const p = titleRef.current;
+    if (!p) return;
+    const pr = p.getBoundingClientRect();
+    const cluster = clusterRef.current;
+    // 6px of air between the faded text and the capsule.
+    const cover = cluster ? Math.max(0, pr.right - cluster.getBoundingClientRect().left + 6) : 0;
+    p.style.setProperty(
+      '--title-mask',
+      cover > 0
+        ? `linear-gradient(to left, transparent ${cover}px, black ${cover + TITLE_FADE_PX}px)`
+        : 'none'
+    );
+    const clamped = p.scrollHeight > p.clientHeight + 1 || p.scrollWidth > p.clientWidth + 1;
+    let covered = false;
+    if (cover > 0 && typeof document.createRange === 'function') {
+      const range = document.createRange();
+      range.selectNodeContents(p);
+      const rects = range.getClientRects?.() ?? [];
+      for (const r of Array.from(rects)) if (r.right > pr.right - cover - TITLE_FADE_PX / 2) covered = true;
+    }
+    setTitleHidden(clamped || covered);
+  };
+
   const handleRowClick = (e: ReactMouseEvent) => {
     if (wasDraggedRef.current) return;
     const selection = useSelectionStore.getState();
@@ -454,8 +502,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // opacity only ever goes down a tree, so a child can't opt back out.
       )}
       onClick={handleRowClick}
-      onMouseEnter={() => setHoveredItemRef(item.id, itemType)}
+      onMouseEnter={() => {
+        setHoveredItemRef(item.id, itemType);
+        measureTitle();
+      }}
       onMouseLeave={() => setHoveredItemRef(null, null)}
+      onFocusCapture={measureTitle}
     >
 
       {/* Checkbox — 16px on EVERY row of both types in every state, so the
@@ -500,23 +552,47 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
       </button>
 
-      {/* Title */}
-      <p
-        className={cn(
-          // Content typeface via tokens: sans = Inter Regular 11.5,
-          // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
-          'min-w-0 flex-1 font-content text-foreground',
-          // Both densities take text-content: the week views render compact
-          // rows and the day view default ones, and a title that changed size
-          // between the two would break the token's whole purpose.
-          compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
-          suppressed && 'text-muted-foreground',
-          completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60'
-        )}
-        title={suppression ? suppressionLabel(suppression, { long: true }) : undefined}
+      {/* Title. The suppression reason used to ride a native `title` here;
+          it now shares the rail tooltip with the full title (pills.tsx: no
+          native titles). */}
+      <Tooltip
+        open={titleTip.open && !isMobile && (titleHidden || suppressed)}
+        onOpenChange={titleTip.onOpenChange}
       >
-        {item.title}
-      </p>
+        <TooltipTrigger asChild {...titleTip.triggerProps}>
+          <p
+            ref={titleRef}
+            className={cn(
+              // Content typeface via tokens: sans = Inter Regular 11.5,
+              // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
+              'min-w-0 flex-1 font-content text-foreground',
+              // Both densities take text-content: the week views render compact
+              // rows and the day view default ones, and a title that changed size
+              // between the two would break the token's whole purpose.
+              compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
+              suppressed && 'text-muted-foreground',
+              completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60',
+              // The fade under the hover controls (measureTitle). A mask, not an
+              // opacity: nothing lime lives in the title, but the fade has to
+              // fall off along the text, not dim all of it.
+              hasHoverControls &&
+                'group-hover:[mask-image:var(--title-mask,none)] group-has-[:focus-visible]:[mask-image:var(--title-mask,none)]'
+            )}
+          >
+            {item.title}
+          </p>
+        </TooltipTrigger>
+        <TooltipContent side="bottom" align="start" className="max-w-sm">
+          {(titleHidden || !suppression) && (
+            <div className={cn('px-0.5 text-xs text-foreground', suppression && 'mb-1')}>{item.title}</div>
+          )}
+          {suppression && (
+            <div className="px-0.5 text-2xs font-medium text-muted-foreground">
+              {suppressionLabel(suppression, { long: true })}
+            </div>
+          )}
+        </TooltipContent>
+      </Tooltip>
 
       {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
           column.
@@ -624,7 +700,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             of the columns so it reserves no space. pointer-events gate off until
             reveal so the invisible buttons aren't clickable while idle. */}
         {!inBraindump && !isMobile && (
-          <span className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
+          <span ref={clusterRef} className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 has-[:focus-visible]:pointer-events-auto has-[:focus-visible]:opacity-100">
             <RowControlGroup>
               {/* Multi-count stepper — leads the capsule, so the destructive
                   delete stays at the far end away from the one control here that

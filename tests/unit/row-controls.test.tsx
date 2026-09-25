@@ -216,6 +216,61 @@ describe('day row: where the item goes', () => {
   });
 });
 
+describe('title under the hover controls', () => {
+  /** Lay the row out the way a browser would: the title box ends at x=500,
+   *  the capsule starts at x=400, and the title's text ends at `textRight`. */
+  function layout(textRight: number) {
+    const rect = (left: number, right: number) =>
+      ({ left, right, top: 0, bottom: 20, width: right - left, height: 20, x: left, y: 0, toJSON() {} }) as DOMRect;
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      if (this.tagName === 'P') return rect(40, 500);
+      if (this.querySelector?.('[data-testid="item-delete-button"]') && this.tagName === 'SPAN') return rect(400, 480);
+      return rect(0, 0);
+    });
+    rangeProto.getClientRects = () => [rect(40, textRight)];
+  }
+  const rangeProto = Range.prototype as unknown as { getClientRects?: () => DOMRect[] };
+  const realRects = rangeProto.getClientRects;
+  afterEach(() => {
+    vi.restoreAllMocks();
+    rangeProto.getClientRects = realRects;
+  });
+
+  const title = (text: string) => screen.getByText(text, { selector: 'p' });
+
+  it('fades out before the controls, measured per row', () => {
+    layout(480);
+    renderRow('one-off');
+    fireEvent.mouseEnter(screen.getByTestId('item-card'));
+    // 500 - 400 + 6px of air = 106px hidden, then a 24px fade.
+    expect(title('one-off').style.getPropertyValue('--title-mask')).toBe(
+      'linear-gradient(to left, transparent 106px, black 130px)'
+    );
+  });
+
+  it('shows the full title on hover when the controls cover some of it', async () => {
+    layout(480);
+    renderRow('one-off');
+    fireEvent.mouseEnter(screen.getByTestId('item-card'));
+    const p = title('one-off');
+    fireEvent.pointerEnter(p);
+    fireEvent.pointerMove(p);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('one-off');
+  });
+
+  it('gives a title that fits no tooltip', async () => {
+    layout(200);
+    renderRow('one-off');
+    fireEvent.mouseEnter(screen.getByTestId('item-card'));
+    const p = title('one-off');
+    fireEvent.pointerEnter(p);
+    fireEvent.pointerMove(p);
+    await new Promise((r) => setTimeout(r, 400));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    expect(p).not.toHaveAttribute('title');
+  });
+});
+
 describe('row controls: tooltips', () => {
   it('answer with the rail tooltip, naming the day', async () => {
     renderRow('one-off');
