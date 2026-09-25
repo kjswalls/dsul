@@ -1,8 +1,19 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
+import { canonicalRedirect } from '@/lib/canonical-host';
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
+
+  // A production request on a *.vercel.app alias goes to do.dsul.app, and an
+  // auth code dropped at the root goes to /auth/callback — both before any
+  // cookie is read or written on the wrong domain. See lib/canonical-host.ts.
+  // 307, not 308, for the reason next.config gives its apex redirect: a
+  // permanent redirect sticks in the browser and cannot be taken back.
+  const canonical = canonicalRedirect(new URL(request.url), process.env.VERCEL_ENV);
+  if (canonical) {
+    return NextResponse.redirect(canonical, 307);
+  }
 
   // Allow disabling auth for v0 preview / local dev without a real session
   if (process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true') {
