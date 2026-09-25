@@ -461,6 +461,21 @@ table as ONE set. Four rules, each closing a found defect:
   the completion receipt toast is the check-in bridge there too.
 - **Copy rules:** article + name ("your Learn Chinese goal"). "Milestone" and
   "Check-in" are membership words, never type names.
+- **The console detail wears the item edit pane's look (2026-09-25, Kirby).** A
+  whisper ("Goal" + colour square) with "Open as page" and a ⋯ menu that holds
+  Delete (no filled red zone); an icon + serif title; one chip row — status
+  (Active / Achieved / Set aside), the Started → Target range as ONE chip fenced
+  start ≤ target, colour; the why as borderless serif notes; then one
+  `OrganizerSection` per role ("Milestones · 1 of 3", "Check-ins · 1",
+  "Supporting work · 2") with a "Link existing" pill by the heading and an
+  "Add …" row at the foot. Empty sections are heading + add row only. The
+  wind-down sits in the item pane's paused-note strip, above the chips. The
+  console's "+ New" asks for the why and the window too, in the one `addGoal`.
+  **A milestone row can be ticked** — the one exception to "member rows are
+  addresses, not editors" (organize-console.md): reaching a checkpoint is the
+  gesture a goal exists to record, so the row's checkbox calls the item's own
+  `toggleTaskStatus`. A reached milestone is checked and muted, never struck
+  through. Every other member row still only links out.
 
 ## Beacon + agent (Phase 4)
 

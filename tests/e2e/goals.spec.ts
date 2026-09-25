@@ -226,6 +226,8 @@ test.describe('goals', () => {
       page.getByTestId('goal-checkin-member').filter({ hasText: checkin })
     ).toBeVisible();
 
+    // Status is a chip now (2026-09-25); its options exist once it is open.
+    await page.getByTestId('goal-state-chip').click();
     await page.getByTestId('goal-state-achieved').click();
 
     const windDown = page.getByTestId('goal-wind-down');
@@ -335,6 +337,8 @@ test.describe('goals', () => {
     await page.getByTestId('goal-new-milestone-new-name').fill(milestone);
     await page.getByTestId('goal-new-milestone-add').click();
 
+    // Delete lives behind the pane's ⋯ menu (2026-09-25).
+    await page.getByTestId('goal-more').click();
     await page.getByTestId('delete-goal').click();
     // By testid, not by label: confirm-dialog.tsx carries this id precisely
     // because the confirm LABEL is caller-supplied and "Delete" collides with

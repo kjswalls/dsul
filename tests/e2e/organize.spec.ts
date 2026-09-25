@@ -439,6 +439,7 @@ test.describe('organize — projects, types and groups', () => {
       await page.getByTestId('routine-member-candidate').first().click();
       await expect(page.getByTestId('routine-member')).toHaveCount(1);
 
+      await page.getByTestId('routine-more').click();
       await page.getByTestId('routine-delete').click();
       await page.getByTestId('confirm-dialog-confirm').click();
 

@@ -380,6 +380,18 @@ dateless surfaces resolve at today (decision 3).
   dynamic commands, availableWhen keeps rows honest).
 - **Copy rules:** always an article + name — "your Summer program", never bare
   "Program"; grid copy ("Add to schedule") is untouched and now unambiguous.
+- **Console details in the item edit pane's look (2026-09-25, Kirby — same change
+  as goals, see long-term-goals.md).** Whisper + ⋯ (Delete moved there; the
+  consequence sentence is now the confirm's description, not a zone under the
+  pane), icon + serif title, the state notes as paused-note strips, then one chip
+  row: a program's status (On / Off / Dates) + Runs range chip (still shown
+  under Dates only) + colour; a routine's status (Active / Paused) + "Comes back"
+  day chip (while paused) + colour. "Switch to this program" stays a small
+  outline button. Member lists are `OrganizerSection`s ("Routines · 2",
+  "Items · 5") with "Link existing" by the heading — no separate count eyebrow,
+  no "Nothing in here yet". The console's "+ New" for a program asks for its Runs
+  range and writes it in the one `addProgram` (state stays `auto`). Testids are
+  unchanged; the state and delete ids now live inside the chip and ⋯ popovers.
 
 ## Phasing (app must work at every step)
 

@@ -27,6 +27,7 @@ import {
   TOUCH_ACTIVATION_TOLERANCE_PX,
 } from '@/lib/dnd/sensors';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
+import { ContainerDialog } from '@/components/planner/container-dialog';
 import { BulkAddDialog } from '@/components/planner/bulk-add-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
@@ -590,6 +591,16 @@ export function AppShell() {
           fill the dialog slot and render nothing at all. */}
       <ItemDialog
         state={itemDialogState?.mode === 'add' || isMobile || zenOpen ? itemDialogState : null}
+        onOpenChange={(open) => !open && closeDialog()}
+      />
+
+      {/* The same "new" dialog when it is making an organizer rather than an
+          item — its own slot and component, the same shell (see
+          components/planner/container-dialog.tsx). Mounted beside the add
+          modal, and like it on every shell: the palette's New goal / routine /
+          program reaches it on mobile and in Zen too. */}
+      <ContainerDialog
+        state={activeDialog?.type === 'new-container' ? activeDialog : null}
         onOpenChange={(open) => !open && closeDialog()}
       />
 

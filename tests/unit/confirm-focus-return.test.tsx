@@ -66,7 +66,12 @@ beforeEach(() => {
 
 afterEach(cleanup);
 
-const openConfirmFromDangerZone = () => {
+/**
+ * The delete lives behind the pane's ⋯ menu (2026-09-25), so the control the
+ * user pressed — the one the cursor must come back to — is the ⋯ trigger: the
+ * menu item itself is gone by the time the confirm closes.
+ */
+const openConfirmFromMoreMenu = async () => {
   render(
     <>
       <OrganizeConsole open onOpenChange={() => {}} section="routines" />
@@ -74,9 +79,11 @@ const openConfirmFromDangerZone = () => {
     </>
   );
   fireEvent.click(screen.getByTestId('routine-row'));
-  const trigger = screen.getByTestId('routine-delete');
+  const trigger = screen.getByTestId('routine-more');
   act(() => trigger.focus());
-  fireEvent.click(trigger);
+  // Radix's DropdownMenuTrigger opens on pointerdown, not click.
+  fireEvent.pointerDown(trigger, { pointerType: 'mouse', button: 0, ctrlKey: false });
+  fireEvent.click(await screen.findByTestId('routine-delete'));
   return trigger;
 };
 
@@ -91,7 +98,7 @@ const openConfirmFromDangerZone = () => {
  */
 describe('dismissing the shared confirm', () => {
   it('puts the cursor back on the control that opened it', async () => {
-    const trigger = openConfirmFromDangerZone();
+    const trigger = await openConfirmFromMoreMenu();
     await screen.findByTestId('confirm-dialog');
 
     fireEvent.keyDown(screen.getByTestId('confirm-dialog'), { key: 'Escape' });
@@ -103,7 +110,7 @@ describe('dismissing the shared confirm', () => {
   });
 
   it('does the same for Cancel, which is the same decision by mouse', async () => {
-    const trigger = openConfirmFromDangerZone();
+    const trigger = await openConfirmFromMoreMenu();
     await screen.findByTestId('confirm-dialog');
 
     fireEvent.click(screen.getByTestId('confirm-dialog-cancel'));
@@ -128,7 +135,7 @@ describe('dismissing the shared confirm', () => {
      * the detached button. The mechanism itself is carried by the two tests
      * above, which both go red when the handler is removed.
      */
-    const trigger = openConfirmFromDangerZone();
+    const trigger = await openConfirmFromMoreMenu();
     await screen.findByTestId('confirm-dialog');
 
     fireEvent.click(screen.getByTestId('confirm-dialog-confirm'));
