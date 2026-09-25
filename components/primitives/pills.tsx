@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, Flame, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { agentStatusView, hasAgentState } from '@/lib/agent-status';
@@ -52,17 +52,85 @@ export function RailTooltip({
   /** The trigger. Cloned via asChild, so it must take a ref and spread props. */
   children: React.ReactNode;
 }) {
+  const tip = useQuietTip();
   return (
-    <Tooltip>
-      <TooltipTrigger asChild>{children}</TooltipTrigger>
-      <TooltipContent side={side} align="center">
-        <div className={cn('px-0.5 text-2xs font-medium text-muted-foreground', detail && 'mb-1')}>
-          {label}
-        </div>
-        {detail && <div className="px-0.5 text-xs text-foreground">{detail}</div>}
-      </TooltipContent>
+    <Tooltip open={tip.open} onOpenChange={tip.onOpenChange}>
+      <TooltipTrigger asChild {...tip.triggerProps}>
+        {children}
+      </TooltipTrigger>
+      <RailTipContent side={side} label={label} detail={detail} />
     </Tooltip>
   );
+}
+
+/**
+ * The rail tooltip's panel on its own: muted eyebrow over the value. Split out
+ * for a trigger that is already some other Radix trigger (the Display menu's
+ * icon button), where the Tooltip root, the trigger and this panel cannot sit
+ * in one wrapper — see components/primitives/display-menu.tsx.
+ */
+export function RailTipContent({
+  label,
+  detail,
+  side = 'top',
+}: {
+  label: string;
+  detail?: React.ReactNode;
+  side?: 'top' | 'right' | 'bottom' | 'left';
+}) {
+  return (
+    <TooltipContent side={side} align="center">
+      <div className={cn('px-0.5 text-2xs font-medium text-muted-foreground', detail && 'mb-1')}>
+        {label}
+      </div>
+      {detail && <div className="px-0.5 text-xs text-foreground">{detail}</div>}
+    </TooltipContent>
+  );
+}
+
+/**
+ * Open on hover and on KEYBOARD focus, never on focus handed back.
+ *
+ * Radix opens a tooltip on any focus. A button that opens a menu or a dialog
+ * gets focus back when that closes, so a mouse user who picked something from
+ * the Display menu, or saved the Add dialog, found the button's tooltip popped
+ * open over the list they had just changed. `:focus-visible` is the browser's
+ * own answer to "did the keyboard put focus here" — set when you Tab in, not
+ * when focus returns after a click — so a focus-driven open is let through
+ * only when the trigger matches it, and a hover always is.
+ */
+export function useQuietTip() {
+  const [open, setOpen] = useState(false);
+  const hovered = useRef(false);
+  const onOpenChange = useCallback((next: boolean) => {
+    if (!next || hovered.current) {
+      setOpen(next);
+      return;
+    }
+    const el = document.activeElement;
+    let keyboard = true;
+    try {
+      keyboard = !el || el.matches(':focus-visible');
+    } catch {
+      // An engine without the selector: behave as Radix does.
+    }
+    if (keyboard) setOpen(true);
+  }, []);
+  const triggerProps = {
+    onPointerEnter: () => {
+      hovered.current = true;
+    },
+    onPointerLeave: () => {
+      hovered.current = false;
+    },
+  };
+  // For a trigger that also opens something: the pointer that was on it is now
+  // on a menu, so forget the hover along with the open state.
+  const reset = useCallback(() => {
+    hovered.current = false;
+    setOpen(false);
+  }, []);
+  return { open, onOpenChange, triggerProps, reset };
 }
 
 const PRIORITY_LABEL: Record<Priority, string> = { high: 'High', medium: 'Med', low: 'Low' };
