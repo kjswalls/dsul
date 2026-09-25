@@ -345,7 +345,14 @@ function SubRow({ section }: { section: Section }) {
         <span className="shrink-0 text-muted-foreground tabular-nums">{section.rail}</span>
       </DropdownMenuSubTrigger>
       <DropdownMenuSubContent className={cn(section.width ?? PANEL, 'shadow-[var(--shadow-elev-md)]')}>
-        {section.scroll ? <div className="max-h-64 overflow-y-auto">{body}</div> : body}
+        {/* The list still scrolls past the cap; the bars are hidden because a
+            classic (non-overlay) scrollbar ate the panel's width and, with
+            overflow-x left on auto, drew a horizontal bar under it too. */}
+        {section.scroll ? (
+          <div className="scrollbar-hide max-h-[min(24rem,60vh)] overflow-x-hidden overflow-y-auto">{body}</div>
+        ) : (
+          body
+        )}
       </DropdownMenuSubContent>
     </DropdownMenuSub>
   );
