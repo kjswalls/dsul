@@ -36,16 +36,31 @@ Then run `/mcp` to authenticate. `.mcp.json` is committed but holds only hosted 
 URLs (Figma + Supabase), no secrets, so it works from any machine.
 
 **`vercel env pull` writes PRODUCTION credentials, so `pnpm dev` talks to prod until
-you run `local-setup.sh`.** That is not theoretical: of the API requests in one
-ten-minute window on 2026-09-18, 5,917 came from `localhost:3000` and two came from
-the deployed app — every hot-reload remount re-runs the planner's container fan-out
-against the live project. `local-setup.sh dev` stands up a local stack and swaps only
-the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the VAPID pair and
-`CRON_SECRET` through untouched. `vercel env pull .env.local` puts prod back.
+you run `local-setup.sh`.** Every hot-reload remount re-runs the planner's container
+fan-out against the live project. `local-setup.sh dev` stands up a local stack and
+swaps only the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the
+VAPID pair and `CRON_SECRET` through untouched. `vercel env pull .env.local` puts
+prod back. **It does not work yet:** `supabase db reset` cannot replay the migrations
+onto an empty database until a baseline migration lands (see
+[scripts/README.md](scripts/README.md)).
 
 The same script covers the e2e suite (`./scripts/local-setup.sh e2e`, writing
-`.env.test` — see `.env.test.example`), or `both` from one stack. See
-[scripts/README.md](scripts/README.md).
+`.env.test` — see `.env.test.example`), or `both` from one stack.
+
+**The e2e suite runs against loopback only, and has no override.**
+`assertLocalTarget` ([tests/e2e/helpers/env.ts](tests/e2e/helpers/env.ts)), called
+from `playwright.config.ts` before the web server starts, refuses a missing or
+non-local `NEXT_PUBLIC_SUPABASE_URL`, and a non-local `E2E_BASE_URL` when one is set.
+The config never adopts an already-running server (`reuseExistingServer: false`),
+because a `pnpm dev` it did not start may be pointed at prod. CI used to run the
+suite against PRODUCTION from repo secrets; on 2026-09-24 four PRs' runs overlapped
+for hours and took the live project down (do.dsul.app logins timed out with a
+Cloudflare 522). `localhost:3000` in the Supabase logs is the Playwright browser's
+origin as much as a dev server's: the 5,917 requests once measured from it on
+2026-09-18 were likely CI too, since several PRs ran E2E against prod that night.
+The CI E2E job is off (`if: false` in `.github/workflows/test.yml`) until it can
+start its own stack; the comment there says what re-enabling it takes. Never give
+it hosted keys back.
 
 ## Git workflow
 
