@@ -697,11 +697,17 @@ export function ScheduleBlock({
       return;
     }
     const rect = r.viewport.getBoundingClientRect();
+    // Week × Schedule pins its column heads over the grid, so the grid's
+    // visible top is the heads' bottom, not the viewport's: measured from the
+    // viewport, a top edge dragged upward vanished under the heads well before
+    // anything scrolled.
+    const head = r.viewport.querySelector('[data-week-head]');
+    const top = head ? Math.max(rect.top, head.getBoundingClientRect().bottom) : rect.top;
     const EDGE = 56;
     const y = pointerYRef.current;
     let dy = 0;
     if (y > rect.bottom - EDGE) dy = Math.min(16, (y - (rect.bottom - EDGE)) / 3);
-    else if (y < rect.top + EDGE) dy = -Math.min(16, (rect.top + EDGE - y) / 3);
+    else if (y < top + EDGE) dy = -Math.min(16, (top + EDGE - y) / 3);
     if (dy !== 0) {
       r.viewport.scrollTop += dy;
       applyResize();
@@ -1522,7 +1528,11 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             ref={setAnytimeRef}
             data-dnd-id="unscheduled:anytime"
             data-dnd-over={isOverAnytime ? 'true' : 'false'}
-            className={cn('rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
+            // mb-8 rather than padding, so the drop ring hugs the rows and not
+            // the gap. It overrides the parent's space-y-4 bottom margin (a
+            // zero-specificity :where rule), so the list sits 32px above the
+            // timeline instead of 16px.
+            className={cn('mb-8 rounded-card transition-colors', isOverAnytime && 'bg-primary/5 ring-2 ring-ring/50')}
           >
             {/* The grid below cannot take headings — a row's y position IS its
                 time, so a section either breaks the axis or floats free of it.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { HOVER_Z, NOW_MARKER_Z, WEEK_GUTTER_Z } from '@/lib/schedule-constants';
+import { HOVER_Z, LANE_CAP_Z, NOW_MARKER_Z, WEEK_GUTTER_Z, WEEK_HEAD_Z } from '@/lib/schedule-constants';
 import {
   CANVAS_PAD_PX,
   MAX_COL_PX,
@@ -558,6 +558,16 @@ describe('the pinned hour gutter', () => {
     // WEEK_GUTTER_Z is not just "10".
     expect(WEEK_GUTTER_Z).toBeGreaterThan(NOW_MARKER_Z);
     expect(WEEK_GUTTER_Z).toBeGreaterThan(HOVER_Z);
+  });
+
+  it('stacks the pinned column heads between the grid and the gutter', () => {
+    // Vertically the hour grid (now-marker, hovered blocks) scrolls under the
+    // heads; sideways the heads scroll under the gutter; the lane caps sit on
+    // top of everything.
+    expect(WEEK_HEAD_Z).toBeGreaterThan(NOW_MARKER_Z);
+    expect(WEEK_HEAD_Z).toBeGreaterThan(HOVER_Z);
+    expect(WEEK_GUTTER_Z).toBeGreaterThan(WEEK_HEAD_Z);
+    expect(LANE_CAP_Z).toBeGreaterThan(WEEK_GUTTER_Z);
   });
 
   it('leaves the row geometry untouched: the pin is a margin trick, not a resize', () => {
