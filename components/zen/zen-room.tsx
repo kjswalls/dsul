@@ -177,11 +177,20 @@ export function ZenSurface() {
    * open overnight rather than only on entry.
    */
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
+  /*
+   * …but not while the room is still flying in. For that second the planner is
+   * on screen around the wave (components/zen/zen-stage.tsx), and re-pointing it
+   * would jump the grid to today under the user's eyes and pull the lifting
+   * item's slot out from under it. The subscription re-runs this once the wave
+   * lands; the check reads the store itself so it sees the flag as it is now.
+   */
+  const zenMoving = useViewStore((s) => s.zenMoving);
   useEffect(() => {
+    if (useViewStore.getState().zenMoving) return;
     const { selectedDate, userTimezone } = usePlannerStore.getState();
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (toDateStr(selectedDate, tz) !== todayStr) setSelectedDate(new Date());
-  }, [todayStr, setSelectedDate]);
+  }, [todayStr, setSelectedDate, zenMoving]);
 
   const heroDone = hero ? isRowDone(hero.row, todayStr) : false;
   const tick = (row: ZenRow) =>

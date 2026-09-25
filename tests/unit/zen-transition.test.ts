@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import {
-  farthestCorner,
-  flightAt,
-  revealRadius,
-  tilePhase,
-  waveFront,
-} from '@/lib/zen-transition';
+import { farthestCorner, flightAt, revealRadius, tilePhase, waveFront } from '@/lib/zen-transition';
 
 describe('Relay Lift geometry', () => {
   it('reaches the farthest corner, not the nearest edge', () => {

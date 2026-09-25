@@ -228,6 +228,9 @@ export function AppShell() {
   // grid derives its hour height from live layout), and every TaskRow under it
   // would still be writing lib/hovered-item.ts on mouseenter.
   const zenOpen = useViewStore((s) => s.zenOpen);
+  // True for the second both surfaces are mounted (components/zen/zen-stage.tsx):
+  // everything below that swaps with the room waits for it to land.
+  const zenMoving = useViewStore((s) => s.zenMoving);
   useEffect(() => {
     document.documentElement.dataset.typeMode = typeMode;
   }, [typeMode]);
@@ -593,7 +596,11 @@ export function AppShell() {
           Without this arm, editing an item from the ⌘K palette inside Zen would
           fill the dialog slot and render nothing at all. */}
       <ItemDialog
-        state={itemDialogState?.mode === 'add' || isMobile || zenOpen ? itemDialogState : null}
+        state={
+          itemDialogState?.mode === 'add' || isMobile || (zenOpen && !zenMoving)
+            ? itemDialogState
+            : null
+        }
         onOpenChange={(open) => !open && closeDialog()}
       />
 
@@ -667,10 +674,10 @@ export function AppShell() {
           would otherwise clear the selection on the SAME keypress that leaves
           the room, so one press did two things. The selection itself is left
           alone, and is still there when you come back. */}
-      {!zenOpen && <BulkActionBar />}
+      {!zenOpen && !zenMoving && <BulkActionBar />}
 
       {/* Floating "?" help hub — desktop only, bottom-right corner */}
-      {!zenOpen && <HelpMenu />}
+      {!zenOpen && !zenMoving && <HelpMenu />}
     </DndContext>
   );
 }

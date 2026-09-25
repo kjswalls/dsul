@@ -1,10 +1,20 @@
 'use client';
 
-import { useCallback, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react';
+import {
+  useCallback,
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { ZenSurface } from '@/components/zen/zen-room';
 import { buildSprite, isDarkContext } from '@/components/primitives/relay-field';
 import { RELAY_LIGHT_PALETTES } from '@/lib/relay-palettes';
 import { useViewStore } from '@/lib/view-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import { setHoveredItemRef } from '@/lib/hovered-item';
+import { toDateStr } from '@/lib/recurrence';
 import {
   ZEN_BAND_FRAC,
   ZEN_WAVE_MS,
@@ -57,7 +67,21 @@ export function ZenStage({ planner }: { planner: ReactNode }) {
   const zenRef = useRef<HTMLDivElement>(null);
   // Reads the flag at the END of the flight rather than closing over the value
   // it started with, so a stable callback can never settle on a stale target.
-  const finish = useCallback(() => setSettled(useViewStore.getState().zenOpen), []);
+  const finish = useCallback(() => {
+    setSettled(useViewStore.getState().zenOpen);
+    useViewStore.setState({ zenMoving: false });
+    // The room clears lib/hovered-item.ts when it mounts, but it mounts at the
+    // START of the wave, and nothing a row writes afterwards is undone by the
+    // row unmounting (no mouseleave fires). Clear it again as the room lands so
+    // `e` and `⌫` in here never act on a planner row nobody can see.
+    setHoveredItemRef(null, null);
+  }, []);
+  // `zenOpen` and `zenMoving` flip together (lib/view-store.ts), so this only
+  // repairs a mismatch nothing should produce — but a stuck `zenMoving` would
+  // hide the help bubble for good, so it is not left to chance.
+  useLayoutEffect(() => {
+    if (!moving && useViewStore.getState().zenMoving) useViewStore.setState({ zenMoving: false });
+  }, [moving]);
 
   const plannerIncoming = moving && !zenOpen;
   const zenIncoming = moving && zenOpen;
@@ -70,6 +94,9 @@ export function ZenStage({ planner }: { planner: ReactNode }) {
           data-zen-layer="planner"
           className={plannerIncoming ? LAYER : 'contents'}
           style={plannerIncoming ? CLOSED : undefined}
+          // The outgoing surface stays visible around the wave but is on its
+          // way out: nothing in it takes a hover, a click or focus meanwhile.
+          inert={zenIncoming}
         >
           {planner}
         </div>
@@ -80,6 +107,7 @@ export function ZenStage({ planner }: { planner: ReactNode }) {
           data-zen-layer="zen"
           className={zenIncoming ? LAYER : 'contents'}
           style={zenIncoming ? CLOSED : undefined}
+          inert={plannerIncoming}
         >
           <ZenSurface />
         </div>
@@ -105,27 +133,40 @@ function rectOf(el: Element): Rect {
 }
 
 function onScreen(r: Rect): boolean {
-  return r.w > 0 && r.h > 0 && r.x + r.w > 0 && r.y + r.h > 0 && r.x < innerWidth && r.y < innerHeight;
+  return (
+    r.w > 0 && r.h > 0 && r.x + r.w > 0 && r.y + r.h > 0 && r.x < innerWidth && r.y < innerHeight
+  );
 }
 
 /**
- * The hero's own title somewhere in the planner: the smallest element under a
- * visible `[data-item-id]` whose whole text is the title. The same item can
- * render more than once (a grid block and a bucket row), so the first one
- * actually on screen wins; none at all means the ring runs without a flight.
+ * The hero's own title somewhere in the planner canvas: the text leaf under a
+ * `[data-item-id]` whose whole text is the title. The sidebar is left out (a
+ * braindump row is not where the day keeps this item), and the same item can
+ * render once per day column, so a copy inside today's column
+ * (`[data-date]`) wins over the first one on screen. None at all means the
+ * ring runs without a flight.
  */
 function findSourceTitle(planner: HTMLElement, id: string, title: string): HTMLElement | null {
-  for (const host of planner.querySelectorAll<HTMLElement>(`[data-item-id="${CSS.escape(id)}"]`)) {
+  const canvas = planner.querySelector('main') ?? planner;
+  const tz =
+    usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const today = toDateStr(new Date(), tz);
+  let fallback: HTMLElement | null = null;
+  for (const host of canvas.querySelectorAll<HTMLElement>(`[data-item-id="${CSS.escape(id)}"]`)) {
     if (!onScreen(rectOf(host))) continue;
-    let best: HTMLElement | null = null;
+    let leaf: HTMLElement | null = null;
     for (const el of host.querySelectorAll<HTMLElement>('*')) {
-      if (el.textContent?.trim() !== title || el.children.length > 0) continue;
-      best = el;
-      break;
+      if (el.children.length === 0 && el.textContent?.trim() === title) {
+        leaf = el;
+        break;
+      }
     }
-    if (best && onScreen(rectOf(best))) return best;
+    if (!leaf || !onScreen(rectOf(leaf))) continue;
+    const day = host.closest<HTMLElement>('[data-date]')?.dataset.date;
+    if (day === today) return leaf;
+    fallback ??= leaf;
   }
-  return null;
+  return fallback;
 }
 
 /** Dark reads the live lime tokens (additive on navy); light takes Meadow, the
@@ -135,7 +176,13 @@ function tileColors(dark: boolean): string[] {
   const cs = getComputedStyle(document.documentElement);
   const read = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
   const primary = read('--primary', 'oklch(0.87 0.19 125)');
-  return [primary, primary, primary, read('--accent-8', 'oklch(0.76 0.13 125)'), read('--accent-2', 'oklch(0.66 0.09 190)')];
+  return [
+    primary,
+    primary,
+    primary,
+    read('--accent-8', 'oklch(0.76 0.13 125)'),
+    read('--accent-2', 'oklch(0.66 0.09 190)'),
+  ];
 }
 
 function RelayLift({
@@ -170,7 +217,8 @@ function RelayLift({
     // ── the flight: the hero title and where it lives in the planner ──
     const hero = zen.querySelector<HTMLElement>('[data-zen-hero]');
     const title = hero?.textContent?.trim() ?? '';
-    const source = hero && title ? findSourceTitle(planner, hero.dataset.zenHero ?? '', title) : null;
+    const source =
+      hero && title ? findSourceTitle(planner, hero.dataset.zenHero ?? '', title) : null;
     const flying = hero && source ? { hero, source } : null;
     let clone: HTMLElement | null = null;
     let scaleAtSource = 1;
@@ -218,6 +266,7 @@ function RelayLift({
       }
     }
 
+    const last = flying ? { hero: rectOf(flying.hero), source: rectOf(flying.source) } : null;
     let raf = 0;
     const start = performance.now();
     const frame = (now: number) => {
@@ -249,12 +298,16 @@ function RelayLift({
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
 
-      if (flying) {
+      if (flying && last) {
         // Measured live every frame: the incoming planner can still be settling
         // (the grid fits its hour height after mount), and a target read once
         // would land the item beside its slot.
-        const h = rectOf(flying.hero);
-        const s = rectOf(flying.source);
+        // A node that left the DOM measures as 0,0 — hold its last real place
+        // instead of letting the title streak to the corner.
+        if (flying.hero.isConnected) last.hero = rectOf(flying.hero);
+        if (flying.source.isConnected) last.source = rectOf(flying.source);
+        const h = last.hero;
+        const s = last.source;
         const [a, b, sa, sb] =
           dir === 'enter' ? [s, h, scaleAtSource, 1] : [h, s, 1, scaleAtSource];
         const { lift, travel } = flightAt(t);

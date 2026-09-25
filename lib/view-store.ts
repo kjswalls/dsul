@@ -9,6 +9,7 @@ import { isSortBy, type SortBy } from './sort-rows';
 // this store back does not make a runtime cycle — the same trick the
 // week-columns note below relies on.
 import type { ClearScope } from './local-state';
+import { prefersReducedMotion } from './zen-transition';
 // week-columns imports ViewLayout back from here, but type-only — erased at
 // compile time, so there is no runtime cycle.
 import {
@@ -160,6 +161,18 @@ interface ViewStore {
    * tree reads this.
    */
   zenOpen: boolean;
+  /**
+   * True while the desktop is animating between the planner and Zen
+   * (components/zen/zen-stage.tsx), when BOTH surfaces are mounted. Flipped in
+   * the SAME update as `zenOpen`, so nothing ever renders a frame where the flag
+   * has moved and this has not: the siblings that swap with the room (the modal
+   * editor arm, the help bubble, the bulk bar) and Zen's own date sync wait on
+   * it rather than jumping in over the wave. A second flip mid-flight cancels
+   * the switch, so it toggles; ZenStage clears it when the wave lands. Never
+   * true under reduced motion. Not meaningful across a reload — the merge below
+   * forces it off.
+   */
+  zenMoving: boolean;
   /** One-time adoption of legacy planner-store view prefs (see adoptLegacyViewPrefs). */
   adoptedLegacy: boolean;
 
@@ -261,6 +274,7 @@ const INERT_DEFAULTS = {
   bucketStyle: 'spine',
   collapsedBuckets: [],
   zenOpen: false,
+  zenMoving: false,
 } satisfies Partial<ViewStore>;
 
 const USER_SCOPED_DEFAULTS = { ...INERT_DEFAULTS, ...DISCLOSIVE_DEFAULTS };
@@ -331,8 +345,8 @@ export const useViewStore = create<ViewStore>()(
       stepWeekDaysVisible: (delta) =>
         set((s) => ({ weekDaysVisible: stepWeekDaysFromLastCanvas(s.weekDaysVisible, delta) })),
       setBucketStyle: (bucketStyle) => set({ bucketStyle }),
-      setZenOpen: (zenOpen) => set({ zenOpen }),
-      toggleZen: () => set((s) => ({ zenOpen: !s.zenOpen })),
+      setZenOpen: (zenOpen) => set((s) => zenSwitch(s, zenOpen)),
+      toggleZen: () => set((s) => zenSwitch(s, !s.zenOpen)),
       toggleBucketCollapsed: (bucket) =>
         set((s) => ({
           collapsedBuckets: s.collapsedBuckets.includes(bucket)
@@ -410,11 +424,22 @@ export const useViewStore = create<ViewStore>()(
           // makes every non-boolean read as closed; a blob that predates the field
           // is `undefined` and lands on the same answer.
           zenOpen: p.zenOpen === true,
+          // A reload lands on a surface, never mid-animation.
+          zenMoving: false,
         };
       },
     }
   )
 );
+
+/** One flip of the Zen flag, with the animation state that rides along. */
+function zenSwitch(
+  s: { zenOpen: boolean; zenMoving: boolean },
+  zenOpen: boolean
+): { zenOpen: boolean; zenMoving: boolean } {
+  if (zenOpen === s.zenOpen) return { zenOpen, zenMoving: s.zenMoving };
+  return { zenOpen, zenMoving: !s.zenMoving && !prefersReducedMotion() };
+}
 
 /**
  * True when the canvas should run edge-to-edge instead of the 1100px column.
