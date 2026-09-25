@@ -29,7 +29,8 @@ is republished.
 ```bash
 pnpm install
 vercel env pull .env.local        # gitignored, Vercel-generated — don't hand-copy
-./scripts/local-setup.sh dev      # then point dev at a LOCAL Supabase
+./scripts/local-setup.sh dev      # point dev at a LOCAL Supabase — currently fails
+                                  # at `supabase db reset`; see below
 ```
 
 Then run `/mcp` to authenticate. `.mcp.json` is committed but holds only hosted OAuth
