@@ -179,11 +179,13 @@ export function Omnibar({
   const [picked, setPicked] = useState<string[]>([]);
   /** What the sr-only live region says after a keyboard edit to the marks. */
   const [announce, setAnnounce] = useState('');
-  // When a modifier press on a row was last seen (mousedown, re-stamped at
-  // mouseup). cmdk's onSelect carries no event, so the modifier rides here; the
-  // timestamp (not a boolean) keeps a mousedown that never became a click from
-  // turning a later Enter into a toggle.
-  const modClickRef = useRef(0);
+  // Whether the click now being dispatched on a picker row carried the
+  // multiselect modifier. cmdk's onSelect gets no event, so the row's
+  // capture-phase click handler (which runs first, in the same dispatch) sets
+  // this and onSelect reads it. Read off the click itself, never remembered
+  // from an earlier event: a held Ctrl auto-repeats keydown, so any flag a
+  // keypress could clear is gone by the time a slow Ctrl-click lands.
+  const modClickRef = useRef(false);
   // True from an unmarking Backspace until the key is released, so a HELD key
   // stops after one pick instead of walking the selection and popping the chip.
   const backspaceHoldRef = useRef(false);
@@ -683,23 +685,20 @@ export function Omnibar({
         // a mark has to read differently from the highlighted row.
         data-checked={checked || undefined}
         aria-checked={canMulti ? checked : undefined}
-        // mousedown, not click: cmdk overwrites a caller's onClick. No Shift (it
-        // reads as a range) and no Ctrl on a Mac (that's the context menu).
+        // cmdk overwrites a caller's onClick, but not onClickCapture. No Shift
+        // (it reads as a range) and no Ctrl on a Mac (that's the context menu).
+        onClickCapture={(e) => {
+          modClickRef.current = isMac ? e.metaKey : e.metaKey || e.ctrlKey;
+        }}
         onMouseDown={(e) => {
           const mod = isMac ? e.metaKey : e.metaKey || e.ctrlKey;
-          modClickRef.current = mod ? performance.now() : 0;
           // Keep focus (and the phone's keyboard) in the input while toggling.
           if (canMulti && (mod || pickedCount > 0)) e.preventDefault();
         }}
-        // Re-stamped at release, so the window runs from the end of the gesture:
-        // a slow press (a dwell, a force-click) is still a modifier click.
-        onMouseUp={() => {
-          if (modClickRef.current) modClickRef.current = performance.now();
-        }}
         onSelect={() => {
           if (!activeCommand) return;
-          const mod = performance.now() - modClickRef.current < 500;
-          modClickRef.current = 0;
+          const mod = modClickRef.current;
+          modClickRef.current = false;
           // Once anything is marked, a plain click or tap toggles too — nothing
           // marked, and it runs on this one item exactly as it always has.
           if (canMulti && (mod || pickedCount > 0)) toggle(id);
@@ -719,7 +718,7 @@ export function Omnibar({
             onMouseDown={(e) => e.preventDefault()}
             onClick={(e) => {
               e.stopPropagation();
-              modClickRef.current = 0;
+              modClickRef.current = false;
               toggle(id);
             }}
           >
@@ -1274,8 +1273,6 @@ export function Omnibar({
               }}
               onBlur={() => setFocused(false)}
               onKeyDown={(e) => {
-                // Any key ends a pending modifier click: see modClickRef.
-                modClickRef.current = 0;
                 // Multiselect keys. All local to this input — none is a global
                 // binding, so the frozen shortcut ids are untouched. preventDefault
                 // is what keeps cmdk's own root handler out of it (its Enter has
