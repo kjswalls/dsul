@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, act } from '@testing-library/react';
 
 /**
  * The room, rendered.
@@ -137,7 +137,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
-  useViewStore.setState({ zenOpen: false });
+  useViewStore.setState({ zenOpen: false, zenMoving: false });
   vi.clearAllMocks();
   vi.useRealTimers();
 });
@@ -230,6 +230,16 @@ describe('the Zen room', () => {
     // browsed Tuesday would have ⌘K → Complete mark a day nobody can see.
     expect(toDateStr(usePlannerStore.getState().selectedDate, TZ)).toBe(ELSEWHERE_STR);
     render(<ZenRoom />);
+    expect(toDateStr(usePlannerStore.getState().selectedDate, TZ)).toBe(TODAY);
+  });
+
+  it('waits for the room to finish flying in before moving the planner to today', () => {
+    // While the entry animation runs, the planner is still on screen around it;
+    // re-pointing it then would jump the grid under the user's eyes.
+    useViewStore.setState({ zenMoving: true });
+    render(<ZenRoom />);
+    expect(toDateStr(usePlannerStore.getState().selectedDate, TZ)).toBe(ELSEWHERE_STR);
+    act(() => useViewStore.setState({ zenMoving: false }));
     expect(toDateStr(usePlannerStore.getState().selectedDate, TZ)).toBe(TODAY);
   });
 

@@ -70,7 +70,10 @@ export function ZenRoom() {
   return <ZenSurface />;
 }
 
-function ZenSurface() {
+/** The room itself, ungated. The desktop mounts it through ZenStage
+ *  (components/zen/zen-stage.tsx), which keeps it mounted through the exit
+ *  animation after the flag has already gone false. */
+export function ZenSurface() {
   const setZenOpen = useViewStore((s) => s.setZenOpen);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
@@ -174,11 +177,20 @@ function ZenSurface() {
    * open overnight rather than only on entry.
    */
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
+  /*
+   * …but not while the room is still flying in. For that second the planner is
+   * on screen around the wave (components/zen/zen-stage.tsx), and re-pointing it
+   * would jump the grid to today under the user's eyes and pull the lifting
+   * item's slot out from under it. The subscription re-runs this once the wave
+   * lands; the check reads the store itself so it sees the flag as it is now.
+   */
+  const zenMoving = useViewStore((s) => s.zenMoving);
   useEffect(() => {
+    if (useViewStore.getState().zenMoving) return;
     const { selectedDate, userTimezone } = usePlannerStore.getState();
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     if (toDateStr(selectedDate, tz) !== todayStr) setSelectedDate(new Date());
-  }, [todayStr, setSelectedDate]);
+  }, [todayStr, setSelectedDate, zenMoving]);
 
   const heroDone = hero ? isRowDone(hero.row, todayStr) : false;
   const tick = (row: ZenRow) =>
@@ -255,6 +267,9 @@ function ZenSurface() {
                   {heroDone && <Check className="h-3 w-3 text-primary-foreground" />}
                 </button>
                 <h1
+                  // The item the room is about — components/zen/zen-stage.tsx
+                  // flies it here from its slot in the planner and back.
+                  data-zen-hero={hero.row.item.id}
                   className={cn(
                     'm-0 font-serif text-[clamp(2rem,5.5vw,3.15rem)] font-semibold leading-[1.16] tracking-[-0.01em] text-balance',
                     heroDone && 'text-muted-foreground line-through opacity-60'
