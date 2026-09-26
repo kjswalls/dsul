@@ -109,8 +109,8 @@ function payloadFor(kind: DraftKind, n: NewItemDraft, todayStr: string) {
 }
 
 /** The draft's new rows as the store WOULD hold them, keyed by the row's key. */
-export function draftPreviewItems(kind: DraftKind, draft: ContainerDraft, todayStr: string): Item[] {
-  return draft.newItems.map((n) => previewItem(n.key, payloadFor(kind, n, todayStr)));
+export function draftPreviewItems(kind: DraftKind, newItems: readonly NewItemDraft[], todayStr: string): Item[] {
+  return newItems.map((n) => previewItem(n.key, payloadFor(kind, n, todayStr)));
 }
 
 /** The draft with its new rows' keys standing in as members — for the previews only. */
@@ -487,7 +487,13 @@ export function ContainerDraftFields({
   // typed in with its days shows in the week dots and the charts before it
   // exists — as the row the create will actually write.
   const preview = useMemo(() => withPreviewMembers(draft), [draft]);
-  const previewItems = useMemo(() => draftPreviewItems(kind, draft, todayStr), [kind, draft, todayStr]);
+  // Keyed on the new rows alone: the draft changes on every keystroke in the
+  // name or the why, and a fresh list here would rebuild up to 400 days of
+  // schedule each time. Undefined when there are none, for the same reason.
+  const previewItems = useMemo(
+    () => (draft.newItems.length ? draftPreviewItems(kind, draft.newItems, todayStr) : undefined),
+    [kind, draft.newItems, todayStr]
+  );
   const overrides = useMemo(() => {
     const nowIso = new Date().toISOString();
     if (kind === 'routine') {
@@ -502,7 +508,7 @@ export function ContainerDraftFields({
     if (kind === 'program') {
       return { programs: [...programs, { id: DRAFT_ID, ...buildProgram('', undefined, preview) }], items: previewItems };
     }
-    return { items: previewItems };
+    return previewItems ? { items: previewItems } : undefined;
   }, [kind, draft, preview, previewItems, routines, programs, todayStr, tz]);
   // The coming seven days, not the calendar week: nothing here exists yet, so
   // the days already behind it would only ever read as empty.
@@ -511,7 +517,7 @@ export function ContainerDraftFields({
     kind === 'program'
       ? containerMemberIds(
           { kind: 'program', program: { id: DRAFT_ID, ...buildProgram('', undefined, preview) } },
-          [...items, ...previewItems],
+          previewItems ? [...items, ...previewItems] : items,
           routines
         )
       : [];
@@ -658,7 +664,10 @@ export function ContainerDraftFields({
             memberIds={seasonIds}
             overrides={overrides}
             testId={`${p}-season-heatmap`}
-            hideEmptyGrid
+            // A program that is off today keeps its (blank) season drawn —
+            // that is the preview of what off does. A live one with nothing
+            // dated is just its tray.
+            hideEmptyGrid={live}
           />
         </section>
       )}
@@ -819,7 +828,8 @@ function NewItemRows({
             onChange={(patch) => patchRow(n.key, patch)}
           />
           {trailing?.({ id: n.key, title: n.title } as Item)}
-          <span className="flex w-[76px] shrink-0 justify-end">
+          {/* 76px lines up with the week dots, which only show from sm up. */}
+          <span className="flex w-auto shrink-0 justify-end sm:w-[76px]">
             <button
               type="button"
               aria-label={`Don't create ${n.title}`}

@@ -40,13 +40,6 @@ export function defaultWhen(ctx: NewItemContext): NewItemWhen {
   return { kind: 'once' };
 }
 
-/** A repeat rule missing its detail (Custom with no days) is not a rule yet. */
-export function isWhenComplete(when: NewItemWhen): boolean {
-  if (when.kind === 'repeat' && when.frequency === 'custom') return (when.days ?? []).length > 0;
-  if (when.kind === 'repeat' && when.frequency === 'monthly') return !!when.monthDay;
-  return true;
-}
-
 export interface NewItemPayload {
   itemType: 'habit' | 'task';
   /** What addHabit / addTask receive. */

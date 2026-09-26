@@ -1,10 +1,12 @@
 'use client';
 
+import { useState } from 'react';
 import { Check } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import { ChipOption, PropertyChip } from '@/components/primitives/property-chip';
 import { formatShort, parseDay } from '@/lib/collections';
 import { cn } from '@/lib/utils';
+import { getItemTypeConfig } from '@/lib/item-registry';
 import { TIME_BUCKET_RANGES, WEEKDAY_LABELS, type TimeBucket } from '@/lib/planner-types';
 import {
   whenOptions,
@@ -67,6 +69,15 @@ export function NewItemWhenChip({
   onChange: (patch: { when?: NewItemWhen; bucket?: TimeBucket }) => void;
 }) {
   const opts = whenOptions(ctx);
+  // The frequencies the row's future TYPE accepts — the registry's answer, so
+  // this chip can never offer a rule the item would refuse.
+  const allowed = getItemTypeConfig(ctx.container === 'routine' ? 'habit' : 'task')
+    .allowedFrequencies as readonly string[];
+  const repeats = REPEATS.filter((r) => allowed.includes(r.value));
+  // The calendar only once a date is wanted: stacked with the repeat list and
+  // a monthly grid it made the popover taller than a laptop screen.
+  const [dating, setDating] = useState(false);
+  const showCalendar = when.kind === 'once' && (!!when.date || dating);
   const label = whenLabel(when, bucket);
   const todayDow = parseDay(todayStr)?.getDay() ?? 0;
   const placed = when.kind === 'repeat' || !!when.date;
@@ -100,8 +111,11 @@ export function NewItemWhenChip({
       testId={testId}
       alwaysChevron
       align="end"
-      className="h-6 shrink-0 text-[11.5px]"
-      contentClassName="w-[17rem] p-1"
+      // Shrinks and truncates on a phone rather than pushing the row's title
+      // to nothing and its remove button off the sheet.
+      className="h-6 max-w-[45%] min-w-0 text-[11.5px]"
+      // Capped to the room Radix says is left, and scrollable within it.
+      contentClassName="w-[17rem] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto p-1"
     >
       {(close) => (
         <div className="flex flex-col">
@@ -112,13 +126,27 @@ export function NewItemWhenChip({
                 value="once"
                 testId={`${testId}-once`}
                 onSelect={() => {
+                  setDating(false);
                   onChange({ when: { kind: 'once' } });
                   close();
                 }}
               >
                 {opts.repeat ? 'Once · no date' : 'No date'}
-                {when.kind === 'once' && !when.date && <Check className="ml-auto size-3.5" />}
+                {when.kind === 'once' && !when.date && !dating && <Check className="ml-auto size-3.5" />}
               </ChipOption>
+              <ChipOption
+                selected={showCalendar}
+                value="date"
+                testId={`${testId}-date`}
+                onSelect={() => {
+                  setDating(true);
+                  if (when.kind !== 'once') onChange({ when: { kind: 'once' } });
+                }}
+              >
+                {opts.repeat ? 'Once · on a date…' : 'On a date…'}
+                {when.kind === 'once' && when.date && <Check className="ml-auto size-3.5" />}
+              </ChipOption>
+              {showCalendar && (
               <div className="px-1 pb-1">
                 <Calendar
                   mode="single"
@@ -133,11 +161,12 @@ export function NewItemWhenChip({
                   }}
                 />
               </div>
+              )}
             </>
           )}
           {opts.once && opts.repeat && <div className="bg-border my-1 h-px" />}
           {opts.repeat &&
-            REPEATS.map((r) => {
+            repeats.map((r) => {
               const on = when.kind === 'repeat' && when.frequency === r.value;
               return (
                 <div key={r.value}>
@@ -146,6 +175,7 @@ export function NewItemWhenChip({
                     value={r.value}
                     testId={`${testId}-${r.value}`}
                     onSelect={() => {
+                      setDating(false);
                       pickRepeat(r.value);
                       if (r.value !== 'custom' && r.value !== 'monthly') close();
                     }}
