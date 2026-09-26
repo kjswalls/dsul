@@ -1348,7 +1348,13 @@ const undoFailedContainerCreate = (
       break;
     }
   }
-  removeRefusedContainer(id, entryId, `Couldn’t add ${kind}: ${name}`, kind);
+  // With kept items the entry still ADDS them, so ⌘Z on it removes them: name
+  // that, rather than a label that reads as a no-op failure.
+  const label =
+    keptItems > 0
+      ? `Add ${keptItems} new ${keptItems === 1 ? 'item' : 'items'}`
+      : `Couldn’t add ${kind}: ${name}`;
+  removeRefusedContainer(id, entryId, label, kind);
   // New items typed into the form WERE saved — they are their own rows, and
   // now loose in the braindump. Saying "nothing was saved" would be false.
   toast.error(
@@ -1395,11 +1401,11 @@ function afterItemCreates<T>(ids: readonly string[], write: () => Promise<T>): P
  */
 const pendingContainerCreates = new Map<string, Promise<void>>();
 
-function trackContainerCreate(id: string, create: Promise<unknown>, memberIds: readonly string[]) {
-  // Only a create that is WAITING on new items opens the window. An ordinary
-  // create leaves in the same tick as the optimistic set, and a write right
-  // behind it keeps the order it always had — no need to hold it.
-  if (!memberIds.some((m) => pendingItemCreates.has(m))) return;
+function trackContainerCreate(id: string, create: Promise<unknown>, memberIds: readonly string[], waitingElsewhere = false) {
+  // Only a create that is WAITING (on new items, or on another container's
+  // create) opens the window. An ordinary create leaves in the same tick as the
+  // optimistic set, and a write right behind it keeps the order it always had.
+  if (!waitingElsewhere && !memberIds.some((m) => pendingItemCreates.has(m))) return;
   const settled = create.then(
     () => undefined,
     () => undefined
@@ -2265,8 +2271,15 @@ export const usePlannerStore = create<PlannerStore>()(
         // Brand-new member items first — see addRoutine.
         if (userId) {
           const waitingOn = full.itemIds.filter((m) => pendingItemCreates.has(m));
-          const created = afterItemCreates(full.itemIds, () => dbCreateProgram(userId, full));
-          trackContainerCreate(full.id, created, waitingOn);
+          // A picked routine may itself still be waiting to land (it was just
+          // made with new items): its program_routines row would 23503 and be
+          // skipped, so the hold would vanish on reload. Wait for it too.
+          const routineWaits = full.routineIds
+            .map((r) => pendingContainerCreates.get(r))
+            .filter((p): p is Promise<void> => !!p);
+          const create = () => afterItemCreates(full.itemIds, () => dbCreateProgram(userId, full));
+          const created = routineWaits.length ? Promise.all(routineWaits).then(create) : create();
+          trackContainerCreate(full.id, created, waitingOn, routineWaits.length > 0);
           created.catch((error) =>
             undoFailedContainerCreate('program', error, full.id, full.name, opts?.newItemCount)
           );
@@ -5013,8 +5026,11 @@ function applyHistoryState(
 
   restoredItems.forEach((item) => {
     const cur = currentById.get(key(item));
+    // Every item write here waits behind that item's INSERT when one is still
+    // in flight (a fast ⌘Z of a create): sent first, it matches zero rows and
+    // the row comes back live on the next reload.
     if (!cur) {
-      dbRestoreItem(item.id, dbType(item)).catch(console.error);
+      afterItemCreates([item.id], () => dbRestoreItem(item.id, dbType(item))).catch(console.error);
       return;
     }
     // completedDates/skippedDates must never be written as an absolute array
@@ -5057,11 +5073,13 @@ function applyHistoryState(
     delete patch.skippedDates;
     if (datesMoved) replayDates();
     if (Object.keys(patch).length > 0) {
-      dbUpdateItem(item.id, dbType(item), patch).catch(console.error);
+      afterItemCreates([item.id], () => dbUpdateItem(item.id, dbType(item), patch)).catch(console.error);
     }
   });
   currentState.items.forEach((item) => {
-    if (!restoredById.has(key(item))) dbDeleteItem(item.id, dbType(item)).catch(console.error);
+    if (!restoredById.has(key(item))) {
+      afterItemCreates([item.id], () => dbDeleteItem(item.id, dbType(item))).catch(console.error);
+    }
   });
 
   // Containers diff by id, never by name — names are mutable, and a name-keyed

@@ -47,8 +47,9 @@ function ControlRail({ children, wide = false }: { children: React.ReactNode; wi
     <div
       className={cn(
         'flex shrink-0 items-center justify-end gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
-        // With a ⋯ menu the rail holds one more 24px button.
-        wide ? 'w-[96px]' : 'w-[72px]'
+        // Sized for its fullest case — up, down, remove (3 × 24px + 2 gaps),
+        // plus the ⋯ menu when wide — so an orderable row never spills left.
+        wide ? 'w-[102px]' : 'w-[76px]'
       )}
     >
       {children}
@@ -179,12 +180,12 @@ export interface MemberRowParts {
 
 /**
  * How far a row's trailing slot sits from the row's right edge: the control
- * rail (72px), the gap before it and the row's padding. A header drawn over the
- * trailing slots (WeekDotsHeader) pads by this much to line up.
+ * rail (76px — ControlRail), the gap before it and the row's padding. A header
+ * drawn over the trailing slots (WeekDotsHeader) pads by this much to line up.
  */
-export const MEMBER_ROW_TRAILING_PAD = 72 + 9 + 7;
+export const MEMBER_ROW_TRAILING_PAD = 76 + 9 + 7;
 /** The same, for a list whose rail carries a ⋯ menu (`row.menu`). */
-export const MEMBER_ROW_TRAILING_PAD_WITH_MENU = 96 + 9 + 7;
+export const MEMBER_ROW_TRAILING_PAD_WITH_MENU = 102 + 9 + 7;
 
 export function ItemMemberList({
   label,

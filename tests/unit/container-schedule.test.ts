@@ -290,4 +290,25 @@ describe('chart ranges', () => {
     expect(run.from).toBe('2026-08-31');
     expect(programRange({ state: 'active' }, TODAY, 'sunday')).toMatchObject({ from: '2026-09-20', days: 112, bounded: false });
   });
+
+  it('never shows a long goal as a window wholly after its target', async () => {
+    const { goalRange } = await import('@/components/planner/schedule/schedule-views');
+    const past = goalRange('2024-01-01', '2025-12-31', TODAY);
+    expect(past.capped).toBe(true);
+    // The window ends on the target, not somewhere next year.
+    expect(addDaysStr(past.from, past.days - 1)).toBe('2025-12-31');
+  });
+
+  it('keeps today in view for a long program, and never runs a started one into the past only', async () => {
+    const { programRange } = await import('@/components/planner/schedule/schedule-views');
+    const long = programRange({ state: 'auto', startsOn: '2025-01-01', endsOn: '2026-12-31' }, TODAY, 'sunday');
+    expect(long.capped).toBe(true);
+    expect(long.from <= TODAY && addDaysStr(long.from, long.days - 1) >= TODAY).toBe(true);
+    // Open-ended, started months ago: sixteen weeks from THIS week.
+    expect(programRange({ state: 'auto', startsOn: '2026-03-01' }, TODAY, 'sunday').from).toBe('2026-09-20');
+    // Starting later: from its start.
+    expect(programRange({ state: 'auto', startsOn: '2026-11-04' }, TODAY, 'sunday').from).toBe('2026-11-01');
+    // Inverted dates never produce a negative span.
+    expect(programRange({ state: 'auto', startsOn: '2026-10-04', endsOn: '2026-10-01' }, TODAY, 'sunday').days).toBeGreaterThan(0);
+  });
 });

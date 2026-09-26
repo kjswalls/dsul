@@ -94,10 +94,11 @@ export function useWeekStartDay() {
 const DOW_LETTERS = ['S', 'M', 'T', 'W', 'T', 'F', 'S'];
 const DOW_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-function rowSummary(title: string, row: Map<string, Occurrence> | undefined, dates: readonly string[]): string {
+/** The dated states a chart row draws, in words — its text alternative. */
+function rowStates(row: Map<string, Occurrence> | undefined, dates: readonly string[]): string {
   const on = dates.filter((d) => row?.has(d));
-  if (on.length === 0) return `${title}: nothing in this span`;
-  return `${title}: ${on.map((d) => `${formatShort(d)} ${STATE_WORD[row!.get(d)!.state]}`).join(', ')}`;
+  if (on.length === 0) return 'nothing in this span';
+  return on.map((d) => `${formatShort(d)} ${STATE_WORD[row!.get(d)!.state]}`).join(', ');
 }
 
 const STATE_WORD: Record<OccurrenceState, string> = {
@@ -428,8 +429,12 @@ export function RhythmGrid({
               className="border-border/60 grid h-8 items-center border-t"
               style={{ gridTemplateColumns: cols }}
               data-testid={`${testId}-row`}
-              aria-label={rowSummary(item.title, byItem.get(item.id), dates)}
             >
+              {/* The marks are aria-hidden; this is what a screen reader hears
+                  instead (a name on a plain div is not announced). */}
+              <span className="sr-only" data-testid={`${testId}-row-summary`}>
+                {rowStates(byItem.get(item.id), dates)}
+              </span>
               {linkItems ? (
                 <Link href={`/item/${item.id}`} className="hover:text-foreground truncate pr-2 text-[13px] hover:underline" title={item.title}>
                   {item.title}
@@ -462,13 +467,33 @@ export function RhythmGrid({
  * next sixteen weeks from this one. A long run is capped (MAX_SCHEDULE_DAYS).
  */
 export function programRange(program: Pick<Program, 'state' | 'startsOn' | 'endsOn'>, todayStr: string, weekStartDay: 'sunday' | 'monday' | 'saturday') {
-  if (program.state === 'auto' && program.startsOn && program.endsOn) {
-    const from = weekStartOf(program.startsOn, weekStartDay);
-    const days = Math.min(daysBetween(from, program.endsOn) + 1, MAX_SCHEDULE_DAYS);
-    return { from, days, capped: daysBetween(from, program.endsOn) + 1 > MAX_SCHEDULE_DAYS, bounded: true };
+  const auto = program.state === 'auto';
+  if (auto && program.startsOn && program.endsOn && program.endsOn >= program.startsOn) {
+    const start = weekStartOf(program.startsOn, weekStartDay);
+    const full = daysBetween(start, program.endsOn) + 1;
+    if (full <= MAX_SCHEDULE_DAYS) return { from: start, days: full, capped: false, bounded: true };
+    // Too long to draw whole: keep today in view, week-aligned, inside the run.
+    const latest = weekStartOf(addDaysStr(program.endsOn, -(MAX_SCHEDULE_DAYS - 7)), weekStartDay);
+    const from = weekStartOf(clampWindowStart(todayStr, start, latest, 0), weekStartDay);
+    return { from, days: MAX_SCHEDULE_DAYS, capped: true, bounded: true };
   }
-  const anchor = program.state === 'auto' && program.startsOn ? program.startsOn : todayStr;
+  // Open-ended (or held by hand): sixteen weeks from this one — or from the
+  // start, while that is still ahead — never a stretch that is all behind us.
+  const anchor = auto && program.startsOn && program.startsOn > todayStr ? program.startsOn : todayStr;
   return { from: weekStartOf(anchor, weekStartDay), days: 16 * 7, capped: false, bounded: false };
+}
+
+/**
+ * Where a capped window opens: half a year before today, but never before the
+ * window's start nor so late that it runs past `to` (or past `latest` itself
+ * when `span` is 0, i.e. `to` is already the latest allowed start).
+ */
+function clampWindowStart(todayStr: string, start: string, to: string, span = MAX_SCHEDULE_DAYS) {
+  const latest = span ? addDaysStr(to, -(span - 1)) : to;
+  const back = addDaysStr(todayStr, -182);
+  if (back < start) return start;
+  if (back > latest) return latest;
+  return back;
 }
 
 export function SeasonHeatmap({
@@ -611,9 +636,9 @@ export function goalRange(startsOn: string | undefined, targetOn: string | undef
   if (full <= MAX_SCHEDULE_DAYS) return { from: start, days: full, capped: false, open: !targetOn };
   // Longer than the chart can hold: keep TODAY in view — half a year behind it
   // at most — rather than showing a first 400 days that may be long over.
-  const back = addDaysStr(todayStr, -182);
-  const from = back > start ? back : start;
-  return { from, days: MAX_SCHEDULE_DAYS, capped: true, open: !targetOn };
+  // Clamped into the window, so a goal whose target is long past still shows
+  // its last stretch instead of an empty chart after it.
+  return { from: clampWindowStart(todayStr, start, to), days: MAX_SCHEDULE_DAYS, capped: true, open: !targetOn };
 }
 
 const MAX_LANES = 8;
@@ -729,7 +754,7 @@ export function GoalTimeline({
             <div className="relative h-8">
               {milestones.map((o) => (
                 <span
-                  key={o.itemId}
+                  key={`${o.itemId}:${o.date}`}
                   className="absolute top-1/2 flex -translate-y-1/2 items-center gap-1 whitespace-nowrap"
                   style={{ left: pct(o.date) }}
                   title={`${title(o.itemId)} · ${formatShort(o.date)}`}
@@ -745,7 +770,14 @@ export function GoalTimeline({
         {shown.map((id) => (
           <div key={id} className="border-border/60 grid h-7 grid-cols-[120px_1fr] items-center border-t" data-testid={`${testId}-lane`}>
             <span className="truncate pr-2 text-[12.5px]" title={title(id)}>{title(id)}</span>
-            <div className="relative h-7">
+            <span className="sr-only">
+              {(() => {
+                const row = byItem.get(id);
+                const dates = [...(row?.values() ?? [])].filter((o) => o.state !== 'open').map((o) => o.date);
+                return rowStates(row, dates);
+              })()}
+            </span>
+            <div className="relative h-7" aria-hidden>
               {[...(byItem.get(id)?.values() ?? [])].filter((o) => o.state !== 'open').map((o) =>
                 o.once ? (
                   <span key={o.date} className={cn('absolute top-1/2 size-2 -translate-x-1/2 -translate-y-1/2 rotate-45 rounded-[1px]', o.state === 'done' ? 'bg-primary' : 'bg-muted-foreground/60')} style={{ left: pct(o.date) }} />

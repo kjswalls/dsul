@@ -242,7 +242,10 @@ export function deriveContainerSchedule({
       !t.isScheduled &&
       !t.timeBucket &&
       !isRecurring(t) &&
-      t.status === 'pending' &&
+      // Still open, by the type's own vocabulary — a custom type's open
+      // status need not be 'pending'.
+      t.status !== getItemTypeConfig(itemTypeName(t as unknown as Item)).doneStatus &&
+      t.status !== 'cancelled' &&
       !heldToday.has(t.id),
   ) as unknown as Item[];
 

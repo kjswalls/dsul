@@ -2,6 +2,7 @@
 
 import { useMemo, useState, type ReactNode } from 'react';
 import Link from 'next/link';
+import { toast } from 'sonner';
 import {
   ArrowLeftToLine,
   CalendarDays,
@@ -9,6 +10,7 @@ import {
   Maximize2,
   MoreHorizontal,
   Pause,
+  Play,
   Redo2,
   SkipForward,
   Trash2,
@@ -112,6 +114,7 @@ interface Verbs {
   tick?: { label: string; run: () => void };
   skip?: () => void;
   pause?: () => void;
+  resume?: () => void;
   nextDay?: { label: string; detail: string; run: () => void };
   reschedule?: (dateStr: string) => void;
   braindump?: () => void;
@@ -151,6 +154,17 @@ function useVerbs(
     return { date, dateStr: toDateStr(date, tz) };
   };
   const actions = { toggleTaskStatus, toggleHabitStatus };
+  // Whether a recurring row may be ticked or skipped was decided for the day
+  // this rendered on. Past midnight that answer is stale (nothing re-renders
+  // the console on the hour), so a per-day write waits for a fresh look rather
+  // than landing on a day nobody was shown.
+  const sameDay = (run: () => void) => () => {
+    if (now().dateStr !== todayStr) {
+      toast("It's a new day — close and reopen this list to see today's.");
+      return;
+    }
+    run();
+  };
 
   const verbs: Verbs = {
     remove: () => onRemove?.(item.id),
@@ -171,7 +185,7 @@ function useVerbs(
         // The planner row's Unskip, NOT a tick: ticking a skipped day wrote
         // skipped-AND-completed on a task and a count step on a counted habit
         // (lib/item-toggle.ts toggleRowDone refuses it for that reason).
-        verbs.tick = { label: 'Unskip today', run: () => setItemSkipped(item.id, false, now().date) };
+        verbs.tick = { label: 'Unskip today', run: sameDay(() => setItemSkipped(item.id, false, now().date)) };
       } else {
         const target = isHabit ? ((item as HabitItem).timesPerDay ?? 1) : 1;
         const count = isHabit ? ((item as HabitItem).dailyCounts ?? {})[todayStr] ?? 0 : 0;
@@ -183,23 +197,26 @@ function useVerbs(
               : target > 1
                 ? `Count one (${count}/${target})`
                 : 'Done today',
-          run: () =>
+          run: sameDay(() =>
             toggleRowDone(
               isHabit
                 ? { itemType: 'habit', item: item as HabitItem }
                 : { itemType: 'task', item: item as Task },
               now(),
               actions
-            ),
+            )
+          ),
         };
       }
     }
     // The registry's own gates — the ones the store would enforce silently.
     if (todayState === 'due' && isSkippable(item)) {
-      verbs.skip = () => setItemSkipped(item.id, true, now().date);
+      verbs.skip = sameDay(() => setItemSkipped(item.id, true, now().date));
     }
-    if (isPausable(item) && !isPausedOn(item, todayStr, tz)) {
-      verbs.pause = () => setItemPaused(item.id, true);
+    if (isPausable(item)) {
+      // A paused item drops out of the week, so its row still needs a way back.
+      if (isPausedOn(item, todayStr, tz)) verbs.resume = () => setItemPaused(item.id, false);
+      else verbs.pause = () => setItemPaused(item.id, true);
     }
   } else if (status !== 'cancelled') {
     verbs.tick = {
@@ -244,14 +261,14 @@ function MemberCapsule({
 }) {
   const v = useVerbs(item, todayState, todayStr, milestoneIds);
   const [picking, setPicking] = useState(false);
-  const any = v.tick || v.skip || v.pause || v.nextDay || v.reschedule || v.braindump;
+  const any = v.tick || v.skip || v.pause || v.resume || v.nextDay || v.reschedule || v.braindump;
   if (!any) return null;
   return (
     // Over the meta column, never reserving space; shown on hover or focus
     // above md only (below it the ⋯ menu carries everything).
     <span
       className={cn(
-        'pointer-events-none absolute top-1/2 right-[104px] hidden -translate-y-1/2 opacity-0 transition-opacity md:flex',
+        'pointer-events-none absolute top-1/2 right-[110px] hidden -translate-y-1/2 opacity-0 transition-opacity md:flex',
         'group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100',
         picking && 'pointer-events-auto opacity-100'
       )}
@@ -261,6 +278,7 @@ function MemberCapsule({
         {v.tick && <RowControl icon={Check} label={v.tick.label} testId="member-tick" onClick={v.tick.run} />}
         {v.skip && <RowControl icon={SkipForward} label="Skip today" testId="member-skip" onClick={v.skip} />}
         {v.pause && <RowControl icon={Pause} label="Pause" testId="member-pause" onClick={v.pause} />}
+        {v.resume && <RowControl icon={Play} label="Resume" testId="member-resume" onClick={v.resume} />}
         {v.nextDay && (
           <RowControl
             icon={Redo2}
@@ -395,6 +413,14 @@ function MemberMenu({
                 <DropdownMenuItem onSelect={() => v.reschedule!(nextWeek)}>Next week</DropdownMenuItem>
               </div>
               <DropdownMenuSeparator className="my-0" />
+              {/* The menu claims ArrowLeft (closes the submenu) and Tab (cancelled)
+                  anywhere inside it, which would make the grid unusable from the
+                  keyboard. Keep those keys for the calendar; Escape still closes. */}
+              <div
+                onKeyDown={(e) => {
+                  if (e.key !== 'Escape') e.stopPropagation();
+                }}
+              >
               <Calendar
                 mode="single"
                 selected={parseDay((item as { startDate?: string }).startDate)}
@@ -408,6 +434,7 @@ function MemberMenu({
                   setOpen(false);
                 }}
               />
+              </div>
             </DropdownMenuSubContent>
           </DropdownMenuSub>
         )}
@@ -428,6 +455,12 @@ function MemberMenu({
           <DropdownMenuItem onSelect={v.pause} data-testid="member-menu-pause">
             <Pause className="size-3.5" />
             Pause
+          </DropdownMenuItem>
+        )}
+        {v.resume && (
+          <DropdownMenuItem onSelect={v.resume} data-testid="member-menu-resume">
+            <Play className="size-3.5" />
+            Resume
           </DropdownMenuItem>
         )}
         <DropdownMenuSeparator />
