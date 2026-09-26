@@ -20,6 +20,7 @@ import {
   foldContainerName,
   namesOfKind,
   sameContainerName,
+  sameContainerRef,
 } from './container-registry';
 import { displayGoals, isGoalActive } from './goals';
 import {
@@ -64,7 +65,8 @@ import type { SortBy } from './sort-rows';
  *
  * The core is pure — `summarizeDisplay` is handed the slices it reads — so the
  * whole state matrix can be tested without a render. `useDisplaySummary` feeds
- * it from the stores, and `resetDisplay` is the one reset.
+ * it from the stores, `resetDisplay` is the one reset, and
+ * `removeDisplaySetting` takes off the one clause or value a shelf ✕ names.
  */
 
 export type DisplaySurface = 'canvas' | 'braindump';
@@ -479,5 +481,86 @@ export function resetDisplay(surface: DisplaySurface): void {
   } else {
     if (!keepGroupBy(view.braindumpGroupBy)) view.setBraindumpGroupBy('none');
     view.setBraindumpSortBy('default');
+  }
+}
+
+/* ── taking one setting off ──────────────────────────────────────────────── */
+
+/**
+ * What one of the shelf's per-setting ✕s names: a single clause, or one value
+ * of a multi-select by its `DisplayValue.key`.
+ */
+export type DisplayRemoval =
+  | { id: 'group' | 'sort' | 'type' | 'hide-finished' }
+  | { id: 'priority' | 'project' | 'goal'; key: string };
+
+/**
+ * The filters with one drawn value taken off — EVERY stored value it stands
+ * for, not just the one spelling the key carries.
+ *
+ * A value can stand for more than one stored entry, because duplicates
+ * collapse into their twin (see `summarizeDisplay`): 'high' twice is one High,
+ * and `project:Work` and `project:work` are one Work. Taking off only the
+ * spelling in the key would leave the twin behind, and the value would stay
+ * on the shelf after its ✕ was pressed. So projects compare the way the menu's
+ * checkbox ticks them, folded (`sameContainerRef`, which leaves a ref of no
+ * classify kind and the unset key to exact equality), and priorities and goals
+ * compare exactly, as they are deduped.
+ *
+ * Pure, and never writes into the array it was handed.
+ */
+export function withoutDisplayValue(
+  filters: ViewFilters,
+  removal: Extract<DisplayRemoval, { key: string }>
+): ViewFilters {
+  const { key } = removal;
+  switch (removal.id) {
+    case 'priority':
+      return { ...filters, priorities: filters.priorities.filter((v) => v !== key) };
+    case 'project':
+      return { ...filters, containers: filters.containers.filter((r) => !sameContainerRef(r, key)) };
+    case 'goal':
+      return { ...filters, goals: filters.goals.filter((id) => id !== key) };
+  }
+}
+
+/**
+ * Take one clause, or one value of a multi-select, off this surface — what a
+ * shelf ✕ beside a single setting does, where the ✕ at the end is
+ * `resetDisplay` and takes off all of them.
+ *
+ * Through the same setters Reset uses, so the canvas group-by and type filter
+ * keep their planner-store mirrors. Reads the stores when it is called, as
+ * Reset does. Nothing here consults the Goals gate: the shelf draws no goal
+ * clause and no goal grouping while Goals is off, so no ✕ can name one, and
+ * what the switch is keeping is kept.
+ */
+export function removeDisplaySetting(surface: DisplaySurface, removal: DisplayRemoval): void {
+  const view = useViewStore.getState();
+  const isCanvas = surface === 'canvas';
+  switch (removal.id) {
+    case 'group':
+      if (isCanvas) view.setCanvasGroupBy('none');
+      else view.setBraindumpGroupBy('none');
+      return;
+    case 'sort':
+      if (isCanvas) view.setCanvasSortBy('default');
+      else view.setBraindumpSortBy('default');
+      return;
+    case 'type':
+      // The type filter is the canvas's alone; the braindump never shows it.
+      if (isCanvas) view.setTypeFilter('all');
+      return;
+    case 'hide-finished': {
+      const filters = isCanvas ? view.canvasFilters : view.braindumpFilters;
+      const setFilters = isCanvas ? view.setCanvasFilters : view.setBraindumpFilters;
+      setFilters({ ...filters, hideFinished: false });
+      return;
+    }
+    default: {
+      const filters = isCanvas ? view.canvasFilters : view.braindumpFilters;
+      const setFilters = isCanvas ? view.setCanvasFilters : view.setBraindumpFilters;
+      setFilters(withoutDisplayValue(filters, removal));
+    }
   }
 }

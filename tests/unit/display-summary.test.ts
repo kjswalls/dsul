@@ -55,10 +55,13 @@ import {
   clauseText,
   goalMenuOrder,
   priorityFilterLabel,
+  removeDisplaySetting,
   resetDisplay,
   summarizeDisplay,
   useDisplaySummary,
+  withoutDisplayValue,
   type DisplayClause,
+  type DisplayRemoval,
   type DisplaySummary,
   type DisplaySummaryInput,
   type DisplayValue,
@@ -164,6 +167,9 @@ const CONTAINER_SETS = [
   { values: ['project:Gone', 'project:gone', 'Bare'], drawn: 2 },
   // Two spellings of one live project, which the menu ticks as one row.
   { values: ['project:Work', 'project:work'], drawn: 1 },
+  // Every run at once: live, deleted, a bare name that spells a live project,
+  // a kindless heading key, and the unset value — none may fold onto another.
+  { values: ['project:Work', 'project:Gone', 'Work', 'none:project', NO_CONTAINER], drawn: 5 },
 ];
 const GOAL_SETS = [
   { values: [] as string[], drawn: 0 },
@@ -237,7 +243,7 @@ describe('the count, over every combination of settings', () => {
   it('covers both surfaces, the Goals gate and the stranded clauses it leaves', () => {
     // A guard on the guard: a matrix that quietly lost a dimension would still
     // pass everything below.
-    expect(CASES).toHaveLength(2 * 2 * 2 * 3 * 2 * 2 * 3 * 4 * 3 * 2);
+    expect(CASES).toHaveLength(2 * 2 * 2 * 3 * 2 * 2 * 3 * 5 * 3 * 2);
   });
 
   it("is the menu's own formula, value for value", () => {
@@ -269,6 +275,102 @@ describe('the count, over every combination of settings', () => {
       )
     );
     expect(wrong.map((c) => c.name)).toEqual([]);
+  });
+});
+
+/* ── one ✕ each ───────────────────────────────────────────────────────────── */
+
+/** What each thing the shelf draws is called, one per ✕ it wears. */
+const drawnIds = (s: DisplaySummary): string[] =>
+  s.clauses.flatMap((c) => ('values' in c ? c.values.map((v) => `${c.id}|${v.key}`) : [c.id]));
+
+/** The removal each drawn thing's ✕ hands over, as the shelf builds it. */
+const removals = (s: DisplaySummary): DisplayRemoval[] =>
+  s.clauses.flatMap((c): DisplayRemoval[] =>
+    'values' in c ? c.values.map((v) => ({ id: c.id, key: v.key })) : [{ id: c.id }]
+  );
+
+const removalId = (r: DisplayRemoval) => ('key' in r ? `${r.id}|${r.key}` : r.id);
+
+/** `removeDisplaySetting` over the model's inputs rather than the stores. */
+function inputWithout(inp: DisplaySummaryInput, r: DisplayRemoval): DisplaySummaryInput {
+  switch (r.id) {
+    case 'group':
+      return { ...inp, groupBy: 'none' };
+    case 'sort':
+      return { ...inp, sortBy: 'default' };
+    case 'type':
+      return { ...inp, typeFilter: 'all' };
+    case 'hide-finished':
+      return { ...inp, filters: { ...inp.filters, hideFinished: false } };
+    default:
+      return { ...inp, filters: withoutDisplayValue(inp.filters, r) };
+  }
+}
+
+describe('taking one thing off, over every combination of settings', () => {
+  it('takes off exactly the value its ✕ names, twins included, and leaves every other', () => {
+    const wrong: string[] = [];
+    for (const c of CASES) {
+      const before = summarizeDisplay(c.input);
+      for (const r of removals(before)) {
+        const after = summarizeDisplay(inputWithout(c.input, r));
+        const expected = drawnIds(before).filter((id) => id !== removalId(r));
+        if (JSON.stringify(drawnIds(after)) !== JSON.stringify(expected)) {
+          wrong.push(`${c.name} − ${removalId(r)}`);
+        }
+      }
+    }
+    expect(wrong).toEqual([]);
+  });
+
+  it('puts the dot out exactly when the last thing drawn is taken off', () => {
+    const wrong: string[] = [];
+    for (const c of CASES) {
+      const before = summarizeDisplay(c.input);
+      const rs = removals(before);
+      if (rs.length !== 1) continue;
+      if (summarizeDisplay(inputWithout(c.input, rs[0])).activeCount !== 0) wrong.push(c.name);
+    }
+    expect(wrong).toEqual([]);
+  });
+});
+
+describe('withoutDisplayValue', () => {
+  it('takes off every stored spelling a project value stands for, the way the menu ticks it', () => {
+    const f = filters({ containers: ['project:Work', 'project:work', 'project:Personal', NO_CONTAINER] });
+    expect(withoutDisplayValue(f, { id: 'project', key: 'project:Work' }).containers).toEqual([
+      'project:Personal',
+      NO_CONTAINER,
+    ]);
+    expect(withoutDisplayValue(f, { id: 'project', key: NO_CONTAINER }).containers).toEqual([
+      'project:Work',
+      'project:work',
+      'project:Personal',
+    ]);
+  });
+
+  it('compares a ref of no classify kind exactly, as the shelf dedupes it', () => {
+    const f = filters({ containers: ['Bare', 'bare', 'routine:X'] });
+    expect(withoutDisplayValue(f, { id: 'project', key: 'Bare' }).containers).toEqual([
+      'bare',
+      'routine:X',
+    ]);
+  });
+
+  it('takes off a duplicated priority or goal in one go', () => {
+    const f = filters({ priorities: stored(['high', 'high', 'low']), goals: ['g1', 'g1', 'g2'] });
+    expect(withoutDisplayValue(f, { id: 'priority', key: 'high' }).priorities).toEqual(['low']);
+    expect(withoutDisplayValue(f, { id: 'goal', key: 'g1' }).goals).toEqual(['g2']);
+  });
+
+  it('never writes into the filters it was handed', () => {
+    const f = filters({ containers: ['project:Work'], priorities: ['high'], goals: ['g1'] });
+    const frozen = structuredClone(f);
+    withoutDisplayValue(f, { id: 'project', key: 'project:Work' });
+    withoutDisplayValue(f, { id: 'priority', key: 'high' });
+    withoutDisplayValue(f, { id: 'goal', key: 'g1' });
+    expect(f).toEqual(frozen);
   });
 });
 
@@ -636,6 +738,71 @@ describe('resetDisplay — the Reset row and the shelf ✕, one function', () =>
       goals: [],
       hideFinished: false,
     });
+  });
+});
+
+describe('removeDisplaySetting — one shelf ✕', () => {
+  beforeEach(() => {
+    seedStores();
+    enableExtensions(EXT_GOALS);
+  });
+  afterEach(cleanup);
+
+  it('takes one braindump setting off and leaves the rest, and the canvas, alone', () => {
+    const canvasBefore = view().canvasFilters;
+
+    removeDisplaySetting('braindump', { id: 'priority', key: 'high' });
+    expect(view().braindumpFilters).toEqual({
+      containers: ['project:Work'],
+      priorities: [],
+      goals: ['g2'],
+      hideFinished: true,
+    });
+
+    removeDisplaySetting('braindump', { id: 'hide-finished' });
+    expect(view().braindumpFilters.hideFinished).toBe(false);
+    expect(view().braindumpFilters.containers).toEqual(['project:Work']);
+
+    removeDisplaySetting('braindump', { id: 'group' });
+    expect(view().braindumpGroupBy).toBe('none');
+    expect(view().braindumpSortBy).toBe('priority');
+
+    removeDisplaySetting('braindump', { id: 'sort' });
+    expect(view().braindumpSortBy).toBe('default');
+
+    expect(view().canvasFilters).toBe(canvasBefore);
+    expect(view().canvasGroupBy).toBe('goal');
+    expect(view().canvasSortBy).toBe('title');
+    expect(view().typeFilter).toBe('habits');
+  });
+
+  it('clears the canvas grouping and type filter through the setters that keep the mirrors', () => {
+    removeDisplaySetting('canvas', { id: 'group' });
+    removeDisplaySetting('canvas', { id: 'type' });
+    expect(view().canvasGroupBy).toBe('none');
+    expect(view().typeFilter).toBe('all');
+    expect(usePlannerStore.getState().groupBy).toBe('none');
+    expect(usePlannerStore.getState().timelineItemFilter).toBe('all');
+  });
+
+  it("leaves the canvas's type filter alone when the braindump names it", () => {
+    removeDisplaySetting('braindump', { id: 'type' });
+    expect(view().typeFilter).toBe('habits');
+  });
+
+  it('takes a project off in every spelling it was stored in', () => {
+    useViewStore.setState({
+      braindumpFilters: filters({ containers: ['project:work', 'project:Work', NO_CONTAINER] }),
+    });
+    removeDisplaySetting('braindump', { id: 'project', key: 'project:Work' });
+    expect(view().braindumpFilters.containers).toEqual([NO_CONTAINER]);
+  });
+
+  it('never touches Show paused, which is app-wide', () => {
+    removeDisplaySetting('braindump', { id: 'group' });
+    removeDisplaySetting('canvas', { id: 'goal', key: 'g1' });
+    expect(usePlannerStore.getState().showPausedOnGrid).toBe(true);
+    expect(view().canvasFilters.goals).toEqual([]);
   });
 });
 

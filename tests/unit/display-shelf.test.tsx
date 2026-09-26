@@ -211,6 +211,12 @@ const resetX = () => screen.getByTestId('display-shelf-reset-braindump');
 const trigger = () => screen.getByTestId('display-trigger-braindump');
 /** By attribute rather than getByText: 'Priority' is a group-by label AND a sort label. */
 const clause = (id: string) => shelf().querySelector<HTMLElement>(`[data-clause="${id}"]`);
+/** A multi-select's values as the eye reads them, one per value. */
+const valueLabels = (id: string) =>
+  Array.from(clause(id)?.querySelectorAll('[data-value]') ?? [], (v) => v.textContent);
+/** Every per-setting ✕, in reading order; the reset ✕ is not one of them. */
+const removeXs = () => screen.queryAllByTestId('display-shelf-remove-braindump');
+const removeX = (name: string) => screen.getByRole('button', { name });
 
 /**
  * Let a closing menu go. jsdom plays no animation, so where a stylesheet gives
@@ -365,10 +371,10 @@ describe('what it says', () => {
     expect(clause('group')).toHaveTextContent(/^Grouped by Project$/);
     // An en dash, as SORT_BY_OPTIONS spells it.
     expect(clause('sort')).toHaveTextContent(/^Sorted by Title A–Z$/);
-    expect(clause('priority')).toHaveTextContent(/^High, Low, No priority$/);
+    expect(valueLabels('priority')).toEqual(['High', 'Low', 'No priority']);
     // The store's spelling, not the stored one.
-    expect(clause('project')).toHaveTextContent(/^Work, Home, No project$/);
-    expect(clause('goal')).toHaveTextContent(/^Learn Chinese, Marathon$/);
+    expect(valueLabels('project')).toEqual(['Work', 'Home', 'No project']);
+    expect(valueLabels('goal')).toEqual(['Learn Chinese', 'Marathon']);
     expect(clause('hide-finished')).toHaveTextContent(/^Hide finished$/);
 
     // Grouping and ordering share the first line, as the list's arrangement.
@@ -377,10 +383,13 @@ describe('what it says', () => {
     expect(arrange).toContainElement(clause('sort'));
 
     // clauseText is the oracle — the text the fit is keyed on is the text on
-    // screen, clause for clause.
+    // screen, clause for clause (a multi-select's values joined as it joins them).
     const { result } = renderHook(() => useDisplaySummary('braindump'));
     expect(result.current.clauses).toHaveLength(6);
-    for (const c of result.current.clauses) expect(clause(c.id)?.textContent).toBe(clauseText(c));
+    for (const c of result.current.clauses) {
+      const onScreen = 'values' in c ? valueLabels(c.id).join(', ') : clause(c.id)?.textContent;
+      expect(onScreen).toBe(clauseText(c));
+    }
   });
 
   it('marks each value the way its menu row does, and goals with Target', () => {
@@ -393,7 +402,10 @@ describe('what it says', () => {
     });
     renderBraindump();
 
-    const marks = (id: string) => [...clause(id)!.querySelectorAll('[aria-hidden="true"]')];
+    const marks = (id: string) =>
+      [...clause(id)!.querySelectorAll('[data-value] > [data-chip-label]')].map(
+        (label) => label.firstElementChild!
+      );
 
     const [low, noPriority] = marks('priority');
     expect(low.getAttribute('style')).toContain('var(--priority-low)');
@@ -477,7 +489,11 @@ describe('the ✕ is Reset display', () => {
   });
 
   it('keeps what the Goals switch is keeping, and the shelf still goes', () => {
-    seed({ braindumpGroupBy: 'goal', braindumpFilters: filters({ goals: ['g1'], hideFinished: true }) });
+    seed({
+      braindumpGroupBy: 'goal',
+      braindumpSortBy: 'title',
+      braindumpFilters: filters({ goals: ['g1'], hideFinished: true }),
+    });
     disableExtensions(EXT_GOALS);
     renderBraindump();
 
@@ -492,7 +508,7 @@ describe('the ✕ is Reset display', () => {
   });
 
   it('hands focus to the trigger before the reset takes the shelf away', () => {
-    seed({ braindumpGroupBy: 'project' });
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
     renderBraindump();
     resetX().focus();
 
@@ -501,6 +517,156 @@ describe('the ✕ is Reset display', () => {
     expect(queryShelf()).toBeNull();
     // Not <body>, where a focused button that unmounts leaves it.
     expect(document.activeElement).toBe(trigger());
+  });
+
+  it('shows only while there is more than one thing to take off', () => {
+    seed({ braindumpGroupBy: 'project' });
+    renderBraindump();
+    // With one, it would be that one's ✕ twice.
+    expect(screen.queryByTestId('display-shelf-reset-braindump')).toBeNull();
+    expect(removeXs()).toHaveLength(1);
+
+    act(() => useViewStore.setState({ braindumpFilters: filters({ priorities: ['high'] }) }));
+    expect(resetX()).toBeInTheDocument();
+    expect(removeXs()).toHaveLength(2);
+  });
+});
+
+describe('a ✕ for each setting', () => {
+  const everything = () =>
+    seed({
+      braindumpGroupBy: 'project',
+      braindumpSortBy: 'title',
+      braindumpFilters: filters({
+        priorities: ['high', 'low'],
+        // Two spellings of Work: one value, one ✕, and both go with it.
+        containers: ['project:Work', 'project:work', NO_CONTAINER],
+        goals: ['g1'],
+        hideFinished: true,
+      }),
+    });
+
+  it('wears one per phrase and one per value, each named for what it takes off', () => {
+    everything();
+    renderBraindump();
+
+    expect(removeXs().map((x) => x.getAttribute('aria-label'))).toEqual([
+      'Remove Grouped by Project',
+      'Remove Sorted by Title A–Z',
+      'Remove Priority: High',
+      'Remove Priority: Low',
+      'Remove Project: Work',
+      'Remove Project: No project',
+      'Remove Goal: Learn Chinese',
+      'Remove Hide finished',
+    ]);
+    // Each sits inside the setting it removes, so it wraps and ellipsizes with it.
+    expect(clause('group')).toContainElement(removeXs()[0]);
+    expect(clause('priority')?.querySelector('[data-value="low"]')).toContainElement(removeXs()[3]);
+  });
+
+  it('takes off just its own setting, and leaves the rest showing', () => {
+    everything();
+    renderBraindump();
+
+    fireEvent.click(removeX('Remove Priority: High'));
+    expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['low']);
+    expect(valueLabels('priority')).toEqual(['Low']);
+
+    fireEvent.click(removeX('Remove Project: Work'));
+    expect(useViewStore.getState().braindumpFilters.containers).toEqual([NO_CONTAINER]);
+    expect(valueLabels('project')).toEqual(['No project']);
+
+    fireEvent.click(removeX('Remove Sorted by Title A–Z'));
+    expect(useViewStore.getState().braindumpSortBy).toBe('default');
+    expect(clause('sort')).toBeNull();
+    expect(clause('group')).toHaveTextContent(/^Grouped by Project$/);
+
+    fireEvent.click(removeX('Remove Hide finished'));
+    expect(useViewStore.getState().braindumpFilters.hideFinished).toBe(false);
+
+    fireEvent.click(removeX('Remove Goal: Learn Chinese'));
+    expect(useViewStore.getState().braindumpFilters.goals).toEqual([]);
+    expect(clause('goal')).toBeNull();
+
+    // Nothing opened on the way: a ✕ is not the text.
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+    expect(trigger()).toHaveAttribute('data-active', 'true');
+  });
+
+  it('leaves the canvas alone', () => {
+    everything();
+    useViewStore.setState({ canvasFilters: filters({ priorities: ['high'] }), canvasGroupBy: 'project' });
+    renderBraindump();
+
+    fireEvent.click(removeX('Remove Priority: High'));
+    fireEvent.click(removeX('Remove Grouped by Project'));
+
+    expect(useViewStore.getState().canvasFilters.priorities).toEqual(['high']);
+    expect(useViewStore.getState().canvasGroupBy).toBe('project');
+  });
+
+  it('hands focus on to the next ✕, or the one before when it was the last', () => {
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ priorities: ['high', 'low'] }) });
+    renderBraindump();
+
+    removeX('Remove Priority: High').focus();
+    fireEvent.click(removeX('Remove Priority: High'));
+    expect(document.activeElement).toBe(removeX('Remove Priority: Low'));
+
+    fireEvent.click(removeX('Remove Priority: Low'));
+    // Not the reset ✕, which left with the second-to-last setting.
+    expect(document.activeElement).toBe(removeX('Remove Grouped by Project'));
+  });
+
+  it('hands focus to the trigger when the last setting goes, and the shelf with it', () => {
+    seed({ braindumpFilters: filters({ goals: ['g1'] }) });
+    renderBraindump();
+    removeX('Remove Goal: Learn Chinese').focus();
+
+    fireEvent.click(removeX('Remove Goal: Learn Chinese'));
+
+    expect(queryShelf()).toBeNull();
+    expect(trigger()).toHaveAttribute('data-active', 'false');
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it('takes off a project the store no longer has, which no menu row can', () => {
+    seed({ braindumpFilters: filters({ containers: ['project:Gone', 'project:Work'] }) });
+    renderBraindump();
+
+    fireEvent.click(removeX('Remove Project: Gone'));
+
+    expect(useViewStore.getState().braindumpFilters.containers).toEqual(['project:Work']);
+  });
+
+  it('keeps the words out of the accessibility tree and the ✕s in it', () => {
+    everything();
+    renderBraindump();
+    for (const label of shelf().querySelectorAll('[data-chip-label]')) {
+      expect(label).toHaveAttribute('aria-hidden', 'true');
+      expect(label.querySelector('button')).toBeNull();
+    }
+    for (const x of removeXs()) {
+      expect(x.closest('[aria-hidden]')).toBeNull();
+      // The words let clicks fall through to the opener; the ✕ takes its own.
+      expect(x).toHaveClass('pointer-events-auto');
+    }
+    // The opener comes first, as the peer the words' hover reads.
+    const lines = shelf().querySelector('[data-shelf-lines]')!;
+    expect(opener().nextElementSibling).toBe(lines);
+    expect(opener()).toHaveClass('peer/open');
+    expect(lines).toHaveClass('peer-hover/open:text-foreground');
+  });
+
+  it('ignores a held Enter, so autorepeat cannot walk the shelf clear', () => {
+    everything();
+    renderBraindump();
+    const first = removeXs()[0];
+    first.focus();
+    // A repeated keydown's default (the click) is cancelled; a fresh one's is not.
+    expect(fireEvent.keyDown(first, { key: 'Enter', repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(first, { key: 'Enter' })).toBe(true);
   });
 });
 
@@ -1031,19 +1197,25 @@ describe('fit: one line, or the stack', () => {
       expect(line).toHaveClass('flex', 'shrink-0', ...stacked('shrink', 'min-w-0', 'flex-wrap'));
     }
     for (const id of ['group', 'sort', 'hide-finished']) {
-      expect(clause(id)).toHaveClass(
-        'shrink-0',
-        'whitespace-nowrap',
-        ...stacked('min-w-0', 'max-w-full', 'truncate')
-      );
+      expect(clause(id)).toHaveClass('flex', 'shrink-0', 'whitespace-nowrap', ...stacked('min-w-0', 'max-w-full'));
+      // The phrase ellipsizes; its ✕, after it, never shrinks away.
+      const [label, x] = Array.from(clause(id)!.children);
+      expect(label).toHaveClass('min-w-0', 'truncate');
+      expect(x).toHaveClass('shrink-0');
+      expect(x).toHaveAttribute('data-shelf-remove');
     }
     for (const id of ['priority', 'project', 'goal']) {
       expect(clause(id)).toHaveClass('flex', 'shrink-0', ...stacked('shrink', 'min-w-0', 'flex-wrap'));
-      const values = clause(id)!.querySelectorAll(':scope > span:not(.sr-only)');
+      const values = clause(id)!.querySelectorAll(':scope > [data-value]');
+      expect(values.length).toBe(clause(id)!.children.length);
       expect(values.length).toBeGreaterThan(0);
       for (const value of values) {
         expect(value).toHaveClass('min-w-0', 'max-w-full');
-        expect(value.lastElementChild).toHaveClass('truncate');
+        const [label, x] = Array.from(value.children);
+        expect(label).toHaveClass('min-w-0');
+        expect(label.lastElementChild).toHaveClass('truncate');
+        expect(x).toHaveClass('shrink-0');
+        expect(x).toHaveAttribute('data-shelf-remove');
       }
     }
   });
@@ -1063,7 +1235,7 @@ describe('fit: one line, or the stack', () => {
 
 describe('the two mounts', () => {
   it('gives the phone 28px targets and leaves the sidebar at its own density', () => {
-    seed({ braindumpGroupBy: 'project' });
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
 
     renderBraindump('mobile');
     expect(opener()).toHaveClass(
@@ -1079,6 +1251,21 @@ describe('the two mounts', () => {
       'before:-inset-y-[5px]',
       "before:content-['']"
     );
+    // 14px wide, reaching 7px right and only the 4px gap left, so a tap on
+    // the words beside it still opens the menu.
+    for (const x of removeXs()) {
+      expect(x).toHaveClass(
+        'w-3.5',
+        'relative',
+        'before:absolute',
+        'before:-left-1',
+        'before:-right-[7px]',
+        'before:-inset-y-[5px]',
+        "before:content-['']"
+      );
+    }
+    // The lines box clips, so it carries the reach's 5px inside it.
+    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('-my-[5px]', 'py-[5px]');
     // The phone tab has no collapsing column to hold a fit through.
     expect(shelf().style.minWidth).toBe('');
     cleanup();
@@ -1086,6 +1273,7 @@ describe('the two mounts', () => {
     renderBraindump('sidebar');
     expect(opener()).not.toHaveClass('before:absolute');
     expect(resetX()).not.toHaveClass('before:absolute');
+    for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
     // The narrowest column, less the capsule's 10px sides.
     expect(shelf().style.minWidth).toBe(`${SIDEBAR_MIN_WIDTH - 20}px`);
   });
@@ -1101,20 +1289,18 @@ describe('the two mounts', () => {
     });
     renderBraindump();
 
-    // Label in Name: what is on screen is what the button is called.
-    expect(opener()).toHaveAccessibleName(/^Grouped by Project/);
-    // With a pause between settings and between values. The computation here trims each
-    // element's text, so the space inside a separator does not survive it; the separators'
-    // own text is pinned below instead.
-    expect(opener()).toHaveAccessibleName(/^Grouped by Project; ?High, ?Low; ?Work, ?No project; ?Learn Chinese$/);
-    expect(Array.from(opener().querySelectorAll('.sr-only'), (el) => el.textContent)).toEqual([
-      '; ',
-      ', ',
-      '; ',
-      ', ',
-      '; ',
-    ]);
+    // Label in Name: what is on screen is what the button is called, with a
+    // pause between settings and between values. One sr-only copy, since the
+    // words on screen are aria-hidden (the ✕s cannot sit inside a button).
+    expect(opener()).toHaveAccessibleName('Grouped by Project; High, Low; Work, No project; Learn Chinese');
+    // …and that copy says what the words on screen say, word for word.
+    const words = (t: string) => t.replace(/[;,]/g, ' ').split(/\s+/).filter(Boolean);
+    const onScreen = Array.from(shelf().querySelectorAll('[data-chip-label]'), (l) => l.textContent ?? '');
+    expect(words(onScreen.join(' '))).toEqual(words(opener().textContent ?? ''));
     expect(opener()).not.toHaveAttribute('aria-label');
+    // Under the words, which let a click through to it, and covering them.
+    expect(opener()).toHaveClass('absolute', 'inset-0');
+    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('pointer-events-none', 'relative');
     expect(opener()).toHaveAccessibleDescription(/^Display settings/);
     expect(opener()).toHaveAccessibleDescription(
       'Display settings. Priority: High, Low. Project: Work, No project. Goal: Learn Chinese.'
@@ -1131,25 +1317,31 @@ describe('the two mounts', () => {
     expect(opener()).toHaveAttribute('aria-haspopup', 'dialog');
   });
 
-  it("gives the × the header's own tooltip on a pointer, never a native title", async () => {
-    seed({ braindumpGroupBy: 'project' });
+  it.each([
+    { name: 'reset', x: () => resetX(), tip: 'Reset display' },
+    { name: 'per-setting', x: () => removeXs()[0], tip: 'Remove' },
+  ])("gives the $name × the header's own tooltip on a pointer, never a native title", async ({ x, tip }) => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
     renderBraindump();
     // A native title as well would fire two tooltips for one hover.
-    expect(resetX()).not.toHaveAttribute('title');
-    fireEvent.pointerEnter(resetX());
-    fireEvent.pointerMove(resetX());
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Reset display');
+    expect(x()).not.toHaveAttribute('title');
+    fireEvent.pointerEnter(x());
+    fireEvent.pointerMove(x());
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
   });
 
-  it('gives the phone × no tooltip, as the rest of that header has none', async () => {
+  it.each([
+    { name: 'reset', x: () => resetX() },
+    { name: 'per-setting', x: () => removeXs()[0] },
+  ])('gives the phone $name × no tooltip, as the rest of that header has none', async ({ x }) => {
     touch.current = true;
-    seed({ braindumpGroupBy: 'project' });
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
     renderBraindump('mobile');
-    fireEvent.pointerEnter(resetX());
-    fireEvent.pointerMove(resetX());
+    fireEvent.pointerEnter(x());
+    fireEvent.pointerMove(x());
     await new Promise((r) => setTimeout(r, 300));
     expect(screen.queryByRole('tooltip')).toBeNull();
-    expect(resetX()).not.toHaveAttribute('title');
+    expect(x()).not.toHaveAttribute('title');
   });
 });
 
