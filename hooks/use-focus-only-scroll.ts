@@ -4,7 +4,8 @@ import { useEffect, type RefObject } from 'react';
 
 /**
  * Lets focus scroll a clipping box sideways to show what it focused, and puts
- * the box back at rest as soon as nothing focused needs that.
+ * the box back at rest once focus moves to something that shows there, or out
+ * to the rest of the shell, or to nothing.
  *
  * Written for DesktopShell's <main>. With the item panel docked, <main> can be
  * narrower than the canvas header's row, and the row's right end is clipped:
@@ -21,33 +22,48 @@ import { useEffect, type RefObject } from 'react';
  * every canvas Display setting.
  *
  * So a frame after focus moves anywhere, a key goes down in the box, the box
- * scrolls or resizes, or the focused control starts or stops showing whole or
- * at all, the box is placed for whatever has focus: at rest if it shows there,
- * and otherwise moved only when it has to be, because Radix closes a tooltip
- * on any scroll around its trigger, and a tooltip is the only name Zen and the
- * ✕ show. One wholly out of sight comes in to the least slide that shows it
- * whole. So does whatever has focus when the box's width changes (the item
- * panel docks a frame at a time), and a control the layout moves (the shelf
- * refitting, a view switched under it) once the move leaves it cut. One that
- * still shows whole at a slide the hook made holds that slide, for as long as
- * it keeps focus and shows whole, so a key that moves it (Next paging the
- * date, an arrow on WeekScale's thumb) moves the canvas only when it has to.
- * Otherwise one that shows, whole or cut part-way, keeps the slide the hook
- * last made, as the browser would leave it, so Tab from Zen to the ✕ moves
- * nothing and the ✕'s tooltip stays up (memory/plans/display-menu.md lists
- * the few window widths where it cannot). A slide the hook did not make comes
- * back as far as that least one: the browser centres what it reveals (Zen
- * slid Week 212px at 1240, where 46 shows it).
+ * scrolls or resizes, or the focused control starts or stops showing entirely
+ * or at all, the box is placed for whatever has focus: at rest if it shows
+ * there, unless it holds (below), and otherwise moved only when it has to be,
+ * because Radix closes a tooltip on any scroll around its trigger, and a
+ * tooltip is the only name Zen and the ✕ show. One wholly out of sight comes
+ * in to the least slide that shows it whole. So does whatever has focus when
+ * the box's width changes (the item panel docks a frame at a time), and a
+ * control the layout moves (the shelf refitting, a view switched under it)
+ * once the move leaves it cut. Otherwise one that shows, whole or cut
+ * part-way, keeps the slide the hook last made, as the browser would leave it,
+ * so Tab from Zen to the ✕ moves nothing and the ✕'s tooltip stays up
+ * (memory/plans/display-menu.md lists the few window widths where it cannot).
+ * A slide the hook did not make comes back as far as that least one: the
+ * browser centres what it reveals (Zen slid Week 212px at 1240, where 47
+ * shows it).
  *
- * Three holds. While a pointer is down nothing moves: a press moves focus, and
- * sliding the box before the release moves what was pressed out from under
- * the pointer, so the click lands elsewhere or nowhere and a drag runs offset
- * from its block. The release settles it. While focus is outside both the box
- * and its parent (the shell's columns), it is in a layer over the page, a
- * menu, popover or dialog, most often drawn against a control in the box, and
- * sliding the box would leave that menu pointing at a control out of view. And
- * at rest with nothing past either edge there is nothing to do, which is
- * almost always.
+ * One the layout moves while it still shows whole at a slide the hook made
+ * holds that slide for as long as it keeps focus and shows whole, even where
+ * it would show at rest, so a key that moves it (Next paging the date, an
+ * arrow on WeekScale's thumb) moves the canvas only when it has to. By then
+ * the slide it holds can be more than it needs. A click holds nothing: a
+ * button the click moves (Next) is placed afresh, which keeps it at the box's
+ * edge, under the pointer for the next click. And focus moving on from a held
+ * slide places the next control afresh if that slide cuts it, because the
+ * slide was held for the control focus left.
+ *
+ * Four more holds, whatever has focus. While a pointer is down nothing moves:
+ * a press moves focus, and sliding the box before the release moves what was
+ * pressed out from under the pointer, so the click lands elsewhere or nowhere
+ * and a drag runs offset from its block. The release settles it. While focus
+ * is outside both the box and its parent (the shell's columns), it is in a
+ * layer over the page, a menu, popover or dialog, most often drawn against a
+ * control in the box, and sliding the box would leave that menu pointing at a
+ * control out of view. While an ancestor of the box is inert, which only Zen's
+ * switch does as it lifts the planner away, focus drops to nothing, and going
+ * to rest would jump the planner sideways under the wave; if the switch is
+ * turned back, the box stays slid until the next key, focus move, scroll or
+ * resize. (The box's own inert, under the overlaid item panel, is not one.)
+ * And at rest with nothing past either edge there is nothing to do, which is
+ * almost always. Nothing is noted there but the box's width, so a control the
+ * layout moved back to a spot cut part-way after a spell at rest would stay
+ * as the browser leaves it; nothing in the shell does that today.
  */
 export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
@@ -62,10 +78,13 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     let placed = box.scrollLeft;
     let width = box.clientWidth;
     let last: Span | null = null;
-    // Whether the element last placed for holds its slide: the layout moved it
-    // while it showed whole. It holds for as long as it keeps focus and keeps
-    // showing whole, and never holds a slide something else made.
+    // Whether the element last placed for holds its slide: the layout moved it,
+    // other than a button under a click, and it still showed whole. It holds
+    // for as long as it keeps focus and keeps showing whole, and never holds a
+    // slide something else made.
     let held = false;
+    // Whether a pointer came up since the last key went down in the box.
+    let clicked = false;
     const down = new Set<number>();
     const settle = () => {
       cancelAnimationFrame(frame);
@@ -75,6 +94,9 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
         const inside = focused && box.contains(focused) ? focused : null;
         watch(inside);
         if (down.size > 0) return;
+        // <main> itself goes inert under the overlaid item panel; an ancestor
+        // only while Zen's switch lifts the planner away.
+        if (box.parentElement?.closest('[inert]')) return;
         if (box.scrollLeft === 0 && box.scrollWidth <= box.clientWidth) {
           width = box.clientWidth;
           return;
@@ -88,8 +110,13 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
             const shifted = last?.el === inside && !same(last, span);
             const moved = box.scrollLeft !== placed;
             const shown = whole(span, box.scrollLeft, box.clientWidth);
+            // A button a click moves is placed afresh, which keeps it at the
+            // box's edge, under the pointer for the next click.
+            const pressed = clicked && inside instanceof HTMLButtonElement;
+            // Focus moving on from a held slide finds a slide nothing asked for.
+            const fromHeld = held && last !== null && last.el !== inside;
             if (last?.el !== inside) held = false;
-            if (shifted) held = shown;
+            if (shifted) held = shown && !pressed;
             x =
               held && shown && !widthChanged && !moved
                 ? box.scrollLeft
@@ -97,7 +124,7 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
                     span,
                     box.scrollLeft,
                     box.clientWidth,
-                    widthChanged || shifted ? 'fresh' : moved ? 'moved' : 'kept'
+                    widthChanged || shifted || (fromHeld && !shown) ? 'fresh' : moved ? 'moved' : 'kept'
                   );
           }
         } else if (focused && focused !== document.body && !box.parentElement?.contains(focused)) {
@@ -111,9 +138,11 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     };
     // Something can move the focused control with no event of its own: the
     // shelf refitting a frame after the box resized, a view switched from a
-    // store. When that makes it start or stop showing whole, or at all, it is
-    // heard here. A move that leaves it cut part-way is not, and is placed at
-    // the next key, focus move, scroll or resize.
+    // store. The thresholds are exact, so this hears the control start or stop
+    // showing entirely, with none of whole()'s half-pixel allowance, or at all.
+    // A move from cut to cut is not heard, including one from the half pixel a
+    // control at rest may overhang, and is placed at the next key, focus move,
+    // scroll or resize.
     const seen = new IntersectionObserver(settle, { root: box, threshold: [0, 1] });
     let watched: Element | null = null;
     // Observing an element always reports it once, so each focus move settles
@@ -130,6 +159,11 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     };
     const release = (e: PointerEvent) => {
       down.delete(e.pointerId);
+      clicked = true;
+      settle();
+    };
+    const key = () => {
+      clicked = false;
       settle();
     };
     // A release can go unheard: outside the window, or taken by a native
@@ -143,7 +177,7 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     resized.observe(box);
     document.addEventListener('focusin', settle);
     document.addEventListener('focusout', settle);
-    box.addEventListener('keydown', settle, true);
+    box.addEventListener('keydown', key, true);
     box.addEventListener('scroll', settle);
     window.addEventListener('pointerdown', press, true);
     window.addEventListener('pointerup', release, true);
@@ -156,7 +190,7 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
       seen.disconnect();
       document.removeEventListener('focusin', settle);
       document.removeEventListener('focusout', settle);
-      box.removeEventListener('keydown', settle, true);
+      box.removeEventListener('keydown', key, true);
       box.removeEventListener('scroll', settle);
       window.removeEventListener('pointerdown', press, true);
       window.removeEventListener('pointerup', release, true);
@@ -182,10 +216,15 @@ const CLIPS = /^(hidden|clip|auto|scroll)$/;
 function measure(box: HTMLElement, el: Element): Span | null {
   const r = el.getBoundingClientRect();
   let left = r.left;
-  // A box squeezed to nothing still paints what overflows it, and its focus
-  // ring: the program line's button, with the item panel docked, keeps its
-  // icon. Measure that, so a slide can show it.
-  let right = r.width > 0 ? r.right : r.left + Math.max(1, el.scrollWidth);
+  // A box squeezed below its content still paints what overflows it, unless it
+  // clips it, and a box squeezed to nothing still paints its focus ring. With
+  // the item panel docked the review notice's button shrinks to its padding and
+  // paints its icon and "Start" past it, and the program line's to nothing and
+  // paints its icon. Measure what they paint, so a slide can show it.
+  // scrollWidth is whole pixels, hence the rounded-up box; it is also taken
+  // before transforms, and nothing in the shell has one.
+  const paints = CLIPS.test(getComputedStyle(el).overflowX) ? 0 : el.scrollWidth;
+  let right = paints > Math.ceil(r.width) ? r.left + paints : r.width > 0 ? r.right : r.left + 1;
   for (let p = el.parentElement; p && p !== box; p = p.parentElement) {
     if (!CLIPS.test(getComputedStyle(p).overflowX)) continue;
     const c = p.getBoundingClientRect();
@@ -210,13 +249,17 @@ function whole({ from, to }: Span, x: number, width: number) {
 /**
  * Where the box goes for `span`, from slide `x` in a box `width` wide. Its
  * least slide shows it whole, or for one wider than the box, puts its start at
- * the box's edge; 0 means it shows at rest. `how` says what happened since the
- * hook last placed the box: nothing (`kept`), something else scrolled it
- * (`moved`), or its width or the element's place changed (`fresh`).
+ * the box's edge; 0 means it shows at rest. Half a pixel past the edge still
+ * counts as showing at rest, but a slide shows it whole to the last fraction of
+ * a pixel, so the observer, which measures exactly, hears it when a later move
+ * cuts it. `how` says what happened since the hook last placed the box: nothing
+ * (`kept`), something else scrolled it (`moved`), or its width or the
+ * element's place changed, or focus came to it from a held slide that cuts it
+ * (`fresh`).
  */
 function place({ from, to }: Span, x: number, width: number, how: 'kept' | 'moved' | 'fresh') {
-  const least =
-    to - from > width ? Math.max(0, Math.floor(from)) : Math.max(0, Math.ceil(to - width - 0.5));
+  const over = to - width;
+  const least = to - from > width ? Math.max(0, Math.floor(from)) : over <= 0.5 ? 0 : Math.ceil(over);
   if (least === 0) return 0;
   // Placed afresh, or wholly out of sight where the box is now: bring it in.
   if (how === 'fresh' || to - x <= 0.5 || from - x >= width - 0.5) return least;

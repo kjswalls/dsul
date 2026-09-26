@@ -1062,16 +1062,18 @@ Type section says All, Tasks, Habits), led by a muted "Showing" as grouping is b
 by", and "Show" is the palette's name for the setting. The words cost width: "Showing Tasks"
 is 78.4px against "Hide habits"' 59.2, and "Showing Habits" 81.4 against "Hide tasks"' 55.2,
 so more states stack. Of the 84 states with a type set (both types, seven groupings, three
-sorts, Hide finished on and off), measured on Saturday, September 26, the ones that fit on
-one line fall from 38 to 24 in Day × List, 47 to 33 in Week × List, 56 to 40 in Day ×
+sorts, Hide finished on and off), measured with today's date on screen (Saturday, September
+26, so no Today button), the ones that fit on one line fall from 38 to 24 in Day × List, 47 to 33 in Week × List, 56 to 40 in Day ×
 Buckets, 58 to 48 in Day × Schedule, 58 to 52 in Week × Buckets and 60 to 56 in Week ×
 Schedule, and none goes the other way. The capsule is as wide as the wider of its date row
-and its view pill, and on that date, as on most, the pill sets it. On a date whose row is
-wider (a long weekday and month plus the Today button, such as Wednesday, September 30),
-List and Day × Buckets fit 57 before and 43 after; the Schedule and Week × Buckets counts do
-not move with the date. "Grouped by Project · Showing Tasks · Hide finished" stacks three
-lines in Day × List on September 26, 2px over its one line, where "Hide habits" fit; the
-list starts 46px lower, and paging to a wider date flips it back to one line. A bare "Tasks"
+and its view pill, and on today's date, which has no Today button, the pill always sets it,
+as it does on most other dates. On the widest dates (Wednesday, September 30 with its Today
+button, a 362px row), List and Day × Buckets all fit 57 before and 43 after; a row that
+outgrows only Day × List's pill moves only that count, and by less (Monday, September 28:
+28). The Schedule and Week × Buckets counts do not move with the date. "Grouped by Project ·
+Showing Tasks · Hide finished" stacks three lines in Day × List on today's date (September
+26), 2px over its one line, where "Hide habits" fit; the list starts 46px lower, and paging
+to a wider date, or seeing September 26 from another day, puts it back on one line. A bare "Tasks"
 beside "Grouped by Project" read as a group or a project name. "Tasks only" would be false
 (Tasks keeps every task-like item, custom types included) and Settings already uses "Tasks
 only — habits always stay" for something else. "Hide habits" was tried and dropped: the menu

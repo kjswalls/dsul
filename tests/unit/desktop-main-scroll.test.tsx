@@ -735,9 +735,155 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       await frame();
       expect(main.scrollLeft).toBe(101);
     });
+
+    it('places afresh a control focus moves on to that the held slide cuts', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // Go to today, which paging brought in after Next: 20px of it past the
+      // edge at the held slide, which the browser leaves alone.
+      place('seen-control', 440, 32);
+      act(() => screen.getByTestId('seen-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(71);
+    });
+
+    it('keeps the held slide for a control focus moves on to that shows whole there', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      act(() => screen.getByTestId('cut-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('holds through a menu opened and closed over the control it holds for', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      place('scale-thumb', 300, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      const item = openMenu();
+      await frame();
+      act(() => thumb.focus());
+      item.remove();
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+    });
+
+    it('lets go when a menu hands focus on to another control', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      place('scale-thumb', 300, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      const item = openMenu();
+      await frame();
+      // Handed to a control that shows at rest, and whole at the held slide too.
+      act(() => screen.getByTestId('mid-control').focus());
+      item.remove();
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('places afresh a button a click moves, so it stays under the pointer for the next click', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // A click on Next pages the date, and the label beside it moves Next 10px on.
+      fireEvent.pointerDown(window, { pointerId: 1 });
+      place('clipped-control', 430, 32);
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      await frame();
+      // 61 keeps it at <main>'s edge, where the pointer is.
+      expect(main.scrollLeft).toBe(61);
+      // Moved 10px back, it shows whole at 61; the click still places it afresh.
+      fireEvent.pointerDown(window, { pointerId: 1 });
+      place('clipped-control', 420, 32);
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // A key, and Enter holds again.
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('holds its slide for a slider thumb a pointer drags, which lands under the pointer', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      fireEvent.pointerDown(window, { pointerId: 1 });
+      place('scale-thumb', 300, 16);
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+    });
   });
 
-  it('takes a control that shows half a pixel or less as out of sight, and leaves at most half a pixel cut', async () => {
+  it("holds still while the shell is inert, as Zen's switch lifts the canvas away and drops focus", async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
+    expect(main.scrollLeft).toBe(51);
+    const shell = main.parentElement!;
+    shell.setAttribute('inert', '');
+    act(() => screen.getByTestId('clipped-control').blur());
+    await frame();
+    expect(main.scrollLeft).toBe(51);
+    // The switch turned back: the next resize, key or focus move settles it.
+    shell.removeAttribute('inert');
+    act(() => resizeCallbacks.forEach((notify) => notify()));
+    await frame();
+    expect(main.scrollLeft).toBe(0);
+  });
+
+  it("does not hold for <main>'s own inert, which the overlaid item panel sets", async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
+    main.setAttribute('inert', '');
+    act(() => screen.getByTestId('clipped-control').blur());
+    await frame();
+    expect(main.scrollLeft).toBe(0);
+    main.removeAttribute('inert');
+  });
+
+  it('takes a control that shows half a pixel or less at the right edge as out of sight', async () => {
     render(<DesktopShell />);
     const main = await layOut();
     // Its start 0.4px short of <main>'s inner right edge: a sliver, not a control.
@@ -758,17 +904,31 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     place('scale-thumb', 286.3, 16);
     act(() => screen.getByTestId('scale-thumb').focus({ preventScroll: true }));
     await frame();
-    expect(main.scrollLeft).toBe(51);
+    expect(main.scrollLeft).toBe(52);
   });
 
-  it('rounds its least slide to within half a pixel, not past it', async () => {
+  it('slides to show a control whole to the last fraction of a pixel, which the observer measures exactly', async () => {
     render(<DesktopShell />);
     const main = await layOut();
-    // Its end at 351.3 from the origin: 51 leaves 0.3px cut, and 52 would overshoot.
+    // Its end at 351.3 from the origin: 52 shows it whole, where 51 leaves 0.3px
+    // cut, too little to see and enough that a later cut is never heard.
     place('clipped-control', 420.3, 32);
     act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
     await frame();
+    expect(main.scrollLeft).toBe(52);
+  });
+
+  it('takes a control half a pixel or less past the edge at rest as showing there', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
     expect(main.scrollLeft).toBe(51);
+    // Its end 0.4px past <main>'s inner right edge at rest.
+    place('mid-control', 369.4, 32);
+    act(() => screen.getByTestId('mid-control').focus());
+    await frame();
+    expect(main.scrollLeft).toBe(0);
   });
 
   it('takes a move of a pixel for a move, and a third of one for rounding', async () => {
@@ -811,10 +971,49 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     await frame();
     // Truncated text: 40px wide, with 400px of it hidden inside.
     const control = screen.getByTestId('seen-control');
+    control.style.overflowX = 'hidden';
     Object.defineProperty(control, 'scrollWidth', { configurable: true, value: 400 });
     act(() => control.focus());
     await frame();
     expect(main.scrollLeft).toBe(0);
+  });
+
+  it('measures a control squeezed below its content by what it paints past its box', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    // The review notice's button, squeezed to its 16px of padding at 410, with
+    // its icon and "Start" painting 40px: 49 shows them, where 25 shows the box.
+    const button = screen.getByTestId('wide-control');
+    place('wide-control', 410, 16);
+    Object.defineProperty(button, 'scrollWidth', { configurable: true, value: 40 });
+    act(() => button.focus());
+    await frame();
+    expect(main.scrollLeft).toBe(49);
+  });
+
+  it('shows the focus ring of a control squeezed to 0px that paints nothing else', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    const button = screen.getByTestId('wide-control');
+    place('wide-control', 460, 0);
+    Object.defineProperty(button, 'scrollWidth', { configurable: true, value: 0 });
+    act(() => button.focus());
+    await frame();
+    expect(main.scrollLeft).toBe(60);
+  });
+
+  it('measures a heading by what its own viewport shows at its start, too', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    // The week grid's viewport scrolls, and starts 49px in; a heading wider than
+    // <main> starts 30px before it, so the viewport shows it from 49.
+    const viewport = screen.getByTestId('grid-viewport');
+    viewport.style.overflowX = 'scroll';
+    place('grid-viewport', 150, 410);
+    place('grid-heading', 120, 420);
+    focusAndReveal(main, 'grid-heading', 100);
+    await frame();
+    expect(main.scrollLeft).toBe(49);
   });
 
   describe('its observers', () => {
