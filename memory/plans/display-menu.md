@@ -1104,91 +1104,151 @@ named.
   Schedule and 1245 in Week × Schedule. With the sidebar at its widest, 720px, a 1440 window
   leaves `<main>` 252px, and the Display trigger is past the edge there too. A pointer
   cannot reach what is clipped; the text still opens the menu.
-- The keyboard can. `<main>` stays `overflow-hidden`, which is still a scroll container, so
-  Tab onto a clipped control scrolls it into view. Nothing ever scrolled it back, so the
-  canvas stayed slid, about 38 to 242px at the default sidebar and 269 at 720px, until the
-  panel closed, unless a later Tab happened to reveal something at the other end (in Week ×
-  Schedule the grid's first stop often did). `useFocusOnlyScroll`
-  (`hooks/use-focus-only-scroll.ts`) now places `<main>` for whatever has focus, a frame
-  after focus moves anywhere, a key goes down in `<main>`, `<main>` scrolls or resizes, or
-  the focused control starts or stops showing whole or at all (an IntersectionObserver at
-  thresholds 0 and 1 hears that when nothing else fires; a move that leaves it cut part-way
-  waits for the next key, focus move, scroll or resize). It goes to rest when the control
-  shows there, and otherwise moves only when it must, because Radix closes a tooltip on any
-  scroll around its trigger and a tooltip is all the name Zen and the ✕ show. A control
-  wholly out of sight comes in to the least slide that shows it whole. So does whatever has
-  focus when `<main>`'s width changes: the item panel docks a frame at a time, and a slide
-  kept from an earlier frame left the focused ✕ a quarter showing once it had docked. So
-  does a control the layout moves, once the move leaves it cut. Otherwise one that shows,
-  whole or cut part-way, keeps the slide the hook last made, so Tab from Zen to the ✕ moves
-  nothing and "Reset display" stays up (but see the bands below). A slide the hook did not
-  make comes back as far as that least one: Chromium centres what it reveals (Zen slid Week
-  212px at 1240, where 46 shows it).
-- A control the layout moves while it still shows whole holds the slide as it is, for as
-  long as it keeps focus and shows whole. A first version placed it afresh on every move,
-  and then Enter on Next at the 720px sidebar slid the whole canvas on every press, because
-  the date beside it changes width (135px over eight days in Day at 1440), and an arrow on
-  WeekScale's thumb flipped the canvas between rest and a slide on every press (22 to 102px
-  each in Week × Schedule from 1320 to 1488), where Chromium alone never moves it. Only a
-  slide the hook made is held. One the browser made is placed afresh: the reveal when a menu
-  hands focus back to a control a pick in it moved, or the pull back when a switch to List
-  leaves the canvas too short for the slide (Week × List at 1240 goes to 5, where holding
-  the browser's 27 was a first version's cost). The hold costs a little: after a switch
-  from Week to Day under a focused ✕, `<main>` keeps the Week slide until focus moves, 10px
-  more than Day needs at 1240; and after a Tab slide, repeated clicks at one spot on Next
-  page fewer days before the date's width moves Next out from under the pointer: five of
-  eight in Day at the 720px sidebar (four with Chromium alone), one in Week (four).
-- Chromium scrolls only for a control that is wholly hidden, so one cut part-way keeps the
-  part it shows, as it did before: the ✕ 19% of itself in Week at 1265 (with its tooltip),
-  the Display trigger 66% in Day at 1200. The hook's smaller slides add one: Shift+Tab back
-  from the ✕ leaves Zen about 75% showing, since the ✕'s least slide is 8px short of Zen's,
-  where the browser's centring slide showed Zen whole. The shelf text, when it is wider than
-  `<main>` (the 720px sidebar), keeps the slide of the stop before it (Zen's on Tab, the ✕'s
-  on Shift+Tab) and shows 68 to 72%, cut at its start.
-- A reveal is itself a scroll, so Zen's tooltip closes on the Tab that reveals it, and the
-  ✕'s on the Shift+Tab that reveals it from the grid. The hook's own moves close three more:
-  the ✕'s on Shift+Tab from WeekScale's Narrower, when that control needed a slide and
-  `<main>` goes back to rest (Week × Schedule at 1215 with a 280px sidebar); Zen's on the
-  Tab from the Display trigger at the 720px sidebar, where Chromium's centring slide for the
-  trigger already showed Zen and the hook's least slide does not; and the ✕'s when a scope
-  or layout switch leaves it cut and it is placed afresh. And Tab from Zen to the ✕ keeps
-  "Reset display" up at the QA widths, but not in a band of about 9px of window just below
-  where the ✕ starts to show at rest (default sidebar: Day × Schedule 1244 to 1252, Week ×
-  Schedule 1254 to 1262, Week × Buckets 1246 to 1254, Day × List 1211 to 1219, Week × List
-  1221 to 1229, Day × Buckets 1236 to 1244). There Zen shows part-way at rest, so no slide
-  was made, or the shelf text between them shows at rest and sends `<main>` back, and the
-  ✕'s own reveal closes its tooltip. Without the hook it closed there too, but for one px
-  per band: the lowest in Week × Schedule, Week × Buckets and Day × Buckets, where the text
-  sends `<main>` back, and the highest in the other three, where the ✕ shows under half a
-  pixel at rest, which Chromium leaves alone and the hook brings in whole.
-- It holds still in two cases. While a pointer is down, found in review: a press moves focus
-  on mousedown, and the first version slid `<main>` back before the release, so the click
-  was lost (Next, a block's Mark complete) and a drag ran offset by the whole slide. And
-  while focus is in a layer outside the shell, such as a menu or the calendar, most often
-  drawn against its control in `<main>`: Radix hands focus back with a plain `focus()`,
-  which finds the control still showing. A menu drawn against a sidebar control, such as the
-  braindump's Display menu, holds `<main>` too, which is harmless: Escape hands focus back
-  to the sidebar and `<main>` goes to rest. Review found that focus going on from such a
-  layer to the sidebar, or to nothing, never passes through `<main>`, so the focus listeners
-  are on the document. The calendar is the exception: after Escape it drops focus to nothing
-  while it fades out, and only then hands it back, so a canvas that was slid when it opened
-  comes back at once, and the fading calendar moves with it.
-- Review first made `<main>` `overflow-clip min-w-0` to stop the slide, and that was
-  reverted: a clip box never scrolls, so Tab landed on controls nobody could see, the ✕
-  among them, which resets every canvas Display setting.
-  `tests/unit/desktop-main-scroll.test.tsx` pins the class and the hook together.
-- The program line's button (a paused program hiding items today) shares the row, and with
-  the panel docked its `min-w-0` lets it shrink to 0px. It still paints its Moon icon and
-  its focus ring past its empty box, so the hook measures what it paints and slides that
-  into view (74px in Day × Schedule at 1240). Review caught earlier versions of the hook
-  sending `<main>` to rest there, which left the icon wholly past the edge where Chromium
-  alone had shown it. The button's text still never shows. That is older than this change
-  (13aa588 does the same); a floor it cannot shrink below, or leaving the row when there is
-  no room, would fix it.
-- The least slide puts a control's edge flush with `<main>`'s, and Chromium draws the focus
-  ring 1px inside the box and 2px outside it, so on that side two of the ring's three pixels
-  are cut. Room for the ring would have to be added only when a slide is made: a control
-  flush with `<main>`'s edge at rest must still count as showing there.
+- The keyboard can. `<main>` stays `overflow-hidden`, which is still a scroll container, so Tab
+  onto a clipped control scrolls it into view. Nothing ever scrolled it back, so the canvas
+  stayed slid, about 38 to 242px at the default sidebar and 269 at 720px, until the panel
+  closed, unless a later Tab happened to reveal something at the other end (in Week × Schedule
+  the grid's first stop often did). `useFocusOnlyScroll` (`hooks/use-focus-only-scroll.ts`) now
+  places `<main>` for whatever has focus, a frame after focus moves anywhere, a key goes down
+  in `<main>`, `<main>` scrolls or resizes, or the focused control starts or stops showing
+  entirely or at all. An IntersectionObserver at thresholds 0 and 1 hears that when nothing
+  else fires. Its thresholds are exact, so it does not hear a move from cut to cut, including
+  one from the half pixel a control at rest may overhang; that waits for the next key, focus
+  move, scroll or resize. `<main>` goes to rest when focus leaves it for the sidebar, the item
+  panel or nothing, and when the focused control shows there, unless it holds (below).
+  Otherwise it moves only when it must, because Radix closes a tooltip on any scroll around its
+  trigger and a tooltip is all the name Zen and the ✕ show. A control out of sight comes in to
+  the least slide that shows it whole. So does whatever has focus when `<main>`'s width
+  changes: the item panel docks a frame at a time, and a slide kept from an earlier frame left
+  the focused ✕ a quarter showing once it had docked. So does a control the layout moves, once
+  the move leaves it cut. Otherwise one that shows, whole or cut part-way, keeps the slide the
+  hook last made, so Tab from Zen to the ✕ moves nothing and "Reset display" stays up (but see
+  the bands below). A slide the hook did not make comes back as far as that least one: Chromium
+  centres what it reveals (Zen slid Week 212px at 1240, where 47 shows it).
+- The least slide is rounded up to whole pixels, so it shows its control to the last fraction,
+  and the observer hears a later cut. An earlier version rounded to within half a pixel, which
+  the observer counts as cut, so a view switch that cut the control further went unheard: Zen,
+  placed 99.1% showing in Day × Buckets at 1240, was left 44% showing after store switches to
+  Week × Buckets and then Week × Schedule. A control that overhangs `<main>`'s edge by half a
+  pixel or less still counts as showing at rest. Rounding up can leave up to a pixel of the
+  control after it showing, so a control that shows a pixel or less counts as out of sight.
+  Without that, Tab from the program line onto the review notice in Day × Buckets kept the
+  program line's slide and showed 0.7px of the notice's button (1200 and 1240 at the default
+  sidebar, 1320 at 560, 1440 at 720).
+- A control the layout moves while it still shows whole, at a slide the hook made, holds that
+  slide for as long as it keeps focus and shows whole, even where it would show at rest.
+  Earlier versions placed it afresh on every move, and then Enter on Next at the 720px sidebar
+  slid the whole canvas on every press, because the date beside it changes width (135px over
+  eight days in Day at 1440), and an arrow on WeekScale's thumb moved the canvas back and forth
+  as it stepped, where Chromium alone never moves it: 102px a step in Week × Schedule up to
+  about 1360, between two slides (40 and 142px at 1320), then between rest and a slide, 101px
+  at 1361, 22 at 1440 and 2 at 1460, and not at all from 1462, where the thumb is no longer
+  clipped. Only a slide the hook made is held. One the browser made is placed afresh: the
+  reveal when a menu hands focus back to a control a pick in it moved, or the pull back when a
+  switch to List leaves the canvas too short for the slide (Week × List at 1240 goes to 5, as
+  it did before the hold; a draft of the hold that also kept slides the browser made held the
+  browser's 27).
+- The hold costs canvas: by the time focus moves on, the slide it keeps can be more than the
+  control needs. Under a focused ✕, a switch from Week to Day × Schedule keeps 11px more than
+  Day needs, a layout switch alone 8 (Week × Schedule to Buckets), and a scope switch and then
+  a layout switch up to 18, the same at 1200 and 1240 with the default sidebar, 1320 with 560
+  and 1440 with 720. While Next keeps focus, the canvas stays at the widest slide a date has
+  needed: in Day at 1440 with the 720px sidebar, 82px from Wednesday, September 30 on, where
+  Friday, October 2 needs 15; at 1300 with the 560px sidebar, 62, where Friday, October 2 needs
+  none; in Week, at most 28 more than a date needs. WeekScale's thumb, after Home at 1340,
+  keeps 123 where it needs 21, and at 1440 keeps 23 where it shows at rest. Chromium alone
+  keeps its centring slide throughout, 108 to 208px.
+- A click holds nothing. After a Tab slide onto Next, a click on it pages the date and the
+  date's width moves Next. Holding the slide there let Go to today move under the pointer: an
+  earlier version paged five days in Day at the 720px sidebar and then the sixth click landed
+  on Go to today, which put the date back and `<main>` at rest, and in Week the second click
+  undid the first. A button a click moves is placed afresh instead, which keeps it at
+  `<main>`'s edge, under the pointer, so eight clicks page eight days, or eight weeks. Chromium
+  alone pages four days and then opens the calendar, and in Week alternates Next and Go to
+  today. A click counts until a key goes down in `<main>`, so Enter on Next still holds. A
+  dragged thumb is not a button, and still holds: a variant that let go for every pointer move
+  jumped the canvas on the release (62px to 0 at 1400, 122 to 20 at 1340) and back on the next
+  arrow.
+- Focus moving on from a held slide places the next control afresh if that slide cuts it,
+  because the slide was held for the control focus left. After paging with Enter on Next, Tab
+  onto Go to today showed as little as 3.6% of it under an earlier version, where Chromium
+  alone showed it whole; it now shows whole in all 32 cases tried (Day and Week, 1440 with the
+  720px sidebar and 1300 with 560, after one to eight presses). The same goes for Zen after
+  scope switches moved a focused Display trigger, and that reveal closes Zen's tooltip.
+- Chromium scrolls only for a control that is wholly hidden, so one cut part-way keeps the part
+  it shows, as it did before, unless that is a pixel or less: the ✕ 19% of itself in Week at
+  1265 (with its tooltip), the Display trigger 66% in Day at 1200. The hook's smaller slides
+  add one: in Week, Shift+Tab back from the ✕ leaves Zen 76 to 78% showing, since the ✕'s least
+  slide is 8px short of Zen's, where the browser's centring slide showed Zen whole. The shelf
+  text keeps the slide of whatever stop came before it: Zen's on Tab, and on Shift+Tab the ✕'s,
+  which is itself the slide of a notice after it when one is in the row. When the text is wider
+  than `<main>` (the 720px sidebar) and no notice is in the row, it shows 67 to 71% of itself
+  in Schedule and Buckets and 75 to 78% in List, cut at its start. With a notice in the row, in
+  Day, it is cut at the default and 560px sidebars too, and most with the review notice, whose
+  slide shows its icon, "Start" and ✕: in Day × Schedule, 58% with the program line and 38%
+  with the review notice at 1440 with the 720px sidebar, and 81 to 94% and 62 to 75% at 1200 to
+  1240 with the default one; walking back from the review notice past the program line, 34 to
+  38% at 1440 with 720 (Chromium alone shows 35 to 39% there), 47% at 1320 with 560, and 58 to
+  71% at 1200 to 1240.
+- A reveal is itself a scroll, so Zen's tooltip closes on the Tab that reveals it, and the ✕'s
+  on the Shift+Tab that reveals it from the grid. The hook's own moves close more. The ✕'s
+  closes on Shift+Tab from the stop after it, when that stop needed a slide and the ✕ shows at
+  rest: WeekScale's Narrower in Week × Schedule (1190 with a 280px sidebar, or 1310 with the
+  default one), and in Day the program line or the review notice, in the same bands for either
+  (at the default sidebar, Day × Schedule about 1268 to 1302, Day × List 1236 to 1268, Day ×
+  Buckets 1260 to 1294). Just below those bands the ✕ is cut at rest, so it keeps the notice's
+  slide and its tooltip stays up. Zen's closes on the Tab from the Display trigger at the 720px
+  sidebar, where Chromium's centring slide for the trigger already showed Zen and the hook's
+  least slide does not. And the ✕'s closes when a scope or layout switch leaves it cut and it
+  is placed afresh. Tab from Zen to the ✕ keeps "Reset display" up at the QA widths, but not in
+  a band of 9 or 10px of window just below where the ✕ starts to show at rest (default sidebar:
+  Day × Schedule 1244 to 1252, Week × Schedule 1254 to 1263, Week × Buckets 1246 to 1255, Day ×
+  List 1211 to 1219, Week × List 1221 to 1229, Day × Buckets 1236 to 1245). There Zen shows
+  part-way at rest, so no slide was made, or the shelf text between them shows at rest and
+  sends `<main>` back, and the ✕'s own reveal closes its tooltip. Without the hook it closed
+  there too, in 8px of each band. The hook adds the lowest pixel in Week × Schedule, Week ×
+  Buckets and Day × Buckets, where the text sends `<main>` back, and the highest in all six, where the
+  ✕ shows a pixel or less at rest, which Chromium leaves alone and the hook brings in whole.
+- It also holds still, whatever has focus, in four cases. While a pointer is down, found in
+  review: a press moves focus on mousedown, and the first version slid `<main>` back before the
+  release, so the click was lost (Next, a block's Mark complete) and a drag ran offset by the
+  whole slide. While focus is in a layer outside the shell, such as a menu or the calendar,
+  most often drawn against its control in `<main>`: Radix hands focus back with a plain
+  `focus()`, which finds the control still showing. A menu drawn against a sidebar control,
+  such as the braindump's Display menu, holds `<main>` too, which is harmless: Escape hands
+  focus back to the sidebar and `<main>` goes to rest. Review found that focus going on from
+  such a layer to the sidebar, or to nothing, never passes through `<main>`, so the focus
+  listeners are on the document. The calendar is the exception: after Escape it drops focus to
+  nothing while it fades out, and only then hands it back, so a canvas that was slid when it
+  opened comes back at once, and the fading calendar moves with it. And while an ancestor of
+  `<main>` is inert, which only Zen's switch does as it lifts the planner away: focus drops to
+  nothing 130 to 220ms in, and an earlier version went to rest there, jumping the whole visible
+  planner 36 to 150px sideways under the wave. If the switch is turned back mid-wave, `<main>`
+  stays slid until the next key, focus move, scroll or resize (47px in Week × Schedule at
+  1240). `<main>`'s own inert, under the overlaid item panel, does not count. And at rest, with
+  nothing past either edge, there is nothing to do. Nothing is noted there but `<main>`'s
+  width, so a control the layout moved back to a spot cut part-way after a spell at rest would
+  stay as the browser leaves it; nothing in the shell does that today.
+- Review first made `<main>` `overflow-clip min-w-0` to stop the slide, and that was reverted:
+  a clip box never scrolls, so Tab landed on controls nobody could see, the ✕ among them, which
+  resets every canvas Display setting. `tests/unit/desktop-main-scroll.test.tsx` pins the class
+  and the hook together.
+- Two notices share the row, and with the panel docked both buttons are squeezed below what
+  they paint: the program line's (a paused program hiding items today) to 0px, where it still
+  paints its Moon icon and its focus ring, and the review notice's ("Today's review is
+  waiting") to its 16px of padding, where it paints its icon and "Start" past its box. The hook
+  measures what a control paints past its box, unless it clips it, and slides that into view:
+  the Moon at 74px in Day × Schedule at 1240, and the review notice's icon, "Start" and ✕ at
+  135 (without the program line). Review caught earlier versions of the hook sending `<main>`
+  to rest for the program line, which left its icon wholly past the edge, and sliding the
+  review notice's 16px box into view and no more, which showed 57% of its icon and none of
+  "Start"; Chromium alone showed both. The program line's text still never shows. That is older
+  than this change (13aa588 does the same); a floor it cannot shrink below, or leaving the row
+  when there is no room, would fix it.
+- The least slide puts a control's edge within a pixel of `<main>`'s, and Chromium draws the
+  focus ring 1px inside the box and 2px outside it, so on that side up to two of the ring's
+  three pixels are cut. Room for the ring would have to be added only when a slide is made: a
+  control flush with `<main>`'s edge at rest must still count as showing there.
 - The phone skeleton is the card at rest (106.5px, which the skeleton rounds to 106); a
   first paint with the shelf or the review notice up grows the card downward by that much.
 
@@ -1210,19 +1270,25 @@ current layout (a sort outside List, `sortByBlockedBy`; a grouping `groupBySuppo
 - Partial reach ("Untimed rows only", "Anytime only") stays the menu's to explain.
 
 **Manual QA states:** 1440×900 and 1366×768, Day and Week × Schedule, List and Buckets: one
-setting; everything on (six lines); page dates in Day × List and click Week × List's
-headings with a shelf near its threshold, with a window `error` listener attached (no
-"ResizeObserver loop"); the item panel docked at 1280 and 1200px, and Tab and Shift+Tab
-through the header there (each control shows while it has focus, whole unless the edge cuts
-it part-way; the ✕'s tooltip stays up on Tab from Zen; the canvas is back at rest once focus
-moves into the schedule, and a click on Next while it is slid moves the date); open an item
-while the ✕ has focus (it stays whole as the panel docks); with the 720px sidebar, page
-dates with Enter on Next, and at 1440 press the arrows on WeekScale's thumb (the canvas
-holds still); with a paused program hiding items today, Tab onto the program line at 1240
-(its Moon shows); open from the shelf and Escape (focus back on the text); ✕ with the
-keyboard (focus lands on the Display trigger). A 390×844 phone: the same settings, the
-review notice owed and not, the sheet opened from the text, and Reset display from the sheet
-(focus lands on the Display icon).
+setting; everything on (six lines); page dates in Day × List and click Week × List's headings
+with a shelf near its threshold, with a window `error` listener attached (no "ResizeObserver
+loop"); the item panel docked at 1280 and 1200px, and Tab and Shift+Tab through the header
+there (each control shows while it has focus, whole unless the edge cuts it part-way; the ✕'s
+tooltip stays up on Tab from Zen; the canvas is back at rest once focus moves into the
+schedule, and a click on Next while it is slid moves the date); open an item while the ✕ has
+focus (it stays whole as the panel docks); with the 720px sidebar in Day, page dates with Enter
+on Next (the canvas moves only when a wider date would cut Next, and does not come back while
+Next has focus: from Saturday, September 26, once in eight presses, onto Wednesday, September
+30, at 1440 and at 1366), then Tab onto Go to today (it shows whole), and after a Tab slide
+onto Next, click it eight times at one spot (it pages eight days); at 1440 with the default
+sidebar, press the arrows on WeekScale's thumb in Week × Schedule (at most one 23px slide, on
+the Tab or on the first step that reaches 2 days, then none); with a paused program hiding
+items today, Tab onto the program line at 1240 (its Moon shows); with today's review waiting,
+Tab onto its notice at 1200 (its icon, "Start" and ✕ show); Enter on Zen while the canvas is
+slid (the planner does not jump sideways as the switch lifts it away); open from the shelf and
+Escape (focus back on the text); ✕ with the keyboard (focus lands on the Display trigger). A
+390×844 phone: the same settings, the review notice owed and not, the sheet opened from the
+text, and Reset display from the sheet (focus lands on the Display icon).
 
 ## Related
 
