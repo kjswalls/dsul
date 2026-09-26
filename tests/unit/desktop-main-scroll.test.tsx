@@ -32,8 +32,12 @@ vi.mock('@/components/canvas/header-capsule', () => ({
   ),
 }));
 
-/** jsdom has no ResizeObserver; this one lets a test say when <main> resized. */
+/**
+ * jsdom has no ResizeObserver; this one keeps what it observes, and lets a test
+ * say when <main> resized.
+ */
 const resizeCallbacks = new Set<() => void>();
+const resizeTargets = new Set<Element>();
 vi.stubGlobal(
   'ResizeObserver',
   class {
@@ -41,29 +45,34 @@ vi.stubGlobal(
     constructor(callback: ResizeObserverCallback) {
       this.notify = () => callback([], this as unknown as ResizeObserver);
     }
-    observe() {
+    observe(el: Element) {
+      resizeTargets.add(el);
       resizeCallbacks.add(this.notify);
     }
-    unobserve() {
+    unobserve(el: Element) {
+      resizeTargets.delete(el);
       resizeCallbacks.delete(this.notify);
     }
     disconnect() {
+      resizeTargets.clear();
       resizeCallbacks.delete(this.notify);
     }
   }
 );
 
 /**
- * Nor an IntersectionObserver; this one keeps what it watches, and lets a test
- * say that what shows of it changed.
+ * Nor an IntersectionObserver; this one keeps what it watches and how, and
+ * lets a test say that what shows of it changed.
  */
 const watched = new Set<Element>();
 const seenCallbacks = new Set<() => void>();
+let seenOptions: IntersectionObserverInit | undefined;
 vi.stubGlobal(
   'IntersectionObserver',
   class {
     notify: () => void;
-    constructor(callback: IntersectionObserverCallback) {
+    constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
+      seenOptions = options;
       this.notify = () => callback([], this as unknown as IntersectionObserver);
       seenCallbacks.add(this.notify);
     }
@@ -341,6 +350,22 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(0);
     });
 
+    it('places it afresh when <main> changed width while the menu had focus', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      openMenu();
+      await frame();
+      size(main, 290);
+      act(() => resizeCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      act(() => screen.getByTestId('clipped-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(61);
+    });
+
     it('scrolls back when the menu drops focus', async () => {
       render(<DesktopShell />);
       const main = await layOut();
@@ -365,6 +390,22 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       fireEvent.pointerDown(target, { pointerId: 1 });
       act(() => target.focus());
       await frame();
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      fireEvent.pointerUp(target, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('holds for a press whose control stops it from bubbling', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      const target = screen.getByTestId('mid-control');
+      target.addEventListener('pointerdown', (e) => e.stopPropagation());
+      fireEvent.pointerDown(target, { pointerId: 1 });
+      act(() => target.focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
       fireEvent.pointerUp(target, { pointerId: 1 });
@@ -520,21 +561,25 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     expect(watched.size).toBe(0);
   });
 
-  it('places it afresh when the focused control grows at either end', async () => {
+  it('places it afresh when the layout moves either end of a control it leaves cut', async () => {
     render(<DesktopShell />);
     const main = await layOut();
     focusAndReveal(main, 'clipped-control', 100);
     await frame();
-    act(() => screen.getByTestId('cut-control').focus());
+    // Cut at both edges at 51, as the browser would leave it.
+    act(() => screen.getByTestId('wide-control').focus());
     await frame();
     expect(main.scrollLeft).toBe(51);
-    // 20px wider at its start, its end where it was: 21 shows it whole.
-    place('cut-control', 370, 52);
+    // Its start moves 20.6px on, its end where it was: 29 shows its start whole.
+    place('wide-control', 130.6, 349.4);
     act(() => seenCallbacks.forEach((notify) => notify()));
     await frame();
-    expect(main.scrollLeft).toBe(21);
-    // Then 20px wider at its end, which cuts it again.
-    place('cut-control', 370, 72);
+    expect(main.scrollLeft).toBe(29);
+    // The cut one shows whole at 29, until it grows 20px at its end.
+    act(() => screen.getByTestId('cut-control').focus());
+    await frame();
+    expect(main.scrollLeft).toBe(29);
+    place('cut-control', 390, 52);
     act(() => seenCallbacks.forEach((notify) => notify()));
     await frame();
     expect(main.scrollLeft).toBe(41);
@@ -555,5 +600,295 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     act(() => resizeCallbacks.forEach((notify) => notify()));
     await frame();
     expect(main.scrollLeft).toBe(21);
+  });
+
+  describe('while a control the layout moved still shows whole', () => {
+    it('holds its slide as a key moves it, and places it afresh once a move cuts it', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // Next, paging the date: the label beside it changes width on every press.
+      const control = screen.getByTestId('clipped-control');
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(control, { key: 'Enter' });
+      await frame();
+      // Whole at 51, where 41 would do: moving would slide the whole canvas.
+      expect(main.scrollLeft).toBe(51);
+      place('clipped-control', 430, 32);
+      fireEvent.keyDown(control, { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(61);
+    });
+
+    it('holds its slide while keys move a slider thumb end to end, until focus moves on', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      // Home takes it back to where it shows at rest, and it still shows whole at 45.
+      place('scale-thumb', 300, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('lets go once a move cuts it at the left edge', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      // Home, on a longer track that starts past the left edge at 45: it shows at rest.
+      place('scale-thumb', 140, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('lets go when <main> changes width', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      size(main, 310);
+      act(() => resizeCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(31);
+    });
+
+    it('lets go when focus leaves <main>, so a reveal on the way back comes back as far as the least slide', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      act(() => screen.getByTestId('sidebar-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      // Back again, wholly out of sight at rest: the browser centres it.
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(41);
+    });
+
+    it('never holds a slide something else made', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      place('scale-thumb', 300, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      // Find in page slides <main> on, and the thumb shows at rest.
+      main.scrollLeft = 80;
+      fireEvent.scroll(main);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('never holds a slide it did not make, when a menu closes on a control the layout moved', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const control = screen.getByTestId('clipped-control');
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      openMenu();
+      await frame();
+      // A pick in the menu moves the control 50px on, wholly out of sight at 51,
+      // and the menu hands focus back: the browser centres it.
+      place('clipped-control', 470, 32);
+      act(() => control.focus());
+      main.scrollLeft = 150;
+      fireEvent.scroll(main);
+      await frame();
+      expect(main.scrollLeft).toBe(101);
+    });
+  });
+
+  it('takes a control that shows half a pixel or less as out of sight, and leaves at most half a pixel cut', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    // Its start 0.4px short of <main>'s inner right edge: a sliver, not a control.
+    place('clipped-control', 400.6, 32);
+    act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
+    await frame();
+    // Its end at 331.6 from the origin: 32 shows it whole, and 31 would leave 0.6px cut.
+    expect(main.scrollLeft).toBe(32);
+  });
+
+  it('takes a control that shows half a pixel or less at the left edge as out of sight', async () => {
+    render(<DesktopShell />);
+    const main = await layOut(150);
+    act(() => screen.getByTestId('clipped-control').focus());
+    await frame();
+    expect(main.scrollLeft).toBe(201);
+    // The thumb's end 0.3px inside the left edge at 201: a sliver, so it comes in whole.
+    place('scale-thumb', 286.3, 16);
+    act(() => screen.getByTestId('scale-thumb').focus({ preventScroll: true }));
+    await frame();
+    expect(main.scrollLeft).toBe(51);
+  });
+
+  it('rounds its least slide to within half a pixel, not past it', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    // Its end at 351.3 from the origin: 51 leaves 0.3px cut, and 52 would overshoot.
+    place('clipped-control', 420.3, 32);
+    act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
+    await frame();
+    expect(main.scrollLeft).toBe(51);
+  });
+
+  it('takes a move of a pixel for a move, and a third of one for rounding', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
+    act(() => screen.getByTestId('wide-control').focus());
+    await frame();
+    expect(main.scrollLeft).toBe(51);
+    place('wide-control', 110.3, 370);
+    act(() => seenCallbacks.forEach((notify) => notify()));
+    await frame();
+    expect(main.scrollLeft).toBe(51);
+    place('wide-control', 111, 370);
+    act(() => seenCallbacks.forEach((notify) => notify()));
+    await frame();
+    expect(main.scrollLeft).toBe(10);
+  });
+
+  it('shows what a control squeezed to 0px paints past it, its icon and focus ring', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
+    // The program line's button, shrunk to nothing at 460 with its 12px icon
+    // overflowing it: 71 shows the icon, which at rest sits wholly past the edge.
+    const button = screen.getByTestId('wide-control');
+    place('wide-control', 460, 0);
+    Object.defineProperty(button, 'scrollWidth', { configurable: true, value: 12 });
+    act(() => button.focus());
+    await frame();
+    expect(main.scrollLeft).toBe(71);
+  });
+
+  it('measures a control that clips what overflows it by its own box', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
+    // Truncated text: 40px wide, with 400px of it hidden inside.
+    const control = screen.getByTestId('seen-control');
+    Object.defineProperty(control, 'scrollWidth', { configurable: true, value: 400 });
+    act(() => control.focus());
+    await frame();
+    expect(main.scrollLeft).toBe(0);
+  });
+
+  describe('its observers', () => {
+    it('watch <main> itself: its size, and whether the focused control shows whole or at all', () => {
+      render(<DesktopShell />);
+      const main = document.querySelector('main')!;
+      expect([...resizeTargets]).toEqual([main]);
+      expect(seenOptions?.root).toBe(main);
+      expect(seenOptions?.threshold).toEqual([0, 1]);
+    });
+
+    it('watch the control focus lands on while <main> is at rest, so a row that grows under it is heard', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // The row fits.
+      Object.defineProperty(main, 'scrollWidth', { configurable: true, value: 300 });
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect([...watched]).toEqual([screen.getByTestId('mid-control')]);
+    });
+
+    it('let go of everything on unmount', async () => {
+      const { unmount } = render(<DesktopShell />);
+      const main = await layOut();
+      const removals = [window, document, main].map((target) => vi.spyOn(target, 'removeEventListener'));
+      // A frame asked for and not yet run when the shell goes.
+      act(() => screen.getByTestId('clipped-control').focus());
+      const cancelled = vi.spyOn(window, 'cancelAnimationFrame');
+      unmount();
+      expect(cancelled).toHaveBeenCalled();
+      expect(resizeCallbacks.size).toBe(0);
+      expect(seenCallbacks.size).toBe(0);
+      const [fromWindow, fromDocument, fromMain] = removals.map((spy) =>
+        spy.mock.calls.map(([type, , capture]) => (capture ? `${type} (capture)` : type))
+      );
+      expect(fromWindow).toEqual(
+        expect.arrayContaining([
+          'pointerdown (capture)',
+          'pointerup (capture)',
+          'pointercancel (capture)',
+          'blur',
+          'contextmenu (capture)',
+        ])
+      );
+      expect(fromDocument).toEqual(expect.arrayContaining(['focusin', 'focusout']));
+      expect(fromMain).toEqual(expect.arrayContaining(['keydown (capture)', 'scroll']));
+      const asked = vi.spyOn(window, 'requestAnimationFrame');
+      const other = document.createElement('button');
+      document.body.appendChild(other);
+      act(() => other.focus());
+      act(() => other.blur());
+      fireEvent.pointerDown(window, { pointerId: 3 });
+      fireEvent.pointerUp(window, { pointerId: 3 });
+      fireEvent.pointerCancel(window, { pointerId: 4 });
+      fireEvent.blur(window);
+      fireEvent.contextMenu(window);
+      fireEvent.scroll(main);
+      fireEvent.keyDown(main, { key: 'Tab' });
+      expect(asked).not.toHaveBeenCalled();
+      other.remove();
+      [...removals, cancelled, asked].forEach((spy) => spy.mockRestore());
+    });
+
+    it.each(['IntersectionObserver', 'ResizeObserver'])(
+      'are not needed for the shell to mount: without %s it does nothing',
+      (name) => {
+        const real = (globalThis as Record<string, unknown>)[name];
+        vi.stubGlobal(name, undefined);
+        try {
+          expect(() => render(<DesktopShell />)).not.toThrow();
+        } finally {
+          vi.stubGlobal(name, real);
+        }
+      }
+    );
   });
 });
