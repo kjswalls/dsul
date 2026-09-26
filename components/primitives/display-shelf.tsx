@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useEffect, useId, useLayoutEffect, useRef } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef } from 'react';
 import { Target, X } from 'lucide-react';
 import {
   ContainerSquare,
@@ -11,10 +11,12 @@ import { RailTooltip } from '@/components/primitives/pills';
 import { useIsMobile } from '@/hooks/use-mobile';
 import {
   clauseText,
+  removeDisplaySetting,
   resetDisplay,
   useDisplaySummary,
   type DisplayClause,
   type DisplayGlyph,
+  type DisplayRemoval,
   type DisplaySurface,
 } from '@/lib/display-summary';
 import { NO_PRIORITY } from '@/lib/filters';
@@ -34,8 +36,11 @@ import { cn } from '@/lib/utils';
  * It renders exactly when the dot is lit and names exactly what the dot counts,
  * because both read the one summary in lib/display-summary.ts — a shelf that
  * worked out its own answer would sooner or later disagree with the dot. Its
- * text is a single button that opens the menu, and the ✕ beside it IS "Reset
- * display", the same function the menu's row calls.
+ * text opens the menu, every setting and every value in it wears a ✕ of its
+ * own that takes just that one off (`removeDisplaySetting`), and the ✕ at the
+ * end IS "Reset display", the same function the menu's row calls — shown only
+ * while there is more than one thing to take off, since with one it would be
+ * that thing's ✕ twice.
  *
  * No opacity and no transition anywhere in it. The Low dot is --priority-low
  * and a project square can be --accent-8, both lime: they are data glyphs, drawn
@@ -53,7 +58,8 @@ export function DisplayShelf({
   /** The menu this shelf describes. Read in handlers only — see DisplayMenuHandle. */
   menu: React.RefObject<DisplayMenuHandle | null>;
   /**
-   * The phone mount: 28px hit areas on both buttons, and no width floor, since
+   * The phone mount: a 28px reach on the opener and the reset ✕, 25 × 28px on each
+   * setting's ✕, and no width floor, since
    * a phone tab has no collapsing column to ride out (see the root's style).
    */
   touch?: boolean;
@@ -89,12 +95,20 @@ export function DisplayShelf({
  * same DOM — the width never changes what a screen reader reads.
  */
 
+/* A ✕ is part of the setting it removes, so a phrase ellipsizes before its ✕
+ * and a value never wraps away from its own. */
+
 /** A line of the stack; inside the one line, just a run of clauses. */
 const LINE =
   'flex shrink-0 gap-x-4 group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:shrink group-data-[fit=stack]/shelf:flex-wrap';
-/** Grouping, ordering, Hide finished: one phrase, which ellipsizes rather than wraps. */
+/**
+ * Grouping, ordering, Hide finished: one phrase and its ✕, where the phrase
+ * ellipsizes rather than wraps and the ✕ never shrinks.
+ */
 const SINGLE =
-  'shrink-0 whitespace-nowrap group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:max-w-full group-data-[fit=stack]/shelf:truncate';
+  'flex shrink-0 items-center gap-1 whitespace-nowrap group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:max-w-full';
+/** One value of a multi-select — glyph, name, ✕ — which shrinks only by its name. */
+const VALUE = 'inline-flex min-w-0 max-w-full items-center gap-1';
 /**
  * A multi-select's values, which wrap only BETWEEN one another. `shrink` in the
  * stack is load-bearing: a clause that kept `shrink-0` there held its one-line
@@ -121,9 +135,10 @@ function shelfLines(clauses: DisplayClause[]): ShelfLine[] {
 }
 
 /**
- * The button's description: the section each value belongs to, which the
+ * The opener's description: the section each value belongs to, which the
  * glyphs say to the eye and the visible text never says in words — "High" and
- * "Work" read the same to a screen reader until something names them.
+ * "Work" read the same to a screen reader until something names them. Each
+ * value's ✕ says its noun too, in the reading order.
  */
 function shelfDescription(clauses: DisplayClause[]): string {
   const nouns = clauses.flatMap((c) =>
@@ -148,20 +163,45 @@ function Glyph({ glyph }: { glyph: DisplayGlyph }) {
   }
 }
 
-function Clause({ clause: c }: { clause: DisplayClause }) {
+/** A ✕'s accessible name: the setting it takes off, with its section's noun for a value. */
+function removeLabel(c: DisplayClause, valueLabel?: string): string {
+  return 'noun' in c && valueLabel !== undefined
+    ? `Remove ${c.noun}: ${valueLabel}`
+    : `Remove ${clauseText(c)}`;
+}
+
+/**
+ * One setting as the shelf draws it. The words are aria-hidden: the opener
+ * underneath already says all of them as its name (see ShelfBody), so what a
+ * screen reader meets here is the ✕s alone, each naming what it takes off.
+ */
+function Clause({
+  clause: c,
+  remove,
+}: {
+  clause: DisplayClause;
+  /** One ✕, for the removal it names. */
+  remove: (removal: DisplayRemoval, label: string) => React.ReactNode;
+}) {
   switch (c.id) {
     case 'group':
     case 'sort':
       return (
         <span data-clause={c.id} className={SINGLE}>
-          <span className="font-normal text-muted-foreground">{LEAD[c.id]}</span> {c.label}
+          <span data-chip-label="" aria-hidden className="min-w-0 truncate">
+            <span className="font-normal text-muted-foreground">{LEAD[c.id]}</span> {c.label}
+          </span>
+          {remove({ id: c.id }, removeLabel(c))}
         </span>
       );
     case 'type':
     case 'hide-finished':
       return (
         <span data-clause={c.id} className={SINGLE}>
-          {clauseText(c)}
+          <span data-chip-label="" aria-hidden className="min-w-0 truncate">
+            {clauseText(c)}
+          </span>
+          {remove({ id: c.id }, removeLabel(c))}
         </span>
       );
     case 'priority':
@@ -169,16 +209,18 @@ function Clause({ clause: c }: { clause: DisplayClause }) {
     case 'goal':
       return (
         <span data-clause={c.id} className={MULTI}>
-          {c.values.map((v, i) => (
-            <Fragment key={v.key}>
-              <span className="inline-flex min-w-0 max-w-full items-center gap-1">
+          {c.values.map((v) => (
+            <span key={v.key} data-value={v.key} className={VALUE}>
+              <span
+                data-chip-label=""
+                aria-hidden
+                className="inline-flex min-w-0 items-center gap-1"
+              >
                 <Glyph glyph={v.glyph} />
                 <span className="truncate">{v.label}</span>
               </span>
-              {/* sr-only is absolutely positioned, so it is no flex item and
-                  takes no gap: the pause is for the accessible name alone. */}
-              {i < c.values.length - 1 && <span className="sr-only">{', '}</span>}
-            </Fragment>
+              {remove({ id: c.id, key: v.key }, removeLabel(c, v.label))}
+            </span>
           ))}
         </span>
       );
@@ -265,7 +307,6 @@ function ShelfBody({
   // leave the added value clipped.
   const text = clauses.map(clauseText).join('; ');
   const lines = shelfLines(clauses);
-  const lastClause = clauses[clauses.length - 1];
 
   // Before paint, so a change of text never shows a frame in the wrong fit.
   useLayoutEffect(() => {
@@ -354,6 +395,76 @@ function ShelfBody({
     };
   }, []);
 
+  /** The ✕ look, at the sidebar's density or with the phone's 28px-tall reach. */
+  const xClass = (reach: string) =>
+    cn(
+      'grid h-[18px] shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
+      touch && `relative before:absolute ${reach} before:-inset-y-[5px] before:content-['']`
+    );
+
+  /**
+   * The header's tooltip, which every icon-only control in it wears. None on
+   * the phone, where no hover earns one and a tap would pop it over the thumb.
+   */
+  const tipped = (label: string, button: React.ReactElement) =>
+    touch ? (
+      button
+    ) : (
+      <RailTooltip side="bottom" label={label}>
+        {button}
+      </RailTooltip>
+    );
+
+  /**
+   * One setting's ✕. Its own setting is all it takes off, so its button
+   * unmounts under the press, and focus is handed on FIRST, as the reset's is:
+   * to the next setting's ✕, or the one before it when this was the last, or
+   * to the trigger when nothing else is left and the shelf is about to go.
+   * Never to the reset ✕, which leaves with the second-to-last setting.
+   * Every other setting's ✕ survives the removal — the model takes off
+   * exactly the one value named (display-summary.test.ts holds it to that
+   * over every combination) and each ✕ is keyed by what it names.
+   */
+  const removeButton = (removal: DisplayRemoval, label: string) => (
+    <button
+      type="button"
+      data-shelf-remove=""
+      data-testid={`display-shelf-remove-${surface}`}
+      aria-label={label}
+      // A HELD Enter would otherwise clear the whole shelf: each press hands
+      // focus to the next ✕, and the key's autorepeat presses that one too.
+      // Space activates on release, so it cannot repeat.
+      onKeyDown={(e) => {
+        if (e.repeat && e.key === 'Enter') e.preventDefault();
+      }}
+      onClick={(e) => {
+        const all = Array.from(
+          rootRef.current?.querySelectorAll<HTMLButtonElement>('[data-shelf-remove]') ?? []
+        );
+        const i = all.indexOf(e.currentTarget);
+        const next = all[i + 1] ?? all[i - 1];
+        if (next) next.focus();
+        else menu.current?.focus();
+        removeDisplaySetting(surface, removal);
+      }}
+      // pointer-events-auto: the words around it let clicks through to the
+      // opener underneath, and the ✕ has to take its own.
+      //
+      // The phone's reach runs 7px to the right but only 4px to the left, the
+      // gap to its own words, so a tap at the end of a name still opens the
+      // menu rather than taking the name away: 25 × 28px.
+      className={cn('pointer-events-auto w-3.5', xClass('before:-left-1 before:-right-[7px]'))}
+    >
+      <X className="size-[10px]" aria-hidden />
+    </button>
+  );
+
+  const remove = (removal: DisplayRemoval, label: string) =>
+    tipped('Remove', removeButton(removal, label));
+
+  /** How many ✕s the settings wear: one per phrase, one per value. */
+  const removable = clauses.reduce((n, c) => n + ('values' in c ? c.values.length : 1), 0);
+
   const resetButton = (
     <button
       type="button"
@@ -366,10 +477,7 @@ function ShelfBody({
         menu.current?.focus();
         resetDisplay(surface);
       }}
-      className={cn(
-        'grid h-[18px] w-4 shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
-        touch && "relative before:absolute before:-inset-x-[6px] before:-inset-y-[5px] before:content-['']"
-      )}
+      className={cn('w-4', xClass('before:-inset-x-[6px]'))}
     >
       <X className="size-[11px]" aria-hidden />
     </button>
@@ -399,73 +507,66 @@ function ShelfBody({
       {/* The line's size, sampled (see the observer above): a phrase in the
           shelf's own type, placed out of flow and unbreakable, so its width
           answers to the font and to spacing and never to the column. Its rem
-          of padding answers for the rest of the line, whose gaps and dots are
-          sized in rem. Both are on ::before, so the phrase adds no text to the
-          page and the padding sits inside the box the observer reads. */}
+          of padding answers for the rest of the line, whose gaps, dots and ✕s
+          are sized in rem. Both are on ::before, so the phrase adds no text to
+          the page and the padding sits inside the box the observer reads. */}
       <span
         ref={sampleRef}
         data-shelf-sample=""
         aria-hidden
         className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:pl-4 before:content-['Hide_finished']"
       />
-      {/* No aria-label: the name is the visible text, so what a voice-control
-          user reads off the screen is what they can say (WCAG 2.5.3, Label in
-          Name). The sr-only separators give that name its pauses, and the
-          description carries the nouns. No aria-expanded either: what opens is
-          modal, and hides this whole section while it is up. */}
-      <button
-        type="button"
-        data-testid={`display-shelf-open-${surface}`}
-        aria-haspopup={isTouch ? 'dialog' : 'menu'}
-        aria-describedby={descId}
-        // The menu the trigger opens, opened the way the trigger opens it: the
-        // handle picks the shell. Handing over the ref brings focus back here
-        // on close, while this text is still on screen to take it.
-        ref={openerRef}
-        onClick={() => menu.current?.open(openerRef)}
-        className={cn(
-          'relative flex min-w-0 flex-1 text-left hover:text-foreground',
-          // The hit area rides on the BUTTON, while the clipping is the lines
-          // box's inside it, so the 28px reach is never cut off.
-          touch && "before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-['']"
-        )}
-      >
+      <div className="relative flex min-w-0 flex-1">
+        {/* The opener, UNDER the words rather than around them: a button
+            cannot hold the ✕ buttons, so it covers the lines' box from behind
+            and the words let clicks fall through to it. It is named by the
+            same text, said once, in its own sr-only copy — the words on screen
+            are aria-hidden — so what a voice-control user reads off the screen
+            is what they can say (WCAG 2.5.3, Label in Name). No aria-expanded:
+            what opens is modal, and hides this whole section while it is up.
+            Outside the lines' box, so its focus ring is not clipped. */}
+        <button
+          type="button"
+          data-testid={`display-shelf-open-${surface}`}
+          aria-haspopup={isTouch ? 'dialog' : 'menu'}
+          aria-describedby={descId}
+          // The menu the trigger opens, opened the way the trigger opens it: the
+          // handle picks the shell. Handing over the ref brings focus back here
+          // on close, while this text is still on screen to take it.
+          ref={openerRef}
+          onClick={() => menu.current?.open(openerRef)}
+          className={cn(
+            'peer/open absolute inset-0 rounded-[4px]',
+            touch && "before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-['']"
+          )}
+        >
+          <span className="sr-only">{text}</span>
+        </button>
+        {/* The words, over the opener: `relative` so they paint above it, and
+            pointer-events-none so a click on them still lands on it. The
+            vertical padding, taken back by the margin, keeps the phone's
+            ✕ reach from being cut off by this box's clip. */}
         <span
           ref={linesRef}
           data-shelf-lines=""
-          className="flex min-w-0 flex-1 gap-x-4 overflow-hidden group-data-[fit=stack]/shelf:flex-col group-data-[fit=stack]/shelf:gap-y-[5px]"
+          className="pointer-events-none relative -my-[5px] flex min-w-0 flex-1 gap-x-4 overflow-hidden py-[5px] peer-hover/open:text-foreground group-data-[fit=stack]/shelf:flex-col group-data-[fit=stack]/shelf:gap-y-[5px]"
         >
           {lines.map((line) => (
             <span key={line.id} data-line={line.id} className={LINE}>
               {line.clauses.map((c) => (
-                <Fragment key={c.id}>
-                  <Clause clause={c} />
-                  {c !== lastClause && <span className="sr-only">{'; '}</span>}
-                </Fragment>
+                <Clause key={c.id} clause={c} remove={remove} />
               ))}
             </span>
           ))}
         </span>
-      </button>
-      {/* sr-only rather than `hidden`, though aria-describedby would read a
-          hidden node just the same: NVDA and JAWS speak a description only in
-          focus mode, so for anyone arrowing through the header in browse mode
-          this line in the reading order is the one place the nouns are said.
-          The cost is VoiceOver with hints on, which hears the sentence as the
-          button's hint and again as the next stop. */}
-      <span id={descId} className="sr-only">
+      </div>
+      {/* Hidden rather than sr-only: each value's ✕ now says its noun in the
+          reading order, so this is for the opener's description alone, which
+          aria-describedby reads from a hidden node just the same. */}
+      <span id={descId} hidden>
         {shelfDescription(clauses)}
       </span>
-      {/* The header's tooltip, which every icon-only control in it wears; the
-          text beside it names itself, so it has none. None on the phone, where
-          no hover earns one and a tap would pop it over the thumb. */}
-      {touch ? (
-        resetButton
-      ) : (
-        <RailTooltip side="bottom" label="Reset display">
-          {resetButton}
-        </RailTooltip>
-      )}
+      {removable > 1 && tipped('Reset display', resetButton)}
     </div>
   );
 }
