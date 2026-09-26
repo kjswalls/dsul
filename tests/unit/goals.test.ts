@@ -427,6 +427,20 @@ describe('check-in standing', () => {
     expect(standing.dueToday).toBe(true);
   });
 
+  it('agrees with the grid on a dated check-in: its start day counts, nothing before it', () => {
+    // A Sunday check-in moved to Wednesday 2026-08-19 shows on the grid that
+    // Wednesday, so the goal page must call it due then, not "next Sunday".
+    const sundays = { repeatFrequency: 'custom' as const, repeatDays: [0] };
+    const moved = new Map<string, Item>([['c1', daily({ ...sundays, startDate: '2026-08-19' })]]);
+    expect(checkinStanding(goalWith(['c1']), moved, '2026-08-19', 'UTC')).toMatchObject({
+      nextDue: '2026-08-19',
+      dueToday: true,
+    });
+    // Starting next Sunday: the Sundays before it are not due.
+    const later = new Map<string, Item>([['c1', daily({ ...sundays, startDate: '2026-08-30' })]]);
+    expect(checkinStanding(goalWith(['c1']), later, '2026-08-19', 'UTC').nextDue).toBe('2026-08-30');
+  });
+
   it('treats a SKIPPED occurrence as answered, not as still due', () => {
     // A skip is the other per-date terminal mark a recurring item carries.
     // Counting only completion made the page say "Due today" for an occurrence

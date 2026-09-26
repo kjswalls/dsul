@@ -12,7 +12,7 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
-import { isRecurring } from '@/lib/recurrence';
+import { firstRepeatDayFrom, isRecurring } from '@/lib/recurrence';
 import { goalProgress, isAchieved, isGoalActive, sortGoalsForDisplay } from '@/lib/goals';
 import { GoalProgressTrack } from '@/components/planner/goal-sections';
 import {
@@ -217,8 +217,10 @@ export function GoalsSection({
    * column at all, while the bucket kept it out of the braindump too — the one
    * combination the item dialog itself cannot produce.
    *
-   * Anchored at TODAY: the cadence starts now, and an anchor in the past would
-   * back-date occurrences nobody agreed to.
+   * Anchored at the first Sunday from TODAY: the cadence starts now, an anchor
+   * in the past would back-date occurrences nobody agreed to, and a task's start
+   * date is itself an occurrence (anchoredSeriesOn), so anchoring on a weekday
+   * would add a check-in on that day too.
    */
   const createCheckin = (goal: Goal, title: string) => {
     addTask(
@@ -227,7 +229,7 @@ export function GoalsSection({
         status: 'pending',
         isScheduled: false,
         order: 0,
-        startDate: todayStr,
+        startDate: firstRepeatDayFrom({ repeatFrequency: 'custom', repeatDays: [0] }, todayStr),
         timeBucket: 'anytime',
         repeatFrequency: 'custom',
         // Sunday. A weekly review wants the seam between weeks, and picking a

@@ -1,5 +1,5 @@
 import type { Task, HabitItem, Project, TimeBucket } from './planner-types';
-import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from './recurrence';
+import { anchoredSeriesOn, shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from './recurrence';
 import { EMPTY_VIEW_FILTERS, passesFilters, type ViewFilters } from './filters';
 import { containerRef } from './container-registry';
 
@@ -164,7 +164,7 @@ export function deriveDayItems(input: DayItemsInput): DayItems {
             ? task.startDate.split('T')[0]
             : task.startDate;
           if (isRecurring(task)) {
-            if (!(shouldShowOnDate(task, dateStr, timezone) && taskStartDateStr <= dateStr)) return false;
+            if (!anchoredSeriesOn(task, taskStartDateStr, dateStr, timezone)) return false;
             if (hideDoneTasks && isCompletedOnDate(task, dateStr)) return false;
             return true;
           }

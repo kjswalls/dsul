@@ -18,7 +18,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useEODStore } from '@/lib/eod-store';
-import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
+import { anchoredSeriesOn, shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
 import { isOpenLoopSuppressedOn } from '@/lib/active';
 import type { Item, Task, TimeBucket } from '@/lib/planner-types';
@@ -141,7 +141,9 @@ export function EODReview() {
       // shouldn't ask about it again, same as skipped habits (#194).
       if (isSkippedOnDate(t, today)) return false;
       // Recurring tasks: use recurrence filter (respects repeatFrequency, repeatDays, etc.)
-      return shouldShowOnDate(t, today, resolvedTz) && (!t.startDate || t.startDate <= today);
+      return t.startDate
+        ? anchoredSeriesOn(t, t.startDate, today, resolvedTz)
+        : shouldShowOnDate(t, today, resolvedTz);
     });
     return {
       pendingTasks: todayTasks.filter((t) => !isTaskDoneToday(t)),

@@ -90,6 +90,22 @@ describe('deriveDayItems', () => {
     expect(result.tasksByBucket.morning).toHaveLength(1);
   });
 
+  it('shows a recurring task on its own start date, even off its repeat days', () => {
+    // A Monday task moved to Wednesday: the move means "this day", and the
+    // series carries on from there.
+    const moved = task({
+      startDate: DATE_STR,
+      timeBucket: 'morning',
+      repeatFrequency: 'custom',
+      repeatDays: [1],
+    });
+    expect(deriveDayItems(input({ tasks: [moved] })).tasksByBucket.morning).toHaveLength(1);
+    // Not the day before it starts, and not the next Wednesday.
+    expect(deriveDayItems(input({ tasks: [moved], dateStr: '2026-07-07' })).tasksByBucket.morning).toHaveLength(0);
+    expect(deriveDayItems(input({ tasks: [moved], dateStr: '2026-07-15' })).tasksByBucket.morning).toHaveLength(0);
+    expect(deriveDayItems(input({ tasks: [moved], dateStr: '2026-07-13' })).tasksByBucket.morning).toHaveLength(1);
+  });
+
   it('applies the type filter both ways', () => {
     const t = task({ startDate: DATE_STR, timeBucket: 'morning' });
     const h = habit({ timeBucket: 'morning' });

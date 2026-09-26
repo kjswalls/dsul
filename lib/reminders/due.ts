@@ -19,7 +19,7 @@
 
 import { getItemTypeConfig, isRemindable, itemTypeName } from '../item-registry'
 import { isItemActiveOn, isOpenLoopOn, type ActivationContext } from '../active'
-import { isRecurring, shouldShowOnDate } from '../recurrence'
+import { anchoredSeriesOn, isRecurring, shouldShowOnDate } from '../recurrence'
 import { toDateOnly } from '../overdue'
 import type { Item } from '../planner-types'
 
@@ -84,8 +84,9 @@ export function isWithinWindow(
  * no tasks[]/habits[] split to lean on.
  *
  * The three cases, and why each is what it is:
- *   - recurring + date-anchored: the recurrence rule AND startDate <= dateStr,
- *     because an anchored item must not render before it starts.
+ *   - recurring + date-anchored: its start date, then the recurrence rule
+ *     (anchoredSeriesOn), because an anchored item must not render before it
+ *     starts and a date the user picked is a day it happens.
  *   - recurring + un-anchored (habits): the recurrence rule alone. Migrated
  *     habits have start_date NULL by design (019) and gating them on it would
  *     silence every reminder on every habit that predates the unification.
@@ -104,9 +105,8 @@ export function occursOn(item: Item, dateStr: string, userTimezone: string): boo
     // recurring task to the braindump clears startDate and leaves
     // repeatFrequency alone, which is exactly that state.
     if (anchored && !startDate) return false
-    if (!shouldShowOnDate(item, day, userTimezone)) return false
-    if (anchored) return toDateOnly(startDate as string) <= day
-    return true
+    if (anchored) return anchoredSeriesOn(item, toDateOnly(startDate as string), day, userTimezone)
+    return shouldShowOnDate(item, day, userTimezone)
   }
 
   if (!startDate) return false

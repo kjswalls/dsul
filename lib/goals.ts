@@ -5,6 +5,7 @@ import {
   itemTypeName,
 } from './item-registry';
 import {
+  anchoredSeriesOn,
   isCompletedOnDate,
   isRecurring,
   isSkippedOnDate,
@@ -331,7 +332,13 @@ export function checkinStanding(
   let nextDue: string | null = null;
   for (let offset = 0; offset < 35; offset += 1) {
     const dateStr = addDaysToDateStr(toDateOnly(todayStr), offset);
-    if (!shouldShowOnDate(item, dateStr, userTimezone)) continue;
+    // The grid's rule (deriveDayItems): a dated check-in counts its own start
+    // day, then the repeat, and nothing before the start.
+    const start = 'startDate' in item && item.startDate ? toDateOnly(item.startDate) : null;
+    const falls = start
+      ? anchoredSeriesOn(item, start, dateStr, userTimezone)
+      : shouldShowOnDate(item, dateStr, userTimezone);
+    if (!falls) continue;
     // Completed AND skipped. A skip is the other per-date terminal mark a
     // recurring item can carry — "not this one" — so treating only completion
     // as answered made the page say "Due today" for an occurrence the user had

@@ -74,12 +74,14 @@ describe('convertItem', () => {
       todayStr: '2026-09-25',
       anchorFloor: '2026-09-20',
     });
-    expect(out).toMatchObject({ startDate: '2026-09-20' });
+    // Snapped to that week's Thursday: the start date is itself an occurrence,
+    // so anchoring on the Sunday would have put it on Sunday too.
+    expect(out).toMatchObject({ startDate: '2026-09-24' });
   });
 
-  it('habit → task anchors at today when it has no history, in anytime when unbucketed', () => {
+  it('habit → task anchors at its next repeat day when it has no history, in anytime when unbucketed', () => {
     const out = convertItem(habit({ completedDates: [], timeBucket: undefined }), 'task', opts);
-    expect(out).toMatchObject({ startDate: '2026-09-25', timeBucket: 'anytime' });
+    expect(out).toMatchObject({ startDate: '2026-10-01', timeBucket: 'anytime' });
   });
 
   it('task → habit resets the streak, takes the given repeat, and fills a missing project', () => {
