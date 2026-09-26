@@ -443,9 +443,15 @@ already goes. A recovery feature only reachable from a rail nobody has opened is
   centrepiece re-merges the two surfaces `scope-rail.tsx:13-31` exists to keep split, and
   would ship the same switch twice with *different* semantics — the console's could only
   ever publish local state; the rail publishes local **and** effective.
-- **Item editing.** Member rows are addresses, not editors. `↵` opens the item and the
-  console closes — an honest exit, named in the footer bar so it is never a surprise.
-  (`item-panel.spec.ts:104` asserts a second `role="dialog"` cannot coexist with the panel.)
+- **Item editing.** ~~Member rows are addresses, not editors.~~ **Reversed 2026-09-26
+  (Kirby):** each container's member rows carry the planner row's own verbs — tick today,
+  skip, pause, next day, reschedule, braindump, remove, delete — in a hover capsule and a ⋯
+  menu (`organize/member-row-actions.tsx`, design boards 4A/4B). Every verb is the planner
+  row's store action behind the planner row's gate (`lib/row-moves.ts`, `lib/item-toggle.ts`);
+  nothing new is decided here. What survives: full item EDITING still is not in the console —
+  "Open item" leaves for `/item/[id]` and closes the console, because
+  `item-panel.spec.ts:104` asserts a second `role="dialog"` cannot coexist with the panel.
+  The bin still means "remove from this container"; Delete is in the ⋯ menu only.
 - **The common membership add-path.** Bulk `Collect` already exists in the selection bulk
   bar and is tri-state and correct. The console's member lists are for *curation*.
 - **Container creation, exclusively.** Creation stays distributed. *(Updated 2026-09-25.)*

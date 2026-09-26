@@ -32,8 +32,8 @@ import {
 } from '@/lib/collections';
 import { ObjectRow } from '../primitives';
 import {
-  CreateForm,
   DayChip,
+  OpenAsPageLink,
   DetailColumn,
   DetailHead,
   ListColumn,
@@ -41,8 +41,11 @@ import {
   StatusStrip,
   TitleRow,
 } from '../detail-parts';
-import { makeIconToken } from '@/lib/category-icons';
-import { ItemMemberList } from '../member-list';
+import { ContainerCreateForm } from '../container-create-form';
+import { ROUTINE_STATES } from '../container-fields';
+import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
+import { useMemberActions } from '../member-row-actions';
+import { useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
 import { cn } from '@/lib/utils';
 import type { Item, Program, Routine } from '@/lib/planner-types';
 
@@ -147,7 +150,6 @@ export function RoutinesSection({
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
-  const addRoutine = usePlannerStore((s) => s.addRoutine);
   const liveIds = useLiveItemIds();
   const { todayStr, tz } = useToday();
 
@@ -214,15 +216,10 @@ export function RoutinesSection({
 
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
-          <CreateForm
-            eyebrow="NEW ROUTINE"
-            placeholder="Name your routine…"
-            addLabel="Create routine"
-            icon={makeIconToken('Repeat')}
-            testPrefix="routine"
+          <ContainerCreateForm
+            kind="routine"
             autoFocus={creating}
-            hint="A routine groups items you want to pause together. You can add items once it exists."
-            onCreate={(name, icon) => onCreated(addRoutine({ name, icon, itemIds: [] }))}
+            onCreated={onCreated}
             // Nothing to cancel back to when the list is empty.
             onCancel={routines.length > 0 ? () => onCreated(null) : undefined}
           />
@@ -299,6 +296,14 @@ function RoutineDetail({
   // answering for it.
   const heldBy = standing.holders;
   const liveCount = countLive(routine.itemIds, liveIds);
+  // This week, per member, as the grid will draw it — the rhythm grid folded
+  // into the list it would otherwise repeat.
+  const week = useWeekDotsFor(routine.itemIds);
+  const controls = useMemberActions({
+    ownerName: routine.name,
+    onRemove: (id) => updateRoutine(routine.id, { itemIds: routine.itemIds.filter((m) => m !== id) }),
+    todayState: week.todayState,
+  });
 
   /** Members not on the user's day right now — the resolver's answer, per item. */
   const hiddenIds = inactiveItemIdsOn(items, todayStr, ctx);
@@ -330,6 +335,7 @@ function RoutineDetail({
         name={routine.name}
         testPrefix="routine"
         back={{ label: 'Routines', testId: 'routine-detail-back', onBack }}
+        actions={<OpenAsPageLink href={`/routine/${routine.id}`} testId="routine-open-page" />}
         menu={[
           /* `reappear` reads EFFECTIVE, not the local pause. Deleting the
              routine removes the whole activation path, so items held out of
@@ -474,6 +480,8 @@ function RoutineDetail({
           hiddenIds={hiddenIds}
           testPrefix="routine"
           orderable
+          lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
+          row={{ trailing: week.trailing, ...controls }}
           onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
         />
 
@@ -492,8 +500,3 @@ function RoutineDetail({
     </div>
   );
 }
-
-const ROUTINE_STATES = [
-  { value: 'active', label: 'Active', dot: 'lime' },
-  { value: 'paused', label: 'Paused', dot: 'muted' },
-] as const;

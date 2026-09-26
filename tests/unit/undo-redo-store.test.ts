@@ -176,13 +176,28 @@ describe('undo db sync (Phase 3 regression coverage)', () => {
     expect(db.updateItem).toHaveBeenCalledWith('habit-1', 'habit', { title: 'Stretch' });
   });
 
-  it('undoing an added item soft-deletes it; redo restores it', () => {
+  it('undoing an added item soft-deletes it; redo restores it', async () => {
     store().addTask({ title: 'Ephemeral' });
     const added = store().tasks.find((t) => t.title === 'Ephemeral')!;
     store().undo();
-    expect(db.deleteItem).toHaveBeenCalledWith(added.id, 'task');
+    await vi.waitFor(() => expect(db.deleteItem).toHaveBeenCalledWith(added.id, 'task'));
     store().redo();
-    expect(db.restoreItem).toHaveBeenCalledWith(added.id, 'task');
+    await vi.waitFor(() => expect(db.restoreItem).toHaveBeenCalledWith(added.id, 'task'));
+  });
+
+  it('a fast undo of a create waits for the INSERT before soft-deleting', async () => {
+    let land!: () => void;
+    const order: string[] = [];
+    vi.mocked(db.createItem).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = () => { order.push('insert'); resolve(); }))
+    );
+    vi.mocked(db.deleteItem).mockImplementationOnce(async () => { order.push('delete'); });
+    store().addTask({ title: 'Racing' });
+    store().undo();
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    land();
+    await vi.waitFor(() => expect(order).toEqual(['insert', 'delete']));
   });
 
   it('undoing a habit completion replays per-date intents, never an absolute completedDates write', () => {

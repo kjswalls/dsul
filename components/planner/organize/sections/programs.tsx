@@ -2,12 +2,7 @@
 
 import { useState } from 'react';
 import { CalendarRange, Trash2 } from 'lucide-react';
-import {
-  ChoiceChip,
-  ColorChip,
-  DateRangeChip,
-  type ChoiceOption,
-} from '@/components/primitives/organizer-chips';
+import { ChoiceChip, ColorChip, DateRangeChip } from '@/components/primitives/organizer-chips';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { inactiveItemIdsOn, isProgramActiveOn } from '@/lib/active';
@@ -23,16 +18,24 @@ import {
 } from '@/lib/collections';
 import { ObjectRow } from '../primitives';
 import {
-  CreateForm,
   DetailColumn,
+  OpenAsPageLink,
   DetailHead,
   ListColumn,
   SectionWelcome,
   StatusStrip,
   TitleRow,
 } from '../detail-parts';
-import { ItemMemberList, RoutineMemberList } from '../member-list';
-import { makeIconToken } from '@/lib/category-icons';
+import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU, RoutineMemberList } from '../member-list';
+import { useMemberActions } from '../member-row-actions';
+import {
+  ScheduleHeading,
+  SeasonHeatmap,
+  useWeekDotsFor,
+} from '@/components/planner/schedule/schedule-views';
+import { containerMemberIds } from '@/lib/container-schedule';
+import { ContainerCreateForm } from '../container-create-form';
+import { programStates } from '../container-fields';
 import type { Item, Program, Routine } from '@/lib/planner-types';
 
 /**
@@ -65,7 +68,6 @@ export function ProgramsSection({
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
-  const addProgram = usePlannerStore((s) => s.addProgram);
   const liveIds = useLiveItemIds();
   const liveRoutineIds = useLiveRoutineIds();
   const { todayStr } = useToday();
@@ -132,25 +134,10 @@ export function ProgramsSection({
 
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
-          <ProgramCreateForm
+          <ContainerCreateForm
+            kind="program"
             autoFocus={creating}
-            onCreate={(name, icon, run) =>
-              onCreated(
-                // `auto`, never 'active': with no dates that is always-on, the
-                // one state that cannot hide anything a program you just made
-                // holds; with dates it follows them, which is what giving it a
-                // run asked for. One addProgram — never a create then a patch.
-                addProgram({
-                  name,
-                  icon,
-                  state: 'auto',
-                  startsOn: run.startsOn,
-                  endsOn: run.endsOn,
-                  itemIds: [],
-                  routineIds: [],
-                })
-              )
-            }
+            onCreated={onCreated}
             onCancel={programs.length > 0 ? () => onCreated(null) : undefined}
           />
         ) : selected ? (
@@ -164,67 +151,6 @@ export function ProgramsSection({
       </DetailColumn>
     </>
   );
-}
-
-/**
- * "+ New" for a program: the name, and optionally its run — the one thing
- * beyond a name that makes a program a stretch of life rather than a folder.
- * Both ends optional; unset is always-on.
- */
-function ProgramCreateForm({
-  autoFocus,
-  onCreate,
-  onCancel,
-}: {
-  autoFocus: boolean;
-  onCreate: (
-    name: string,
-    icon: string | undefined,
-    run: { startsOn?: string; endsOn?: string }
-  ) => void;
-  onCancel?: () => void;
-}) {
-  const [run, setRun] = useState<{ startsOn?: string; endsOn?: string }>({});
-  return (
-    <CreateForm
-      eyebrow="NEW PROGRAM"
-      placeholder="Name your program…"
-      addLabel="Create program"
-      icon={makeIconToken('CalendarRange')}
-      testPrefix="program"
-      autoFocus={autoFocus}
-      hint="A program is a stretch of life — a summer, a term — that switches whole routines on and off. Without dates it starts always-on, hiding nothing."
-      fields={
-        <div className="flex flex-wrap items-center gap-1.5">
-          <DateRangeChip
-            label="Runs"
-            start={run.startsOn}
-            end={run.endsOn}
-            startLabel="Starts"
-            endLabel="Ends"
-            emptyLabel="Runs"
-            testIdPrefix="program-new-runs"
-            onChange={(startsOn, endsOn) => setRun({ startsOn, endsOn })}
-          />
-        </div>
-      }
-      onCreate={(name, icon) => onCreate(name, icon, run)}
-      onCancel={onCancel}
-    />
-  );
-}
-
-/**
- * The three states as a chip. `auto` is "Dates", and its dot follows whether
- * the dates have it on today — the chip then says at a glance what the
- * program is doing, not only how it was set.
- */
-function programStates(live: boolean): ChoiceOption<Program['state']>[] {
-  return [
-    { value: 'active', label: 'On', dot: 'lime' },
-    { value: 'paused', label: 'Off', dot: 'muted' },
-    { value: 'auto', label: 'Dates', dot: live ? 'lime' : 'muted' },
-  ];
 }
 
 function ProgramDetail({ program, onBack }: { program: Program; onBack: () => void }) {
@@ -249,6 +175,14 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
     .filter((r): r is Routine => !!r);
 
   const itemCount = countLive(program.itemIds, liveIds);
+  const week = useWeekDotsFor(program.itemIds);
+  const controls = useMemberActions({
+    ownerName: program.name,
+    onRemove: (id) => updateProgram(program.id, { itemIds: program.itemIds.filter((m) => m !== id) }),
+    todayState: week.todayState,
+  });
+  // Its routines' members ride along when it is on, so they are on its season.
+  const seasonIds = containerMemberIds({ kind: 'program', program }, items, routines);
   const routineCount = countLive(program.routineIds, liveRoutineIds);
 
   // The swap verb only earns its place when there is something to swap AWAY
@@ -346,6 +280,7 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
         name={program.name}
         testPrefix="program"
         back={{ label: 'Programs', testId: 'program-detail-back', onBack }}
+        actions={<OpenAsPageLink href={`/program/${program.id}`} testId="program-open-page" />}
         menu={[
           {
             label: 'Delete program',
@@ -423,6 +358,11 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
         </button>
       )}
 
+      <section className="flex flex-col gap-2" data-testid="program-season">
+        <ScheduleHeading label="Season" />
+        <SeasonHeatmap program={program} memberIds={seasonIds} />
+      </section>
+
       <div className="mt-1.5 flex flex-col gap-5">
         <RoutineMemberList
           program={program}
@@ -457,6 +397,8 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
             programs,
           })}
           testPrefix="program"
+          lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
+          row={{ trailing: week.trailing, ...controls }}
           onChange={(itemIds) => updateProgram(program.id, { itemIds })}
         />
       </div>
@@ -495,8 +437,8 @@ function deleteConsequence(
   );
 }
 
-/** The four ways a program can be, in the program's own words. */
-function ProgramStateNote({ program, live }: { program: Program; live: boolean }) {
+/** The four ways a program can be, in the program's own words. Shared with /program/[id]. */
+export function ProgramStateNote({ program, live }: { program: Program; live: boolean }) {
   if (program.state === 'active') {
     return <>On until you say otherwise — dates are ignored while it is set this way.</>;
   }

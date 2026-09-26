@@ -1,23 +1,21 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Textarea } from '@/components/ui/textarea';
 import {
   ResponsiveModalDescription,
   ResponsiveModalTitle,
 } from '@/components/ui/responsive-modal';
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { PropertyChip } from '@/components/primitives/property-chip';
-import { ColorChip, DateRangeChip } from '@/components/primitives/organizer-chips';
+import { ColorChip } from '@/components/primitives/organizer-chips';
 import {
   ADD_MODAL_CLASS,
   EnterHint,
   NewTypeMenu,
   ORGANIZER_SECTION,
-  SERIF_NOTES_CLASS,
   SERIF_TITLE_CLASS,
   SurfaceA11yHeader,
   SurfaceContent,
@@ -25,12 +23,20 @@ import {
   OrganizerGlyph,
 } from '@/components/planner/surface';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
+import { useEscapeLadder } from '@/components/planner/organize/escape-ladder';
+import {
+  ContainerDraftFields,
+  createFromDraft,
+  initialDraft,
+  type ContainerDraft,
+} from '@/components/planner/organize/container-fields';
+import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { useOpenConsole } from '@/lib/console-door';
 import { CONTAINER_KINDS, sameContainerName } from '@/lib/container-registry';
-import { formatShort, useToday } from '@/lib/collections';
+import { useToday } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
 import { openAddDialog, openNewContainer, type NewContainerKind } from '@/lib/ui-store';
 
@@ -93,6 +99,9 @@ export function ContainerDialog({
   if (state && !present) setPresent(true);
   const isMobile = useIsMobile();
   const openConsole = useOpenConsole();
+  // The member pickers, the why and the resume chip each claim Escape before
+  // the dialog does — the console's ladder, owned here for the same reason.
+  const { register, consume, Ladder } = useEscapeLadder();
 
   // A new payload — a fresh open, or the type menu switching kind — remounts
   // the form (via `seq`) without remounting the modal around it.
@@ -122,7 +131,12 @@ export function ContainerDialog({
         panelLabel={`New ${label.toLowerCase()}`}
         data-testid="container-dialog"
         data-kind={last.kind}
-        className={ADD_MODAL_CLASS}
+        onEscapeKeyDown={(event) => {
+          if (consume()) event.preventDefault();
+        }}
+        // An organizer's body carries its member lists, so it is a little wider
+        // than an item's quick capture. A project's is not.
+        className={cn(ADD_MODAL_CLASS, last.kind !== 'project' && 'sm:max-w-[520px]')}
       >
         <SurfaceA11yHeader panel={false}>
           <ResponsiveModalTitle>New {label.toLowerCase()}</ResponsiveModalTitle>
@@ -130,38 +144,22 @@ export function ContainerDialog({
             Add a new {label.toLowerCase()} to organize your planner.
           </ResponsiveModalDescription>
         </SurfaceA11yHeader>
-        <ContainerForm
-          key={seq}
-          payload={last}
-          isMobile={isMobile}
-          close={() => onOpenChange(false)}
-          openConsole={openConsole}
-        />
+        <Ladder value={register}>
+          <ContainerForm
+            key={seq}
+            payload={last}
+            isMobile={isMobile}
+            close={() => onOpenChange(false)}
+            openConsole={openConsole}
+          />
+        </Ladder>
       </SurfaceContent>
     </SurfaceRoot>
   );
 }
 
-/**
- * What a program's dates will do, in words — the Runs chip alone doesn't say
- * that a new program is `auto` and switches ITSELF. Inclusive at both ends, as
- * isProgramActiveOn (lib/active.ts) reads them; no dates means "on every day",
- * which needs no sentence.
- */
-export function programRunsCopy(
-  startsOn: string | undefined,
-  endsOn: string | undefined,
-  todayStr: string,
-): string | null {
-  if (endsOn && endsOn < todayStr) return 'Its dates are already over, so it starts switched off.';
-  const startsLater = !!startsOn && startsOn > todayStr;
-  if (startsLater && endsOn) {
-    return `It switches on by itself on ${formatShort(startsOn!)} and off after ${formatShort(endsOn)}.`;
-  }
-  if (startsLater) return `It switches on by itself on ${formatShort(startsOn!)}.`;
-  if (endsOn) return `It's on now, and switches off by itself after ${formatShort(endsOn)}.`;
-  return null;
-}
+// Moved to the shared body; re-exported for the callers that import it here.
+export { programRunsCopy } from '@/components/planner/organize/container-fields';
 
 function ContainerForm({
   payload,
@@ -183,27 +181,24 @@ function ContainerForm({
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const projects = usePlannerStore((s) => s.projects);
-  const addGoal = usePlannerStore((s) => s.addGoal);
-  const addRoutine = usePlannerStore((s) => s.addRoutine);
-  const addProgram = usePlannerStore((s) => s.addProgram);
   const addProject = usePlannerStore((s) => s.addProject);
   const organizeOn = useOrganizeEnabled();
-  const { todayStr } = useToday();
+  const { todayStr, tz } = useToday();
   // Only a project name can be held by the bin (projects_user_id_name_key is
   // the one plain unique index), so only the project body asks.
   const trashed = useTrashedNames({ enabled: kind === 'project' });
 
   const [name, setName] = useState(payload.title ?? '');
   const [icon, setIcon] = useState<string | undefined>(DEFAULT_ICON[kind]);
+  // A project's one extra field. The other kinds keep everything in the draft.
   const [color, setColor] = useState<string | undefined>(undefined);
-  // A goal's window opens today unless told otherwise — the mockup's
-  // "Window Today → …", waiting on a target. A program's dates are both
-  // optional: undated, it is simply on.
-  const [startsOn, setStartsOn] = useState<string | undefined>(kind === 'goal' ? todayStr : undefined);
-  const [endsOn, setEndsOn] = useState<string | undefined>(undefined);
-  // Notes become the goal's why. The other kinds have no free-text field, so a
-  // note carried over from a task is dropped for them rather than invented a home.
-  const [why, setWhy] = useState(payload.notes ?? '');
+  // Every field the kind has, with its defaults: Active, a goal's window opening
+  // today, a program on its (absent) dates. The shared body renders it; see
+  // organize/container-fields.tsx.
+  const [draft, setDraft] = useState<ContainerDraft>(() =>
+    initialDraft(kind === 'project' ? 'goal' : kind, todayStr, payload.notes)
+  );
+  const nameRef = useRef<HTMLInputElement>(null);
 
   const trimmed = name.trim();
 
@@ -235,43 +230,19 @@ function ContainerForm({
   const canOpen = kind !== 'project' || organizeOn;
 
   const create = (): string | null => {
-    switch (kind) {
-      case 'goal':
-        return addGoal({
-          name: trimmed,
-          icon,
-          color,
-          why: why.trim() || undefined,
-          startsOn,
-          targetOn: endsOn,
-          state: 'active',
-          memberIds: [],
-          milestoneIds: [],
-          checkinIds: [],
-        });
-      case 'routine':
-        return addRoutine({ name: trimmed, icon, color, itemIds: [] });
-      case 'program':
-        // 'auto', as the console makes them: the Runs dates ARE the switch.
-        return addProgram({
-          name: trimmed,
-          icon,
-          color,
-          state: 'auto',
-          startsOn,
-          endsOn,
-          itemIds: [],
-          routineIds: [],
-        });
-      case 'project':
-        return addProject(trimmed, icon ?? '', color ? { color } : undefined);
-    }
+    // One ⌘Z per kind, with everything the dialog asked for in it — new
+    // member items included, created first and linked in order.
+    if (kind === 'project') return addProject(trimmed, icon ?? '', color ? { color } : undefined);
+    return createFromDraft(kind, trimmed, icon, draft, todayStr, tz);
   };
 
   const submit = (andOpen = false) => {
     if (!canAdd) return;
     const id = create();
-    if (!id) return;
+    if (!id) {
+      toast.error(`Couldn't create “${trimmed}”. Nothing was saved.`);
+      return;
+    }
     const target = { section: ORGANIZER_SECTION[kind], focusId: id };
     // Closed first either way: the console door swaps the single slot, and a
     // close landing after it would shut the console it just opened.
@@ -286,66 +257,29 @@ function ContainerForm({
     });
   };
 
-  // Notes grow from one line, as ItemDialog's do.
-  const whyRef = useRef<HTMLTextAreaElement>(null);
-  useEffect(() => {
-    const ta = whyRef.current;
-    if (!ta) return;
-    ta.style.height = 'auto';
-    ta.style.height = `${Math.min(ta.scrollHeight, 220)}px`;
-  }, [why]);
-
-  let chips: ReactNode = null;
-  if (kind === 'goal') {
-    chips = (
-      <DateRangeChip
-        label="Window"
-        start={startsOn}
-        end={endsOn}
-        onChange={(s, e) => {
-          setStartsOn(s);
-          setEndsOn(e);
-        }}
-        startLabel="Started"
-        endLabel="Target"
-        emptyLabel="Target"
-        testIdPrefix="goal-dialog-window"
-      />
-    );
-  } else if (kind === 'program') {
-    chips = (
-      <DateRangeChip
-        label="Runs"
-        start={startsOn}
-        end={endsOn}
-        onChange={(s, e) => {
-          setStartsOn(s);
-          setEndsOn(e);
-        }}
-        startLabel="Starts"
-        endLabel="Ends"
-        emptyLabel="Runs"
-        testIdPrefix="program-dialog-runs"
-      />
-    );
-  }
-  const runsCopy = kind === 'program' ? programRunsCopy(startsOn, endsOn, todayStr) : null;
-
   return (
     <div
       className="flex flex-col gap-4"
       onKeyDown={(e) => {
-        // ItemDialog's Enter rule, plus one clause: the event must come from
-        // inside this dialog's own DOM. The IconPicker's search field is
-        // portalled, and its Enter bubbles here through React's tree.
+        // ItemDialog's Enter rule, plus two clauses. The event must come from
+        // inside this dialog's own DOM: the IconPicker's search field is
+        // portalled, and its Enter bubbles here through React's tree. And a
+        // plain Enter only submits from the NAME — the why is a textarea and
+        // the member pickers' search boxes own Enter (with nothing to add, an
+        // Enter there must not create the container). ⌘/Ctrl-Enter submits from
+        // the why; in a member search box with a row highlighted, the picker
+        // takes it first (it adds the row), as it does without the modifier.
         const target = e.target as HTMLElement;
+        const field = target.closest('input, textarea, [contenteditable="true"]');
+        const fromOtherField = !!field && field !== nameRef.current;
         if (
           e.key === 'Enter' &&
           !e.shiftKey &&
           !e.defaultPrevented &&
           e.currentTarget.contains(target) &&
           !target.closest('[data-sub-input]') &&
-          !target.closest('button')
+          !target.closest('button') &&
+          (!fromOtherField || e.metaKey || e.ctrlKey)
         ) {
           e.preventDefault();
           submit();
@@ -376,7 +310,8 @@ function ContainerForm({
                 // for a different kind of thing.
                 onPickType={(type) => openAddDialog(type, undefined, undefined, trimmed || undefined)}
                 onPickOrganizer={(next) => {
-                  if (next !== kind) openNewContainer(next, trimmed || undefined, why.trim() || undefined);
+                  const why = draft.why.trim();
+                  if (next !== kind) openNewContainer(next, trimmed || undefined, why || undefined);
                 }}
                 close={closeMenu}
               />
@@ -387,6 +322,7 @@ function ContainerForm({
         <div className="flex items-center gap-2.5">
           <IconPicker value={icon} name={trimmed} onSelect={setIcon} className="size-[30px]" />
           <Input
+            ref={nameRef}
             autoFocus
             data-testid={`${kind}-dialog-name`}
             placeholder={`Name this ${noun}`}
@@ -397,39 +333,26 @@ function ContainerForm({
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-1.5">
-        {chips}
-        <ColorChip value={color} onChange={setColor} testId={`${kind}-dialog-color`} />
-      </div>
-
-      {(runsCopy || problem) && (
-        <div className="flex flex-col gap-1">
-          {runsCopy && <p className="text-muted-foreground text-xs">{runsCopy}</p>}
-          {problem && (
-            <p className="text-muted-foreground text-xs" data-testid="container-dialog-problem">
-              {problem}
-            </p>
-          )}
+      {kind === 'project' ? (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <ColorChip value={color} onChange={setColor} testId="project-dialog-color" />
         </div>
+      ) : (
+        <ContainerDraftFields
+          kind={kind}
+          draft={draft}
+          onChange={(patch) => setDraft((d) => ({ ...d, ...patch }))}
+          testPrefix={`${kind}-dialog`}
+          ownerName={trimmed || `this ${noun}`}
+          todayStr={todayStr}
+          tz={tz}
+        />
       )}
 
-      {kind === 'goal' && (
-        <Textarea
-          ref={whyRef}
-          rows={1}
-          data-sub-input
-          data-testid="goal-dialog-why"
-          placeholder="Why this matters…"
-          value={why}
-          onChange={(e) => setWhy(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-              e.preventDefault();
-              submit();
-            }
-          }}
-          className={SERIF_NOTES_CLASS}
-        />
+      {problem && (
+        <p className="text-muted-foreground text-xs" data-testid="container-dialog-problem">
+          {problem}
+        </p>
       )}
 
       <div className="flex items-center justify-between gap-3 border-t pt-3">

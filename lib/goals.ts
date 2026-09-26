@@ -6,6 +6,7 @@ import {
 } from './item-registry';
 import {
   anchoredSeriesOn,
+  firstRepeatDayFrom,
   isCompletedOnDate,
   isRecurring,
   isSkippedOnDate,
@@ -453,4 +454,25 @@ export function roleStillValid(role: GoalRole, item: Item): boolean {
   if (role === 'milestone') return isMilestoneEligible(item);
   if (role === 'checkin') return isCheckinEligible(item);
   return true;
+}
+
+/**
+ * The task a new goal member is born as, per role — shared by the goal pane's
+ * add rows and the create forms, so a milestone made in either place is the
+ * same row. The reasoning lives on the goal pane's createCheckin/createMilestone
+ * (organize/sections/goals.tsx): a milestone and a plain member are UNDATED (a
+ * checkpoint's date is a commitment nobody should guess), and a check-in is a
+ * weekly Sunday task anchored at the first Sunday from today, in the anytime
+ * bucket — without the anchor a recurring task renders on no column at all.
+ */
+export function newMemberTaskShape(role: GoalRole, title: string, todayStr: string) {
+  const base = { title, completedDates: [] as string[], skippedDates: [] as string[] };
+  if (role !== 'checkin') return base;
+  return {
+    ...base,
+    startDate: firstRepeatDayFrom({ repeatFrequency: 'custom', repeatDays: [0] }, todayStr),
+    timeBucket: 'anytime' as const,
+    repeatFrequency: 'custom' as const,
+    repeatDays: [0],
+  };
 }

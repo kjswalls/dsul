@@ -10,8 +10,8 @@ import { useUIStore, type ActiveDialog } from './ui-store';
  *
  * The console is a COMPONENT, not a route: `OrganizeConsole` is mounted exactly
  * once, in AppShell (components/shell/app-shell.tsx), which only `app/page.tsx`
- * renders. Every other route in the app — /item/[id], /goal/[id], /settings,
- * /ledger — deliberately skips AppShell, so on those routes the console is not
+ * renders. Every other route in the app — /item/[id], /goal/[id], /routine/[id],
+ * /program/[id], /project/[id], /settings, /ledger — deliberately skips AppShell, so on those routes the console is not
  * merely closed, it does not exist.
  *
  * That makes `openDialog({ type: 'organize' })` on its own WORSE THAN A NO-OP

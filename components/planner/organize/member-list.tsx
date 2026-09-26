@@ -42,9 +42,16 @@ import type { Item, Routine } from '@/lib/planner-types';
  * sub-24px targets are a mis-tap away from swapping in the wrong direction, and
  * the write goes straight to the DB.
  */
-function ControlRail({ children }: { children: React.ReactNode }) {
+function ControlRail({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="flex w-[72px] shrink-0 items-center justify-end gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+    <div
+      className={cn(
+        'flex shrink-0 items-center justify-end gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
+        // Sized for its fullest case — up, down, remove (3 × 24px + 2 gaps),
+        // plus the ⋯ menu when wide — so an orderable row never spills left.
+        wide ? 'w-[102px]' : 'w-[76px]'
+      )}
+    >
       {children}
     </div>
   );
@@ -161,7 +168,24 @@ export interface MemberRowParts {
   meta?: (item: Item) => { text: string; numeric: boolean };
   /** Done, not hidden: the title goes muted (never struck through). */
   done?: (item: Item) => boolean;
+  /** After the meta column, before the controls — the week's dots (schedule-views.tsx). */
+  trailing?: (item: Item) => ReactNode;
+  /**
+   * The row's verbs (member-row-actions.tsx): a hover capsule laid over the
+   * meta column above md, and a ⋯ menu in the rail on every width.
+   */
+  capsule?: (item: Item) => ReactNode;
+  menu?: (item: Item) => ReactNode;
 }
+
+/**
+ * How far a row's trailing slot sits from the row's right edge: the control
+ * rail (76px — ControlRail), the gap before it and the row's padding. A header
+ * drawn over the trailing slots (WeekDotsHeader) pads by this much to line up.
+ */
+export const MEMBER_ROW_TRAILING_PAD = 76 + 9 + 7;
+/** The same, for a list whose rail carries a ⋯ menu (`row.menu`). */
+export const MEMBER_ROW_TRAILING_PAD_WITH_MENU = 102 + 9 + 7;
 
 export function ItemMemberList({
   label,
@@ -179,6 +203,8 @@ export function ItemMemberList({
   orderable = false,
   eligible,
   emptyPoolLabel,
+  emptyHint,
+  removable,
   onChange,
 }: {
   /** The section heading — "Items", "Milestones". */
@@ -238,6 +264,18 @@ export function ItemMemberList({
    * confident wrong answer a picker should never give.
    */
   emptyPoolLabel?: string;
+  /**
+   * One muted line in place of rows while the list is empty — what belongs
+   * here, by example. The create forms use it so a new container's empty
+   * sections read as prompts rather than a blank form.
+   */
+  emptyHint?: string;
+  /**
+   * Whether a member may leave. Absent = always. A project cannot release a
+   * habit (its container is REQUIRED — canBulkClearProject), so its bin would
+   * be a button that silently does nothing.
+   */
+  removable?: (item: Item) => boolean;
   onChange: (ids: string[]) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
@@ -369,7 +407,14 @@ export function ItemMemberList({
 
         {members.length > 0 && (
           /* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */
-          <div className="max-h-44 space-y-px overflow-y-auto">
+          <div
+            className={cn(
+              'max-h-44 space-y-px overflow-y-auto',
+              // With week dots, the header above must line up with the rows —
+              // so the scrollbar's gutter is reserved in both (WeekDotsHeader).
+              row?.trailing && '[scrollbar-gutter:stable]'
+            )}
+          >
             {members.map((item, i) => {
               const meta = (row?.meta ?? memberMeta)(item);
               const done = row?.done?.(item) ?? false;
@@ -380,7 +425,7 @@ export function ItemMemberList({
                   data-item-id={item.id}
                   data-member-index={i}
                   data-done={done || undefined}
-                  className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
+                  className="hover:bg-accent group relative flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
                 >
                   {row?.leading ? (
                     <span className="flex w-[18px] shrink-0 justify-center">{row.leading(item)}</span>
@@ -413,6 +458,9 @@ export function ItemMemberList({
                     {meta.text}
                   </span>
 
+                  {row?.trailing?.(item)}
+                  {row?.capsule?.(item)}
+
                   {/* Buttons, not drag. The console renders inside the shell's
                       DndContext, so a sortable list here would need a nested one
                       and would compete with the item-drag sensors for the same
@@ -423,7 +471,7 @@ export function ItemMemberList({
                       a TRASHED item (join rows survive an item's soft delete by
                       design), so visible position and array position diverge
                       the moment one member is in the bin. */}
-                  <ControlRail>
+                  <ControlRail wide={!!row?.menu}>
                     {orderable && (
                       <>
                         <RailButton
@@ -448,18 +496,28 @@ export function ItemMemberList({
                         </RailButton>
                       </>
                     )}
-                    <RailButton
+                    {(removable?.(item) ?? true) && <RailButton
                       onClick={() => onChange(memberIds.filter((m) => m !== item.id))}
                       label={`Remove ${item.title} from ${ownerName}`}
                       testId={`${testPrefix}-member-remove`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </RailButton>
+                    </RailButton>}
+                    {row?.menu?.(item)}
                   </ControlRail>
                 </div>
               );
             })}
           </div>
+        )}
+
+        {members.length === 0 && !adding && emptyHint && (
+          <p
+            className="text-muted-foreground px-[7px] text-xs italic"
+            data-testid={`${testPrefix}-empty-hint`}
+          >
+            {emptyHint}
+          </p>
         )}
 
         {adding && (
@@ -613,6 +671,8 @@ export function RoutineMemberList({
   candidates,
   onRequestAttach,
   onRemove,
+  testPrefix = 'program',
+  emptyHint,
 }: {
   program: { id: string; name: string };
   live: boolean;
@@ -620,6 +680,10 @@ export function RoutineMemberList({
   candidates: Routine[];
   onRequestAttach: (routine: Routine) => void;
   onRemove: (routineId: string) => void;
+  /** `program` in the detail pane (its testids predate this prop); the create forms pass their own. */
+  testPrefix?: string;
+  /** See ItemMemberList's `emptyHint`. */
+  emptyHint?: string;
 }) {
   const liveIds = useLiveItemIds();
   const [adding, setAdding] = useState(false);
@@ -654,10 +718,10 @@ export function RoutineMemberList({
       <OrganizerSection
         label="Routines"
         count={members.length > 0 ? members.length : undefined}
-        testId="program-routines"
+        testId={`${testPrefix}-routines`}
         action={
           <LinkExistingPill
-            testId="program-routine-add"
+            testId={`${testPrefix}-routine-add`}
             aria-expanded={adding}
             // Disabled with its reason on hover, rather than hidden: a missing
             // pill reads as "programs cannot hold routines".
@@ -673,7 +737,7 @@ export function RoutineMemberList({
             {members.map((routine) => (
               <div
                 key={routine.id}
-                data-testid="program-routine-member"
+                data-testid={`${testPrefix}-routine-member`}
                 data-routine-id={routine.id}
                 className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
               >
@@ -695,7 +759,7 @@ export function RoutineMemberList({
                   <RailButton
                     onClick={() => onRemove(routine.id)}
                     label={`Remove ${routine.name} from ${program.name}`}
-                    testId="program-routine-remove"
+                    testId={`${testPrefix}-routine-remove`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </RailButton>
@@ -703,6 +767,15 @@ export function RoutineMemberList({
               </div>
             ))}
           </div>
+        )}
+
+        {members.length === 0 && !adding && emptyHint && (
+          <p
+            className="text-muted-foreground px-[7px] text-xs italic"
+            data-testid={`${testPrefix}-routines-empty-hint`}
+          >
+            {emptyHint}
+          </p>
         )}
 
         {adding && !none && (
@@ -715,7 +788,7 @@ export function RoutineMemberList({
                   setAdding(false);
                   onRequestAttach(routine);
                 }}
-                data-testid="program-routine-candidate"
+                data-testid={`${testPrefix}-routine-candidate`}
                 data-routine-id={routine.id}
                 className="hover:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm"
               >
@@ -729,7 +802,7 @@ export function RoutineMemberList({
               type="button"
               onClick={() => setAdding(false)}
               className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center rounded-[5px] px-[7px] text-left text-sm"
-              data-testid="program-routine-add-cancel"
+              data-testid={`${testPrefix}-routine-add-cancel`}
             >
               Cancel
             </button>
