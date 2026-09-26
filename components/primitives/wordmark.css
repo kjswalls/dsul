@@ -24,6 +24,7 @@
   --wm-tape-edge: oklch(1 0 0 / 6%);
   --wm-highlight: var(--primary);
   --wm-highlight-ink: var(--lime-ink);
+  --wm-highlight-top: 0.42em;
   --wm-stagger: 16ms;
   --wm-reveal: 220ms;
   --wm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -51,10 +52,12 @@
      raised graphite with a lit top edge. */
   --wm-tape: oklch(0.38 0.008 286);
   --wm-tape-edge: oklch(1 0 0 / 12%);
-  /* Solid lime under dark ink glared against the dark ground; a deeper
-     marker green under light ink sits in it like a real highlighter. */
-  --wm-highlight: oklch(0.56 0.16 136);
+  /* A full lime slab under dark ink glared against the dark ground. The lime
+     stays full strength (it is the accent, and never dims in dark mode); the
+     swipe drops to a marker underline instead, so the letters keep their
+     own light ink and only the stroke under them is lime. */
   --wm-highlight-ink: var(--foreground);
+  --wm-highlight-top: 0.72em;
 }
 
 .wordmark-word {
@@ -263,7 +266,7 @@
   position: absolute;
   left: -0.1em;
   right: -0.1em;
-  top: 0.42em;
+  top: var(--wm-highlight-top);
   bottom: -0.05em;
   z-index: 0;
   border-radius: 0.25em 0.5em 0.3em 0.45em;
