@@ -41,8 +41,9 @@ import type { SortBy } from './sort-rows';
  * display-summary.ts — what a surface's Display settings ARE, derived once.
  *
  * Three things read "what is set" on a surface: the Display trigger's dot and
- * count, the menu's Reset row, and the braindump's Display shelf, which spells
- * the settings out under the header while any are set. They have to agree to
+ * count, the menu's Reset row, and the Display shelf, which spells the
+ * settings out under the surface's header while any are set — under the
+ * braindump's, and under the canvas's on both shells. They have to agree to
  * the value, and the menu already paid for learning why: it replaced two
  * popovers whose bodies drifted apart field by field until one of them was
  * wrong (see the header of components/primitives/display-menu.tsx). A shelf
@@ -166,8 +167,7 @@ export interface DisplayValue {
 export type DisplayClause =
   | { id: 'group'; label: string }
   | { id: 'sort'; label: string }
-  // The canvas only, where no shelf mounts; kept so the model answers for both
-  // surfaces and the count's type term has a clause behind it.
+  // The canvas only: the braindump's corpus has no type filter.
   | { id: 'type'; label: string }
   | { id: 'priority' | 'project' | 'goal'; noun: string; values: DisplayValue[] }
   | { id: 'hide-finished' };
@@ -380,7 +380,14 @@ export function clauseText(c: DisplayClause): string {
     case 'sort':
       return `Sorted by ${c.label}`;
     case 'type':
-      return c.label;
+      // The menu's own row, led the way grouping and ordering are, and the
+      // palette's verb for this setting ("Show"). A bare "Tasks" beside
+      // "Grouped by Project" reads as a group, or as a project called Tasks.
+      // Not "Tasks only": Tasks keeps every task-LIKE item, custom types
+      // included (the tasks projection in lib/planner-store.ts), and Settings
+      // already uses "Tasks only" for something else. Nor "Hide habits": the
+      // menu the text opens has no such row to find it under.
+      return `Showing ${c.label}`;
     case 'priority':
     case 'project':
     case 'goal':
@@ -392,7 +399,7 @@ export function clauseText(c: DisplayClause): string {
 
 /**
  * The live summary for one surface — the count DisplayMenu's trigger shows and
- * the clauses the braindump's shelf renders.
+ * the clauses the surface's shelf renders.
  *
  * One field selector per input, and none of them returns a fresh object:
  * zustand 5 compares a selector's result by identity and this repo has no
@@ -438,8 +445,8 @@ export function useDisplaySummary(surface: DisplaySurface): DisplaySummary {
 
 /**
  * Reset clears everything the Display menu OWNS for this surface. The menu's
- * "Reset display" row and the braindump shelf's ✕ are both this function, so
- * the two cannot come apart.
+ * "Reset display" row and the shelf's ✕ are both this function, so the two
+ * cannot come apart.
  *
  * `showPausedOnGrid` is deliberately excluded, and the menu captions its row
  * "Everywhere" for the same reason — it is an app-wide setting that happens to

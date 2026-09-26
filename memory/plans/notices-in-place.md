@@ -128,7 +128,7 @@ Every notice kind that exists today. "Goes to" is where it renders under E;
 |---|---|---|---|
 | `sync-error` — "Couldn't load your data" / Retry | `blocked` (90) | **dock**, pinned, and never folded | There is no object: the failure is the store, not a row, a day or a list. It is also the only notice that says the app cannot proceed, so `placeNotices` pins every `blocked` notice here even if one later grows an anchor, and `capNotices` refuses to fold it behind a summary. This is the notice E's tradeoff is about. |
 | `waiting` — "N items waiting" / Review | `decision` (50) | **dock**, pinned (tray) | The pile is items from days that are, by definition, not the day on screen. Its object is a set of past days no view renders, so putting it on today's canvas would be putting it next to something it is not about. It also carries the triage tray, which only the dock opens — so it is pinned twice over. It is the canonical "highest-ranked question with nowhere else to live". |
-| `eod-review` — "Today's review is waiting" / Start | `decision` (50) | **`day-header`** — beside the date, in the canvas header row (desktop) and inside the date card (mobile) | The review's object is the day, and a day's handle is its date — the address `ProgramNotice` already argued its way to, which is the precedent E generalises. It is always on screen, and it costs the row nothing: the row's height is `max(children)` and the header capsule already sets that at 96. Live only on today; arrow to Thursday, or leave day scope, and the line returns to the dock. |
+| `eod-review` — "Today's review is waiting" / Start | `decision` (50) | **`day-header`** — beside the date, in the canvas header row (desktop) and inside the date card (mobile) | The review's object is the day, and a day's handle is its date — the address `ProgramNotice` already argued its way to, which is the precedent E generalises. It is always on screen, and it costs the row nothing: the row's height is `max(children)` and the header capsule already sets that at 96 or more (more while its Display shelf shows). Live only on today; arrow to Thursday, or leave day scope, and the line returns to the dock. |
 | `auto-age-receipt` — "N items put aside this morning" / Put back | `receipt` (30) | **`braindump`** — pinned under the braindump header, above the rows | The sweep's only effect is that N items are now in the braindump. That is the object: the receipt sits on the list it added to, directly above the rows it is a receipt for, with "Put back" next to what would move. **A deliberate divergence from E as drawn**, which put the receipt "on the day whose contents it changed" — the days it changed are past days, and no view renders them. Outside the scroller, so it cannot be scrolled past. |
 | the undo row (22 action families, [hooks/use-undo-toast.ts](../../hooks/use-undo-toast.ts)) | — | **strip**, transient, out of flow on desktop | Not a notice — a receipt with an expiry, so it takes no rank and never occupies the dock's one line. It is the one thing here with genuinely no object: "Delete task: Swim" is about a row that no longer exists. |
 
@@ -148,8 +148,8 @@ A *sticky* foot slot is the wrong fix: it is the permanent rent this surface
 rightly refused for the sidebar, it steals from `hourPx` forever, and Week ×
 Schedule's pinned gutter is a standing demonstration of how fragile sticky boxes
 are in that scroller. The header row has the opposite property — its height is
-`max(children)`, already set at 96 by the capsule — so the line beside the date is
-free. Removing `day-foot` also deleted the only anchor whose liveness had to be
+`max(children)`, already set at 96 or more by the capsule — so the line beside the
+date is free. Removing `day-foot` also deleted the only anchor whose liveness had to be
 re-derived per render from a timezone.
 
 ### What is deliberately NOT on this table

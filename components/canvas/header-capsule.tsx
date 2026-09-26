@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { format, isToday } from 'date-fns';
 import {
   Calendar as CalendarIcon,
@@ -19,7 +19,8 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { DisplayMenu } from '@/components/primitives/display-menu';
+import { DisplayMenu, type DisplayMenuHandle } from '@/components/primitives/display-menu';
+import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { LAYOUT_OPTIONS, SCOPE_OPTIONS, type ViewOption } from '@/lib/view-options';
@@ -30,9 +31,10 @@ import { formatKeys, isApplePlatform } from '@/lib/commands/keys';
 
 /**
  * Floating header capsule at the top of the canvas (Figma view controls
- * #56:51): gray capsule r10; date nav on top (Inter SemiBold 16), then a
- * white pill (401×44 r10, shadow 0 4 4 rgba(0,0,0,.15)) holding three
- * dropdown selectors — type · layout · scope.
+ * #56:51): gray capsule r10; date nav on top, then a white pill (r10, shadow
+ * 0 4 4 rgba(0,0,0,.15)) holding the view's shape — layout · scope — and, at
+ * its far end, Display and the door into Zen. Under the pill, while any
+ * Display setting is on, the Display shelf says which.
  */
 
 function SelectMenu<T extends string>({
@@ -127,6 +129,10 @@ export function HeaderCapsule() {
   const { scope, layout, setScope, setLayout } = useViewStore();
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // The Display menu's handle, shared with the shelf under the pill, as in the
+  // braindump: the shelf's text opens the menu through it, and its ✕ parks
+  // focus on the trigger before the reset takes the shelf away.
+  const displayRef = useRef<DisplayMenuHandle>(null);
 
   useEffect(() => {
     setMounted(true);
@@ -237,11 +243,40 @@ export function HeaderCapsule() {
         />
         <div className="ml-auto flex items-center">
           <div className="mx-1 h-4 w-px bg-border" />
-          <DisplayMenu surface="canvas" />
+          <DisplayMenu ref={displayRef} surface="canvas" />
           <div className="mx-1 h-4 w-px bg-border" />
           <ZenButton />
         </div>
       </div>
+
+      {/* The Display shelf: what the menu has set, in words, under the pill —
+          the braindump's line, in the braindump's place. It is there only while
+          something is set, so a canvas with nothing set keeps the bare
+          capsule, and the capsule's gap adds nothing.
+
+          It sits IN FLOW, and this header stands over the hour grid, which
+          sizes its rows to the height left below it (lib/use-fit-hour-px.ts):
+          the rows re-fit as the shelf comes and goes, and as it moves between
+          one line and a stack, 27px for its one line and 23px for each line
+          the stack adds. That cost was taken on purpose (asked for 2026-09-25;
+          measured in memory/plans/display-menu.md, in the addendum on the
+          canvas's Display shelf): the shelf is worth that much grid while the
+          view is narrowed, and at rest nothing moves.
+
+          contain-inline-size is load-bearing. This capsule is sized by its
+          content, and the shelf in its one-line fit is as wide as its whole
+          line, so without containment the capsule would grow to the line and
+          the shelf would never stack — its fit needs its width from outside.
+          Contained, the capsule keeps the width its two rows give it and the
+          shelf takes that. px-4 puts the text under the Layout icon, and
+          pr-3.5 the ✕ under the Zen leaf, which the pill insets 14px (its
+          px-1.5, then half of what w-8 leaves around the 16px leaf); pt-1
+          and pb-px keep the braindump's 8px above and 9px below. */}
+      <DisplayShelf
+        surface="canvas"
+        menu={displayRef}
+        className="contain-inline-size px-4 pr-3.5 pt-1 pb-px"
+      />
     </div>
   );
 }

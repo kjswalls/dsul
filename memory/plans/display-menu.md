@@ -753,28 +753,29 @@ the canvas one rather than a smaller one: it has `type` and still lacks `bucket`
 **What it is.** A line of text inside the braindump header's grey capsule, under the white
 pill, saying in words what the Display menu has set: "Grouped by …", "Sorted by …", the
 priority values (the menu's dots; No priority is the hollow ring), the project values (the
-menu's colour squares; No project is the ring), the goal values (lucide `Target`), and
-"Hide finished" last. Values follow the menu's rows, never the order they were toggled in,
-and that includes a goal id nothing answers to, which follows its "Unknown goal" row, after
-the goals the store can name. A value with no row comes after those with one, in the order it
-was stored: a string no Priority row offers, and for projects a deleted project, then a ref of
-no project kind. No project is the exception, and stays last, where its row is. It is
-there exactly when the trigger's lime dot is lit, in the sidebar and in
-the phone's Braindump tab alike, so a braindump with nothing set keeps the bare capsule.
-Clicking the text opens the Display menu; the ✕ beside it resets. The dot says THAT the list
-is shaped and the shelf says how, and one case makes it more than a convenience: a filter
-that matches nothing leaves the list showing its "A clear head." empty-state poem, and the
-shelf is then the only thing on screen that says why. The component is
+menu's colour squares; No project is the ring), the goal values (lucide `Target`), and "Hide
+finished" last. Values follow the menu's rows, never the order they were toggled in, and
+that includes a goal id nothing answers to, which follows its "Unknown goal" row, after the
+goals the store can name. A value with no row comes after those with one, in the order it
+was stored: a string no Priority row offers, and for projects a deleted project, then a ref
+of no project kind. No project is the exception, and stays last, where its row is. It is
+there exactly when the trigger's lime dot is lit, in the sidebar and in the phone's
+Braindump tab alike, so a braindump with nothing set keeps the bare capsule. Clicking the
+text opens the Display menu; on a pointer the ✕ beside it resets (touch has no ✕ since
+2026-09-26; see the canvas addendum). The dot says THAT the list is shaped and the shelf
+says how, and one case makes it more than a convenience: a filter that matches nothing
+leaves the list showing its "A clear head." empty-state poem, and the shelf is then the only
+thing on screen that says why. The component is
 [components/primitives/display-shelf.tsx](../../components/primitives/display-shelf.tsx). It
 hangs in SurfaceHeader's `below` slot, which renders straight after the pill with no
 wrapper, so a header that passes nothing (Beacon's) is unchanged and the pill stays the
 capsule's first child.
 
-**It sits IN FLOW, which is why it is the braindump's and not the canvas's.** The canvas
-header stands over an hour grid that derives its row height from the column's remaining
-height, so a shelf there would re-scale every hour row as the first filter went on. The
-braindump's header stands over a scrolling list, which only starts scrolling a line sooner.
-The model supports a canvas shelf; none is mounted.
+**It sits IN FLOW.** The braindump's header stands over a scrolling list, which only starts
+scrolling a line sooner. The canvas header stands over an hour grid that derives its row
+height from the column's remaining height, so a shelf there re-scales every hour row as the
+first setting goes on. That is why the canvas shipped without one; it has one now, with that
+cost taken on purpose (see the next addendum).
 
 **One line while everything fits, then a stack.** On one line the settings sit 16px apart
 with no separators. When that does not fit, grouping and ordering share the first line, each
@@ -800,7 +801,7 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   the shelf unmounts under the pressed button, and a focused element that unmounts leaves
   focus on `<body>`. On a pointer the ✕ wears the header's `RailTooltip` ("Reset display"),
   as every icon-only control in that header does, and never a native `title`, which would
-  fire a second tooltip; on the phone it has none.
+  fire a second tooltip. On touch there is no ✕ at all (see the canvas addendum).
 - **The text opens the menu through a handle, never a second trigger or lifted state.**
   `DisplayMenu` takes a React 19 `ref` prop exposing `open(from?)` and `focus()`. Radix keeps
   one trigger ref and one anchor per menu, so a second `DropdownMenuTrigger` would take both
@@ -826,49 +827,53 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   clear, focus ends on the trigger just pressed, and without it, on the shelf. On the phone
   the overlay covers the trigger through the sheet's exit, so the sheet's clear is the same
   rule with no tap that reaches it.
-- **Fit is imperative, and it is not state.** Whether the text fits changes on every frame of
-  a sash drag, and React never hears about that: the column resizes through `--sidebar-w`
+- **Fit is imperative, and it is not state.** Whether the text fits changes on every frame
+  of a sash drag, and React never hears about that: the column resizes through `--sidebar-w`
   precisely so the braindump does not re-render. So the shelf writes `data-fit` on its own
   root, React never renders the attribute, every stack rule keys off
   `group-data-[fit=stack]/shelf:`, and with no attribute the one-line layout applies. The
-  one-line width is MEASURED: force `line`, then take the span from the first `[data-line]`'s
-  left edge to the last one's right (not `scrollWidth`, which clamps to `clientWidth` whenever
-  the content fits). That happens in a layout effect keyed on the FULL text, and again, per
-  text, when `document.fonts.ready` settles: a new text can ask for a subset the page has not
-  loaded (a Cyrillic goal name landing with the planner), which the layout effect measures in
-  the fallback face. The sample below is drawn in the basic Latin face alone, so a face that
-  loads for any other characters (another script, or accented Latin such as a Polish name)
-  changes nothing it can hear. Keying on
-  the full text rather than the clause labels is what re-fits when a value joins a
-  multi-select that is already showing. A resize only COMPARES: a ResizeObserver on a
-  zero-height probe (`absolute inset-x-0 top-0 h-0`, whose size is the root's width and never
-  the fit's) re-applies the cached width against the lines box. Its one exception is to
-  measure once when the cached width is still 0, for a shelf that mounted where nothing was
-  laid out. The same observer watches a SAMPLE: an invisible, out-of-flow,
-  `whitespace-nowrap` span whose `::before` draws "Hide finished" in the shelf's own type
-  with 1rem of left padding (on the pseudo-element, so the phrase adds no text to the page
-  and the padding sits inside the box the observer reads). Its width answers to the font,
-  to spacing and to the rem, never to the column or the fit, so a sample resize is the line
-  changing size with its string unchanged: a WCAG 1.4.12 text-spacing override, text-only
-  zoom, a minimum font size, a late font, or the browser's default font size, which leaves
-  the 11px text alone and moves every rem-sized gap, priority dot and the ✕. That
-  re-measures a frame later, outside the observer's delivery, in either fit and whatever else
-  the delivery holds: a shelf stacks when an override widens its text and goes back to one
-  line when it comes off, mid-drag or not. A drag never touches the sample, so it only ever
-  compares. The first delivery carries the sample too, so a shelf that mounts laid out
-  measures once more a frame later and finds the width it already had. A sample gone to 0 is
-  the shelf being hidden, which has nothing to fit until the sample's return, itself a
-  resize, measures it. The first version watched the `[data-line]` spans and took a line
-  resizing with no probe in the delivery for the text changing size. A review in Chromium
-  found two holes in that: a stacked line stretches across the column, so the text changing
-  size resized nothing there, and a change in a frame where the column also moved looked like
-  a drag. The next review found one in the sample's first cut, a bare phrase: the browser's
-  font-size setting moves the gaps and dots but not the 11px phrase, so it went unheard and
-  the one line clipped its last glyphs. The rem of padding is that fix. The comparison allows one
-  layout unit (1/64px) and no more: nothing on the one line truncates, so any overflow is a
-  glyph cut off with no ellipsis, and neither side of the comparison depends on the fit, so
-  there is no oscillation for a wider margin to damp.
-- **The sidebar mount has a width floor, `SIDEBAR_MIN_WIDTH - 20` (260px).** Collapse and
+  one-line width is MEASURED: force `line`, then take the span from the first
+  `[data-line]`'s left edge to the last one's right (not `scrollWidth`, which clamps to
+  `clientWidth` whenever the content fits). That happens in a layout effect keyed on the
+  FULL text, and again, per text, when `document.fonts.ready` settles: a new text can ask
+  for a subset the page has not loaded (a Cyrillic goal name landing with the planner),
+  which the layout effect measures in the fallback face. The sample below is drawn in the
+  basic Latin face alone, so a face that loads for any other characters (another script, or
+  accented Latin such as a Polish name) changes nothing it can hear. Keying on the full text
+  rather than the clause labels is what re-fits when a value joins a multi-select that is
+  already showing. A resize only COMPARES: a ResizeObserver on a zero-height probe
+  (`absolute inset-x-0 top-0 h-0`, whose size is the root's width and never the fit's) has
+  the cached width re-applied against the lines box in the frame after its delivery, never
+  inside it (see the gotcha below). Its one exception is to measure once when the cached
+  width is still 0, for a shelf that mounted where nothing was laid out. The same observer
+  watches a SAMPLE: an invisible, out-of-flow, `whitespace-nowrap` span whose `::before`
+  draws "Hide finished" in the shelf's own type with 1rem of left padding (on the
+  pseudo-element, so the phrase adds no text to the page and the padding sits inside the box
+  the observer reads). Its width answers to the font, to spacing and to the rem, never to
+  the column or the fit, so a sample resize is the line changing size with its string
+  unchanged: a WCAG 1.4.12 text-spacing override, text-only zoom, a minimum font size, a
+  late font, or the browser's default font size, which leaves the 11px text alone and moves
+  every rem-sized gap, priority dot and the ✕. That re-measures a frame later, outside the
+  observer's delivery, in either fit and whatever else the delivery holds: a shelf stacks
+  when an override widens its text and goes back to one line when it comes off, mid-drag or
+  not. A drag never touches the sample, so it only ever compares. The first delivery carries
+  the sample too, so a shelf that mounts laid out measures once more a frame later and finds
+  the width it already had. A sample gone to 0 is the shelf being hidden, which has nothing
+  to fit until the sample's return, itself a resize, measures it. The frame does nothing at
+  all while the lines box is 0 wide: against 0 every line is too wide, so a fit there wrote
+  the stack, and the shelf's return painted it for a frame before the next one put the line
+  back (found in review, 2026-09-26). The first version watched the `[data-line]` spans and
+  took a line resizing with no probe in the delivery for the text changing size. A review in
+  Chromium found two holes in that: a stacked line stretches across the column, so the text
+  changing size resized nothing there, and a change in a frame where the column also moved
+  looked like a drag. The next review found one in the sample's first cut, a bare phrase:
+  the browser's font-size setting moves the gaps and dots but not the 11px phrase, so it
+  went unheard and the one line clipped its last glyphs. The rem of padding is that fix. The
+  comparison allows one layout unit (1/64px) and no more: nothing on the one line truncates,
+  so any overflow is a glyph cut off with no ellipsis, and neither side of the comparison
+  depends on the fit, so there is no oscillation for a wider margin to damp.
+- **The sidebar mount has a width floor, `SIDEBAR_MIN_WIDTH - 20` (260px)**, passed by the
+  braindump as the shelf's `floor` prop (the primitive has none of its own). Collapse and
   hover-peek animate the column between `w-0` and its width over 300ms with the braindump
   still mounted. Without a floor, every frame of the fold would re-fit, and the collapsed
   shelf would sit in a one-value-per-row stack that every expand unfolds from. At rest the
@@ -897,9 +902,10 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   `useIsMobile()`, the hook DisplayMenu picks its shell with, and is `menu` or `dialog`. There
   is no `aria-expanded`, because what opens is modal and hides the section while it is up.
   There is also no live region and no heading.
-- **The phone's targets are 28px, through a `::before` hit area** (the header's existing
-  idiom) on the BUTTONS. The clipping `overflow-hidden` is on the lines box inside the opener,
-  so it never cuts the reach off.
+- **The phone's text is a 28px target, through a `::before` hit area** (the header's
+  existing idiom) on the BUTTON. The clipping `overflow-hidden` is on the lines box inside
+  the opener, so it never cuts the reach off. (The phone's ✕ had one too, until touch lost
+  its ✕.)
 
 ### Gotchas from the shelf
 
@@ -931,10 +937,22 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   by: `flex-col` on the lines box, `shrink`/`min-w-0`/`flex-wrap` on each line and each
   multi-select, `min-w-0 max-w-full` on each value with `truncate` on its label, and
   `min-w-0 max-w-full truncate` on each single phrase.
-- **Never measure inside the observer's delivery.** Forcing the one-line layout there starts a
-  measure, resize, measure loop, and the "ResizeObserver loop" errors it raises land on every
-  other observer on the page. The observer compares; a change of text measures, and so does
-  the frame the observer schedules when its sample resized.
+- **Never write anything inside the observer's delivery, not even the fit.** Forcing the
+  one-line layout there starts a measure, resize, measure loop. And a compare that flips the
+  fit changes the shelf's height, which resizes what sits below it in the same delivery.
+  Under the canvas header's pill that is the view's scroll viewport, which `useFitHourPx`
+  (and, while the pointer is over it, Radix's scrollbar) observes at the probe's own depth,
+  so the engine skips that observation and fires "ResizeObserver loop completed with
+  undelivered notifications", which lands on every other observer on the page. The shelf's
+  first version compared inside the delivery, which the sidebar never tripped; with the
+  canvas mount, a Chromium review (2026-09-26) raised the error on every flip it forced in
+  Day and Week × Schedule, and on each Week × List day-heading click that moved the
+  capsule's width across a threshold. So the observer only notes what it heard, and the
+  frame it asks for (one frame serves every delivery before it) measures if the sample
+  resized and then compares, or, while the shelf is hidden, does nothing and keeps what was
+  asked for. The cost is one frame in the old fit after a width change, in either direction:
+  an unstack decided in the delivery to save that frame brings the error back on every
+  widen.
 - **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
   The tests query `[data-clause="…"]` instead.
 - **jsdom's accessible-name computation trims each element's text.** So the space inside an
@@ -958,6 +976,319 @@ Escape (focus back on the shelf); a text-spacing bookmarklet or text-only zoom a
 shelf on one line (it stacks rather than clip), then taken off (it goes back to one line);
 the browser's default font size (Chrome: Settings, Appearance, Font size) raised with the shelf
 on one line and a little room to spare (it stacks), then put back (one line).
+
+## Addendum (2026-09-26): the canvas's Display shelf
+
+**What it is.** The braindump's shelf, now in the canvas header too, on both shells. Kirby
+asked for it on 2026-09-25 ("can we also add these active filters rail to the body header
+too"). On the desktop it is the HeaderCapsule's third row, under the view pill, as the
+braindump's sits under its own; on the phone it is the last thing in the Today card, after
+the week strip and the review notice. It is the same component reading the same summary for
+`surface="canvas"`, so it shows exactly when the canvas trigger's dot is lit, its text opens
+the canvas menu through the same handle, and on a pointer its ✕ is the canvas's Reset
+display. Nothing in it is canvas-specific except the one clause only the canvas has, the
+type filter.
+
+**No ✕ on touch, on either surface.** A touch mount (the phone's Today card, and the
+Braindump tab, which had one from 2026-09-25) draws the text alone, and its reach runs the
+whole row. The repo's rule for the dock's notices (`components/sidebar/dock-notices.tsx`) is
+that a destructive target pressed up against a full-width tap target is a mis-tap generator
+with no hover to tell them apart, and this ✕ sat 2px from the text's reach and wiped every
+Display setting on the surface with nothing to undo it. The sheet the text opens has Reset
+display, with its count, on its root pane: one tap further, the way each notice's tray
+carries its own dismissal.
+
+**Where, and what was weighed.** Three placements were rendered in the real header and put
+to Kirby on a card: under the pill (built), beside the pill in the header row's bottom band,
+and across the header as a full-width line under the row. Beside the pill costs no height on
+a wide window but has no room once the item panel is docked, where it would have to fall
+under the pill anyway. Across the header puts the ✕ at the far right, away from the menu it
+resets. Under the pill won on parity with the braindump and on holding up at every width:
+`<main>` animates its width with the sidebar and the item panel, and the capsule never does.
+
+**Containment is load-bearing on the desktop.** The capsule is `inline-flex flex-col`, sized
+by its content, and the shelf's fit needs its width to come from outside (see "Fit is
+imperative" above). So the capsule's mount passes `contain-inline-size`, and the shelf adds
+no inline size: the capsule stays exactly as wide as its date row or its pill, and the shelf
+takes that. Without it, in Chromium, the capsule grew to the shelf's one line (382 to 793px
+with every setting on) and the shelf never stacked. The phone card is stretched to the
+screen, so it needs none. Each mount's insets come in through `className`, merged over the
+root's with `cn`. The capsule's `px-4 pr-3.5 pt-1 pb-px` put the text under the Layout icon
+and the ✕ under the Zen leaf (the pill insets the leaf 14px, not 16), 8px under the pill and
+9px above the capsule's edge; the phone's `px-0 pt-0 pb-px` put the text on the date's edge.
+`floor` is the sidebar's alone: the capsule never animates, so every width it takes is one
+it rests at.
+
+**The height it costs, taken on purpose.** The header row was a constant 135px, and the grid
+under it (`lib/use-fit-hour-px.ts`) sizes Day and Week × Schedule's hour rows, and the
+phone's DaySchedule's, to the height left. The shelf is in flow, so while anything is set
+the row grows 27px for the shelf's one line and 23px for each line its stack adds (162, 185,
+231 and 277px for 1, 2, 4 and 6 lines), and the rows re-fit as it comes, goes, or stacks.
+One line is the usual case for one or two settings; with a type and two more, List and Day ×
+Buckets often stack (see "Words" below). With every kind of setting on at once (six lines),
+measured in Chromium on one sample day (the hour rows fit the span of the day's timed items,
+so the px/h and overflow figures are that day's, and another day's differ; the header, card
+and viewport heights do not): 1366×768 Week × Schedule's overflow goes from 101 to 243px
+(Week × Schedule is already at the 40px/h floor on most laptops, so every line is scroll);
+1440×900 Day × Schedule goes from 42 to 40px/h with one line; a 390×844 phone's card goes
+from 106.5 to 248.5px and its hour rows from 53 to 40px/h; at 375×667 the day's viewport
+goes from 463 to 321px, and with the keyboard up (375×407) from 203 to 61px. Those are
+full-screen viewports; in a real laptop window, where the browser takes 90 to 160px, Day ×
+Schedule is often already at the floor with nothing set (1280×610: the viewport goes from
+449 to 422px with one line, and to 307px with six), so there every line is scroll on Day
+too. There is no cap. A "+N" would break the shelf's one promise, that it names exactly what
+the dot counts; if the stack proves too tall on the canvas, a cap or a wrapping fit for this
+mount is the lever. `desktop-shell.tsx` records the shelf as the one thing in the header row
+allowed to grow it.
+
+**When it moves on its own.** The shelf flips between one line and the stack whenever the
+capsule's width changes, and in List (and, by under 4px, Day × Buckets) that width follows
+the date: a long off-today date with its Today button can outgrow the pill (Day × List 349
+to 378px, the widest being "Wednesday, September 30"). So a shelf whose one line falls in
+that band flips as you page dates or click Week × List's day headings, and the list moves
+23px for each line its stack adds (46px for a three-line stack, 69 for four). In Schedule
+the pill is always the widest row (by 4.1px at default fonts), and in Week × Buckets too, so
+paging never flips it there. Accepted; the lever is a date button with the widest date's
+min-width and a Today slot kept reserved, which would rest the capsule at about 378px in
+List.
+
+**Never write inside the observer's delivery.** The canvas mount is what surfaced the
+gotcha above ("Never write anything inside the observer's delivery", under Gotchas from the
+shelf): a flip decided inside the observer's delivery resized the grid's viewport in
+that same delivery and raised the "ResizeObserver loop" error. The fit now waits a frame.
+
+**Words.** The type clause reads "Showing Tasks" / "Showing Habits": the menu's own row (its
+Type section says All, Tasks, Habits), led by a muted "Showing" as grouping is by "Grouped
+by", and "Show" is the palette's name for the setting. The words cost width: "Showing Tasks"
+is 78.4px against "Hide habits"' 59.2, and "Showing Habits" 81.4 against "Hide tasks"' 55.2,
+so more states stack. Of the 84 states with a type set (both types, seven groupings, three
+sorts, Hide finished on and off), measured with today's date on screen (Saturday, September
+26, so no Today button), the ones that fit on one line fall from 38 to 24 in Day × List, 47 to 33 in Week × List, 56 to 40 in Day ×
+Buckets, 58 to 48 in Day × Schedule, 58 to 52 in Week × Buckets and 60 to 56 in Week ×
+Schedule, and none goes the other way. The capsule is as wide as the wider of its date row
+and its view pill, and on today's date, which has no Today button, the pill always sets it,
+as it does on most other dates. On the widest dates (Wednesday, September 30 with its Today
+button, a 362px row), List and Day × Buckets all fit 57 before and 43 after; a row that
+outgrows only Day × List's pill moves only that count, and by less (Monday, September 28:
+28). The Schedule and Week × Buckets counts do not move with the date. "Grouped by Project ·
+Showing Tasks · Hide finished" stacks three lines in Day × List on today's date (September
+26), 2px over its one line, where "Hide habits" fit; the list starts 46px lower, and paging
+to a wider date, or seeing September 26 from another day, puts it back on one line. A bare "Tasks"
+beside "Grouped by Project" read as a group or a project name. "Tasks only" would be false
+(Tasks keeps every task-like item, custom types included) and Settings already uses "Tasks
+only — habits always stay" for something else. "Hide habits" was tried and dropped: the menu
+the text opens has no row by that name to undo it under. The shelf names what is SET, never
+what reaches the view: a sort outside List, or grouping by Time bucket on Buckets, is named
+like any other setting, as the dot counts it. Notes saying so ("Sorted by Priority · List
+only") were designed and dropped, and what a later version must get right closes this
+addendum. Never named, as on the braindump: Show paused (app-wide, and the menu captions its
+row so) and the palette's Hide completed tasks (a planner setting, not a Display one).
+Palette commands change the named settings with no menu open, and the shelf follows them;
+"Clear canvas filters" clears the filters only, so any grouping, ordering or type stays
+named.
+
+**Accepted, not fixed:**
+
+- Two buttons named "Reset display" when both shelves are up, as the two "Display (N active)"
+  triggers already were. Naming each surface in all three controls is one change for later.
+- The ✕ is `text-muted-foreground` like every icon control in the capsule (2.65:1 on its
+  ground in light mode), and wears the braindump header's label-only `RailTooltip`, while the
+  capsule's own Zen tooltip is the plain one. A token change would restyle every icon control.
+- The ✕ cannot be undone: Ctrl+Z is the planner's undo and never reaches view settings, the
+  same as the menu's Reset row. It sits 14px under Zen.
+- With the item panel docked, `<main>` can be narrower than the header row, and it clips the
+  row's right end. How far depends on scope, layout and the sidebar's width. With the
+  default sidebar, Zen is clipped up to 1275px windows in Day × Schedule, 1286 in Week ×
+  Schedule and 1278 in Week × Buckets (the ✕ up to 1267, 1278 and 1270), WeekScale's
+  controls up to 1488 (1480 in Buckets), and the Display trigger up to 1234 in Day ×
+  Schedule and 1245 in Week × Schedule. With the sidebar at its widest, 720px, a 1440 window
+  leaves `<main>` 252px, and the Display trigger is past the edge there too. A pointer
+  cannot reach what is clipped; the text still opens the menu.
+- The keyboard can. `<main>` stays `overflow-hidden`, which is still a scroll container, so Tab
+  onto a clipped control scrolls it into view. Nothing ever scrolled it back, so the canvas
+  stayed slid, about 38 to 242px at the default sidebar and 269 at 720px, until the panel
+  closed, unless a later Tab happened to reveal something at the other end (in Week × Schedule
+  the grid's first stop often did). `useFocusOnlyScroll` (`hooks/use-focus-only-scroll.ts`) now
+  places `<main>` for whatever has focus, a frame after focus moves anywhere, a key goes down
+  in `<main>`, `<main>` scrolls or resizes, or the focused control starts or stops showing
+  entirely or at all. An IntersectionObserver at thresholds 0 and 1 hears that when nothing
+  else fires. Its thresholds are exact, so it does not hear a move from cut to cut, including
+  one from the half pixel a control at rest may overhang; that waits for the next key, focus
+  move, scroll or resize. `<main>` goes to rest when focus leaves it for the sidebar, the item
+  panel or nothing, and when the focused control shows there, unless it holds (below).
+  Otherwise it moves only when it must, because Radix closes a tooltip on any scroll around its
+  trigger and a tooltip is all the name Zen and the ✕ show. A control out of sight comes in to
+  the least slide that shows it whole. So does whatever has focus when `<main>`'s width
+  changes: the item panel docks a frame at a time, and a slide kept from an earlier frame left
+  the focused ✕ a quarter showing once it had docked. So does a control the layout moves, once
+  the move leaves it cut. Otherwise one that shows, whole or cut part-way, keeps the slide the
+  hook last made, so Tab from Zen to the ✕ moves nothing and "Reset display" stays up (but see
+  the bands below). A slide the hook did not make comes back as far as that least one: Chromium
+  centres what it reveals (Zen slid Week 212px at 1240, where 47 shows it).
+- The least slide is rounded up to whole pixels, so it shows its control to the last fraction,
+  and the observer hears a later cut. An earlier version rounded to within half a pixel, which
+  the observer counts as cut, so a view switch that cut the control further went unheard: Zen,
+  placed 99.1% showing in Day × Buckets at 1240, was left 44% showing after store switches to
+  Week × Buckets and then Week × Schedule. A control that overhangs `<main>`'s edge by half a
+  pixel or less still counts as showing at rest. Rounding up can leave up to a pixel of the
+  control after it showing, so a control that shows a pixel or less counts as out of sight.
+  Without that, Tab from the program line onto the review notice in Day × Buckets kept the
+  program line's slide and showed 0.7px of the notice's button (1200 and 1240 at the default
+  sidebar, 1320 at 560, 1440 at 720).
+- A control the layout moves while it still shows whole, at a slide the hook made, holds that
+  slide for as long as it keeps focus and shows whole, even where it would show at rest.
+  Earlier versions placed it afresh on every move, and then Enter on Next at the 720px sidebar
+  slid the whole canvas on every press, because the date beside it changes width (135px over
+  eight days in Day at 1440), and an arrow on WeekScale's thumb moved the canvas back and forth
+  as it stepped, where Chromium alone never moves it: 102px a step in Week × Schedule up to
+  about 1360, between two slides (40 and 142px at 1320), then between rest and a slide, 101px
+  at 1361, 22 at 1440 and 2 at 1460, and not at all from 1462, where the thumb is no longer
+  clipped. Only a slide the hook made is held. One the browser made is placed afresh: the
+  reveal when a menu hands focus back to a control a pick in it moved, or the pull back when a
+  switch to List leaves the canvas too short for the slide (Week × List at 1240 goes to 5, as
+  it did before the hold; a draft of the hold that also kept slides the browser made held the
+  browser's 27).
+- The hold costs canvas: by the time focus moves on, the slide it keeps can be more than the
+  control needs. Under a focused ✕, a switch from Week to Day × Schedule keeps 11px more than
+  Day needs, a layout switch alone 8 (Week × Schedule to Buckets), and a scope switch and then
+  a layout switch up to 18, the same at 1200 and 1240 with the default sidebar, 1320 with 560
+  and 1440 with 720. While Next keeps focus, the canvas stays at the widest slide a date has
+  needed: in Day at 1440 with the 720px sidebar, 82px from Wednesday, September 30 on, where
+  Friday, October 2 needs 15; at 1300 with the 560px sidebar, 62, where Friday, October 2 needs
+  none; in Week, at most 28 more than a date needs. WeekScale's thumb, after Home at 1340,
+  keeps 123 where it needs 21, and at 1440 keeps 23 where it shows at rest. Chromium alone
+  keeps its centring slide throughout, 108 to 208px.
+- A click holds nothing. After a Tab slide onto Next, a click on it pages the date and the
+  date's width moves Next. Holding the slide there let Go to today move under the pointer: an
+  earlier version paged five days in Day at the 720px sidebar and then the sixth click landed
+  on Go to today, which put the date back and `<main>` at rest, and in Week the second click
+  undid the first. A button a click moves is placed afresh instead, which keeps it at
+  `<main>`'s edge, under the pointer, so eight clicks page eight days, or eight weeks. Chromium
+  alone pages four days and then opens the calendar, and in Week alternates Next and Go to
+  today. A click counts until a key goes down in `<main>`, so Enter on Next still holds. A
+  dragged thumb is not a button, and still holds: a variant that let go for every pointer move
+  jumped the canvas on the release (62px to 0 at 1400, 122 to 20 at 1340) and back on the next
+  arrow.
+- Focus moving on from a held slide places the next control afresh if that slide cuts it,
+  because the slide was held for the control focus left. After paging with Enter on Next, Tab
+  onto Go to today showed as little as 3.6% of it under an earlier version, where Chromium
+  alone showed it whole; it now shows whole in all 32 cases tried (Day and Week, 1440 with the
+  720px sidebar and 1300 with 560, after one to eight presses). The same goes for Zen after
+  scope switches moved a focused Display trigger, and that reveal closes Zen's tooltip.
+- Chromium scrolls only for a control that is wholly hidden, so one cut part-way keeps the part
+  it shows, as it did before, unless that is a pixel or less: the ✕ 19% of itself in Week at
+  1265 (with its tooltip), the Display trigger 66% in Day at 1200. The hook's smaller slides
+  add one: in Week, Shift+Tab back from the ✕ leaves Zen 76 to 78% showing, since the ✕'s least
+  slide is 8px short of Zen's, where the browser's centring slide showed Zen whole. The shelf
+  text keeps the slide of whatever stop came before it: Zen's on Tab, and on Shift+Tab the ✕'s,
+  which is itself the slide of a notice after it when one is in the row. When the text is wider
+  than `<main>` (the 720px sidebar) and no notice is in the row, it shows 67 to 71% of itself
+  in Schedule and Buckets and 75 to 78% in List, cut at its start. With a notice in the row, in
+  Day, it is cut at the default and 560px sidebars too, and most with the review notice, whose
+  slide shows its icon, "Start" and ✕: in Day × Schedule, 58% with the program line and 38%
+  with the review notice at 1440 with the 720px sidebar, and 81 to 94% and 62 to 75% at 1200 to
+  1240 with the default one; walking back from the review notice past the program line, 34 to
+  38% at 1440 with 720 (Chromium alone shows 35 to 39% there), 47% at 1320 with 560, and 58 to
+  71% at 1200 to 1240.
+- A reveal is itself a scroll, so Zen's tooltip closes on the Tab that reveals it, and the ✕'s
+  on the Shift+Tab that reveals it from the grid. The hook's own moves close more. The ✕'s
+  closes on Shift+Tab from the stop after it, when that stop needed a slide and the ✕ shows at
+  rest: WeekScale's Narrower in Week × Schedule (1190 with a 280px sidebar, or 1310 with the
+  default one), and in Day the program line or the review notice, in the same bands for either
+  (at the default sidebar, Day × Schedule about 1268 to 1302, Day × List 1236 to 1268, Day ×
+  Buckets 1260 to 1294). Just below those bands the ✕ is cut at rest, so it keeps the notice's
+  slide and its tooltip stays up. Zen's closes on the Tab from the Display trigger at the 720px
+  sidebar, where Chromium's centring slide for the trigger already showed Zen and the hook's
+  least slide does not. And the ✕'s closes when a scope or layout switch leaves it cut and it
+  is placed afresh. Tab from Zen to the ✕ keeps "Reset display" up at the QA widths, but not in
+  a band of 9 or 10px of window just below where the ✕ starts to show at rest (default sidebar:
+  Day × Schedule 1244 to 1252, Week × Schedule 1254 to 1263, Week × Buckets 1246 to 1255, Day ×
+  List 1211 to 1219, Week × List 1221 to 1229, Day × Buckets 1236 to 1245). There Zen shows
+  part-way at rest, so no slide was made, or the shelf text between them shows at rest and
+  sends `<main>` back, and the ✕'s own reveal closes its tooltip. Without the hook it closed
+  there too, in 8px of each band. The hook adds the lowest pixel in Week × Schedule, Week ×
+  Buckets and Day × Buckets, where the text sends `<main>` back, and the highest in all six, where the
+  ✕ shows a pixel or less at rest, which Chromium leaves alone and the hook brings in whole.
+- It also holds still, whatever has focus, in four cases. While a pointer is down, found in
+  review: a press moves focus on mousedown, and the first version slid `<main>` back before the
+  release, so the click was lost (Next, a block's Mark complete) and a drag ran offset by the
+  whole slide. While focus is in a layer outside the shell, such as a menu or the calendar,
+  most often drawn against its control in `<main>`: Radix hands focus back with a plain
+  `focus()`, which finds the control still showing. A menu drawn against a sidebar control,
+  such as the braindump's Display menu, holds `<main>` too, which is harmless: Escape hands
+  focus back to the sidebar and `<main>` goes to rest. Review found that focus going on from
+  such a layer to the sidebar, or to nothing, never passes through `<main>`, so the focus
+  listeners are on the document. The calendar is the exception: after Escape it drops focus to
+  nothing while it fades out, and only then hands it back, so a canvas that was slid when it
+  opened comes back at once, and the fading calendar moves with it. And while an ancestor of
+  `<main>` is inert, which only Zen's switch does as it lifts the planner away: focus drops to
+  nothing 130 to 220ms in, and an earlier version went to rest there, jumping the whole visible
+  planner 36 to 150px sideways under the wave. If the switch is turned back mid-wave, `<main>`
+  stays slid until the next key, focus move, scroll or resize (47px in Week × Schedule at
+  1240). `<main>`'s own inert, under the overlaid item panel, does not count. And at rest, with
+  nothing past either edge, there is nothing to do. Nothing is noted there but `<main>`'s
+  width, so a control the layout moved back to a spot cut part-way after a spell at rest would
+  stay as the browser leaves it; nothing in the shell does that today.
+- Review first made `<main>` `overflow-clip min-w-0` to stop the slide, and that was reverted:
+  a clip box never scrolls, so Tab landed on controls nobody could see, the ✕ among them, which
+  resets every canvas Display setting. `tests/unit/desktop-main-scroll.test.tsx` pins the class
+  and the hook together.
+- Two notices share the row, and with the panel docked both buttons are squeezed below what
+  they paint: the program line's (a paused program hiding items today) to 0px, where it still
+  paints its Moon icon and its focus ring, and the review notice's ("Today's review is
+  waiting") to its 16px of padding, where it paints its icon and "Start" past its box. The hook
+  measures what a control paints past its box, unless it clips it, and slides that into view:
+  the Moon at 74px in Day × Schedule at 1240, and the review notice's icon, "Start" and ✕ at
+  135 (without the program line). Review caught earlier versions of the hook sending `<main>`
+  to rest for the program line, which left its icon wholly past the edge, and sliding the
+  review notice's 16px box into view and no more, which showed 57% of its icon and none of
+  "Start"; Chromium alone showed both. The program line's text still never shows. That is older
+  than this change (13aa588 does the same); a floor it cannot shrink below, or leaving the row
+  when there is no room, would fix it.
+- The least slide puts a control's edge within a pixel of `<main>`'s, and Chromium draws the
+  focus ring 1px inside the box and 2px outside it, so on that side up to two of the ring's
+  three pixels are cut. Room for the ring would have to be added only when a slide is made: a
+  control flush with `<main>`'s edge at rest must still count as showing there.
+- The phone skeleton is the card at rest (106.5px, which the skeleton rounds to 106); a
+  first paint with the shelf or the review notice up grows the card downward by that much.
+
+**Deferred: reach notes.** If the shelf is ever to say that a setting reaches nothing in the
+current layout (a sort outside List, `sortByBlockedBy`; a grouping `groupBySupport` answers
+`honoured: false` for), the reviews of 2026-09-26 settled how:
+
+- The note is PART OF `clauseText`, so the fit key, the visible text and the test oracle stay
+  one string. Rendered but left out, a layout switch changes the line's width with no
+  re-measure, and the one line clipped its last clause (reproduced in Chromium on both shells).
+- The layout reaches the hook as a plain value (`isCanvas ? s.layout : null`), never as a
+  selected `groupBySupport(...)` result: three of its arms return fresh objects, and selecting
+  one looped React on Buckets with the bucket grouping. Pin that `honoured` does not depend on
+  scope, since the phone's stored scope can be stale.
+- Say it to a screen reader as an aside: an `aria-hidden` " · " with an sr-only ", " in its
+  place, and a sentence in the description. Draw it in the value's ink, not muted, which is
+  2.65:1 on the capsule in light mode. A priority filter or sort while showing Habits
+  reaches nothing either, and is the third case.
+- Partial reach ("Untimed rows only", "Anytime only") stays the menu's to explain.
+
+**Manual QA states:** 1440×900 and 1366×768, Day and Week × Schedule, List and Buckets: one
+setting; everything on (six lines); page dates in Day × List and click Week × List's headings
+with a shelf near its threshold, with a window `error` listener attached (no "ResizeObserver
+loop"); the item panel docked at 1280 and 1200px, and Tab and Shift+Tab through the header
+there (each control shows while it has focus, whole unless the edge cuts it part-way; the ✕'s
+tooltip stays up on Tab from Zen; the canvas is back at rest once focus moves into the
+schedule, and a click on Next while it is slid moves the date); open an item while the ✕ has
+focus (it stays whole as the panel docks); with the 720px sidebar in Day, page dates with Enter
+on Next (the canvas moves only when a wider date would cut Next, and does not come back while
+Next has focus: from Saturday, September 26, once in eight presses, onto Wednesday, September
+30, at 1440 and at 1366), then Tab onto Go to today (it shows whole), and after a Tab slide
+onto Next, click it eight times at one spot (it pages eight days); at 1440 with the default
+sidebar, press the arrows on WeekScale's thumb in Week × Schedule (at most one 23px slide, on
+the Tab or on the first step that reaches 2 days, then none); with a paused program hiding
+items today, Tab onto the program line at 1240 (its Moon shows); with today's review waiting,
+Tab onto its notice at 1200 (its icon, "Start" and ✕ show); Enter on Zen while the canvas is
+slid (the planner does not jump sideways as the switch lifts it away); open from the shelf and
+Escape (focus back on the text); ✕ with the keyboard (focus lands on the Display trigger). A
+390×844 phone: the same settings, the review notice owed and not, the sheet opened from the
+text, and Reset display from the sheet (focus lands on the Display icon).
 
 ## Related
 

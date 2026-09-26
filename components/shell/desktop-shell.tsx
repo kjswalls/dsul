@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { ProgramNotice } from '@/components/views/program-notice';
@@ -11,6 +11,7 @@ import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dial
 import { useUIStore } from '@/lib/ui-store';
 import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
 import { cn } from '@/lib/utils';
 
 /** Below this the panel stops compressing the canvas and overlays it instead. */
@@ -51,6 +52,12 @@ export const DesktopShell = memo(function DesktopShell() {
   // hidden behind an opaque card. A class can't express that; `inert` can.
   const panelOverlays = useMediaQuery(PANEL_OVERLAY_QUERY);
 
+  // With the panel docked, the header row can be wider than <main>, and Tab
+  // onto a control past its edge scrolls <main> to show it. This puts <main>
+  // back once focus has moved on (the hook has the whole story).
+  const mainRef = useRef<HTMLElement>(null);
+  useFocusOnlyScroll(mainRef);
+
   // Stable so the panel's Escape listener isn't torn down and re-bound on every
   // store tick.
   const handlePanelOpenChange = useCallback(
@@ -69,8 +76,14 @@ export const DesktopShell = memo(function DesktopShell() {
           shadow at the panel's edge, which is what reads as "lifted" in dark
           mode where a black drop barely registers); shadow-elev-panel adds the
           leftward cast onto the sidebar plus a left-edge light-catch, which the
-          vertical-only elev family couldn't give it. */}
+          vertical-only elev family couldn't give it.
+
+          overflow-hidden, not overflow-clip: a hidden box is still a scroll
+          container, so focus can scroll it to show a control the docked item
+          panel has pushed past this edge, and useFocusOnlyScroll brings it back
+          (a clip box would leave that focus on a control nobody can see). */}
       <main
+        ref={mainRef}
         inert={panelOverlays && !!panelState}
         className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
       >
@@ -107,9 +120,11 @@ export const DesktopShell = memo(function DesktopShell() {
           <HeaderCapsule />
           {/* "6 items are away with Summer" — the day's own suppression line,
               beside the day it is about. It costs this row nothing: the row's
-              height is max(children), which the capsule already sets at 96, and
-              mt-2 + h-8 lands its centre on the date row's (the capsule's p-2
-              plus half of its 32px nav row = 24px from the top, both ways).
+              height is max(children), which the capsule already sets — 96 at
+              rest, more while its Display shelf shows — and mt-2 + h-8 lands
+              its centre on the date row's (the capsule's p-2 plus half of its
+              32px nav row = 24px from the top, both ways; the shelf grows the
+              capsule at the bottom, so this never moves).
               Being here rather than inside a view is what gets it into `buckets`
               too — it used to exist only in day-schedule and day-list. */}
           {/* max-w bounds the truncate: program names are user data, and an
@@ -119,7 +134,7 @@ export const DesktopShell = memo(function DesktopShell() {
           {/* "Today's review is waiting" — beside the date it is about, on the
               same argument and in the same row as the line above it. Free, for
               the same reason: the row's height is max(children) and the capsule
-              already sets that at 96. It goes dark on any other date and the
+              is never shorter than 96. It goes dark on any other date and the
               line falls back to the dock. WeekScale only renders in week scope,
               so in day scope these two share the row with room to spare. */}
           <DayHeaderNotice className="mt-2 h-8 min-w-0 max-w-[280px]" />
@@ -137,7 +152,11 @@ export const DesktopShell = memo(function DesktopShell() {
             The rule this leaves behind still binds: anything mounted between
             the header row and the timeline is an input to the grid's height and
             must be constant-height at every data volume, or it must not go
-            here. */}
+            here. The header row is an input too, and it has exactly one
+            deliberate exception: the Display shelf under the capsule's pill,
+            which grows the row by a line per row of settings while any are set
+            and re-fits the grid as it comes and goes (header-capsule.tsx has
+            why that cost was taken). Nothing else in the row may grow it. */}
 
         {/* min-h-0 is explicit rather than relying on overflow-hidden to zero the
             automatic minimum size of a flex item: this column is what
