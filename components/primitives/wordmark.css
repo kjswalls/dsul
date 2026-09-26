@@ -21,6 +21,10 @@
   --wm-neon: oklch(0.62 0.2 138);
   --wm-neon-glow: oklch(0.8 0.2 130 / 70%);
   --wm-tape: oklch(0.22 0.01 272);
+  --wm-tape-edge: oklch(1 0 0 / 6%);
+  --wm-highlight: var(--primary);
+  --wm-highlight-ink: var(--lime-ink);
+  --wm-highlight-top: 0.42em;
   --wm-stagger: 16ms;
   --wm-reveal: 220ms;
   --wm-ease: cubic-bezier(0.2, 0.8, 0.2, 1);
@@ -44,7 +48,16 @@
   --wm-shine: var(--primary);
   --wm-neon: var(--primary);
   --wm-neon-glow: oklch(0.87 0.19 125 / 75%);
-  --wm-tape: oklch(0.1 0.005 272);
+  /* Near-black tape vanished into the dark sidebar, so the label goes to a
+     raised graphite with a lit top edge. */
+  --wm-tape: oklch(0.38 0.008 286);
+  --wm-tape-edge: oklch(1 0 0 / 12%);
+  /* A full lime slab under dark ink glared against the dark ground. The lime
+     stays full strength (it is the accent, and never dims in dark mode); the
+     swipe drops to a marker underline instead, so the letters keep their
+     own light ink and only the stroke under them is lime. */
+  --wm-highlight-ink: var(--foreground);
+  --wm-highlight-top: 0.72em;
 }
 
 .wordmark-word {
@@ -56,6 +69,57 @@
   position: relative;
   display: inline-block;
   color: var(--wm-fg);
+}
+/* Easing on the way back only (a transition runs toward the state that
+   declares it): the size and tape's label ease away as the mark returns to
+   classic, while opening keeps each flavor's own entrance, such as tape's
+   punch, which a running transition on the same property would swallow. */
+.wordmark:not([data-open]) {
+  transition:
+    font-size 320ms var(--wm-ease),
+    letter-spacing 320ms var(--wm-ease);
+}
+.wordmark:not([data-open]) .wordmark-word {
+  transition:
+    background-color 260ms ease-out,
+    box-shadow 260ms ease-out,
+    padding 260ms var(--wm-ease);
+}
+
+/* The return to classic: the four initials, now in Inter, come out of a soft
+   blur and take a shine one after another, left to right, so the face swap
+   reads as a spotlight passing over the word. No opacity: the shine is lime
+   and is drawn at full strength. The dot pops back to its round shape. */
+.wordmark[data-restoring] .wordmark-char {
+  animation: wm-restore 520ms calc(var(--wm-i) * 16ms) var(--wm-ease) both;
+}
+.wordmark[data-restoring] .wordmark-dot {
+  animation: wm-restore-dot 420ms 200ms var(--wm-ease) both;
+}
+@keyframes wm-restore {
+  0% {
+    filter: blur(0.14em);
+    transform: translateY(0.06em) scale(0.94);
+    color: var(--wm-fg);
+  }
+  45% {
+    filter: blur(0);
+    transform: none;
+    color: var(--wm-shine);
+  }
+  100% {
+    filter: blur(0);
+    transform: none;
+    color: var(--wm-fg);
+  }
+}
+@keyframes wm-restore-dot {
+  0% {
+    transform: translateY(calc(var(--wm-size) * -0.08)) scale(0.5);
+  }
+  60% {
+    transform: translateY(calc(var(--wm-size) * -0.08)) scale(1.25);
+  }
 }
 .wordmark-fill {
   max-width: 0;
@@ -202,11 +266,11 @@
   position: absolute;
   left: -0.1em;
   right: -0.1em;
-  top: 0.42em;
+  top: var(--wm-highlight-top);
   bottom: -0.05em;
   z-index: 0;
   border-radius: 0.25em 0.5em 0.3em 0.45em;
-  background: var(--primary);
+  background: var(--wm-highlight);
   transform: scaleX(0) skewX(-8deg);
   transform-origin: left;
   transition: transform 380ms var(--wm-ease);
@@ -219,7 +283,7 @@
   z-index: 1;
 }
 .wordmark[data-flavor='marker'][data-open] .wordmark-char {
-  color: var(--lime-ink);
+  color: var(--wm-highlight-ink);
   animation: none;
 }
 .wordmark[data-flavor='marker'] .wordmark-dot {
@@ -299,6 +363,7 @@
   background: var(--wm-tape);
   box-shadow:
     inset 0 -1px 0 oklch(0 0 0 / 40%),
+    inset 0 1px 0 var(--wm-tape-edge),
     0 1px 2px oklch(0 0 0 / 20%);
   transform: rotate(-1.2deg);
 }
@@ -563,6 +628,9 @@
 /* Reduced motion keeps the flavor and the spelled-out name, and drops every
    movement: letters appear at once, nothing shimmers, blinks or bounces. */
 @media (prefers-reduced-motion: reduce) {
+  .wordmark,
+  .wordmark-word,
+  .wordmark-char,
   .wordmark-fill,
   .wordmark-word::before {
     transition: none !important;
