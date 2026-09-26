@@ -761,7 +761,8 @@ was stored: a string no Priority row offers, and for projects a deleted project,
 no project kind. No project is the exception, and stays last, where its row is. It is
 there exactly when the trigger's lime dot is lit, in the sidebar and in
 the phone's Braindump tab alike, so a braindump with nothing set keeps the bare capsule.
-Clicking the text opens the Display menu; the ✕ beside it resets. The dot says THAT the list
+Clicking the text opens the Display menu. Every setting and every value wears a ✕ of its own
+that takes just that one off (added 2026-09-26, below), and the ✕ at the end resets them all. The dot says THAT the list
 is shaped and the shelf says how, and one case makes it more than a convenience: a filter
 that matches nothing leaves the list showing its "A clear head." empty-state poem, and the
 shelf is then the only thing on screen that says why. The component is
@@ -793,8 +794,9 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   group-by and the Goals gate, so a grouping or goal selection the switch is keeping is
   neither counted nor named. `clauseText` is the one spelling of each clause: the fit is keyed
   on it, and the tests read the screen against it.
-- **The ✕ IS Reset display.** Both shells' Reset row and the ✕ call `resetDisplay(surface)`,
-  so they cannot drift. With Goals off it keeps the stranded goal selection and the stored
+- **The end ✕ IS Reset display.** Both shells' Reset row and the ✕ at the end of the shelf
+  call `resetDisplay(surface)`, so they cannot drift. It shows only while the settings wear
+  more than one ✕ between them: with one, it would be that setting's ✕ twice. With Goals off it keeps the stranded goal selection and the stored
   Goal grouping (off is lossless), and it never touches Show paused, which is app-wide. The
   ✕ moves focus to the trigger BEFORE it resets: a reset always takes the count to zero, so
   the shelf unmounts under the pressed button, and a focused element that unmounts leaves
@@ -891,15 +893,59 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   goals table that could not be reached), and `…` would have the shelf disagree with the
   menu it opens for as long as the failure lasted.
 - **The accessible name is the visible text** (WCAG 2.5.3, Label in Name), so an `aria-label`
-  here would trip axe's `label-content-name-mismatch`. sr-only `"; "` and `", "` separators
-  give the name its pauses. The nouns the glyphs stand for go in `aria-describedby` ("Display
-  settings. Priority: High, Low. Project: Work, No project. …"). `aria-haspopup` comes from
+  here would trip axe's `label-content-name-mismatch`. Since the per-setting ✕s, the opener
+  holds an sr-only copy of that text (`clauseText` joined with `"; "`, values with `", "`)
+  and the words on screen are aria-hidden; see below. The nouns the glyphs stand for go in
+  `aria-describedby` ("Display settings. Priority: High, Low. Project: Work, No project. …"),
+  from a `hidden` node now that each value's ✕ says its noun in the reading order. `aria-haspopup` comes from
   `useIsMobile()`, the hook DisplayMenu picks its shell with, and is `menu` or `dialog`. There
   is no `aria-expanded`, because what opens is modal and hides the section while it is up.
   There is also no live region and no heading.
 - **The phone's targets are 28px, through a `::before` hit area** (the header's existing
-  idiom) on the BUTTONS. The clipping `overflow-hidden` is on the lines box inside the opener,
-  so it never cuts the reach off.
+  idiom) on the BUTTONS: the opener's and the reset ✕'s. A per-setting ✕ is 25 × 28px, see
+  below.
+
+### Addendum (2026-09-26): a ✕ for each setting
+
+Each grouping, ordering and Hide finished phrase, and each priority, project and goal VALUE,
+now carries a small ✕ after it that takes off that one thing. The end ✕ still resets them all.
+
+- **One function, in the model.** The ✕ calls `removeDisplaySetting(surface, removal)` in
+  `lib/display-summary.ts`, next to `resetDisplay`, through the same setters (so the canvas
+  mirrors hold). A multi-select value is removed by its `DisplayValue.key` through the pure
+  `withoutDisplayValue`, which takes off EVERY stored entry the value stands for: duplicates
+  collapse into one drawn value, so removing only the spelling in the key would leave the
+  twin, and the value, on the shelf. Projects compare folded (`sameContainerRef`, as the menu's
+  tick does); a ref of no classify kind, the unset key, priorities and goals compare exactly,
+  as they are deduped. `display-summary.test.ts` removes every drawn thing in every case of
+  the matrix and checks that exactly that one disappears. The Goals gate needs no handling
+  here, because no ✕ is drawn for a goal clause or a Goal grouping while Goals is off.
+- **The opener sits UNDER the words.** A button cannot hold buttons, so the opener is an
+  `absolute inset-0` button behind the lines box. The lines box is `relative` (so it paints
+  above) and `pointer-events-none` (so a click on the words falls through to the opener); the
+  ✕s are `pointer-events-auto`. The opener's name is its own sr-only copy of the text, and the
+  words on screen are aria-hidden, so a screen reader meets the opener once and then the ✕s,
+  each named `Remove <phrase>` or `Remove <Noun>: <value>`. The opener is the `peer/open` the
+  words' hover colour reads, so it must stay the lines box's previous sibling. It sits outside
+  the clipping lines box so its focus ring is not cut off. `openerRef`, `open(from)` and the
+  focus return on close are unchanged.
+- **A ✕ belongs to its setting.** The ✕ sits inside the clause span or value span, after the
+  label, and never shrinks, so a phrase ellipsizes before its ✕ and a value never wraps away
+  from its own. It is rem-sized, like the gaps and dots, so the sample's rem already accounts
+  for it in the fit.
+- **Focus moves on first, as the reset's does.** The pressed ✕ unmounts, so before removing
+  anything, focus goes to the next per-setting ✕, or the previous one if this was the last, or
+  the trigger if nothing is left. It never goes to the reset ✕, which leaves with the
+  second-to-last setting. Every other ✕ survives because each is keyed by what it names. A
+  repeated (held) Enter is cancelled on keydown; otherwise autorepeat would walk the focus
+  from ✕ to ✕ and clear the shelf.
+- **Phone reach: 25 × 28px, lopsided on purpose.** The reach is 7px to the right but only 4px
+  to the left, which is the gap to its own words, so a tap at the end of a name still opens the
+  menu. The lines box clips, so it carries `py-[5px]`, taken back by `-my-[5px]`, to keep the
+  vertical reach from being cut. Accepted cost: a truncated phrase that fills a stacked line
+  puts its ✕ flush against the clip, which shortens that ✕'s right reach.
+- Per-setting ✕s wear the header's `RailTooltip` ("Remove") on a pointer and none on the
+  phone, as the end ✕ does.
 
 ### Gotchas from the shelf
 
@@ -935,12 +981,15 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   measure, resize, measure loop, and the "ResizeObserver loop" errors it raises land on every
   other observer on the page. The observer compares; a change of text measures, and so does
   the frame the observer schedules when its sample resized.
+- **A click on the words cannot be `hover()`ed or `click()`ed by locator in Playwright.** The
+  words are `pointer-events-none` and Playwright refuses them as "not receiving pointer
+  events". Move or click the mouse at their coordinates instead, which is what a user does.
 - **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
   The tests query `[data-clause="…"]` instead.
-- **jsdom's accessible-name computation trims each element's text.** So the space inside an
-  sr-only separator does not survive it, and the computed name reads
-  `Grouped by Project;High,Low;…`. The test lets those spaces be missing from the name and
-  checks the separators' own text instead.
+- **jsdom's accessible-name computation trims each element's text.** So a space inside a
+  separate sr-only separator did not survive it (`Grouped by Project;High,Low;…`). Since the
+  per-setting ✕s, the opener's name is ONE sr-only string with its separators inline, so the
+  test pins it exactly. Keep it one string.
 - **vaul keeps a closed sheet mounted in jsdom and leaves the page `aria-hidden`.** Steps after
   a close therefore go by test id and `data-state`, never by role. The sheet's focus return
   CAN be observed, though: Radix's Presence holds the closed content until an `animationend`
@@ -952,7 +1001,9 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   how a trigger reopening a menu mid-exit is tested.
 
 **Manual QA states:** 406px and 280px sidebar and a 390px phone: one setting; everything on;
-a 4+ value priority or project filter at 280px (wraps between values); a long project name
+a 4+ value priority or project filter at 280px (wraps between values, each ✕ staying with its
+value); a ✕ press on the phone near the end of a name (opens the menu, not the ✕); each ✕ taken
+off in turn with the keyboard (focus walks on, then lands on the trigger); a long project name
 at 280px (ellipsizes); collapse and hover-peek with the shelf showing; open from the shelf and
 Escape (focus back on the shelf); a text-spacing bookmarklet or text-only zoom applied with the
 shelf on one line (it stacks rather than clip), then taken off (it goes back to one line);
