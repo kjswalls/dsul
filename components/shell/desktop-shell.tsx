@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useMemo } from 'react';
+import { memo, useCallback, useMemo, useRef } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { ProgramNotice } from '@/components/views/program-notice';
@@ -11,6 +11,7 @@ import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dial
 import { useUIStore } from '@/lib/ui-store';
 import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
+import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
 import { cn } from '@/lib/utils';
 
 /** Below this the panel stops compressing the canvas and overlays it instead. */
@@ -51,6 +52,12 @@ export const DesktopShell = memo(function DesktopShell() {
   // hidden behind an opaque card. A class can't express that; `inert` can.
   const panelOverlays = useMediaQuery(PANEL_OVERLAY_QUERY);
 
+  // With the panel docked, the header row can be wider than <main>, and Tab
+  // onto a control past its edge scrolls <main> to show it. This puts <main>
+  // back once focus has moved on (the hook has the whole story).
+  const mainRef = useRef<HTMLElement>(null);
+  useFocusOnlyScroll(mainRef);
+
   // Stable so the panel's Escape listener isn't torn down and re-bound on every
   // store tick.
   const handlePanelOpenChange = useCallback(
@@ -71,15 +78,14 @@ export const DesktopShell = memo(function DesktopShell() {
           leftward cast onto the sidebar plus a left-edge light-catch, which the
           vertical-only elev family couldn't give it.
 
-          overflow-clip, not overflow-hidden: both clip, but a hidden box is
-          still a scroll container, so Tab onto a control the docked item panel
-          has pushed past this edge (Zen, the Display shelf's ✕) scrolled the
-          whole canvas sideways, and with no scrollbar nothing brought it back.
-          A clip box is not a scroll container, which is also why it needs
-          min-w-0: its automatic minimum width would be its content's again. */}
+          overflow-hidden, not overflow-clip: a hidden box is still a scroll
+          container, so focus can scroll it to show a control the docked item
+          panel has pushed past this edge, and useFocusOnlyScroll brings it back
+          (a clip box would leave that focus on a control nobody can see). */}
       <main
+        ref={mainRef}
         inert={panelOverlays && !!panelState}
-        className="relative flex min-w-0 flex-1 flex-col overflow-clip rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
+        className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
       >
         {/* The hover-peek trigger used to be a 12px strip here, on this panel's
             left edge. <Sidebar/>'s expand zone now covers those same pixels and

@@ -1024,21 +1024,22 @@ under it (`lib/use-fit-hour-px.ts`) sizes Day and Week × Schedule's hour rows, 
 phone's DaySchedule's, to the height left. The shelf is in flow, so while anything is set
 the row grows 27px for the shelf's one line and 23px for each line its stack adds (162, 185,
 231 and 277px for 1, 2, 4 and 6 lines), and the rows re-fit as it comes, goes, or stacks.
-One line is the common case. With every kind of setting on at once (six lines), measured in
-Chromium on one sample day (the hour rows fit the span of the day's timed items, so the px/h
-and overflow figures are that day's, and another day's differ; the header, card and viewport
-heights do not): 1366×768 Week × Schedule's overflow goes from 101 to 243px (Week × Schedule
-is already at the 40px/h floor on most laptops, so every line is scroll); 1440×900 Day ×
-Schedule goes from 42 to 40px/h with one line; a 390×844 phone's card goes from 106.5 to
-248.5px and its hour rows from 53 to 40px/h; at 375×667 the day's viewport goes from 463 to
-321px, and with the keyboard up (375×407) from 203 to 61px. Those are full-screen viewports;
-in a real laptop window, where the browser takes 90 to 160px, Day × Schedule is often
-already at the floor with nothing set (1280×610: the viewport goes from 449 to 422px with
-one line, and to 307px with six), so there every line is scroll on Day too. There is no cap.
-A "+N" would break the shelf's one promise, that it names exactly what the dot counts; if
-the stack proves too tall on the canvas, a cap or a wrapping fit for this mount is the
-lever. `desktop-shell.tsx` records the shelf as the one thing in the header row allowed to
-grow it.
+One line is the usual case for one or two settings; with a type and two more, List and Day ×
+Buckets often stack (see "Words" below). With every kind of setting on at once (six lines),
+measured in Chromium on one sample day (the hour rows fit the span of the day's timed items,
+so the px/h and overflow figures are that day's, and another day's differ; the header, card
+and viewport heights do not): 1366×768 Week × Schedule's overflow goes from 101 to 243px
+(Week × Schedule is already at the 40px/h floor on most laptops, so every line is scroll);
+1440×900 Day × Schedule goes from 42 to 40px/h with one line; a 390×844 phone's card goes
+from 106.5 to 248.5px and its hour rows from 53 to 40px/h; at 375×667 the day's viewport
+goes from 463 to 321px, and with the keyboard up (375×407) from 203 to 61px. Those are
+full-screen viewports; in a real laptop window, where the browser takes 90 to 160px, Day ×
+Schedule is often already at the floor with nothing set (1280×610: the viewport goes from
+449 to 422px with one line, and to 307px with six), so there every line is scroll on Day
+too. There is no cap. A "+N" would break the shelf's one promise, that it names exactly what
+the dot counts; if the stack proves too tall on the canvas, a cap or a wrapping fit for this
+mount is the lever. `desktop-shell.tsx` records the shelf as the one thing in the header row
+allowed to grow it.
 
 **When it moves on its own.** The shelf flips between one line and the stack whenever the
 capsule's width changes, and in List (and, by under 4px, Day × Buckets) that width follows
@@ -1058,18 +1059,26 @@ that same delivery and raised the "ResizeObserver loop" error. The fit now waits
 
 **Words.** The type clause reads "Showing Tasks" / "Showing Habits": the menu's own row (its
 Type section says All, Tasks, Habits), led by a muted "Showing" as grouping is by "Grouped
-by", and "Show" is the palette's name for the setting. A bare "Tasks" beside "Grouped by
-Project" read as a group or a project name. "Tasks only" would be false (Tasks keeps every
-task-like item, custom types included) and Settings already uses "Tasks only — habits always
-stay" for something else. "Hide habits" was tried and dropped: the menu the text opens has
-no row by that name to undo it under. The shelf names what is SET, never what reaches the
-view: a sort outside List, or grouping by Time bucket on Buckets, is named like any other
-setting, as the dot counts it. Notes saying so ("Sorted by Priority · List only") were
-designed and dropped, and what a later version must get right closes this addendum. Never
-named, as on the braindump: Show paused (app-wide, and the menu captions its row so) and the
-palette's Hide completed tasks (a planner setting, not a Display one). Palette commands
-change the named settings with no menu open, and the shelf follows them; "Clear canvas
-filters" clears the filters only, so any grouping, ordering or type stays named.
+by", and "Show" is the palette's name for the setting. The words cost width: "Showing Tasks"
+is 78.4px against "Hide habits"' 59.2, and "Showing Habits" 81.4 against "Hide tasks"' 55.2,
+so more states stack. Of the 84 states with a type set (both types, seven groupings, three
+sorts, Hide finished on and off), the ones that fit on one line fall from 37 to 24 in Day ×
+List, 45 to 33 in Week × List, 56 to 40 in Day × Buckets, 57 to 48 in Day × Schedule, 58 to
+52 in Week × Buckets and 60 to 56 in Week × Schedule, and none goes the other way. "Grouped
+by Project · Showing Tasks · Hide finished" stacks three lines in Day × List on today's
+date, 2px over its one line, where "Hide habits" fit; the list starts 46px lower, and paging
+to a wider date flips it back to one line. A bare "Tasks" beside "Grouped by Project" read
+as a group or a project name. "Tasks only" would be false (Tasks keeps every task-like item,
+custom types included) and Settings already uses "Tasks only — habits always stay" for
+something else. "Hide habits" was tried and dropped: the menu the text opens has no row by
+that name to undo it under. The shelf names what is SET, never what reaches the view: a sort
+outside List, or grouping by Time bucket on Buckets, is named like any other setting, as the
+dot counts it. Notes saying so ("Sorted by Priority · List only") were designed and dropped,
+and what a later version must get right closes this addendum. Never named, as on the
+braindump: Show paused (app-wide, and the menu captions its row so) and the palette's Hide
+completed tasks (a planner setting, not a Display one). Palette commands change the named
+settings with no menu open, and the shelf follows them; "Clear canvas filters" clears the
+filters only, so any grouping, ordering or type stays named.
 
 **Accepted, not fixed:**
 
@@ -1080,14 +1089,25 @@ filters" clears the filters only, so any grouping, ordering or type stays named.
   capsule's own Zen tooltip is the plain one. A token change would restyle every icon control.
 - The ✕ cannot be undone: Ctrl+Z is the planner's undo and never reaches view settings, the
   same as the menu's Reset row. It sits 14px under Zen.
-- With the item panel docked and the default sidebar at roughly 1181 to 1265px windows,
-  `<main>` is too narrow to hold the capsule and clips its right end, the ✕ with Zen. The
-  text still opens the menu. `<main>` is `overflow-clip min-w-0` rather than
-  `overflow-hidden` because Tab onto a clipped control scrolled a hidden box: the whole
-  canvas slid 50 to 109px left in Day and stayed there until the panel closed (242px in
-  Week, until the next Tab into the grid). Screenshots of both scopes, all three layouts,
-  panel open and shut, at 1440 and 1200px matched to within one level of anti-aliasing on
-  the rounded corner.
+- With the item panel docked, `<main>` can be narrower than the header row, and it clips
+  the row's right end. How far depends on scope, layout and the sidebar's width. With the
+  default sidebar, Zen and the ✕ are clipped up to 1275px windows in Day × Schedule, 1286 in
+  Week × Schedule and 1278 in Week × Buckets, and WeekScale's controls up to 1486 (1478 in
+  Buckets). With the sidebar at its widest, 720px, a 1440 window leaves `<main>` 252px, and
+  even the Display trigger is past the edge. A pointer cannot reach what is clipped; the
+  text still opens the menu.
+- The keyboard can. `<main>` stays `overflow-hidden`, which is still a scroll container, so
+  Tab onto a clipped control scrolls it into view. Nothing ever scrolled it back, so the
+  canvas stayed slid, 50 to 242px, until the panel closed. `useFocusOnlyScroll`
+  (`hooks/use-focus-only-scroll.ts`) puts `<main>` back at rest a frame after focus moves
+  on or a click lands in the canvas, and holds still while a menu opened from the canvas
+  has focus, since the menu is anchored in `<main>` and Radix hands focus back with
+  preventScroll. Chromium scrolls only for a control that is wholly hidden, so the hook
+  also finishes the scroll for one cut part-way (the ✕ showed 19% of itself in Week at
+  1265px). The shelf text, when it is wider than `<main>`, shows its start. Review first
+  made `<main>` `overflow-clip min-w-0` to stop the slide, and that was reverted: a clip box
+  never scrolls, so Tab landed on controls nobody could see, the ✕ among them.
+  `tests/unit/desktop-main-scroll.test.tsx` pins the class and the hook together.
 - The phone skeleton is the card at rest (106.5px, which the skeleton rounds to 106); a
   first paint with the shelf or the review notice up grows the card downward by that much.
 
@@ -1111,10 +1131,12 @@ current layout (a sort outside List, `sortByBlockedBy`; a grouping `groupBySuppo
 **Manual QA states:** 1440×900 and 1366×768, Day and Week × Schedule, List and Buckets: one
 setting; everything on (six lines); page dates in Day × List and click Week × List's
 headings with a shelf near its threshold, with a window `error` listener attached (no
-"ResizeObserver loop"); the item panel docked at 1280 and 1200px; open from the shelf and
-Escape (focus back on the text); ✕ with the keyboard (focus lands on the Display trigger). A
-390×844 phone: the same settings, the review notice owed and not, the sheet opened from the
-text, and Reset display from the sheet (focus lands on the Display icon).
+"ResizeObserver loop"); the item panel docked at 1280 and 1200px, and Tab through the header
+there (each control shows whole while it has focus, and the canvas is back at rest once
+focus moves into the schedule or a click lands there); open from the shelf and Escape (focus
+back on the text); ✕ with the keyboard (focus lands on the Display trigger). A 390×844
+phone: the same settings, the review notice owed and not, the sheet opened from the text,
+and Reset display from the sheet (focus lands on the Display icon).
 
 ## Related
 
