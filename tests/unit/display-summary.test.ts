@@ -3,7 +3,7 @@ import { renderHook, act, cleanup } from '@testing-library/react';
 
 /**
  * The display model — what a surface's Display settings are, derived once for
- * the trigger's dot, the menu's Reset row and the braindump's shelf.
+ * the trigger's dot, the menu's Reset row and each surface's Display shelf.
  *
  * Mostly pure, and that is the point of the split: `summarizeDisplay` is handed
  * its inputs, so the count can be held against the menu's own formula over
@@ -73,7 +73,7 @@ import {
 } from '@/lib/filters';
 import { EXT_GOALS } from '@/lib/extension-registry';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useViewStore } from '@/lib/view-store';
+import { useViewStore, type TypeFilter } from '@/lib/view-store';
 import type { SortBy } from '@/lib/sort-rows';
 import type { Goal } from '@/lib/planner-types';
 import { disableExtensions, enableExtensions } from './support/extensions';
@@ -367,10 +367,19 @@ describe('the words', () => {
     expect(s.clauses.map(clauseText)).toEqual(['Grouped by status', 'Sorted by sideways']);
   });
 
-  it('shows the type filter on the canvas only', () => {
-    expect(summarize({ surface: 'canvas', typeFilter: 'habits' }).clauses.map(clauseText)).toEqual([
-      'Habits',
+  it('shows the type filter on the canvas only, as what it hides', () => {
+    // Tasks keeps every task-like item, custom types included, so "Tasks only"
+    // would be false for anyone with a custom type.
+    expect(summarize({ surface: 'canvas', typeFilter: 'tasks' }).clauses.map(clauseText)).toEqual([
+      'Hide habits',
     ]);
+    expect(summarize({ surface: 'canvas', typeFilter: 'habits' }).clauses.map(clauseText)).toEqual([
+      'Hide tasks',
+    ]);
+    // A value no option knows is counted, so it is named, as stored.
+    const odd = summarize({ surface: 'canvas', typeFilter: 'errands' as string as TypeFilter });
+    expect(odd.activeCount).toBe(1);
+    expect(odd.clauses.map(clauseText)).toEqual(['errands']);
     // The braindump neither counts nor shows it, whatever the shared field holds.
     expect(summarize({ typeFilter: 'habits' })).toEqual({ activeCount: 0, clauses: [] });
   });

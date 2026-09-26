@@ -184,8 +184,7 @@ function Tick({ on, className }: { on: boolean; className?: string }) {
 
 /**
  * 8px dot in the real priority token, or a hollow ring for "no priority".
- * Exported so the braindump's Display shelf marks a value the way its row here
- * does.
+ * Exported so the Display shelf marks a value the way its row here does.
  */
 export function PriorityDot({ value }: { value: PriorityFilterValue }) {
   if (value === NO_PRIORITY) {
@@ -206,7 +205,7 @@ export function PriorityDot({ value }: { value: PriorityFilterValue }) {
  * Colour is quarantined to a glyph, never a fill — a 9px rounded square in the
  * container's own colour. The lime budget is exactly one mark per surface (the
  * trigger dot), so a lime-filled selected chip like today's is out. Exported for
- * the braindump's Display shelf, like PriorityDot.
+ * the Display shelf, like PriorityDot.
  */
 export function ContainerSquare({ color }: { color: string }) {
   return (
@@ -501,15 +500,17 @@ export function DisplayMenu({
    */
   scope?: ViewScope;
   /**
-   * A second way in, for the braindump's Display shelf: open this menu from
-   * something other than its trigger, and move focus to the trigger before that
-   * something goes away.
+   * A second way in, for the Display shelf under each surface's header: open
+   * this menu from something other than its trigger, and move focus to the
+   * trigger before that something goes away. Every mount that shows a shelf
+   * passes a ref; the braindump, the desktop capsule and the phone's Today
+   * card all do.
    *
    * A handle, not a second trigger and not open state lifted into the mount.
    * Radix keeps one trigger ref and one anchor per menu, so a second
    * DropdownMenuTrigger would take both over (and duplicate the trigger's test
    * id). Open state held by the braindump would re-render its whole list on
-   * every open and close, and held in a store it would outlive the menu it
+   * every open and close (and held by the capsule, the header it sits in), and held in a store it would outlive the menu it
    * describes — an armed slot that springs open later is the ui-store bug the
    * Organize console already had to route around. Behind a handle, each shell
    * keeps its open state where it already lives.
@@ -578,8 +579,8 @@ export function DisplayMenu({
    * The Goal clause's rows, described as DATA before anything draws them.
    *
    * ACTIVE goals (lib/goals.ts `displayGoals`), plus any SELECTED goal that is
-   * no longer active — `goalMenuOrder`, the order the braindump's shelf lists
-   * them in too — plus a placeholder row for any selected id the store can
+   * no longer active — `goalMenuOrder`, the order the shelf lists them in
+   * too — plus a placeholder row for any selected id the store can
    * no longer name at all. None of the three halves is tidiness: this menu's
    * rule is that hiding a row STRANDS the clause — the trigger keeps counting
    * something the panel has nothing to account for — and a goal can leave the
@@ -629,7 +630,7 @@ export function DisplayMenu({
 
   /**
    * The count behind the trigger dot and the Reset badge, from the one summary
-   * the braindump's shelf renders too — so the dot and the shelf cannot
+   * the surface's shelf renders too — so the dot and the shelf cannot
    * disagree about what is set. What it counts, and why, is in
    * lib/display-summary.ts.
    */
@@ -1301,8 +1302,8 @@ function DisplaySheet({
         // animation. Opening is one path, vaul's own trigger, and this lands in
         // the same batch as `setOpen(true)` — the first frame of the new sheet
         // is already the root, whichever way the last one closed. The
-        // braindump's Display shelf opens the sheet by clicking that same
-        // trigger, through DisplayMenu's handle, so it comes this way too.
+        // Display shelf opens the sheet by clicking that same trigger,
+        // through DisplayMenu's handle, so it comes this way too.
         if (next) {
           setPaneId(null);
           // The focus effect would otherwise read the last opening's pane as a

@@ -32,7 +32,6 @@ import {
   BRAINDUMP_GROUP_BY_OPTIONS,
   CANVAS_GROUP_BY_OPTIONS,
   SORT_BY_OPTIONS,
-  TYPE_OPTIONS,
 } from './view-options';
 import { PRIORITY_LABELS, type Goal, type Priority } from './planner-types';
 import type { SortBy } from './sort-rows';
@@ -41,8 +40,9 @@ import type { SortBy } from './sort-rows';
  * display-summary.ts — what a surface's Display settings ARE, derived once.
  *
  * Three things read "what is set" on a surface: the Display trigger's dot and
- * count, the menu's Reset row, and the braindump's Display shelf, which spells
- * the settings out under the header while any are set. They have to agree to
+ * count, the menu's Reset row, and the Display shelf, which spells the
+ * settings out under the surface's header while any are set — under the
+ * braindump's, and under the canvas's on both shells. They have to agree to
  * the value, and the menu already paid for learning why: it replaced two
  * popovers whose bodies drifted apart field by field until one of them was
  * wrong (see the header of components/primitives/display-menu.tsx). A shelf
@@ -166,9 +166,9 @@ export interface DisplayValue {
 export type DisplayClause =
   | { id: 'group'; label: string }
   | { id: 'sort'; label: string }
-  // The canvas only, where no shelf mounts; kept so the model answers for both
-  // surfaces and the count's type term has a clause behind it.
-  | { id: 'type'; label: string }
+  // The canvas only: the braindump's corpus has no type filter. The stored
+  // value, which clauseText spells as what the filter hides.
+  | { id: 'type'; value: string }
   | { id: 'priority' | 'project' | 'goal'; noun: string; values: DisplayValue[] }
   | { id: 'hide-finished' };
 
@@ -352,7 +352,7 @@ export function summarizeDisplay(input: DisplaySummaryInput): DisplaySummary {
     clauses.push({ id: 'group', label: labelOf(options, groupBy) });
   }
   if (sortSet) clauses.push({ id: 'sort', label: labelOf(SORT_BY_OPTIONS, sortBy) });
-  if (typeSet) clauses.push({ id: 'type', label: labelOf(TYPE_OPTIONS, typeFilter) });
+  if (typeSet) clauses.push({ id: 'type', value: typeFilter });
 
   const priorities = priorityValues(filters.priorities);
   // 'Priority' is a literal in the menu's section label too.
@@ -380,7 +380,14 @@ export function clauseText(c: DisplayClause): string {
     case 'sort':
       return `Sorted by ${c.label}`;
     case 'type':
-      return c.label;
+      // What the filter takes away, as Hide finished says. Not "Tasks only":
+      // Tasks keeps every task-LIKE item, custom types included (the tasks
+      // projection in lib/planner-store.ts), and "Tasks only" already means
+      // something else in Settings. Not a bare "Tasks" either, which beside
+      // "Grouped by Project" reads as a group, or as a project called Tasks.
+      // A value no option knows (a hand-edited blob) is named as stored, as
+      // grouping and ordering name theirs.
+      return c.value === 'tasks' ? 'Hide habits' : c.value === 'habits' ? 'Hide tasks' : c.value;
     case 'priority':
     case 'project':
     case 'goal':
@@ -392,7 +399,7 @@ export function clauseText(c: DisplayClause): string {
 
 /**
  * The live summary for one surface — the count DisplayMenu's trigger shows and
- * the clauses the braindump's shelf renders.
+ * the clauses the surface's shelf renders.
  *
  * One field selector per input, and none of them returns a fresh object:
  * zustand 5 compares a selector's result by identity and this repo has no
@@ -438,8 +445,8 @@ export function useDisplaySummary(surface: DisplaySurface): DisplaySummary {
 
 /**
  * Reset clears everything the Display menu OWNS for this surface. The menu's
- * "Reset display" row and the braindump shelf's ✕ are both this function, so
- * the two cannot come apart.
+ * "Reset display" row and the shelf's ✕ are both this function, so the two
+ * cannot come apart.
  *
  * `showPausedOnGrid` is deliberately excluded, and the menu captions its row
  * "Everywhere" for the same reason — it is an app-wide setting that happens to

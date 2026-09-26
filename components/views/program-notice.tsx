@@ -35,8 +35,8 @@ import { cn } from '@/lib/utils';
  * through the week and means nothing without the date it is about — so it
  * belongs beside the date, in the canvas header row, and not on a dateless
  * surface at the other end of the screen. Moving it there also cost it nothing
- * and gained it a layout: the row's height is max(children) = the capsule's 96,
- * so an h-8 line beside it is free, and it now renders in `buckets` too, where
+ * and gained it a layout: the row's height is max(children) = the capsule's 96
+ * or more, so an h-8 line beside it is free, and it now renders in `buckets` too, where
  * it never has.
  *
  * The PERMANENT half of the same fact — "Summer is off", true on every date —

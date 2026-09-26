@@ -543,9 +543,13 @@ export function AppShell() {
             mobile-bottom-dock.tsx — if either card's inset or radius moves, this
             moves with it or the first paint jumps. */}
         <div className="flex h-[100dvh] flex-col bg-surface-0 pt-safe md:hidden">
-          {/* 106px is the real card, added up: 10 top margin + 32 (the user
-              menu sets the date row's height) + 8 gap + 46.5 week strip + 8
-              bottom padding + its two 1px borders. The border is not decoration
+          {/* 106px is the real card at rest, added up: 10 top margin + 32 (the
+              user menu sets the date row's height) + 8 gap + 46.5 week strip + 8
+              bottom padding + its two 1px borders. The review notice and the
+              Display shelf add to it when they show, which a skeleton rendered
+              on the server cannot know, so a first paint with either up grows
+              the card downward by that much; the date and its week never move.
+              The border is not decoration
               either — surface-2 on surface-0 is ΔL 0.014 in light, four 8-bit
               levels, so without it this block is invisible in one theme and the
               skeleton shows bare paper where the card is about to appear. */}

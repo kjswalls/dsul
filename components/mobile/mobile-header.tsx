@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import {
   format,
   addDays,
@@ -16,7 +16,8 @@ import { Rows3, List, Clock, ChevronDown } from 'lucide-react';
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { Calendar as CalendarComponent } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
-import { DisplayMenu } from '@/components/primitives/display-menu';
+import { DisplayMenu, type DisplayMenuHandle } from '@/components/primitives/display-menu';
+import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
@@ -157,8 +158,9 @@ function WeekStrip() {
 }
 
 /**
- * Mobile header: on Today, one card carrying the date row and the week strip.
- * It replaces the two stacked pills (header + mini week nav) the phone used to
+ * Mobile header: on Today, one card carrying the date row and the week strip,
+ * and under them the review notice and the Display shelf whenever either has
+ * something to say. It replaces the two stacked pills (header + mini week nav) the phone used to
  * open with; two bordered, shadowed surfaces competing above the first row of
  * content is what made the shell read busy. The other two tabs bring their own
  * header and get no card at all (see the gate below).
@@ -172,6 +174,10 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
+  // The Display menu's handle, shared with the shelf at the foot of the card.
+  // Up here with the other hooks, above the early return for the dateless
+  // tabs: a hook below it would run on Today and not on the others.
+  const displayRef = useRef<DisplayMenuHandle>(null);
 
   useEffect(() => setMounted(true), []);
 
@@ -313,7 +319,7 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
                   touch slot its neighbour uses, without changing what the
                   braindump and the desktop capsule get. */}
               <span className="flex [&>button]:size-[30px] [&>button]:rounded-sm">
-                <DisplayMenu surface="canvas" trigger="icon" scope="day" />
+                <DisplayMenu ref={displayRef} surface="canvas" trigger="icon" scope="day" />
               </span>
             </div>
 
@@ -333,6 +339,18 @@ export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProp
             has no writer here to correct it. Renders nothing on any other date,
             and nothing at all when the review is not owed. */}
         <DayHeaderNotice scope="day" />
+
+        {/* The Display shelf, the desktop capsule's line under its pill: what
+            the menu above has set, in words, while anything is. Last in the
+            card, so the date, its week and the review notice about that date
+            stay one cluster and the line sits over the content it describes.
+            The card is as wide as the screen whatever its content, so, unlike
+            the desktop capsule, it needs no containment. px-0 puts the text on
+            the date's edge; the card's gap is the 8px above it, and pb-px with
+            the card's pb-2 the braindump's 9px below. In flow, like the
+            desktop's: the day under this card re-fits its hour rows as the
+            shelf comes and goes. */}
+        <DisplayShelf surface="canvas" menu={displayRef} touch className="px-0 pt-0 pb-px" />
       </div>
     </header>
   );

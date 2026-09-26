@@ -107,9 +107,11 @@ export const DesktopShell = memo(function DesktopShell() {
           <HeaderCapsule />
           {/* "6 items are away with Summer" — the day's own suppression line,
               beside the day it is about. It costs this row nothing: the row's
-              height is max(children), which the capsule already sets at 96, and
-              mt-2 + h-8 lands its centre on the date row's (the capsule's p-2
-              plus half of its 32px nav row = 24px from the top, both ways).
+              height is max(children), which the capsule already sets — 96 at
+              rest, more while its Display shelf shows — and mt-2 + h-8 lands
+              its centre on the date row's (the capsule's p-2 plus half of its
+              32px nav row = 24px from the top, both ways; the shelf grows the
+              capsule at the bottom, so this never moves).
               Being here rather than inside a view is what gets it into `buckets`
               too — it used to exist only in day-schedule and day-list. */}
           {/* max-w bounds the truncate: program names are user data, and an
@@ -119,7 +121,7 @@ export const DesktopShell = memo(function DesktopShell() {
           {/* "Today's review is waiting" — beside the date it is about, on the
               same argument and in the same row as the line above it. Free, for
               the same reason: the row's height is max(children) and the capsule
-              already sets that at 96. It goes dark on any other date and the
+              is never shorter than 96. It goes dark on any other date and the
               line falls back to the dock. WeekScale only renders in week scope,
               so in day scope these two share the row with room to spare. */}
           <DayHeaderNotice className="mt-2 h-8 min-w-0 max-w-[280px]" />
@@ -137,7 +139,11 @@ export const DesktopShell = memo(function DesktopShell() {
             The rule this leaves behind still binds: anything mounted between
             the header row and the timeline is an input to the grid's height and
             must be constant-height at every data volume, or it must not go
-            here. */}
+            here. The header row is an input too, and it has exactly one
+            deliberate exception: the Display shelf under the capsule's pill,
+            which grows the row by a line per row of settings while any are set
+            and re-fits the grid as it comes and goes (header-capsule.tsx has
+            why that cost was taken). Nothing else in the row may grow it. */}
 
         {/* min-h-0 is explicit rather than relying on overflow-hidden to zero the
             automatic minimum size of a flex item: this column is what

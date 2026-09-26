@@ -20,6 +20,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
+import { SIDEBAR_MIN_WIDTH } from '@/lib/sidebar-store';
 import { narrowingClauseCount, passesFilters } from '@/lib/filters';
 import {
   useBraindumpGroupBy,
@@ -607,14 +608,30 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         className={cn(isMobile && 'mx-[10px]')}
         // The Display shelf: what the menu has set, in words, under the pill —
         // and when a filter matches nothing, the only thing on screen that says
-        // why the list below is showing its empty-state poem. It sits IN FLOW,
-        // which the canvas header could not afford: there it would stand over an
-        // hour grid that derives its row height from the column's remaining
-        // height, and every hour row would re-scale as the first filter went
-        // on. This header stands over a scrolling list, which only starts
-        // scrolling a line sooner. And the shelf is there only while something
-        // is set, so a braindump with nothing set keeps the bare capsule.
-        below={<DisplayShelf surface="braindump" menu={displayRef} touch={isMobile} />}
+        // why the list below is showing its empty-state poem. It sits in flow,
+        // and this header stands over a scrolling list, which only starts
+        // scrolling a line sooner. (The canvas capsule's twin stands over the
+        // hour grid, which pays for the line in hour height instead — see
+        // header-capsule.tsx.) And the shelf is there only while something is
+        // set, so a braindump with nothing set keeps the bare capsule.
+        //
+        // The sidebar's shelf keeps the fit of the narrowest column it can have.
+        // Collapse and hover-peek animate the column between w-0 and its width
+        // over 300ms with the braindump still mounted, so without a floor every
+        // frame of the fold would re-fit, and the collapsed shelf would sit in a
+        // one-value-per-row stack that every expand then unfolds from. At rest
+        // the floor never binds — the column is never narrower than
+        // SIDEBAR_MIN_WIDTH, less the capsule's 10px sides — and while it folds,
+        // the column's own overflow clips the rest. The phone tab has no
+        // collapsing column to ride out, so it takes no floor.
+        below={
+          <DisplayShelf
+            surface="braindump"
+            menu={displayRef}
+            touch={isMobile}
+            floor={isMobile ? undefined : SIDEBAR_MIN_WIDTH - 20}
+          />
+        }
       >
         {/* On the phone this row is the Braindump tab's ONLY header, so these
             controls are the whole surface's chrome and they were still wearing

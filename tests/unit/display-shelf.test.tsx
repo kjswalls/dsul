@@ -743,19 +743,21 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('line');
   });
 
-  it('stacks when the line will not fit, comes back when it will, and re-fits on a change of text', () => {
+  it('stacks when the line will not fit, comes back when it will, and re-fits on a change of text', async () => {
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
 
-    // Two lines of 100 in a box of 150. The shelf measured 0 at mount, so this
-    // first resize is where it measures.
+    // Two lines of 100 in a box of 150. The shelf measured 0 at mount, so the
+    // frame after this first resize is where it measures.
     layOut();
     boxWidth = 150;
     resize();
+    await nextFrame();
     expect(fit()).toBe('stack');
 
     boxWidth = 250;
     resize();
+    await nextFrame();
     expect(fit()).toBe('line');
 
     // A third line, and no resize: the text changed, so the shelf re-fits itself.
@@ -765,10 +767,9 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('stack');
   });
 
-  it('only compares on a resize — the width it measured is not re-read there, or after', async () => {
-    // Forcing the one-line layout to measure inside observer delivery is how a
-    // resize loop starts; a resize reuses the width the text last measured. And
-    // not a frame later either: the column resizes on every frame of a drag.
+  it('only compares on a resize — the width it measured is not re-read', async () => {
+    // A resize reuses the width the text last measured: the column resizes on
+    // every frame of a drag, and each measure forces the one-line layout.
     layOut();
     boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
@@ -825,7 +826,7 @@ describe('fit: one line, or the stack', () => {
 
     lineWidthOf = () => 150;
     resample(80);
-    // Never inside the observer's own delivery, where it only compares.
+    // Never inside the observer's own delivery, which writes nothing.
     expect(fit()).toBe('line');
     await nextFrame();
     expect(fit()).toBe('stack');
@@ -857,13 +858,46 @@ describe('fit: one line, or the stack', () => {
     await firstDelivery();
     expect(fit()).toBe('line');
 
-    // One delivery: the column widens by 10 as the text widens by half.
+    // One delivery: the column widens by 10 as the text widens by half. Had
+    // the frame after it only compared, the old text's 200 would still fit.
     boxWidth = 260;
     lineWidthOf = () => 150;
     deliver([probe(), boxWidth], [sample(), 105]);
-    // The delivery only compares, and the width it has is the old text's...
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('writes nothing inside the observer\'s delivery, and fits in the frame after it', async () => {
+    // A fit that changes changes the shelf's height, and under the canvas
+    // header's pill that resizes the view's scroll viewport, which useFitHourPx
+    // watches at the probe's own depth. Written mid-delivery, the engine skips
+    // that observation and raises a "ResizeObserver loop" error on the page.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
     expect(fit()).toBe('line');
-    // ...until the frame after, which measures the new one.
+
+    boxWidth = 150;
+    resize();
+    expect(fit()).toBe('line');
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('keeps a measure asked for by an earlier delivery in the same frame', async () => {
+    // The text grows, then the column moves, before the frame runs: the frame
+    // the first delivery asked for serves both, and still measures.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    await firstDelivery();
+    expect(fit()).toBe('line');
+
+    lineWidthOf = () => 150;
+    resample(80);
+    resize();
     await nextFrame();
     expect(fit()).toBe('stack');
   });

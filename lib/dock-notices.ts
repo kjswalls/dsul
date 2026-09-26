@@ -17,8 +17,8 @@ import type { LucideIcon } from 'lucide-react';
  * BOTTOM_RESERVE at 24px, and it counts only chrome ABOVE the grid — so a 34px
  * row below the grid inside the same scroller cannot be seen by it and makes a
  * compressed day scroll that previously fit. The header row has the opposite
- * property: its height is max(children), which the capsule already sets at 96,
- * so a line beside the date costs nothing at all. That is the same argument
+ * property: its height is max(children), which the capsule already sets at 96
+ * or more, so a line beside the date costs nothing at all. That is the same argument
  * ProgramNotice makes for the same address.
  */
 export type NoticeAnchor = 'braindump' | 'day-header';

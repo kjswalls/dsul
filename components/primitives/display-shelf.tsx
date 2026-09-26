@@ -18,7 +18,6 @@ import {
   type DisplaySurface,
 } from '@/lib/display-summary';
 import { NO_PRIORITY } from '@/lib/filters';
-import { SIDEBAR_MIN_WIDTH } from '@/lib/sidebar-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -48,15 +47,26 @@ export function DisplayShelf({
   surface,
   menu,
   touch = false,
+  floor,
+  className,
 }: {
   surface: DisplaySurface;
   /** The menu this shelf describes. Read in handlers only — see DisplayMenuHandle. */
   menu: React.RefObject<DisplayMenuHandle | null>;
-  /**
-   * The phone mount: 28px hit areas on both buttons, and no width floor, since
-   * a phone tab has no collapsing column to ride out (see the root's style).
-   */
+  /** A phone mount: 28px hit areas on both buttons. */
   touch?: boolean;
+  /**
+   * The narrowest width the shelf fits itself to, in px, for a mount whose
+   * column animates through narrower widths than it ever rests at (the
+   * sidebar's fold). None by default: the shelf fits whatever it is given.
+   */
+  floor?: number;
+  /**
+   * The mount's own insets, merged over the root's. Never `data-fit` or a
+   * rule that sizes the root from its content: the fit below needs the root's
+   * width to come from outside.
+   */
+  className?: string;
 }) {
   // Held out here, where it outlives any one body: a pick can take the shelf
   // away and another bring it back while the menu stays open, and the menu
@@ -74,6 +84,8 @@ export function DisplayShelf({
       surface={surface}
       menu={menu}
       touch={touch}
+      floor={floor}
+      className={className}
       clauses={clauses}
       openerRef={openerRef}
     />
@@ -198,11 +210,17 @@ function Clause({ clause: c }: { clause: DisplayClause }) {
  * COMPARES that number with the width on offer. The text changes when its
  * string does, and also when its size does with the string unchanged: a font
  * that loads late, a text-spacing or text-only-zoom override, or the browser's
- * font-size setting, which moves its rem-sized gaps and dots. Measuring
- * means forcing the one-line layout; doing that inside ResizeObserver delivery
- * is how a measure → resize → measure loop starts, and the "ResizeObserver
- * loop" errors it raises land on every other observer on the page. So what the
- * observer hears that needs a measure is measured a frame later, outside it.
+ * font-size setting, which moves its rem-sized gaps and dots.
+ *
+ * Neither happens inside ResizeObserver delivery. A measure forces the
+ * one-line layout, and a compare that changes its answer changes the shelf's
+ * height, so either one resizes things other observers watch, in the very
+ * delivery that is reporting sizes. In the canvas header that is the view's own
+ * scroll viewport, which useFitHourPx watches at the probe's depth, and the
+ * engine skips an observation that deep and fires a "ResizeObserver loop" error
+ * that lands on every other observer on the page. So the observer only notes
+ * what it heard, and the shelf acts on it a frame later, outside delivery: one
+ * frame in the old fit, the price of never resizing anything mid-delivery.
  */
 
 /**
@@ -240,12 +258,16 @@ function ShelfBody({
   surface,
   menu,
   touch,
+  floor,
+  className,
   clauses,
   openerRef,
 }: {
   surface: DisplaySurface;
   menu: React.RefObject<DisplayMenuHandle | null>;
   touch: boolean;
+  floor: number | undefined;
+  className: string | undefined;
   clauses: DisplayClause[];
   openerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
@@ -308,13 +330,16 @@ function ShelfBody({
   // the line changing size with its string unchanged: a late font, a
   // text-spacing or text-only-zoom override, a minimum font size, or the
   // browser's font-size setting, which leaves the 11px text alone and moves
-  // every rem-sized gap, priority dot and the ✕. That re-measures, a frame
-  // later, in either fit and whatever else the delivery holds: a change that
-  // lands mid-drag is not taken for the drag. A drag never touches the sample,
-  // so it only ever compares. The first delivery carries the sample too, so a
-  // shelf that mounts laid out measures once more a frame later and finds the
-  // width it already had. A sample gone to nothing is the shelf being hidden,
-  // with nothing to fit until the sample's return, itself a resize, measures it.
+  // every rem-sized gap, priority dot and the ✕. That re-measures, in either
+  // fit and whatever else the delivery holds: a change that lands mid-drag is
+  // not taken for the drag. A drag never touches the sample, so it only ever
+  // compares. The first delivery carries the sample too, so a shelf that
+  // mounts laid out measures once more and finds the width it already had. A
+  // sample gone to nothing is the shelf being hidden, with nothing to fit
+  // until the sample's return, itself a resize, measures it.
+  //
+  // Both wait for the next frame (see "fit" above): the delivery writes
+  // nothing, and a frame already asked for serves every delivery before it.
   //
   // Not the lines, the obvious thing to watch: a stacked line stretches to the
   // column, so the text changing size resizes nothing there, and a change in a
@@ -330,19 +355,19 @@ function ShelfBody({
     const box = linesRef.current;
     if (typeof ResizeObserver === 'undefined' || !root || !probe || !sample || !box) return;
     let frame = 0;
+    let remeasure = false;
     const ro = new ResizeObserver((entries) => {
-      // The one measure in the observer's own delivery: a shelf that mounted
-      // where nothing is laid out (display:none, jsdom) measured 0, and
-      // measures once here, the first time its lines box has a width.
-      if (lineWidth.current === 0 && box.getBoundingClientRect().width > 0) {
-        lineWidth.current = measureLineWidth(root, box);
-      }
-      applyFit(root, box, lineWidth.current);
-      const resized = entries.some((e) => e.target === sample && e.contentRect.width > 0);
-      if (frame || !resized) return;
+      if (entries.some((e) => e.target === sample && e.contentRect.width > 0)) remeasure = true;
+      if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
-        lineWidth.current = measureLineWidth(root, box);
+        // A shelf that mounted where nothing is laid out (display:none, jsdom)
+        // measured 0, and measures here, the first time its lines box has a
+        // width.
+        if (remeasure || (lineWidth.current === 0 && box.getBoundingClientRect().width > 0)) {
+          remeasure = false;
+          lineWidth.current = measureLineWidth(root, box);
+        }
         applyFit(root, box, lineWidth.current);
       });
     });
@@ -379,16 +404,11 @@ function ShelfBody({
     <div
       ref={rootRef}
       data-testid={`display-shelf-${surface}`}
-      className="group/shelf relative flex items-start gap-2 px-[15px] pb-[3px] pt-2 text-[11px] font-medium leading-[18px] text-secondary-foreground"
-      // The sidebar shelf keeps the fit of the narrowest column it can have.
-      // Collapse and hover-peek animate the column between w-0 and its width
-      // over 300ms with the braindump still mounted, so without a floor every
-      // frame of the fold would re-fit, and the collapsed shelf would sit in a
-      // one-value-per-row stack that every expand then unfolds from. At rest
-      // the floor never binds — the column is never narrower than
-      // SIDEBAR_MIN_WIDTH, less the capsule's 10px sides — and while it folds,
-      // the column's own overflow clips the rest.
-      style={touch ? undefined : { minWidth: SIDEBAR_MIN_WIDTH - 20 }}
+      className={cn(
+        'group/shelf relative flex items-start gap-2 px-[15px] pb-[3px] pt-2 text-[11px] font-medium leading-[18px] text-secondary-foreground',
+        className
+      )}
+      style={floor === undefined ? undefined : { minWidth: floor }}
     >
       <span
         ref={probeRef}
@@ -456,9 +476,9 @@ function ShelfBody({
       <span id={descId} className="sr-only">
         {shelfDescription(clauses)}
       </span>
-      {/* The header's tooltip, which every icon-only control in it wears; the
-          text beside it names itself, so it has none. None on the phone, where
-          no hover earns one and a tap would pop it over the thumb. */}
+      {/* A tooltip for the ✕, which has no words of its own; the text beside
+          it names itself, so it has none. None on a touch mount, where no
+          hover earns one and a tap would pop it over the thumb. */}
       {touch ? (
         resetButton
       ) : (
