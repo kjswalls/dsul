@@ -276,9 +276,9 @@ interface BraindumpProps {
    * the top, where this header is the tab's whole chrome: the capsule, and the
    * notice slot under it, are inset off the screen edge so they line up with
    * the dated tabs' header card and with the dock; and every control in the
-   * header — the Display shelf's text and ✕ included — reaches 28px for a
-   * thumb. Everything below that already sits on the paper backdrop on both
-   * shells.
+   * header — the Display shelf's text included — reaches 28px for a thumb. The
+   * shelf has no ✕ there: see the foot of components/primitives/display-shelf.tsx.
+   * Everything below that already sits on the paper backdrop on both shells.
    */
   variant?: 'sidebar' | 'mobile';
   /**
@@ -306,10 +306,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
   // The Display menu's handle, shared with the shelf under the header: the
-  // shelf's text opens the menu through it, and its ✕ parks focus on the
-  // trigger before the reset takes the shelf away. A ref rather than open state
-  // held here, so opening and closing the menu re-render the menu alone and not
-  // every row of this list.
+  // shelf's text opens the menu through it, and on a pointer its ✕ parks
+  // focus on the trigger before the reset takes the shelf away. A ref rather
+  // than open state held here, so opening and closing the menu re-render the
+  // menu alone and not every row of this list.
   const displayRef = useRef<DisplayMenuHandle>(null);
 
   const { isOver, setNodeRef } = useDroppable({ id: 'sidebar' });

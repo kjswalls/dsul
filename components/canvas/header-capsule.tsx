@@ -258,22 +258,24 @@ export function HeaderCapsule() {
           sizes its rows to the height left below it (lib/use-fit-hour-px.ts):
           the rows re-fit as the shelf comes and goes, and as it moves between
           one line and a stack, 27px for its one line and 23px for each line
-          the stack adds. That cost was taken on purpose (2026-09-25, measured
-          in memory/plans/display-menu.md): the shelf is worth that much grid
-          while the view is narrowed, and at rest nothing moves.
+          the stack adds. That cost was taken on purpose (asked for 2026-09-25;
+          measured in memory/plans/display-menu.md, in the addendum on the
+          canvas's Display shelf): the shelf is worth that much grid while the
+          view is narrowed, and at rest nothing moves.
 
           contain-inline-size is load-bearing. This capsule is sized by its
           content, and the shelf in its one-line fit is as wide as its whole
           line, so without containment the capsule would grow to the line and
           the shelf would never stack — its fit needs its width from outside.
           Contained, the capsule keeps the width its two rows give it and the
-          shelf takes that. px-4 puts the text under the Layout icon and the ✕
-          under the Zen leaf; pt-1 and pb-px keep the braindump's 8px above
-          and 9px below. */}
+          shelf takes that. px-4 puts the text under the Layout icon, and
+          pr-3.5 the ✕ under the Zen leaf, which the pill insets 14px (its
+          px-1.5, then half of what w-8 leaves around the 16px leaf); pt-1
+          and pb-px keep the braindump's 8px above and 9px below. */}
       <DisplayShelf
         surface="canvas"
         menu={displayRef}
-        className="contain-inline-size px-4 pt-1 pb-px"
+        className="contain-inline-size px-4 pr-3.5 pt-1 pb-px"
       />
     </div>
   );

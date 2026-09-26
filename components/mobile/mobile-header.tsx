@@ -119,7 +119,8 @@ function WeekStrip() {
                 // --lime-ink is near-black in dark mode, so the lime accent
                 // reads as ink only through --day-today, which flips to the
                 // bright lime there. Never through an opacity — this is the
-                // one mark on the card that is allowed to be lime.
+                // card's one lime mark of chrome besides the Display dot (the
+                // Display shelf's priority and project glyphs are data).
                 selected ? 'text-day-today' : 'text-muted-foreground'
               )}
             >

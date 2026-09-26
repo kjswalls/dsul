@@ -69,10 +69,17 @@ export const DesktopShell = memo(function DesktopShell() {
           shadow at the panel's edge, which is what reads as "lifted" in dark
           mode where a black drop barely registers); shadow-elev-panel adds the
           leftward cast onto the sidebar plus a left-edge light-catch, which the
-          vertical-only elev family couldn't give it. */}
+          vertical-only elev family couldn't give it.
+
+          overflow-clip, not overflow-hidden: both clip, but a hidden box is
+          still a scroll container, so Tab onto a control the docked item panel
+          has pushed past this edge (Zen, the Display shelf's ✕) scrolled the
+          whole canvas sideways, and with no scrollbar nothing brought it back.
+          A clip box is not a scroll container, which is also why it needs
+          min-w-0: its automatic minimum width would be its content's again. */}
       <main
         inert={panelOverlays && !!panelState}
-        className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
+        className="relative flex min-w-0 flex-1 flex-col overflow-clip rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
       >
         {/* The hover-peek trigger used to be a 12px strip here, on this panel's
             left edge. <Sidebar/>'s expand zone now covers those same pixels and

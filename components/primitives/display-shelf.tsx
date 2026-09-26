@@ -33,15 +33,16 @@ import { cn } from '@/lib/utils';
  * It renders exactly when the dot is lit and names exactly what the dot counts,
  * because both read the one summary in lib/display-summary.ts — a shelf that
  * worked out its own answer would sooner or later disagree with the dot. Its
- * text is a single button that opens the menu, and the ✕ beside it IS "Reset
- * display", the same function the menu's row calls.
+ * text is a single button that opens the menu, and on a pointer the ✕ beside
+ * it IS "Reset display", the same function the menu's row calls. A touch mount
+ * has no ✕ (see the foot of ShelfBody).
  *
  * No opacity and no transition anywhere in it. The Low dot is --priority-low
  * and a project square can be --accent-8, both lime: they are data glyphs, drawn
  * at rest exactly as the list's own priority bars and the menu's squares are,
- * and the surface's lime CHROME is still the trigger dot alone. No live region
- * and no heading either — the menu it opens is modal, so nothing here changes
- * while a screen reader could be reading it.
+ * and the shelf adds no lime CHROME of its own. No live region and no heading
+ * either — the menu it opens is modal, so nothing here changes while a screen
+ * reader could be reading it.
  */
 export function DisplayShelf({
   surface,
@@ -53,7 +54,7 @@ export function DisplayShelf({
   surface: DisplaySurface;
   /** The menu this shelf describes. Read in handlers only — see DisplayMenuHandle. */
   menu: React.RefObject<DisplayMenuHandle | null>;
-  /** A phone mount: 28px hit areas on both buttons. */
+  /** A phone mount: a 28px hit area on the text, and no ✕ (see the foot of ShelfBody). */
   touch?: boolean;
   /**
    * The narrowest width the shelf fits itself to, in px, for a mount whose
@@ -115,8 +116,8 @@ const SINGLE =
 const MULTI =
   'flex shrink-0 gap-x-2.5 group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:shrink group-data-[fit=stack]/shelf:flex-wrap';
 
-/** The words the arrangement clauses lead with, as `clauseText` spells them. */
-const LEAD = { group: 'Grouped by', sort: 'Sorted by' } as const;
+/** The words the arrangement and type clauses lead with, as `clauseText` spells them. */
+const LEAD = { group: 'Grouped by', sort: 'Sorted by', type: 'Showing' } as const;
 
 type ShelfLine = { id: string; clauses: DisplayClause[] };
 
@@ -164,12 +165,12 @@ function Clause({ clause: c }: { clause: DisplayClause }) {
   switch (c.id) {
     case 'group':
     case 'sort':
+    case 'type':
       return (
         <span data-clause={c.id} className={SINGLE}>
           <span className="font-normal text-muted-foreground">{LEAD[c.id]}</span> {c.label}
         </span>
       );
-    case 'type':
     case 'hide-finished':
       return (
         <span data-clause={c.id} className={SINGLE}>
@@ -272,7 +273,7 @@ function ShelfBody({
   openerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   // The hook DisplayMenu picks its shell with, so the popup this announces is
-  // the one that opens. `touch` is the mount's, and only sizes targets.
+  // the one that opens. `touch` is the mount's: the text's reach, and no ✕.
   const isTouch = useIsMobile();
   const descId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
@@ -361,10 +362,15 @@ function ShelfBody({
       if (frame) return;
       frame = requestAnimationFrame(() => {
         frame = 0;
+        // Hidden. Against a 0-wide box every line is too wide, so a fit here
+        // would write the stack for the shelf's return to paint for a frame.
+        // A measure asked for stays asked for, and the return, itself a
+        // resize, brings the frame that does it.
+        if (box.getBoundingClientRect().width === 0) return;
         // A shelf that mounted where nothing is laid out (display:none, jsdom)
         // measured 0, and measures here, the first time its lines box has a
         // width.
-        if (remeasure || (lineWidth.current === 0 && box.getBoundingClientRect().width > 0)) {
+        if (remeasure || lineWidth.current === 0) {
           remeasure = false;
           lineWidth.current = measureLineWidth(root, box);
         }
@@ -391,10 +397,7 @@ function ShelfBody({
         menu.current?.focus();
         resetDisplay(surface);
       }}
-      className={cn(
-        'grid h-[18px] w-4 shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
-        touch && "relative before:absolute before:-inset-x-[6px] before:-inset-y-[5px] before:content-['']"
-      )}
+      className="grid h-[18px] w-4 shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground"
     >
       <X className="size-[11px]" aria-hidden />
     </button>
@@ -476,12 +479,16 @@ function ShelfBody({
       <span id={descId} className="sr-only">
         {shelfDescription(clauses)}
       </span>
-      {/* A tooltip for the ✕, which has no words of its own; the text beside
-          it names itself, so it has none. None on a touch mount, where no
-          hover earns one and a tap would pop it over the thumb. */}
-      {touch ? (
-        resetButton
-      ) : (
+      {/* No ✕ on a touch mount. A destructive target pressed up against a
+          full-width tap target is a mis-tap generator, with no hover to tell
+          the two apart (the rule the dock's notices keep, in
+          components/sidebar/dock-notices.tsx), and this one would wipe every
+          Display setting on the surface with nothing to undo it. The sheet the
+          text opens has Reset display on its root pane, one tap further.
+
+          On a pointer the ✕ wears a tooltip, having no words of its own; the
+          text beside it names itself, so it has none. */}
+      {!touch && (
         <RailTooltip side="bottom" label="Reset display">
           {resetButton}
         </RailTooltip>

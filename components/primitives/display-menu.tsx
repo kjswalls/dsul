@@ -176,7 +176,7 @@ function Cap({ children }: { children: React.ReactNode }) {
  *
  * Not `text-primary-foreground`: that is --lime-ink, dark-green ink meant to sit
  * ON a lime fill, and it is very nearly invisible on the popover ground. See the
- * same bug at header-capsule.tsx:75.
+ * same bug at SelectMenu's check in header-capsule.tsx.
  */
 function Tick({ on, className }: { on: boolean; className?: string }) {
   return on ? <Check className={cn('size-3.5', className)} /> : null;

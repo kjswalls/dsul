@@ -543,16 +543,17 @@ export function AppShell() {
             mobile-bottom-dock.tsx — if either card's inset or radius moves, this
             moves with it or the first paint jumps. */}
         <div className="flex h-[100dvh] flex-col bg-surface-0 pt-safe md:hidden">
-          {/* 106px is the real card at rest, added up: 10 top margin + 32 (the
-              user menu sets the date row's height) + 8 gap + 46.5 week strip + 8
-              bottom padding + its two 1px borders. The review notice and the
-              Display shelf add to it when they show, which a skeleton rendered
-              on the server cannot know, so a first paint with either up grows
-              the card downward by that much; the date and its week never move.
-              The border is not decoration
-              either — surface-2 on surface-0 is ΔL 0.014 in light, four 8-bit
-              levels, so without it this block is invisible in one theme and the
-              skeleton shows bare paper where the card is about to appear. */}
+          {/* 106px is the real card at rest (106.5, rounded down), added up:
+              10 top padding + 32 (the user menu sets the date row's height) + 8
+              gap + 46.5 week strip + 8 bottom padding + its two 1px borders; its
+              10px top margin is this block's own mt-[10px]. The review notice
+              and the Display shelf add to it when they show, which a skeleton
+              rendered on the server cannot know, so a first paint with either
+              up grows the card downward by that much; the date and its week
+              never move. The border is not decoration either — surface-2 on
+              surface-0 is ΔL 0.014 in light, four 8-bit levels, so without it
+              this block is invisible in one theme and the skeleton shows bare
+              paper where the card is about to appear. */}
           <div className="mx-[10px] mt-[10px] h-[106px] flex-shrink-0 rounded-[20px] border border-surface-3 bg-surface-2" />
           <div className="flex-1" />
           <div className="mx-[10px] mb-3 h-[72px] flex-shrink-0 rounded-[10px] bg-surface-3" />

@@ -367,19 +367,19 @@ describe('the words', () => {
     expect(s.clauses.map(clauseText)).toEqual(['Grouped by status', 'Sorted by sideways']);
   });
 
-  it('shows the type filter on the canvas only, as what it hides', () => {
-    // Tasks keeps every task-like item, custom types included, so "Tasks only"
-    // would be false for anyone with a custom type.
+  it('shows the type filter on the canvas only, in the menu’s own words', () => {
+    // The menu's row, led as grouping and ordering are. Not "Tasks only":
+    // Tasks keeps every task-like item, custom types included.
     expect(summarize({ surface: 'canvas', typeFilter: 'tasks' }).clauses.map(clauseText)).toEqual([
-      'Hide habits',
+      'Showing Tasks',
     ]);
     expect(summarize({ surface: 'canvas', typeFilter: 'habits' }).clauses.map(clauseText)).toEqual([
-      'Hide tasks',
+      'Showing Habits',
     ]);
     // A value no option knows is counted, so it is named, as stored.
     const odd = summarize({ surface: 'canvas', typeFilter: 'errands' as string as TypeFilter });
     expect(odd.activeCount).toBe(1);
-    expect(odd.clauses.map(clauseText)).toEqual(['errands']);
+    expect(odd.clauses.map(clauseText)).toEqual(['Showing errands']);
     // The braindump neither counts nor shows it, whatever the shared field holds.
     expect(summarize({ typeFilter: 'habits' })).toEqual({ activeCount: 0, clauses: [] });
   });

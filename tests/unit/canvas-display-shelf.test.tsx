@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react';
 
 /**
  * The Display shelf on the canvas: under the view pill in the desktop header
@@ -16,7 +16,7 @@ import { render, screen, cleanup, fireEvent, waitFor, act } from '@testing-libra
  *
  * jsdom lays nothing out, so the containment is pinned as the class that
  * provides it; what it does to the capsule's width was measured in Chromium
- * (see the capsule's comment on the mount).
+ * (memory/plans/display-menu.md, "Containment is load-bearing on the desktop").
  */
 
 vi.mock('@/lib/db', () => ({
@@ -54,6 +54,8 @@ import { useViewStore } from '@/lib/view-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { EMPTY_VIEW_FILTERS, type ViewFilters } from '@/lib/filters';
 import type { Goal } from '@/lib/planner-types';
+import { useEODStore } from '@/lib/eod-store';
+import { resetNoticeAnchors } from '@/lib/notice-anchors';
 import { enableGoalsAndOrganize } from './support/extensions';
 
 /** jsdom has no pointer capture or ResizeObserver; Radix needs the one, the shelf guards the other. */
@@ -213,8 +215,12 @@ describe('the desktop mount, under the view pill', () => {
 
     // The capsule is sized by its content; without containment it would grow to
     // the shelf's whole line and the shelf would never stack.
-    expect(shelf()).toHaveClass('contain-inline-size', 'px-4', 'pt-1', 'pb-px');
-    expect(shelf()).not.toHaveClass('px-[15px]', 'pt-2', 'pb-[3px]');
+    expect(shelf()).toHaveClass('contain-inline-size', 'px-4', 'pr-3.5', 'pt-1', 'pb-px');
+    // One class to an assertion: a negated toHaveClass with several passes as
+    // soon as any one of them is gone.
+    expect(shelf()).not.toHaveClass('px-[15px]');
+    expect(shelf()).not.toHaveClass('pt-2');
+    expect(shelf()).not.toHaveClass('pb-[3px]');
     // The width floor is the sidebar's, for its fold; the capsule has none.
     expect(shelf().style.minWidth).toBe('');
     expect(opener()).not.toHaveClass('before:absolute');
@@ -231,11 +237,15 @@ describe('the desktop mount, under the view pill', () => {
     expect(container.firstElementChild!.children).toHaveLength(2);
   });
 
-  it('names the type filter by what it hides, not as a bare noun', () => {
+  it('names the type filter in the menu’s words, led as grouping is, never as a bare noun', () => {
     seed({ canvasGroupBy: 'project', typeFilter: 'tasks' });
     renderCapsule();
 
-    expect(shelf().querySelector('[data-clause="type"]')).toHaveTextContent(/^Hide habits$/);
+    const type = shelf().querySelector('[data-clause="type"]')!;
+    expect(type).toHaveTextContent(/^Showing Tasks$/);
+    // The lead is muted as "Grouped by" is, so the value reads as the menu's row.
+    expect(type.firstElementChild).toHaveTextContent(/^Showing$/);
+    expect(type.firstElementChild).toHaveClass('text-muted-foreground');
     expect(shelf().querySelector('[data-clause="group"]')).toHaveTextContent(/^Grouped by Project$/);
   });
 
@@ -298,6 +308,12 @@ describe('the desktop mount, under the view pill', () => {
   it('hands focus to the Display trigger before the reset takes the shelf away', () => {
     seed({ canvasGroupBy: 'project' });
     renderCapsule();
+    // BEFORE: React batches the reset's re-render past the handler either
+    // way, so only what the trigger sees as focus lands can tell the order.
+    let setWhenFocused: string | null = null;
+    trigger().addEventListener('focus', () => {
+      setWhenFocused = useViewStore.getState().canvasGroupBy;
+    });
     resetX().focus();
 
     fireEvent.click(resetX());
@@ -306,6 +322,7 @@ describe('the desktop mount, under the view pill', () => {
     // Not <body>, where a focused button that unmounts leaves it — which is
     // where it would go if the capsule forgot to hand the shelf the menu's ref.
     expect(document.activeElement).toBe(trigger());
+    expect(setWhenFocused).toBe('project');
   });
 
   it('names its ✕ in a tooltip on a pointer, and never with a native title', async () => {
@@ -352,9 +369,32 @@ describe('the phone mount, at the foot of the Today card', () => {
     expect(shelf()).toHaveClass('px-0', 'pt-0', 'pb-px');
     expect(shelf()).not.toHaveClass('contain-inline-size');
     expect(shelf().style.minWidth).toBe('');
-    // 28px targets on a thumb's surface.
+    // A 28px text on a thumb's surface, and no ✕ pressed up against it.
     expect(opener()).toHaveClass('before:absolute', 'before:-inset-y-[5px]');
-    expect(resetX()).toHaveClass('before:absolute', 'before:-inset-x-[6px]');
+    expect(screen.queryByTestId('display-shelf-reset-canvas')).toBeNull();
+  });
+
+  it('comes after the review notice while one is owed, so the date keeps its cluster', () => {
+    resetNoticeAnchors();
+    seed({ canvasGroupBy: 'project' }, { selectedDate: new Date() });
+    useEODStore.setState({
+      _hasHydrated: true,
+      eodReviewEnabled: true,
+      eodReviewTime: '00:00',
+      lastEodReviewDate: null,
+      eodDeferredDate: null,
+    });
+    try {
+      renderPhoneHeader();
+
+      const card = shelf().parentElement!;
+      const notice = screen.getByTestId('notice-slot');
+      expect(card).toContainElement(notice);
+      expect(card.lastElementChild).toBe(shelf());
+      expect(shelf().previousElementSibling).toBe(notice);
+    } finally {
+      useEODStore.setState({ eodReviewEnabled: false, _hasHydrated: false });
+    }
   });
 
   it('is not on the Braindump or Chat tab, whatever the canvas holds', () => {
@@ -368,7 +408,7 @@ describe('the phone mount, at the foot of the Today card', () => {
     }
   });
 
-  it('comes and goes with the tab, with its hooks above the early return', () => {
+  it('comes and goes with the tab, with its hooks above the early return', async () => {
     // A hook below the Today-only return runs on Today and not on the others,
     // and React throws the moment the count changes between renders.
     seed({ canvasGroupBy: 'project' });
@@ -382,9 +422,8 @@ describe('the phone mount, at the foot of the Today card', () => {
     expect(shelf()).toBeInTheDocument();
 
     // And the ref still reaches the menu across the round trip.
-    resetX().focus();
-    fireEvent.click(resetX());
-    expect(document.activeElement).toBe(trigger());
+    fireEvent.click(opener());
+    expect(await screen.findByTestId('display-menu')).toBeInTheDocument();
   });
 
   it('opens the sheet from its text and brings focus back to it', async () => {
@@ -402,16 +441,19 @@ describe('the phone mount, at the foot of the Today card', () => {
     await waitFor(() => expect(document.activeElement).toBe(opener()));
   });
 
-  it('hands focus from its ✕ to the icon trigger, through the card’s wrapper', () => {
+  it('resets from the sheet its text opens, and focus lands on the icon trigger', async () => {
     touch.current = true;
-    seed({ canvasGroupBy: 'project' });
+    seed({ canvasGroupBy: 'project', canvasFilters: filters({ hideFinished: true }) });
     renderPhoneHeader();
-    resetX().focus();
 
-    fireEvent.click(resetX());
+    fireEvent.click(opener());
+    fireEvent.click(within(screen.getByTestId('display-menu')).getByTestId('display-reset'));
 
     expect(queryShelf()).toBeNull();
-    expect(document.activeElement).toBe(trigger());
+    expect(useViewStore.getState().canvasGroupBy).toBe('none');
+    await finishExit();
+    // Through the card's [&>button] wrapper, to the icon trigger itself.
+    await waitFor(() => expect(document.activeElement).toBe(trigger()));
   });
 
   it('has nothing that can fade a lime glyph between it and the header', () => {
