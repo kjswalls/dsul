@@ -67,6 +67,16 @@ describe('convertItem', () => {
     expect(out).not.toHaveProperty('streak');
   });
 
+  it('a Thursday habit switched on a Friday still shows on this week\u2019s Thursday', () => {
+    // Reported: anchored at today (Fri 2026-09-25), the series started after the
+    // Thursday already on screen, so the week column lost it.
+    const out = convertItem(habit({ completedDates: [] }), 'task', {
+      todayStr: '2026-09-25',
+      anchorFloor: '2026-09-20',
+    });
+    expect(out).toMatchObject({ startDate: '2026-09-20' });
+  });
+
   it('habit → task anchors at today when it has no history, in anytime when unbucketed', () => {
     const out = convertItem(habit({ completedDates: [], timeBucket: undefined }), 'task', opts);
     expect(out).toMatchObject({ startDate: '2026-09-25', timeBucket: 'anytime' });

@@ -128,8 +128,15 @@ function switchedStatus(item: Item, toHabit: boolean): string {
 }
 
 export interface ConvertOptions {
-  /** YYYY-MM-DD in the user's timezone. A switch into a dated type anchors here at the latest. */
+  /** YYYY-MM-DD in the user's timezone. */
   todayStr: string;
+  /**
+   * The latest a switch into a dated type may anchor its series: the first day
+   * of the week on screen. A habit has no start, so it shows on every matching
+   * day; anchored at today, a Thursday habit switched on a Friday vanished from
+   * that week's Thursday column. Defaults to `todayStr`.
+   */
+  anchorFloor?: string;
   /** The repeat a one-off item picks up when the target type requires one. */
   repeat?: ConvertRepeat;
   /** A container id for a name, from the store's in-memory list. */
@@ -148,7 +155,8 @@ export interface ConvertOptions {
  *
  * Into a task-like type from a habit: the repeat becomes the series and needs
  * an anchor, so `startDate` is the earliest day it was ever checked off or
- * skipped, or today — every day it already has history for keeps showing it.
+ * skipped, or the start of this week (`anchorFloor`) — every day it already
+ * has history for, and every day of the week you're looking at, keeps showing it.
  * It lands on the grid (`isScheduled`) in its own time bucket, `anytime` if it
  * had none, since the day views only bucket tasks that carry one.
  */
@@ -198,7 +206,8 @@ export function convertItem(item: Item, toType: string, opts: ConvertOptions): I
 
   if (item.type === 'habit') {
     const history = [...(item.completedDates ?? []), ...(item.skippedDates ?? [])].sort();
-    const anchor = history[0] && history[0] < opts.todayStr ? history[0] : opts.todayStr;
+    const floor = opts.anchorFloor && opts.anchorFloor < opts.todayStr ? opts.anchorFloor : opts.todayStr;
+    const anchor = history[0] && history[0] < floor ? history[0] : floor;
     return {
       ...shared,
       ...envelope,
