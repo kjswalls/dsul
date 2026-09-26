@@ -86,6 +86,12 @@ the URL is wanted, not before.
 1366×768, and fits 1024×768 exactly. Fixed is the point: the frame never resizes on a
 section change, which is the single loudest un-premium tell in both current dialogs.
 
+> **Revised (2026-09-26): 1082 × 640, detail 600.** Member rows grew week dots and a
+> four-button rail, and at 456 a title kept ~64px. The tabpanel also lacked `min-w-0`,
+> so one wide row pushed the whole panel past the plate and clipped the detail pane's
+> right edge. Needs 1146×720; below that the plate tracks the window and the detail
+> column (flex-1) absorbs the difference.
+
 **Access: seven doors, one call** — `openDialog({ type: 'console', tab, focusId?, focusNew?, returnTo? })`.
 
 **Contents: six sections in two groups, and nothing else.** Settings stays out

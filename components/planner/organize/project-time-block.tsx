@@ -21,7 +21,7 @@ import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
  * A project's repeating block on the grid.
  *
  * ABSORBED FROM EditProjectDialog, which is deleted in the same commit — it was
- * a 425px modal opened from inside a 938px modal, and the only thing it did that
+ * a 425px modal opened from inside a 938px (now 1082px) modal, and the only thing it did that
  * the detail pane cannot is offer a Cancel.
  *
  * THE SAVE CONTRACT CHANGED, deliberately. That dialog buffered EVERYTHING

@@ -15,7 +15,14 @@ import { CategoryIcon } from '@/lib/category-icons';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
 import { isItemActiveOn, isProgramActiveOn, resolvePauseWrite } from '@/lib/active';
 import { addDaysStr } from '@/lib/container-schedule';
-import { newMemberTaskShape, resolveGoalStateWrite } from '@/lib/goals';
+import { resolveGoalStateWrite } from '@/lib/goals';
+import {
+  defaultWhen,
+  newItemPayload,
+  previewItem,
+  type NewItemWhen,
+} from '@/lib/new-item-shape';
+import { NewItemWhenChip } from './new-item-when';
 import { formatShort, parseDay } from '@/lib/collections';
 import { DayChip, NotesField } from './detail-parts';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD, RoutineMemberList } from './member-list';
@@ -26,7 +33,7 @@ import {
   useWeekDotsFor,
 } from '@/components/planner/schedule/schedule-views';
 import { containerMemberIds } from '@/lib/container-schedule';
-import type { Goal, GoalRole, Item, Program, Routine } from '@/lib/planner-types';
+import type { Goal, GoalRole, Item, Program, Routine, TimeBucket } from '@/lib/planner-types';
 
 /**
  * EVERY FIELD AN ORGANIZER HAS, ASKED AT BIRTH (Kirby, 2026-09-26).
@@ -83,6 +90,39 @@ export interface NewItemDraft {
   title: string;
   /** Which section it was typed into: a goal role, or a routine/program's items. */
   role: NewItemRole;
+  /** When it happens — seeded by defaultWhen, changed on the row's chip. */
+  when: NewItemWhen;
+  /** Its part of the day. Anytime unless changed. */
+  bucket: TimeBucket;
+}
+
+/** The add call each new row becomes — also what the previews draw. */
+function payloadFor(kind: DraftKind, n: NewItemDraft, todayStr: string) {
+  return newItemPayload(
+    { container: kind, role: n.role },
+    n.title,
+    n.when,
+    n.bucket,
+    todayStr,
+    usePlannerStore.getState().projects[0]?.name,
+  );
+}
+
+/** The draft's new rows as the store WOULD hold them, keyed by the row's key. */
+export function draftPreviewItems(kind: DraftKind, draft: ContainerDraft, todayStr: string): Item[] {
+  return draft.newItems.map((n) => previewItem(n.key, payloadFor(kind, n, todayStr)));
+}
+
+/** The draft with its new rows' keys standing in as members — for the previews only. */
+function withPreviewMembers(draft: ContainerDraft): ContainerDraft {
+  const keys = (role: NewItemRole) => draft.newItems.filter((n) => n.role === role).map((n) => n.key);
+  return {
+    ...draft,
+    itemIds: [...draft.itemIds, ...keys('items')],
+    memberIds: [...draft.memberIds, ...keys('member')],
+    milestoneIds: [...draft.milestoneIds, ...keys('milestone')],
+    checkinIds: [...draft.checkinIds, ...keys('checkin')],
+  };
 }
 
 /**
@@ -141,23 +181,16 @@ export function createFromDraft(
   batchHistory(`Add ${kind}: ${name}`, 1 + draft.newItems.length, () => {
     const made: Record<NewItemRole, string[]> = { items: [], member: [], milestone: [], checkin: [] };
     for (const n of draft.newItems) {
-      if (kind === 'routine') {
-        // A routine is a run of habits, so what is typed into one is born a
-        // daily habit — change it to anything else, one at a time, after.
-        // Filed as the add dialog files a new habit (its container is
-        // REQUIRED): the first project, else the legacy 'personal'.
-        made[n.role].push(
-          store.addHabit({
-            title: n.title,
-            project: store.projects[0]?.name ?? 'personal',
-            repeatFrequency: 'daily',
-            timeBucket: 'anytime',
-          } as never)
-        );
-        continue;
-      }
-      const role: GoalRole = n.role === 'items' ? 'member' : n.role;
-      made[n.role].push(store.addTask(newMemberTaskShape(role, n.title, todayStr) as never));
+      // A routine's rows are habits (always repeating); everything else is a
+      // task, one-off or repeating as its row's chip says. The shape rules —
+      // no bucket on an undated one-off, an anchor on a repeating task — live
+      // in lib/new-item-shape.ts, shared with the previews.
+      const payload = payloadFor(kind, n, todayStr);
+      made[n.role].push(
+        payload.itemType === 'habit'
+          ? store.addHabit(payload.data as never)
+          : store.addTask(payload.data as never)
+      );
     }
     const d: ContainerDraft = {
       ...draft,
@@ -449,26 +482,43 @@ export function ContainerDraftFields({
   // The charts preview the DRAFT: activation resolves against the store's lists
   // plus this container as it would be created, so a paused routine's dots go
   // quiet and an Off program's season goes blank before anything is written.
+  //
+  // New rows ride along as preview items (their row key as the id), so a habit
+  // typed in with its days shows in the week dots and the charts before it
+  // exists — as the row the create will actually write.
+  const preview = useMemo(() => withPreviewMembers(draft), [draft]);
+  const previewItems = useMemo(() => draftPreviewItems(kind, draft, todayStr), [kind, draft, todayStr]);
   const overrides = useMemo(() => {
     const nowIso = new Date().toISOString();
     if (kind === 'routine') {
       return {
-        routines: [...routines, { id: DRAFT_ID, ...buildRoutine('', undefined, draft, todayStr, nowIso, tz) }],
+        routines: [...routines, { id: DRAFT_ID, ...buildRoutine('', undefined, preview, todayStr, nowIso, tz) }],
         programs: programs.map((p) =>
           draft.programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
         ),
+        items: previewItems,
       };
     }
     if (kind === 'program') {
-      return { programs: [...programs, { id: DRAFT_ID, ...buildProgram('', undefined, draft) }] };
+      return { programs: [...programs, { id: DRAFT_ID, ...buildProgram('', undefined, preview) }], items: previewItems };
     }
-    return undefined;
-  }, [kind, draft, routines, programs, todayStr, tz]);
-  const week = useWeekDotsFor(draft.itemIds, overrides);
+    return { items: previewItems };
+  }, [kind, draft, preview, previewItems, routines, programs, todayStr, tz]);
+  // The coming seven days, not the calendar week: nothing here exists yet, so
+  // the days already behind it would only ever read as empty.
+  const week = useWeekDotsFor(preview.itemIds, overrides, { ahead: true });
   const seasonIds =
     kind === 'program'
-      ? containerMemberIds({ kind: 'program', program: { id: DRAFT_ID, ...buildProgram('', undefined, draft) } }, items, routines)
+      ? containerMemberIds(
+          { kind: 'program', program: { id: DRAFT_ID, ...buildProgram('', undefined, preview) } },
+          [...items, ...previewItems],
+          routines
+        )
       : [];
+  // A chart with nothing to draw is noise in a form (Kirby, 2026-09-26): each
+  // appears once there is something for it to place.
+  const goalHasMembers =
+    preview.memberIds.length + preview.milestoneIds.length + preview.checkinIds.length > 0;
 
   const live =
     kind === 'program' &&
@@ -593,13 +643,14 @@ export function ContainerDraftFields({
         />
       )}
 
-      {kind === 'goal' && (
+      {kind === 'goal' && goalHasMembers && (
         <GoalSchedule
-          goal={{ ...draft, targetOn: draft.endsOn }}
+          goal={{ ...preview, targetOn: draft.endsOn }}
+          overrides={overrides}
           testId={`${p}-schedule`}
         />
       )}
-      {kind === 'program' && (
+      {kind === 'program' && seasonIds.length > 0 && (
         <section className="flex flex-col gap-2" data-testid={`${p}-season`}>
           <ScheduleHeading label="Season" />
           <SeasonHeatmap
@@ -607,6 +658,7 @@ export function ContainerDraftFields({
             memberIds={seasonIds}
             overrides={overrides}
             testId={`${p}-season-heatmap`}
+            hideEmptyGrid
           />
         </section>
       )}
@@ -628,7 +680,7 @@ export function ContainerDraftFields({
               eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a milestone is a one-shot item."
               onChange={(milestoneIds) => onChange({ milestoneIds })}
-              footer={<NewItemRows draft={draft} role="milestone" onChange={onChange} testPrefix={`${p}-create-milestone`} placeholder="Add a new milestone…" />}
+              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="milestone" onChange={onChange} testPrefix={`${p}-create-milestone`} placeholder="Add a new milestone…" />}
             />
             <ItemMemberList
               label="Check-ins"
@@ -643,7 +695,7 @@ export function ContainerDraftFields({
               eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a check-in is a repeating item."
               onChange={(checkinIds) => onChange({ checkinIds })}
-              footer={<NewItemRows draft={draft} role="checkin" onChange={onChange} testPrefix={`${p}-create-checkin`} placeholder="Add a new weekly check-in…" />}
+              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="checkin" onChange={onChange} testPrefix={`${p}-create-checkin`} placeholder="Add a new weekly check-in…" />}
             />
             <ItemMemberList
               label="Supporting work"
@@ -656,7 +708,7 @@ export function ContainerDraftFields({
               emptyHint={hasNew('member') ? undefined : "The habits and tasks that serve it."}
               eligible={(i) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id)}
               onChange={(memberIds) => onChange({ memberIds })}
-              footer={<NewItemRows draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add new supporting work…" />}
+              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add new supporting work…" />}
             />
           </>
         )}
@@ -689,7 +741,7 @@ export function ContainerDraftFields({
             testPrefix={`${p}-items`}
             // routine_items keeps an order; program_items does not.
             orderable={kind === 'routine'}
-            lead={draft.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
+            lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
             row={{ trailing: week.trailing }}
             emptyHint={
               hasNew('items')
@@ -701,6 +753,9 @@ export function ContainerDraftFields({
             onChange={(itemIds) => onChange({ itemIds })}
             footer={
               <NewItemRows
+                kind={kind}
+                todayStr={todayStr}
+                trailing={week.trailing}
                 draft={draft}
                 role="items"
                 onChange={onChange}
@@ -724,40 +779,76 @@ export function ContainerDraftFields({
  * goal pane's own add rows make them; a check-in is a weekly Sunday task.
  */
 function NewItemRows({
+  kind,
   draft,
   role,
   onChange,
   testPrefix,
   placeholder,
+  todayStr,
+  trailing,
 }: {
+  kind: DraftKind;
   draft: ContainerDraft;
   role: NewItemRole;
   onChange: (patch: Partial<ContainerDraft>) => void;
   testPrefix: string;
   placeholder: string;
+  todayStr: string;
+  /** The list's week dots, drawn for the row's preview item (routine/program items). */
+  trailing?: (item: Item) => React.ReactNode;
 }) {
   const rows = draft.newItems.filter((n) => n.role === role);
+  const patchRow = (key: string, patch: Partial<NewItemDraft>) =>
+    onChange({ newItems: draft.newItems.map((x) => (x.key === key ? { ...x, ...patch } : x)) });
   return (
     <div className="flex flex-col">
       {rows.map((n) => (
-        <div key={n.key} className="flex h-[30px] items-center gap-[9px]" data-testid={`${testPrefix}-row`}>
-          <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-wide uppercase">New</span>
-          <span className="font-content text-content text-foreground min-w-0 flex-1 truncate">{n.title}</span>
-          <button
-            type="button"
-            aria-label={`Don't create ${n.title}`}
-            data-testid={`${testPrefix}-remove`}
-            onClick={() => onChange({ newItems: draft.newItems.filter((x) => x.key !== n.key) })}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring grid size-6 place-items-center rounded-[4px] focus-visible:ring-2 focus-visible:outline-none"
-          >
-            <X className="size-3.5" />
-          </button>
+        // The member rows' own geometry (px 7, gap 9, a 76px rail slot), so the
+        // week dots sit in the same columns as the linked rows' above them.
+        <div key={n.key} className="flex h-[30px] items-center gap-[9px] px-[7px]" data-testid={`${testPrefix}-row`}>
+          <span className="text-muted-foreground w-[18px] shrink-0 text-center text-[9px] font-semibold tracking-wide uppercase">New</span>
+          <span className="font-content text-content text-foreground min-w-0 flex-1 truncate" title={n.title}>{n.title}</span>
+          <NewItemWhenChip
+            ctx={{ container: kind, role: n.role }}
+            when={n.when}
+            bucket={n.bucket}
+            todayStr={todayStr}
+            title={n.title}
+            testId={`${testPrefix}-when`}
+            onChange={(patch) => patchRow(n.key, patch)}
+          />
+          {trailing?.({ id: n.key, title: n.title } as Item)}
+          <span className="flex w-[76px] shrink-0 justify-end">
+            <button
+              type="button"
+              aria-label={`Don't create ${n.title}`}
+              data-testid={`${testPrefix}-remove`}
+              onClick={() => onChange({ newItems: draft.newItems.filter((x) => x.key !== n.key) })}
+              className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring grid size-6 place-items-center rounded-[4px] focus-visible:ring-2 focus-visible:outline-none"
+            >
+              <X className="size-3.5" />
+            </button>
+          </span>
         </div>
       ))}
       <InlineAddRow
         placeholder={placeholder}
         testIdPrefix={testPrefix}
-        onAdd={(title) => onChange({ newItems: [...draft.newItems, { key: crypto.randomUUID(), title, role }] })}
+        onAdd={(title) =>
+          onChange({
+            newItems: [
+              ...draft.newItems,
+              {
+                key: crypto.randomUUID(),
+                title,
+                role,
+                when: defaultWhen({ container: kind, role }),
+                bucket: 'anytime',
+              },
+            ],
+          })
+        }
       />
     </div>
   );

@@ -469,6 +469,7 @@ function RoutineDetail({
 
       <div className="mt-1.5 flex flex-col gap-5">
         <ItemMemberList
+        openItems
           label="Items"
           ownerId={routine.id}
           ownerName={routine.name}

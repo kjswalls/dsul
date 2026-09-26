@@ -445,4 +445,56 @@ describe('a new item typed into a routine', () => {
     expect(made).toMatchObject({ type: 'habit', repeatFrequency: 'daily', project: 'Health' });
     expect(s.routines[0].itemIds).toEqual([made.id]);
   });
+
+  it('is born on the days and part of the day its row chose', () => {
+    seed({ items: [], projects: [{ id: 'pr1', name: 'Health', emoji: '' }] });
+    newContainer('routine');
+    const field = id('routine-dialog-create-item-new-name');
+    fireEvent.change(field, { target: { value: 'Run' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    click('routine-dialog-create-item-when');
+    click('routine-dialog-create-item-when-custom');
+    // Seeded with today's weekday; add Monday and Wednesday.
+    click('routine-dialog-create-item-when-day-1');
+    click('routine-dialog-create-item-when-day-3');
+    click('routine-dialog-create-item-when-bucket-morning');
+    click('routine-dialog-add');
+    const made = usePlannerStore.getState().items.find((i) => i.title === 'Run')!;
+    expect(made).toMatchObject({ type: 'habit', repeatFrequency: 'custom', timeBucket: 'morning' });
+    expect((made as { repeatDays?: number[] }).repeatDays).toEqual(expect.arrayContaining([1, 3]));
+  });
+});
+
+describe('a new item typed into a goal or program', () => {
+  it('can be given a day, and is then born on it', () => {
+    seed({ items: [] });
+    newContainer('goal');
+    const field = id('goal-dialog-create-milestone-new-name');
+    fireEvent.change(field, { target: { value: 'Race day' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    // A milestone only offers one-offs.
+    click('goal-dialog-create-milestone-when');
+    expect(screen.queryByTestId('goal-dialog-create-milestone-when-daily')).toBeNull();
+    click('goal-dialog-create-milestone-when-once');
+    click('goal-dialog-add');
+    const made = usePlannerStore.getState().items.find((i) => i.title === 'Race day')!;
+    // Undated stays undated AND unbucketed — the braindump's rule.
+    expect(made).toMatchObject({ type: 'task' });
+    expect((made as { startDate?: string }).startDate).toBeUndefined();
+    expect((made as { timeBucket?: string }).timeBucket).toBeUndefined();
+  });
+
+  it('can repeat, and a repeating task is anchored so it shows on a day', () => {
+    seed({ items: [] });
+    newContainer('program');
+    const field = id('program-dialog-create-item-new-name');
+    fireEvent.change(field, { target: { value: 'Study' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    click('program-dialog-create-item-when');
+    click('program-dialog-create-item-when-weekdays');
+    click('program-dialog-add');
+    const made = usePlannerStore.getState().items.find((i) => i.title === 'Study')!;
+    expect(made).toMatchObject({ type: 'task', repeatFrequency: 'weekdays', timeBucket: 'anytime' });
+    expect((made as { startDate?: string }).startDate).toBeTruthy();
+  });
 });
