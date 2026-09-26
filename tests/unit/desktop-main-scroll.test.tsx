@@ -697,6 +697,24 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(41);
     });
 
+    it('lets go when focus leaves <main>, so a control that shows part-way at rest stays as it is on the way back', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      act(() => screen.getByTestId('sidebar-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      // No slide is held any more, so nothing places this one afresh.
+      act(() => screen.getByTestId('cut-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
     it('never holds a slide something else made', async () => {
       render(<DesktopShell />);
       const main = await layOut();
@@ -883,25 +901,35 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     main.removeAttribute('inert');
   });
 
-  it('takes a control that shows half a pixel or less at the right edge as out of sight', async () => {
+  it('takes a control that shows a pixel or less at the right edge as out of sight', async () => {
     render(<DesktopShell />);
     const main = await layOut();
-    // Its start 0.4px short of <main>'s inner right edge: a sliver, not a control.
-    place('clipped-control', 400.6, 32);
+    // Its start 0.8px short of <main>'s inner right edge, as a least slide can
+    // leave the control after the one it was made for: a sliver, not a control.
+    place('clipped-control', 400.2, 32);
     act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
     await frame();
-    // Its end at 331.6 from the origin: 32 shows it whole, and 31 would leave 0.6px cut.
+    // Its end at 331.2 from the origin: 32 shows it whole.
     expect(main.scrollLeft).toBe(32);
   });
 
-  it('takes a control that shows half a pixel or less at the left edge as out of sight', async () => {
+  it('leaves a control that shows more than a pixel at the right edge as the browser does', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    place('clipped-control', 399.8, 32);
+    act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
+    await frame();
+    expect(main.scrollLeft).toBe(0);
+  });
+
+  it('takes a control that shows a pixel or less at the left edge as out of sight', async () => {
     render(<DesktopShell />);
     const main = await layOut(150);
     act(() => screen.getByTestId('clipped-control').focus());
     await frame();
     expect(main.scrollLeft).toBe(201);
-    // The thumb's end 0.3px inside the left edge at 201: a sliver, so it comes in whole.
-    place('scale-thumb', 286.3, 16);
+    // The thumb's end 0.8px inside the left edge at 201: a sliver, so it comes in whole.
+    place('scale-thumb', 286.8, 16);
     act(() => screen.getByTestId('scale-thumb').focus({ preventScroll: true }));
     await frame();
     expect(main.scrollLeft).toBe(52);

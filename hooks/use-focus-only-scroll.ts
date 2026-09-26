@@ -26,16 +26,16 @@ import { useEffect, type RefObject } from 'react';
  * or at all, the box is placed for whatever has focus: at rest if it shows
  * there, unless it holds (below), and otherwise moved only when it has to be,
  * because Radix closes a tooltip on any scroll around its trigger, and a
- * tooltip is the only name Zen and the ✕ show. One wholly out of sight comes
- * in to the least slide that shows it whole. So does whatever has focus when
- * the box's width changes (the item panel docks a frame at a time), and a
- * control the layout moves (the shelf refitting, a view switched under it)
- * once the move leaves it cut. Otherwise one that shows, whole or cut
- * part-way, keeps the slide the hook last made, as the browser would leave it,
- * so Tab from Zen to the ✕ moves nothing and the ✕'s tooltip stays up
- * (memory/plans/display-menu.md lists the few window widths where it cannot).
- * A slide the hook did not make comes back as far as that least one: the
- * browser centres what it reveals (Zen slid Week 212px at 1240, where 47
+ * tooltip is the only name Zen and the ✕ show. One out of sight, or showing a
+ * pixel or less, comes in to the least slide that shows it whole. So does
+ * whatever has focus when the box's width changes (the item panel docks a frame
+ * at a time), and a control the layout moves (the shelf refitting, a view
+ * switched under it) once the move leaves it cut. Otherwise one that shows,
+ * whole or cut part-way, keeps the slide the hook last made, as the browser
+ * would leave it, so Tab from Zen to the ✕ moves nothing and the ✕'s tooltip
+ * stays up (memory/plans/display-menu.md lists the few window widths where it
+ * cannot). A slide the hook did not make comes back as far as that least one:
+ * the browser centres what it reveals (Zen slid Week 212px at 1240, where 47
  * shows it).
  *
  * One the layout moves while it still shows whole at a slide the hook made
@@ -261,7 +261,9 @@ function place({ from, to }: Span, x: number, width: number, how: 'kept' | 'move
   const over = to - width;
   const least = to - from > width ? Math.max(0, Math.floor(from)) : over <= 0.5 ? 0 : Math.ceil(over);
   if (least === 0) return 0;
-  // Placed afresh, or wholly out of sight where the box is now: bring it in.
-  if (how === 'fresh' || to - x <= 0.5 || from - x >= width - 0.5) return least;
+  // Placed afresh, or out of sight where the box is now: bring it in. A pixel
+  // or less showing counts as out of sight, because a least slide, rounded up
+  // to show its control whole, can show up to a pixel of the control after it.
+  if (how === 'fresh' || to - x <= 1 || from - x >= width - 1) return least;
   return how === 'moved' ? Math.min(x, least) : x;
 }
