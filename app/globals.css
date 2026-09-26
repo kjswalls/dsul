@@ -1804,6 +1804,36 @@ body {
   }
 }
 
+/* ── Zen transition (components/zen/zen-stage.tsx) ─────────────────────
+   Two pieces that only exist for the second the switch takes.
+
+   The FROST BAND is a sheet of frosted glass that rides just ahead of the
+   RelayField ring: the stage re-masks it every frame to an annulus from the
+   ring outward, so the outgoing surface softens a beat before the tiles reach
+   it and nothing inside the reveal is frosted. The same weather as the room's
+   own frost, which is why it carries a whisper of lime mixed toward
+   transparent rather than faded. Masked shut until the first frame writes it.
+
+   The TRACE is the item's outline carrying it between its block and the
+   hero. Full-strength lime, and it leaves by a clip wiping it away — never
+   by opacity, which would composite the accent to olive. */
+.zen-transition-frost {
+  background: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--lime-solid) 10%, var(--surface-0)) 38%,
+    transparent
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-mask-image: linear-gradient(transparent, transparent);
+  mask-image: linear-gradient(transparent, transparent);
+}
+
+.zen-trace {
+  border: 1.5px solid var(--lime-solid);
+  box-shadow: 0 0 18px color-mix(in oklab, var(--lime-solid) 40%, transparent);
+}
+
 [data-reduce-motion='true'] .zen-frost-a,
 [data-reduce-motion='true'] .zen-frost-b {
   animation: none;
