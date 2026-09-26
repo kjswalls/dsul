@@ -13,6 +13,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { addDays, format, parseISO, startOfDay, subDays } from 'date-fns';
 import {
+  CalendarClock,
   CalendarIcon,
   Check,
   Clock,
@@ -2814,6 +2815,33 @@ function ItemDialogInner({
             onClick={() => setItemSkipped(editItem.id, true, new Date())}
           />
         )}
+        {/* Pause lives here too, beside the other "not now" verbs (a row has
+            no room for it; the pane does). Never the destructive tone: setting
+            something aside is a plan, not a failure. */}
+        {canPause &&
+          (pausedNow ? (
+            <RowControl
+              icon={PlayIcon}
+              label="Resume"
+              testId="item-dialog-resume"
+              onClick={() => handleSetPaused(false)}
+            />
+          ) : (
+            <>
+              <RowControl
+                icon={PauseIcon}
+                label="Pause"
+                testId="item-dialog-pause"
+                onClick={() => handleSetPaused(true)}
+              />
+              <RowControl
+                icon={CalendarClock}
+                label="Pause until…"
+                testId="item-dialog-pause-until"
+                onClick={() => setShowPauseUntil(true)}
+              />
+            </>
+          ))}
         <RowControl
           icon={Trash2}
           label={`Delete ${activeConfig.label.toLowerCase()}`}
@@ -2823,7 +2851,7 @@ function ItemDialogInner({
         />
       </RowControlGroup>
     ) : null;
-  const hasMoreActions = canPause || (streaksOn && !!editConfig?.counters.streak);
+  const hasMoreActions = streaksOn && !!editConfig?.counters.streak;
 
   const headerActions = (
     <div className="ml-auto flex items-center gap-0.5">
@@ -2858,35 +2886,6 @@ function ItemDialogInner({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="w-52">
-            {/* No destructive variant, no warning colour: setting something
-                aside is a plan, not a failure. */}
-            {canPause &&
-              (pausedNow ? (
-                <DropdownMenuItem
-                  data-testid="item-dialog-resume"
-                  onSelect={() => handleSetPaused(false)}
-                >
-                  <PlayIcon className="size-3.5" />
-                  Resume
-                </DropdownMenuItem>
-              ) : (
-                <>
-                  <DropdownMenuItem
-                    data-testid="item-dialog-pause"
-                    onSelect={() => handleSetPaused(true)}
-                  >
-                    <PauseIcon className="size-3.5" />
-                    Pause
-                  </DropdownMenuItem>
-                  <DropdownMenuItem
-                    data-testid="item-dialog-pause-until"
-                    onSelect={() => setShowPauseUntil(true)}
-                  >
-                    <CalendarIcon className="size-3.5" />
-                    Pause until…
-                  </DropdownMenuItem>
-                </>
-              ))}
             {streaksOn && editConfig?.counters.streak && (
               <DropdownMenuItem
                 data-testid="item-dialog-reset-streak"

@@ -31,6 +31,7 @@ import type {
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from './planner-types';
 import { validateProposalOperations } from './proposal';
 import {
+  addDaysToDateStr,
   goalItemIds,
   goalProgress,
   milestoneItemIds,
@@ -2702,8 +2703,10 @@ export const usePlannerStore = create<PlannerStore>()(
         if (fromType === toType) return;
         if (conversionBlock(found, toType, { items: state.items, milestoneIds: milestoneItemIds(state.goals) })) return;
         const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+        const todayStr = toDateStr(new Date(), tz);
         const target = convertItem(found, toType, {
-          todayStr: toDateStr(new Date(), tz),
+          todayStr,
+          anchorFloor: weekStartOf(todayStr, state.weekStartDay),
           repeat: opts?.repeat,
           projectIdFor: (name) => projectIdFor(name, state.projects),
           nextOrder: state.items.reduce((max, i) => (i.type !== 'habit' ? Math.max(max, i.order ?? 0) : max), 0) + 1,
@@ -4665,6 +4668,14 @@ export const usePlannerStore = create<PlannerStore>()(
     }
   )
 );
+
+/** The first day of the week holding `dateStr` (YYYY-MM-DD), by the user's week start. */
+function weekStartOf(dateStr: string, weekStartDay: 'sunday' | 'monday' | 'saturday'): string {
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay();
+  const start = weekStartDay === 'monday' ? 1 : weekStartDay === 'saturday' ? 6 : 0;
+  return addDaysToDateStr(dateStr, -((weekday - start + 7) % 7));
+}
 
 /**
  * Type switches for one item run one at a time. Each write filters on the type
