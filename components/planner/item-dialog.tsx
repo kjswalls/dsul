@@ -128,7 +128,9 @@ import {
 } from '@/lib/container-registry';
 import { membershipSummary, visibleContainerBands } from '@/lib/item-bands';
 import {
+  anchoredSeriesOn,
   currentDayOfWeek,
+  firstRepeatDayFrom,
   isCompletedOnDate,
   isRecurring,
   isSkippedOnDate,
@@ -1000,7 +1002,22 @@ function ItemDialogInner({
         notes: d.notes.trim() || undefined,
         priority: d.priority === 'none' ? undefined : d.priority,
         project: d.container === 'none' ? undefined : d.container,
-        startDate: d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined,
+        // A new repeating item starts on its first repeat day. The date here was
+        // seeded from the day the add opened on, not picked, and a task's start
+        // date is itself an occurrence (anchoredSeriesOn): "Gym, Mondays" made
+        // on a Friday would otherwise also land on that Friday.
+        startDate: d.startDate
+          ? d.repeatFrequency !== 'none'
+            ? firstRepeatDayFrom(
+                {
+                  repeatFrequency: d.repeatFrequency,
+                  repeatDays: d.repeatDays,
+                  repeatMonthDay: d.repeatMonthDay,
+                },
+                format(d.startDate, 'yyyy-MM-dd'),
+              )
+            : format(d.startDate, 'yyyy-MM-dd')
+          : undefined,
         duration: d.duration ? parseInt(d.duration) : undefined,
         timeBucket: effectiveTimeBucket,
         startTime: d.startTime || undefined,
@@ -2728,8 +2745,9 @@ function ItemDialogInner({
   const occursToday =
     !!editItem &&
     paneRecurring &&
-    shouldShowOnDate(editItem, paneToday, activationTz) &&
-    (editItem.type === 'habit' || !editItem.startDate || editItem.startDate.slice(0, 10) <= paneToday);
+    (editItem.type !== 'habit' && editItem.startDate
+      ? anchoredSeriesOn(editItem, editItem.startDate, paneToday, activationTz)
+      : shouldShowOnDate(editItem, paneToday, activationTz));
   const doneToday = !!editItem && paneRecurring && isCompletedOnDate(editItem as Task, paneToday);
   const canSkipToday =
     !!editItem && isSkippable(editItem) && occursToday && !doneToday && !isSkippedOnDate(editItem, paneToday) && !pausedNow;

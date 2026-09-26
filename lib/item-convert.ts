@@ -22,7 +22,7 @@
  * - it is assigned to Beacon and the target type can't be.
  */
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import { isRecurring } from '@/lib/recurrence';
+import { firstRepeatDayFrom, isRecurring } from '@/lib/recurrence';
 import type { HabitItem, Item, RepeatFrequency } from '@/lib/planner-types';
 
 /** The repeats a switch into a repeat-only type can pick from without asking for days. */
@@ -155,8 +155,9 @@ export interface ConvertOptions {
  *
  * Into a task-like type from a habit: the repeat becomes the series and needs
  * an anchor, so `startDate` is the earliest day it was ever checked off or
- * skipped, or the start of this week (`anchorFloor`) — every day it already
- * has history for, and every day of the week you're looking at, keeps showing it.
+ * skipped, or its first repeat day from the start of this week (`anchorFloor`) —
+ * every day it already has history for, and every day of the week you're
+ * looking at, keeps showing it.
  * It lands on the grid (`isScheduled`) in its own time bucket, `anytime` if it
  * had none, since the day views only bucket tasks that carry one.
  */
@@ -207,7 +208,11 @@ export function convertItem(item: Item, toType: string, opts: ConvertOptions): I
   if (item.type === 'habit') {
     const history = [...(item.completedDates ?? []), ...(item.skippedDates ?? [])].sort();
     const floor = opts.anchorFloor && opts.anchorFloor < opts.todayStr ? opts.anchorFloor : opts.todayStr;
-    const anchor = history[0] && history[0] < floor ? history[0] : floor;
+    // A task's start date is itself an occurrence (anchoredSeriesOn), so the
+    // floor snaps to the first day the repeat actually falls on: a Thursday
+    // habit switched mid-week must not also appear on that Sunday.
+    const firstDay = firstRepeatDayFrom(item, floor);
+    const anchor = history[0] && history[0] < firstDay ? history[0] : firstDay;
     return {
       ...shared,
       ...envelope,
