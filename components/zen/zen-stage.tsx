@@ -19,7 +19,7 @@ import {
   ZEN_BAND_FRAC,
   ZEN_WAVE_MS,
   farthestCorner,
-  flightAt,
+  traceAt,
   prefersReducedMotion,
   revealRadius,
   tilePhase,
@@ -34,8 +34,11 @@ import {
  * for the ~1s of a switch are both mounted — the outgoing one where it already
  * was, the incoming one pinned over it in a fixed layer that a circle clip
  * reveals from the focal point outward while a single RelayField wave rides
- * the seam. The item Zen puts in its hero lifts off the grid and flies to its
- * place (or back to its slot on the way out).
+ * the seam, with a band of frosted glass just ahead of it. The item Zen puts
+ * in its hero is carried by its OUTLINE, not its words: a lime outline leaves
+ * the item's block and glides to frame the hero, where the title fades up
+ * inside it (and back to the block on the way out). An earlier cut flew and
+ * scaled the title itself, which read as a slideshow effect.
  *
  * Each surface keeps the SAME wrapper element whether it is at rest
  * (`display: contents`, so layout is untouched) or moving (the fixed layer), so
@@ -197,16 +200,18 @@ function RelayLift({
   onDone: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const flyerRef = useRef<HTMLDivElement>(null);
+  const traceRef = useRef<HTMLDivElement>(null);
+  const frostRef = useRef<HTMLDivElement>(null);
 
   useLayoutEffect(() => {
     const canvas = canvasRef.current;
-    const flyer = flyerRef.current;
+    const trace = traceRef.current;
+    const frost = frostRef.current;
     const planner = plannerRef.current;
     const zen = zenRef.current;
     const incoming = dir === 'enter' ? zen : planner;
     const ctx = canvas?.getContext('2d');
-    if (!canvas || !flyer || !planner || !zen || !incoming || !ctx) {
+    if (!canvas || !trace || !frost || !planner || !zen || !incoming || !ctx) {
       onDone();
       return;
     }
@@ -214,32 +219,35 @@ function RelayLift({
     const W = innerWidth;
     const H = innerHeight;
 
-    // ── the flight: the hero title and where it lives in the planner ──
+    // ── the trace: the item's outline, from its block to the hero and back ──
     const hero = zen.querySelector<HTMLElement>('[data-zen-hero]');
     const title = hero?.textContent?.trim() ?? '';
-    const source =
+    const sourceTitle =
       hero && title ? findSourceTitle(planner, hero.dataset.zenHero ?? '', title) : null;
-    const flying = hero && source ? { hero, source } : null;
-    let clone: HTMLElement | null = null;
-    let scaleAtSource = 1;
-    if (flying) {
-      const heroRect = rectOf(flying.hero);
-      clone = flying.hero.cloneNode(true) as HTMLElement;
-      clone.removeAttribute('data-zen-hero');
-      clone.removeAttribute('id');
-      clone.style.margin = '0';
-      clone.style.width = `${heroRect.w}px`;
-      flyer.appendChild(clone);
-      scaleAtSource =
-        parseFloat(getComputedStyle(flying.source).fontSize) /
-          parseFloat(getComputedStyle(flying.hero).fontSize) || 0.35;
-      flying.hero.style.visibility = 'hidden';
-      flying.source.style.visibility = 'hidden';
-    }
+    // The card the user sees: a schedule block's [data-item-id] wrapper is its
+    // whole band (rail, bead, and on a double-booking its siblings' panes too),
+    // so the pane inside it is the item's own pixels. Rows have no pane.
+    const block =
+      sourceTitle?.closest<HTMLElement>('[data-slot="pane"]') ??
+      sourceTitle?.closest<HTMLElement>('[data-item-id]') ??
+      null;
+    const tracing = hero && sourceTitle && block ? { hero, sourceTitle, block } : null;
+    // The words never travel: the outgoing title fades where it sits and the
+    // incoming one fades up inside the outline once it has arrived.
+    const leaving = tracing ? (dir === 'enter' ? tracing.sourceTitle : tracing.hero) : null;
+    const arriving = tracing ? (dir === 'enter' ? tracing.hero : tracing.sourceTitle) : null;
+    // Fades scale from each title's resting opacity: a completed item's title
+    // sits at 60% by class, and an inline 1 would flash it bright.
+    const restOf = (el: HTMLElement | null) => (el ? parseFloat(getComputedStyle(el).opacity) : 1);
+    const leavingRest = restOf(leaving);
+    const arrivingRest = restOf(arriving);
+    if (arriving) arriving.style.opacity = '0';
+    const radius = block ? parseFloat(getComputedStyle(block).borderTopLeftRadius) : NaN;
+    const blockRadius = Number.isNaN(radius) ? 8 : radius;
 
     // ── the focal: where the thing you're looking at starts ──
     const origin =
-      (dir === 'enter' ? flying?.source : flying?.hero) ??
+      (dir === 'enter' ? tracing?.block : tracing?.hero) ??
       (dir === 'enter' ? planner.querySelector('[data-zen-toggle]') : hero) ??
       null;
     const o = origin ? rectOf(origin) : null;
@@ -266,13 +274,21 @@ function RelayLift({
       }
     }
 
-    const last = flying ? { hero: rectOf(flying.hero), source: rectOf(flying.source) } : null;
+    const last = tracing ? { hero: rectOf(tracing.hero), block: rectOf(tracing.block) } : null;
     let raf = 0;
     const start = performance.now();
     const frame = (now: number) => {
       const t = Math.min(1, (now - start) / ZEN_WAVE_MS);
       const front = waveFront(t, reach, band);
-      incoming.style.clipPath = `circle(${revealRadius(front, band)}px at ${fx}px ${fy}px)`;
+      const reveal = revealRadius(front, band);
+      incoming.style.clipPath = `circle(${reveal}px at ${fx}px ${fy}px)`;
+
+      // The frost: a band of frosted glass just ahead of the ring, so the
+      // outgoing surface softens a beat before the tiles reach it. Nothing
+      // inside the reveal is frosted — the arriving surface lands sharp.
+      const mask = `radial-gradient(circle at ${fx}px ${fy}px, transparent ${reveal}px, #000 ${front}px, #000 ${front + band * 0.3}px, transparent ${front + band * 1.3}px)`;
+      frost.style.maskImage = mask;
+      frost.style.setProperty('-webkit-mask-image', mask);
 
       ctx.clearRect(0, 0, W, H);
       ctx.fillStyle = ground;
@@ -298,23 +314,31 @@ function RelayLift({
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
 
-      if (flying && last) {
+      if (tracing && last && leaving && arriving) {
         // Measured live every frame: the incoming planner can still be settling
-        // (the grid fits its hour height after mount), and a target read once
-        // would land the item beside its slot.
-        // A node that left the DOM measures as 0,0 — hold its last real place
-        // instead of letting the title streak to the corner.
-        if (flying.hero.isConnected) last.hero = rectOf(flying.hero);
-        if (flying.source.isConnected) last.source = rectOf(flying.source);
-        const h = last.hero;
-        const s = last.source;
-        const [a, b, sa, sb] =
-          dir === 'enter' ? [s, h, scaleAtSource, 1] : [h, s, 1, scaleAtSource];
-        const { lift, travel } = flightAt(t);
-        const x = a.x + (b.x - a.x) * travel;
-        const y = a.y + (b.y - a.y) * travel - lift * 6;
-        const scale = (sa + (sb - sa) * travel) * (1 + 0.05 * lift);
-        flyer.style.transform = `translate(${x}px, ${y}px) scale(${scale})`;
+        // (the grid fits its hour height after mount). A node that left the DOM
+        // measures as 0,0 — hold its last real place instead.
+        if (tracing.hero.isConnected) last.hero = rectOf(tracing.hero);
+        if (tracing.block.isConnected) last.block = rectOf(tracing.block);
+        const heroBox = padRect(last.hero, 14);
+        const [a, b, ra, rb] =
+          dir === 'enter'
+            ? [last.block, heroBox, blockRadius, 12]
+            : [heroBox, last.block, 12, blockRadius];
+        const p = traceAt(t);
+        trace.style.transform = `translate(${a.x + (b.x - a.x) * p.travel}px, ${a.y + (b.y - a.y) * p.travel}px)`;
+        trace.style.width = `${a.w + (b.w - a.w) * p.travel}px`;
+        trace.style.height = `${a.h + (b.h - a.h) * p.travel}px`;
+        trace.style.borderRadius = `${ra + (rb - ra) * p.travel}px`;
+        // The outline leaves by being wiped away left to right, never by
+        // fading: a lime stroke at partial alpha composites to olive (the
+        // accent rule). The inset overshoots by the glow's reach so the glow
+        // goes with the line.
+        const wiped = (1 - p.stroke) * 100;
+        trace.style.clipPath = `inset(-24px -24px -24px calc(${wiped}% - 24px))`;
+        trace.style.visibility = 'visible';
+        leaving.style.opacity = String(leavingRest * (1 - p.out));
+        arriving.style.opacity = String(arrivingRest * p.in);
       }
 
       if (t < 1) raf = requestAnimationFrame(frame);
@@ -325,26 +349,32 @@ function RelayLift({
     return () => {
       cancelAnimationFrame(raf);
       incoming.style.clipPath = '';
-      if (flying) {
-        flying.hero.style.visibility = '';
-        flying.source.style.visibility = '';
-      }
-      clone?.remove();
+      if (leaving) leaving.style.opacity = '';
+      if (arriving) arriving.style.opacity = '';
     };
   }, [dir, plannerRef, zenRef, onDone]);
 
   return (
     <>
+      <div
+        ref={frostRef}
+        aria-hidden="true"
+        className="zen-transition-frost pointer-events-none fixed inset-0 z-[36]"
+      />
       <canvas
         ref={canvasRef}
         aria-hidden="true"
-        className="pointer-events-none fixed inset-0 z-[36] h-full w-full"
+        className="pointer-events-none fixed inset-0 z-[37] h-full w-full"
       />
       <div
-        ref={flyerRef}
+        ref={traceRef}
         aria-hidden="true"
-        className="pointer-events-none fixed left-0 top-0 z-[37] origin-top-left text-foreground"
+        className="zen-trace pointer-events-none invisible fixed left-0 top-0 z-[38]"
       />
     </>
   );
+}
+
+function padRect(r: Rect, pad: number): Rect {
+  return { x: r.x - pad, y: r.y - pad, w: r.w + pad * 2, h: r.h + pad * 2 };
 }
