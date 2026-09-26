@@ -235,7 +235,7 @@ export function buildSprite(color: string, dark: boolean): HTMLCanvasElement {
  * alpha envelope deepens tiles toward the color at the ripple crest — the
  * light-mode, subtractive mirror of the dark additive bloom.
  */
-function readPalette(
+export function readPalette(
   dark: boolean,
   el: Element,
   lightKey: RelayLightPaletteKey,
