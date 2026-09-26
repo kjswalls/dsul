@@ -50,6 +50,7 @@ import {
   priorityFilterLabel,
   resetDisplay,
   useDisplaySummary,
+  withoutDisplayValue,
   type DisplaySurface,
 } from '@/lib/display-summary';
 import {
@@ -871,15 +872,24 @@ export function DisplayMenu({
       entries: [
         ...projects.map((p) => {
           const ref = containerRef('project', p.name);
+          // Folded, because the axis folds (`CONTAINER_KINDS.project.caseFold`)
+          // — a habit stored as 'personal' must tick the 'Personal' row.
+          const checked = selectedProjects.some((n) => sameContainerName('project', n, p.name));
           return rowEntry({
             key: ref,
             leading: <ContainerSquare color={getProjectColor(p.name)} />,
             label: p.name,
-            // Folded, because the axis folds (`CONTAINER_KINDS.project.caseFold`)
-            // — a habit stored as 'personal' must tick the 'Personal' row.
-            checked: selectedProjects.some((n) => sameContainerName('project', n, p.name)),
+            checked,
             keepOpen: true,
-            onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
+            // Unticking folds too, or a row ticked by 'project:personal' would
+            // append 'project:Personal' beside it and stay ticked. The shelf's
+            // ✕ for the same value is this same removal.
+            onToggle: () =>
+              patch({
+                containers: checked
+                  ? withoutDisplayValue(filters, { id: 'project', key: ref }).containers
+                  : [...filters.containers, ref],
+              }),
           });
         }),
         ...(projects.length > 0 ? [{ kind: 'sep', key: 'none-sep' } satisfies Entry] : []),
@@ -1053,6 +1063,19 @@ export function DisplayMenu({
 
   const ariaLabel = activeCount > 0 ? `Display (${activeCount} active)` : 'Display';
 
+  /**
+   * A HELD key on the trigger opens nothing. Focus lands here when the shelf's
+   * last ✕ (or its reset) takes the shelf away, and a key still held from that
+   * press would otherwise autorepeat into the trigger, open the menu, and go on
+   * repeating into its first row. Radix's trigger toggles on every Enter or
+   * Space keydown without looking at `repeat`, and its handler runs after this
+   * one and stands down on a default already prevented; on touch the same
+   * keydown's default is the click that opens the sheet.
+   */
+  const ignoreHeldKey = (e: React.KeyboardEvent) => {
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault();
+  };
+
   // One button, whichever shell opens around it — the mounts size it from
   // outside (mobile-header grows the icon trigger to its 30px row slot), so it
   // must not change shape with the input device either.
@@ -1061,6 +1084,7 @@ export function DisplayMenu({
       <button
         ref={triggerRef}
         aria-label={ariaLabel}
+        onKeyDown={ignoreHeldKey}
         data-testid={`display-trigger-${surface}`}
         data-active={activeCount > 0 ? 'true' : 'false'}
         className={cn(
@@ -1077,6 +1101,7 @@ export function DisplayMenu({
       <button
         ref={triggerRef}
         aria-label={ariaLabel}
+        onKeyDown={ignoreHeldKey}
         data-testid={`display-trigger-${surface}`}
         data-active={activeCount > 0 ? 'true' : 'false'}
         className={cn(

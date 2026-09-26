@@ -198,6 +198,43 @@ describe('what the Display menu writes', () => {
     expect(view().canvasFilters.containers).toEqual(['project:Health']);
   });
 
+  it('unticks a project row ticked by another spelling, every spelling at once', async () => {
+    // A habit stored the project as 'work'; the folded tick shows the Work row
+    // on, and pressing it must take it off, not append 'project:Work' beside it.
+    seed({ canvasFilters: { ...EMPTY_VIEW_FILTERS, containers: ['project:work', 'project:Work', 'none:'] } });
+    render(<DisplayMenu surface="canvas" />);
+
+    await openSub('Project');
+    const work = await screen.findByRole('menuitemcheckbox', { name: /Work/ });
+    expect(work).toHaveAttribute('aria-checked', 'true');
+    fireEvent.click(work);
+
+    expect(view().canvasFilters.containers).toEqual(['none:']);
+    expect(screen.getByRole('menuitemcheckbox', { name: /Work/ })).toHaveAttribute('aria-checked', 'false');
+
+    // And ticks it back in the store's own spelling.
+    fireEvent.click(screen.getByRole('menuitemcheckbox', { name: /Work/ }));
+    expect(view().canvasFilters.containers).toEqual(['none:', 'project:Work']);
+  });
+
+  it.each([
+    { trigger: 'label' as const, key: 'Enter' },
+    { trigger: 'label' as const, key: ' ' },
+    // The icon trigger sits inside a Tooltip trigger as well as the dropdown's.
+    { trigger: 'icon' as const, key: 'Enter' },
+    { trigger: 'icon' as const, key: ' ' },
+  ])('opens nothing on a held $key on the $trigger trigger — only a fresh press', ({ trigger: kind, key }) => {
+    render(<DisplayMenu surface="canvas" trigger={kind} />);
+    const trigger = screen.getByTestId('display-trigger-canvas');
+
+    // Autorepeat, as when a key still held from the shelf's last ✕ lands here.
+    fireEvent.keyDown(trigger, { key, repeat: true });
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+
+    fireEvent.keyDown(trigger, { key });
+    expect(screen.getByTestId('display-menu')).toBeInTheDocument();
+  });
+
   it('offers the unset value, from the registry unsetLabel', async () => {
     render(<DisplayMenu surface="canvas" />);
 
@@ -944,6 +981,14 @@ describe('the touch shell', () => {
     fireEvent.click(await screen.findByTestId(`display-section-${section}`));
     return pane();
   }
+
+  it('cancels a held Enter on the trigger, whose default is the click that opens the sheet', () => {
+    render(<DisplayMenu surface="canvas" trigger="icon" scope="day" />);
+    const trigger = screen.getByTestId('display-trigger-canvas');
+    // jsdom runs no default action, so the cancel itself is what can be seen.
+    expect(fireEvent.keyDown(trigger, { key: 'Enter', repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(trigger, { key: 'Enter' })).toBe(true);
+  });
 
   it('opens a sheet rather than a dropdown, and keeps the second tier behind it', async () => {
     render(<DisplayMenu surface="canvas" trigger="icon" scope="day" />);
