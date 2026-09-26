@@ -130,6 +130,13 @@ export function createFromDraft(
 ): string {
   const store = usePlannerStore.getState();
   const nowIso = new Date().toISOString();
+  // addGoal refuses an item in two roles — check BEFORE making any new items,
+  // or a refusal would leave them behind while the form says nothing was saved.
+  if (kind === 'goal') {
+    const linked = [...draft.memberIds, ...draft.milestoneIds, ...draft.checkinIds];
+    if (new Set(linked).size !== linked.length) return '';
+  }
+  const newItemCount = draft.newItems.length;
   let id = '';
   batchHistory(`Add ${kind}: ${name}`, 1 + draft.newItems.length, () => {
     const made: Record<NewItemRole, string[]> = { items: [], member: [], milestone: [], checkin: [] };
@@ -146,12 +153,19 @@ export function createFromDraft(
     };
     id =
       kind === 'goal'
-        ? store.addGoal(buildGoal(name, icon, d, nowIso))
+        ? newItemCount
+          ? store.addGoal(buildGoal(name, icon, d, nowIso), { newItemCount })
+          : store.addGoal(buildGoal(name, icon, d, nowIso))
         : kind === 'routine'
-          ? d.programIds.length
-            ? store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz), { programIds: d.programIds })
+          ? d.programIds.length || newItemCount
+            ? store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz), {
+                programIds: d.programIds,
+                newItemCount,
+              })
             : store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz))
-          : store.addProgram(buildProgram(name, icon, d));
+          : newItemCount
+            ? store.addProgram(buildProgram(name, icon, d), { newItemCount })
+            : store.addProgram(buildProgram(name, icon, d));
   });
   return id;
 }
@@ -712,14 +726,14 @@ function NewItemRows({
     <div className="flex flex-col">
       {rows.map((n) => (
         <div key={n.key} className="flex h-[30px] items-center gap-[9px]" data-testid={`${testPrefix}-row`}>
-          <span className="text-muted-foreground w-4 shrink-0 text-center text-[10px] font-medium">new</span>
+          <span className="text-muted-foreground shrink-0 text-[10px] font-medium tracking-wide uppercase">New</span>
           <span className="font-content text-content text-foreground min-w-0 flex-1 truncate">{n.title}</span>
           <button
             type="button"
             aria-label={`Don't create ${n.title}`}
             data-testid={`${testPrefix}-remove`}
             onClick={() => onChange({ newItems: draft.newItems.filter((x) => x.key !== n.key) })}
-            className="text-muted-foreground hover:text-foreground hover:bg-accent grid size-6 place-items-center rounded-[4px]"
+            className="text-muted-foreground hover:text-foreground hover:bg-accent focus-visible:ring-ring grid size-6 place-items-center rounded-[4px] focus-visible:ring-2 focus-visible:outline-none"
           >
             <X className="size-3.5" />
           </button>
@@ -753,8 +767,10 @@ function ProgramPicker({
   const programs = usePlannerStore((s) => s.programs);
   return (
     <section className="flex flex-col gap-1.5" data-testid={`${testPrefix}-programs`}>
-      <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">In programs</p>
-      <div className="flex flex-wrap gap-1.5">
+      <p id={`${testPrefix}-programs-label`} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+        In programs
+      </p>
+      <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={`${testPrefix}-programs-label`}>
         {programs.map((program) => {
           const on = draft.programIds.includes(program.id);
           return (

@@ -159,3 +159,46 @@ describe('saves in order', () => {
     expect(toastError).toHaveBeenCalledWith(expect.stringContaining("couldn't be added to Term"));
   });
 });
+
+describe('the review\'s follow-ups', () => {
+  it('queues an edit made while the create is still waiting, instead of losing it', async () => {
+    const item = deferred();
+    vi.mocked(db.createItem).mockReturnValue(item.promise as never);
+    const m = store().addTask({ title: 'Stretch', completedDates: [], skippedDates: [] } as never);
+    const rid = store().addRoutine({ name: 'Mornings', itemIds: [m] });
+    store().updateRoutine(rid, { name: 'Early mornings' });
+    await settle();
+    expect(db.updateRoutine).not.toHaveBeenCalled();
+    item.resolve();
+    await settle();
+    await settle();
+    const createOrder = vi.mocked(db.createRoutine).mock.invocationCallOrder[0];
+    const updateOrder = vi.mocked(db.updateRoutine).mock.invocationCallOrder[0];
+    expect(createOrder).toBeLessThan(updateOrder);
+  });
+
+  it('relabels the create that failed, not an older one with the same name', async () => {
+    store().addRoutine({ name: 'Mornings', itemIds: [] });
+    await settle();
+    vi.mocked(db.createRoutine).mockRejectedValue(new Error('boom'));
+    store().addRoutine({ name: 'Mornings', itemIds: [] });
+    await settle();
+    const labels = store().actionLog.map((a) => a.label);
+    expect(labels.filter((l) => l === 'Add routine: Mornings')).toHaveLength(1);
+    expect(labels).toContain('Couldn’t add routine: Mornings');
+    expect(store().routines).toHaveLength(1);
+  });
+
+  it('says the new items were kept when the container is refused', async () => {
+    vi.mocked(db.createGoal).mockRejectedValue(new Error('boom'));
+    batchHistory('Add goal: Run', 2, () => {
+      const m = store().addTask({ title: 'Run 10k', completedDates: [], skippedDates: [] } as never);
+      store().addGoal({ name: 'Run', state: 'active', memberIds: [], milestoneIds: [m], checkinIds: [] }, { newItemCount: 1 });
+    });
+    await settle();
+    await settle();
+    expect(store().goals).toEqual([]);
+    expect(store().items.map((i) => i.title)).toEqual(['Run 10k']);
+    expect(toastError).toHaveBeenCalledWith(expect.stringContaining('1 new item was kept'));
+  });
+});

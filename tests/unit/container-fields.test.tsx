@@ -424,6 +424,9 @@ describe('new items and programs at birth', () => {
     click('routine-dialog-program');
     expect(id('routine-dialog-note-hides').textContent).toContain('puts 1 item on hold');
     click('routine-dialog-add');
-    expect(addRoutine).toHaveBeenCalledWith(expect.objectContaining({ itemIds: ['h1'] }), { programIds: ['p1'] });
+    expect(addRoutine).toHaveBeenCalledWith(
+      expect.objectContaining({ itemIds: ['h1'] }),
+      expect.objectContaining({ programIds: ['p1'] })
+    );
   });
 });

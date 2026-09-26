@@ -60,20 +60,20 @@ import {
   renameContainerMembers as dbRenameContainerMembers,
   fetchRoutines,
   createRoutine as dbCreateRoutine,
-  updateRoutine as dbUpdateRoutine,
-  deleteRoutine as dbDeleteRoutine,
-  restoreRoutine as dbRestoreRoutine,
+  updateRoutine as rawUpdateRoutine,
+  deleteRoutine as rawDeleteRoutine,
+  restoreRoutine as rawRestoreRoutine,
   fetchPrograms,
   fetchGoals,
   createGoal as dbCreateGoal,
-  updateGoal as dbUpdateGoal,
-  deleteGoal as dbDeleteGoal,
+  updateGoal as rawUpdateGoal,
+  deleteGoal as rawDeleteGoal,
   recordCheckin as dbRecordCheckin,
-  restoreGoal as dbRestoreGoal,
+  restoreGoal as rawRestoreGoal,
   createProgram as dbCreateProgram,
-  updateProgram as dbUpdateProgram,
-  deleteProgram as dbDeleteProgram,
-  restoreProgram as dbRestoreProgram,
+  updateProgram as rawUpdateProgram,
+  deleteProgram as rawDeleteProgram,
+  restoreProgram as rawRestoreProgram,
   itemDbType,
   adoptContainerMembers,
   type TrashEntry,
@@ -472,7 +472,10 @@ interface PlannerStore {
    * The link lives in program_routines (FK to routines), so it is written only
    * once the routine's own row has landed.
    */
-  addRoutine: (routine: Omit<Routine, 'id'> & { id?: string }, opts?: { programIds?: string[] }) => string;
+  addRoutine: (
+    routine: Omit<Routine, 'id'> & { id?: string },
+    opts?: { programIds?: string[]; newItemCount?: number }
+  ) => string;
   updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id'>>) => void;
   removeRoutine: (id: string) => void;
   /**
@@ -489,7 +492,8 @@ interface PlannerStore {
   // items and/or whole routines. Same undo/redo treatment as routines, and
   // gated by the same `collectionsAvailable` flag.
   programs: Program[];
-  addProgram: (program: Omit<Program, 'id'> & { id?: string }) => string;
+  /** `newItemCount`: members created alongside it (createFromDraft) — only for the failure message. */
+  addProgram: (program: Omit<Program, 'id'> & { id?: string }, opts?: { newItemCount?: number }) => string;
   updateProgram: (id: string, updates: Partial<Omit<Program, 'id'>>) => void;
   removeProgram: (id: string) => void;
   /**
@@ -516,7 +520,7 @@ interface PlannerStore {
    *  like it landed and vanishes on reload. */
   goalsAvailable: boolean;
   /** The new id, or '' when refused (an item given two roles). */
-  addGoal: (goal: Omit<Goal, 'id'> & { id?: string }) => string;
+  addGoal: (goal: Omit<Goal, 'id'> & { id?: string }, opts?: { newItemCount?: number }) => string;
   updateGoal: (id: string, updates: Partial<Omit<Goal, 'id'>>) => void;
   removeGoal: (id: string) => void;
   /**
@@ -1323,12 +1327,34 @@ const undoFailedContainerCreate = (
   error: unknown,
   id: string,
   name: string,
-  label: string,
+  keptItems = 0,
 ) => {
   console.error(`create ${kind} failed`, name, error);
-  const entry = [...actionLog].reverse().find((a) => a.label === label);
-  removeRefusedContainer(id, entry?.id ?? null, `Couldn’t add ${kind}: ${name}`, kind);
-  toast.error(`Couldn't save the ${kind} “${name}”. Nothing was saved.`);
+  // Found BEFORE the snapshots are stripped: the entry is the first snapshot
+  // holding the container whose predecessor does not. By content, not by label
+  // — a label can name an older, successful create of the same name once this
+  // one's entry has been truncated off the redo tail or shifted out.
+  const has = (snap: HistoryState) =>
+    kind === 'routine'
+      ? snap.routines.some((r) => r.id === id)
+      : kind === 'program'
+        ? snap.programs.some((p) => p.id === id)
+        : snap.goals.some((g) => g.id === id);
+  let entryId: string | null = null;
+  for (let i = 1; i < historyStack.length; i += 1) {
+    if (has(historyStack[i]) && !has(historyStack[i - 1])) {
+      entryId = actionLog[i]?.id ?? null;
+      break;
+    }
+  }
+  removeRefusedContainer(id, entryId, `Couldn’t add ${kind}: ${name}`, kind);
+  // New items typed into the form WERE saved — they are their own rows, and
+  // now loose in the braindump. Saying "nothing was saved" would be false.
+  toast.error(
+    keptItems > 0
+      ? `Couldn't save the ${kind} “${name}”. Its ${keptItems} new ${keptItems === 1 ? 'item was' : 'items were'} kept — ${keptItems === 1 ? "it's" : "they're"} in your braindump.`
+      : `Couldn't save the ${kind} “${name}”. Nothing was saved.`
+  );
 };
 
 /**
@@ -1354,6 +1380,60 @@ export function awaitItemCreates(ids: readonly string[]): Promise<void> {
 function afterItemCreates<T>(ids: readonly string[], write: () => Promise<T>): Promise<T> {
   return ids.some((id) => pendingItemCreates.has(id)) ? awaitItemCreates(ids).then(write) : write();
 }
+
+/**
+ * Routine / program / goal creates still in flight, by id.
+ *
+ * A container born holding brand-new items waits a round trip before its own
+ * INSERT (above) — and in that window the user can already act on it: "Add &
+ * open" then an edit, or ⌘Z. Sent straight away, that UPDATE or soft-delete
+ * matches zero rows and is lost (and a ⌘Z'd create comes back on reload). So
+ * every write to such an id waits behind its create. Settled promises only: a
+ * refused create is rolled back separately, and a write queued behind it simply
+ * finds nothing, which is the truth.
+ */
+const pendingContainerCreates = new Map<string, Promise<void>>();
+
+function trackContainerCreate(id: string, create: Promise<unknown>, memberIds: readonly string[]) {
+  // Only a create that is WAITING on new items opens the window. An ordinary
+  // create leaves in the same tick as the optimistic set, and a write right
+  // behind it keeps the order it always had — no need to hold it.
+  if (!memberIds.some((m) => pendingItemCreates.has(m))) return;
+  const settled = create.then(
+    () => undefined,
+    () => undefined
+  );
+  pendingContainerCreates.set(id, settled);
+  void settled.then(() => {
+    if (pendingContainerCreates.get(id) === settled) pendingContainerCreates.delete(id);
+  });
+}
+
+function afterContainerCreate<T>(id: string, write: () => Promise<T>): Promise<T> {
+  const pending = pendingContainerCreates.get(id);
+  return pending ? pending.then(write) : write();
+}
+
+// The store's only doors to these nine writes — each queued behind its
+// container's create when one is in flight (see above), immediate otherwise.
+const dbUpdateRoutine: typeof rawUpdateRoutine = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawUpdateRoutine(userId, id, ...rest));
+const dbDeleteRoutine: typeof rawDeleteRoutine = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawDeleteRoutine(userId, id, ...rest));
+const dbRestoreRoutine: typeof rawRestoreRoutine = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawRestoreRoutine(userId, id, ...rest));
+const dbUpdateProgram: typeof rawUpdateProgram = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawUpdateProgram(userId, id, ...rest));
+const dbDeleteProgram: typeof rawDeleteProgram = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawDeleteProgram(userId, id, ...rest));
+const dbRestoreProgram: typeof rawRestoreProgram = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawRestoreProgram(userId, id, ...rest));
+const dbUpdateGoal: typeof rawUpdateGoal = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawUpdateGoal(userId, id, ...rest));
+const dbDeleteGoal: typeof rawDeleteGoal = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawDeleteGoal(userId, id, ...rest));
+const dbRestoreGoal: typeof rawRestoreGoal = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawRestoreGoal(userId, id, ...rest));
 
 const isUniqueViolation = (error: unknown): boolean => {
   const code = (error as { code?: string } | null)?.code;
@@ -2058,7 +2138,10 @@ export const usePlannerStore = create<PlannerStore>()(
           // routine_items rows point at them), then the programs' holds (their
           // program_routines rows point at it). Each FK is composite, and a join
           // written early is skipped as "member no longer exists".
-          afterItemCreates(full.itemIds, () => dbCreateRoutine(userId, full))
+          const waitingOn = full.itemIds.filter((m) => pendingItemCreates.has(m));
+          const created = afterItemCreates(full.itemIds, () => dbCreateRoutine(userId, full));
+          trackContainerCreate(full.id, created, waitingOn);
+          created
             .then(
               () =>
                 Promise.all(
@@ -2074,7 +2157,7 @@ export const usePlannerStore = create<PlannerStore>()(
                       : undefined;
                   })
                 ),
-              (error) => undoFailedContainerCreate('routine', error, full.id, full.name, label)
+              (error) => undoFailedContainerCreate('routine', error, full.id, full.name, opts?.newItemCount)
             );
         }
         return full.id;
@@ -2169,7 +2252,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
       // ── Programs (Phase 3) ─────────────────────────────────────────────────
       programs: [],
-      addProgram: (program) => {
+      addProgram: (program, opts) => {
         const userId = get().userId;
         const full: Program = { ...program, id: program.id ?? crypto.randomUUID() };
         const label = `Add program: ${full.name}`;
@@ -2180,8 +2263,12 @@ export const usePlannerStore = create<PlannerStore>()(
         else run();
         // Brand-new member items first — see addRoutine.
         if (userId) {
-          afterItemCreates(full.itemIds, () => dbCreateProgram(userId, full))
-            .catch((error) => undoFailedContainerCreate('program', error, full.id, full.name, label));
+          const waitingOn = full.itemIds.filter((m) => pendingItemCreates.has(m));
+          const created = afterItemCreates(full.itemIds, () => dbCreateProgram(userId, full));
+          trackContainerCreate(full.id, created, waitingOn);
+          created.catch((error) =>
+            undoFailedContainerCreate('program', error, full.id, full.name, opts?.newItemCount)
+          );
         }
         return full.id;
       },
@@ -2293,7 +2380,7 @@ export const usePlannerStore = create<PlannerStore>()(
       // ── Goals (036) ────────────────────────────────────────────────────────
       goals: [],
       goalsAvailable: true,
-      addGoal: (goal) => {
+      addGoal: (goal, opts) => {
         const userId = get().userId;
         const full: Goal = { ...goal, id: goal.id ?? crypto.randomUUID() };
         // updateGoal's guard, at birth: one item in two role arrays is refused
@@ -2314,9 +2401,13 @@ export const usePlannerStore = create<PlannerStore>()(
         set({ goals: [...get().goals, full] });
         // Brand-new milestones / check-ins first — see addRoutine.
         if (userId) {
-          afterItemCreates([...full.memberIds, ...full.milestoneIds, ...full.checkinIds], () =>
-            dbCreateGoal(userId, full)
-          ).catch((error) => undoFailedContainerCreate('goal', error, full.id, full.name, label));
+          const ids = [...full.memberIds, ...full.milestoneIds, ...full.checkinIds];
+          const waitingOn = ids.filter((m) => pendingItemCreates.has(m));
+          const created = afterItemCreates(ids, () => dbCreateGoal(userId, full));
+          trackContainerCreate(full.id, created, waitingOn);
+          created.catch((error) =>
+            undoFailedContainerCreate('goal', error, full.id, full.name, opts?.newItemCount)
+          );
         }
         return full.id;
       },
