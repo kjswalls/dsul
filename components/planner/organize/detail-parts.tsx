@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronLeft, MoreHorizontal, Plus, X } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronLeft, Maximize2, MoreHorizontal, Plus, X } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import {
   DropdownMenu,
@@ -19,6 +20,7 @@ import { Eyebrow } from './primitives';
 import { SECTION_IDENTITY, type ConsoleSection } from './console-rail';
 import { useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/lib/ui-store';
 
 /**
  * The pieces every detail pane in the Organize console is built from.
@@ -403,6 +405,30 @@ export interface DetailMenuAction {
   testId: string;
   destructive?: boolean;
   onSelect: () => void;
+}
+
+/**
+ * "Open as page" — the console's exit to a container's reading surface
+ * (/routine/[id], /program/[id], /project/[id], /goal/[id]).
+ *
+ * It leaves the route that mounts the console, so it shuts the console on the
+ * way out, and on `onNavigate` rather than `onClick`: next/link runs onClick
+ * before deciding a click is a navigation, so a ⌘-click into a background tab
+ * would otherwise close the console in this one (CLAUDE.md, the Organize
+ * console bullet). next/link, not <a>: a hard load tears down the store.
+ */
+export function OpenAsPageLink({ href, testId }: { href: string; testId: string }) {
+  return (
+    <Link
+      href={href}
+      data-testid={testId}
+      onNavigate={() => useUIStore.getState().closeDialog()}
+      className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-[11px] transition-colors"
+    >
+      <Maximize2 className="size-3" aria-hidden />
+      Open as page
+    </Link>
+  );
 }
 
 export function DetailHead({

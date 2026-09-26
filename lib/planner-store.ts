@@ -509,6 +509,7 @@ interface PlannerStore {
    *  `collectionsAvailable`: every goal surface gates on it, or a write looks
    *  like it landed and vanishes on reload. */
   goalsAvailable: boolean;
+  /** The new id, or '' when refused (an item given two roles). */
   addGoal: (goal: Omit<Goal, 'id'> & { id?: string }) => string;
   updateGoal: (id: string, updates: Partial<Omit<Goal, 'id'>>) => void;
   removeGoal: (id: string) => void;
@@ -1263,6 +1264,21 @@ const undoFailedCreate = (
   );
 };
 
+/**
+ * A routine, program or goal the database refused — SAID, where it used to be a
+ * bare console.error. The create forms now write memberships in the same call,
+ * which made a failure reachable from the UI; the row stays on screen until the
+ * next load, so the least this can do is not let it look saved.
+ *
+ * It does not roll the optimistic row back. Doing that honestly means erasing
+ * it from every history snapshot, which `forgetFailedContainer` only knows how
+ * to do for projects — generalizing it is a separate change.
+ */
+const reportFailedContainerCreate = (kind: 'routine' | 'program' | 'goal', name: string, error: unknown) => {
+  console.error(`create ${kind} failed`, name, error);
+  toast.error(`Couldn't save the ${kind} “${name}”. It will be gone when you reload.`);
+};
+
 const isUniqueViolation = (error: unknown): boolean => {
   const code = (error as { code?: string } | null)?.code;
   return code === '23505' || (error instanceof Error && error.message.includes('duplicate key value'));
@@ -1950,8 +1966,13 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         const full: Routine = { ...routine, id: routine.id ?? crypto.randomUUID() };
         setNextActionLabel(`Add routine: ${full.name}`);
-        set({ routines: [...get().routines, full] });
-        if (userId) dbCreateRoutine(userId, full).catch(console.error);
+        // Born with members, a routine can RELEASE items — one a paused routine
+        // was hiding gets a live path through this one — and the sweep's grace
+        // has to hear about it, exactly as it does for updateRoutine.
+        const run = () => set({ routines: [...get().routines, full] });
+        if (full.itemIds.length > 0) withReleaseGrace(run);
+        else run();
+        if (userId) dbCreateRoutine(userId, full).catch((error) => reportFailedContainerCreate('routine', full.name, error));
         return full.id;
       },
       updateRoutine: (id, updates) => {
@@ -2048,8 +2069,11 @@ export const usePlannerStore = create<PlannerStore>()(
         const userId = get().userId;
         const full: Program = { ...program, id: program.id ?? crypto.randomUUID() };
         setNextActionLabel(`Add program: ${full.name}`);
-        set({ programs: [...get().programs, full] });
-        if (userId) dbCreateProgram(userId, full).catch(console.error);
+        // See addRoutine: a program born live with members can release items.
+        const run = () => set({ programs: [...get().programs, full] });
+        if (full.itemIds.length > 0 || full.routineIds.length > 0) withReleaseGrace(run);
+        else run();
+        if (userId) dbCreateProgram(userId, full).catch((error) => reportFailedContainerCreate('program', full.name, error));
         return full.id;
       },
       updateProgram: (id, updates) => {
@@ -2163,9 +2187,22 @@ export const usePlannerStore = create<PlannerStore>()(
       addGoal: (goal) => {
         const userId = get().userId;
         const full: Goal = { ...goal, id: goal.id ?? crypto.randomUUID() };
+        // updateGoal's guard, at birth: one item in two role arrays is refused
+        // by createGoal before its INSERT, but only after this set() has shown
+        // the goal — a row the database never got. Refuse here instead.
+        const seen = new Set<string>();
+        for (const ids of [full.memberIds, full.milestoneIds, full.checkinIds]) {
+          for (const memberId of new Set(ids)) {
+            if (seen.has(memberId)) {
+              console.error(`addGoal: item ${memberId} was given two roles; create refused.`);
+              return '';
+            }
+            seen.add(memberId);
+          }
+        }
         setNextActionLabel(`Add goal: ${full.name}`);
         set({ goals: [...get().goals, full] });
-        if (userId) dbCreateGoal(userId, full).catch(console.error);
+        if (userId) dbCreateGoal(userId, full).catch((error) => reportFailedContainerCreate('goal', full.name, error));
         return full.id;
       },
       updateGoal: (id, updates) => {

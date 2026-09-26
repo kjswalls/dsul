@@ -1,10 +1,10 @@
 'use client';
 
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { ProjectTimeBlock } from '../project-time-block';
 import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
-import { byName, matching } from '@/lib/collections';
+import { byName, matching, useToday } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
 import { ObjectRow, SettingRow } from '../primitives';
 import { heldByTrash, useTrashedNames } from '../use-trashed-names';
@@ -17,10 +17,23 @@ import {
   DetailColumn,
   IdentityRow,
   ListColumn,
+  OpenAsPageLink,
   SectionWelcome,
 } from '../detail-parts';
 import type { Item, ItemTypeDef, Project } from '@/lib/planner-types';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { containerMemberIds } from '@/lib/container-schedule';
+import {
+  UnscheduledTray,
+  useContainerSchedule,
+  useWeekDotsFor,
+} from '@/components/planner/schedule/schedule-views';
+import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
+import { useMemberActions } from '../member-row-actions';
+import { canBulkClearProject, canBulkSetProject } from '@/lib/bulk-edit';
+
+/** Projects never suppress, so nothing here is dimmed for activation. */
+const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
 
 /**
  * PROJECTS and ITEM TYPES — the half of the console that came from
@@ -165,6 +178,24 @@ function ProjectDetail({
   const confirm = useUIStore((s) => s.confirm);
 
   const n = countProjectItems(items, project.name);
+  // Held BY NAME (items.project), folded as every project lookup is.
+  const projectMembers = useMemo(() => {
+    const ids = new Set(containerMemberIds({ kind: 'project', project }, items, []));
+    // Not subtasks: they carry their parent's project but no scheduling, and
+    // every row verb here would be wrong for one.
+    return items.filter((i) => ids.has(i.id) && !(i as { parentItemId?: string }).parentItemId);
+  }, [project, items]);
+  const memberIds = projectMembers.map((i) => i.id);
+  const setItemsProject = usePlannerStore((s) => s.setItemsProject);
+  const week = useWeekDotsFor(memberIds);
+  const { todayStr } = useToday();
+  const { unscheduled } = useContainerSchedule(memberIds, todayStr, 1);
+  const controls = useMemberActions({
+    ownerName: project.name,
+    onRemove: (id) => setItemsProject([id], undefined),
+    removable: canBulkClearProject,
+    todayState: week.todayState,
+  });
 
   // THE SENTENCE MIRRORS `unfiled`, which is what removeProject actually runs.
   // Most items are simply unfiled; a type whose container is REQUIRED (a habit)
@@ -225,9 +256,49 @@ function ProjectDetail({
         }
       />
 
+      <div className="mt-2 flex">
+        <OpenAsPageLink href={`/project/${project.id}`} testId="project-open-page" />
+      </div>
+
       <div className="bg-border my-4 h-px" />
 
       <ProjectTimeBlock project={project} />
+
+      <div className="mt-5 flex flex-col gap-4">
+        <ItemMemberList
+          label="Items"
+          ownerId={project.id}
+          ownerName={project.name}
+          memberIds={memberIds}
+          members={projectMembers}
+          hiddenIds={NOTHING_HIDDEN}
+          testPrefix="project"
+          lead={projectMembers.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
+          row={{ trailing: week.trailing, ...controls }}
+          removable={canBulkClearProject}
+          // What setItemsProject will actually accept, and nothing already
+          // filed elsewhere — linking would re-file it without a word.
+          eligible={(i) =>
+            canBulkSetProject(i) &&
+            !(i as { parentItemId?: string }).parentItemId &&
+            !(i as { project?: string }).project
+          }
+          pickerHint="Items not yet in a project."
+          emptyPoolLabel="Everything is already filed somewhere — move items from their own project."
+          // Membership is the item's own `project` field, so linking and
+          // removing are re-files — setItemsProject, which also brings a task
+          // out of the old block it was parked in.
+          onChange={(next) => {
+            const before = new Set(memberIds);
+            const after = new Set(next);
+            const added = next.filter((id) => !before.has(id));
+            const removed = memberIds.filter((id) => !after.has(id));
+            if (added.length) setItemsProject(added, project.name);
+            if (removed.length) setItemsProject(removed, undefined);
+          }}
+        />
+        <UnscheduledTray items={unscheduled} testId="project-unscheduled" />
+      </div>
 
       <DangerZone
         label="Delete this project"

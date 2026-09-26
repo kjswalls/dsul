@@ -26,17 +26,18 @@ import {
 import { Eyebrow, ObjectRow } from '../primitives';
 import {
   BufferedTextarea,
-  CreateForm,
   DetailColumn,
   DetailHead,
   ListColumn,
-  NotesField,
   SectionWelcome,
   StatusStrip,
   TitleRow,
 } from '../detail-parts';
 import { ItemMemberList, type MemberRowParts } from '../member-list';
-import { makeIconToken } from '@/lib/category-icons';
+import { useMemberActions } from '../member-row-actions';
+import { GoalSchedule, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { ContainerCreateForm } from '../container-create-form';
+import { GOAL_STATES, heldElsewhere } from '../container-fields';
 import { cn } from '@/lib/utils';
 import type { Goal, Item } from '@/lib/planner-types';
 
@@ -49,23 +50,6 @@ import type { Goal, Item } from '@/lib/planner-types';
  *
  * See memory/plans/long-term-goals.md.
  */
-
-/**
- * Is this item already held by one of the goal's OTHER role arrays?
- *
- * The PK gives an item exactly one role per goal, so a picker that offered an
- * item already held elsewhere would be offering a contradiction — and the write
- * that follows is refused, leaving the store showing the item twice.
- */
-function heldElsewhere(
-  goal: Goal,
-  own: 'memberIds' | 'milestoneIds' | 'checkinIds',
-  itemId: string,
-): boolean {
-  return (['memberIds', 'milestoneIds', 'checkinIds'] as const)
-    .filter((k) => k !== own)
-    .some((k) => goal[k].includes(itemId));
-}
 
 /**
  * One role's section. The heading names the role — Milestone and Check-in are
@@ -148,7 +132,6 @@ export function GoalsSection({
 }) {
   const goals = usePlannerStore((s) => s.goals);
   const items = usePlannerStore((s) => s.items);
-  const addGoal = usePlannerStore((s) => s.addGoal);
   const addTask = usePlannerStore((s) => s.addTask);
   const deleteTask = usePlannerStore((s) => s.deleteTask);
   const deleteHabit = usePlannerStore((s) => s.deleteHabit);
@@ -275,22 +258,6 @@ export function GoalsSection({
     );
   };
 
-  /** One addGoal, carrying whatever the create form asked for — never a create then a patch. */
-  const create = (name: string, icon: string | undefined, extra: GoalCreateFields) => {
-    const id = addGoal({
-      name,
-      icon,
-      why: extra.why.trim() || undefined,
-      startsOn: extra.startsOn,
-      targetOn: extra.targetOn,
-      state: 'active',
-      memberIds: [],
-      milestoneIds: [],
-      checkinIds: [],
-    });
-    onCreated(id);
-  };
-
   // BOTH columns, always — the console's contract (organize-console.tsx: "Each
   // section owns both columns"). This used to early-return one or the other,
   // which on desktop unmounted the list, the filter and the create row the
@@ -368,9 +335,10 @@ export function GoalsSection({
 
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
-          <GoalCreateForm
+          <ContainerCreateForm
+            kind="goal"
             autoFocus={creating}
-            onCreate={create}
+            onCreated={onCreated}
             onCancel={goals.length > 0 ? () => onCreated(null) : undefined}
           />
         ) : selected ? (
@@ -425,84 +393,6 @@ export function GoalsSection({
     </>
   );
 }
-
-/* ── making one ───────────────────────────────────────────────────────────── */
-
-interface GoalCreateFields {
-  why: string;
-  startsOn?: string;
-  targetOn?: string;
-}
-
-/**
- * "+ New" for a goal. The name, and the two things that DEFINE a goal beyond
- * it — why it matters and the window it runs in — asked at birth, the same
- * fields the "new" dialog's goal mode asks. The window starts today: a goal is
- * usually begun the day it is named, and a target is the half worth asking.
- */
-function GoalCreateForm({
-  autoFocus,
-  onCreate,
-  onCancel,
-}: {
-  autoFocus: boolean;
-  onCreate: (name: string, icon: string | undefined, extra: GoalCreateFields) => void;
-  onCancel?: () => void;
-}) {
-  const [why, setWhy] = useState('');
-  // The USER's today, as the "new" dialog seeds it — the browser's would stamp
-  // a different start for the same goal near midnight when the two zones differ.
-  const { todayStr } = useToday();
-  const [startsOn, setStartsOn] = useState<string | undefined>(todayStr);
-  const [targetOn, setTargetOn] = useState<string | undefined>(undefined);
-  return (
-    <CreateForm
-      eyebrow="NEW GOAL"
-      placeholder="Name your goal…"
-      addLabel="Create goal"
-      icon={makeIconToken('Target')}
-      testPrefix="goal"
-      autoFocus={autoFocus}
-      hint="A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in — and it never hides anything."
-      fields={
-        <>
-          <NotesField
-            value={why}
-            onChange={setWhy}
-            placeholder="Why this matters…"
-            ariaLabel="Why this goal matters"
-            testId="goal-new-why"
-          />
-          <div className="flex flex-wrap items-center gap-1.5">
-            <DateRangeChip
-              label="Window"
-              start={startsOn}
-              end={targetOn}
-              startLabel="Started"
-              endLabel="Target"
-              emptyLabel="Target"
-              testIdPrefix="goal-new-window"
-              onChange={(start, end) => {
-                setStartsOn(start);
-                setTargetOn(end);
-              }}
-            />
-          </div>
-        </>
-      }
-      onCreate={(name, icon) => onCreate(name, icon, { why, startsOn, targetOn })}
-      onCancel={onCancel}
-    />
-  );
-}
-
-/* ── the detail pane ──────────────────────────────────────────────────────── */
-
-const GOAL_STATES = [
-  { value: 'active', label: 'Active', dot: 'lime' },
-  { value: 'achieved', label: 'Achieved', dot: 'muted' },
-  { value: 'abandoned', label: 'Set aside', dot: 'muted' },
-] as const satisfies readonly { value: Goal['state']; label: string; dot: string }[];
 
 /** The latest day a recurring item was done, or undefined. yyyy-MM-dd sorts as text. */
 function lastDone(item: Item): string | undefined {
@@ -589,6 +479,28 @@ function GoalDetail({
       numeric: true,
     }),
   };
+
+  // Row controls (member-row-actions.tsx), one set per role so "Remove"
+  // takes the item out of the list it is in. Today's state comes from the
+  // week's schedule — no dots here; the timeline above carries the time.
+  const week = useWeekDotsFor([...goal.milestoneIds, ...goal.checkinIds, ...goal.memberIds]);
+  const without = (key: 'memberIds' | 'milestoneIds' | 'checkinIds') => (id: string) =>
+    members({ [key]: goal[key].filter((m) => m !== id) });
+  const milestoneControls = useMemberActions({
+    ownerName: goal.name,
+    onRemove: without('milestoneIds'),
+    todayState: week.todayState,
+  });
+  const checkinControls = useMemberActions({
+    ownerName: goal.name,
+    onRemove: without('checkinIds'),
+    todayState: week.todayState,
+  });
+  const memberControls = useMemberActions({
+    ownerName: goal.name,
+    onRemove: without('memberIds'),
+    todayState: week.todayState,
+  });
 
   const checkinRow: MemberRowParts = {
     leading: () => <Repeat className="text-muted-foreground size-3.5" aria-hidden />,
@@ -704,6 +616,8 @@ function GoalDetail({
         testId="goal-why"
       />
 
+      <GoalSchedule goal={goal} />
+
       {/*
         Each picker excludes the OTHER two arrays as well as its own. Otherwise
         the natural "this member is really a milestone" gesture offers an item
@@ -728,7 +642,7 @@ function GoalDetail({
           eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(goal, 'milestoneIds', i.id)}
           emptyPool="Nothing eligible yet — a milestone is a one-shot item."
           lead={<GoalProgressTrack goal={goal} achieved={achieved} total={total} />}
-          row={milestoneRow}
+          row={{ ...milestoneRow, ...milestoneControls }}
           onChange={(ids) => members({ milestoneIds: ids })}
           footer={
             <InlineAddRow
@@ -748,7 +662,7 @@ function GoalDetail({
           testPrefix="goal-checkin"
           eligible={(i) => isCheckinEligible(i) && !heldElsewhere(goal, 'checkinIds', i.id)}
           emptyPool="Nothing eligible yet — a check-in is a repeating item."
-          row={checkinRow}
+          row={{ ...checkinRow, ...checkinControls }}
           onChange={(ids) => members({ checkinIds: ids })}
           footer={
             <InlineAddRow
@@ -771,6 +685,7 @@ function GoalDetail({
           // non-collectible types — against locked decision 3, which says plain
           // `member` reuses isCollectible with its subtask exclusion.
           eligible={(i) => isCollectible(i) && !heldElsewhere(goal, 'memberIds', i.id)}
+          row={memberControls}
           onChange={(ids) => members({ memberIds: ids })}
           footer={
             <InlineAddRow
