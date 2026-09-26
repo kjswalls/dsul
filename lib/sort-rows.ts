@@ -187,17 +187,16 @@ export type CompletedAs = (row: SortableRow, dateStr: string | null) => boolean;
  * is already in this order.
  *
  * SCOPE IS THE CALLER'S. This is applied post-derivation and per group, exactly
- * like `sortRows`, and for the same reason — see this file's header. The one
- * surface that hands over less than everything is Day × Buckets, which passes
- * its untimed rows only; the note at that call site says why.
+ * like `sortRows`, and for the same reason — see this file's header. Day ×
+ * Buckets hands over its untimed rows only (the note at that call site says
+ * why), and both Schedule views hand over their Anytime strips only: each strip
+ * sits behind one droppable, so nothing there resolves a drop against a
+ * neighbour's time, while the hour grid below is position-as-time and never
+ * takes the pass.
  *
- * Two places are outside the pass entirely, and neither omission is forced by
+ * One place is outside the pass entirely, and the omission is not forced by
  * the spine rule above:
  *
- *  - Day × Schedule's `unscheduled:anytime` tray is untimed and sits behind one
- *    droppable, so nothing there resolves a drop against a neighbour's time. It
- *    COULD take the pass; it does not because this landed on the list and
- *    bucket surfaces. A choice left open, not a correctness argument.
  *  - The braindump's `pausedGroups` never reaches {@link orderRows}, so a
  *    finished row under a "Paused" heading stays put while one in the working
  *    list sinks. That section is a recovery surface grouped BY CAUSE, and it

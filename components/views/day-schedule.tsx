@@ -45,6 +45,8 @@ import { useSelectionStore, rangeIds } from '@/lib/selection-store';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
+import { sinkCompleted } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows } from '@/lib/grouping';
@@ -1481,6 +1483,16 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   const timed = useMemo(() => deriveTimedEntries(day), [day]);
   const overlapEntries = useMemo(() => toOverlapEntries(timed), [timed]);
 
+  /**
+   * Finished rows sink to the foot of each Anytime section, held a moment and
+   * then slid (hooks/use-sink-hold.ts), like every other untimed row list. The
+   * strip is one droppable with no per-row drop zones, so nothing resolves a
+   * drop against a neighbour's position here; the hour grid below is where
+   * position means time, and it is untouched.
+   */
+  const { completedAs, rootRef: anytimeRootRef } = useSinkHold(setAnytimeRef);
+  const completionDateStr = toDateStr(selectedDate, timezone);
+
   // The Anytime strip sections like any other row list. `'none'` comes back as a
   // single unlabelled group, which renders as today's flat strip.
   const canvasGroupBy = useCanvasGroupBy();
@@ -1489,10 +1501,11 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   const goals = usePlannerStore((s) => s.goals);
   const untimedGroups = useMemo(
     () =>
-      groupBySupport('day', 'schedule', canvasGroupBy).honoured
+      (groupBySupport('day', 'schedule', canvasGroupBy).honoured
         ? groupRows(untimed, canvasGroupBy, { routines, programs, goals })
-        : [{ key: '', label: '', rows: untimed }],
-    [untimed, canvasGroupBy, routines, programs, goals]
+        : [{ key: '', label: '', rows: untimed }]
+      ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, completionDateStr, completedAs) })),
+    [untimed, canvasGroupBy, routines, programs, goals, completionDateStr, completedAs]
   );
   /** True when the strip renders real sections rather than one flat list. */
   const grouped = untimedGroups.some((g) => g.label);
@@ -1603,7 +1616,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
         {/* ANYTIME — untimed items; drop here to keep something time-free */}
         {(untimed.length > 0 || dragging) && (
           <div
-            ref={setAnytimeRef}
+            ref={anytimeRootRef}
             data-dnd-id="unscheduled:anytime"
             data-dnd-over={isOverAnytime ? 'true' : 'false'}
             // mb-8 rather than padding, so the drop ring hugs the rows and not
@@ -1632,7 +1645,8 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               ))
             ) : (
               <GroupSection label="Anytime" variant="canvas">
-                {untimed.map((row) => (
+                {/* groupRows returns [] for an empty strip, which renders while dragging. */}
+                {(untimedGroups[0]?.rows ?? []).map((row) => (
                   <TaskRow key={row.item.id} row={row} />
                 ))}
                 {untimed.length === 0 && dragging && (

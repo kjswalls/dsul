@@ -65,6 +65,8 @@ import { DayList } from '@/components/views/day-list';
 import { WeekList } from '@/components/views/week-list';
 import { DayBuckets } from '@/components/views/day-buckets';
 import { WeekBuckets } from '@/components/views/week-buckets';
+import { DaySchedule } from '@/components/views/day-schedule';
+import { WeekSchedule } from '@/components/views/week-schedule';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
@@ -484,5 +486,45 @@ describe('the sink is always on, and composes with the controls that hide', () =
     mount(<DayList />);
 
     expect(rowTitles(document, NAMES)).toEqual(['Journal']);
+  });
+});
+
+/* ── Day × Schedule / Week × Schedule ───────────────────────────────────────*/
+
+describe('Schedule', () => {
+  it('Day × Schedule sinks finished rows in the Anytime strip only', () => {
+    const tasks = [
+      task({ id: 'a', title: 'Alpha', status: 'completed', timeBucket: 'anytime' }),
+      task({ id: 'b', title: 'Bravo', timeBucket: 'anytime' }),
+      task({ id: 'nine', title: 'Nine', startTime: '09:00', status: 'completed' }),
+      task({ id: 'ten', title: 'Ten', startTime: '10:00' }),
+    ];
+    seedStore({ tasks, items: tasks });
+
+    mount(<DaySchedule activeId={null} />);
+
+    expect(rowTitles(droppable('unscheduled:anytime'), NAMES)).toEqual(['Bravo', 'Alpha']);
+  });
+
+  it('Day × Schedule renders an empty Anytime strip while dragging', () => {
+    const tasks = [task({ id: 'nine', title: 'Nine', startTime: '09:00' })];
+    seedStore({ tasks, items: tasks });
+
+    mount(<DaySchedule activeId="nine" />);
+
+    expect(droppable('unscheduled:anytime').textContent).toMatch(/Drop here/);
+  });
+
+  it('Week × Schedule sinks per column, at that column\'s date', () => {
+    const habits = [
+      habit({ id: 'stretch', title: 'Stretch', timeBucket: 'anytime', completedDates: [THURSDAY] }),
+      habit({ id: 'journal', title: 'Journal', timeBucket: 'anytime' }),
+    ];
+    seedStore({ habits, items: habits });
+
+    mount(<WeekSchedule activeId={null} />);
+
+    expect(rowTitles(droppable(`week:${THURSDAY}:anytime`), NAMES)).toEqual(['Journal', 'Stretch']);
+    expect(rowTitles(droppable(`week:${FRIDAY}:anytime`), NAMES)).toEqual(['Stretch', 'Journal']);
   });
 });
