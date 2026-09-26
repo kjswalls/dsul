@@ -959,6 +959,21 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     expect(main.scrollLeft).toBe(0);
   });
 
+  it('takes a control more than half a pixel past the edge at rest as cut, so a slide it did not make comes back to one pixel', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    // Its end 0.7px past <main>'s inner right edge at rest: the browser leaves it.
+    place('mid-control', 369.7, 32);
+    act(() => screen.getByTestId('mid-control').focus());
+    await frame();
+    expect(main.scrollLeft).toBe(0);
+    // Find in page slides <main> on; the least slide that shows it whole is 1.
+    main.scrollLeft = 50;
+    fireEvent.scroll(main);
+    await frame();
+    expect(main.scrollLeft).toBe(1);
+  });
+
   it('takes a move of a pixel for a move, and a third of one for rounding', async () => {
     render(<DesktopShell />);
     const main = await layOut();
@@ -1017,6 +1032,19 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     act(() => button.focus());
     await frame();
     expect(main.scrollLeft).toBe(49);
+  });
+
+  it('measures a control by its box when what it paints differs only by rounding', async () => {
+    render(<DesktopShell />);
+    const main = await layOut();
+    // 31.6px wide, and scrollWidth rounds that up to 32: nothing paints past it.
+    const control = screen.getByTestId('clipped-control');
+    place('clipped-control', 420.2, 31.6);
+    Object.defineProperty(control, 'scrollWidth', { configurable: true, value: 32 });
+    focusAndReveal(main, 'clipped-control', 100);
+    await frame();
+    // Its end at 350.8 from the origin: 51, where 32px from its start would ask 52.
+    expect(main.scrollLeft).toBe(51);
   });
 
   it('shows the focus ring of a control squeezed to 0px that paints nothing else', async () => {
