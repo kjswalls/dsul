@@ -2,15 +2,12 @@
 
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { usePlannerStore } from '@/lib/planner-store';
 import { useToday } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
 import { CreateForm } from './detail-parts';
 import {
-  buildGoal,
-  buildProgram,
-  buildRoutine,
   ContainerDraftFields,
+  createFromDraft,
   initialDraft,
   type ContainerDraft,
   type DraftKind,
@@ -62,9 +59,6 @@ export function ContainerCreateForm({
   onCreated: (id: string | null) => void;
   onCancel?: () => void;
 }) {
-  const addGoal = usePlannerStore((s) => s.addGoal);
-  const addRoutine = usePlannerStore((s) => s.addRoutine);
-  const addProgram = usePlannerStore((s) => s.addProgram);
   // The USER's today, so a goal's window opens on the day the "new" dialog
   // would open it — not the browser's, which differs for a traveller near midnight.
   const { todayStr, tz } = useToday();
@@ -72,14 +66,9 @@ export function ContainerCreateForm({
   const copy = COPY[kind];
 
   const create = (name: string, icon: string | undefined) => {
-    const nowIso = new Date().toISOString();
-    // One add per kind, carrying everything — never a create then a patch.
-    const id =
-      kind === 'goal'
-        ? addGoal(buildGoal(name, icon, draft, nowIso))
-        : kind === 'routine'
-          ? addRoutine(buildRoutine(name, icon, draft, todayStr, nowIso, tz))
-          : addProgram(buildProgram(name, icon, draft));
+    // One ⌘Z carrying everything — new member items included, created first
+    // and linked in order (createFromDraft).
+    const id = createFromDraft(kind, name, icon, draft, todayStr, tz);
     if (!id) {
       // A refusal (addGoal's two-roles guard) is not a cancel: keep the draft.
       toast.error(`Couldn't create “${name}”. Nothing was saved.`);

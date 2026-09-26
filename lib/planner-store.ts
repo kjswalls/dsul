@@ -263,10 +263,11 @@ interface PlannerStore {
     item: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
   ) => void;
+  /** Returns the new item's id. */
   addTask: (
     task: Omit<Task, 'id' | 'order' | 'status' | 'isScheduled'>,
     memberships?: Memberships,
-  ) => void;
+  ) => string;
   /**
    * Bulk create — the paste-a-list path (bulk-add dialog). One set(), one
    * history entry, one undo, then one DB write per row, per the bulk-verb
@@ -466,7 +467,12 @@ interface PlannerStore {
   /** False when migration 024's tables are unreachable. Every routine UI gates
    *  on this, or writes look like they landed and vanish on reload. */
   collectionsAvailable: boolean;
-  addRoutine: (routine: Omit<Routine, 'id'> & { id?: string }) => string;
+  /**
+   * `programIds`: programs to hold the new routine, in the SAME undo entry.
+   * The link lives in program_routines (FK to routines), so it is written only
+   * once the routine's own row has landed.
+   */
+  addRoutine: (routine: Omit<Routine, 'id'> & { id?: string }, opts?: { programIds?: string[] }) => string;
   updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id'>>) => void;
   removeRoutine: (id: string) => void;
   /**
@@ -726,6 +732,14 @@ function persistNewItem(
 ) {
   const created = dbCreateItem(userId, row);
   created.catch(console.error);
+  const settled = created.then(
+    () => undefined,
+    () => undefined
+  );
+  pendingItemCreates.set(row.id, settled);
+  void settled.then(() => {
+    if (pendingItemCreates.get(row.id) === settled) pendingItemCreates.delete(row.id);
+  });
 
   const routineIds = memberships?.routineIds ?? [];
   const programIds = memberships?.programIds ?? [];
@@ -1147,10 +1161,46 @@ export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
  * memory/plans/organize-console.md); duplicating it for the seed path would have
  * been the third time.
  */
+/** Every container kind a create can be refused for. */
+type RefusableKind = 'project' | 'routine' | 'program' | 'goal';
+
+/**
+ * The state without a refused container — and without every reference to it,
+ * so no later save re-sends an id no row will match: an item's project link,
+ * or a program's hold on a routine that never existed.
+ */
+function withoutContainer<S extends Pick<HistoryState, 'items' | 'projects' | 'routines' | 'programs' | 'goals'>>(
+  state: S,
+  kind: RefusableKind,
+  id: string,
+): Partial<HistoryState> {
+  switch (kind) {
+    case 'project':
+      return {
+        projects: state.projects.filter((p) => p.id !== id),
+        items: state.items.map((item) =>
+          item.projectId === id ? ({ ...item, project: undefined, projectId: undefined } as Item) : item
+        ),
+      };
+    case 'routine':
+      return {
+        routines: state.routines.filter((r) => r.id !== id),
+        programs: state.programs.map((p) =>
+          p.routineIds.includes(id) ? { ...p, routineIds: p.routineIds.filter((r) => r !== id) } : p
+        ),
+      };
+    case 'program':
+      return { programs: state.programs.filter((p) => p.id !== id) };
+    case 'goal':
+      return { goals: state.goals.filter((g) => g.id !== id) };
+  }
+}
+
 const removeRefusedContainer = (
   id: string,
   entryId: string | null,
   label: string,
+  kind: RefusableKind = 'project',
 ) => {
   // BEFORE the setState below, not after. The history subscriber and
   // useTrashedNames' both run synchronously inside set(), so a watcher that
@@ -1170,20 +1220,14 @@ const removeRefusedContainer = (
   const wasSuppressed = isUpdatingUndoRedo;
   isUpdatingUndoRedo = true;
   try {
-    usePlannerStore.setState((state) => ({
-      projects: state.projects.filter((p) => p.id !== id),
-      // Items filed into it in the meantime lose the reference too, or the
-      // next save re-sends an id no row will ever match. One branch since 039 —
-      // there is one container array and one pair of item fields.
-      ...projectItems(
-        state.items.map((item) =>
-          item.projectId === id
-            ? { ...item, project: undefined, projectId: undefined }
-            : item
-        )
-      ),
-    }));
-    forgetFailedContainer(id, entryId, label);
+    usePlannerStore.setState((state) => {
+      // Items filed into a refused project lose the reference too, or the next
+      // save re-sends an id no row will ever match; a refused routine leaves
+      // every program that was holding it. See withoutContainer.
+      const next = withoutContainer(state, kind, id);
+      return next.items ? { ...next, ...projectItems(next.items) } : next;
+    });
+    forgetFailedContainer(id, entryId, label, kind);
     // The baseline has to follow the rollback, or the next real change is
     // diffed against a snapshot that still holds the phantom.
     const s = usePlannerStore.getState();
@@ -1265,19 +1309,51 @@ const undoFailedCreate = (
 };
 
 /**
- * A routine, program or goal the database refused — SAID, where it used to be a
- * bare console.error. The create forms now write memberships in the same call,
- * which made a failure reachable from the UI; the row stays on screen until the
- * next load, so the least this can do is not let it look saved.
+ * A routine, program or goal the database refused — taken back out of the
+ * store AND out of every history snapshot, exactly as a refused project is
+ * (removeRefusedContainer), and said out loud.
  *
- * It does not roll the optimistic row back. Doing that honestly means erasing
- * it from every history snapshot, which `forgetFailedContainer` only knows how
- * to do for projects — generalizing it is a separate change.
+ * The history entry is found by its LABEL at failure time rather than captured
+ * at create time: a create made inside batchHistory (the create forms fold new
+ * member items into the same ⌘Z) has no entry of its own until the batch
+ * closes, so "the last entry" at set() time would name the wrong one.
  */
-const reportFailedContainerCreate = (kind: 'routine' | 'program' | 'goal', name: string, error: unknown) => {
+const undoFailedContainerCreate = (
+  kind: 'routine' | 'program' | 'goal',
+  error: unknown,
+  id: string,
+  name: string,
+  label: string,
+) => {
   console.error(`create ${kind} failed`, name, error);
-  toast.error(`Couldn't save the ${kind} “${name}”. It will be gone when you reload.`);
+  const entry = [...actionLog].reverse().find((a) => a.label === label);
+  removeRefusedContainer(id, entry?.id ?? null, `Couldn’t add ${kind}: ${name}`, kind);
+  toast.error(`Couldn't save the ${kind} “${name}”. Nothing was saved.`);
 };
+
+/**
+ * Item creates still in flight, by id — so a container born holding a
+ * brand-new item can wait for that item's row before writing the join row
+ * that points at it (a composite FK: joined first, the membership fails with
+ * 23503 and is silently skipped). persistNewItem registers; `awaitItemCreates`
+ * waits. Settled promises only — a refused item must not also sink the
+ * container.
+ */
+const pendingItemCreates = new Map<string, Promise<void>>();
+
+export function awaitItemCreates(ids: readonly string[]): Promise<void> {
+  const waits = ids.map((id) => pendingItemCreates.get(id)).filter((p): p is Promise<void> => !!p);
+  return waits.length ? Promise.all(waits).then(() => undefined) : Promise.resolve();
+}
+
+/**
+ * Run `write` once every listed item's INSERT has landed — SYNCHRONOUSLY when
+ * none is in flight, so the ordinary create keeps its old timing (the write
+ * leaves in the same tick as the optimistic set, as it always has).
+ */
+function afterItemCreates<T>(ids: readonly string[], write: () => Promise<T>): Promise<T> {
+  return ids.some((id) => pendingItemCreates.has(id)) ? awaitItemCreates(ids).then(write) : write();
+}
 
 const isUniqueViolation = (error: unknown): boolean => {
   const code = (error as { code?: string } | null)?.code;
@@ -1311,15 +1387,9 @@ const forgetFailedContainer = (
   id: string,
   entryId: string | null,
   label: string,
+  kind: RefusableKind = 'project',
 ) => {
-  for (const snapshot of historyStack) {
-    snapshot.projects = snapshot.projects.filter((p) => p.id !== id);
-    snapshot.items = snapshot.items.map((item) =>
-      item.projectId === id
-        ? { ...item, project: undefined, projectId: undefined }
-        : item
-    );
-  }
+  for (const snapshot of historyStack) Object.assign(snapshot, withoutContainer(snapshot, kind, id));
 
   // The entry STAYS — removing it is what forced the index arithmetic — but it
   // stops claiming something happened. Its snapshot now matches its
@@ -1962,17 +2032,51 @@ export const usePlannerStore = create<PlannerStore>()(
       // ── Routines (Phase 2) ─────────────────────────────────────────────────
       routines: [],
       collectionsAvailable: true,
-      addRoutine: (routine) => {
+      addRoutine: (routine, opts) => {
         const userId = get().userId;
         const full: Routine = { ...routine, id: routine.id ?? crypto.randomUUID() };
-        setNextActionLabel(`Add routine: ${full.name}`);
+        const programIds = (opts?.programIds ?? []).filter((pid) => get().programs.some((p) => p.id === pid));
+        const label = `Add routine: ${full.name}`;
+        setNextActionLabel(label);
         // Born with members, a routine can RELEASE items — one a paused routine
         // was hiding gets a live path through this one — and the sweep's grace
-        // has to hear about it, exactly as it does for updateRoutine.
-        const run = () => set({ routines: [...get().routines, full] });
-        if (full.itemIds.length > 0) withReleaseGrace(run);
+        // has to hear about it, exactly as it does for updateRoutine. Joining a
+        // program can do the same (or hide them, which needs no grace).
+        const run = () =>
+          set({
+            routines: [...get().routines, full],
+            programs: programIds.length
+              ? get().programs.map((p) =>
+                  programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, full.id] } : p
+                )
+              : get().programs,
+          });
+        if (full.itemIds.length > 0 || programIds.length > 0) withReleaseGrace(run);
         else run();
-        if (userId) dbCreateRoutine(userId, full).catch((error) => reportFailedContainerCreate('routine', full.name, error));
+        if (userId) {
+          // IN ORDER: brand-new member items first, then the routine (its
+          // routine_items rows point at them), then the programs' holds (their
+          // program_routines rows point at it). Each FK is composite, and a join
+          // written early is skipped as "member no longer exists".
+          afterItemCreates(full.itemIds, () => dbCreateRoutine(userId, full))
+            .then(
+              () =>
+                Promise.all(
+                  programIds.map((pid) => {
+                    const program = get().programs.find((p) => p.id === pid);
+                    return program
+                      ? dbUpdateProgram(userId, pid, { routineIds: program.routineIds }).catch((error) => {
+                          // The routine is real; only the hold failed. Say so,
+                          // and leave the routine standing.
+                          console.error('link routine to program failed', error);
+                          toast.error(`“${full.name}” was saved, but couldn't be added to ${program.name}.`);
+                        })
+                      : undefined;
+                  })
+                ),
+              (error) => undoFailedContainerCreate('routine', error, full.id, full.name, label)
+            );
+        }
         return full.id;
       },
       updateRoutine: (id, updates) => {
@@ -2068,12 +2172,17 @@ export const usePlannerStore = create<PlannerStore>()(
       addProgram: (program) => {
         const userId = get().userId;
         const full: Program = { ...program, id: program.id ?? crypto.randomUUID() };
-        setNextActionLabel(`Add program: ${full.name}`);
+        const label = `Add program: ${full.name}`;
+        setNextActionLabel(label);
         // See addRoutine: a program born live with members can release items.
         const run = () => set({ programs: [...get().programs, full] });
         if (full.itemIds.length > 0 || full.routineIds.length > 0) withReleaseGrace(run);
         else run();
-        if (userId) dbCreateProgram(userId, full).catch((error) => reportFailedContainerCreate('program', full.name, error));
+        // Brand-new member items first — see addRoutine.
+        if (userId) {
+          afterItemCreates(full.itemIds, () => dbCreateProgram(userId, full))
+            .catch((error) => undoFailedContainerCreate('program', error, full.id, full.name, label));
+        }
         return full.id;
       },
       updateProgram: (id, updates) => {
@@ -2200,9 +2309,15 @@ export const usePlannerStore = create<PlannerStore>()(
             seen.add(memberId);
           }
         }
-        setNextActionLabel(`Add goal: ${full.name}`);
+        const label = `Add goal: ${full.name}`;
+        setNextActionLabel(label);
         set({ goals: [...get().goals, full] });
-        if (userId) dbCreateGoal(userId, full).catch((error) => reportFailedContainerCreate('goal', full.name, error));
+        // Brand-new milestones / check-ins first — see addRoutine.
+        if (userId) {
+          afterItemCreates([...full.memberIds, ...full.milestoneIds, ...full.checkinIds], () =>
+            dbCreateGoal(userId, full)
+          ).catch((error) => undoFailedContainerCreate('goal', error, full.id, full.name, label));
+        }
         return full.id;
       },
       updateGoal: (id, updates) => {
@@ -2611,6 +2726,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, task, memberships, get);
+        return task.id;
       },
 
       addTasksBulk: (type, itemsData) => {

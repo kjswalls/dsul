@@ -7,11 +7,15 @@ import {
   DateRangeChip,
   type ChoiceOption,
 } from '@/components/primitives/organizer-chips';
-import { usePlannerStore } from '@/lib/planner-store';
+import { batchHistory, usePlannerStore } from '@/lib/planner-store';
+import { InlineAddRow } from '@/components/primitives/organizer-chips';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
+import { CategoryIcon } from '@/lib/category-icons';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
 import { isItemActiveOn, isProgramActiveOn, resolvePauseWrite } from '@/lib/active';
 import { addDaysStr } from '@/lib/container-schedule';
-import { resolveGoalStateWrite } from '@/lib/goals';
+import { newMemberTaskShape, resolveGoalStateWrite } from '@/lib/goals';
 import { formatShort, parseDay } from '@/lib/collections';
 import { DayChip, NotesField } from './detail-parts';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD, RoutineMemberList } from './member-list';
@@ -22,7 +26,7 @@ import {
   useWeekDotsFor,
 } from '@/components/planner/schedule/schedule-views';
 import { containerMemberIds } from '@/lib/container-schedule';
-import type { Goal, Item, Program, Routine } from '@/lib/planner-types';
+import type { Goal, GoalRole, Item, Program, Routine } from '@/lib/planner-types';
 
 /**
  * EVERY FIELD AN ORGANIZER HAS, ASKED AT BIRTH (Kirby, 2026-09-26).
@@ -37,13 +41,14 @@ import type { Goal, Item, Program, Routine } from '@/lib/planner-types';
  * why and every membership arrive in a single add, so the arrival is one ⌘Z and
  * one INSERT (plus its join rows, which lib/db.ts writes inside the same create).
  *
- * What is deliberately NOT here:
- *  · a routine's program membership. It lives in program_routines, so it would
- *    be a second write racing the routine's INSERT (the FK fails and is
- *    swallowed as "member no longer exists"). The program's own form owns it.
- *  · creating NEW items inline. Same race, from the item side: a goal_items row
- *    for a goal whose INSERT has not landed. "Link existing" only; the console
- *    detail keeps its add rows.
+ * Two things need more than one write, and are written IN ORDER by the store
+ * (Kirby, 2026-09-27) rather than left out:
+ *  · NEW items typed into a section ("Add milestone…") — each item's row lands
+ *    before the container's join row that points at it (awaitItemCreates);
+ *  · a routine's programs — program_routines rows are written once the
+ *    routine's own row has landed (addRoutine's `programIds`).
+ * `createFromDraft` folds all of it into ONE history entry, so ⌘Z still takes
+ * the whole birth back in one press.
  */
 
 export type DraftKind = 'goal' | 'routine' | 'program';
@@ -65,6 +70,19 @@ export interface ContainerDraft {
   memberIds: string[];
   milestoneIds: string[];
   checkinIds: string[];
+  /** Items typed in as NEW — created (then linked) only when the form is submitted. */
+  newItems: NewItemDraft[];
+  /** Routine: programs to hold it from birth. */
+  programIds: string[];
+}
+
+export type NewItemRole = 'items' | GoalRole;
+
+export interface NewItemDraft {
+  key: string;
+  title: string;
+  /** Which section it was typed into: a goal role, or a routine/program's items. */
+  role: NewItemRole;
 }
 
 /**
@@ -90,7 +108,52 @@ export function initialDraft(kind: DraftKind, todayStr: string, notes?: string):
     memberIds: [],
     milestoneIds: [],
     checkinIds: [],
+    newItems: [],
+    programIds: [],
   };
+}
+
+/**
+ * Create the container the draft describes, with everything in it, as ONE ⌘Z:
+ * the new items first (addTask, each registering its in-flight INSERT), then
+ * the container carrying their ids — the store's add waits for those INSERTs
+ * before writing the join rows, and for a routine writes its programs' holds
+ * last. Returns the new id, or '' when the store refused (addGoal's guard).
+ */
+export function createFromDraft(
+  kind: DraftKind,
+  name: string,
+  icon: string | undefined,
+  draft: ContainerDraft,
+  todayStr: string,
+  tz: string,
+): string {
+  const store = usePlannerStore.getState();
+  const nowIso = new Date().toISOString();
+  let id = '';
+  batchHistory(`Add ${kind}: ${name}`, 1 + draft.newItems.length, () => {
+    const made: Record<NewItemRole, string[]> = { items: [], member: [], milestone: [], checkin: [] };
+    for (const n of draft.newItems) {
+      const role: GoalRole = n.role === 'items' ? 'member' : n.role;
+      made[n.role].push(store.addTask(newMemberTaskShape(role, n.title, todayStr) as never));
+    }
+    const d: ContainerDraft = {
+      ...draft,
+      itemIds: [...draft.itemIds, ...made.items],
+      memberIds: [...draft.memberIds, ...made.member],
+      milestoneIds: [...draft.milestoneIds, ...made.milestone],
+      checkinIds: [...draft.checkinIds, ...made.checkin],
+    };
+    id =
+      kind === 'goal'
+        ? store.addGoal(buildGoal(name, icon, d, nowIso))
+        : kind === 'routine'
+          ? d.programIds.length
+            ? store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz), { programIds: d.programIds })
+            : store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz))
+          : store.addProgram(buildProgram(name, icon, d));
+  });
+  return id;
 }
 
 /* ── the one create call per kind ─────────────────────────────────────── */
@@ -275,6 +338,11 @@ export function draftConsequence(
             ...store.routines,
             { id: DRAFT_ID, ...buildRoutine('', undefined, d, todayStr, nowIso, tz) },
           ],
+          // Joining a program that is off puts the routine's items on hold —
+          // the attach discontinuity the program pane confirms, said here.
+          programs: store.programs.map((p) =>
+            d.programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
+          ),
         }
       : { ...ctx, programs: [...store.programs, { id: DRAFT_ID, ...buildProgram('', undefined, d) }] };
   let hides = 0;
@@ -355,7 +423,12 @@ export function ContainerDraftFields({
   const overrides = useMemo(() => {
     const nowIso = new Date().toISOString();
     if (kind === 'routine') {
-      return { routines: [...routines, { id: DRAFT_ID, ...buildRoutine('', undefined, draft, todayStr, nowIso, tz) }] };
+      return {
+        routines: [...routines, { id: DRAFT_ID, ...buildRoutine('', undefined, draft, todayStr, nowIso, tz) }],
+        programs: programs.map((p) =>
+          draft.programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
+        ),
+      };
     }
     if (kind === 'program') {
       return { programs: [...programs, { id: DRAFT_ID, ...buildProgram('', undefined, draft) }] };
@@ -371,6 +444,8 @@ export function ContainerDraftFields({
   const live =
     kind === 'program' &&
     isProgramActiveOn({ id: DRAFT_ID, ...buildProgram('', undefined, draft) }, todayStr);
+
+  const hasNew = (role: NewItemRole) => draft.newItems.some((n) => n.role === role);
 
   const notes: { key: string; text: string }[] = [];
   if (kind === 'program') {
@@ -520,10 +595,11 @@ export function ContainerDraftFields({
               testPrefix={`${p}-milestones`}
               orderable
               pickerHint="One-time items only. A repeating item never finishes."
-              emptyHint="Checkpoints on the way — e.g. “Run a 10k” by October."
+              emptyHint={hasNew('milestone') ? undefined : "Checkpoints on the way — e.g. “Run a 10k” by October."}
               eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a milestone is a one-shot item."
               onChange={(milestoneIds) => onChange({ milestoneIds })}
+              footer={<NewItemRows draft={draft} role="milestone" onChange={onChange} testPrefix={`${p}-create-milestone`} placeholder="Add a new milestone…" />}
             />
             <ItemMemberList
               label="Check-ins"
@@ -534,10 +610,11 @@ export function ContainerDraftFields({
               hiddenIds={NOTHING_HIDDEN}
               testPrefix={`${p}-checkins`}
               pickerHint="Repeating items only — a check-in comes round again."
-              emptyHint="A recurring review — e.g. a weekly look back on Sundays."
+              emptyHint={hasNew('checkin') ? undefined : "A recurring review — e.g. a weekly look back on Sundays."}
               eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a check-in is a repeating item."
               onChange={(checkinIds) => onChange({ checkinIds })}
+              footer={<NewItemRows draft={draft} role="checkin" onChange={onChange} testPrefix={`${p}-create-checkin`} placeholder="Add a new weekly check-in…" />}
             />
             <ItemMemberList
               label="Supporting work"
@@ -547,9 +624,10 @@ export function ContainerDraftFields({
               members={pick(draft.memberIds)}
               hiddenIds={NOTHING_HIDDEN}
               testPrefix={`${p}-supporting`}
-              emptyHint="The habits and tasks that serve it."
+              emptyHint={hasNew('member') ? undefined : "The habits and tasks that serve it."}
               eligible={(i) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id)}
               onChange={(memberIds) => onChange({ memberIds })}
+              footer={<NewItemRows draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add new supporting work…" />}
             />
           </>
         )}
@@ -585,14 +663,127 @@ export function ContainerDraftFields({
             lead={draft.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
             row={{ trailing: week.trailing }}
             emptyHint={
-              kind === 'routine'
-                ? 'The habits you want to run — and pause — together.'
-                : 'Anything that only matters during this stretch.'
+              hasNew('items')
+                ? undefined
+                : kind === 'routine'
+                  ? 'The habits you want to run — and pause — together.'
+                  : 'Anything that only matters during this stretch.'
             }
             onChange={(itemIds) => onChange({ itemIds })}
+            footer={
+              <NewItemRows
+                draft={draft}
+                role="items"
+                onChange={onChange}
+                testPrefix={`${p}-create-item`}
+                placeholder="Add a new item…"
+              />
+            }
           />
+        )}
+        {kind === 'routine' && programs.length > 0 && (
+          <ProgramPicker draft={draft} onChange={onChange} todayStr={todayStr} testPrefix={p} />
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Items typed in as NEW, waiting for the submit that creates them (in order —
+ * see createFromDraft), plus the row to type another. Undated tasks, as the
+ * goal pane's own add rows make them; a check-in is a weekly Sunday task.
+ */
+function NewItemRows({
+  draft,
+  role,
+  onChange,
+  testPrefix,
+  placeholder,
+}: {
+  draft: ContainerDraft;
+  role: NewItemRole;
+  onChange: (patch: Partial<ContainerDraft>) => void;
+  testPrefix: string;
+  placeholder: string;
+}) {
+  const rows = draft.newItems.filter((n) => n.role === role);
+  return (
+    <div className="flex flex-col">
+      {rows.map((n) => (
+        <div key={n.key} className="flex h-[30px] items-center gap-[9px]" data-testid={`${testPrefix}-row`}>
+          <span className="text-muted-foreground w-4 shrink-0 text-center text-[10px] font-medium">new</span>
+          <span className="font-content text-content text-foreground min-w-0 flex-1 truncate">{n.title}</span>
+          <button
+            type="button"
+            aria-label={`Don't create ${n.title}`}
+            data-testid={`${testPrefix}-remove`}
+            onClick={() => onChange({ newItems: draft.newItems.filter((x) => x.key !== n.key) })}
+            className="text-muted-foreground hover:text-foreground hover:bg-accent grid size-6 place-items-center rounded-[4px]"
+          >
+            <X className="size-3.5" />
+          </button>
+        </div>
+      ))}
+      <InlineAddRow
+        placeholder={placeholder}
+        testIdPrefix={testPrefix}
+        onAdd={(title) => onChange({ newItems: [...draft.newItems, { key: crypto.randomUUID(), title, role }] })}
+      />
+    </div>
+  );
+}
+
+/**
+ * A routine's programs, chosen at birth. The hold is written after the
+ * routine's own row lands (addRoutine's `programIds`); the consequence line
+ * above says when joining an Off program would put its items on hold.
+ */
+function ProgramPicker({
+  draft,
+  onChange,
+  todayStr,
+  testPrefix,
+}: {
+  draft: ContainerDraft;
+  onChange: (patch: Partial<ContainerDraft>) => void;
+  todayStr: string;
+  testPrefix: string;
+}) {
+  const programs = usePlannerStore((s) => s.programs);
+  return (
+    <section className="flex flex-col gap-1.5" data-testid={`${testPrefix}-programs`}>
+      <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">In programs</p>
+      <div className="flex flex-wrap gap-1.5">
+        {programs.map((program) => {
+          const on = draft.programIds.includes(program.id);
+          return (
+            <button
+              key={program.id}
+              type="button"
+              aria-pressed={on}
+              data-testid={`${testPrefix}-program`}
+              data-program-id={program.id}
+              onClick={() =>
+                onChange({
+                  programIds: on
+                    ? draft.programIds.filter((id) => id !== program.id)
+                    : [...draft.programIds, program.id],
+                })
+              }
+              className={cn(
+                'inline-flex h-7 items-center gap-1.5 rounded-sm border px-2.5 text-xs transition-colors',
+                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                on ? 'bg-secondary text-foreground border-transparent' : 'text-muted-foreground border-input border-dashed hover-wash'
+              )}
+            >
+              <CategoryIcon glyph={program.icon} name={program.name} className="size-3" />
+              {program.name}
+              {!isProgramActiveOn(program, todayStr) && <span className="text-muted-foreground">· off</span>}
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }

@@ -25,10 +25,8 @@ import {
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
 import { useEscapeLadder } from '@/components/planner/organize/escape-ladder';
 import {
-  buildGoal,
-  buildProgram,
-  buildRoutine,
   ContainerDraftFields,
+  createFromDraft,
   initialDraft,
   type ContainerDraft,
 } from '@/components/planner/organize/container-fields';
@@ -183,9 +181,6 @@ function ContainerForm({
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const projects = usePlannerStore((s) => s.projects);
-  const addGoal = usePlannerStore((s) => s.addGoal);
-  const addRoutine = usePlannerStore((s) => s.addRoutine);
-  const addProgram = usePlannerStore((s) => s.addProgram);
   const addProject = usePlannerStore((s) => s.addProject);
   const organizeOn = useOrganizeEnabled();
   const { todayStr, tz } = useToday();
@@ -235,18 +230,10 @@ function ContainerForm({
   const canOpen = kind !== 'project' || organizeOn;
 
   const create = (): string | null => {
-    const nowIso = new Date().toISOString();
-    // One add per kind, with everything the dialog asked for in it.
-    switch (kind) {
-      case 'goal':
-        return addGoal(buildGoal(trimmed, icon, draft, nowIso));
-      case 'routine':
-        return addRoutine(buildRoutine(trimmed, icon, draft, todayStr, nowIso, tz));
-      case 'program':
-        return addProgram(buildProgram(trimmed, icon, draft));
-      case 'project':
-        return addProject(trimmed, icon ?? '', color ? { color } : undefined);
-    }
+    // One ⌘Z per kind, with everything the dialog asked for in it — new
+    // member items included, created first and linked in order.
+    if (kind === 'project') return addProject(trimmed, icon ?? '', color ? { color } : undefined);
+    return createFromDraft(kind, trimmed, icon, draft, todayStr, tz);
   };
 
   const submit = (andOpen = false) => {

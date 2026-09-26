@@ -12,8 +12,14 @@ import {
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
-import { firstRepeatDayFrom, isRecurring } from '@/lib/recurrence';
-import { goalProgress, isAchieved, isGoalActive, sortGoalsForDisplay } from '@/lib/goals';
+import { isRecurring } from '@/lib/recurrence';
+import {
+  goalProgress,
+  isAchieved,
+  isGoalActive,
+  newMemberTaskShape,
+  sortGoalsForDisplay,
+} from '@/lib/goals';
 import { GoalProgressTrack } from '@/components/planner/goal-sections';
 import {
   byName,
@@ -207,34 +213,14 @@ export function GoalsSection({
    */
   const createCheckin = (goal: Goal, title: string) => {
     addTask(
-      {
-        title,
-        status: 'pending',
-        isScheduled: false,
-        order: 0,
-        startDate: firstRepeatDayFrom({ repeatFrequency: 'custom', repeatDays: [0] }, todayStr),
-        timeBucket: 'anytime',
-        repeatFrequency: 'custom',
-        // Sunday. A weekly review wants the seam between weeks, and picking a
-        // weekday would put it inside the week it is meant to be reviewing.
-        repeatDays: [0],
-        completedDates: [],
-        skippedDates: [],
-      } as never,
+      newMemberTaskShape('checkin', title, todayStr) as never,
       { goalIds: [goal.id], goalRole: 'checkin' },
     );
   };
 
   const createMilestone = (goal: Goal, title: string) => {
     addTask(
-      {
-        title,
-        status: 'pending',
-        isScheduled: false,
-        order: 0,
-        completedDates: [],
-        skippedDates: [],
-      } as never,
+      newMemberTaskShape('milestone', title, todayStr) as never,
       { goalIds: [goal.id], goalRole: 'milestone' },
     );
   };
@@ -246,14 +232,7 @@ export function GoalsSection({
    */
   const createMember = (goal: Goal, title: string) => {
     addTask(
-      {
-        title,
-        status: 'pending',
-        isScheduled: false,
-        order: 0,
-        completedDates: [],
-        skippedDates: [],
-      } as never,
+      newMemberTaskShape('member', title, todayStr) as never,
       { goalIds: [goal.id], goalRole: 'member' },
     );
   };

@@ -28,6 +28,12 @@ vi.mock('@/lib/db', async (importOriginal) => ({
   fetchTrashedNames: vi.fn(async () => ({ projects: [] })),
   fetchItemEvents: vi.fn(async () => []),
   getItemEventsAvailable: () => false,
+  // The writes a signed-in create makes — stubbed, never the network.
+  createItem: vi.fn(async () => {}),
+  createGoal: vi.fn(async () => {}),
+  createRoutine: vi.fn(async () => {}),
+  createProgram: vi.fn(async () => {}),
+  updateProgram: vi.fn(async () => {}),
 }));
 
 const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }));
@@ -371,5 +377,53 @@ describe('addGoal', () => {
     expect(made).toBe('');
     expect(usePlannerStore.getState().goals).toEqual([]);
     errors.mockRestore();
+  });
+});
+
+describe('new items and programs at birth', () => {
+  it('creates a typed-in milestone and links it, in ONE undo entry', () => {
+    seed({ items: [] });
+    newContainer('goal', 'Half marathon');
+    const field = id('goal-dialog-create-milestone-new-name');
+    fireEvent.change(field, { target: { value: 'Run a 10k' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(id('goal-dialog-create-milestone-row').textContent).toContain('Run a 10k');
+    // Nothing exists until the goal is created.
+    expect(usePlannerStore.getState().items).toEqual([]);
+
+    const before = usePlannerStore.getState().actionLog.length;
+    click('goal-dialog-add');
+    const s = usePlannerStore.getState();
+    const made = s.items.find((i) => i.title === 'Run a 10k')!;
+    expect(made).toMatchObject({ type: 'task', status: 'pending' });
+    expect(s.goals[0]).toMatchObject({ name: 'Half marathon', milestoneIds: [made.id] });
+    // The item and the goal arrive as ONE history entry.
+    expect(s.actionLog.length - before).toBe(1);
+    expect(s.actionLog[0].label).toBe('Add goal: Half marathon'); // newest first
+  });
+
+  it('drops a typed-in item the user takes back before creating', () => {
+    seed({ items: [] });
+    newContainer('routine');
+    const field = id('routine-dialog-create-item-new-name');
+    fireEvent.change(field, { target: { value: 'Floss' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    click('routine-dialog-create-item-remove');
+    click('routine-dialog-add');
+    expect(usePlannerStore.getState().items).toEqual([]);
+  });
+
+  it('puts a new routine into a program, and says when that program is off', () => {
+    const addRoutine = vi.fn(() => 'r-new');
+    seed({
+      programs: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] }],
+    });
+    usePlannerStore.setState({ addRoutine });
+    newContainer('routine');
+    link('routine-dialog-items', 'Stretch');
+    click('routine-dialog-program');
+    expect(id('routine-dialog-note-hides').textContent).toContain('puts 1 item on hold');
+    click('routine-dialog-add');
+    expect(addRoutine).toHaveBeenCalledWith(expect.objectContaining({ itemIds: ['h1'] }), { programIds: ['p1'] });
   });
 });
