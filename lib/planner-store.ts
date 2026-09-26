@@ -411,7 +411,8 @@ interface PlannerStore {
   setItemPaused: (id: string, paused: boolean, until?: string) => void;
 
   // Habit actions
-  addHabit: (habit: Omit<HabitItem, 'id' | 'type' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>, memberships?: Memberships) => void;
+  /** Returns the new habit's id. */
+  addHabit: (habit: Omit<HabitItem, 'id' | 'type' | 'streak' | 'status' | 'completedDates' | 'skippedDates' | 'dailyCounts' | 'currentDayCount'>, memberships?: Memberships) => string;
   updateHabit: (id: string, updates: Partial<HabitItem>) => void;
   deleteHabit: (id: string) => void;
   toggleHabitStatus: (id: string, status: HabitStatus, count?: number, date?: Date) => void;
@@ -4092,6 +4093,7 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) persistNewItem(userId, habit, memberships, get);
+        return habit.id;
       },
 
       updateHabit: (id, updates) => {

@@ -430,3 +430,19 @@ describe('new items and programs at birth', () => {
     );
   });
 });
+
+describe('a new item typed into a routine', () => {
+  it('is born a daily habit, filed under the first project', () => {
+    seed({ items: [], projects: [{ id: 'pr1', name: 'Health', emoji: '' }] });
+    newContainer('routine');
+    const field = id('routine-dialog-create-item-new-name');
+    expect(field.getAttribute('placeholder')).toBe('Add a new habit…');
+    fireEvent.change(field, { target: { value: 'Floss' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    click('routine-dialog-add');
+    const s = usePlannerStore.getState();
+    const made = s.items.find((i) => i.title === 'Floss')!;
+    expect(made).toMatchObject({ type: 'habit', repeatFrequency: 'daily', project: 'Health' });
+    expect(s.routines[0].itemIds).toEqual([made.id]);
+  });
+});

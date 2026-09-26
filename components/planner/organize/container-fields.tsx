@@ -141,6 +141,21 @@ export function createFromDraft(
   batchHistory(`Add ${kind}: ${name}`, 1 + draft.newItems.length, () => {
     const made: Record<NewItemRole, string[]> = { items: [], member: [], milestone: [], checkin: [] };
     for (const n of draft.newItems) {
+      if (kind === 'routine') {
+        // A routine is a run of habits, so what is typed into one is born a
+        // daily habit — change it to anything else, one at a time, after.
+        // Filed as the add dialog files a new habit (its container is
+        // REQUIRED): the first project, else the legacy 'personal'.
+        made[n.role].push(
+          store.addHabit({
+            title: n.title,
+            project: store.projects[0]?.name ?? 'personal',
+            repeatFrequency: 'daily',
+            timeBucket: 'anytime',
+          } as never)
+        );
+        continue;
+      }
       const role: GoalRole = n.role === 'items' ? 'member' : n.role;
       made[n.role].push(store.addTask(newMemberTaskShape(role, n.title, todayStr) as never));
     }
@@ -690,7 +705,7 @@ export function ContainerDraftFields({
                 role="items"
                 onChange={onChange}
                 testPrefix={`${p}-create-item`}
-                placeholder="Add a new item…"
+                placeholder={kind === 'routine' ? 'Add a new habit…' : 'Add a new item…'}
               />
             }
           />
