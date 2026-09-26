@@ -946,6 +946,16 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
   puts its ✕ flush against the clip, which shortens that ✕'s right reach.
 - Per-setting ✕s wear the header's `RailTooltip` ("Remove") on a pointer and none on the
   phone, as the end ✕ does.
+- **The menu unticks the way the ✕ removes.** A Project row is ticked by a folded match, so
+  a row ticked by a stored `project:work` has to untick through `withoutDisplayValue` too.
+  An exact-string toggle appended `project:Work` beside it and left the row ticked. Ticking
+  still appends the store's own spelling.
+- **The trigger ignores a held key.** The shelf's last ✕ (and its reset) hand focus to the
+  trigger, and a key still held from that press would autorepeat into it: Radix toggles on
+  every Enter/Space keydown regardless of `repeat`, so the menu would open and the repeat
+  would go on into its first row. `ignoreHeldKey` prevents the default of a repeated keydown
+  on both trigger variants; Radix's own handler runs after the child's under `asChild` and
+  stands down on a prevented default.
 
 ### Gotchas from the shelf
 
