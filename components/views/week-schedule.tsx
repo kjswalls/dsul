@@ -38,6 +38,8 @@ import { groupBySupport } from '@/lib/view-options';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
+import { sinkCompleted } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useDayItemsForDates } from '@/hooks/use-day-items';
 import { programBoundaries, boundaryLabel } from '@/lib/program-boundaries';
 import { cn } from '@/lib/utils';
@@ -193,12 +195,17 @@ function WeekScheduleColumn({
 
   // Per column, like the overlap pass below: seven strips are seven independent
   // lists. `'none'` comes back as one unlabelled group — today's flat strip.
+  // Finished rows sink to the foot of this day's strip, held and then slid
+  // (hooks/use-sink-hold.ts). Resolved at the COLUMN's date: seven strips are
+  // seven days, and a habit ticked Tuesday must sink in Tuesday's alone.
+  const { completedAs, rootRef: anytimeRootRef } = useSinkHold(setNodeRef);
   const untimedGroups = useMemo(
     () =>
-      groupBySupport('week', 'schedule', canvasGroupBy).honoured
+      (groupBySupport('week', 'schedule', canvasGroupBy).honoured
         ? groupRows(col.untimed, canvasGroupBy, { routines, programs, goals })
-        : [{ key: '', label: '', rows: col.untimed }],
-    [col.untimed, canvasGroupBy, routines, programs, goals]
+        : [{ key: '', label: '', rows: col.untimed }]
+      ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, col.dateStr, completedAs) })),
+    [col.untimed, col.dateStr, canvasGroupBy, routines, programs, goals, completedAs]
   );
 
   // Per COLUMN, not per week: seven days are seven independent grids, and memoising
@@ -348,7 +355,7 @@ function WeekScheduleColumn({
 
         {/* Per-day Anytime strip */}
         <div
-          ref={setNodeRef}
+          ref={anytimeRootRef}
           data-dnd-id={`week:${col.dateStr}:anytime`}
           data-dnd-over={isOver ? 'true' : 'false'}
           style={{ height: anytimeH }}
