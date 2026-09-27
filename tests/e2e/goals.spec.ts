@@ -34,14 +34,14 @@ import {
  * Serial, and under its OWN prefix. Every test writes rows on the shared test
  * user, and sweeping the bare TEST_TITLE_PREFIX from two files hard-DELETEs the
  * other's fixtures mid-test under `fullyParallel` with 4 workers — the lesson
- * programs.spec.ts had to learn once.
+ * seasons.spec.ts had to learn once.
  */
 const scope = specScope('goal');
 
 test.describe('goals', () => {
   // Each test drives the console through several open/edit/close round trips
   // against a dev server; each one is a palette invocation plus a Radix modal
-  // transition. Same budget programs.spec.ts and organize.spec.ts take.
+  // transition. Same budget seasons.spec.ts and organize.spec.ts take.
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
 
   test.beforeEach(async ({ page }) => {
@@ -79,7 +79,7 @@ test.describe('goals', () => {
     ).toHaveCount(0);
   }
 
-  /** Close, and PROVE it closed — see programs.spec.ts on the two-Escape dance. */
+  /** Close, and PROVE it closed — see seasons.spec.ts on the two-Escape dance. */
   async function closeConsole(page: Page) {
     await page.keyboard.press('Escape');
     await expect(page.getByRole('dialog')).toHaveCount(0);

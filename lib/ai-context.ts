@@ -3,7 +3,7 @@ import { getAllItemTypeNames, getItemTypeConfig, itemTypeName } from './item-reg
 import { isOpenLoopSuppressedOn, suppressionLabel, suppressionReason } from './active'
 import { toDateStr } from './recurrence'
 import { goalProgress, goalRolesByItem, nextMilestoneVisible } from './goals'
-import type { Item, Project, Routine, Program, Goal } from './planner-types'
+import type { Item, Project, Routine, Season, Goal } from './planner-types'
 
 /** Per cause, before the list collapses to a count. */
 const MAX_PAUSED_TITLES = 5
@@ -25,8 +25,8 @@ export function buildDsulContext(state: {
   userTimezone?: string | null
   /** Live routines, so a routine's pause suppresses its members here too. */
   routines?: Routine[]
-  /** Live programs, same reason — an out-of-season program hides its members here too. */
-  programs?: Program[]
+  /** Live seasons, same reason — a switched-off season hides its members here too. */
+  seasons?: Season[]
   /**
    * Live goals. NOT for suppression — a goal hides nothing — but for the
    * opposite question: asked how something long-running is going, Beacon should
@@ -114,7 +114,7 @@ export function buildDsulContext(state: {
   const activation = {
     userTimezone: tz,
     routines: state.routines,
-    programs: state.programs,
+    seasons: state.seasons,
   }
   // Resolved ONCE and shared with the Paused section below, so the two can
   // never disagree about which items are hidden — the section's whole job is to
@@ -140,7 +140,7 @@ export function buildDsulContext(state: {
   // context test stays exact for inputs that have none.
   //
   // The lines are suppression-AWARE even though goals never suppress. An item
-  // can sit in a goal and a paused program at once — that is the plan's own
+  // can sit in a goal and a paused season at once — that is the plan's own
   // headline example — and naming a suppressed milestone as "next" here would
   // recommend the exact work the ### Paused section three lines down forbids.
   // Two contradictory instructions in one prompt is worse than one fewer fact.
@@ -216,7 +216,7 @@ export function buildDsulContext(state: {
       for (const [label, titles] of byCause) {
         // Titles, not just a count: "3 items are away" cannot answer a question
         // about one of them by name, which is the question this section exists
-        // for. Capped so a large program cannot crowd out the live list.
+        // for. Capped so a large season cannot crowd out the live list.
         const shown = titles.slice(0, MAX_PAUSED_TITLES).join(', ')
         const rest = titles.length - MAX_PAUSED_TITLES
         lines.push(`- ${label} (${titles.length}): ${shown}${rest > 0 ? `, +${rest} more` : ''}`)

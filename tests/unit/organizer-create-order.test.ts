@@ -3,11 +3,11 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 /**
  * Organizer creates that write more than one row (Kirby, 2026-09-27):
  *
- *  1. A routine, program or goal the database REFUSES comes back out of the
+ *  1. A routine, season or goal the database REFUSES comes back out of the
  *     store and out of history — the project rollback, for every kind.
  *  2. A container born holding brand-new items waits for those items' INSERTs
  *     before writing the join rows that point at them (composite FKs).
- *  3. A routine born into programs gets its program holds written only after
+ *  3. A routine born into seasons gets its season holds written only after
  *     its own row lands — all in one undo entry.
  */
 
@@ -33,11 +33,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -71,9 +71,9 @@ beforeEach(async () => {
   vi.mocked(db.fetchProjects).mockResolvedValue([]);
   vi.mocked(db.createItem).mockResolvedValue(undefined as never);
   vi.mocked(db.createRoutine).mockResolvedValue(undefined);
-  vi.mocked(db.createProgram).mockResolvedValue(undefined);
+  vi.mocked(db.createSeason).mockResolvedValue(undefined);
   vi.mocked(db.createGoal).mockResolvedValue(undefined);
-  vi.mocked(db.updateProgram).mockResolvedValue(undefined);
+  vi.mocked(db.updateSeason).mockResolvedValue(undefined);
   await store().initializeStore(USER);
 });
 
@@ -89,25 +89,25 @@ describe('a refused organizer create', () => {
     expect(store().routines).toEqual([]);
   });
 
-  it('does the same for a program and a goal', async () => {
-    vi.mocked(db.createProgram).mockRejectedValue(new Error('boom'));
+  it('does the same for a season and a goal', async () => {
+    vi.mocked(db.createSeason).mockRejectedValue(new Error('boom'));
     vi.mocked(db.createGoal).mockRejectedValue(new Error('boom'));
-    store().addProgram({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
+    store().addSeason({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
     store().addGoal({ name: 'Run', state: 'active', memberIds: [], milestoneIds: [], checkinIds: [] });
     await settle();
-    expect(store().programs).toEqual([]);
+    expect(store().seasons).toEqual([]);
     expect(store().goals).toEqual([]);
   });
 
-  it('frees the programs that were holding a refused routine', async () => {
-    store().addProgram({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
+  it('frees the seasons that were holding a refused routine', async () => {
+    store().addSeason({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
     await settle();
     vi.mocked(db.createRoutine).mockRejectedValue(new Error('boom'));
-    store().addRoutine({ name: 'Mornings', itemIds: [] }, { programIds: [store().programs[0].id] });
-    expect(store().programs[0].routineIds).toHaveLength(1);
+    store().addRoutine({ name: 'Mornings', itemIds: [] }, { seasonIds: [store().seasons[0].id] });
+    expect(store().seasons[0].routineIds).toHaveLength(1);
     await settle();
-    expect(store().programs[0].routineIds).toEqual([]);
-    expect(db.updateProgram).not.toHaveBeenCalled();
+    expect(store().seasons[0].routineIds).toEqual([]);
+    expect(db.updateSeason).not.toHaveBeenCalled();
   });
 });
 
@@ -129,30 +129,30 @@ describe('saves in order', () => {
     expect(store().actionLog.map((a) => a.label).filter((l) => l !== 'Session start')).toEqual(['Add goal: Run']);
   });
 
-  it('writes a routine\'s program holds only after the routine lands, as one undo', async () => {
-    store().addProgram({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
+  it('writes a routine\'s season holds only after the routine lands, as one undo', async () => {
+    store().addSeason({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
     await settle();
     const routine = deferred();
     vi.mocked(db.createRoutine).mockReturnValue(routine.promise);
-    const pid = store().programs[0].id;
-    const rid = store().addRoutine({ name: 'Mornings', itemIds: [] }, { programIds: [pid] });
-    expect(store().programs[0].routineIds).toEqual([rid]);
+    const pid = store().seasons[0].id;
+    const rid = store().addRoutine({ name: 'Mornings', itemIds: [] }, { seasonIds: [pid] });
+    expect(store().seasons[0].routineIds).toEqual([rid]);
     await settle();
-    expect(db.updateProgram).not.toHaveBeenCalled();
+    expect(db.updateSeason).not.toHaveBeenCalled();
     routine.resolve();
     await settle();
-    expect(db.updateProgram).toHaveBeenCalledWith(USER, pid, { routineIds: [rid] });
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, pid, { routineIds: [rid] });
 
     store().undo();
     expect(store().routines).toEqual([]);
-    expect(store().programs[0].routineIds).toEqual([]);
+    expect(store().seasons[0].routineIds).toEqual([]);
   });
 
-  it('keeps the routine when only the program hold fails, and says so', async () => {
-    store().addProgram({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
+  it('keeps the routine when only the season hold fails, and says so', async () => {
+    store().addSeason({ name: 'Term', state: 'auto', itemIds: [], routineIds: [] });
     await settle();
-    vi.mocked(db.updateProgram).mockRejectedValue(new Error('boom'));
-    store().addRoutine({ name: 'Mornings', itemIds: [] }, { programIds: [store().programs[0].id] });
+    vi.mocked(db.updateSeason).mockRejectedValue(new Error('boom'));
+    store().addRoutine({ name: 'Mornings', itemIds: [] }, { seasonIds: [store().seasons[0].id] });
     await settle();
     await settle();
     expect(store().routines).toHaveLength(1);

@@ -6,8 +6,8 @@ import {
   HabitUpdateSchema,
   RoutineCreateSchema,
   RoutineUpdateSchema,
-  ProgramCreateSchema,
-  ProgramUpdateSchema,
+  SeasonCreateSchema,
+  SeasonUpdateSchema,
 } from '@dsul/types';
 
 /**
@@ -166,9 +166,9 @@ describe('the pause verb at the schema boundary', () => {
   });
 });
 
-describe('program range and membership at the schema boundary', () => {
-  it('accepts a well-formed program', () => {
-    const parsed = ProgramCreateSchema.safeParse({
+describe('season range and membership at the schema boundary', () => {
+  it('accepts a well-formed season', () => {
+    const parsed = SeasonCreateSchema.safeParse({
       name: 'Summer',
       state: 'auto',
       startsOn: '2026-06-01',
@@ -179,46 +179,46 @@ describe('program range and membership at the schema boundary', () => {
 
   it('rejects an inverted range on create AND on update', () => {
     // Live on no date at all, while reading as "seasonal, out of season" —
-    // indistinguishable from a program that will come back.
+    // indistinguishable from a season that will come back.
     const inverted = { name: 'Backwards', startsOn: '2026-08-31', endsOn: '2026-06-01' };
-    expect(ProgramCreateSchema.safeParse(inverted).success).toBe(false);
-    expect(ProgramUpdateSchema.safeParse(inverted).success).toBe(false);
+    expect(SeasonCreateSchema.safeParse(inverted).success).toBe(false);
+    expect(SeasonUpdateSchema.safeParse(inverted).success).toBe(false);
   });
 
   it('accepts a half-open range in either direction', () => {
-    expect(ProgramCreateSchema.safeParse({ name: 'A', startsOn: '2026-06-01' }).success).toBe(true);
-    expect(ProgramCreateSchema.safeParse({ name: 'B', endsOn: '2026-08-31' }).success).toBe(true);
+    expect(SeasonCreateSchema.safeParse({ name: 'A', startsOn: '2026-06-01' }).success).toBe(true);
+    expect(SeasonCreateSchema.safeParse({ name: 'B', endsOn: '2026-08-31' }).success).toBe(true);
   });
 
   it('rejects a state outside the tri-state', () => {
-    expect(ProgramCreateSchema.safeParse({ name: 'A', state: 'off' }).success).toBe(false);
+    expect(SeasonCreateSchema.safeParse({ name: 'A', state: 'off' }).success).toBe(false);
   });
 
-  it('REFUSES the pause verb on a program instead of silently dropping it', () => {
+  it('REFUSES the pause verb on a season instead of silently dropping it', () => {
     // Zod strips unknown keys, which is right for a field that means nothing.
     // `paused` means something everywhere else in this API, so an agent that
     // learned it on routines will try it here — and a stripped key returns
-    // 200 {success:true} with the program still live, which is how an agent
+    // 200 {success:true} with the season still live, which is how an agent
     // concludes the job is done. Same reasoning that rejects a bare
     // pausedUntil on an unpaused item.
-    for (const schema of [ProgramCreateSchema, ProgramUpdateSchema]) {
+    for (const schema of [SeasonCreateSchema, SeasonUpdateSchema]) {
       expect(schema.safeParse({ name: 'A', paused: true }).success).toBe(false);
       expect(schema.safeParse({ name: 'A', pausedUntil: '2026-09-01' }).success).toBe(false);
     }
     // …and the message names the control that does work.
-    const err = ProgramUpdateSchema.safeParse({ paused: true });
+    const err = SeasonUpdateSchema.safeParse({ paused: true });
     expect(err.success).toBe(false);
     expect(JSON.stringify(err.error?.issues)).toContain('state');
   });
 
   it('still accepts the tri-state that replaces it', () => {
     for (const state of ['auto', 'active', 'paused']) {
-      expect(ProgramUpdateSchema.safeParse({ state }).success).toBe(true);
+      expect(SeasonUpdateSchema.safeParse({ state }).success).toBe(true);
     }
   });
 
   it('requires membership ids to be uuids', () => {
-    expect(ProgramCreateSchema.safeParse({ name: 'A', itemIds: ['not-a-uuid'] }).success).toBe(
+    expect(SeasonCreateSchema.safeParse({ name: 'A', itemIds: ['not-a-uuid'] }).success).toBe(
       false
     );
     expect(RoutineCreateSchema.safeParse({ name: 'A', itemIds: ['nope'] }).success).toBe(false);
@@ -233,7 +233,7 @@ describe('program range and membership at the schema boundary', () => {
 
   it('requires a name', () => {
     expect(RoutineCreateSchema.safeParse({}).success).toBe(false);
-    expect(ProgramCreateSchema.safeParse({}).success).toBe(false);
+    expect(SeasonCreateSchema.safeParse({}).success).toBe(false);
     expect(RoutineCreateSchema.safeParse({ name: '' }).success).toBe(false);
   });
 });

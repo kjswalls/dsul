@@ -70,7 +70,7 @@ export function ChatConversation({
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const requestProposal = useProposalStore((s) => s.request);
   // Scoped, not global. The spinner renders on the surface that asked, so a
   // breakdown loading inside an item panel used to grey out THIS button with no
@@ -139,9 +139,9 @@ export function ChatConversation({
       items,
       todayStr,
       userTimezone: tz,
-      inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, programs }),
+      inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons }),
     });
-  }, [messages.length, canPropose, items, routines, programs, userTimezone]);
+  }, [messages.length, canPropose, items, routines, seasons, userTimezone]);
 
   /**
    * Hand the exchange to the proposal path, so a conversation can end in

@@ -1,15 +1,15 @@
 import { describe, it, expect } from 'vitest';
-import { programBoundaries, boundaryLabel, programSuppressionOn } from '@/lib/program-boundaries';
-import type { Item, Program, Routine } from '@dsul/types';
+import { seasonBoundaries, boundaryLabel, seasonSuppressionOn } from '@/lib/season-boundaries';
+import type { Item, Season, Routine } from '@dsul/types';
 
 /**
- * The two things the grid says out loud about programs: where a run of days
+ * The two things the grid says out loud about seasons: where a run of days
  * changes hands (the week rail) and what a single day is missing (the day
  * notice). Both are pure functions of dates and containers, which is the whole
  * reason they live outside the components.
  */
 
-const program = (over: Partial<Program> = {}): Program => ({
+const season = (over: Partial<Season> = {}): Season => ({
   id: 'p', name: 'Summer', state: 'auto', itemIds: [], routineIds: [], ...over,
 });
 
@@ -28,24 +28,24 @@ const WEEK = [
   '2026-09-03', '2026-09-04', '2026-09-05',
 ];
 
-const ctx = (programs: Program[], routines: Routine[] = []) => ({
+const ctx = (seasons: Season[], routines: Routine[] = []) => ({
   userTimezone: 'UTC',
   routines,
-  programs,
+  seasons,
 });
 
-describe('programBoundaries', () => {
+describe('seasonBoundaries', () => {
   it('marks the first day AFTER an inclusive range ends', () => {
-    const p = program({ endsOn: '2026-08-31' });
-    const found = programBoundaries(WEEK, [p]);
+    const p = season({ endsOn: '2026-08-31' });
+    const found = seasonBoundaries(WEEK, [p]);
     expect([...found.keys()]).toEqual(['2026-09-01']);
     expect(found.get('2026-09-01')!.ended).toEqual([p]);
     expect(found.get('2026-09-01')!.started).toEqual([]);
   });
 
   it('marks the day a range opens', () => {
-    const p = program({ startsOn: '2026-09-02' });
-    const found = programBoundaries(WEEK, [p]);
+    const p = season({ startsOn: '2026-09-02' });
+    const found = seasonBoundaries(WEEK, [p]);
     expect([...found.keys()]).toEqual(['2026-09-02']);
     expect(found.get('2026-09-02')!.started).toEqual([p]);
   });
@@ -54,82 +54,82 @@ describe('programBoundaries', () => {
   // assertion the reader cannot check. Walk back a week and it appears in its
   // rightful place.
   it('never reports a boundary on the first date of the run', () => {
-    const p = program({ startsOn: '2026-08-30' });
-    expect(programBoundaries(WEEK, [p]).size).toBe(0);
+    const p = season({ startsOn: '2026-08-30' });
+    expect(seasonBoundaries(WEEK, [p]).size).toBe(0);
   });
 
   it('reports a handover when one ends as another begins', () => {
-    const out = program({ id: 'out', name: 'Summer', endsOn: '2026-08-31' });
-    const inn = program({ id: 'in', name: 'Term', startsOn: '2026-09-01' });
-    const found = programBoundaries(WEEK, [out, inn]);
+    const out = season({ id: 'out', name: 'Summer', endsOn: '2026-08-31' });
+    const inn = season({ id: 'in', name: 'Term', startsOn: '2026-09-01' });
+    const found = seasonBoundaries(WEEK, [out, inn]);
     expect(found.size).toBe(1);
     expect(boundaryLabel(found.get('2026-09-01')!)).toBe('Summer → Term');
   });
 
-  it('handles a program that flips twice inside one run', () => {
-    const p = program({ startsOn: '2026-08-31', endsOn: '2026-09-02' });
-    const found = programBoundaries(WEEK, [p]);
+  it('handles a season that flips twice inside one run', () => {
+    const p = season({ startsOn: '2026-08-31', endsOn: '2026-09-02' });
+    const found = seasonBoundaries(WEEK, [p]);
     expect([...found.keys()]).toEqual(['2026-08-31', '2026-09-03']);
   });
 
   // Manual states have no recorded history, so there is no honest date to place
   // a boundary at — they apply uniformly to every column.
-  it('reports nothing for manually-set programs', () => {
-    expect(programBoundaries(WEEK, [program({ state: 'active', startsOn: '2026-09-02' })]).size).toBe(0);
-    expect(programBoundaries(WEEK, [program({ state: 'paused', startsOn: '2026-09-02' })]).size).toBe(0);
+  it('reports nothing for manually-set seasons', () => {
+    expect(seasonBoundaries(WEEK, [season({ state: 'active', startsOn: '2026-09-02' })]).size).toBe(0);
+    expect(seasonBoundaries(WEEK, [season({ state: 'paused', startsOn: '2026-09-02' })]).size).toBe(0);
   });
 
   it('labels a plain start and a plain end', () => {
-    expect(boundaryLabel({ started: [program({ name: 'Term' })], ended: [] })).toBe('Term starts');
-    expect(boundaryLabel({ started: [], ended: [program({ name: 'Summer' })] })).toBe('Summer ends');
+    expect(boundaryLabel({ started: [season({ name: 'Term' })], ended: [] })).toBe('Term starts');
+    expect(boundaryLabel({ started: [], ended: [season({ name: 'Summer' })] })).toBe('Summer ends');
   });
 });
 
-describe('programSuppressionOn', () => {
+describe('seasonSuppressionOn', () => {
   const D = '2026-09-05';
 
-  it('is null when every program is on', () => {
+  it('is null when every season is on', () => {
     const items = [task('a')];
-    expect(programSuppressionOn(D, items, ctx([program({ itemIds: ['a'] })]))).toBeNull();
+    expect(seasonSuppressionOn(D, items, ctx([season({ itemIds: ['a'] })]))).toBeNull();
   });
 
-  it('is null when an off program is hiding nothing', () => {
+  it('is null when an off season is hiding nothing', () => {
     const items = [task('a')];
-    expect(programSuppressionOn(D, items, ctx([program({ state: 'paused' })]))).toBeNull();
+    expect(seasonSuppressionOn(D, items, ctx([season({ state: 'paused' })]))).toBeNull();
   });
 
-  it('counts what an off program is hiding and names it', () => {
+  it('counts what an off season is hiding and names it', () => {
     const items = [task('a'), task('b'), task('c')];
-    const result = programSuppressionOn(
+    const result = seasonSuppressionOn(
       D,
       items,
-      ctx([program({ name: 'Summer', state: 'paused', itemIds: ['a', 'b'] })])
+      ctx([season({ name: 'Summer', state: 'paused', itemIds: ['a', 'b'] })])
     );
     expect(result).not.toBeNull();
     expect(result!.hidden).toBe(2);
-    expect(result!.programs.map((p) => p.name)).toEqual(['Summer']);
+    expect(result!.seasons.map((p) => p.name)).toEqual(['Summer']);
   });
 
-  it('counts items reached through a routine the program holds', () => {
+  it('counts items reached through a routine the season holds', () => {
     const items = [task('a')];
     const r = routine({ id: 'r1', itemIds: ['a'] });
-    const result = programSuppressionOn(
+    const result = seasonSuppressionOn(
       D,
       items,
-      ctx([program({ state: 'paused', routineIds: ['r1'] })], [r])
+      ctx([season({ state: 'paused', routineIds: ['r1'] })], [r])
     );
     expect(result!.hidden).toBe(1);
   });
 
   // The user's own pause is their decision about that row, and it already has a
   // home in the braindump's Paused section. Folding it in would make the
-  // program look responsible for work it never touched.
+  // season look responsible for work it never touched.
   it('does NOT count items the user paused by hand', () => {
     const items = [task('a', { pausedAt: '2026-08-01T12:00:00Z' }), task('b')];
-    const result = programSuppressionOn(
+    const result = seasonSuppressionOn(
       D,
       items,
-      ctx([program({ state: 'paused', itemIds: ['a', 'b'] })])
+      ctx([season({ state: 'paused', itemIds: ['a', 'b'] })])
     );
     expect(result!.hidden).toBe(1);
   });
@@ -139,24 +139,24 @@ describe('programSuppressionOn', () => {
   it('does NOT count items a paused routine was already hiding', () => {
     const items = [task('a')];
     const r = routine({ id: 'r1', itemIds: ['a'], pausedAt: '2026-08-01T12:00:00Z' });
-    expect(programSuppressionOn(D, items, ctx([program({ state: 'paused' })], [r]))).toBeNull();
+    expect(seasonSuppressionOn(D, items, ctx([season({ state: 'paused' })], [r]))).toBeNull();
   });
 
   // History is never hidden, so it is never missing, so it is never counted.
   it('ignores items that already carry a mark for the day', () => {
     const items = [task('a', { status: 'completed' }), task('b')];
-    const result = programSuppressionOn(
+    const result = seasonSuppressionOn(
       D,
       items,
-      ctx([program({ state: 'paused', itemIds: ['a', 'b'] })])
+      ctx([season({ state: 'paused', itemIds: ['a', 'b'] })])
     );
     expect(result!.hidden).toBe(1);
   });
 
   it('resolves per date across the range boundary', () => {
     const items = [task('a')];
-    const c = ctx([program({ itemIds: ['a'], startsOn: '2026-06-01', endsOn: '2026-08-31' })]);
-    expect(programSuppressionOn('2026-08-31', items, c)).toBeNull();
-    expect(programSuppressionOn('2026-09-01', items, c)!.hidden).toBe(1);
+    const c = ctx([season({ itemIds: ['a'], startsOn: '2026-06-01', endsOn: '2026-08-31' })]);
+    expect(seasonSuppressionOn('2026-08-31', items, c)).toBeNull();
+    expect(seasonSuppressionOn('2026-09-01', items, c)!.hidden).toBe(1);
   });
 });

@@ -54,7 +54,7 @@ describe('the role seam', () => {
     // name. The three ROLES are intact, which is the property this file exists
     // to hold: collapsing a kind must not collapse a role.
     expect([...CLASSIFY_KINDS]).toEqual(['project']);
-    expect([...GATE_KINDS]).toEqual(['routine', 'program']);
+    expect([...GATE_KINDS]).toEqual(['routine', 'season']);
     expect([...ASPIRE_KINDS]).toEqual(['goal']);
 
     const all = Object.keys(CONTAINER_KINDS) as ContainerKind[];
@@ -291,15 +291,15 @@ describe('classifyKindForItemType', () => {
 describe('inline creation is offered from the item dialog for every kind (C2)', () => {
   it('names a create row on all four kinds, not projects alone', () => {
     // Used to be projects-only — gates and goals were created solely in the
-    // console. "Attach this to a NEW goal/routine/program" is a real add-dialog
+    // console. "Attach this to a NEW goal/routine/season" is a real add-dialog
     // gesture now, so each kind names its create row. A regression to null here
     // silently drops the InlineCreate row from that kind's membership chip.
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(CONTAINER_KINDS[kind].newLabel).toBeTruthy();
       expect(typeof CONTAINER_KINDS[kind].newLabel).toBe('string');
     }
     expect(CONTAINER_KINDS.routine.newLabel).toBe('New routine');
-    expect(CONTAINER_KINDS.program.newLabel).toBe('New program');
+    expect(CONTAINER_KINDS.season.newLabel).toBe('New season');
     expect(CONTAINER_KINDS.goal.newLabel).toBe('New goal');
   });
 });

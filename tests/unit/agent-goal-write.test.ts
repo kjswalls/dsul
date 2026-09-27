@@ -51,7 +51,7 @@ describe('GoalCreateSchema / GoalUpdateSchema — what a goal body may say', () 
     for (const state of ['active', 'achieved', 'abandoned']) {
       expect(GoalUpdateSchema.safeParse({ state }).success).toBe(true);
     }
-    // 'auto' and 'paused' are the PROGRAM vocabulary — the nearest wrong answer.
+    // 'auto' and 'paused' are the SEASON vocabulary — the nearest wrong answer.
     expect(GoalUpdateSchema.safeParse({ state: 'auto' }).success).toBe(false);
     expect(GoalUpdateSchema.safeParse({ state: 'paused' }).success).toBe(false);
   });
@@ -66,7 +66,7 @@ describe('the refusals — each one because the silent alternative is worse', ()
     expect(r.success).toBe(false);
     const message = (r as { error: { issues: { message: string }[] } }).error.issues[0].message;
     expect(message).toContain('state');
-    expect(message).toContain('program');
+    expect(message).toContain('season');
   });
 
   it('refuses pausedUntil for the same reason', () => {

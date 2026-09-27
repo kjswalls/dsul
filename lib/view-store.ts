@@ -31,7 +31,7 @@ import {
 export type ViewScope = 'day' | 'week';
 export type ViewLayout = 'buckets' | 'schedule' | 'list';
 export type TypeFilter = 'all' | 'tasks' | 'habits';
-export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'priority' | 'routine' | 'program' | 'goal';
+export type BraindumpGroupBy = 'none' | 'type' | 'project' | 'priority' | 'routine' | 'season' | 'goal';
 
 const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'none',
@@ -39,7 +39,7 @@ const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
   'project',
   'priority',
   'routine',
-  'program',
+  'season',
   'goal',
 ];
 
@@ -57,6 +57,14 @@ const BRAINDUMP_GROUP_BY_VALUES: readonly BraindumpGroupBy[] = [
  */
 export const isBraindumpGroupBy = (v: unknown): v is BraindumpGroupBy =>
   typeof v === 'string' && (BRAINDUMP_GROUP_BY_VALUES as readonly string[]).includes(v);
+
+/**
+ * A persisted axis under its pre-rename name. Seasons were "programs" until
+ * migration 046, and a blob written before that holds `'program'` — which the
+ * guards would otherwise quietly reset to 'none', dropping a grouping the user
+ * chose. Anything else passes through for the guards to judge.
+ */
+const renamedAxis = (v: unknown): unknown => (v === 'program' ? 'season' : v);
 /** Content typeface: sans = Inter Medium 13 (Linear look), serif = Source Serif SemiBold 15. */
 export type TypeMode = 'sans' | 'serif';
 /**
@@ -394,6 +402,8 @@ export const useViewStore = create<ViewStore>()(
        */
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<ViewStore> & Record<string, unknown>;
+        const canvasAxis = renamedAxis(p.canvasGroupBy);
+        const braindumpAxis = renamedAxis(p.braindumpGroupBy);
         return {
           ...current,
           ...p,
@@ -411,12 +421,12 @@ export const useViewStore = create<ViewStore>()(
           // container arm, so a stale blob would silently group by project — and
           // the Grouping row would render "None" over it, because no option
           // matches, while the trigger counted it as one active clause.
-          canvasGroupBy: isGroupBy(p.canvasGroupBy) ? p.canvasGroupBy : 'none',
+          canvasGroupBy: isGroupBy(canvasAxis) ? canvasAxis : 'none',
           // The braindump's own axis, uncoerced before this — it predates the
-          // routine/program values, so a blob written earlier holds a value that
+          // routine/season values, so a blob written earlier holds a value that
           // is still legal, but a garbage one would fall through groupRows to the
           // container arm exactly as a stale canvasGroupBy would.
-          braindumpGroupBy: isBraindumpGroupBy(p.braindumpGroupBy) ? p.braindumpGroupBy : 'none',
+          braindumpGroupBy: isBraindumpGroupBy(braindumpAxis) ? braindumpAxis : 'none',
           // Coerced for the same reason the enums above are, with a sharper
           // failure: this one decides whether the app renders its shell AT ALL.
           // A devtools-edited or hand-written `"false"` is a truthy string, and

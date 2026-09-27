@@ -19,7 +19,7 @@ import { renderHook, cleanup } from '@testing-library/react';
  *
  *   1. Per-column DATE resolution. Hoisting `inactiveItemIdsOn` out of the loop
  *      is the obvious "optimisation", and it resolves all seven columns at
- *      whichever date built the set. That is the wrong-date bug the programs
+ *      whichever date built the set. That is the wrong-date bug the seasons
  *      work shipped twice.
  *   2. Filters reaching all seven. The point of one pipeline is that a rule
  *      added for the day views arrives here for free.
@@ -46,11 +46,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -134,7 +134,7 @@ function seed(opts: { showPausedOnGrid?: boolean; filters?: ViewFilters; goals?:
     habits: items.filter((i) => i.type === 'habit') as never,
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     showCompletedTasks: true,
     showPausedOnGrid: opts.showPausedOnGrid ?? false,
     goals: opts.goals ?? [],

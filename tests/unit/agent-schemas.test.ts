@@ -203,12 +203,12 @@ describe('DsulContextResponseSchema (items[] additivity)', () => {
     expect(r.success).toBe(true);
   });
 
-  it('parses a v4 response with routines[] and programs[]', () => {
+  it('parses a v4 response with routines[] and seasons[]', () => {
     const r = DsulContextResponseSchema.safeParse({
       ...base,
       schemaVersion: 4,
       routines: [{ id: 'r1', name: 'Morning', itemIds: ['t1'] }],
-      programs: [
+      seasons: [
         {
           id: 'p1',
           name: 'Summer',
@@ -232,10 +232,10 @@ describe('DsulContextResponseSchema (items[] additivity)', () => {
 
   it('accepts a v4 response that OMITS the arrays rather than sending []', () => {
     // The route omits them when the tables are unreachable, because `[]` would
-    // assert "you have no programs" to a consumer that might offer to make one.
+    // assert "you have no seasons" to a consumer that might offer to make one.
     const r = DsulContextResponseSchema.safeParse({ ...base, schemaVersion: 4 });
     expect(r.success).toBe(true);
-    expect((r as { data: Record<string, unknown> }).data.programs).toBeUndefined();
+    expect((r as { data: Record<string, unknown> }).data.seasons).toBeUndefined();
   });
 
   it('parses a v5 response with goals[]', () => {

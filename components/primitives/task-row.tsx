@@ -85,7 +85,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     selectedDate,
     userTimezone,
     routines,
-    programs,
+    seasons,
     goals,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
@@ -121,7 +121,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * the row fell through to `selectedDate` and disagreed with the section it was
    * sitting in: walk the canvas to a September the user is merely browsing and a
    * live task in the working list greys itself and claims "Hidden with your
-   * Summer program", while a genuinely paused row under the Paused heading
+   * Summer season", while a genuinely paused row under the Paused heading
    * brightens because its resume date has passed on the day being looked at.
    * Neither has anything to do with what the user did.
    */
@@ -149,7 +149,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const suppression = suppressionReason(item as Item, suppressionDate, {
     userTimezone: timezone,
     routines,
-    programs,
+    seasons,
   });
   const suppressed = !!suppression;
 

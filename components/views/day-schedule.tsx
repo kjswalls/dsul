@@ -51,7 +51,7 @@ import { suppressionReason } from '@/lib/active';
 import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
-import { ProgramNotice } from '@/components/views/program-notice';
+import { SeasonNotice } from '@/components/views/season-notice';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -583,7 +583,7 @@ export function ScheduleBlock({
     selectedDate,
     userTimezone,
     routines,
-    programs,
+    seasons,
     toggleTaskStatus,
     setItemSkipped,
     updateTask,
@@ -618,7 +618,7 @@ export function ScheduleBlock({
   const suppression = suppressionReason(item as Item, dateStr, {
     userTimezone: timezone,
     routines,
-    programs,
+    seasons,
   });
   const suppressed = !!suppression;
   const done = isTask
@@ -1497,15 +1497,15 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   // single unlabelled group, which renders as today's flat strip.
   const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const untimedGroups = useMemo(
     () =>
       (groupBySupport('day', 'schedule', canvasGroupBy).honoured
-        ? groupRows(untimed, canvasGroupBy, { routines, programs, goals })
+        ? groupRows(untimed, canvasGroupBy, { routines, seasons, goals })
         : [{ key: '', label: '', rows: untimed }]
       ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, completionDateStr, completedAs) })),
-    [untimed, canvasGroupBy, routines, programs, goals, completionDateStr, completedAs]
+    [untimed, canvasGroupBy, routines, seasons, goals, completionDateStr, completedAs]
   );
   /** True when the strip renders real sections rather than one flat list. */
   const grouped = untimedGroups.some((g) => g.label);
@@ -1565,9 +1565,9 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       planLanes(
         timed.map((e) => ({ itemType: e.itemType, item: e.item })),
         canvasGroupBy,
-        { variant: 'day', fieldWidth, routines, programs, goals }
+        { variant: 'day', fieldWidth, routines, seasons, goals }
       ),
-    [timed, canvasGroupBy, fieldWidth, routines, programs, goals]
+    [timed, canvasGroupBy, fieldWidth, routines, seasons, goals]
   );
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
 
@@ -1610,8 +1610,8 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
       >
         {/* Above everything, because it qualifies everything below it: this day
             is missing work, and here is what is holding it. Renders on no other
-            day — see ProgramNotice. */}
-        <ProgramNotice className="px-1" />
+            day — see SeasonNotice. */}
+        <SeasonNotice className="px-1" />
 
         {/* ANYTIME — untimed items; drop here to keep something time-free */}
         {(untimed.length > 0 || dragging) && (

@@ -72,7 +72,7 @@ beforeEach(() => {
     items: [],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     itemTypes: [],
     restoreFromTrash,
   } as never);

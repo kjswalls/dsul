@@ -44,7 +44,7 @@ export function canBulkClearProject(item: Item): boolean {
 /** Reminders: the registry's own rule, subtasks excluded. */
 export const canBulkSetReminder = isRemindable;
 
-/** Routines, programs and goals: the collect rule, subtasks excluded. */
+/** Routines, seasons and goals: the collect rule, subtasks excluded. */
 export const canBulkCollect = isCollectible;
 
 /**

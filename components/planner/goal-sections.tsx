@@ -111,17 +111,17 @@ export function GoalProgressTrack({
  * Why this member will not appear on a day, or null.
  *
  * The goal surfaces are the WHY layer and never suppress anything themselves —
- * but their members can be held off by a paused routine or an out-of-season
- * program, and a timeline that says "due Friday" for an item rendering on no
+ * but their members can be held off by a paused routine or a switched-off
+ * season, and a timeline that says "due Friday" for an item rendering on no
  * Friday column is a quiet lie. Resolved at TODAY, never a navigated date:
  * these surfaces have no date to navigate.
  */
 function useSuppression() {
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const { todayStr, tz } = useToday();
   return (item: Item) =>
-    suppressionReason(item, todayStr, { userTimezone: tz, routines, programs });
+    suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons });
 }
 
 export function GoalMemberNote({ item }: { item: Item }) {

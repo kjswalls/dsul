@@ -1,4 +1,4 @@
-import type { Goal, GroupBy, HabitItem, Priority, Program, Routine, Task, TimeBucket } from './planner-types';
+import type { Goal, GroupBy, HabitItem, Priority, Season, Routine, Task, TimeBucket } from './planner-types';
 import { displayGoals, goalItemIds } from './goals';
 import { TIME_BUCKET_RANGES } from './planner-types';
 import { BUCKET_ORDER } from './day-items';
@@ -61,7 +61,7 @@ export interface RowGroup<T> {
   label: string;
   rows: T[];
   /**
-   * Set only on GATE sections (routine/program), and only on the REAL container
+   * Set only on GATE sections (routine/season), and only on the REAL container
    * ones — never the `:none` loose bucket, which names no container to switch.
    * It carries the switch a group header renders: the id and kind are all the
    * header needs to resolve the container's on/off state and toggle it. Absent
@@ -71,15 +71,15 @@ export interface RowGroup<T> {
    * field: a goal switches nothing, so its heading has nothing to toggle. The
    * type says so — `kind` is the two gate kinds, not `ContainerKind`.
    */
-  gate?: { kind: 'routine' | 'program'; id: string };
+  gate?: { kind: 'routine' | 'season'; id: string };
 }
 
 export interface GroupContext {
-  /** Required by `'routine'`; also read by `'program'` (a program's members
+  /** Required by `'routine'`; also read by `'season'` (a season's members
    *  ride in through the routines it holds); ignored by every other value. */
   routines?: readonly Routine[];
-  /** Required by `'program'`; ignored by every other value. */
-  programs?: readonly Program[];
+  /** Required by `'season'`; ignored by every other value. */
+  seasons?: readonly Season[];
   /** Required by `'goal'`; ignored by every other value. */
   goals?: readonly Goal[];
 }
@@ -223,21 +223,21 @@ function routineGroups<T extends GroupableRow>(rows: T[], routines: readonly Rou
   ];
 }
 
-/* ── program ────────────────────────────────────────────────────────────────*/
+/* ── season ────────────────────────────────────────────────────────────────*/
 
 /**
- * A program's members, in claim order: its OWN items first, then the items of
- * each routine it holds, in `routineIds` order. Deduped within the program —
+ * A season's members, in claim order: its OWN items first, then the items of
+ * each routine it holds, in `routineIds` order. Deduped within the season —
  * an item that is both a direct member and reachable through a routine appears
  * once, at its direct position.
  *
- * A program gates work either directly (`program_items`) or through a routine it
- * contains (`program_routines` → `routine_items`), so the walk unions both.
- * Reading `itemIds` alone would miss every item a program only reaches via a
- * routine — the school-year program that contains a Chinese routine holds that
+ * A season gates work either directly (`season_items`) or through a routine it
+ * contains (`season_routines` → `routine_items`), so the walk unions both.
+ * Reading `itemIds` alone would miss every item a season only reaches via a
+ * routine — the school-year season that contains a Chinese routine holds that
  * routine's habits.
  */
-function programMemberIds(program: Program, routineById: ReadonlyMap<string, Routine>): string[] {
+function seasonMemberIds(season: Season, routineById: ReadonlyMap<string, Routine>): string[] {
   const seen = new Set<string>();
   const out: string[] = [];
   const push = (id: string) => {
@@ -246,8 +246,8 @@ function programMemberIds(program: Program, routineById: ReadonlyMap<string, Rou
       out.push(id);
     }
   };
-  for (const id of program.itemIds) push(id);
-  for (const routineId of program.routineIds) {
+  for (const id of season.itemIds) push(id);
+  for (const routineId of season.routineIds) {
     const routine = routineById.get(routineId);
     if (routine) for (const id of routine.itemIds) push(id);
   }
@@ -255,33 +255,33 @@ function programMemberIds(program: Program, routineById: ReadonlyMap<string, Rou
 }
 
 /**
- * ONE row, ONE group — the routine rule, applied to programs. An item can sit in
- * several programs (directly, or via routines several programs share), so it
- * lands in the FIRST program that claims it, in store order; a duplicate row is
+ * ONE row, ONE group — the routine rule, applied to seasons. An item can sit in
+ * several seasons (directly, or via routines several seasons share), so it
+ * lands in the FIRST season that claims it, in store order; a duplicate row is
  * the same two-checkboxes-for-one-obligation failure `routineGroups` guards.
  *
- * Keyed by program ID, labelled by name — programs, like routines, carry
+ * Keyed by season ID, labelled by name — seasons, like routines, carry
  * `name text not null` with no UNIQUE and rename ships from day one, so keying
  * on the name would merge two same-named seasons into one heading. Members order
- * by `programMemberIds` (own items, then routine members); `sortRows(rows,
+ * by `seasonMemberIds` (own items, then routine members); `sortRows(rows,
  * 'default')` is identity and preserves it. There is no member REORDER on a
- * program header — `program_items` has no sort_order (see schedule-lanes.ts).
+ * season header — `season_items` has no sort_order (see schedule-lanes.ts).
  */
-function programGroups<T extends GroupableRow>(
+function seasonGroups<T extends GroupableRow>(
   rows: T[],
-  programs: readonly Program[],
+  seasons: readonly Season[],
   routines: readonly Routine[],
 ): RowGroup<T>[] {
   const routineById = new Map(routines.map((routine) => [routine.id, routine]));
   const claimed = new Map<string, { id: string; rank: number }>();
-  programs.forEach((program, i) => {
-    programMemberIds(program, routineById).forEach((id, rank) => {
-      if (!claimed.has(id)) claimed.set(id, { id: program.id, rank: i * 1e6 + rank });
+  seasons.forEach((season, i) => {
+    seasonMemberIds(season, routineById).forEach((id, rank) => {
+      if (!claimed.has(id)) claimed.set(id, { id: season.id, rank: i * 1e6 + rank });
     });
   });
 
   const groups = new Map<string, T[]>();
-  for (const program of programs) groups.set(program.id, []);
+  for (const season of seasons) groups.set(season.id, []);
   const loose: T[] = [];
   for (const row of rows) {
     const claim = claimed.get(row.item.id);
@@ -293,16 +293,16 @@ function programGroups<T extends GroupableRow>(
   }
 
   return [
-    ...programs
-      .filter((program) => (groups.get(program.id)?.length ?? 0) > 0)
-      .map((program) => ({
-        key: program.id,
-        label: program.name,
-        rows: groups.get(program.id)!,
-        gate: { kind: 'program' as const, id: program.id },
+    ...seasons
+      .filter((season) => (groups.get(season.id)?.length ?? 0) > 0)
+      .map((season) => ({
+        key: season.id,
+        label: season.name,
+        rows: groups.get(season.id)!,
+        gate: { kind: 'season' as const, id: season.id },
       })),
     // Prefixed for the same React-key reason as 'routine:none'; no `gate`.
-    ...(loose.length ? [{ key: 'program:none', label: 'No program', rows: loose }] : []),
+    ...(loose.length ? [{ key: 'season:none', label: 'No season', rows: loose }] : []),
   ];
 }
 
@@ -382,7 +382,7 @@ function goalGroups<T extends GroupableRow>(rows: T[], goals: readonly Goal[]): 
  * choice for that view rather than an answer to "group by what".
  *
  * Section order is FIRST-ENCOUNTER for the container value and STORE ORDER for
- * the id-keyed ones (routine, program, goal); the closed values (priority,
+ * the id-keyed ones (routine, season, goal); the closed values (priority,
  * bucket) use a fixed ladder. "None" sections sort last either way, matching
  * the sort side's rule that unset ranks last rather than floating to the top.
  */
@@ -394,7 +394,7 @@ export function groupRows<T extends GroupableRow>(
   if (rows.length === 0) return [];
   if (groupBy === 'none') return [{ key: '', label: '', rows }];
   if (groupBy === 'routine') return routineGroups(rows, ctx.routines ?? []);
-  if (groupBy === 'program') return programGroups(rows, ctx.programs ?? [], ctx.routines ?? []);
+  if (groupBy === 'season') return seasonGroups(rows, ctx.seasons ?? [], ctx.routines ?? []);
   if (groupBy === 'goal') return goalGroups(rows, ctx.goals ?? []);
 
   if (groupBy === 'priority') {

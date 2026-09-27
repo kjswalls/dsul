@@ -247,7 +247,7 @@ function priorityValues(stored: readonly string[]): DisplayValue[] {
  *      place it gets named. Deduped on the folded name, as the menu's one
  *      checkbox would take them.
  *   3. Refs of no classify kind, a bare legacy name or any other prefix
- *      (`routine:` and `program:` among them, which this filter never
+ *      (`routine:` and `season:` among them, which this filter never
  *      writes): nothing here resolves them, so each is named by what follows
  *      its first colon (`containerName`), with the ring.
  *   4. The unset value, last, where its row is. It needs a label of its own:

@@ -44,7 +44,7 @@ export interface OpenerContext {
   /** yyyy-MM-dd, already resolved in the user's zone. */
   todayStr: string
   userTimezone: string
-  /** From lib/active.ts `inactiveItemIdsOn` — work a routine or program paused. */
+  /** From lib/active.ts `inactiveItemIdsOn` — work a routine or season paused. */
   inactiveIds?: ReadonlySet<string>
 }
 

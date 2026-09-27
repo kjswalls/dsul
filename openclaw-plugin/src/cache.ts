@@ -113,7 +113,7 @@ async function doFetch(cfg: PluginConfig): Promise<void> {
     // correct answer when the server never told us about suppression.
     items: data.items ?? [],
     routines: data.routines ?? [],
-    programs: data.programs ?? [],
+    seasons: data.seasons ?? [],
     goals: data.goals ?? [],
     fetchedAt: Date.now(),
   }

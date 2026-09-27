@@ -151,7 +151,7 @@ export function Omnibar({
     getProjectEmoji,
     userTimezone,
     routines,
-    programs,
+    seasons,
     goals,
     animationsEnabled,
   } = usePlannerStore();
@@ -949,7 +949,7 @@ export function Omnibar({
                         const paused = !!suppressionReason(item, searchTodayStr, {
                           userTimezone: searchTz,
                           routines,
-                          programs,
+                          seasons,
                         });
                         return (
                           <CommandItem

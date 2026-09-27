@@ -19,7 +19,7 @@ vi.mock('@/lib/planner-store', () => ({
       habitGroups: [],
       itemTypes: [],
       routines: [],
-      programs: [],
+      seasons: [],
       goals: [],
       userTimezone: 'UTC',
     }),

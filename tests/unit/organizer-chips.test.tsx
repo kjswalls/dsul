@@ -16,7 +16,7 @@ import {
 /**
  * The shared organizer chips: the copy each state reads as, the range fence
  * that keeps start ≤ end, and the add row's Enter/Escape grammar the goal,
- * program and routine panes (and their e2e `…-new-name` / `…-add` handles)
+ * season and routine panes (and their e2e `…-new-name` / `…-add` handles)
  * lean on.
  */
 

@@ -298,10 +298,10 @@ export function IdentityRow({
   accentName?: string;
   icon?: string;
   color?: string;
-  /** "Routine", "Program", … — used for the control aria-labels. */
+  /** "Routine", "Season", … — used for the control aria-labels. */
   label: string;
   testPrefix: string;
-  /** `Routine · 6 items · in 1 program` — numerals in font-num. */
+  /** `Routine · 6 items · in 1 season` — numerals in font-num. */
   meta: React.ReactNode;
   onPatch: (patch: { name?: string; icon?: string; color?: string }) => void;
   /**
@@ -381,11 +381,11 @@ export function IdentityRow({
 /* ── the edit-pane head ──────────────────────────────────────────────── */
 
 /**
- * The top of a goal, program or routine pane, in the ITEM edit pane's grammar
+ * The top of a goal, season or routine pane, in the ITEM edit pane's grammar
  * (item-dialog.tsx): a whisper — the colour square and the kind, 11px muted —
  * with the pane's quiet verbs on the right, ending in a ⋯ menu.
  *
- * Delete lives in that menu and nowhere else. A goal, program or routine goes
+ * Delete lives in that menu and nowhere else. A goal, season or routine goes
  * to the trash and comes back from it, so a labelled red zone at the foot of
  * every pane was spending the loudest thing in the console on an undoable act;
  * the item pane already keeps its Delete one tap behind ⋯ for the same reason.
@@ -409,7 +409,7 @@ export interface DetailMenuAction {
 
 /**
  * "Open as page" — the console's exit to a container's reading surface
- * (/routine/[id], /program/[id], /project/[id], /goal/[id]).
+ * (/routine/[id], /season/[id], /project/[id], /goal/[id]).
  *
  * It leaves the route that mounts the console, so it shuts the console on the
  * way out, and on `onNavigate` rather than `onClick`: next/link runs onClick
@@ -440,7 +440,7 @@ export function DetailHead({
   actions,
   menu,
 }: {
-  /** "Goal", "Program", "Routine". */
+  /** "Goal", "Season", "Routine". */
   kind: string;
   color?: string;
   /** Hashed for the square when no colour is stored, as ObjectRow does. */
@@ -535,7 +535,7 @@ export function TitleRow({
   id: string;
   name: string;
   icon?: string;
-  /** "Routine", "Program", … — the field's accessible name. */
+  /** "Routine", "Season", … — the field's accessible name. */
   label: string;
   testPrefix: string;
   onPatch: (patch: { name?: string; icon?: string }) => void;
@@ -589,7 +589,7 @@ export function TitleRow({
 }
 
 /**
- * A state the pane has to explain — a paused routine, a program on its dates, a
+ * A state the pane has to explain — a paused routine, a season on its dates, a
  * goal's wind-down — in the item pane's paused-note dress: a quiet filled strip
  * with a leading glyph. Muted, never a warning colour: it states a fact.
  */
@@ -630,7 +630,7 @@ export function StatusStrip({
  * contract — a SENTENCE, never a silent disabled button — is unchanged.
  *
  * `fields` is the kind's own part of making one — a goal's why and window, a
- * program's run — so the things that DEFINE the object are asked for at birth
+ * season's run — so the things that DEFINE the object are asked for at birth
  * rather than left as post-create edits. The section owns their state and
  * reads it in `onCreate`; the form only places them.
  *
@@ -1027,7 +1027,7 @@ export function BufferedInput({
 /* ── a day ────────────────────────────────────────────────────────────── */
 
 /**
- * One day as a chip — a routine's "Comes back". (A program's run and a goal's
+ * One day as a chip — a routine's "Comes back". (A season's run and a goal's
  * window are ranges, and use DateRangeChip.)
  *
  * Two rules it shares with every day picker in the console, each wrong in a
@@ -1097,6 +1097,89 @@ export function DayChip({
                 tone="muted"
                 testId={`${testId}-clear`}
                 onSelect={() => {
+                  onChange(undefined);
+                  close();
+                }}
+              >
+                <X className="size-3.5" />
+                {clearLabel}
+              </ChipOption>
+            </div>
+          )}
+        </div>
+      )}
+    </PropertyChip>
+  );
+}
+
+/**
+ * A wall-clock time as a chip — DayChip's shape for an 'HH:mm'.
+ *
+ * The field inside is a BufferedInput, so a half-typed time never writes: it
+ * commits on blur or Enter, and only a value the input itself accepts as a
+ * time. `display` formats through the user's 12h/24h preference; the stored
+ * value is always 24-hour.
+ */
+export function TimeChip({
+  label,
+  value,
+  display,
+  testId,
+  clearLabel,
+  onChange,
+}: {
+  label: string;
+  value?: string;
+  /** The value as the user reads it — '7:00 am'. */
+  display?: string;
+  testId: string;
+  clearLabel: string;
+  onChange: (next: string | undefined) => void;
+}) {
+  // Enter commits AND blurs, and the blur commits again before the store's
+  // write has re-rendered `value` — so without this one keypress is two
+  // writes and two undo entries.
+  const sent = useRef<string | null>(null);
+  return (
+    <PropertyChip
+      label={label}
+      value={display}
+      display={
+        display ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-num">{display}</span>
+          </span>
+        ) : undefined
+      }
+      ariaLabel={display ? `${label}: ${display}` : label}
+      testId={testId}
+      contentClassName="w-auto p-1"
+    >
+      {(close) => (
+        <div className="flex flex-col gap-1">
+          <BufferedInput
+            type="time"
+            value={value ?? ''}
+            testId={`${testId}-input`}
+            ariaLabel={label}
+            className="w-[120px] px-2 py-1 font-num"
+            autoFocus
+            validate={(next) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(next)}
+            onCommit={(next) => {
+              if (sent.current === next) return;
+              sent.current = next;
+              onChange(next);
+              close();
+            }}
+          />
+          {value && (
+            <div className="border-t pt-1">
+              <ChipOption
+                tone="muted"
+                testId={`${testId}-clear`}
+                onSelect={() => {
+                  sent.current = null;
                   onChange(undefined);
                   close();
                 }}

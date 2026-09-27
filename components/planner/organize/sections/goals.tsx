@@ -337,7 +337,7 @@ export function GoalsSection({
                 description:
                   'It stops repeating and moves to the trash for 30 days. Its history goes ' +
                   'with it. To keep the history and just pause it, open the item and put it ' +
-                  'in a program instead.',
+                  'in a season instead.',
                 confirmLabel: 'Delete',
                 destructive: true,
                 onConfirm: () =>
@@ -692,7 +692,7 @@ function GoalDetail({
  * It names them and offers the two verbs that actually end a recurrence, and it
  * performs NEITHER on the goal's behalf: the goal writes nothing to its members
  * ever, so Delete is the ordinary store action and "Open" is the ordinary item
- * surface, where the Program chip is how you park something without losing it.
+ * surface, where the Season chip is how you park something without losing it.
  * A goal that quietly deleted a year of habits because you marked it achieved
  * would be the single worst thing this feature could do.
  *
@@ -720,7 +720,7 @@ function EndedNotice({
           ? 'This still repeats on its own schedule.'
           : `${recurring.length} of its items still repeat on their own schedules.`}{' '}
         Nothing was changed for you — {goal.state === 'achieved' ? 'an achieved' : 'a set-aside'}{' '}
-        goal never edits its members. Keep them as they are, open one to park it in a program,
+        goal never edits its members. Keep them as they are, open one to park it in a season,
         or delete it for good.
       </p>
       <div className="mt-2 flex flex-col gap-1">
@@ -731,7 +731,7 @@ function EndedNotice({
             data-testid="goal-wind-down-row"
           >
             <span className="min-w-0 flex-1 truncate">{item.title}</span>
-            {/* LABELLED. Decision 5's third affordance — park it in a program
+            {/* LABELLED. Decision 5's third affordance — park it in a season
                 rather than end it — used to be prose inside the DELETE confirm,
                 which meant discovering the non-destructive option required
                 opening a dialog whose button says Delete. */}

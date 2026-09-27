@@ -33,11 +33,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -83,7 +83,7 @@ import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import { PRIORITY_FILTER_ORDER, priorityFilterLabel } from '@/lib/display-summary';
 import { enableGoalsAndOrganize } from './support/extensions';
-import type { Goal, Routine, Program } from '@dsul/types';
+import type { Goal, Routine, Season } from '@dsul/types';
 
 /**
  * jsdom implements neither PointerEvent nor pointer capture, and Radix's menus
@@ -130,7 +130,7 @@ function seed(viewOverrides: Partial<ReturnType<typeof view>> = {}) {
     // Reset the gate containers each test so a Paused-scopes fixture can't leak
     // into the next case's menu.
     routines: [],
-    programs: [],
+    seasons: [],
     // Goals reset for the same reason, and one more: seed() does not clear what
     // it does not name, so a Goal fixture would otherwise still be filtering
     // two tests later.
@@ -332,7 +332,7 @@ describe('grouping options carry live examples of what they would produce', () =
 
     const priority = await screen.findByRole('menuitemradio', { name: /Priority/ });
     expect(priority).toHaveTextContent('High, Medium');
-    const order = ['None', 'Type', 'Project', 'Priority', 'Routine', 'Program', 'Goal'];
+    const order = ['None', 'Type', 'Project', 'Priority', 'Routine', 'Season', 'Goal'];
     const labels = screen
       .getAllByRole('menuitemradio')
       .map((el) => order.find((l) => (el.textContent ?? '').startsWith(l)));
@@ -716,13 +716,13 @@ describe('the mobile header mount', () => {
 
 describe('the Paused scopes list', () => {
   it('lists off scopes, hides on ones, and turns one back on when clicked', async () => {
-    const setProgramState = vi.fn();
+    const setSeasonState = vi.fn();
     usePlannerStore.setState({
-      programs: [
+      seasons: [
         { id: 'off', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] },
         { id: 'on', name: 'Term', state: 'active', itemIds: [], routineIds: [] },
-      ] as Program[],
-      setProgramState,
+      ] as Season[],
+      setSeasonState,
     });
     render(<DisplayMenu surface="canvas" />);
     openMenu();
@@ -734,22 +734,22 @@ describe('the Paused scopes list', () => {
 
     fireEvent.click(screen.getByRole('menuitem', { name: /Summer/ }));
     // Rangeless → auto already yields on, so turning it on returns it to auto,
-    // never a raw 'active' that would discard the program's dates.
-    expect(setProgramState).toHaveBeenCalledWith('off', 'auto');
+    // never a raw 'active' that would discard the season's dates.
+    expect(setSeasonState).toHaveBeenCalledWith('off', 'auto');
   });
 
-  it('excludes a routine merely held off by a program — the program is listed instead', async () => {
+  it('excludes a routine merely held off by a season — the season is listed instead', async () => {
     usePlannerStore.setState({
       routines: [{ id: 'r', name: 'Mornings', itemIds: [] }] as Routine[],
-      programs: [
+      seasons: [
         { id: 'p', name: 'Term', state: 'paused', itemIds: [], routineIds: ['r'] },
-      ] as Program[],
+      ] as Season[],
     });
     render(<DisplayMenu surface="braindump" />);
     openMenu('braindump');
 
     // The routine's own switch is still on (localOn), so it is not a recovery
-    // row — the blocking program is, and turning it on brings the routine back.
+    // row — the blocking season is, and turning it on brings the routine back.
     expect(await screen.findByRole('menuitem', { name: /Term/ })).toBeTruthy();
     expect(screen.queryByRole('menuitem', { name: /Mornings/ })).toBeNull();
   });
@@ -1142,12 +1142,12 @@ describe('the touch shell', () => {
   });
 
   it('turns a paused scope back on from the root, without closing the sheet', async () => {
-    const setProgramState = vi.fn();
+    const setSeasonState = vi.fn();
     usePlannerStore.setState({
-      programs: [
+      seasons: [
         { id: 'off', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] },
-      ] as Program[],
-      setProgramState,
+      ] as Season[],
+      setSeasonState,
     });
     render(<DisplayMenu surface="canvas" />);
     openSheet();
@@ -1155,7 +1155,7 @@ describe('the touch shell', () => {
     fireEvent.click(await screen.findByRole('menuitem', { name: /Summer/ }));
 
     // Rangeless → auto already yields on, so turning it on returns it to auto.
-    expect(setProgramState).toHaveBeenCalledWith('off', 'auto');
+    expect(setSeasonState).toHaveBeenCalledWith('off', 'auto');
     // keepOpen, exactly as on pointer: several scopes come back without re-opening.
     expect(screen.getByTestId('display-menu')).toHaveAttribute('data-state', 'open');
   });

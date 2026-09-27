@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildDsulContext } from '@/lib/ai-context';
-import type { Goal, Item, Program } from '@/lib/planner-types';
+import type { Goal, Item, Season } from '@/lib/planner-types';
 
 /**
  * Beacon's account of what the work is FOR (plan Phase 4).
@@ -38,7 +38,7 @@ const goal = (over: Partial<Goal> = {}): Goal =>
     ...over,
   }) as Goal;
 
-const build = (over: { items: Item[]; goals?: Goal[]; programs?: Program[]; focusItemId?: string }) =>
+const build = (over: { items: Item[]; goals?: Goal[]; seasons?: Season[]; focusItemId?: string }) =>
   buildDsulContext({ projects: [], userTimezone: TZ, ...over });
 
 describe('the Long-term goals section', () => {
@@ -100,14 +100,14 @@ describe('the Long-term goals section', () => {
         task('m2', 'HSK 4 exam', { startDate: '2026-10-01' }),
       ],
       goals: [goal({ milestoneIds: ['m1', 'm2'] })],
-      programs: [
+      seasons: [
         {
           id: 'p1',
           name: 'Summer',
           state: 'paused',
           itemIds: ['m1'],
           routineIds: [],
-        } as Program,
+        } as Season,
       ],
     });
     expect(out).toContain('next: HSK 4 exam by 2026-10-01');
@@ -123,8 +123,8 @@ describe('the Long-term goals section', () => {
     const out = build({
       items: [task('m1', 'HSK 3 exam', { startDate: '2026-08-01' })],
       goals: [goal({ milestoneIds: ['m1'] })],
-      programs: [
-        { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['m1'], routineIds: [] } as Program,
+      seasons: [
+        { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['m1'], routineIds: [] } as Season,
       ],
     });
     expect(out).toContain('- Learn Chinese — 0/1 milestones');

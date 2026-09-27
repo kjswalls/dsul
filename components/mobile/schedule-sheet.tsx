@@ -53,7 +53,7 @@ export function ScheduleSheet() {
     userTimezone,
     items,
     routines,
-    programs,
+    seasons,
     goals,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
@@ -98,7 +98,7 @@ export function ScheduleSheet() {
   // touch, so when the cause is a container it has to SAY so: otherwise the
   // user taps Resume, the row stays hidden, and nothing anywhere explains it.
   const reason = liveItem
-    ? suppressionReason(liveItem, todayStr, { userTimezone: tz, routines, programs })
+    ? suppressionReason(liveItem, todayStr, { userTimezone: tz, routines, seasons })
     : null;
   const containerReason = reason && reason.kind !== 'paused' ? reason : null;
 

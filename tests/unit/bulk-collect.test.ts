@@ -29,11 +29,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -44,7 +44,7 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 
 import { usePlannerStore, getActionLog } from '@/lib/planner-store';
 import * as db from '@/lib/db';
-import type { Item, Program, Routine } from '@/lib/planner-types';
+import type { Item, Season, Routine } from '@/lib/planner-types';
 
 const USER = 'user-1';
 
@@ -66,7 +66,7 @@ const routine = (over: Partial<Routine> = {}): Routine => ({
   ...over,
 });
 
-const program = (over: Partial<Program> = {}): Program => ({
+const season = (over: Partial<Season> = {}): Season => ({
   id: 'p1',
   name: 'Summer',
   state: 'active',
@@ -75,20 +75,20 @@ const program = (over: Partial<Program> = {}): Program => ({
   ...over,
 });
 
-function seed(over: { items?: Item[]; routines?: Routine[]; programs?: Program[] } = {}) {
+function seed(over: { items?: Item[]; routines?: Routine[]; seasons?: Season[] } = {}) {
   usePlannerStore.setState({
     userId: USER,
     userTimezone: 'UTC',
     items: over.items ?? [task('a'), task('b'), task('c')],
     routines: over.routines ?? [routine()],
-    programs: over.programs ?? [program()],
+    seasons: over.seasons ?? [season()],
     collectionsAvailable: true,
   });
 }
 
 const collected = () => usePlannerStore.getState().setItemsCollected;
 const routineIds = () => usePlannerStore.getState().routines[0].itemIds;
-const programIds = () => usePlannerStore.getState().programs[0].itemIds;
+const seasonIds = () => usePlannerStore.getState().seasons[0].itemIds;
 
 describe('setItemsCollected', () => {
   beforeEach(() => {
@@ -134,10 +134,10 @@ describe('setItemsCollected', () => {
     expect(db.updateRoutine).not.toHaveBeenCalled();
   });
 
-  it('routes programs to the program table', () => {
-    collected()(['a'], 'program', 'p1', true);
-    expect(programIds()).toEqual(['a']);
-    expect(db.updateProgram).toHaveBeenCalledWith(USER, 'p1', { itemIds: ['a'] });
+  it('routes seasons to the season table', () => {
+    collected()(['a'], 'season', 'p1', true);
+    expect(seasonIds()).toEqual(['a']);
+    expect(db.updateSeason).toHaveBeenCalledWith(USER, 'p1', { itemIds: ['a'] });
     expect(db.updateRoutine).not.toHaveBeenCalled();
   });
 
@@ -172,16 +172,16 @@ describe('setItemsCollected — the receipt', () => {
 
   it('warns when collecting into a container that is currently off', () => {
     // Decision 11: the move is allowed — that is what collecting into a paused
-    // program means — but never silently. Without this the items simply vanish
+    // season means — but never silently. Without this the items simply vanish
     // from the grid the moment the menu closes.
-    seed({ programs: [program({ state: 'paused' })] });
-    collected()(['a', 'b'], 'program', 'p1', true);
-    expect(getActionLog()[0].receipt).toBe('Hidden with your Summer program');
+    seed({ seasons: [season({ state: 'paused' })] });
+    collected()(['a', 'b'], 'season', 'p1', true);
+    expect(getActionLog()[0].receipt).toBe('Hidden with your Summer season');
   });
 
   it('stays quiet when the container is live', () => {
-    seed({ programs: [program({ state: 'active' })] });
-    collected()(['a', 'b'], 'program', 'p1', true);
+    seed({ seasons: [season({ state: 'active' })] });
+    collected()(['a', 'b'], 'season', 'p1', true);
     expect(getActionLog()[0].receipt).toBeUndefined();
   });
 
@@ -191,15 +191,15 @@ describe('setItemsCollected — the receipt', () => {
     // same answer. Here it is the containers that move: asked against current
     // state the items are not yet members, nothing is suppressed, and the
     // receipt would never fire on the one action that most needs it.
-    seed({ programs: [program({ state: 'paused', itemIds: [] })] });
-    expect(usePlannerStore.getState().programs[0].itemIds).toEqual([]);
-    collected()(['a'], 'program', 'p1', true);
+    seed({ seasons: [season({ state: 'paused', itemIds: [] })] });
+    expect(usePlannerStore.getState().seasons[0].itemIds).toEqual([]);
+    collected()(['a'], 'season', 'p1', true);
     expect(getActionLog()[0].receipt).toBeTruthy();
   });
 
   it('carries no receipt when releasing — the items become visible, not hidden', () => {
-    seed({ programs: [program({ state: 'paused', itemIds: ['a', 'b'] })] });
-    collected()(['a'], 'program', 'p1', false);
+    seed({ seasons: [season({ state: 'paused', itemIds: ['a', 'b'] })] });
+    collected()(['a'], 'season', 'p1', false);
     expect(getActionLog()[0].label).toBe('Remove from Summer: 1 item');
     expect(getActionLog()[0].receipt).toBeUndefined();
   });

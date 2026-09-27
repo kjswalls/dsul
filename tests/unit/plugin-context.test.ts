@@ -43,7 +43,7 @@ function seed(over: Record<string, unknown> = {}) {
     habitGroups: [],
     items,
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     fetchedAt: Date.now(),
     ...over,
@@ -95,24 +95,24 @@ describe('plugin buildFullContext — set aside', () => {
     seed({
       items: [task('t1', 'Gym', { pausedAt: '2026-07-01T00:00:00Z', pausedUntil: '2026-07-15' })],
       visible: [],
-      programs: [
+      seasons: [
         { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['t1'], routineIds: [] },
       ],
     });
     const out = buildFullContext();
     expect(out).not.toContain('2026-07-15');
-    expect(out).toContain('set aside with the Summer program');
+    expect(out).toContain('set aside with the Summer season');
   });
 
-  it('blames the program when the path runs item → routine → program', () => {
+  it('blames the season when the path runs item → routine → season', () => {
     seed({
       items: [task('t1', 'Swim')],
       visible: [],
       routines: [{ id: 'r1', name: 'Morning', itemIds: ['t1'] }],
-      programs: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: [], routineIds: ['r1'] }],
+      seasons: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: [], routineIds: ['r1'] }],
     });
     // The outer container is the one that has to change for the item to return.
-    expect(buildFullContext()).toContain('set aside with the Summer program');
+    expect(buildFullContext()).toContain('set aside with the Summer season');
   });
 
   it('falls back to a bare "set aside" rather than guessing', () => {
@@ -148,13 +148,13 @@ describe('plugin buildFullContext — collections', () => {
     expect(buildFullContext()).not.toContain('## Collections');
   });
 
-  it('reports program state as STORED, not resolved to on/off', () => {
+  it('reports season state as STORED, not resolved to on/off', () => {
     // Flattening 'auto' + a range to "on" would invite the repair that destroys
-    // it: writing 'active' onto an auto program short-circuits the dates for
+    // it: writing 'active' onto an auto season short-circuits the dates for
     // good. The model has to see the difference to preserve it.
     seed({
       items: [task('t1', 'A')],
-      programs: [
+      seasons: [
         {
           id: 'p1',
           name: 'Summer',
@@ -166,7 +166,7 @@ describe('plugin buildFullContext — collections', () => {
         },
       ],
     });
-    expect(buildFullContext()).toContain('Program: Summer [id: p1] (auto 2026-06-01 → 2026-08-31)');
+    expect(buildFullContext()).toContain('Season: Summer [id: p1] (auto 2026-06-01 → 2026-08-31)');
   });
 
   it('marks a paused routine and leaves a live one plain', () => {

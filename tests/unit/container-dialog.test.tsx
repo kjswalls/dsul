@@ -5,7 +5,7 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
 /**
  * ORGANIZERS IN THE "NEW" DIALOG (Kirby, 2026-09-25).
  *
- * The type chip's menu grows an "Organizers" group — Goal, Routine, Program,
+ * The type chip's menu grows an "Organizers" group — Goal, Routine, Season,
  * Project — and picking one swaps the dialog to ContainerDialog, a sibling
  * body in the same shell with its own `new-container` slot. The claims pinned
  * here are the ones a later edit could quietly undo:
@@ -40,7 +40,7 @@ const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), succ
 vi.mock('sonner', () => ({ toast: toastMock }));
 
 import { ItemDialog } from '@/components/planner/item-dialog';
-import { ContainerDialog, programRunsCopy } from '@/components/planner/container-dialog';
+import { ContainerDialog, seasonRunsCopy } from '@/components/planner/container-dialog';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, type NewContainerKind } from '@/lib/ui-store';
 import { findCommand, type CommandContext } from '@/lib/commands';
@@ -52,7 +52,7 @@ const seed = (over: Record<string, unknown> = {}) =>
     items: [],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -95,7 +95,7 @@ describe('the "new" dialog type menu', () => {
   it('lists the four organizers after the item types, with the types row last', () => {
     capture();
     openTypeMenu();
-    expect(kindOptions()).toEqual(['goal', 'routine', 'program', 'project']);
+    expect(kindOptions()).toEqual(['goal', 'routine', 'season', 'project']);
     const menu = screen.getAllByTestId('item-dialog-kind-option')[0].parentElement!;
     expect(within(menu).getByText('Organizers')).toBeTruthy();
     expect(within(menu).getByText('Something to reach')).toBeTruthy();
@@ -107,7 +107,7 @@ describe('the "new" dialog type menu', () => {
     disableExtensions(EXT_GOALS);
     capture();
     openTypeMenu();
-    expect(kindOptions()).toEqual(['routine', 'program', 'project']);
+    expect(kindOptions()).toEqual(['routine', 'season', 'project']);
     cleanup();
 
     enableExtensions(EXT_GOALS);
@@ -237,22 +237,22 @@ describe('ContainerDialog', () => {
   const day = (label: string) =>
     screen.getAllByRole('button').find((b) => b.getAttribute('aria-label')?.includes(label))!;
 
-  it('creates a program with its Runs and colour in ONE addProgram, as auto', () => {
+  it('creates a season with its Runs and colour in ONE addSeason, as auto', () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-10-01T12:00:00Z'));
-    const addProgram = vi.fn(() => 'p-new');
-    usePlannerStore.setState({ addProgram });
-    newContainer('program', { title: 'Autumn term' });
+    const addSeason = vi.fn(() => 'p-new');
+    usePlannerStore.setState({ addSeason });
+    newContainer('season', { title: 'Autumn term' });
 
-    fireEvent.click(screen.getByTestId('program-dialog-runs-chip'));
+    fireEvent.click(screen.getByTestId('season-dialog-runs-chip'));
     fireEvent.click(day('October 6th, 2026'));
     fireEvent.click(day('October 20th, 2026'));
-    fireEvent.click(screen.getByTestId('program-dialog-color'));
+    fireEvent.click(screen.getByTestId('season-dialog-color'));
     fireEvent.click(screen.getByRole('button', { name: 'Teal' }));
-    fireEvent.click(screen.getByTestId('program-dialog-add'));
+    fireEvent.click(screen.getByTestId('season-dialog-add'));
 
-    expect(addProgram).toHaveBeenCalledTimes(1);
-    expect(addProgram).toHaveBeenCalledWith(
+    expect(addSeason).toHaveBeenCalledTimes(1);
+    expect(addSeason).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Autumn term',
         state: 'auto',
@@ -290,12 +290,12 @@ describe('ContainerDialog', () => {
   });
 
   it('"Add & open" goes straight to the console on the new object', () => {
-    usePlannerStore.setState({ addProgram: vi.fn(() => 'p-new') });
-    newContainer('program', { title: 'Winter block' });
-    fireEvent.click(screen.getByTestId('program-dialog-add-open'));
+    usePlannerStore.setState({ addSeason: vi.fn(() => 'p-new') });
+    newContainer('season', { title: 'Winter block' });
+    fireEvent.click(screen.getByTestId('season-dialog-add-open'));
     expect(useUIStore.getState().activeDialog).toEqual({
       type: 'organize',
-      section: 'programs',
+      section: 'seasons',
       focusId: 'p-new',
     });
     expect(toastMock).not.toHaveBeenCalled();
@@ -335,16 +335,16 @@ describe('ContainerDialog', () => {
   });
 });
 
-describe('programRunsCopy', () => {
+describe('seasonRunsCopy', () => {
   const today = '2026-09-25';
   it('says what the dates will do, and nothing without them', () => {
-    expect(programRunsCopy('2026-10-06', '2026-12-14', today)).toMatch(
+    expect(seasonRunsCopy('2026-10-06', '2026-12-14', today)).toMatch(
       /^It switches on by itself on Oct 6 and off after Dec 14\.$/
     );
-    expect(programRunsCopy('2026-10-06', undefined, today)).toMatch(/on Oct 6\.$/);
-    expect(programRunsCopy(undefined, '2026-12-14', today)).toMatch(/^It's on now/);
-    expect(programRunsCopy('2026-09-01', '2026-09-10', today)).toMatch(/already over/);
-    expect(programRunsCopy(undefined, undefined, today)).toBeNull();
+    expect(seasonRunsCopy('2026-10-06', undefined, today)).toMatch(/on Oct 6\.$/);
+    expect(seasonRunsCopy(undefined, '2026-12-14', today)).toMatch(/^It's on now/);
+    expect(seasonRunsCopy('2026-09-01', '2026-09-10', today)).toMatch(/already over/);
+    expect(seasonRunsCopy(undefined, undefined, today)).toBeNull();
   });
 });
 
@@ -364,13 +364,13 @@ describe('store and palette', () => {
 
   it('reserves the organizer nouns for new item types', () => {
     seed({ userId: null, itemTypes: [] });
-    for (const name of ['goal', 'routine', 'program', 'project']) {
+    for (const name of ['goal', 'routine', 'season', 'project']) {
       usePlannerStore.getState().addItemType({ name, label: name, labelPlural: `${name}s` });
     }
     expect(usePlannerStore.getState().itemTypes).toEqual([]);
   });
 
-  it('adds New goal / routine / program to the palette, each behind its gate', () => {
+  it('adds New goal / routine / season to the palette, each behind its gate', () => {
     const ctx: CommandContext = {
       theme: { resolved: 'light', value: 'light', set: () => {} },
       openChat: () => {},
@@ -385,7 +385,7 @@ describe('store and palette', () => {
 
     disableExtensions(EXT_ORGANIZE);
     expect(findCommand('create.routine', ctx)!.availableWhen?.(ctx)).toBe(false);
-    expect(findCommand('create.program', ctx)!.availableWhen?.(ctx)).toBe(false);
+    expect(findCommand('create.season', ctx)!.availableWhen?.(ctx)).toBe(false);
     expect(findCommand('create.goal', ctx)!.availableWhen?.(ctx)).toBe(true);
   });
 });

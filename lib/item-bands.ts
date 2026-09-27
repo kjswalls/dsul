@@ -27,7 +27,7 @@ import {
  *
  * **The label is the KIND's noun, not the ROLE's verb.** An earlier draft
  * labelled the bands by role — "filed" (classify), "gated by" (gate), "serves"
- * (aspire). Kirby refused it: *"Let's just use nouns like 'program' and 'goal'"*.
+ * (aspire). Kirby refused it: *"Let's just use nouns like 'season' and 'goal'"*.
  * The verbs are true and they are also vocabulary the user never asked for; a
  * noun they already know does the same work. So a band's label is
  * `CONTAINER_KINDS[kind].label` and nothing else — CLAUDE.md's rule that the
@@ -42,7 +42,7 @@ import {
  *
  * ── one band per KIND, so the two gates are two rows ─────────────────────────
  *
- * `gate` covers BOTH `routine` and `program`, so a role-driven layout would draw
+ * `gate` covers BOTH `routine` and `season`, so a role-driven layout would draw
  * them as one band. They stay two, for three reasons that survive the naming
  * change:
  *
@@ -86,7 +86,7 @@ export interface ContainerBand {
  * forget a kind.
  *
  * `Array.prototype.sort` is stable (ES2019+), so kinds sharing a role keep the
- * record's own order: routine before program.
+ * record's own order: routine before season.
  */
 export const CONTAINER_BANDS: readonly ContainerBand[] = Object.values(CONTAINER_KINDS)
   .slice()
@@ -109,7 +109,7 @@ export interface ContainerBandContext {
    * type's `collectible` flag in add mode, where there is no item yet.
    */
   collectible: boolean;
-  /** Are the routine/program tables reachable (planner-store's availability flag)? */
+  /** Are the routine/season tables reachable (planner-store's availability flag)? */
   collectionsAvailable: boolean;
   /** Is the goals table reachable? */
   goalsAvailable: boolean;
@@ -174,7 +174,7 @@ export function visibleContainerBands(ctx: ContainerBandContext): readonly Conta
  * What a band's control says when it holds memberships: `Deep work`, or
  * `Deep work +2`.
  *
- * One expression of it, because there were three — the routine, program and
+ * One expression of it, because there were three — the routine, season and
  * goal chips each spelled the same ternary — and three copies of a format is
  * three places for the plus sign to drift.
  *

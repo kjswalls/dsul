@@ -13,7 +13,7 @@ import {
   type ScanRow,
 } from '@/lib/reminders/due';
 import type { ActivationContext } from '@/lib/active';
-import type { Item, Program, Routine } from '@dsul/types';
+import type { Item, Season, Routine } from '@dsul/types';
 
 const TZ = 'America/New_York';
 const ctx: ActivationContext = { userTimezone: TZ };
@@ -145,13 +145,13 @@ describe('wantsDoingOn', () => {
     expect(wantsDoingOn(paused, MON, ctx)).toBe(false);
   });
 
-  it('is false while a program holding it is paused', () => {
+  it('is false while a season holding it is paused', () => {
     const h = habit({ id: 'h1' });
-    const program: Program = {
+    const season: Season = {
       id: 'p1', name: 'Summer', state: 'paused',
       itemIds: ['h1'], routineIds: [],
-    } as Program;
-    expect(wantsDoingOn(h, MON, { ...ctx, programs: [program] })).toBe(false);
+    } as Season;
+    expect(wantsDoingOn(h, MON, { ...ctx, seasons: [season] })).toBe(false);
   });
 
   it('stays live when a second container still wants it', () => {

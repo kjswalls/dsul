@@ -67,7 +67,7 @@ function seed(items: Item[], over: Record<string, unknown> = {}) {
     habits: items.filter((i) => i.type === 'habit'),
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -141,12 +141,12 @@ describe('a routine\'s rows', () => {
   });
 });
 
-describe('a program\'s one-off rows', () => {
+describe('a season\'s one-off rows', () => {
   it('moves a dated task to its next day, and sends it to the braindump', () => {
     seed([task('t1', 'Midterm', { startDate: '2026-10-22' }), task('t2', 'Essay', { startDate: '2026-11-12' })], {
-      programs: [{ id: 'p1', name: 'Term', state: 'auto', itemIds: ['t1', 't2'], routineIds: [] }],
+      seasons: [{ id: 'p1', name: 'Term', state: 'auto', itemIds: ['t1', 't2'], routineIds: [] }],
     });
-    render(<OrganizeConsole open onOpenChange={() => {}} section="programs" focusId="p1" />);
+    render(<OrganizeConsole open onOpenChange={() => {}} section="seasons" focusId="p1" />);
     const menu = openMenu('Midterm');
     expect(within(menu).getByTestId('member-menu-next-day').textContent).toContain('Move to next day');
     fireEvent.click(within(menu).getByTestId('member-menu-next-day'));

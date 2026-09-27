@@ -19,7 +19,7 @@ export type NewItemWhen =
   | { kind: 'repeat'; frequency: RepeatWhen; days?: number[]; monthDay?: number };
 
 /** Which create form, and which of its lists, a new row was typed into. */
-export type NewItemContext = { container: 'routine' | 'program' | 'goal'; role: 'items' | GoalRole };
+export type NewItemContext = { container: 'routine' | 'season' | 'goal'; role: 'items' | GoalRole };
 
 export function whenOptions({ container, role }: NewItemContext): { once: boolean; repeat: boolean } {
   if (container === 'routine') return { once: false, repeat: true };

@@ -2,12 +2,12 @@
 
 import { Switch } from '@/components/ui/switch';
 import { usePlannerStore } from '@/lib/planner-store';
-import { isProgramActiveOn, routineStandingOn } from '@/lib/active';
+import { isSeasonActiveOn, routineStandingOn } from '@/lib/active';
 import { setGateOn } from '@/lib/gate-toggle';
 import { toDateStr } from '@/lib/recurrence';
 
 /**
- * The pause switch a gate group header (routine/program) carries — the Scope
+ * The pause switch a gate group header (routine/season) carries — the Scope
  * Rail's switch, moved onto the section it governs.
  *
  * Flipping it off pauses the whole container, which takes its members off every
@@ -16,14 +16,14 @@ import { toDateStr } from '@/lib/recurrence';
  * a paused scope has no visible members and so no header to host a switch.
  *
  * DISPLAY is resolved at today and shows the LOCAL (stored) state, never the
- * effective one: a routine whose own switch is on but that a program is holding
- * off still reads on, or resuming the program hands back a routine the user
+ * effective one: a routine whose own switch is on but that a season is holding
+ * off still reads on, or resuming the season hands back a routine the user
  * believes they turned off. The WRITE lives in setGateOn, which re-resolves at
  * click time and is dateless — see its header for the date-following contract.
  */
-export function GateSwitch({ kind, id }: { kind: 'routine' | 'program'; id: string }) {
+export function GateSwitch({ kind, id }: { kind: 'routine' | 'season'; id: string }) {
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -35,12 +35,12 @@ export function GateSwitch({ kind, id }: { kind: 'routine' | 'program'; id: stri
     const routine = routines.find((r) => r.id === id);
     if (!routine) return null;
     name = routine.name;
-    on = routineStandingOn(routine, programs, todayStr, tz).localOn;
+    on = routineStandingOn(routine, seasons, todayStr, tz).localOn;
   } else {
-    const program = programs.find((p) => p.id === id);
-    if (!program) return null;
-    name = program.name;
-    on = isProgramActiveOn(program, todayStr);
+    const season = seasons.find((p) => p.id === id);
+    if (!season) return null;
+    name = season.name;
+    on = isSeasonActiveOn(season, todayStr);
   }
 
   return (

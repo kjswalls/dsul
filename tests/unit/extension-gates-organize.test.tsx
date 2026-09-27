@@ -77,7 +77,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { Braindump } from '@/components/sidebar/braindump';
-import { ProgramNotice } from '@/components/views/program-notice';
+import { SeasonNotice } from '@/components/views/season-notice';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
@@ -285,7 +285,7 @@ describe('Organize switched off — the doors are inert, not absent', () => {
       projects: [],
       habitGroups: [],
       routines: [],
-      programs: [],
+      seasons: [],
       goals: [],
     } as never);
     useViewStore.setState({ braindumpGroupBy: 'none', braindumpSortBy: 'default' });
@@ -319,7 +319,7 @@ describe('Organize switched off — the doors are inert, not absent', () => {
     expect(open).not.toHaveAttribute('aria-description');
   });
 
-  it('keeps the program notice REPORTING while it stops being a button', () => {
+  it('keeps the season notice REPORTING while it stops being a button', () => {
     const items = [
       {
         type: 'task',
@@ -340,14 +340,14 @@ describe('Organize switched off — the doors are inert, not absent', () => {
       tasks: items as never,
       habits: [] as never,
       routines: [],
-      programs: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: ['t-off'], routineIds: [] }],
+      seasons: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: ['t-off'], routineIds: [] }],
       goals: [],
     } as never);
     useViewStore.setState({ scope: 'day' });
 
     disableExtensions(EXT_ORGANIZE);
-    render(<ProgramNotice />);
-    const notice = screen.getByTestId('program-notice');
+    render(<SeasonNotice />);
+    const notice = screen.getByTestId('season-notice');
     // The SENTENCE is the part that matters — rows are hidden whether or not
     // the console can be reached, so a notice that disappeared would hide the
     // reason as well as the work. Only the way back is gone.
@@ -357,8 +357,8 @@ describe('Organize switched off — the doors are inert, not absent', () => {
     cleanup();
 
     enableExtensions(EXT_ORGANIZE);
-    render(<ProgramNotice />);
-    expect(screen.getByTestId('program-notice')).toBeEnabled();
+    render(<SeasonNotice />);
+    expect(screen.getByTestId('season-notice')).toBeEnabled();
   });
 });
 

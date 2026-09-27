@@ -18,8 +18,8 @@ import {
  *
  * This half of the app has never had an end-to-end test, and until Phase 2 it
  * had no data-testid either: it was a 400px dialog of rows with a hover trash on
- * each, and `tests/` reached none of it. The routines/programs half is covered
- * by programs.spec.ts, which must keep passing unchanged.
+ * each, and `tests/` reached none of it. The routines/seasons half is covered
+ * by seasons.spec.ts, which must keep passing unchanged.
  *
  * What is worth an end-to-end run rather than a unit test — everything here
  * crosses the store/DB/render boundary, which is where the unit tests stop:
@@ -42,7 +42,7 @@ import {
 const scope = specScope('org');
 
 test.describe('organize — projects, types and groups', () => {
-  // Same reasoning as programs.spec.ts: each test drives the console through
+  // Same reasoning as seasons.spec.ts: each test drives the console through
   // several open/edit/close round trips against a dev server, and each one is a
   // palette invocation plus a Radix modal transition.
   test.describe.configure({ mode: 'serial', timeout: 120_000 });
@@ -65,7 +65,7 @@ test.describe('organize — projects, types and groups', () => {
 
   /**
    * Through the palette, by the command's own alias — the same route
-   * programs.spec.ts uses, and for the same reason: an unfiltered list truncates
+   * seasons.spec.ts uses, and for the same reason: an unfiltered list truncates
    * before it reaches the row once a few dynamic commands exist.
    *
    * `app.categories` keeps its id and its aliases through the rename (decision
@@ -76,7 +76,7 @@ test.describe('organize — projects, types and groups', () => {
     await page.getByRole('tab', { name: tab }).click();
   }
 
-  /** Close and PROVE it closed — see programs.spec.ts's note on the two-Escape dance. */
+  /** Close and PROVE it closed — see seasons.spec.ts's note on the two-Escape dance. */
   async function closeConsole(page: import('@playwright/test').Page) {
     await expect(page.locator('[data-slot="alert-dialog-overlay"]')).toHaveCount(0);
     const overlay = page.locator('[data-slot="dialog-overlay"], [data-slot="drawer-overlay"]');
@@ -432,7 +432,7 @@ test.describe('organize — projects, types and groups', () => {
       await page.getByTestId('routine-add').click();
       await expect(page.getByTestId('routine-detail')).toBeVisible();
 
-      // Same three steps programs.spec.ts:127-130 uses, so the two specs cannot
+      // Same three steps seasons.spec.ts:127-130 uses, so the two specs cannot
       // drift about what "add a member" means.
       await page.getByTestId('routine-member-add').click();
       await page.getByTestId('routine-member-search').fill(title);

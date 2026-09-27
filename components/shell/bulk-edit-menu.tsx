@@ -66,7 +66,7 @@ import { cn } from '@/lib/utils';
  * set in a row; each is still one store action ⇒ one ⌘/Ctrl+Z.
  */
 
-type PaneKey = 'priority' | 'remind' | 'project' | 'routine' | 'program' | 'goal';
+type PaneKey = 'priority' | 'remind' | 'project' | 'routine' | 'season' | 'goal';
 type Membership = 'none' | 'some' | 'all';
 
 const PRIORITY_ORDER = ['none', 'low', 'medium', 'high'] as const;
@@ -246,7 +246,7 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
   const projects = usePlannerStore((s) => s.projects);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
@@ -343,12 +343,12 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
       visible: collectionsAvailable && collectible.length > 0 && routines.length > 0,
     },
     {
-      key: 'program',
-      label: CONTAINER_KINDS.program.label,
+      key: 'season',
+      label: CONTAINER_KINDS.season.label,
       icon: <CalendarRange className="size-3.5" />,
       eligible: collectible.length,
-      summary: membershipRowSummary(programs, containerState),
-      visible: collectionsAvailable && collectible.length > 0 && programs.length > 0,
+      summary: membershipRowSummary(seasons, containerState),
+      visible: collectionsAvailable && collectible.length > 0 && seasons.length > 0,
     },
     {
       key: 'goal',
@@ -459,13 +459,13 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
         ];
       }
       case 'routine':
-      case 'program':
+      case 'season':
       case 'goal': {
         const list: readonly { c: { id: string; name: string; color?: string }; state: Membership }[] =
           key === 'routine'
             ? routines.map((c) => ({ c, state: containerState(c) }))
-            : key === 'program'
-              ? programs.map((c) => ({ c, state: containerState(c) }))
+            : key === 'season'
+              ? seasons.map((c) => ({ c, state: containerState(c) }))
               : activeGoals.map((c) => ({ c, state: goalState(c) }));
         return list.map(({ c, state }): OptionSpec => {
           return {
