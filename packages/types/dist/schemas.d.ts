@@ -46,6 +46,8 @@ export declare const ProjectSchema: z.ZodObject<{
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
     duration: z.ZodOptional<z.ZodNumber>;
+    /** A free-text note — what this is for (migration 046). */
+    notes: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     id: string;
     name: string;
@@ -57,6 +59,7 @@ export declare const ProjectSchema: z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
 }, {
     id: string;
     name: string;
@@ -68,6 +71,7 @@ export declare const ProjectSchema: z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
 }>;
 export declare const HabitGroupSchema: z.ZodObject<{
     id: z.ZodString;
@@ -87,6 +91,8 @@ export declare const HabitGroupSchema: z.ZodObject<{
 }>;
 export declare const ProgramStateSchema: z.ZodEnum<["auto", "active", "paused"]>;
 export declare const RoutineSchema: z.ZodObject<{
+    /** A free-text note — what this is for (migration 046). */
+    notes: z.ZodOptional<z.ZodString>;
     /** Member item ids (routine_items), in routine-internal order. */
     itemIds: z.ZodArray<z.ZodString, "many">;
     /**
@@ -114,6 +120,7 @@ export declare const RoutineSchema: z.ZodObject<{
     name: string;
     itemIds: string[];
     color?: string | undefined;
+    notes?: string | undefined;
     icon?: string | undefined;
     sortOrder?: number | undefined;
     pausedAt?: string | undefined;
@@ -123,6 +130,7 @@ export declare const RoutineSchema: z.ZodObject<{
     name: string;
     itemIds: string[];
     color?: string | undefined;
+    notes?: string | undefined;
     icon?: string | undefined;
     sortOrder?: number | undefined;
     pausedAt?: string | undefined;
@@ -144,6 +152,8 @@ export declare const ProgramSchema: z.ZodObject<{
     /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
     startsOn: z.ZodOptional<z.ZodString>;
     endsOn: z.ZodOptional<z.ZodString>;
+    /** A free-text note — what this is for (migration 046). */
+    notes: z.ZodOptional<z.ZodString>;
     /** Directly-held item ids (program_items). */
     itemIds: z.ZodArray<z.ZodString, "many">;
     /** Held routine ids (program_routines) — their members ride along. */
@@ -169,6 +179,7 @@ export declare const ProgramSchema: z.ZodObject<{
     state: "auto" | "active" | "paused";
     routineIds: string[];
     color?: string | undefined;
+    notes?: string | undefined;
     icon?: string | undefined;
     sortOrder?: number | undefined;
     startsOn?: string | undefined;
@@ -181,6 +192,7 @@ export declare const ProgramSchema: z.ZodObject<{
     state: "auto" | "active" | "paused";
     routineIds: string[];
     color?: string | undefined;
+    notes?: string | undefined;
     icon?: string | undefined;
     sortOrder?: number | undefined;
     startsOn?: string | undefined;
@@ -360,6 +372,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -370,7 +383,6 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -391,6 +403,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -401,7 +414,6 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -422,6 +434,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -432,7 +445,6 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -453,6 +465,7 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -463,7 +476,6 @@ export declare const TaskSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -536,11 +548,11 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -559,11 +571,11 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -582,11 +594,11 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -605,11 +617,11 @@ export declare const HabitSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | null | undefined;
     groupId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -717,6 +729,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -727,7 +740,6 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -749,6 +761,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -759,7 +772,6 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -781,6 +793,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -791,7 +804,6 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -813,6 +825,7 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -823,7 +836,6 @@ export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -900,12 +912,12 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -924,12 +936,12 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | null | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -948,12 +960,12 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -972,12 +984,12 @@ export declare const HabitItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | null | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1089,6 +1101,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1099,7 +1112,6 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1122,6 +1134,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1132,7 +1145,6 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1155,6 +1167,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1165,7 +1178,6 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1188,6 +1200,7 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1198,7 +1211,6 @@ export declare const CustomItemSchema: z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1302,6 +1314,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1312,7 +1325,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1334,6 +1346,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1344,7 +1357,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1420,12 +1432,12 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1444,12 +1456,12 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | null | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1560,6 +1572,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1570,7 +1583,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1593,6 +1605,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1603,7 +1616,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1625,12 +1637,12 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1649,6 +1661,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1659,7 +1672,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1682,6 +1694,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1692,7 +1705,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1714,12 +1726,12 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     project?: string | undefined;
-    notes?: string | null | undefined;
     projectId?: string | undefined;
     timesPerDay?: number | undefined;
     currentDayCount?: number | undefined;
@@ -1738,6 +1750,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1748,7 +1761,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1771,6 +1783,7 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
     reminderTime?: string | undefined;
@@ -1781,7 +1794,6 @@ export declare const ItemSchema: z.ZodEffects<z.ZodDiscriminatedUnion<"type", [z
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     projectId?: string | undefined;
     assignee?: string | undefined;
@@ -1911,6 +1923,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
@@ -1921,7 +1934,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
@@ -1938,6 +1950,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
@@ -1948,7 +1961,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
@@ -1965,6 +1977,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
@@ -1975,7 +1988,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
@@ -1992,6 +2004,7 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
@@ -2002,7 +2015,6 @@ export declare const TaskCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     inProjectBlock?: boolean | undefined;
     previousStartTime?: string | undefined;
     previousStartDate?: string | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | undefined;
     assignee?: string | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | undefined;
@@ -2065,9 +2077,9 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2085,9 +2097,9 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2105,9 +2117,9 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2125,9 +2137,9 @@ export declare const HabitCreateSchema: z.ZodEffects<z.ZodObject<Omit<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
     duration?: number | undefined;
+    notes?: string | null | undefined;
     reminderTime?: string | undefined;
     reminderAnchor?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2178,6 +2190,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
@@ -2191,7 +2204,6 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | null | undefined;
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
@@ -2206,6 +2218,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
@@ -2219,7 +2232,6 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | null | undefined;
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
@@ -2234,6 +2246,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
@@ -2247,7 +2260,6 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | null | undefined;
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
@@ -2262,6 +2274,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
@@ -2275,7 +2288,6 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | null | undefined;
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
@@ -2290,6 +2302,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
@@ -2303,7 +2316,6 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | null | undefined;
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
@@ -2318,6 +2330,7 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
@@ -2331,7 +2344,6 @@ export declare const TaskUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     inProjectBlock?: boolean | null | undefined;
     previousStartTime?: string | null | undefined;
     previousStartDate?: string | null | undefined;
-    notes?: string | null | undefined;
     parentItemId?: string | null | undefined;
     assignee?: string | null | undefined;
     aiStatus?: "done" | "queued" | "working" | "blocked" | "failed" | null | undefined;
@@ -2374,12 +2386,12 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
     reminderAnchor?: string | null | undefined;
     title?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2395,12 +2407,12 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
     reminderAnchor?: string | null | undefined;
     title?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2416,12 +2428,12 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
     reminderAnchor?: string | null | undefined;
     title?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2437,12 +2449,12 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
     reminderAnchor?: string | null | undefined;
     title?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2458,12 +2470,12 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
     reminderAnchor?: string | null | undefined;
     title?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -2479,12 +2491,12 @@ export declare const HabitUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
     duration?: number | null | undefined;
+    notes?: string | null | undefined;
     paused?: boolean | undefined;
     pausedUntil?: string | null | undefined;
     reminderTime?: string | null | undefined;
     reminderAnchor?: string | null | undefined;
     title?: string | undefined;
-    notes?: string | null | undefined;
     group?: string | undefined;
     streak?: number | undefined;
     dailyCounts?: Record<string, number> | undefined;
@@ -3296,6 +3308,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3306,7 +3319,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3327,6 +3339,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3337,7 +3350,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3358,6 +3370,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3368,7 +3381,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3389,6 +3401,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3399,7 +3412,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3472,11 +3484,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
-        notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -3495,11 +3507,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
-        notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -3518,11 +3530,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
-        notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -3541,11 +3553,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
-        notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -3562,6 +3574,8 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
         startTime: z.ZodOptional<z.ZodString>;
         duration: z.ZodOptional<z.ZodNumber>;
+        /** A free-text note — what this is for (migration 046). */
+        notes: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         id: string;
         name: string;
@@ -3573,6 +3587,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
     }, {
         id: string;
         name: string;
@@ -3584,6 +3599,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
     }>, "many">;
     habitGroups: z.ZodArray<z.ZodObject<{
         id: z.ZodString;
@@ -3697,6 +3713,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3707,7 +3724,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3729,6 +3745,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3739,7 +3756,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3815,12 +3831,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
-        notes?: string | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -3839,12 +3855,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
-        notes?: string | null | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -3955,6 +3971,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3965,7 +3982,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -3988,6 +4004,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -3998,7 +4015,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4020,12 +4036,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
-        notes?: string | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4044,6 +4060,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4054,7 +4071,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4077,6 +4093,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4087,7 +4104,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4109,12 +4125,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
-        notes?: string | null | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4133,6 +4149,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4143,7 +4160,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4166,6 +4182,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4176,7 +4193,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4185,6 +4201,8 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatusAt?: string | undefined;
     }>, "many">>;
     routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
+        /** A free-text note — what this is for (migration 046). */
+        notes: z.ZodOptional<z.ZodString>;
         /** Member item ids (routine_items), in routine-internal order. */
         itemIds: z.ZodArray<z.ZodString, "many">;
         /**
@@ -4212,6 +4230,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         name: string;
         itemIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         pausedAt?: string | undefined;
@@ -4221,6 +4240,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         name: string;
         itemIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         pausedAt?: string | undefined;
@@ -4242,6 +4262,8 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
         startsOn: z.ZodOptional<z.ZodString>;
         endsOn: z.ZodOptional<z.ZodString>;
+        /** A free-text note — what this is for (migration 046). */
+        notes: z.ZodOptional<z.ZodString>;
         /** Directly-held item ids (program_items). */
         itemIds: z.ZodArray<z.ZodString, "many">;
         /** Held routine ids (program_routines) — their members ride along. */
@@ -4267,6 +4289,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         state: "auto" | "active" | "paused";
         routineIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         startsOn?: string | undefined;
@@ -4279,6 +4302,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         state: "auto" | "active" | "paused";
         routineIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         startsOn?: string | undefined;
@@ -4379,6 +4403,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4389,7 +4414,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4412,11 +4436,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
-        notes?: string | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4432,6 +4456,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
     }[];
     habitGroups: {
         id: string;
@@ -4455,12 +4480,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
-        notes?: string | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4479,6 +4504,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4489,7 +4515,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4512,6 +4537,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4522,7 +4548,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4535,6 +4560,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         name: string;
         itemIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         pausedAt?: string | undefined;
@@ -4547,6 +4573,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         state: "auto" | "active" | "paused";
         routineIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         startsOn?: string | undefined;
@@ -4586,6 +4613,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4596,7 +4624,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4619,11 +4646,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
-        notes?: string | null | undefined;
         groupId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4639,6 +4666,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | undefined;
     }[];
     habitGroups: {
         id: string;
@@ -4662,12 +4690,12 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
         reminderAnchor?: string | undefined;
         project?: string | undefined;
-        notes?: string | null | undefined;
         projectId?: string | undefined;
         timesPerDay?: number | undefined;
         currentDayCount?: number | undefined;
@@ -4686,6 +4714,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4696,7 +4725,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4719,6 +4747,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
         duration?: number | undefined;
+        notes?: string | null | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
         reminderTime?: string | undefined;
@@ -4729,7 +4758,6 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         inProjectBlock?: boolean | undefined;
         previousStartTime?: string | undefined;
         previousStartDate?: string | undefined;
-        notes?: string | null | undefined;
         parentItemId?: string | undefined;
         projectId?: string | undefined;
         assignee?: string | undefined;
@@ -4742,6 +4770,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         name: string;
         itemIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         pausedAt?: string | undefined;
@@ -4754,6 +4783,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         state: "auto" | "active" | "paused";
         routineIds: string[];
         color?: string | undefined;
+        notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
         startsOn?: string | undefined;
@@ -4806,10 +4836,10 @@ export declare const ProposalCreateOpSchema: z.ZodObject<{
     itemType: string;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    notes?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
 }, {
     title: string;
@@ -4817,10 +4847,10 @@ export declare const ProposalCreateOpSchema: z.ZodObject<{
     itemType: string;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    notes?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
 }>;
 export declare const ProposalUpdateOpSchema: z.ZodObject<{
@@ -4840,20 +4870,20 @@ export declare const ProposalUpdateOpSchema: z.ZodObject<{
     status?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
-    notes?: string | undefined;
 }, {
     kind: "update";
     itemId: string;
     status?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
-    notes?: string | undefined;
 }>;
 export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z.ZodObject<{
     kind: z.ZodLiteral<"create">;
@@ -4884,10 +4914,10 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     itemType: string;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    notes?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
 }, {
     title: string;
@@ -4895,10 +4925,10 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     itemType: string;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
     startTime?: string | undefined;
+    notes?: string | undefined;
     priority?: "low" | "medium" | "high" | undefined;
     project?: string | undefined;
     startDate?: string | undefined;
-    notes?: string | undefined;
     parentItemId?: string | undefined;
 }>, z.ZodObject<{
     kind: z.ZodLiteral<"update">;
@@ -4917,20 +4947,20 @@ export declare const ProposalOperationSchema: z.ZodDiscriminatedUnion<"kind", [z
     status?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
-    notes?: string | undefined;
 }, {
     kind: "update";
     itemId: string;
     status?: string | undefined;
     timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
     startTime?: string | null | undefined;
+    notes?: string | undefined;
     title?: string | undefined;
     priority?: "low" | "medium" | "high" | null | undefined;
     startDate?: string | null | undefined;
-    notes?: string | undefined;
 }>]>;
 export declare const ProposalSchema: z.ZodObject<{
     id: z.ZodString;
@@ -4975,10 +5005,10 @@ export declare const ProposalSchema: z.ZodObject<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     }, {
         title: string;
@@ -4986,10 +5016,10 @@ export declare const ProposalSchema: z.ZodObject<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"update">;
@@ -5008,20 +5038,20 @@ export declare const ProposalSchema: z.ZodObject<{
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     }, {
         kind: "update";
         itemId: string;
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "strip", z.ZodTypeAny, {
@@ -5033,10 +5063,10 @@ export declare const ProposalSchema: z.ZodObject<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     } | {
         kind: "update";
@@ -5044,10 +5074,10 @@ export declare const ProposalSchema: z.ZodObject<{
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5060,10 +5090,10 @@ export declare const ProposalSchema: z.ZodObject<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     } | {
         kind: "update";
@@ -5071,10 +5101,10 @@ export declare const ProposalSchema: z.ZodObject<{
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     })[];
     createdAt: string;
     rationale?: string | undefined;
@@ -5123,10 +5153,10 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     }, {
         title: string;
@@ -5134,10 +5164,10 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     }>, z.ZodObject<{
         kind: z.ZodLiteral<"update">;
@@ -5156,20 +5186,20 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     }, {
         kind: "update";
         itemId: string;
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     }>]>, "many">;
     createdAt: z.ZodString;
 }, "id" | "createdAt">, "strip", z.ZodTypeAny, {
@@ -5180,10 +5210,10 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     } | {
         kind: "update";
@@ -5191,10 +5221,10 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     })[];
     rationale?: string | undefined;
 }, {
@@ -5205,10 +5235,10 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         itemType: string;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | undefined;
         startTime?: string | undefined;
+        notes?: string | undefined;
         priority?: "low" | "medium" | "high" | undefined;
         project?: string | undefined;
         startDate?: string | undefined;
-        notes?: string | undefined;
         parentItemId?: string | undefined;
     } | {
         kind: "update";
@@ -5216,10 +5246,10 @@ export declare const ProposalDraftSchema: z.ZodObject<Omit<{
         status?: string | undefined;
         timeBucket?: "anytime" | "morning" | "afternoon" | "evening" | null | undefined;
         startTime?: string | null | undefined;
+        notes?: string | undefined;
         title?: string | undefined;
         priority?: "low" | "medium" | "high" | null | undefined;
         startDate?: string | null | undefined;
-        notes?: string | undefined;
     })[];
     rationale?: string | undefined;
 }>;

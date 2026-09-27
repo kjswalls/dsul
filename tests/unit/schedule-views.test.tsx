@@ -22,6 +22,9 @@ vi.mock('@/lib/db', async (importOriginal) => ({
 vi.mock('sonner', () => ({ toast: Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }) }));
 
 import { ContainerDialog } from '@/components/planner/container-dialog';
+import { BlockWeekRow, TodayGlyph, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { blockWhen, hasTimeBlock } from '@/lib/project-block';
+import { renderHook } from '@testing-library/react';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -248,5 +251,53 @@ describe('a project', () => {
       screen.getAllByTestId('routine-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!
     );
     expect(screen.queryByTestId('routine-dialog-items-member-open')).toBeNull();
+  });
+});
+
+describe('the Linear-style pane parts', () => {
+  it('shapes the status by TYPE, so a habit and a repeating task of one title differ', () => {
+    seed();
+    const { container } = render(
+      <>
+        <TodayGlyph item={habit('h', 'Stretch')} state="due" todayStr={TODAY} />
+        <TodayGlyph item={task('t', 'Stretch', { repeatFrequency: 'daily', startDate: TODAY })} state="due" todayStr={TODAY} />
+      </>
+    );
+    const [a, b] = Array.from(container.querySelectorAll('[data-testid="today-glyph"]'));
+    expect(a.querySelector('circle')).not.toBeNull();
+    expect(b.querySelector('rect')).not.toBeNull();
+    // …and the type is in the accessible name, not only a hover title.
+    expect(a.querySelector('svg')!.getAttribute('aria-label')).toMatch(/^Habit,/);
+    expect(b.querySelector('svg')!.getAttribute('aria-label')).toMatch(/^Task,/);
+  });
+
+  it('counts a week by what is done or ahead — never an unrecorded past day', () => {
+    // Added Thursday (the past days before are `open`), so Sat and Sun remain.
+    seed({ items: [habit('h1', 'Stretch')] });
+    const { result } = renderHook(() => useWeekDotsFor(['h1']));
+    const { done, total } = result.current.weekTotals(['h1']);
+    expect(done).toBe(0);
+    // Saturday (today) and nothing before it counts as missed.
+    expect(total).toBeLessThanOrEqual(2);
+  });
+
+  it('draws an early block where it is, not clamped to 6am', () => {
+    const { container } = render(
+      <BlockWeekRow
+        block={{ id: 'p', name: 'Deep', emoji: '', startTime: '05:00', timeBucket: 'morning', duration: 60, repeatFrequency: 'daily' }}
+        days={[{ date: TODAY, on: true }]}
+        todayStr={TODAY}
+        trailingPad={0}
+      />
+    );
+    const slice = container.querySelector('[style*="top"]') as HTMLElement;
+    expect(slice.style.top).toBe('0%');
+    expect(parseFloat(slice.style.height)).toBeGreaterThan(0);
+  });
+
+  it('agrees on a block between the chip and the row', () => {
+    expect(blockWhen({ startTime: '23:00', duration: 120 })).toBe('11pm–1am');
+    expect(hasTimeBlock({ startTime: '19:00', timeBucket: 'evening' })).toBe(false);
+    expect(hasTimeBlock({ startTime: '19:00', timeBucket: 'evening', repeatFrequency: 'daily' })).toBe(true);
   });
 });

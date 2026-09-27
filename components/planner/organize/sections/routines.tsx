@@ -35,6 +35,7 @@ import {
   DayChip,
   OpenAsPageLink,
   DetailColumn,
+  BufferedTextarea,
   DetailHead,
   ListColumn,
   SectionWelcome,
@@ -45,6 +46,7 @@ import { ContainerCreateForm } from '../container-create-form';
 import { ROUTINE_STATES } from '../container-fields';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
 import { useWeekDotsFor, WeekProgress } from '@/components/planner/schedule/schedule-views';
 import { cn } from '@/lib/utils';
 import type { Item, Program, Routine } from '@/lib/planner-types';
@@ -467,6 +469,16 @@ function RoutineDetail({
         />
       </div>
 
+      {/* What it is for — a plain note, the goal's `why` for every container
+          (046). Buffered like every typed field here: committed on blur. */}
+      <BufferedTextarea
+        value={routine.notes ?? ''}
+        onCommit={(next) => updateRoutine(routine.id, { notes: next.trim() || undefined })}
+        placeholder="Add a note…"
+        ariaLabel="Routine note"
+        testId="routine-notes"
+      />
+
       <WeekProgress totals={week.weekTotals(routine.itemIds)} />
 
       <div className="mt-1.5 flex flex-col gap-5">
@@ -500,6 +512,8 @@ function RoutineDetail({
             onOpen={onOpenProgram}
           />
         )}
+
+        <ContainerActivity members={members} testId="routine-activity" />
       </div>
     </div>
   );

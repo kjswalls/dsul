@@ -20,6 +20,7 @@ import { ObjectRow } from '../primitives';
 import {
   DetailColumn,
   OpenAsPageLink,
+  BufferedTextarea,
   DetailHead,
   ListColumn,
   SectionWelcome,
@@ -28,6 +29,7 @@ import {
 } from '../detail-parts';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU, RoutineMemberList } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
 import {
   ScheduleHeading,
   SeasonHeatmap,
@@ -360,6 +362,14 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
         </button>
       )}
 
+      <BufferedTextarea
+        value={program.notes ?? ''}
+        onCommit={(next) => updateProgram(program.id, { notes: next.trim() || undefined })}
+        placeholder="Add a note…"
+        ariaLabel="Program note"
+        testId="program-notes"
+      />
+
       <ProgramProgress program={program} seasonIds={seasonIds} todayStr={todayStr} />
 
       <div className="mt-1.5 flex flex-col gap-5">
@@ -403,6 +413,8 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
           onChange={(itemIds) => updateProgram(program.id, { itemIds })}
         />
       </div>
+
+      <ContainerActivity members={members} testId="program-activity" />
 
       {/* At the foot: the season is good to look at, not something to act on
           (Kirby, 2026-09-27), so the lists come first. */}

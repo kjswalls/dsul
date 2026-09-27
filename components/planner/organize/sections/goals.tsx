@@ -41,6 +41,7 @@ import {
 } from '../detail-parts';
 import { ItemMemberList, type MemberRowParts } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
 import { GoalSchedule, ProgressLine, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
 import { daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
@@ -695,6 +696,12 @@ function GoalDetail({
               onAdd={onCreateMember}
             />
           }
+        />
+        <ContainerActivity
+          members={[...goal.milestoneIds, ...goal.checkinIds, ...goal.memberIds]
+            .map((id) => itemsById.get(id))
+            .filter((m): m is Item => !!m)}
+          testId="goal-activity"
         />
       </div>
     </div>

@@ -16,6 +16,7 @@ import { Segmented, SegmentedOption, SettingRow } from './primitives';
 import { BufferedInput } from './detail-parts';
 import { cn } from '@/lib/utils';
 import { PropertyChip } from '@/components/primitives/property-chip';
+import { blockWhen, hasTimeBlock } from '@/lib/project-block';
 import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -324,15 +325,6 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
 const bucketDefault = (bucket: TimeBucket) =>
   BUCKETS.find((b) => b.value === bucket)?.defaultTime ?? '05:00';
 
-/** "18:30" → "6:30pm". */
-function clock(time: string, plusMinutes = 0): string {
-  const [h0, m0] = time.split(':').map(Number);
-  const t = (h0 * 60 + (m0 || 0) + plusMinutes) % (24 * 60);
-  const h = Math.floor(t / 60);
-  const m = t % 60;
-  return `${h % 12 === 0 ? 12 : h % 12}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
-}
-
 /**
  * The block as a property chip in the pane's chip row — "Weekdays · 6–7pm",
  * or "＋ Time block" when there is none — opening the same controls
@@ -340,11 +332,11 @@ function clock(time: string, plusMinutes = 0): string {
  * so it sits with the others rather than as a settings section of its own.
  */
 export function TimeBlockChip({ project }: { project: Project }) {
-  const on = !!project.startTime && !!project.timeBucket;
-  const repeat = REPEATS.find((r) => r.value === (project.repeatFrequency ?? 'daily'))?.label ?? 'Every day';
-  const value = on
-    ? `${repeat} · ${clock(project.startTime!)}–${clock(project.startTime!, project.duration ?? 60)}`
-    : undefined;
+  // day-items' own rule (lib/project-block.ts): a row missing its repeat draws
+  // on no day, so it must not read "Every day" here.
+  const on = hasTimeBlock(project);
+  const repeat = REPEATS.find((r) => r.value === project.repeatFrequency)?.label ?? project.repeatFrequency;
+  const value = on ? `${repeat} · ${blockWhen(project)}` : undefined;
   return (
     <PropertyChip
       label="＋ Time block"

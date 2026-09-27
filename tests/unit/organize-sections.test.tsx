@@ -991,6 +991,17 @@ describe('the project time block', () => {
     expect(p.repeatFrequency).toBe('daily');
   });
 
+  it('keeps a typed start time when the chip closes on Escape', () => {
+    // The start time commits on blur, and Escape unmounts the popover before
+    // any blur — PropertyChip blurs the field first so the edit lands.
+    openProject(project({ timeBucket: 'evening', startTime: '19:00', repeatFrequency: 'daily' }));
+    const field = id('project-start-time') as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: '20:30' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(usePlannerStore.getState().projects[0].startTime).toBe('20:30');
+  });
+
   it('remembers the setup when switched off', () => {
     // Off clears only what the predicate reads. Throwing away the duration and
     // the repeat would make the switch a destructive control with no warning.

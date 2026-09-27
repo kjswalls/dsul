@@ -113,6 +113,8 @@ export const ProjectSchema = z.object({
     timeBucket: TimeBucketSchema.optional(),
     startTime: z.string().optional(),
     duration: z.number().optional(),
+    /** A free-text note — what this is for (migration 046). */
+    notes: z.string().optional(),
 });
 export const HabitGroupSchema = z.object({
     id: z.string(),
@@ -139,6 +141,8 @@ export const RoutineSchema = z.object({
     color: z.string().optional(),
     sortOrder: z.number().optional(),
     ...pauseFields,
+    /** A free-text note — what this is for (migration 046). */
+    notes: z.string().optional(),
     /** Member item ids (routine_items), in routine-internal order. */
     itemIds: z.array(z.string()),
 });
@@ -158,6 +162,8 @@ export const ProgramSchema = z.object({
     /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
     startsOn: z.string().optional(),
     endsOn: z.string().optional(),
+    /** A free-text note — what this is for (migration 046). */
+    notes: z.string().optional(),
     /** Directly-held item ids (program_items). */
     itemIds: z.array(z.string()),
     /** Held routine ids (program_routines) — their members ride along. */

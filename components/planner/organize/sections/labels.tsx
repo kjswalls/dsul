@@ -14,6 +14,7 @@ import type { TrashedName } from '@/lib/db';
 import {
   BackRow,
   BufferedInput,
+  BufferedTextarea,
   DangerZone,
   CreateForm,
   DetailColumn,
@@ -35,6 +36,7 @@ import {
 } from '@/components/planner/schedule/schedule-views';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
 import { canBulkClearProject, canBulkSetProject } from '@/lib/bulk-edit';
 
 /** Projects never suppress, so nothing here is dimmed for activation. */
@@ -295,6 +297,14 @@ function ProjectDetail({
         <TimeBlockChip project={project} />
       </div>
 
+      <BufferedTextarea
+        value={project.notes ?? ''}
+        onCommit={(next) => updateProject(project.id, { notes: next.trim() || undefined })}
+        placeholder="Add a note…"
+        ariaLabel="Project note"
+        testId="project-notes"
+      />
+
       <WeekProgress totals={week.weekTotals(memberIds)} testId="project-progress" />
 
       <div className="mt-1.5 flex flex-col gap-4">
@@ -340,6 +350,7 @@ function ProjectDetail({
           }}
         />
         <UnscheduledTray items={unscheduled} testId="project-unscheduled" />
+        <ContainerActivity members={projectMembers} testId="project-activity" />
       </div>
 
     </div>

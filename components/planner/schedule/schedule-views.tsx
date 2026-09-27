@@ -19,7 +19,7 @@ import {
   type OccurrenceState,
 } from '@/lib/container-schedule';
 import { cn } from '@/lib/utils';
-import { isRecurring } from '@/lib/recurrence';
+import { blockWhen, hasTimeBlock, minutesOfClock } from '@/lib/project-block';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { accentColorForName } from '@/lib/accent-colors';
 import type { HabitItem, Item, Program, Project, Routine, Task } from '@/lib/planner-types';
@@ -277,7 +277,7 @@ export function useWeekDotsFor(
      * slim bar per day with the block's hours lit. Null when it has no block.
      */
     blockRow: (trailingPad: number) =>
-      opts?.block?.startTime && opts.block.timeBucket && opts.block.repeatFrequency ? (
+      opts?.block && hasTimeBlock(opts.block) ? (
         <BlockWeekRow
           block={opts.block}
           days={dates.map((d) => ({ date: d, on: !!schedule.days.find((x) => x.date === d)?.block }))}
@@ -298,7 +298,10 @@ export function useWeekDotsFor(
       let total = 0;
       for (const id of ids) {
         for (const o of byItem.get(id)?.values() ?? []) {
-          if (o.state === 'skipped') continue;
+          // Only what is done or still ahead counts. A past day with nothing
+          // recorded is `open` — NOT a miss (container-schedule.ts) — and a
+          // member added on Thursday must not read as "1 of 7".
+          if (o.state === 'skipped' || o.state === 'open') continue;
           total += 1;
           if (o.state === 'done') done += 1;
         }
@@ -317,19 +320,6 @@ export function useWeekDotsFor(
       return on ? `${done}/${on} today` : undefined;
     },
   };
-}
-
-/** "18:30" / "6:30pm" → minutes after midnight. */
-function minutesOf(time: string): number {
-  const m = /^(\d{1,2}):(\d{2})/.exec(time);
-  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
-}
-
-function clockLabel(mins: number): string {
-  const h = Math.floor(mins / 60) % 24;
-  const m = mins % 60;
-  const hh = h % 12 === 0 ? 12 : h % 12;
-  return `${hh}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
 }
 
 /** The window each day-bar draws: 6am to midnight, the planner's waking hours. */
@@ -353,15 +343,18 @@ export function BlockWeekRow({
   todayStr: string;
   trailingPad: number;
 }) {
-  const start = minutesOf(block.startTime!);
+  const start = minutesOfClock(block.startTime!);
   const end = Math.min(DAY_TO, start + (block.duration ?? 60));
-  const span = DAY_TO - DAY_FROM;
-  const top = Math.max(0, Math.min(1, (start - DAY_FROM) / span));
+  // The bar opens at 6am unless the block starts earlier — Morning's default
+  // is 5am, and a clamped sliver at 6 would draw a time the block never holds.
+  const from = Math.min(DAY_FROM, start);
+  const span = DAY_TO - from;
+  const top = (start - from) / span;
   // At least 3px of a 24px bar, or an hour-long block is a hairline.
-  const height = Math.max(3 / 24, (end - Math.max(start, DAY_FROM)) / span);
+  const height = Math.max(3 / 24, (end - start) / span);
   // The project's own colour, or the accent its square is drawn in when none is stored.
   const color = block.color ?? accentColorForName(block.name);
-  const when = `${clockLabel(start)}–${clockLabel(end)}`;
+  const when = blockWhen(block);
   return (
     <div
       // The scrollbar gutter the member rows and the letters reserve, or the
@@ -469,9 +462,15 @@ export function TodayGlyph({
   state: OccurrenceState | undefined;
   todayStr: string;
 }) {
-  const square = !isRecurring(item as { repeatFrequency?: string });
-  const target = item.type === 'habit' ? ((item as HabitItem).timesPerDay ?? 1) : 1;
-  const count = item.type === 'habit' ? (((item as HabitItem).dailyCounts ?? {})[todayStr] ?? 0) : 0;
+  const config = getItemTypeConfig(itemTypeName(item));
+  // A date-anchored type (a task, one-off or repeating) draws the rounded
+  // square of a task's checkbox; a date-blind one (a habit) the circle. From the
+  // registry, so a habit and a repeating task that share a title still look
+  // different — the type icon this slot used to hold did that job.
+  const square = config.dateAnchored;
+  const counted = config.counters.dailyCounts;
+  const target = counted ? ((item as HabitItem).timesPerDay ?? 1) : 1;
+  const count = counted ? (((item as HabitItem).dailyCounts ?? {})[todayStr] ?? 0) : 0;
   const label =
     state === 'done'
       ? 'Done today'
@@ -487,7 +486,7 @@ export function TodayGlyph({
   // The type rides along in the tooltip: the glyph replaced the type icon in
   // this slot, and two rows can share a title ("Stretch" the habit and
   // "Stretch" the task) — hovering the circle tells them apart.
-  const typeLabel = getItemTypeConfig(itemTypeName(item)).label;
+  const typeLabel = config.label;
   return (
     <span
       className="flex size-[18px] shrink-0 items-center justify-center"
@@ -496,7 +495,7 @@ export function TodayGlyph({
       data-testid="today-glyph"
       data-state={state ?? 'none'}
     >
-      <svg width="14" height="14" viewBox="0 0 14 14" aria-label={label} role="img">
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-label={`${typeLabel}, ${label.toLowerCase()}`} role="img">
         {state === 'done' ? (
           <>
             {box ? (

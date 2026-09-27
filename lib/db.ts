@@ -721,6 +721,38 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
   }));
 }
 
+/**
+ * The recent create and update events of a SET of items — a container's
+ * members — for the container panes' Activity (2026-09-27). Newest first,
+ * capped; the pane derives "Added X" from creates and "Completed X" from an
+ * update that set a one-off's status to completed. Same quiet failure as
+ * fetchItemEvents: a missing line in a feed, never an error.
+ */
+export async function fetchItemEventsFor(itemIds: readonly string[], client?: DbClient): Promise<ItemEvent[]> {
+  if (!itemEventsAvailable || itemIds.length === 0) return [];
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_events')
+    .select('id, item_id, item_type, action, payload, created_at')
+    .in('item_id', itemIds.slice(0, 200) as string[])
+    .in('action', ['create', 'update'])
+    .order('created_at', { ascending: false })
+    .limit(60);
+  if (error) {
+    if (missingEventsTable(error)) itemEventsAvailable = false;
+    else console.error('item_events fetch failed', error);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    itemId: row.item_id as string,
+    itemType: row.item_type as string,
+    action: row.action as string,
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+    createdAt: row.created_at as string,
+  }));
+}
+
 // ---- Item CRUD ----
 
 /**
@@ -1771,6 +1803,8 @@ interface RoutineRow {
   paused_at?: string | null;
   paused_until?: string | null;
   sort_order?: number | null;
+  /** 046. Absent on a database the migration has not reached. */
+  notes?: string | null;
 }
 
 interface ProgramRow {
@@ -1785,6 +1819,8 @@ interface ProgramRow {
   sort_order?: number | null;
   /** Trigger-maintained; read-only here. See ProgramSchema.updatedAt. */
   updated_at?: string | null;
+  /** 046. */
+  notes?: string | null;
 }
 
 /**
@@ -1905,6 +1941,7 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
     sortOrder: row.sort_order ?? undefined,
+    notes: row.notes ?? undefined,
     itemIds: itemIdsByRoutine.get(row.id) ?? [],
   }));
 }
@@ -1920,6 +1957,8 @@ export async function createRoutine(userId: string, routine: Routine, client?: D
     paused_at: routine.pausedAt ?? null,
     paused_until: routine.pausedUntil ?? null,
     sort_order: routine.sortOrder ?? null,
+    // Only when set: a build that lands before 046 must still create.
+    ...(routine.notes ? { notes: routine.notes } : {}),
   });
   if (error) throw error;
   if (routine.itemIds.length > 0) {
@@ -1952,6 +1991,7 @@ export async function updateRoutine(
   if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
     const { error } = await supabase.from('routines').update(row).eq('id', id).eq('user_id', userId);
     if (error) throw error;
@@ -2035,6 +2075,7 @@ export async function fetchPrograms(userId: string, client?: DbClient): Promise<
     itemIds: itemIdsByProgram.get(row.id) ?? [],
     routineIds: routineIdsByProgram.get(row.id) ?? [],
     updatedAt: row.updated_at ?? undefined,
+    notes: row.notes ?? undefined,
   }));
 }
 
@@ -2050,6 +2091,7 @@ export async function createProgram(userId: string, program: Program, client?: D
     starts_on: program.startsOn ?? null,
     ends_on: program.endsOn ?? null,
     sort_order: program.sortOrder ?? null,
+    ...(program.notes ? { notes: program.notes } : {}),
   });
   if (error) throw error;
   try {
@@ -2087,6 +2129,7 @@ export async function updateProgram(
   if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
   if ('endsOn' in updates) row.ends_on = updates.endsOn ?? null;
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
     const { error } = await supabase.from('programs').update(row).eq('id', id).eq('user_id', userId);
     if (error) throw error;
@@ -2629,6 +2672,8 @@ interface ProjectRow {
   time_bucket?: string | null;
   start_time?: string | null;
   duration?: number | null;
+  /** 046. */
+  notes?: string | null;
 }
 
 function projectFromRow(row: ProjectRow): Project {
@@ -2643,6 +2688,7 @@ function projectFromRow(row: ProjectRow): Project {
     timeBucket: (row.time_bucket ?? undefined) as Project['timeBucket'],
     startTime: row.start_time ?? undefined,
     duration: row.duration ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 
@@ -2659,6 +2705,8 @@ function projectToRow(userId: string, project: Project): ProjectRow {
     time_bucket: project.timeBucket ?? null,
     start_time: project.startTime ?? null,
     duration: project.duration ?? null,
+    // Only when set: a build that lands before 046 must still create.
+    ...(project.notes ? { notes: project.notes } : {}),
   };
 }
 
@@ -2673,6 +2721,7 @@ function projectUpdatesToRow(updates: Partial<Project>): Record<string, unknown>
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
   if ('duration' in updates) row.duration = updates.duration ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   return row;
 }
 

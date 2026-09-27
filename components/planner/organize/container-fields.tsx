@@ -136,9 +136,9 @@ export function initialDraft(kind: DraftKind, todayStr: string, notes?: string):
     startsOn: kind === 'goal' ? todayStr : undefined,
     endsOn: undefined,
     goalState: 'active',
-    // Notes carried over from an item become a goal's why. The other kinds have
-    // no free text and never read it — but it is KEPT, so a trip through the type
-    // menu (goal → routine → goal) does not lose what was written.
+    // Notes carried over from an item become a goal's why — or a routine's or
+    // program's note (046). One field for every kind, so a trip through the
+    // type menu (goal → routine → goal) keeps what was written.
     why: notes ?? '',
     routinePaused: false,
     pausedUntil: undefined,
@@ -281,7 +281,9 @@ export function buildRoutine(
     pause =
       'patch' in write ? write.patch : { pausedAt: nowIso, pausedUntil: addDaysStr(todayStr, 1) };
   }
-  return { name, icon, color: d.color, ...pause, itemIds: d.itemIds };
+  // The draft's `why` is the routine's note (046): one free-text field per
+  // form, and text carried over from an item lands here whichever kind is picked.
+  return { name, icon, color: d.color, ...pause, notes: d.why.trim() || undefined, itemIds: d.itemIds };
 }
 
 /**
@@ -300,6 +302,7 @@ export function buildProgram(
     state: d.programState,
     startsOn: d.startsOn,
     endsOn: d.endsOn,
+    notes: d.why.trim() || undefined,
     itemIds: d.itemIds,
     routineIds: d.routineIds,
   };
@@ -639,15 +642,13 @@ export function ContainerDraftFields({
         </div>
       )}
 
-      {kind === 'goal' && (
-        <NotesField
-          value={draft.why}
-          onChange={(why) => onChange({ why })}
-          placeholder="Why this matters…"
-          ariaLabel="Why this goal matters"
-          testId={`${p}-why`}
-        />
-      )}
+      <NotesField
+        value={draft.why}
+        onChange={(why) => onChange({ why })}
+        placeholder={kind === 'goal' ? 'Why this matters…' : 'Add a note…'}
+        ariaLabel={kind === 'goal' ? 'Why this goal matters' : `${kind === 'routine' ? 'Routine' : 'Program'} note`}
+        testId={kind === 'goal' ? `${p}-why` : `${p}-notes`}
+      />
 
       {kind === 'goal' && goalHasMembers && (
         <GoalSchedule
