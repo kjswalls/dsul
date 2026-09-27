@@ -12,6 +12,7 @@ import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-regis
 import { countLive, swapMembers, useLiveItemIds } from '@/lib/collections';
 import { inActiveSection, useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
+import { cadenceLabel } from '@/lib/cadence';
 import type { Item, Routine } from '@/lib/planner-types';
 
 /**
@@ -133,6 +134,12 @@ function TypeGlyph({ item, className }: { item: Item; className?: string }) {
  * 64px, and most rows in a braindump-fed routine are unscheduled, so the word
  * would be the loudest repeated thing on the pane while carrying no signal.
  */
+/** "Journal · Weekdays · Evening" — a row's title and timing, for its tooltip. */
+function rowTip(item: Item): string {
+  const bucket = item.timeBucket && item.timeBucket !== 'anytime' ? BUCKET_TEXT[item.timeBucket] : undefined;
+  return [item.title, cadenceLabel(item as never), item.startTime ?? bucket].filter(Boolean).join(' · ');
+}
+
 function memberMeta(item: Item): { text: string; numeric: boolean } {
   if (item.startTime) return { text: item.startTime, numeric: true };
   if (item.timeBucket && item.timeBucket !== 'anytime') {
@@ -168,6 +175,18 @@ export interface MemberRowParts {
   leading?: (item: Item) => ReactNode;
   /** Replaces the when-column — a milestone's date, a check-in's "last Sep 20". */
   meta?: (item: Item) => { text: string; numeric: boolean };
+  /**
+   * The meta column's width. 64px fits a clock time or a bucket; a list that
+   * says CADENCE ("Mon, Wed, Fri · last Sep 21") and draws no week dots can
+   * give it the dots' room instead.
+   */
+  metaWidth?: number;
+  /**
+   * Draw no meta column: the row's timing goes in the title's tooltip. For a
+   * list whose rows already carry the week's dots — the words beside them made
+   * every row twice as long to scan (Kirby, 2026-09-27).
+   */
+  metaInTooltip?: boolean;
   /** Done, not hidden: the title goes muted (never struck through). */
   done?: (item: Item) => boolean;
   /** After the meta column, before the controls — the week's dots (schedule-views.tsx). */
@@ -452,7 +471,7 @@ export function ItemMemberList({
                     <Link
                       href={`/item/${item.id}`}
                       onNavigate={() => useUIStore.getState().closeDialog()}
-                      title={item.title}
+                      title={row?.metaInTooltip ? rowTip(item) : item.title}
                       data-testid={`${testPrefix}-member-open`}
                       className={cn(
                         'font-content text-content min-w-0 flex-1 truncate underline-offset-2 hover:underline',
@@ -463,7 +482,7 @@ export function ItemMemberList({
                     </Link>
                   ) : (
                     <span
-                      title={item.title}
+                      title={row?.metaInTooltip ? rowTip(item) : item.title}
                       className={cn(
                         'font-content text-content min-w-0 flex-1 truncate',
                         hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
@@ -476,9 +495,14 @@ export function ItemMemberList({
                   <span
                     data-testid={`${testPrefix}-member-meta`}
                     className={cn(
-                      'text-muted-foreground w-[64px] shrink-0 text-right text-2xs',
+                      'text-muted-foreground shrink-0 truncate text-right text-2xs',
+                      // In the tooltip from sm up, where the dots show; kept on a
+                      // phone, where they are hidden and this is the only "when".
+                      row?.metaInTooltip && 'sm:hidden',
                       meta.numeric && 'font-num'
                     )}
+                    style={{ width: row?.metaWidth ?? 64 }}
+                    title={meta.text || undefined}
                   >
                     {meta.text}
                   </span>

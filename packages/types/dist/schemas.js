@@ -113,6 +113,8 @@ export const ProjectSchema = z.object({
     timeBucket: TimeBucketSchema.optional(),
     startTime: z.string().optional(),
     duration: z.number().optional(),
+    /** A free-text note — what this is for (migration 049). */
+    notes: z.string().optional(),
 });
 export const HabitGroupSchema = z.object({
     id: z.string(),
@@ -148,6 +150,8 @@ export const RoutineSchema = z.object({
      */
     usualTime: z.string().optional(),
     ...pauseFields,
+    /** A free-text note — what this is for (migration 049). */
+    notes: z.string().optional(),
     /** Member item ids (routine_items), in routine-internal order. */
     itemIds: z.array(z.string()),
 });
@@ -167,6 +171,8 @@ export const SeasonSchema = z.object({
     /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
     startsOn: z.string().optional(),
     endsOn: z.string().optional(),
+    /** A free-text note — what this is for (migration 049). */
+    notes: z.string().optional(),
     /** Directly-held item ids (season_items). */
     itemIds: z.array(z.string()),
     /** Held routine ids (season_routines) — their members ride along. */
@@ -998,7 +1004,7 @@ export const DsulContextResponseSchema = z.object({
     // is missing from tasks[] instead of concluding it was deleted; 5 = goals[]
     // present, so a consumer can say what the work is FOR — progress, the next
     // milestone, the target — instead of inferring purpose from item titles;
-    // 6 = programs[] renamed seasons[] (migration 046). Pre-6 builds read the
+    // 6 = programs[] renamed seasons[] (migration 049). Pre-6 builds read the
     // old key, find it absent, and fall back to "the server did not say" — the
     // optionality above is what makes that a quiet loss rather than a throw.
     schemaVersion: z.number().optional(),

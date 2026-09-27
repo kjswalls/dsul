@@ -721,6 +721,45 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
   }));
 }
 
+/**
+ * The recent create and status events of a SET of items — a container's
+ * members — for the container panes' Activity (2026-09-27). Newest first,
+ * since `sinceIso`; the pane derives "Added X" from creates and "Completed X"
+ * from an update that set a one-off's status. Filtered to those two shapes
+ * server-side: nearly every edit writes an update event (a drag, a rename, a
+ * sweep), and fetched raw, a busy week of them crowds the creates out of the
+ * cap. Same quiet failure as fetchItemEvents: a missing line, never an error.
+ */
+export async function fetchItemEventsFor(
+  itemIds: readonly string[],
+  sinceIso: string,
+  client?: DbClient,
+): Promise<ItemEvent[]> {
+  if (!itemEventsAvailable || itemIds.length === 0) return [];
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('item_events')
+    .select('id, item_id, item_type, action, payload, created_at')
+    .in('item_id', itemIds.slice(0, 200) as string[])
+    .gte('created_at', sinceIso)
+    .or('action.eq.create,and(action.eq.update,payload->>status.not.is.null)')
+    .order('created_at', { ascending: false })
+    .limit(200);
+  if (error) {
+    if (missingEventsTable(error)) itemEventsAvailable = false;
+    else console.error('item_events fetch failed', error);
+    return [];
+  }
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    itemId: row.item_id as string,
+    itemType: row.item_type as string,
+    action: row.action as string,
+    payload: (row.payload ?? {}) as Record<string, unknown>,
+    createdAt: row.created_at as string,
+  }));
+}
+
 // ---- Item CRUD ----
 
 /**
@@ -965,6 +1004,34 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
   if (!error) return false;
   if (error.code === '42703' || error.code === 'PGRST204') return true;
   return /column\b.*\bdoes not exist/i.test(error.message ?? '');
+}
+
+/**
+ * A container write that survives a database without migration 049's `notes`
+ * column. PostgREST rejects a whole row naming a column it lacks, so a note
+ * riding along would sink a rename, a pause or an undo's full restore with it.
+ * A missing-column rejection with `notes` in the row retries once without it:
+ * everything else lands, the note does not. A row that was ONLY the note has
+ * nothing left to write — false then, so a caller does not announce a change.
+ */
+async function writeWithoutNotesFallback(
+  table: string,
+  row: Record<string, unknown>,
+  write: (row: Record<string, unknown>) => PromiseLike<{ error: { code?: string; message?: string } | null }>,
+): Promise<boolean> {
+  let { error } = await write(row);
+  if (error && isMissingColumnError(error) && 'notes' in row) {
+    const rest = { ...row };
+    delete rest.notes;
+    console.warn(
+      `[db] ${table} is missing a column this build writes (${error.message}). ` +
+        'Retrying without the note — apply supabase/migrations/049_container_notes.sql.',
+    );
+    if (Object.keys(rest).length === 0) return false;
+    ({ error } = await write(rest));
+  }
+  if (error) throw error;
+  return true;
 }
 
 export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
@@ -1808,6 +1875,8 @@ interface RoutineRow {
   paused_until?: string | null;
   sort_order?: number | null;
   usual_time?: string | null;
+  /** 049. Absent on a database the migration has not reached. */
+  notes?: string | null;
 }
 
 interface SeasonRow {
@@ -1822,6 +1891,8 @@ interface SeasonRow {
   sort_order?: number | null;
   /** Trigger-maintained; read-only here. See SeasonSchema.updatedAt. */
   updated_at?: string | null;
+  /** 049. */
+  notes?: string | null;
 }
 
 /**
@@ -1943,13 +2014,14 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
     pausedUntil: row.paused_until ?? undefined,
     sortOrder: row.sort_order ?? undefined,
     usualTime: row.usual_time ?? undefined,
+    notes: row.notes ?? undefined,
     itemIds: itemIdsByRoutine.get(row.id) ?? [],
   }));
 }
 
 export async function createRoutine(userId: string, routine: Routine, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('routines').insert({
+  await writeWithoutNotesFallback('routines', {
     id: routine.id,
     user_id: userId,
     name: routine.name,
@@ -1961,8 +2033,9 @@ export async function createRoutine(userId: string, routine: Routine, client?: D
     // Only when set, so a database without 047 still takes every routine that
     // does not use it — the same tolerance pauseColumns keeps for items.
     ...(routine.usualTime ? { usual_time: routine.usualTime } : {}),
-  });
-  if (error) throw error;
+    // Only when set: a build that lands before 049 must still create.
+    ...(routine.notes ? { notes: routine.notes } : {}),
+  }, (row) => supabase.from('routines').insert(row));
   if (routine.itemIds.length > 0) {
     try {
       await reconcileMembership(
@@ -1994,9 +2067,11 @@ export async function updateRoutine(
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
   if ('usualTime' in updates) row.usual_time = updates.usualTime ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
-    const { error } = await supabase.from('routines').update(row).eq('id', id).eq('user_id', userId);
-    if (error) throw error;
+    await writeWithoutNotesFallback('routines', row, (r) =>
+      supabase.from('routines').update(r).eq('id', id).eq('user_id', userId),
+    );
   }
   if (updates.itemIds) {
     await reconcileMembership(
@@ -2077,12 +2152,13 @@ export async function fetchSeasons(userId: string, client?: DbClient): Promise<S
     itemIds: itemIdsBySeason.get(row.id) ?? [],
     routineIds: routineIdsBySeason.get(row.id) ?? [],
     updatedAt: row.updated_at ?? undefined,
+    notes: row.notes ?? undefined,
   }));
 }
 
 export async function createSeason(userId: string, season: Season, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('seasons').insert({
+  await writeWithoutNotesFallback('seasons', {
     id: season.id,
     user_id: userId,
     name: season.name,
@@ -2092,8 +2168,8 @@ export async function createSeason(userId: string, season: Season, client?: DbCl
     starts_on: season.startsOn ?? null,
     ends_on: season.endsOn ?? null,
     sort_order: season.sortOrder ?? null,
-  });
-  if (error) throw error;
+    ...(season.notes ? { notes: season.notes } : {}),
+  }, (row) => supabase.from('seasons').insert(row));
   try {
     if (season.itemIds.length > 0) {
       await reconcileMembership(
@@ -2129,9 +2205,11 @@ export async function updateSeason(
   if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
   if ('endsOn' in updates) row.ends_on = updates.endsOn ?? null;
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
-    const { error } = await supabase.from('seasons').update(row).eq('id', id).eq('user_id', userId);
-    if (error) throw error;
+    await writeWithoutNotesFallback('seasons', row, (r) =>
+      supabase.from('seasons').update(r).eq('id', id).eq('user_id', userId),
+    );
   }
   if (updates.itemIds) {
     await reconcileMembership(
@@ -2671,6 +2749,8 @@ interface ProjectRow {
   time_bucket?: string | null;
   start_time?: string | null;
   duration?: number | null;
+  /** 049. */
+  notes?: string | null;
 }
 
 function projectFromRow(row: ProjectRow): Project {
@@ -2685,6 +2765,7 @@ function projectFromRow(row: ProjectRow): Project {
     timeBucket: (row.time_bucket ?? undefined) as Project['timeBucket'],
     startTime: row.start_time ?? undefined,
     duration: row.duration ?? undefined,
+    notes: row.notes ?? undefined,
   };
 }
 
@@ -2701,6 +2782,8 @@ function projectToRow(userId: string, project: Project): ProjectRow {
     time_bucket: project.timeBucket ?? null,
     start_time: project.startTime ?? null,
     duration: project.duration ?? null,
+    // Only when set: a build that lands before 049 must still create.
+    ...(project.notes ? { notes: project.notes } : {}),
   };
 }
 
@@ -2715,6 +2798,7 @@ function projectUpdatesToRow(updates: Partial<Project>): Record<string, unknown>
   if ('timeBucket' in updates) row.time_bucket = updates.timeBucket ?? null;
   if ('startTime' in updates) row.start_time = updates.startTime ?? null;
   if ('duration' in updates) row.duration = updates.duration ?? null;
+  if ('notes' in updates) row.notes = updates.notes ?? null;
   return row;
 }
 
@@ -2750,8 +2834,9 @@ function notifyContainerChange(userId: string, data: Record<string, unknown>): v
 
 export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('projects').insert(projectToRow(userId, project));
-  if (error) throw error;
+  await writeWithoutNotesFallback('projects', projectToRow(userId, project) as unknown as Record<string, unknown>, (row) =>
+    supabase.from('projects').insert(row),
+  );
   notifyContainerChange(userId, { action: 'create', project });
 }
 
@@ -2759,9 +2844,9 @@ export async function updateProject(userId: string, id: string, updates: Partial
   const row = projectUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('projects').update(row).eq('id', id);
-  if (error) throw error;
-  notifyContainerChange(userId, { action: 'update', id, updates });
+  const wrote = await writeWithoutNotesFallback('projects', row, (r) => supabase.from('projects').update(r).eq('id', id));
+  // A note-only edit against a pre-049 database wrote nothing — say nothing.
+  if (wrote) notifyContainerChange(userId, { action: 'update', id, updates });
 }
 
 /**

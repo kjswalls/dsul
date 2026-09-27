@@ -51,9 +51,12 @@ import { cn } from '@/lib/utils';
  * adding `/organize` later is an additive PR that renders this same tree rather
  * than a rebuild. Buy the URL when the URL is wanted.
  *
- * GEOMETRY — 1082 × 640, fixed aspect, sized from the columns up:
+ * GEOMETRY — 1082 × up to 820, sized from the columns up:
  *   rail 180 | 1px | list 300 | 1px | detail 600   = 1082
- *   header 48 + body 560 + footer 32               = 640
+ *   header 48 + body 740 + footer 32               = 820 (was 640)
+ * The height is still FIXED per viewport — it never changes on a section
+ * change — but takes up to 820 of it (min with 100vh − 80), so a goal with a
+ * timeline and three lists reads without a scroll on an ordinary laptop.
  * The detail column grew from 456 when member rows gained week dots and a
  * wider control rail: at 456 a title kept ~64px. It needs a 1146×720 viewport,
  * so it fits 1280×800 with 134×80 to spare; narrower, the plate shrinks with
@@ -280,7 +283,7 @@ export function OrganizeConsole({
           // plate is a 54px lurch.
           'flex flex-col gap-0 overflow-hidden p-0',
           'w-[min(1082px,calc(100vw-64px))] max-w-none sm:max-w-none',
-          'h-[min(640px,calc(100vh-80px))]',
+          'h-[min(820px,calc(100vh-80px))]',
           'bg-modal border-border rounded-[20px] border',
           'shadow-[var(--shadow-elev-plate)]',
           'duration-150 data-[state=open]:zoom-in-[0.98] data-[state=closed]:zoom-out-[0.98]'

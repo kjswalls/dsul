@@ -91,6 +91,10 @@ section change, which is the single loudest un-premium tell in both current dial
 > so one wide row pushed the whole panel past the plate and clipped the detail pane's
 > right edge. Needs 1146×720; below that the plate tracks the window and the detail
 > column (flex-1) absorbs the difference.
+>
+> **Revised (2026-09-27): height up to 820** (`min(820px, 100vh − 80px)`). Still fixed
+> per viewport, never per section — a goal pane with its timeline and three lists no
+> longer scrolls on a laptop.
 
 **Access: seven doors, one call** — `openDialog({ type: 'console', tab, focusId?, focusNew?, returnTo? })`.
 

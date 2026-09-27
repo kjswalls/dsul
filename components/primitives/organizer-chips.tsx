@@ -327,7 +327,7 @@ export function ChoiceChip<T extends string>({
 }
 
 /**
- * A labelled run of rows in an organizer pane — "Milestones · 2 of 5" with an
+ * A labelled run of rows in an organizer pane — "Milestones 2 of 5" with an
  * optional action on the right. The heading is the item edit pane's BandLabel
  * (components/planner/item-bands.tsx); an empty section is the heading and its
  * add row, never a "Nothing in here yet" block.
@@ -351,12 +351,15 @@ export function OrganizerSection({
   return (
     <section className={cn('flex flex-col gap-1.5', className)} data-testid={testId}>
       <div className="flex min-h-5 items-center justify-between gap-2">
-        <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+        {/* Normal case, the count a step lighter beside it — "Items 1/3 today".
+            The uppercase eyebrow read as a form's section label; this reads as
+            a list's heading, which is what it is. */}
+        <p className="text-muted-foreground text-xs font-medium">
           {label}
           {count !== undefined && count !== null && (
             <>
-              {' · '}
-              <span className="font-num tracking-[0.04em]">{count}</span>
+              {' '}
+              <span className="text-muted-foreground/70 ml-1 font-normal tabular-nums">{count}</span>
             </>
           )}
         </p>

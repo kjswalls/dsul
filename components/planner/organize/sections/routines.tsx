@@ -35,6 +35,7 @@ import {
   DayChip,
   OpenAsPageLink,
   DetailColumn,
+  BufferedTextarea,
   DetailHead,
   ListColumn,
   SectionWelcome,
@@ -46,7 +47,8 @@ import { ContainerCreateForm } from '../container-create-form';
 import { ROUTINE_STATES } from '../container-fields';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
-import { ScheduleHeading, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { ContainerActivity } from '../container-activity';
+import { ScheduleHeading, useWeekDotsFor, WeekProgress } from '@/components/planner/schedule/schedule-views';
 import { RoutineToday } from '@/components/planner/routine-today';
 import { formatCueTime } from '@/lib/reminders/copy';
 import { cn } from '@/lib/utils';
@@ -484,6 +486,18 @@ function RoutineDetail({
         />
       </div>
 
+      {/* What it is for — a plain note, the goal's `why` for every container
+          (049). Buffered like every typed field here: committed on blur. */}
+      <BufferedTextarea
+        value={routine.notes ?? ''}
+        onCommit={(next) => updateRoutine(routine.id, { notes: next.trim() || undefined })}
+        placeholder="Add a note…"
+        ariaLabel="Routine note"
+        testId="routine-notes"
+      />
+
+      <WeekProgress totals={week.weekTotals(routine.itemIds)} />
+
       <div className="mt-1.5 flex flex-col gap-5">
         {/* Only while the routine is carrying something: held off or paused,
             it has nothing on today, and the strips above already say why. */}
@@ -508,7 +522,8 @@ function RoutineDetail({
           testPrefix="routine"
           orderable
           lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
-          row={{ trailing: week.trailing, ...controls }}
+          count={week.todayCount(routine.itemIds)}
+          row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
           onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
         />
 
@@ -523,6 +538,8 @@ function RoutineDetail({
             onOpen={onOpenSeason}
           />
         )}
+
+        <ContainerActivity members={members} testId="routine-activity" />
       </div>
     </div>
   );

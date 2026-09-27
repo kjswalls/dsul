@@ -136,9 +136,9 @@ export function initialDraft(kind: DraftKind, todayStr: string, notes?: string):
     startsOn: kind === 'goal' ? todayStr : undefined,
     endsOn: undefined,
     goalState: 'active',
-    // Notes carried over from an item become a goal's why. The other kinds have
-    // no free text and never read it — but it is KEPT, so a trip through the type
-    // menu (goal → routine → goal) does not lose what was written.
+    // Notes carried over from an item become a goal's why — or a routine's or
+    // season's note (049). One field for every kind, so a trip through the
+    // type menu (goal → routine → goal) keeps what was written.
     why: notes ?? '',
     routinePaused: false,
     pausedUntil: undefined,
@@ -281,7 +281,9 @@ export function buildRoutine(
     pause =
       'patch' in write ? write.patch : { pausedAt: nowIso, pausedUntil: addDaysStr(todayStr, 1) };
   }
-  return { name, icon, color: d.color, ...pause, itemIds: d.itemIds };
+  // The draft's `why` is the routine's note (049): one free-text field per
+  // form, and text carried over from an item lands here whichever kind is picked.
+  return { name, icon, color: d.color, ...pause, notes: d.why.trim() || undefined, itemIds: d.itemIds };
 }
 
 /**
@@ -300,6 +302,7 @@ export function buildSeason(
     state: d.seasonState,
     startsOn: d.startsOn,
     endsOn: d.endsOn,
+    notes: d.why.trim() || undefined,
     itemIds: d.itemIds,
     routineIds: d.routineIds,
   };
@@ -639,15 +642,13 @@ export function ContainerDraftFields({
         </div>
       )}
 
-      {kind === 'goal' && (
-        <NotesField
-          value={draft.why}
-          onChange={(why) => onChange({ why })}
-          placeholder="Why this matters…"
-          ariaLabel="Why this goal matters"
-          testId={`${p}-why`}
-        />
-      )}
+      <NotesField
+        value={draft.why}
+        onChange={(why) => onChange({ why })}
+        placeholder={kind === 'goal' ? 'Why this matters…' : 'Add a note…'}
+        ariaLabel={kind === 'goal' ? 'Why this goal matters' : `${kind.charAt(0).toUpperCase()}${kind.slice(1)} note`}
+        testId={kind === 'goal' ? `${p}-why` : `${p}-note-field`}
+      />
 
       {kind === 'goal' && goalHasMembers && (
         <GoalSchedule
@@ -751,7 +752,7 @@ export function ContainerDraftFields({
             // routine_items keeps an order; season_items does not.
             orderable={kind === 'routine'}
             lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
-            row={{ trailing: week.trailing }}
+            row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true }}
             emptyHint={
               hasNew('items')
                 ? undefined
@@ -883,7 +884,7 @@ function SeasonPicker({
   const seasons = usePlannerStore((s) => s.seasons);
   return (
     <section className="flex flex-col gap-1.5" data-testid={`${testPrefix}-seasons`}>
-      <p id={`${testPrefix}-seasons-label`} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+      <p id={`${testPrefix}-seasons-label`} className="text-muted-foreground text-xs font-medium">
         In seasons
       </p>
       <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={`${testPrefix}-seasons-label`}>

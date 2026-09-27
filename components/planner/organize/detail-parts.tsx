@@ -467,7 +467,12 @@ export function DetailHead({
             style={{ background: color ?? accentColorForName(name) }}
             aria-hidden
           />
-          {kind}
+          {/* A path, Linear's way: where this lives, then what it is. The
+              section name is the back row's own label ("Routines"). */}
+          <span className="shrink-0">{back.label}</span>
+          <span aria-hidden className="text-muted-foreground/60">›</span>
+          <span className="text-foreground/80 min-w-0 truncate">{name}</span>
+          <span className="sr-only">({kind})</span>
         </span>
         {actions}
         <DropdownMenu>
@@ -516,8 +521,8 @@ export function DetailHead({
 }
 
 /**
- * Icon + name, as the item pane draws its title: a 30px glyph button and a
- * borderless SERIF heading. Colour is not here — it is a chip in the row below,
+ * Icon + name: a 30px glyph button and a borderless sans heading — the
+ * containers' Linear-style head (2026-09-27; it was the item pane's serif). Colour is not here — it is a chip in the row below,
  * the way an item's project is.
  *
  * Buffered exactly as IdentityRow is, and for the same reason (see there):
@@ -573,7 +578,7 @@ export function TitleRow({
           }}
           aria-label={`${label} name`}
           data-testid={`${testPrefix}-name-input`}
-          className="text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 font-serif text-lg leading-snug font-medium outline-none"
+          className="text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 text-xl leading-snug font-semibold tracking-[-0.01em] outline-none"
         />
       </div>
       {nameDraft.problem && (
@@ -886,7 +891,7 @@ export function BufferedTextarea({
       onBlur={commit}
       className={cn(
         // The item pane's notes recipe, minus the shadcn Textarea it undoes.
-        'text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed outline-none placeholder:italic',
+        'text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 text-sm leading-relaxed outline-none',
         className
       )}
     />
@@ -946,7 +951,7 @@ export function NotesField({
       data-testid={testId}
       onChange={(e) => onChange(e.target.value)}
       // BufferedTextarea's recipe — spelled out, so caret-room can read it.
-      className="text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed outline-none placeholder:italic"
+      className="text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 text-sm leading-relaxed outline-none"
     />
   );
 }

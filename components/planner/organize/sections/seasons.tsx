@@ -20,6 +20,7 @@ import { ObjectRow } from '../primitives';
 import {
   DetailColumn,
   OpenAsPageLink,
+  BufferedTextarea,
   DetailHead,
   ListColumn,
   SectionWelcome,
@@ -28,12 +29,15 @@ import {
 } from '../detail-parts';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU, RoutineMemberList } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
 import {
   ScheduleHeading,
   SeasonHeatmap,
   useWeekDotsFor,
+  ProgressLine,
+  WeekProgress,
 } from '@/components/planner/schedule/schedule-views';
-import { containerMemberIds } from '@/lib/container-schedule';
+import { containerMemberIds, daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { seasonStates } from '../container-fields';
 import type { Item, Season, Routine } from '@/lib/planner-types';
@@ -358,10 +362,15 @@ function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }
         </button>
       )}
 
-      <section className="flex flex-col gap-2" data-testid="season-calendar">
-        <ScheduleHeading label="Calendar" />
-        <SeasonHeatmap season={season} memberIds={calendarIds} />
-      </section>
+      <BufferedTextarea
+        value={season.notes ?? ''}
+        onCommit={(next) => updateSeason(season.id, { notes: next.trim() || undefined })}
+        placeholder="Add a note…"
+        ariaLabel="Season note"
+        testId="season-notes"
+      />
+
+      <SeasonProgress season={season} calendarIds={calendarIds} todayStr={todayStr} />
 
       <div className="mt-1.5 flex flex-col gap-5">
         <RoutineMemberList
@@ -399,12 +408,54 @@ function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }
           })}
           testPrefix="season"
           lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
-          row={{ trailing: week.trailing, ...controls }}
+          count={week.todayCount(season.itemIds)}
+          row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
           onChange={(itemIds) => updateSeason(season.id, { itemIds })}
         />
       </div>
+
+      <ContainerActivity members={members} testId="season-activity" />
+
+      {/* At the foot: the calendar is good to look at, not something to act on
+          (Kirby, 2026-09-27), so the lists come first. */}
+      <section className="flex flex-col gap-2" data-testid="season-calendar">
+        <ScheduleHeading label="Calendar" />
+        <SeasonHeatmap season={season} memberIds={calendarIds} />
+      </section>
     </div>
   );
+}
+
+/**
+ * The season's one line of progress. A dated run says where in it today is
+ * ("Week 13 of 13 · ends Aug 31"); an undated or hand-held one says this
+ * week's count across everything it switches on.
+ */
+function SeasonProgress({
+  season,
+  calendarIds,
+  todayStr,
+}: {
+  season: Season;
+  calendarIds: string[];
+  todayStr: string;
+}) {
+  const week = useWeekDotsFor(calendarIds);
+  const { startsOn, endsOn } = season;
+  if (season.state === 'auto' && startsOn && endsOn && endsOn >= startsOn && todayStr >= startsOn && todayStr <= endsOn) {
+    const span = daysBetween(startsOn, endsOn) + 1;
+    const total = Math.max(1, Math.ceil(span / 7));
+    const at = Math.min(total, Math.floor(daysBetween(startsOn, todayStr) / 7) + 1);
+    return (
+      <ProgressLine fraction={(daysBetween(startsOn, todayStr) + 1) / span} testId="season-progress">
+        <span className="text-foreground/85 font-medium tabular-nums">
+          Week {at} of {total}
+        </span>{' '}
+        · ends {formatShort(endsOn)}
+      </ProgressLine>
+    );
+  }
+  return <WeekProgress totals={week.weekTotals(calendarIds)} testId="season-progress" />;
 }
 
 /**

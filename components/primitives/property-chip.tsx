@@ -82,9 +82,11 @@ export function PropertyChip({
   // ourselves, same as IconPicker does for the identical reason. Ref CALLBACK,
   // not an effect: an effect races the portal mount.
   const wheelCleanup = useRef<(() => void) | null>(null);
+  const contentEl = useRef<HTMLDivElement | null>(null);
   const scrollRef = useCallback((el: HTMLDivElement | null) => {
     wheelCleanup.current?.();
     wheelCleanup.current = null;
+    contentEl.current = el;
     if (!el) return;
     const onWheel = (e: WheelEvent) => {
       const box = el.querySelector<HTMLElement>('[data-chip-scroll]') ?? el;
@@ -97,7 +99,17 @@ export function PropertyChip({
   }, []);
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover
+      open={open}
+      onOpenChange={(next) => {
+        // A buffered field inside commits on BLUR — and closing (Escape, a
+        // click outside) unmounts it before any blur fires, so a typed start
+        // time vanished. Blur it first, then close, and the edit lands.
+        const active = document.activeElement as HTMLElement | null;
+        if (!next && active && contentEl.current?.contains(active)) active.blur();
+        setOpen(next);
+      }}
+    >
       <PopoverTrigger asChild>
         <button
           type="button"

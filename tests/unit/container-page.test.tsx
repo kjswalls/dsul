@@ -87,7 +87,34 @@ describe('the routine page', () => {
   it('says when the routine usually happens, in the user’s clock format', () => {
     seed({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], usualTime: '07:00' }], timeFormat: '12h' });
     render(<ContainerPage kind="routine" id="r1" />);
-    expect(screen.getByTestId('container-page-summary').textContent).toContain('usually at 7:00 am');
+    // A property row now: "Usually at" beside "7:00 am".
+    expect(screen.getByTestId('container-page-summary').textContent).toContain('Usually at7:00 am');
+  });
+
+  it('reads its note under the title, and its properties beside it', () => {
+    const done = habit('h1', 'Stretch', { completedDates: ['2026-09-26'] });
+    seed({
+      items: [done],
+      habits: [done],
+      routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], notes: 'Before the phone.' }],
+    });
+    render(<ContainerPage kind="routine" id="r1" />);
+    expect(screen.getByTestId('container-page-notes').textContent).toBe('Before the phone.');
+    const props = screen.getByTestId('container-page-summary');
+    expect(props.textContent).toContain('Active');
+    expect(props.textContent).toContain('Autumn term');
+    // Saturday, done today. The six earlier days recorded nothing — open, not
+    // missed — so they are not counted against it.
+    expect(screen.getByTestId('container-page-progress').textContent).toContain('1 of 1');
+  });
+
+  it('never lights a paused routine lime, and says nothing when there is no note', () => {
+    seed({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], pausedAt: '2026-09-20T12:00:00Z' }] });
+    render(<ContainerPage kind="routine" id="r1" />);
+    expect(screen.queryByTestId('container-page-notes')).toBeNull();
+    const props = screen.getByTestId('container-page-summary');
+    expect(props.textContent).toContain('Paused');
+    expect(props.querySelector('.bg-primary')).toBeNull();
   });
 
   it('edits through the console door — arm the slot, then go where the console lives', () => {
@@ -138,6 +165,9 @@ describe('the project page', () => {
     });
     render(<ContainerPage kind="project" id="pr1" />);
     expect(screen.getByTestId('container-page-rhythm-block').textContent).toContain('10:00');
+    // The console chip's own words, never the stored slug.
+    expect(screen.getByTestId('container-page-summary').textContent).toContain('Chosen days · ');
+    expect(screen.getByTestId('container-page-summary').textContent).not.toContain('custom');
     expect(screen.getAllByTestId('container-page-rhythm-row')).toHaveLength(1);
   });
 
