@@ -2,7 +2,7 @@ import { describe, it, expect, afterEach } from 'vitest';
 import { render, cleanup, screen } from '@testing-library/react';
 import { GroupSection } from '@/components/primitives/group-section';
 import { usePlannerStore } from '@/lib/planner-store';
-import type { Routine, Program } from '@dsul/types';
+import type { Routine, Season } from '@dsul/types';
 
 /**
  * The seam a mutation would break silently: RowGroup.gate → GroupSection → the
@@ -17,17 +17,17 @@ const routine = (id: string, over: Partial<Routine> = {}): Routine => ({
   ...over,
 });
 
-const program = (id: string, over: Partial<Program> = {}): Program => ({
+const season = (id: string, over: Partial<Season> = {}): Season => ({
   id,
-  name: `Program ${id}`,
+  name: `Season ${id}`,
   state: 'auto',
   itemIds: [],
   routineIds: [],
   ...over,
 });
 
-const seed = (routines: Routine[], programs: Program[]) =>
-  usePlannerStore.setState({ routines, programs, userTimezone: 'UTC', projects: [] });
+const seed = (routines: Routine[], seasons: Season[]) =>
+  usePlannerStore.setState({ routines, seasons, userTimezone: 'UTC', projects: [] });
 
 afterEach(() => cleanup());
 
@@ -55,10 +55,10 @@ describe('GroupSection gate header — the pause-switch seam', () => {
     expect(screen.getByTestId('gate-switch').getAttribute('data-gate-on')).toBe('off');
   });
 
-  it('shows a program section’s switch, resolved from its state', () => {
-    seed([], [program('p', { state: 'paused' })]);
+  it('shows a season section’s switch, resolved from its state', () => {
+    seed([], [season('p', { state: 'paused' })]);
     render(
-      <GroupSection groupKey="p" label="Summer" gate={{ kind: 'program', id: 'p' }} variant="canvas">
+      <GroupSection groupKey="p" label="Summer" gate={{ kind: 'season', id: 'p' }} variant="canvas">
         <div />
       </GroupSection>
     );

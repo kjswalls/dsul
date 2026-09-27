@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { usePlannerStore } from '@/lib/planner-store';
 import { setGateOn } from '@/lib/gate-toggle';
-import type { Routine, Program } from '@dsul/types';
+import type { Routine, Season } from '@dsul/types';
 
 /**
  * setGateOn — the one guarded, click-time-resolved write behind both the group-
@@ -9,10 +9,10 @@ import type { Routine, Program } from '@dsul/types';
  *
  * It resolves "today" from `new Date()` internally, so a test cannot pin the
  * date. Every fixture here is therefore date-INDEPENDENT: routines pause with no
- * end (paused on every date at or after an epoch-past `pausedAt`), and programs
- * are RANGELESS, so `isProgramActiveOn` is `auto`→on / `paused`→off for any
+ * end (paused on every date at or after an epoch-past `pausedAt`), and seasons
+ * are RANGELESS, so `isSeasonActiveOn` is `auto`→on / `paused`→off for any
  * today. That isolates the logic under test — toggle direction, the no-op guard,
- * and the program tri-state routing — from the calendar.
+ * and the season tri-state routing — from the calendar.
  */
 
 const TZ = 'America/New_York';
@@ -25,9 +25,9 @@ const routine = (id: string, over: Partial<Routine> = {}): Routine => ({
   ...over,
 });
 
-const program = (id: string, over: Partial<Program> = {}): Program => ({
+const season = (id: string, over: Partial<Season> = {}): Season => ({
   id,
-  name: `Program ${id}`,
+  name: `Season ${id}`,
   state: 'auto',
   itemIds: [],
   routineIds: [],
@@ -35,14 +35,14 @@ const program = (id: string, over: Partial<Program> = {}): Program => ({
 });
 
 let setRoutinePaused: ReturnType<typeof vi.fn>;
-let setProgramState: ReturnType<typeof vi.fn>;
+let setSeasonState: ReturnType<typeof vi.fn>;
 
-const seed = (routines: Routine[], programs: Program[]) => {
+const seed = (routines: Routine[], seasons: Season[]) => {
   setRoutinePaused = vi.fn();
-  setProgramState = vi.fn();
+  setSeasonState = vi.fn();
   usePlannerStore.setState({
     routines,
-    programs,
+    seasons,
     userTimezone: TZ,
     // Cast the spies onto the action signatures — a bare Mock isn't nominally the
     // store's function type, but it is call-compatible and setGateOn only invokes it.
@@ -51,7 +51,7 @@ const seed = (routines: Routine[], programs: Program[]) => {
       paused: boolean,
       until?: string | null,
     ) => void,
-    setProgramState: setProgramState as unknown as (
+    setSeasonState: setSeasonState as unknown as (
       id: string,
       state: 'auto' | 'active' | 'paused',
     ) => void,
@@ -87,43 +87,43 @@ describe('setGateOn — routines', () => {
   });
 
   it("keys the no-op guard off the routine's LOCAL switch, not the resolved effect", () => {
-    // An unpaused routine (localOn=true) held off by a rangeless paused program
+    // An unpaused routine (localOn=true) held off by a rangeless paused season
     // (effectiveOn=false). The guard must read the routine's OWN switch, or
     // "turn this off" silently no-ops while the routine is still scoped —
     // exactly the local/effective merge the split exists to prevent. Rangeless,
     // so date-independent.
-    seed([routine('r')], [program('p', { state: 'paused', routineIds: ['r'] })]);
+    seed([routine('r')], [season('p', { state: 'paused', routineIds: ['r'] })]);
     setGateOn('routine', 'r', false);
     expect(setRoutinePaused).toHaveBeenCalledWith('r', true);
   });
 });
 
-describe('setGateOn — programs route through the tri-state', () => {
+describe('setGateOn — seasons route through the tri-state', () => {
   beforeEach(() => seed([], []));
 
-  it('turns a live auto program off with a manual paused', () => {
-    seed([], [program('p')]); // rangeless auto → on
-    setGateOn('program', 'p', false);
-    expect(setProgramState).toHaveBeenCalledWith('p', 'paused');
+  it('turns a live auto season off with a manual paused', () => {
+    seed([], [season('p')]); // rangeless auto → on
+    setGateOn('season', 'p', false);
+    expect(setSeasonState).toHaveBeenCalledWith('p', 'paused');
   });
 
-  it('turns a paused program back to auto when auto already yields on', () => {
-    // The auto-preserving rule: a rangeless program is on under auto, so turning
+  it('turns a paused season back to auto when auto already yields on', () => {
+    // The auto-preserving rule: a rangeless season is on under auto, so turning
     // it on returns it to auto rather than stamping a manual active.
-    seed([], [program('p', { state: 'paused' })]);
-    setGateOn('program', 'p', true);
-    expect(setProgramState).toHaveBeenCalledWith('p', 'auto');
+    seed([], [season('p', { state: 'paused' })]);
+    setGateOn('season', 'p', true);
+    expect(setSeasonState).toHaveBeenCalledWith('p', 'auto');
   });
 
-  it('no-ops when the program is already in the desired state', () => {
-    seed([], [program('p')]); // auto → on
-    setGateOn('program', 'p', true); // ask for on
-    expect(setProgramState).not.toHaveBeenCalled();
+  it('no-ops when the season is already in the desired state', () => {
+    seed([], [season('p')]); // auto → on
+    setGateOn('season', 'p', true); // ask for on
+    expect(setSeasonState).not.toHaveBeenCalled();
   });
 
   it('no-ops on a stale id rather than throwing', () => {
-    seed([], [program('p')]);
-    expect(() => setGateOn('program', 'gone', false)).not.toThrow();
-    expect(setProgramState).not.toHaveBeenCalled();
+    seed([], [season('p')]);
+    expect(() => setGateOn('season', 'gone', false)).not.toThrow();
+    expect(setSeasonState).not.toHaveBeenCalled();
   });
 });

@@ -42,7 +42,7 @@ import { TOOL_DESCRIPTORS, toolByName, type ToolPlan } from '@/lib/mcp/tools'
 const taskItem = makeAgentItemHandlers('task')
 const habitItem = makeAgentItemHandlers('habit')
 const routineItem = makeContainerItemHandlers('routine')
-const programItem = makeContainerItemHandlers('program')
+const seasonItem = makeContainerItemHandlers('season')
 const goalItem = makeGoalItemHandlers()
 
 type Handler = (req: NextRequest, ctx: { params: Promise<{ id: string }> }) => Promise<Response>
@@ -51,7 +51,7 @@ const COLLECTION: Record<string, { create: Handler; item: { PATCH: Handler; DELE
   tasks: { create: makeAgentCreateHandler('task') as Handler, item: taskItem as never },
   habits: { create: makeAgentCreateHandler('habit') as Handler, item: habitItem as never },
   routines: { create: makeContainerCreateHandler('routine') as Handler, item: routineItem as never },
-  programs: { create: makeContainerCreateHandler('program') as Handler, item: programItem as never },
+  seasons: { create: makeContainerCreateHandler('season') as Handler, item: seasonItem as never },
   goals: { create: makeGoalCreateHandler() as Handler, item: goalItem as never },
 }
 

@@ -182,13 +182,13 @@ export function EnterHint({ verb }: { verb: string }) {
 // ── The type menu ────────────────────────────────────────────────────────────
 
 /** The organizers in menu order: the aspiration, the two gates, the label. */
-export const ORGANIZER_KINDS: readonly NewContainerKind[] = ['goal', 'routine', 'program', 'project'];
+export const ORGANIZER_KINDS: readonly NewContainerKind[] = ['goal', 'routine', 'season', 'project'];
 
 /** Each organizer's console section — the Open / Add & open destination. */
-export const ORGANIZER_SECTION: Record<NewContainerKind, 'goals' | 'routines' | 'programs' | 'projects'> = {
+export const ORGANIZER_SECTION: Record<NewContainerKind, 'goals' | 'routines' | 'seasons' | 'projects'> = {
   goal: 'goals',
   routine: 'routines',
-  program: 'programs',
+  season: 'seasons',
   project: 'projects',
 };
 
@@ -209,7 +209,7 @@ export function OrganizerGlyph({ kind, className }: { kind: NewContainerKind; cl
 const ORGANIZER_HINT: Record<NewContainerKind, string> = {
   goal: 'Something to reach',
   routine: 'A run of habits',
-  program: 'A season',
+  season: 'A stretch of life',
   project: 'A home for work',
 };
 
@@ -229,7 +229,7 @@ export function useOrganizerGates(): Record<NewContainerKind, boolean> {
   return {
     goal: goalsOn && goalsAvailable,
     routine: collections,
-    program: collections,
+    season: collections,
     project: true,
   };
 }

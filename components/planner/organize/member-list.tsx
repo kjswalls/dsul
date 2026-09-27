@@ -20,7 +20,7 @@ import type { Item, Routine } from '@/lib/planner-types';
  *
  * MOVED, NOT REWRITTEN (memory/plans/organize-console.md, Phase 2). Every
  * data-testid travels verbatim, because Phase 2's acceptance criterion is that
- * `tests/e2e/programs.spec.ts` runs UNCHANGED. The
+ * `tests/e2e/seasons.spec.ts` runs UNCHANGED. The
  * geometry is re-cut to console scale (30px rows, 5px radii, a reserved control
  * rail) but no behaviour changes here.
  *
@@ -250,7 +250,7 @@ export function ItemMemberList({
    * answer, never the owning container's state.
    *
    * This was a single boolean, and that was wrong in both directions. A routine
-   * held off by a program greyed an item that a SECOND routine was still
+   * held off by a season greyed an item that a SECOND routine was still
    * carrying, and a live routine drew an item at full contrast while the item's
    * own pause kept it off the grid. The container's state is not the item's:
    * the whole point of the disjunctive rule is that an item can have another
@@ -261,7 +261,7 @@ export function ItemMemberList({
   /**
    * Routines only, and not a taste call: `routine_items` carries a `sort_order`
    * column (written from the array index by reconcileMembership) and
-   * `program_items` does not. Offering the controls on a program would let the
+   * `season_items` does not. Offering the controls on a season would let the
    * user arrange an order that survives until the next fetch and then silently
    * reshuffles.
    */
@@ -279,7 +279,7 @@ export function ItemMemberList({
    * Goals need it: a milestone must additionally be one-shot and a check-in
    * must be recurring, so the picker for those lists is narrower than the one
    * for plain members. Defaults to `isCollectible`, which is what every
-   * container asked before and what routines and programs still ask.
+   * container asked before and what routines and seasons still ask.
    */
   eligible?: (item: Item) => boolean;
   /**
@@ -703,10 +703,10 @@ export function ItemMemberList({
   );
 }
 
-/* ── routines held by a program ───────────────────────────────────────── */
+/* ── routines held by a season ───────────────────────────────────────── */
 
 /**
- * The routines a program holds.
+ * The routines a season holds.
  *
  * Attaching is the one membership write in the app with a NON-OBVIOUS
  * consequence, so it is the one that confirms first — the caller owns that
@@ -714,22 +714,22 @@ export function ItemMemberList({
  * the whole store and does not belong in a list component.
  */
 export function RoutineMemberList({
-  program,
+  season,
   live,
   members,
   candidates,
   onRequestAttach,
   onRemove,
-  testPrefix = 'program',
+  testPrefix = 'season',
   emptyHint,
 }: {
-  program: { id: string; name: string };
+  season: { id: string; name: string };
   live: boolean;
   members: Routine[];
   candidates: Routine[];
   onRequestAttach: (routine: Routine) => void;
   onRemove: (routineId: string) => void;
-  /** `program` in the detail pane (its testids predate this prop); the create forms pass their own. */
+  /** `season` in the detail pane (its testids predate this prop); the create forms pass their own. */
   testPrefix?: string;
   /** See ItemMemberList's `emptyHint`. */
   emptyHint?: string;
@@ -740,10 +740,10 @@ export function RoutineMemberList({
 
   // Same render-phase reset as ItemMemberList, and for the same reason: above
   // `md` this component is never remounted, so an open candidate list would
-  // survive a click on a different program and stay pointed at the one you left.
-  const [lastProgramId, setLastProgramId] = useState(program.id);
-  if (program.id !== lastProgramId) {
-    setLastProgramId(program.id);
+  // survive a click on a different season and stay pointed at the one you left.
+  const [lastSeasonId, setLastSeasonId] = useState(season.id);
+  if (season.id !== lastSeasonId) {
+    setLastSeasonId(season.id);
     setAdding(false);
   }
 
@@ -773,7 +773,7 @@ export function RoutineMemberList({
             testId={`${testPrefix}-routine-add`}
             aria-expanded={adding}
             // Disabled with its reason on hover, rather than hidden: a missing
-            // pill reads as "programs cannot hold routines".
+            // pill reads as "seasons cannot hold routines".
             disabled={none}
             title={none ? 'Every routine is already here' : undefined}
             className="disabled:pointer-events-none disabled:opacity-50"
@@ -807,7 +807,7 @@ export function RoutineMemberList({
                 <ControlRail>
                   <RailButton
                     onClick={() => onRemove(routine.id)}
-                    label={`Remove ${routine.name} from ${program.name}`}
+                    label={`Remove ${routine.name} from ${season.name}`}
                     testId={`${testPrefix}-routine-remove`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />

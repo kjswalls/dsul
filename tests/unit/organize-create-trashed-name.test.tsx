@@ -63,7 +63,7 @@ beforeEach(() => {
     items: [],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,

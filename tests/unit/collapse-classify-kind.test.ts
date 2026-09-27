@@ -151,7 +151,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
     fetchItems: vi.fn(async () => [habitItem({ project: 'Wellness' })]),
     fetchProjects: vi.fn(async () => projects),
     fetchRoutines: vi.fn(async () => []),
-    fetchPrograms: vi.fn(async () => []),
+    fetchSeasons: vi.fn(async () => []),
     fetchGoals: vi.fn(async () => []),
   };
 });

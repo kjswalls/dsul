@@ -5,13 +5,13 @@ import { CalendarRange, Trash2 } from 'lucide-react';
 import { ChoiceChip, ColorChip, DateRangeChip } from '@/components/primitives/organizer-chips';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
-import { inactiveItemIdsOn, isProgramActiveOn } from '@/lib/active';
+import { inactiveItemIdsOn, isSeasonActiveOn } from '@/lib/active';
 import {
   byName,
   countLive,
   formatShort,
   matching,
-  programPillLabel,
+  seasonPillLabel,
   useLiveItemIds,
   useLiveRoutineIds,
   useToday,
@@ -39,23 +39,23 @@ import {
 } from '@/components/planner/schedule/schedule-views';
 import { containerMemberIds, daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
-import { programStates } from '../container-fields';
-import type { Item, Program, Routine } from '@/lib/planner-types';
+import { seasonStates } from '../container-fields';
+import type { Item, Season, Routine } from '@/lib/planner-types';
 
 /**
- * PROGRAMS — a stretch of life that switches whole routines on and off.
+ * SEASONS — a stretch of life that switches whole routines on and off.
  *
  * Moved from ManageCollectionsDialog with every data-testid intact
  * (memory/plans/organize-console.md, Phase 2). The three things worth knowing
  * before changing anything here are all about the tri-state:
  *
- *   On / Off are MANUAL OVERRIDES and always win — a person who flips a program
+ *   On / Off are MANUAL OVERRIDES and always win — a person who flips a season
  *   by hand ("we came back early") must never be second-guessed by a date they
  *   set weeks ago. Only Dates is date-resolved, which is why the range renders
  *   under Dates alone: pickers beside On or Off would be controls with no
  *   effect. The dates stay on the row meanwhile, waiting.
  */
-export function ProgramsSection({
+export function SeasonsSection({
   selectedId,
   onSelect,
   creating,
@@ -68,7 +68,7 @@ export function ProgramsSection({
   onNew: () => void;
   onCreated: (id: string | null) => void;
 }) {
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
@@ -78,27 +78,27 @@ export function ProgramsSection({
 
   const [query, setQuery] = useState('');
 
-  const selected = programs.find((p) => p.id === selectedId) ?? null;
-  const visible = matching(programs, query, byName);
+  const selected = seasons.find((p) => p.id === selectedId) ?? null;
+  const visible = matching(seasons, query, byName);
   const canCreate = collectionsAvailable && !!userId && !isLoading;
-  const showCreate = canCreate && (creating || programs.length === 0);
+  const showCreate = canCreate && (creating || seasons.length === 0);
 
   return (
     <>
       <ListColumn
-        eyebrow="PROGRAMS"
+        eyebrow="SEASONS"
         count={visible.length}
         hasSelection={!!selected || showCreate}
         filter={{
           value: query,
           onChange: setQuery,
-          placeholder: 'Filter programs…',
-          testId: 'program-filter',
+          placeholder: 'Filter seasons…',
+          testId: 'season-filter',
         }}
         onNew={{
           onClick: onNew,
-          label: 'New program',
-          testId: 'program-new',
+          label: 'New season',
+          testId: 'season-new',
           disabled: !canCreate,
         }}
       >
@@ -107,30 +107,30 @@ export function ProgramsSection({
             className="text-muted-foreground px-[7px] pt-2 text-xs"
             data-testid="collections-unavailable"
           >
-            Routines and programs aren&apos;t available on this account yet.
+            Routines and seasons aren&apos;t available on this account yet.
           </p>
-        ) : programs.length === 0 ? (
-          <p className="text-muted-foreground px-[7px] pt-2 text-xs">No programs yet.</p>
+        ) : seasons.length === 0 ? (
+          <p className="text-muted-foreground px-[7px] pt-2 text-xs">No seasons yet.</p>
         ) : (
-          visible.map((program) => (
+          visible.map((season) => (
             <ObjectRow
-              key={program.id}
-              testId="program-row"
-              idAttr={{ 'data-program-id': program.id }}
-              icon={program.icon}
-              color={program.color}
-              name={program.name}
-              selected={selectedId === program.id}
-              pill={programPillLabel(program, todayStr)}
-              pillTestId="program-state-pill"
-              // Both member arrays. Routines are the members a program is
+              key={season.id}
+              testId="season-row"
+              idAttr={{ 'data-season-id': season.id }}
+              icon={season.icon}
+              color={season.color}
+              name={season.name}
+              selected={selectedId === season.id}
+              pill={seasonPillLabel(season, todayStr)}
+              pillTestId="season-state-pill"
+              // Both member arrays. Routines are the members a season is
               // usually built out of, and one holding only routines would
               // otherwise read as empty.
               count={
-                countLive(program.itemIds, liveIds) +
-                countLive(program.routineIds, liveRoutineIds)
+                countLive(season.itemIds, liveIds) +
+                countLive(season.routineIds, liveRoutineIds)
               }
-              onSelect={() => onSelect(program.id)}
+              onSelect={() => onSelect(season.id)}
             />
           ))
         )}
@@ -139,16 +139,16 @@ export function ProgramsSection({
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
           <ContainerCreateForm
-            kind="program"
+            kind="season"
             autoFocus={creating}
             onCreated={onCreated}
-            onCancel={programs.length > 0 ? () => onCreated(null) : undefined}
+            onCancel={seasons.length > 0 ? () => onCreated(null) : undefined}
           />
         ) : selected ? (
-          <ProgramDetail program={selected} onBack={() => onSelect(null)} />
+          <SeasonDetail season={selected} onBack={() => onSelect(null)} />
         ) : (
-          <SectionWelcome section="programs">
-            A program is a stretch of life — a summer, a term — that switches whole routines on
+          <SectionWelcome section="seasons">
+            A season is a stretch of life — a summer, a term — that switches whole routines on
             and off.
           </SectionWelcome>
         )}
@@ -157,42 +157,42 @@ export function ProgramsSection({
   );
 }
 
-function ProgramDetail({ program, onBack }: { program: Program; onBack: () => void }) {
+function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }) {
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
-  const updateProgram = usePlannerStore((s) => s.updateProgram);
-  const setProgramState = usePlannerStore((s) => s.setProgramState);
-  const swapToProgram = usePlannerStore((s) => s.swapToProgram);
-  const removeProgram = usePlannerStore((s) => s.removeProgram);
+  const seasons = usePlannerStore((s) => s.seasons);
+  const updateSeason = usePlannerStore((s) => s.updateSeason);
+  const setSeasonState = usePlannerStore((s) => s.setSeasonState);
+  const swapToSeason = usePlannerStore((s) => s.swapToSeason);
+  const removeSeason = usePlannerStore((s) => s.removeSeason);
   const confirm = useUIStore((s) => s.confirm);
   const liveIds = useLiveItemIds();
   const liveRoutineIds = useLiveRoutineIds();
   const { todayStr, tz } = useToday();
 
-  const live = isProgramActiveOn(program, todayStr);
-  const members = program.itemIds
+  const live = isSeasonActiveOn(season, todayStr);
+  const members = season.itemIds
     .map((id) => items.find((i) => i.id === id))
     .filter((i): i is Item => !!i);
-  const routineMembers = program.routineIds
+  const routineMembers = season.routineIds
     .map((id) => routines.find((r) => r.id === id))
     .filter((r): r is Routine => !!r);
 
-  const itemCount = countLive(program.itemIds, liveIds);
-  const week = useWeekDotsFor(program.itemIds);
+  const itemCount = countLive(season.itemIds, liveIds);
+  const week = useWeekDotsFor(season.itemIds);
   const controls = useMemberActions({
-    ownerName: program.name,
-    onRemove: (id) => updateProgram(program.id, { itemIds: program.itemIds.filter((m) => m !== id) }),
+    ownerName: season.name,
+    onRemove: (id) => updateSeason(season.id, { itemIds: season.itemIds.filter((m) => m !== id) }),
     todayState: week.todayState,
   });
-  // Its routines' members ride along when it is on, so they are on its season.
-  const seasonIds = containerMemberIds({ kind: 'program', program }, items, routines);
-  const routineCount = countLive(program.routineIds, liveRoutineIds);
+  // Its routines' members ride along when it is on, so they are on its calendar.
+  const calendarIds = containerMemberIds({ kind: 'season', season }, items, routines);
+  const routineCount = countLive(season.routineIds, liveRoutineIds);
 
   // The swap verb only earns its place when there is something to swap AWAY
-  // from. With no other program on, "Switch to this" and "On" would be the same
+  // from. With no other season on, "Switch to this" and "On" would be the same
   // button wearing two labels.
-  const displaced = programs.filter((p) => p.id !== program.id && isProgramActiveOn(p, todayStr));
+  const displaced = seasons.filter((p) => p.id !== season.id && isSeasonActiveOn(p, todayStr));
 
   /**
    * How many items an attach would ACTUALLY hide, asked of the resolver by
@@ -200,18 +200,18 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
    *
    * A raw member count is wrong three ways at once: members already hidden by
    * the routine's own pause, members the user paused by hand, and members held
-   * by a second live program all count toward it while none of them would move.
+   * by a second live season all count toward it while none of them would move.
    * At worst that produces a confirm saying "this will hide 5 items" for a write
    * that hides nothing — which teaches the user to dismiss the prompt unread,
    * and this is the one prompt in the app that has something to say.
    */
   const wouldHide = (routine: Routine): number => {
-    const ctx = { userTimezone: tz, routines, programs };
+    const ctx = { userTimezone: tz, routines, seasons };
     const before = inactiveItemIdsOn(items, todayStr, ctx);
     const after = inactiveItemIdsOn(items, todayStr, {
       ...ctx,
-      programs: programs.map((p) =>
-        p.id === program.id ? { ...p, routineIds: [...p.routineIds, routine.id] } : p
+      seasons: seasons.map((p) =>
+        p.id === season.id ? { ...p, routineIds: [...p.routineIds, routine.id] } : p
       ),
     });
     let n = 0;
@@ -220,23 +220,23 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
   };
 
   const attach = (routine: Routine) =>
-    updateProgram(program.id, { routineIds: [...program.routineIds, routine.id] });
+    updateSeason(season.id, { routineIds: [...season.routineIds, routine.id] });
 
   /**
    * The attach discontinuity, said out loud (programs-routines decision 3).
    *
-   * A routine that belongs to NO program answers for itself. Put it in its first
-   * program and the program answers too — so attaching a live routine to a
-   * program that is off makes its items vanish from today as a side effect of a
+   * A routine that belongs to NO season answers for itself. Put it in its first
+   * season and the season answers too — so attaching a live routine to a
+   * season that is off makes its items vanish from today as a side effect of a
    * join write. That is the algebra working as designed (scoping a routine IS
    * the point), but an unannounced "5 items disappeared" reads as a bug.
    */
   const requestAttach = (routine: Routine) => {
-    // Only the FIRST program a routine joins rescopes it. A second is purely
+    // Only the FIRST season a routine joins rescopes it. A second is purely
     // additive — the path algebra is disjunctive — so warning there would train
     // the user to dismiss the prompt that matters.
-    const heldElsewhere = programs.some(
-      (p) => p.id !== program.id && p.routineIds.includes(routine.id)
+    const heldElsewhere = seasons.some(
+      (p) => p.id !== season.id && p.routineIds.includes(routine.id)
     );
     const hides = heldElsewhere ? 0 : wouldHide(routine);
     if (hides === 0) {
@@ -244,30 +244,30 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
       return;
     }
     const returns =
-      program.state === 'auto' && program.startsOn && todayStr < program.startsOn
-        ? formatShort(program.startsOn)
+      season.state === 'auto' && season.startsOn && todayStr < season.startsOn
+        ? formatShort(season.startsOn)
         : null;
     confirm({
       title: `This will hide ${hides} ${hides === 1 ? 'item' : 'items'} for now`,
       description:
-        `“${routine.name}” looks after itself today. Putting it in ${program.name} hands that ` +
-        `over — and ${program.name} is off, so its ${hides} ${hides === 1 ? 'item' : 'items'} ` +
+        `“${routine.name}” looks after itself today. Putting it in ${season.name} hands that ` +
+        `over — and ${season.name} is off, so its ${hides} ${hides === 1 ? 'item' : 'items'} ` +
         `${returns ? `come back on ${returns}` : 'stay hidden until you switch it on'}. ` +
         `Nothing is deleted, and taking it back out restores them.`,
       confirmLabel: 'Add it anyway',
-      testId: 'program-routine-attach-confirm',
+      testId: 'season-routine-attach-confirm',
       onConfirm: () => attach(routine),
     });
   };
 
   const requestDelete = () =>
     confirm({
-      title: 'Delete this program?',
-      description: deleteConsequence(program, itemCount, routineCount, live),
+      title: 'Delete this season?',
+      description: deleteConsequence(season, itemCount, routineCount, live),
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => {
-        removeProgram(program.id);
+        removeSeason(season.id);
         onBack();
       },
     });
@@ -275,21 +275,21 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
   return (
     <div
       className="flex flex-col gap-4"
-      data-testid="program-detail"
-      data-program-id={program.id}
+      data-testid="season-detail"
+      data-season-id={season.id}
     >
       <DetailHead
-        kind="Program"
-        color={program.color}
-        name={program.name}
-        testPrefix="program"
-        back={{ label: 'Programs', testId: 'program-detail-back', onBack }}
-        actions={<OpenAsPageLink href={`/program/${program.id}`} testId="program-open-page" />}
+        kind="Season"
+        color={season.color}
+        name={season.name}
+        testPrefix="season"
+        back={{ label: 'Seasons', testId: 'season-detail-back', onBack }}
+        actions={<OpenAsPageLink href={`/season/${season.id}`} testId="season-open-page" />}
         menu={[
           {
-            label: 'Delete program',
+            label: 'Delete season',
             icon: <Trash2 className="size-3.5" />,
-            testId: 'program-delete',
+            testId: 'season-delete',
             destructive: true,
             onSelect: requestDelete,
           },
@@ -297,32 +297,32 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
       />
 
       <TitleRow
-        id={program.id}
-        name={program.name}
-        icon={program.icon}
-        label="Program"
-        testPrefix="program"
-        onPatch={(patch) => updateProgram(program.id, patch)}
+        id={season.id}
+        name={season.name}
+        icon={season.icon}
+        label="Calendar"
+        testPrefix="season"
+        onPatch={(patch) => updateSeason(season.id, patch)}
       />
 
       <StatusStrip
-        testId="program-state-note"
+        testId="season-state-note"
         icon={<CalendarRange className="size-3.5" aria-hidden />}
       >
-        <ProgramStateNote program={program} live={live} />
+        <SeasonStateNote season={season} live={live} />
       </StatusStrip>
 
       <div className="flex flex-wrap items-center gap-1.5">
-        {/* setProgramState DIRECTLY, never through updateProgram: it stamps its
+        {/* setSeasonState DIRECTLY, never through updateSeason: it stamps its
             own history label and its own optimistic `updatedAt`, and routing
-            through the generic update stamps "Edit program" and lands the
+            through the generic update stamps "Edit season" and lands the
             intended label on the user's NEXT action. */}
         <ChoiceChip
           label="Status"
-          value={program.state}
-          options={programStates(live)}
-          testIdPrefix="program-state"
-          onChange={(state) => setProgramState(program.id, state)}
+          value={season.state}
+          options={seasonStates(live)}
+          testIdPrefix="season-state"
+          onChange={(state) => setSeasonState(season.id, state)}
         />
         {/* Under Dates alone: On and Off are manual overrides that always win,
             so a range beside them would be a control with no effect. The dates
@@ -330,32 +330,32 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
             inverted range is live on NO date, so every member would vanish
             while the note cheerfully reported "Runs Sep 1 to Aug 1". Both ends
             are included, as the note says. */}
-        {program.state === 'auto' && (
+        {season.state === 'auto' && (
           <DateRangeChip
-            start={program.startsOn}
-            end={program.endsOn}
+            start={season.startsOn}
+            end={season.endsOn}
             startLabel="Starts"
             endLabel="Ends"
             emptyLabel="Runs"
-            testIdPrefix="program-runs"
-            onChange={(startsOn, endsOn) => updateProgram(program.id, { startsOn, endsOn })}
+            testIdPrefix="season-runs"
+            onChange={(startsOn, endsOn) => updateSeason(season.id, { startsOn, endsOn })}
           />
         )}
         <ColorChip
-          value={program.color}
-          testId="program-color"
-          onChange={(color) => updateProgram(program.id, { color })}
+          value={season.color}
+          testId="season-color"
+          onChange={(color) => updateSeason(season.id, { color })}
         />
       </div>
 
       {!live && displaced.length > 0 && (
         <button
           type="button"
-          onClick={() => swapToProgram(program.id)}
-          data-testid="program-swap"
+          onClick={() => swapToSeason(season.id)}
+          data-testid="season-swap"
           className="border-border hover:bg-accent flex flex-col items-start gap-0.5 self-start rounded-[5px] border px-3 py-2 text-left"
         >
-          <span className="text-foreground text-sm font-medium">Switch to this program</span>
+          <span className="text-foreground text-sm font-medium">Switch to this season</span>
           <span className="text-muted-foreground text-xs">
             Turns off {displaced.map((p) => p.name).join(', ')}. One undo puts it all back.
           </span>
@@ -363,110 +363,111 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
       )}
 
       <BufferedTextarea
-        value={program.notes ?? ''}
-        onCommit={(next) => updateProgram(program.id, { notes: next.trim() || undefined })}
+        value={season.notes ?? ''}
+        onCommit={(next) => updateSeason(season.id, { notes: next.trim() || undefined })}
         placeholder="Add a note…"
-        ariaLabel="Program note"
-        testId="program-notes"
+        ariaLabel="Season note"
+        testId="season-notes"
       />
 
-      <ProgramProgress program={program} seasonIds={seasonIds} todayStr={todayStr} />
+      <SeasonProgress season={season} calendarIds={calendarIds} todayStr={todayStr} />
 
       <div className="mt-1.5 flex flex-col gap-5">
         <RoutineMemberList
-          program={program}
+          season={season}
           live={live}
           members={routineMembers}
-          candidates={routines.filter((r) => !program.routineIds.includes(r.id))}
+          candidates={routines.filter((r) => !season.routineIds.includes(r.id))}
           onRequestAttach={requestAttach}
           onRemove={(routineId) =>
-            updateProgram(program.id, {
-              routineIds: program.routineIds.filter((id) => id !== routineId),
+            updateSeason(season.id, {
+              routineIds: season.routineIds.filter((id) => id !== routineId),
             })
           }
         />
 
         {/* NOT orderable, and not a taste call: `routine_items` carries a
-            `sort_order` column and `program_items` does not, so an order
+            `sort_order` column and `season_items` does not, so an order
             arranged here would survive until the next fetch and then silently
             reshuffle. */}
         <ItemMemberList
         openItems
           label="Items"
-          ownerId={program.id}
-          ownerName={program.name}
-          memberIds={program.itemIds}
+          ownerId={season.id}
+          ownerName={season.name}
+          memberIds={season.itemIds}
           members={members}
-          // The resolver's per-item answer, not this program's state — same
+          // The resolver's per-item answer, not this season's state — same
           // correction the routine pane needed. `!live` greyed items a second
           // live path was still carrying, and drew items at full contrast while
           // their own pause kept them off the grid.
           hiddenIds={inactiveItemIdsOn(items, todayStr, {
             userTimezone: tz,
             routines,
-            programs,
+            seasons,
           })}
-          testPrefix="program"
+          testPrefix="season"
           lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
-          count={week.todayCount(program.itemIds)}
+          count={week.todayCount(season.itemIds)}
           row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
-          onChange={(itemIds) => updateProgram(program.id, { itemIds })}
+          onChange={(itemIds) => updateSeason(season.id, { itemIds })}
         />
       </div>
 
-      <ContainerActivity members={members} testId="program-activity" />
+      <ContainerActivity members={members} testId="season-activity" />
 
-      {/* At the foot: the season is good to look at, not something to act on
+      {/* At the foot: the calendar is good to look at, not something to act on
           (Kirby, 2026-09-27), so the lists come first. */}
-      <section className="flex flex-col gap-2" data-testid="program-season">
-        <ScheduleHeading label="Season" />
-        <SeasonHeatmap program={program} memberIds={seasonIds} />
+      <section className="flex flex-col gap-2" data-testid="season-calendar">
+        <ScheduleHeading label="Calendar" />
+        <SeasonHeatmap season={season} memberIds={calendarIds} />
       </section>
     </div>
   );
 }
 
 /**
- * The program's one line of progress. A dated run says where in it today is
+ * The season's one line of progress. A dated run says where in it today is
  * ("Week 13 of 13 · ends Aug 31"); an undated or hand-held one says this
  * week's count across everything it switches on.
  */
-function ProgramProgress({
-  program,
-  seasonIds,
+function SeasonProgress({
+  season,
+  calendarIds,
   todayStr,
 }: {
-  program: Program;
-  seasonIds: string[];
+  season: Season;
+  calendarIds: string[];
   todayStr: string;
 }) {
-  const week = useWeekDotsFor(seasonIds);
-  const dated = program.state === 'auto' && program.startsOn && program.endsOn && program.endsOn >= program.startsOn;
-  if (dated && todayStr >= program.startsOn! && todayStr <= program.endsOn!) {
-    const total = Math.max(1, Math.ceil((daysBetween(program.startsOn!, program.endsOn!) + 1) / 7));
-    const at = Math.min(total, Math.floor(daysBetween(program.startsOn!, todayStr) / 7) + 1);
+  const week = useWeekDotsFor(calendarIds);
+  const { startsOn, endsOn } = season;
+  if (season.state === 'auto' && startsOn && endsOn && endsOn >= startsOn && todayStr >= startsOn && todayStr <= endsOn) {
+    const span = daysBetween(startsOn, endsOn) + 1;
+    const total = Math.max(1, Math.ceil(span / 7));
+    const at = Math.min(total, Math.floor(daysBetween(startsOn, todayStr) / 7) + 1);
     return (
-      <ProgressLine fraction={(daysBetween(program.startsOn!, todayStr) + 1) / (daysBetween(program.startsOn!, program.endsOn!) + 1)} testId="program-progress">
+      <ProgressLine fraction={(daysBetween(startsOn, todayStr) + 1) / span} testId="season-progress">
         <span className="text-foreground/85 font-medium tabular-nums">
           Week {at} of {total}
         </span>{' '}
-        · ends {formatShort(program.endsOn!)}
+        · ends {formatShort(endsOn)}
       </ProgressLine>
     );
   }
-  return <WeekProgress totals={week.weekTotals(seasonIds)} testId="program-progress" />;
+  return <WeekProgress totals={week.weekTotals(calendarIds)} testId="season-progress" />;
 }
 
 /**
  * What deleting actually does — and the half of it a user would never guess.
  *
- * Trashing a program REMOVES ITS PATHS, so a routine it was the only holder of
+ * Trashing a season REMOVES ITS PATHS, so a routine it was the only holder of
  * falls back to standalone and its members reappear. "Delete" reads as
  * subtraction; here it can add rows back to today's grid, and that has to be on
  * the button rather than discovered afterwards.
  */
 function deleteConsequence(
-  program: Program,
+  season: Season,
   itemCount: number,
   routineCount: number,
   live: boolean
@@ -479,7 +480,7 @@ function deleteConsequence(
     .join(' and ');
 
   return (
-    `“${program.name}” is removed` +
+    `“${season.name}” is removed` +
     (held ? `, but the ${held} it holds stay exactly as they are` : '') +
     (!live && (itemCount > 0 || routineCount > 0)
       ? ' — and anything it was hiding comes back into view'
@@ -488,19 +489,19 @@ function deleteConsequence(
   );
 }
 
-/** The four ways a program can be, in the program's own words. Shared with /program/[id]. */
-export function ProgramStateNote({ program, live }: { program: Program; live: boolean }) {
-  if (program.state === 'active') {
+/** The four ways a season can be, in the season's own words. Shared with /season/[id]. */
+export function SeasonStateNote({ season, live }: { season: Season; live: boolean }) {
+  if (season.state === 'active') {
     return <>On until you say otherwise — dates are ignored while it is set this way.</>;
   }
-  if (program.state === 'paused') {
+  if (season.state === 'paused') {
     return <>Off. Everything it holds is hidden, and streaks and history stay exactly as they are.</>;
   }
-  if (!program.startsOn && !program.endsOn) {
+  if (!season.startsOn && !season.endsOn) {
     return <>Always on. Give it a start or an end to make it follow the calendar.</>;
   }
-  const from = program.startsOn ? formatShort(program.startsOn) : null;
-  const to = program.endsOn ? formatShort(program.endsOn) : null;
+  const from = season.startsOn ? formatShort(season.startsOn) : null;
+  const to = season.endsOn ? formatShort(season.endsOn) : null;
   const span = from && to ? `${from} to ${to}` : from ? `from ${from}` : `until ${to}`;
   return (
     <>

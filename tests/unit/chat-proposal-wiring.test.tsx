@@ -48,7 +48,7 @@ vi.mock('@/lib/ai-settings-store', () => ({
 
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: (sel: (s: unknown) => unknown) =>
-    sel({ items: [], routines: [], programs: [], userTimezone: 'UTC' }),
+    sel({ items: [], routines: [], seasons: [], userTimezone: 'UTC' }),
 }));
 
 vi.mock('@/lib/proposal-store', () => ({

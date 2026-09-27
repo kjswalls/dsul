@@ -8,7 +8,7 @@ import { selectOverdue, daysOverdue, toDateOnly } from '@/lib/overdue';
 import { milestoneItemIds } from '@/lib/goals';
 import { inactiveItemIdsOn, type Pausable } from '@/lib/active';
 import { releasedOn } from '@/lib/sweep-grace';
-import type { Item, Routine, Program } from '@/lib/planner-types';
+import type { Item, Routine, Season } from '@/lib/planner-types';
 
 /** Did this pause interval end within the trailing `windowDays`? */
 function pauseEndedRecently(x: Pausable, todayStr: string, windowDays: number): boolean {
@@ -27,34 +27,34 @@ function withinTrailingWindow(dateStr: string, todayStr: string, windowDays: num
 }
 
 /**
- * Did this PROGRAM stop suppressing its members within the trailing window?
+ * Did this SEASON stop suppressing its members within the trailing window?
  *
  * Two arms, both deliberately over-broad:
  *
- * (b) An `auto` program's `startsOn` is a resume boundary in exactly the way a
+ * (b) An `auto` season's `startsOn` is a resume boundary in exactly the way a
  *     pause's `pausedUntil` is — the day the range opened is the day its members
  *     came back, and they accrued overdue age the whole time they were hidden.
  * (c) `updatedAt` on any container, as a conservative proxy for a MANUAL state
- *     flip. Nothing records when someone switched a program from paused to
+ *     flip. Nothing records when someone switched a season from paused to
  *     active — the tri-state has no history — so there is no honest date to
  *     grace against, and the only alternative to this proxy is no grace at all
- *     for the single most likely way a program gets turned back on. It is wrong
- *     in the safe direction: renaming a program merely delays sweeping its
+ *     for the single most likely way a season gets turned back on. It is wrong
+ *     in the safe direction: renaming a season merely delays sweeping its
  *     members by the window.
  */
-function programEndedSuppressionRecently(
-  program: Program,
+function seasonEndedSuppressionRecently(
+  season: Season,
   todayStr: string,
   windowDays: number,
 ): boolean {
   if (
-    program.state === 'auto' &&
-    program.startsOn &&
-    withinTrailingWindow(program.startsOn, todayStr, windowDays)
+    season.state === 'auto' &&
+    season.startsOn &&
+    withinTrailingWindow(season.startsOn, todayStr, windowDays)
   ) {
     return true;
   }
-  return !!program.updatedAt && withinTrailingWindow(program.updatedAt.slice(0, 10), todayStr, windowDays);
+  return !!season.updatedAt && withinTrailingWindow(season.updatedAt.slice(0, 10), todayStr, windowDays);
 }
 
 /**
@@ -64,9 +64,9 @@ function programEndedSuppressionRecently(
  * Reads recorded intervals where they exist: `pausedUntil` is the resume date,
  * and it survives a manual resume precisely so this is answerable. The container
  * arms matter for the same reason the item arm does — a routine's pause or a
- * program's off-season suppresses members just as thoroughly as an item's own
+ * season being off suppresses members just as thoroughly as an item's own
  * pause, so coming back has to earn the same window. Without them the sweep
- * unschedules a whole program the morning after it resumes: the exact disaster
+ * unschedules a whole season the morning after it resumes: the exact disaster
  * the exclusion exists to prevent, merely relocated from the item to the
  * container.
  *
@@ -79,7 +79,7 @@ function resumedRecently(
   todayStr: string,
   windowDays: number,
   routines: readonly Routine[],
-  programs: readonly Program[],
+  seasons: readonly Season[],
 ): boolean {
   if (pauseEndedRecently(item, todayStr, windowDays)) return true;
 
@@ -95,15 +95,15 @@ function resumedRecently(
   const holdingRoutines = routines.filter((r) => r.itemIds.includes(item.id));
   if (holdingRoutines.some((r) => pauseEndedRecently(r, todayStr, windowDays))) return true;
 
-  // A program reaches this item directly OR through any routine holding it —
+  // A season reaches this item directly OR through any routine holding it —
   // the same two membership shapes the resolver walks. Missing the indirect one
-  // would leave every routine-in-a-program member ungraced, which is the common
-  // case once programs are used at all.
+  // would leave every routine-in-a-season member ungraced, which is the common
+  // case once seasons are used at all.
   const routineIds = new Set(holdingRoutines.map((r) => r.id));
-  return programs.some(
+  return seasons.some(
     (p) =>
       (p.itemIds.includes(item.id) || p.routineIds.some((id) => routineIds.has(id))) &&
-      programEndedSuppressionRecently(p, todayStr, windowDays),
+      seasonEndedSuppressionRecently(p, todayStr, windowDays),
   );
 }
 
@@ -195,13 +195,13 @@ export function useOverdueSweep() {
     // Promise.all followed by a single set() — but if that ever changes, this
     // gate is the place that has to grow.
     //
-    // That single-set() property is now load-bearing for ROUTINES and PROGRAMS
+    // That single-set() property is now load-bearing for ROUTINES and SEASONS
     // too, not just items. Both fetches ride the same Promise.all and land in
     // the same set() that clears `isLoading`, so passing this gate guarantees
     // membership is known — which the suppression exclusion and the container
     // resume-grace below both depend on. Hydrate either separately (a lazy
     // fetch, a second effect) and this sweep starts running against an empty
-    // container list: every member of a paused routine or an off-season program
+    // container list: every member of a paused routine or a switched-off season
     // reads as unprotected and gets unscheduled in one silent batch. If they
     // ever move out of that Promise.all, they need their own gate here FIRST.
     //
@@ -294,11 +294,11 @@ export function useOverdueSweep() {
     // carryForwardEligible/dateAnchored capabilities. Never re-implement it here.
     // `> autoAgeDays` is exactly "past due by MORE than N days".
     const routines = planner.routines;
-    const programs = planner.programs;
+    const seasons = planner.seasons;
     const inactive = inactiveItemIdsOn(planner.items, todayStr, {
       userTimezone,
       routines,
-      programs,
+      seasons,
     });
     const stale = selectOverdue(planner.items, todayStr, inactive).filter(
       (item) => daysOverdue(item, todayStr) > autoAgeDays,
@@ -320,7 +320,7 @@ export function useOverdueSweep() {
     // clearing the pause pair — the interval has to survive on the row for this
     // to be computable at all.
     const graced = stale.filter(
-      (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, programs)
+      (item) => !resumedRecently(item, todayStr, autoAgeDays, routines, seasons)
     );
 
     // Milestones are subtracted HERE, not left to unscheduleTasks to refuse.

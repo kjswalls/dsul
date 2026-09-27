@@ -42,7 +42,7 @@ import { makeIconToken } from '@/lib/category-icons';
 import { openAddDialog, openNewContainer, type NewContainerKind } from '@/lib/ui-store';
 
 /**
- * The "new" dialog, making an organizer — a goal, routine, program or project —
+ * The "new" dialog, making an organizer — a goal, routine, season or project —
  * instead of an item (Kirby, 2026-09-25).
  *
  * The SAME dialog to the eye: ItemDialog's shell, add-modal geometry, Zone-0
@@ -73,7 +73,7 @@ const CLOSE_ANIMATION_GRACE_MS = 600;
 const DEFAULT_ICON: Record<NewContainerKind, string | undefined> = {
   goal: makeIconToken('Target'),
   routine: makeIconToken('Repeat'),
-  program: makeIconToken('CalendarRange'),
+  season: makeIconToken('CalendarRange'),
   // None: create.project's rule — resolveCategoryIcon derives one from the name
   // ("Gym" → dumbbell), where a fixed token would give every project the same
   // wrong icon.
@@ -160,7 +160,7 @@ export function ContainerDialog({
 }
 
 // Moved to the shared body; re-exported for the callers that import it here.
-export { programRunsCopy } from '@/components/planner/organize/container-fields';
+export { seasonRunsCopy } from '@/components/planner/organize/container-fields';
 
 function ContainerForm({
   payload,
@@ -194,7 +194,7 @@ function ContainerForm({
   // A project's one extra field. The other kinds keep everything in the draft.
   const [color, setColor] = useState<string | undefined>(undefined);
   // Every field the kind has, with its defaults: Active, a goal's window opening
-  // today, a program on its (absent) dates. The shared body renders it; see
+  // today, a season on its (absent) dates. The shared body renders it; see
   // organize/container-fields.tsx.
   const [draft, setDraft] = useState<ContainerDraft>(() =>
     initialDraft(kind === 'project' ? 'goal' : kind, todayStr, payload.notes)
@@ -214,8 +214,8 @@ function ContainerForm({
    */
   const problem: string | null = (() => {
     if (kind === 'goal' && !goalsAvailable) return 'Goals aren’t available on this account yet.';
-    if ((kind === 'routine' || kind === 'program') && !collectionsAvailable) {
-      return 'Routines and programs aren’t available on this account yet.';
+    if ((kind === 'routine' || kind === 'season') && !collectionsAvailable) {
+      return 'Routines and seasons aren’t available on this account yet.';
     }
     if (!userId) return `Sign in to add a ${noun}.`;
     if (isLoading) return 'Still loading your planner…';

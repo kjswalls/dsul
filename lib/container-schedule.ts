@@ -1,4 +1,4 @@
-import type { Goal, HabitItem, Item, Program, Project, Routine, Task } from './planner-types';
+import type { Goal, HabitItem, Item, Season, Project, Routine, Task } from './planner-types';
 import { deriveDayItems, flattenDayRows } from './day-items';
 import { inactiveItemIdsOn } from './active';
 import { isCompletedOnDate, isRecurring, isSkippedOnDate } from './recurrence';
@@ -66,7 +66,7 @@ export interface ScheduleSource {
   tasks: readonly Task[];
   habits: readonly HabitItem[];
   routines: readonly Routine[];
-  programs: readonly Program[];
+  seasons: readonly Season[];
   timezone: string;
 }
 
@@ -115,12 +115,12 @@ export const MAX_SCHEDULE_DAYS = 400;
 
 export type ScheduleContainer =
   | { kind: 'routine'; routine: Routine }
-  | { kind: 'program'; program: Program }
+  | { kind: 'season'; season: Season }
   | { kind: 'goal'; goal: Goal }
   | { kind: 'project'; project: Project };
 
 /**
- * The item ids a container answers for. A program counts its routines' members
+ * The item ids a container answers for. A season counts its routines' members
  * too — they ride along when it is on, so they land on its calendar. A project
  * holds items BY NAME (items.project), folded as every project lookup is.
  */
@@ -132,9 +132,9 @@ export function containerMemberIds(
   switch (c.kind) {
     case 'routine':
       return c.routine.itemIds;
-    case 'program': {
-      const ids = new Set(c.program.itemIds);
-      for (const rid of c.program.routineIds) {
+    case 'season': {
+      const ids = new Set(c.season.itemIds);
+      for (const rid of c.season.routineIds) {
         const r = routines.find((x) => x.id === rid);
         r?.itemIds.forEach((id) => ids.add(id));
       }
@@ -173,7 +173,7 @@ function stateOn(item: Task | HabitItem, date: string, todayStr: string): Occurr
 
 /**
  * Every day from `from` for `days` days, as the grid would draw it, narrowed to
- * `memberIds`. `routines`/`programs` may include a DRAFT container the store has
+ * `memberIds`. `routines`/`seasons` may include a DRAFT container the store has
  * not seen yet (the create modal's preview) — activation is resolved against
  * exactly what is passed.
  */
@@ -200,9 +200,9 @@ export function deriveContainerSchedule({
   // resolves against, because a member's paths run through other containers.
   const tasks = source.tasks.filter((t) => members.has(t.id));
   const habits = source.habits.filter((h) => members.has(h.id));
-  const ctx = { userTimezone: source.timezone, routines: source.routines, programs: source.programs };
+  const ctx = { userTimezone: source.timezone, routines: source.routines, seasons: source.seasons };
   // Activation is resolved for the MEMBERS only: paths come from the routine
-  // and program lists, and the item list only drives the final pass, so this is
+  // and season lists, and the item list only drives the final pass, so this is
   // the same answer for a fraction of the work on every one of up to 400 days.
   const memberItems = source.items.filter((i) => members.has(i.id));
 

@@ -1,4 +1,4 @@
-import type { Task, Habit, Project, HabitGroupType, Item, Routine, Program, Goal } from '@dsul/types'
+import type { Task, Habit, Project, HabitGroupType, Item, Routine, Season, Goal } from '@dsul/types'
 
 /** Plugin-internal cache shape */
 export interface DsulCache {
@@ -17,9 +17,9 @@ export interface DsulCache {
   items: Item[]
   /** schemaVersion 4+. Absent (not empty) when the server did not say. */
   routines: Routine[]
-  programs: Program[]
+  seasons: Season[]
   /**
-   * schemaVersion 5+. Goals suppress nothing, so unlike routines and programs
+   * schemaVersion 5+. Goals suppress nothing, so unlike routines and seasons
    * an empty array here never means work is missing from the lists above — it
    * means this user has no goals, or the server predates them.
    */

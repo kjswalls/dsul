@@ -72,7 +72,7 @@ function seed(over: Record<string, unknown> = {}) {
   usePlannerStore.setState({
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -117,10 +117,10 @@ describe('the routine pane', () => {
   });
 });
 
-describe('the program pane', () => {
+describe('the season pane', () => {
   it('draws its season over its run, with what lands on a day on hover', () => {
     seed({
-      programs: [
+      seasons: [
         {
           id: 'p1',
           name: 'Autumn term',
@@ -132,7 +132,7 @@ describe('the program pane', () => {
         },
       ],
     });
-    render(<OrganizeConsole open onOpenChange={() => {}} section="programs" focusId="p1" />);
+    render(<OrganizeConsole open onOpenChange={() => {}} section="seasons" focusId="p1" />);
     const cells = screen.getAllByTestId('season-heatmap-cell');
     expect(cells[0].getAttribute('data-date')).toBe('2026-08-30'); // the week holding Sep 1
     const exam = cells.find((c) => c.getAttribute('data-date') === '2026-10-22')!;
@@ -182,15 +182,15 @@ describe('the create modal previews the DRAFT', () => {
     expect(id('week-dots').getAttribute('aria-label')).not.toContain('Sat due');
   });
 
-  it('shows no season until the program holds something to place', () => {
+  it('shows no season until the season holds something to place', () => {
     seed();
-    render(<ContainerDialog state={{ kind: 'program', title: 'Term' }} onOpenChange={() => {}} />);
-    expect(screen.queryByTestId('program-dialog-season')).toBeNull();
-    fireEvent.click(id('program-dialog-items-member-add'));
+    render(<ContainerDialog state={{ kind: 'season', title: 'Term' }} onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('season-dialog-calendar')).toBeNull();
+    fireEvent.click(id('season-dialog-items-member-add'));
     fireEvent.click(
-      screen.getAllByTestId('program-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!
+      screen.getAllByTestId('season-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!
     );
-    expect(screen.queryByTestId('program-dialog-season')).not.toBeNull();
+    expect(screen.queryByTestId('season-dialog-calendar')).not.toBeNull();
   });
 
   it('draws a NEW routine habit on its chosen days before it exists', () => {

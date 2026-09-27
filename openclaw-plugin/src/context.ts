@@ -1,4 +1,4 @@
-import type { Goal, Item, Program, Routine } from '@dsul/types'
+import type { Goal, Item, Season, Routine } from '@dsul/types'
 import { getCache } from './cache.js'
 import type { DsulCache } from './plugin-types.js'
 
@@ -51,7 +51,7 @@ export function buildFullContext(): string {
     for (const p of cache.projects) lines.push(`- ${p.emoji} ${p.name}`)
   }
 
-  lines.push(...renderCollections(cache.routines, cache.programs, today))
+  lines.push(...renderCollections(cache.routines, cache.seasons, today))
   const suppressedIds = suppressedItemIds(cache)
   lines.push(...renderGoals(cache.goals, cache.items, today, suppressedIds))
   lines.push(...renderPaused(cache, today, suppressedIds))
@@ -78,15 +78,15 @@ function pauseIsOpen(x: { pausedAt?: string; pausedUntil?: string }, today: stri
 }
 
 /**
- * Routines and programs, so the ids above are actionable rather than mysterious.
+ * Routines and seasons, so the ids above are actionable rather than mysterious.
  *
- * Program state is reported as stored, not resolved: 'auto' plus a range is a
+ * Season state is reported as stored, not resolved: 'auto' plus a range is a
  * different thing from 'active', and flattening them to on/off would invite the
  * repair that destroys the distinction — writing 'active' onto an `auto`
- * program short-circuits the range permanently.
+ * season short-circuits the range permanently.
  */
-function renderCollections(routines: Routine[], programs: Program[], today: string): string[] {
-  if (!routines.length && !programs.length) return []
+function renderCollections(routines: Routine[], seasons: Season[], today: string): string[] {
+  if (!routines.length && !seasons.length) return []
   const lines = ['\n## Collections']
   for (const r of routines) {
     const state = pauseIsOpen(r, today)
@@ -96,9 +96,9 @@ function renderCollections(routines: Routine[], programs: Program[], today: stri
       : ''
     lines.push(`- Routine: ${r.name} [id: ${r.id}]${state}`)
   }
-  for (const p of programs) {
+  for (const p of seasons) {
     const range = p.startsOn || p.endsOn ? ` ${p.startsOn ?? '…'} → ${p.endsOn ?? '…'}` : ''
-    lines.push(`- Program: ${p.name} [id: ${p.id}] (${p.state}${range})`)
+    lines.push(`- Season: ${p.name} [id: ${p.id}] (${p.state}${range})`)
   }
   return lines
 }
@@ -233,15 +233,15 @@ function causeFor(item: Item, cache: DsulCache, today: string): string {
 
   const routines = cache.routines.filter((r) => r.itemIds.includes(item.id))
   const routineIds = new Set(routines.map((r) => r.id))
-  const program = cache.programs.find(
+  const season = cache.seasons.find(
     (p) => p.itemIds.includes(item.id) || p.routineIds.some((id) => routineIds.has(id)),
   )
   // No return DATE is offered for a container, deliberately. An item can be
-  // blocked by a routine inside an out-of-season program at once, and naming
+  // blocked by a routine inside a switched-off season at once, and naming
   // the one that clears FIRST would promise a comeback the item will not
   // honour. The app settles that with a binding-constraint rule; half of that
   // rule out here would be worse than none, so this names a cause and stops.
-  if (program) return `set aside with the ${program.name} program`
+  if (season) return `set aside with the ${season.name} season`
   if (routines.length) return `set aside with the ${routines[0].name} routine`
   return 'set aside'
 }

@@ -17,7 +17,7 @@ import { useUIStore } from '@/lib/ui-store';
 import {
   inactiveItemIdsOn,
   membersRevealedByRemoving,
-  programResumeDate,
+  seasonResumeDate,
   routineStandingOn,
 } from '@/lib/active';
 import {
@@ -40,6 +40,7 @@ import {
   ListColumn,
   SectionWelcome,
   StatusStrip,
+  TimeChip,
   TitleRow,
 } from '../detail-parts';
 import { ContainerCreateForm } from '../container-create-form';
@@ -47,57 +48,59 @@ import { ROUTINE_STATES } from '../container-fields';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
 import { ContainerActivity } from '../container-activity';
-import { useWeekDotsFor, WeekProgress } from '@/components/planner/schedule/schedule-views';
+import { ScheduleHeading, useWeekDotsFor, WeekProgress } from '@/components/planner/schedule/schedule-views';
+import { RoutineToday } from '@/components/planner/routine-today';
+import { formatCueTime } from '@/lib/reminders/copy';
 import { cn } from '@/lib/utils';
-import type { Item, Program, Routine } from '@/lib/planner-types';
+import type { Item, Season, Routine } from '@/lib/planner-types';
 
 /**
- * IN N PROGRAMS — the reverse view, which exists nowhere else in the app.
+ * IN N SEASONS — the reverse view, which exists nowhere else in the app.
  *
- * Membership has only ever been navigable downwards: a program lists its
+ * Membership has only ever been navigable downwards: a season lists its
  * routines, and from a routine you could not see what was answering for it. That
- * is fine until a program holds the routine OFF, at which point the one thing
+ * is fine until a season holds the routine OFF, at which point the one thing
  * the user needs is the name of the thing overruling them and a way to get to
- * it — and the only route was to guess which program it was and open each one.
+ * it — and the only route was to guess which season it was and open each one.
  *
- * Rows are buttons, and land on that program's detail in the Programs section.
+ * Rows are buttons, and land on that season's detail in the Seasons section.
  * `off` is stated as a word rather than encoded in luminance alone: this list is
  * short, mixed, and the distinction is the entire reason it is on screen.
  */
-function ProgramHolders({
+function SeasonHolders({
   holders,
   blockerIds,
   routineOn,
   onOpen,
 }: {
-  holders: readonly Program[];
+  holders: readonly Season[];
   blockerIds: ReadonlySet<string>;
-  /** The routine's own switch. A program cannot carry a routine that is paused. */
+  /** The routine's own switch. A season cannot carry a routine that is paused. */
   routineOn: boolean;
   onOpen: (id: string) => void;
 }) {
   return (
-    <OrganizerSection label="In programs" count={holders.length} testId="routine-holders">
+    <OrganizerSection label="In seasons" count={holders.length} testId="routine-holders">
       {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
       <div className="max-h-32 space-y-px overflow-y-auto">
-        {holders.map((program) => {
-          const off = blockerIds.has(program.id);
-          // THREE states, not two. A program that is on but whose routine is
+        {holders.map((season) => {
+          const off = blockerIds.has(season.id);
+          // THREE states, not two. A season that is on but whose routine is
           // paused is neither off nor carrying — saying "carrying" there
           // contradicted the pause note directly above it.
           const state = off ? 'off' : routineOn ? 'carrying' : 'idle';
           return (
             <button
-              key={program.id}
+              key={season.id}
               type="button"
-              onClick={() => onOpen(program.id)}
+              onClick={() => onOpen(season.id)}
               data-testid="routine-holder"
-              data-program-id={program.id}
+              data-season-id={season.id}
               data-holder-state={state}
               className="hover:bg-accent focus-visible:outline-ring flex h-[30px] w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left focus-visible:outline-1 focus-visible:outline-solid"
             >
               <span className="flex w-[18px] shrink-0 justify-center">
-                <CategoryIcon glyph={program.icon} name={program.name} className="h-3.5 w-3.5" />
+                <CategoryIcon glyph={season.icon} name={season.name} className="h-3.5 w-3.5" />
               </span>
               <span
                 className={cn(
@@ -105,7 +108,7 @@ function ProgramHolders({
                   off ? 'text-muted-foreground' : 'text-foreground'
                 )}
               >
-                {program.name}
+                {season.name}
               </span>
               <span className="text-muted-foreground w-[64px] shrink-0 text-right text-2xs">
                 {state === 'idle' ? 'on' : state}
@@ -120,7 +123,7 @@ function ProgramHolders({
 
 /**
  * ROUTINES — the section that goes first, because it is the object people
- * garden most and the one the "New routine or program" entry lands on.
+ * garden most and the one the "New routine or season" entry lands on.
  *
  * Moved from ManageCollectionsDialog with every data-testid intact
  * (memory/plans/organize-console.md, Phase 2). One thing is genuinely new and
@@ -132,23 +135,23 @@ function ProgramHolders({
 export function RoutinesSection({
   selectedId,
   onSelect,
-  onOpenProgram,
+  onOpenSeason,
   creating,
   onNew,
   onCreated,
 }: {
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** Cross-section jump, for the reverse view — see ProgramHolders. */
-  onOpenProgram: (id: string) => void;
+  /** Cross-section jump, for the reverse view — see SeasonHolders. */
+  onOpenSeason: (id: string) => void;
   creating: boolean;
   onNew: () => void;
   onCreated: (id: string | null) => void;
 }) {
   const routines = usePlannerStore((s) => s.routines);
-  // For the pill: a routine held off by a program is not "Paused", and saying
+  // For the pill: a routine held off by a season is not "Paused", and saying
   // nothing at all made the list column disagree with the detail beside it.
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
@@ -193,7 +196,7 @@ export function RoutinesSection({
             className="text-muted-foreground px-[7px] pt-2 text-xs"
             data-testid="collections-unavailable"
           >
-            Routines and programs aren&apos;t available on this account yet.
+            Routines and seasons aren&apos;t available on this account yet.
           </p>
         ) : routines.length === 0 ? (
           <p className="text-muted-foreground px-[7px] pt-2 text-xs">No routines yet.</p>
@@ -207,7 +210,7 @@ export function RoutinesSection({
               color={routine.color}
               name={routine.name}
               selected={selectedId === routine.id}
-              pill={routinePillLabel(routine, todayStr, tz, programs)}
+              pill={routinePillLabel(routine, todayStr, tz, seasons)}
               pillTestId="routine-paused-pill"
               count={countLive(routine.itemIds, liveIds)}
               onSelect={() => onSelect(routine.id)}
@@ -229,10 +232,12 @@ export function RoutinesSection({
           <RoutineDetail
             routine={selected}
             onBack={() => onSelect(null)}
-            onOpenProgram={onOpenProgram}
+            onOpenSeason={onOpenSeason}
           />
         ) : (
-          <SectionWelcome section="routines">A routine groups items you want to pause together.</SectionWelcome>
+          <SectionWelcome section="routines">
+            A routine is a set of things you do regularly, in order — a morning, a workout week.
+          </SectionWelcome>
         )}
       </DetailColumn>
     </>
@@ -242,14 +247,14 @@ export function RoutinesSection({
 function RoutineDetail({
   routine,
   onBack,
-  onOpenProgram,
+  onOpenSeason,
 }: {
   routine: Routine;
   onBack: () => void;
-  onOpenProgram: (id: string) => void;
+  onOpenSeason: (id: string) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   // The WHOLE list, not just this one: the resolver has to see every path a
   // member might reach the day by, or it re-answers the container's question.
   const routines = usePlannerStore((s) => s.routines);
@@ -257,6 +262,7 @@ function RoutineDetail({
   const setRoutinePaused = usePlannerStore((s) => s.setRoutinePaused);
   const removeRoutine = usePlannerStore((s) => s.removeRoutine);
   const confirm = useUIStore((s) => s.confirm);
+  const timeFormat = usePlannerStore((s) => s.timeFormat);
   const liveIds = useLiveItemIds();
   const { todayStr, tz } = useToday();
 
@@ -265,7 +271,7 @@ function RoutineDetail({
    * view-model and the Display menu's Paused-scopes list use.
    *
    * This pane used to resolve `isPausedOn` alone, which is only the routine's
-   * OWN switch — so a routine held off by a program showed `Active`, with its
+   * OWN switch — so a routine held off by a season showed `Active`, with its
    * members at full contrast and a delete confirm promising items would "come
    * back into view", while the rail one column away reported it off. Both were
    * reading the same store.
@@ -282,9 +288,9 @@ function RoutineDetail({
    * (`hiddenIds`, `revealed`), and only the note — a statement about the routine
    * — reads `standing`.
    */
-  const standing = routineStandingOn(routine, programs, todayStr, tz);
+  const standing = routineStandingOn(routine, seasons, todayStr, tz);
   const paused = !standing.localOn;
-  const ctx = { userTimezone: tz, routines, programs };
+  const ctx = { userTimezone: tz, routines, seasons };
   // Local noon, so the picker's bound is a calendar day rather than an instant
   // — and derived from the USER's today, not the browser's.
   const today = parseDay(todayStr)!;
@@ -293,7 +299,7 @@ function RoutineDetail({
     .map((id) => items.find((i) => i.id === id))
     .filter((i): i is Item => !!i);
 
-  // Which programs hold this routine — a reverse view that does not exist
+  // Which seasons hold this routine — a reverse view that does not exist
   // anywhere in the app today. From a routine you currently cannot see what is
   // answering for it.
   const heldBy = standing.holders;
@@ -312,7 +318,7 @@ function RoutineDetail({
   /**
    * The members deleting this routine would actually put back — a delta, not a
    * flag. Items another routine is already carrying do not "come back", and
-   * neither do items the same program holds directly.
+   * neither do items the same season holds directly.
    */
   const revealed = membersRevealedByRemoving(routine.id, routine.itemIds, items, ctx, todayStr);
   const reappear = revealed.length > 0;
@@ -341,7 +347,7 @@ function RoutineDetail({
         menu={[
           /* `reappear` reads EFFECTIVE, not the local pause. Deleting the
              routine removes the whole activation path, so items held out of
-             sight by a PROGRAM come back exactly as ones held out by the
+             sight by a SEASON come back exactly as ones held out by the
              routine's own switch do — and the local-only version stayed silent
              about it, which is the half of the sentence a user would want
              before pressing Delete. */
@@ -390,7 +396,7 @@ function RoutineDetail({
           simply on has nothing to explain.
 
           TWO SENTENCES, AND THEY ARE ABOUT DIFFERENT SUBJECTS. The first is
-          about the ROUTINE and is always true here: every program holding it is
+          about the ROUTINE and is always true here: every season holding it is
           off, so it is not carrying anything. The second is about its ITEMS, and
           is only true of the ones actually off the grid — the first version ran
           them together as "so its items are hidden anyway", which lied for every
@@ -404,13 +410,13 @@ function RoutineDetail({
             </>
           ) : (
             <>
-              All <span className="font-num">{standing.blockers.length}</span> programs holding it
+              All <span className="font-num">{standing.blockers.length}</span> seasons holding it
               are off, so this routine isn&rsquo;t carrying anything right now.
             </>
           )}{' '}
           {/* The soonest holder to return, because the rule is disjunctive: the
-              FIRST program back carries the routine, whatever the others do. A
-              program with no scheduled return says nothing rather than
+              FIRST season back carries the routine, whatever the others do. A
+              season with no scheduled return says nothing rather than
               promising a date it does not have. */}
           {hiddenHere === 0 ? (
             <>Its items are still on your day another way.</>
@@ -418,9 +424,9 @@ function RoutineDetail({
             <>
               <span className="font-num">{hiddenHere}</span>{' '}
               {hiddenHere === 1 ? 'item is' : 'items are'} hidden.{' '}
-              {programResumeDate(standing.soonestBlocker, todayStr)
-                ? `Back on ${formatShort(programResumeDate(standing.soonestBlocker, todayStr)!)}.`
-                : 'They come back when one of those programs does.'}
+              {seasonResumeDate(standing.soonestBlocker, todayStr)
+                ? `Back on ${formatShort(seasonResumeDate(standing.soonestBlocker, todayStr)!)}.`
+                : 'They come back when one of those seasons does.'}
             </>
           )}
         </StatusStrip>
@@ -462,6 +468,17 @@ function RoutineDetail({
             onChange={(next) => setRoutinePaused(routine.id, true, next ?? null)}
           />
         )}
+        {/* The "regularly" in "things you do regularly". A label and an
+            ordering, never a schedule: members keep their own times, because a
+            routine never writes its members' fields. */}
+        <TimeChip
+          label="Usually at"
+          value={routine.usualTime}
+          display={routine.usualTime ? formatCueTime(routine.usualTime, timeFormat) : undefined}
+          testId="routine-usual-time"
+          clearLabel="Clear time"
+          onChange={(usualTime) => updateRoutine(routine.id, { usualTime })}
+        />
         <ColorChip
           value={routine.color}
           testId="routine-color"
@@ -470,7 +487,7 @@ function RoutineDetail({
       </div>
 
       {/* What it is for — a plain note, the goal's `why` for every container
-          (046). Buffered like every typed field here: committed on blur. */}
+          (049). Buffered like every typed field here: committed on blur. */}
       <BufferedTextarea
         value={routine.notes ?? ''}
         onCommit={(next) => updateRoutine(routine.id, { notes: next.trim() || undefined })}
@@ -482,6 +499,15 @@ function RoutineDetail({
       <WeekProgress totals={week.weekTotals(routine.itemIds)} />
 
       <div className="mt-1.5 flex flex-col gap-5">
+        {/* Only while the routine is carrying something: held off or paused,
+            it has nothing on today, and the strips above already say why. */}
+        {standing.effectiveOn && members.length > 0 && (
+          <section className="flex flex-col gap-2">
+            <ScheduleHeading label="Today" />
+            <RoutineToday routine={routine} />
+          </section>
+        )}
+
         <ItemMemberList
         openItems
           label="Items"
@@ -491,7 +517,7 @@ function RoutineDetail({
           members={members}
           // PER ITEM. The greying answers "is this item showing up in my day?"
           // — and no property of this routine answers that, because a member can
-          // reach the day through another routine or a program of its own.
+          // reach the day through another routine or a season of its own.
           hiddenIds={hiddenIds}
           testPrefix="routine"
           orderable
@@ -502,14 +528,14 @@ function RoutineDetail({
         />
 
         {heldBy.length > 0 && (
-          <ProgramHolders
+          <SeasonHolders
             holders={heldBy}
             blockerIds={new Set(standing.blockers.map((p) => p.id))}
-            // A live program carries this routine only if the routine's own
+            // A live season carries this routine only if the routine's own
             // switch is on. Without this the pane said "Its items are hidden
             // until you resume" and "carrying" three lines apart.
             routineOn={standing.localOn}
-            onOpen={onOpenProgram}
+            onOpen={onOpenSeason}
           />
         )}
 

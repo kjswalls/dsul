@@ -9,9 +9,9 @@ export {
   RecurrenceFieldsSchema,
   ProjectSchema,
   HabitGroupSchema,
-  ProgramStateSchema,
+  SeasonStateSchema,
   RoutineSchema,
-  ProgramSchema,
+  SeasonSchema,
   GoalStateSchema,
   GoalRoleSchema,
   GoalSchema,
@@ -28,8 +28,8 @@ export {
   HabitUpdateSchema,
   RoutineCreateSchema,
   RoutineUpdateSchema,
-  ProgramCreateSchema,
-  ProgramUpdateSchema,
+  SeasonCreateSchema,
+  SeasonUpdateSchema,
   GoalCreateSchema,
   GoalUpdateSchema,
   DsulContextResponseSchema,
@@ -49,7 +49,7 @@ export {
   PROJECT_FIELDS,
   HABIT_GROUP_FIELDS,
   ROUTINE_FIELDS,
-  PROGRAM_FIELDS,
+  SEASON_FIELDS,
   GOAL_FIELDS,
 } from './schemas.js'
 
@@ -64,9 +64,9 @@ import {
   RecurrenceFieldsSchema,
   ProjectSchema,
   HabitGroupSchema,
-  ProgramStateSchema,
+  SeasonStateSchema,
   RoutineSchema,
-  ProgramSchema,
+  SeasonSchema,
   GoalStateSchema,
   GoalRoleSchema,
   GoalSchema,
@@ -95,9 +95,9 @@ export type RepeatFrequency  = z.infer<typeof RepeatFrequencySchema>
 export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
 export type Project          = z.infer<typeof ProjectSchema>
 export type HabitGroupType   = z.infer<typeof HabitGroupSchema>
-export type ProgramState     = z.infer<typeof ProgramStateSchema>
+export type SeasonState     = z.infer<typeof SeasonStateSchema>
 export type Routine          = z.infer<typeof RoutineSchema>
-export type Program          = z.infer<typeof ProgramSchema>
+export type Season          = z.infer<typeof SeasonSchema>
 export type GoalState        = z.infer<typeof GoalStateSchema>
 /** What a member does for its goal: ordinary work, a checkpoint, or a recurring review. */
 export type GoalRole         = z.infer<typeof GoalRoleSchema>

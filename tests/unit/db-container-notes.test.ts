@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 
-// Every write the fake database sees, and whether it has migration 046 yet.
+// Every write the fake database sees, and whether it has migration 049 yet.
 const writes: { table: string; op: 'insert' | 'update'; row: Record<string, unknown> }[] = [];
 let hasNotesColumn = false;
 let otherError: { code: string; message: string } | null = null;
@@ -31,16 +31,16 @@ vi.mock('@/lib/supabase', () => ({
 const notifyPlugins = vi.hoisted(() => vi.fn());
 vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins }));
 
-import { createProject, createRoutine, updateProgram, updateProject, updateRoutine } from '@/lib/db';
+import { createProject, createRoutine, updateSeason, updateProject, updateRoutine } from '@/lib/db';
 
 /**
- * Migration 046 adds `notes` to routines, programs and projects, and a build
+ * Migration 049 adds `notes` to routines, seasons and projects, and a build
  * can reach production before `pnpm db:push` does. PostgREST rejects a whole
  * row naming a column it lacks — so without a fallback, a note riding along
  * would sink a create, and an undo's full-shape restore (which always carries
  * the key) would sink the rename and pause state with it.
  */
-describe('container writes before migration 046', () => {
+describe('container writes before migration 049', () => {
   beforeEach(() => {
     writes.length = 0;
     hasNotesColumn = false;
@@ -62,7 +62,7 @@ describe('container writes before migration 046', () => {
   });
 
   it('writes nothing more when the note was all there was', async () => {
-    await updateProgram('u1', 'p1', { notes: 'Term two.' });
+    await updateSeason('u1', 'p1', { notes: 'Term two.' });
     expect(writes).toHaveLength(1);
   });
 
@@ -71,7 +71,7 @@ describe('container writes before migration 046', () => {
     expect(writes.map((w) => 'notes' in w.row)).toEqual([true, false]);
   });
 
-  it('writes the note once 046 is there', async () => {
+  it('writes the note once 049 is there', async () => {
     hasNotesColumn = true;
     await updateRoutine('u1', 'r1', { notes: 'Kept.' });
     expect(writes).toEqual([{ table: 'routines', op: 'update', row: { notes: 'Kept.' } }]);

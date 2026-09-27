@@ -54,7 +54,7 @@ vi.mock('@/lib/db', () => ({
   restoreItem: vi.fn(async () => {}),
   setItemCompletion: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
-  fetchPrograms: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
@@ -119,7 +119,7 @@ function seedStore(over: Record<string, unknown>) {
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     // Completed rows have to be PRESENT before they can be positioned — both
     // of the app's existing controls hide them outright.

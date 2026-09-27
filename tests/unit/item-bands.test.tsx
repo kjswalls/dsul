@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
  * that render it differently on purpose.
  *
  * Ticket D4 gave the item surface a stack of labelled BANDS: Project
- * (classify), Routine and Program (gate), Goal (aspire), ordered by the ROLE
+ * (classify), Routine and Season (gate), Goal (aspire), ordered by the ROLE
  * that lib/container-registry.ts spends four screens distinguishing and which,
  * as five identical pills in source order, had reached the user as no
  * distinction at all.
@@ -68,7 +68,7 @@ import { CONTAINER_KINDS } from '@/lib/container-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
-import type { Goal, Item, Program, Routine, TaskItem } from '@/lib/planner-types';
+import type { Goal, Item, Season, Routine, TaskItem } from '@/lib/planner-types';
 
 /* ── the pure module ────────────────────────────────────────────────────── */
 
@@ -98,7 +98,7 @@ describe('the band list is derived from the container registry', () => {
     // gate band would have to invent one, which is the literal this whole module
     // exists to avoid.
     const gates = CONTAINER_BANDS.filter((b) => b.role === 'gate');
-    expect(gates.map((b) => b.kind)).toEqual(['routine', 'program']);
+    expect(gates.map((b) => b.kind)).toEqual(['routine', 'season']);
   });
 });
 
@@ -109,7 +109,7 @@ const ctx = (over: Partial<ContainerBandContext> = {}): ContainerBandContext => 
   goalsAvailable: true,
   goalsEnabled: true,
   organizeEnabled: true,
-  counts: { project: 0, routine: 0, program: 0, goal: 0 },
+  counts: { project: 0, routine: 0, season: 0, goal: 0 },
   ...over,
 });
 
@@ -121,12 +121,12 @@ describe('which bands render', () => {
     // The module is asked the same question by both surfaces; what differs is
     // what they do with a kind the item has not joined. The readout draws it as
     // an empty band; the field folds it into the seed.
-    expect(kindsFor()).toEqual(['project', 'routine', 'program', 'goal']);
+    expect(kindsFor()).toEqual(['project', 'routine', 'season', 'goal']);
   });
 
   it('gives the classify band only to a type that answers with that kind', () => {
     expect(kindsFor({ classifyKind: null })).not.toContain('project');
-    expect(kindsFor({ classifyKind: null })).toEqual(['routine', 'program', 'goal']);
+    expect(kindsFor({ classifyKind: null })).toEqual(['routine', 'season', 'goal']);
   });
 
   it('drops a gate band with nothing to join AND no console to open', () => {
@@ -195,7 +195,7 @@ const routine = (over: Partial<Routine> = {}): Routine => ({
   ...over,
 });
 
-const program = (over: Partial<Program> = {}): Program => ({
+const season = (over: Partial<Season> = {}): Season => ({
   id: 'p1',
   name: 'Autumn term',
   state: 'auto',
@@ -219,7 +219,7 @@ const seed = (over: Record<string, unknown> = {}) =>
     items: [task()],
     projects: [{ name: 'Onboarding' }],
     routines: [routine()],
-    programs: [program()],
+    seasons: [season()],
     goals: [goal()],
     itemTypes: [],
     collectionsAvailable: true,
@@ -292,7 +292,7 @@ describe('every item surface renders the Clearing field, not bands', () => {
     panel();
     const field = screen.getByTestId('item-clearing-field');
     expect(field.querySelector('[data-testid="item-clearing-seed"]')).toBeTruthy();
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(field.textContent).not.toContain(CONTAINER_KINDS[kind].label);
     }
   });
@@ -401,12 +401,12 @@ describe('the capture surface gets the field too', () => {
     // Priority left the header for the field, and a fresh task has none — so it
     // is reachable BY NAME from the seed rather than parked unset on screen.
     expect(field().textContent).not.toContain('Priority');
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(field().textContent).not.toContain(CONTAINER_KINDS[kind].label);
     }
     fireEvent.click(screen.getByTestId('item-clearing-seed'));
     expect(seedOptions().some((t) => t.includes('Priority'))).toBe(true);
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS[kind].label))).toBe(true);
     }
   });
@@ -653,29 +653,29 @@ describe('the /item/[id] readout', () => {
     return onAdd;
   };
 
-  it('finally says which routines, programs and goals an item serves', () => {
+  it('finally says which routines, seasons and goals an item serves', () => {
     // The page showed a project and nothing else: an item could sit in a
-    // routine, a program and a goal and its own page never said so.
+    // routine, a season and a goal and its own page never said so.
     seed({
       routines: [routine({ itemIds: ['t1'] })],
-      programs: [program({ itemIds: ['t1'] })],
+      seasons: [season({ itemIds: ['t1'] })],
       goals: [goal({ memberIds: ['t1'] })],
     });
     readout(task({ project: 'Onboarding' }));
     expect(screen.getByTestId(bandTestId('project')).textContent).toContain('Onboarding');
     expect(screen.getByTestId(bandTestId('routine')).textContent).toContain('Deep work');
-    expect(screen.getByTestId(bandTestId('program')).textContent).toContain('Autumn term');
+    expect(screen.getByTestId(bandTestId('season')).textContent).toContain('Autumn term');
     expect(screen.getByTestId(bandTestId('goal')).textContent).toContain('Ship v2');
   });
 
   it('renders an empty band as a way in rather than a blank, and hands editing back', () => {
     const onAdd = readout(task());
-    const add = screen.getByTestId('band-add-program');
+    const add = screen.getByTestId('band-add-season');
     fireEvent.click(add);
     // One write path, still: the readout opens the editor, it does not grow a
     // second way to change a membership.
     expect(onAdd).toHaveBeenCalledTimes(1);
-    expect(onAdd.mock.calls[0][0].kind).toBe('program');
+    expect(onAdd.mock.calls[0][0].kind).toBe('season');
   });
 
   // NOTE: the readout and the dialog's chip now DIVERGE here, deliberately. The

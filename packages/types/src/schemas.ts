@@ -48,7 +48,7 @@ export const RecurrenceFieldsSchema = z.object({
 export type RecurrenceFields = z.infer<typeof RecurrenceFieldsSchema>
 
 // ── Shared pause fields ────────────────────────────────────────────────────────
-// Suppression state for programs & routines (migration 024). It lives here and
+// Suppression state for seasons & routines (migration 024). It lives here and
 // NEVER in `status`: task pending|completed|cancelled and habit
 // pending|done|skipped are frozen external contracts — an unknown enum value
 // makes the OpenClaw plugin's whole-context safeParse throw and bricks its
@@ -129,7 +129,7 @@ export const ProjectSchema = z.object({
   timeBucket: TimeBucketSchema.optional(),
   startTime: z.string().optional(),
   duration: z.number().optional(),
-  /** A free-text note — what this is for (migration 046). */
+  /** A free-text note — what this is for (migration 049). */
   notes: z.string().optional(),
 })
 
@@ -140,17 +140,17 @@ export const HabitGroupSchema = z.object({
   color: z.string().optional(),
 })
 
-// ── Programs & routines (migration 024) ────────────────────────────────────────
+// ── Seasons & routines (migration 024) ────────────────────────────────────────
 // Collections that gate visibility rather than describe an item. A ROUTINE is a
-// small reusable set (a morning routine); a PROGRAM is a period of life (summer,
+// small reusable set (a morning routine); a SEASON is a period of life (summer,
 // school year) holding items and/or routines. Membership is many-to-many and
 // referenced BY ID — the older containers (items.project, items."group") hold
 // container NAMES, which is exactly why renaming them is still parked.
 //
 // The member arrays are the app-side view of the join tables; the DB keeps them
-// normalized in routine_items / program_items / program_routines.
+// normalized in routine_items / season_items / season_routines.
 
-export const ProgramStateSchema = z.enum(['auto', 'active', 'paused'])
+export const SeasonStateSchema = z.enum(['auto', 'active', 'paused'])
 
 export const RoutineSchema = z.object({
   id: z.string(),
@@ -160,14 +160,23 @@ export const RoutineSchema = z.object({
   /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
   color: z.string().optional(),
   sortOrder: z.number().optional(),
+  /**
+   * When the routine usually happens, as a local wall-clock 'HH:mm' — "Morning,
+   * usually at 7:00". A routine is things done regularly, together; this is the
+   * "regularly" said out loud. It moves nothing: members keep their own timing
+   * (a routine never writes a member's fields), and this only labels the
+   * routine and orders it among the others. Plain string on the READ shape, as
+   * every time here is — see TimeOfDaySchema.
+   */
+  usualTime: z.string().optional(),
   ...pauseFields,
-  /** A free-text note — what this is for (migration 046). */
+  /** A free-text note — what this is for (migration 049). */
   notes: z.string().optional(),
   /** Member item ids (routine_items), in routine-internal order. */
   itemIds: z.array(z.string()),
 })
 
-export const ProgramSchema = z.object({
+export const SeasonSchema = z.object({
   id: z.string(),
   name: z.string(),
   icon: z.string().optional(),
@@ -175,30 +184,30 @@ export const ProgramSchema = z.object({
   sortOrder: z.number().optional(),
   /**
    * 'auto' follows startsOn/endsOn (no range = always on); 'active'/'paused'
-   * are manual overrides that always win, because flipping a program by hand
-   * must never be second-guessed by a date. Several programs may be active at
+   * are manual overrides that always win, because flipping a season by hand
+   * must never be second-guessed by a date. Several seasons may be active at
    * once — the resolver unions their members.
    */
-  state: ProgramStateSchema,
+  state: SeasonStateSchema,
   /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
   startsOn: z.string().optional(),
   endsOn: z.string().optional(),
-  /** A free-text note — what this is for (migration 046). */
+  /** A free-text note — what this is for (migration 049). */
   notes: z.string().optional(),
-  /** Directly-held item ids (program_items). */
+  /** Directly-held item ids (season_items). */
   itemIds: z.array(z.string()),
-  /** Held routine ids (program_routines) — their members ride along. */
+  /** Held routine ids (season_routines) — their members ride along. */
   routineIds: z.array(z.string()),
   /**
    * Trigger-maintained, READ-ONLY app-side. It exists for one consumer: the
    * overdue sweep's grace (c). A manual `paused` → `active` flip has no
    * recorded date — the tri-state keeps no history — so this is the only
-   * evidence that a program recently stopped hiding its members, and without it
-   * the morning after someone turns a program back on the sweep unschedules
+   * evidence that a season recently stopped hiding its members, and without it
+   * the morning after someone turns a season back on the sweep unschedules
    * every member at once.
    *
-   * Deliberately NOT in db.ts updateProgram's column allowlist: it appears in
-   * PROGRAM_FIELDS (which is Object.keys of this shape) and therefore in undo's
+   * Deliberately NOT in db.ts updateSeason's column allowlist: it appears in
+   * SEASON_FIELDS (which is Object.keys of this shape) and therefore in undo's
    * container diff, where a stale value would otherwise be written back over
    * the trigger's.
    */
@@ -207,7 +216,7 @@ export const ProgramSchema = z.object({
 
 // ── Goals (migration 036) ──────────────────────────────────────────────────────
 // The third container role. Projects and habit groups CLASSIFY (what an item is
-// about); routines and programs GATE (when it counts); a goal ASPIRES — it says
+// about); routines and seasons GATE (when it counts); a goal ASPIRES — it says
 // why the work matters and switches nothing off. See lib/container-registry.ts,
 // which states that seam in types, and memory/plans/long-term-goals.md.
 //
@@ -252,7 +261,7 @@ export const GoalSchema = z.object({
    * 'active'.
    *
    * App-written and IN db.ts's update allowlist — the deliberate opposite of
-   * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+   * Season.updatedAt, which is kept OUT of its allowlist because a trigger
    * owns it. The reason is undo: this field rides GOAL_FIELDS into the
    * container diff, which is what makes one ⌘Z after "Mark achieved" restore
    * `state: 'active'` AND clear the stamp together. Left out, undo would
@@ -437,7 +446,7 @@ export const HABIT_FIELDS = Object.keys(habitItemShape) as (keyof z.infer<typeof
 export const PROJECT_FIELDS = Object.keys(ProjectSchema.shape) as (keyof z.infer<typeof ProjectSchema>)[]
 export const HABIT_GROUP_FIELDS = Object.keys(HabitGroupSchema.shape) as (keyof z.infer<typeof HabitGroupSchema>)[]
 export const ROUTINE_FIELDS = Object.keys(RoutineSchema.shape) as (keyof z.infer<typeof RoutineSchema>)[]
-export const PROGRAM_FIELDS = Object.keys(ProgramSchema.shape) as (keyof z.infer<typeof ProgramSchema>)[]
+export const SEASON_FIELDS = Object.keys(SeasonSchema.shape) as (keyof z.infer<typeof SeasonSchema>)[]
 export const GOAL_FIELDS = Object.keys(GoalSchema.shape) as (keyof z.infer<typeof GoalSchema>)[]
 
 // ── Unified Item ───────────────────────────────────────────────────────────────
@@ -737,7 +746,7 @@ export const HabitUpdateSchema = z
   .superRefine(requireCustomDays)
   .superRefine(rejectResumeWithDate)
 
-// ── Agent API: routines & programs ─────────────────────────────────────────────
+// ── Agent API: routines & seasons ─────────────────────────────────────────────
 // Containers are agent-writable from schemaVersion 4. v1 deliberately shipped no
 // write surface here (same posture custom types took); the call is that an agent
 // acting for the user should reach what the user reaches, and hiding/unhiding a
@@ -766,6 +775,7 @@ const containerIdentityShape = {
 export const RoutineCreateSchema = z
   .object({
     ...containerIdentityShape,
+    usualTime: clearable(TimeOfDaySchema),
     id: OptionalIdSchema,
     itemIds: z.array(z.string().uuid()).optional(),
     ...pauseVerbShape,
@@ -776,15 +786,16 @@ export const RoutineUpdateSchema = z
   .object({
     ...containerIdentityShape,
     name: z.string().min(1).optional(),
+    usualTime: clearable(TimeOfDaySchema),
     itemIds: z.array(z.string().uuid()).optional(),
     ...pauseVerbShape,
   })
   .superRefine(rejectResumeWithDate)
 
 /**
- * An `auto` program whose range starts after it ends is live on no date at all,
+ * An `auto` season whose range starts after it ends is live on no date at all,
  * so it hides every member permanently while reading as "seasonal, currently
- * out of season" — indistinguishable from a program that will come back. The
+ * out of season" — indistinguishable from a season that will come back. The
  * pickers bound each other in the UI; the API has to say so itself.
  */
 const rejectInvertedRange = (
@@ -801,17 +812,17 @@ const rejectInvertedRange = (
 }
 
 /**
- * A program does not pause; it switches. Say so instead of dropping the keys.
+ * A season does not pause; it switches. Say so instead of dropping the keys.
  *
  * Zod strips unknown keys, which is the right default for a field that means
  * nothing — but `paused` means something everywhere else in this API, so an
  * agent that learned it on routines will reasonably try it here and get
- * 200 {success:true} with the program still live. That is precisely the failure
+ * 200 {success:true} with the season still live. That is precisely the failure
  * a bare `pausedUntil` on a live item is rejected for: a write with no effect
  * that reports success is how an agent concludes the job is done and moves on.
  * The keys are in the shape ONLY so this refine can see them.
  */
-const rejectProgramPauseVerb = (
+const rejectSeasonPauseVerb = (
   data: { paused?: unknown; pausedUntil?: unknown; state?: unknown },
   ctx: z.RefinementCtx,
 ) => {
@@ -819,16 +830,16 @@ const rejectProgramPauseVerb = (
   ctx.addIssue({
     code: z.ZodIssueCode.custom,
     message:
-      'programs switch through `state`, not paused/pausedUntil — use ' +
+      'seasons switch through `state`, not paused/pausedUntil — use ' +
       "state: 'paused' to turn one off, 'active' to force it on, or 'auto' to " +
       'hand it back to its date range.',
     path: ['state'],
   })
 }
 
-const programRangeShape = {
+const seasonRangeShape = {
   // Present only to be refused with a pointer to `state` — see
-  // rejectProgramPauseVerb. z.unknown() rather than the real types so a
+  // rejectSeasonPauseVerb. z.unknown() rather than the real types so a
   // malformed value still produces THAT message rather than a type error that
   // reads as though the field were supported.
   paused: z.unknown().optional(),
@@ -837,7 +848,7 @@ const programRangeShape = {
    * 'auto' follows the range; 'active'/'paused' are manual overrides that win
    * over it. Omitted on create → 'auto', which with no range means "always on".
    */
-  state: ProgramStateSchema.optional(),
+  state: SeasonStateSchema.optional(),
   /** Inclusive bounds, either end open. Only read while state is 'auto'. */
   startsOn: clearable(DateOnlySchema),
   endsOn: clearable(DateOnlySchema),
@@ -846,30 +857,30 @@ const programRangeShape = {
   routineIds: z.array(z.string().uuid()).optional(),
 }
 
-export const ProgramCreateSchema = z
+export const SeasonCreateSchema = z
   .object({
     ...containerIdentityShape,
     id: OptionalIdSchema,
-    ...programRangeShape,
+    ...seasonRangeShape,
   })
   .superRefine(rejectInvertedRange)
-  .superRefine(rejectProgramPauseVerb)
+  .superRefine(rejectSeasonPauseVerb)
 
-export const ProgramUpdateSchema = z
+export const SeasonUpdateSchema = z
   .object({
     ...containerIdentityShape,
     name: z.string().min(1).optional(),
-    ...programRangeShape,
+    ...seasonRangeShape,
   })
   // Sees only what the PATCH carries, so it catches a body that INTRODUCES an
   // inverted range. Half a range patched against a stored other half still
   // reaches the store unchecked — the same limitation requireCustomDays has,
   // and for the same reason: a refine cannot read the row.
   .superRefine(rejectInvertedRange)
-  .superRefine(rejectProgramPauseVerb)
+  .superRefine(rejectSeasonPauseVerb)
 
 // ── Agent API: goals ──────────────────────────────────────────────────────────
-// Same posture as routines and programs: an agent acting for the user should
+// Same posture as routines and seasons: an agent acting for the user should
 // reach what the user reaches. Membership arrives as whole id ARRAYS per ROLE,
 // matching db.ts's union reconcile and the store, and for the same idempotence
 // reason — a retried PATCH cannot double-add.
@@ -878,7 +889,7 @@ export const ProgramUpdateSchema = z
  * A goal switches through `state`, and `achievedAt` is DERIVED from it.
  *
  * Both keys are carried in the shape only so this refine can see them and
- * refuse with a pointer, the way `rejectProgramPauseVerb` does. Zod strips
+ * refuse with a pointer, the way `rejectSeasonPauseVerb` does. Zod strips
  * unknown keys, so without this an agent sending the verb it has learned
  * everywhere else — `paused: true`, or a hand-picked `achievedAt` — gets
  * `200 {success:true}` and a goal that did not move. A write with no effect
@@ -899,7 +910,7 @@ const rejectGoalDerivedFields = (
       message:
         'goals do not pause — they suppress nothing, so there is nothing to hide. ' +
         "Use state: 'achieved' or 'abandoned' to close one, or put the work in a " +
-        'program if the intent is to hide it for a season.',
+        'season if the intent is to hide it for a season.',
       path: ['state'],
     })
   }
@@ -918,14 +929,14 @@ const rejectGoalDerivedFields = (
  * The keys a goal does not have, because the OTHER containers do.
  *
  * Same argument as the pause verb, and stronger on every axis. `itemIds` is the
- * membership key on both routines and programs; goals are the only container
+ * membership key on both routines and seasons; goals are the only container
  * that renamed it; and membership is the commonest goal write there is. A
  * model asked to "add these tasks to my Learn Chinese goal" reaches for
  * `itemIds`, Zod strips it, `updateGoal` finds an empty patch and issues no
  * statement at all — and the caller is told 200 for a write that did nothing.
  * A refusal that names the right key is the only outcome that ends the loop.
  *
- * `endsOn` is the same mistake one field over: a program's range ends, a goal
+ * `endsOn` is the same mistake one field over: a season's range ends, a goal
  * has a target it may well pass.
  */
 const rejectForeignContainerKeys = (
@@ -946,7 +957,7 @@ const rejectForeignContainerKeys = (
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
       message:
-        'goals hold items, not routines. Put the routine in a program, or add the ' +
+        'goals hold items, not routines. Put the routine in a season, or add the ' +
         "routine's items to the goal directly.",
       path: ['memberIds'],
     })
@@ -1045,7 +1056,7 @@ export const GoalUpdateSchema = z
   })
   // Sees only what the PATCH carries, so it catches a body that INTRODUCES an
   // inverted window. Half a window patched against a stored other half still
-  // reaches the store unchecked — the same limitation ProgramUpdateSchema has.
+  // reaches the store unchecked — the same limitation SeasonUpdateSchema has.
   .superRefine(rejectInvertedGoalWindow)
   .superRefine(rejectOverlappingGoalRoles)
   .superRefine(rejectGoalDerivedFields)
@@ -1068,14 +1079,14 @@ export const DsulContextResponseSchema = z.object({
   // The containers that decide whether an item is suppressed (schemaVersion 4+).
   // Same optionality rule as items[], and for a second reason here: the route
   // OMITS these keys when the tables are unreachable, because `[]` would assert
-  // "you have no programs" to a consumer that might helpfully offer to create
+  // "you have no seasons" to a consumer that might helpfully offer to create
   // one. Absent means "this server did not say".
   routines: z.array(RoutineSchema).optional(),
-  programs: z.array(ProgramSchema).optional(),
+  seasons: z.array(SeasonSchema).optional(),
   /**
    * The containers that say WHY work exists (schemaVersion 5+).
    *
-   * Unlike routines and programs, a goal suppresses nothing — so an item's
+   * Unlike routines and seasons, a goal suppresses nothing — so an item's
    * absence from tasks[] is never explained by a goal. These are here for the
    * opposite reason: so an agent asked "how is Learn Chinese going" can answer
    * from progress and the next milestone rather than guessing from item titles.
@@ -1085,10 +1096,13 @@ export const DsulContextResponseSchema = z.object({
   goals: z.array(GoalSchema).optional(),
   // Additive (old clients strip unknown keys). 2 = tasks/habits are
   // projections of the unified items table; 3 = items[] present; 4 = routines[]
-  // and programs[] present, so a consumer can explain WHY an item it remembers
+  // and seasons[] present, so a consumer can explain WHY an item it remembers
   // is missing from tasks[] instead of concluding it was deleted; 5 = goals[]
   // present, so a consumer can say what the work is FOR — progress, the next
-  // milestone, the target — instead of inferring purpose from item titles.
+  // milestone, the target — instead of inferring purpose from item titles;
+  // 6 = programs[] renamed seasons[] (migration 049). Pre-6 builds read the
+  // old key, find it absent, and fall back to "the server did not say" — the
+  // optionality above is what makes that a quiet loss rather than a throw.
   schemaVersion: z.number().optional(),
 })
 

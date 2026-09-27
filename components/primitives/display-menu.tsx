@@ -526,9 +526,9 @@ export function DisplayMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const projects = usePlannerStore((s) => s.projects);
   // Read purely to seed the grouping options' example lines — the Routine and
-  // Program group-by values name these, the way Project names `projects`.
+  // Season group-by values name these, the way Project names `projects`.
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const showPausedOnGrid = usePlannerStore((s) => s.showPausedOnGrid);
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
@@ -694,7 +694,7 @@ export function DisplayMenu({
     priority: previewNames(['High', 'Medium', 'Low']),
     bucket: previewNames(BUCKET_ORDER.map((b) => TIME_BUCKET_RANGES[b].label)),
     routine: previewNames(routines.map((r) => r.name)),
-    program: previewNames(programs.map((p) => p.name)),
+    season: previewNames(seasons.map((p) => p.name)),
     goal: previewNames(displayGoals(goals).map((g) => g.name)),
     // The braindump splits its corpus into exactly these two — see braindump.tsx.
     type: 'Tasks, Habits',
@@ -1449,14 +1449,14 @@ function DisplaySheet({
  * OFF right now, each one click from back on.
  *
  * A gate container's home when it has no visible members — a fully-paused
- * routine, or an out-of-season program, produces no group header to switch, so
+ * routine, or a switched-off season, produces no group header to switch, so
  * without this list it would only be reachable from the Organize console. Shown
  * on BOTH surfaces because pausing is app-wide DB state, and hidden entirely
  * when nothing is off.
  *
- * "Off" means the container's OWN switch is off (`!localOn`): a routine a program
+ * "Off" means the container's OWN switch is off (`!localOn`): a routine a season
  * is merely holding down keeps its own switch on and is not listed here — the
- * blocking PROGRAM is, and turning it on brings the routine back. Mounted inside
+ * blocking SEASON is, and turning it on brings the routine back. Mounted inside
  * the open menu or sheet, so buildScopeRows only runs while one is on screen.
  */
 function PausedScopesSection({
@@ -1467,7 +1467,7 @@ function PausedScopesSection({
   onDismiss?: () => void;
 }) {
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1475,8 +1475,8 @@ function PausedScopesSection({
   // opened after midnight must offer the resume that is true now.
   const todayStr = toDateStr(new Date(), tz);
   const offRows = useMemo(
-    () => buildScopeRows(routines, programs, todayStr, tz).filter((row) => !row.localOn),
-    [routines, programs, todayStr, tz]
+    () => buildScopeRows(routines, seasons, todayStr, tz).filter((row) => !row.localOn),
+    [routines, seasons, todayStr, tz]
   );
 
   if (offRows.length === 0) return null;

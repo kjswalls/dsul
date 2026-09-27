@@ -11,23 +11,25 @@ import { useOpenConsole } from '@/lib/console-door';
 import {
   countLive,
   formatShort,
-  programPillLabel,
+  seasonPillLabel,
   routinePillLabel,
   useLiveItemIds,
   useToday,
 } from '@/lib/collections';
-import { isProgramActiveOn } from '@/lib/active';
+import { isSeasonActiveOn } from '@/lib/active';
 import { accentColorForName } from '@/lib/accent-colors';
 import { containerMemberIds } from '@/lib/container-schedule';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RhythmGrid, SeasonHeatmap, WeekProgress, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
 import { ContainerActivity } from '@/components/planner/organize/container-activity';
 import { timeBlockSummary } from '@/components/planner/organize/project-time-block';
-import { ProgramStateNote } from '@/components/planner/organize/sections/programs';
-import type { Item, Program, Project, Routine } from '@/lib/planner-types';
+import { SeasonStateNote } from '@/components/planner/organize/sections/seasons';
+import { RoutineToday } from '@/components/planner/routine-today';
+import { formatCueTime } from '@/lib/reminders/copy';
+import type { Item, Season, Project, Routine } from '@/lib/planner-types';
 
 /**
- * A routine's, program's or project's page — the reading surface /goal/[id]
+ * A routine's, season's or project's page — the reading surface /goal/[id]
  * already is for goals (Kirby, 2026-09-26). Same posture: a client route,
  * deep-linkable, the store hydrated by the root layout; editing stays in the
  * Organize console, reached through the console door (lib/console-door.ts),
@@ -37,15 +39,15 @@ import type { Item, Program, Project, Routine } from '@/lib/planner-types';
  * from components/planner/schedule — and every item row is a link to the item.
  */
 
-export type PageKind = 'routine' | 'program' | 'project';
+export type PageKind = 'routine' | 'season' | 'project';
 
-const SECTION: Record<PageKind, 'routines' | 'programs' | 'projects'> = {
+const SECTION: Record<PageKind, 'routines' | 'seasons' | 'projects'> = {
   routine: 'routines',
-  program: 'programs',
+  season: 'seasons',
   project: 'projects',
 };
 
-const NOUN: Record<PageKind, string> = { routine: 'Routine', program: 'Program', project: 'Project' };
+const NOUN: Record<PageKind, string> = { routine: 'Routine', season: 'Season', project: 'Project' };
 
 function Square({ color }: { color: string }) {
   return <span className="inline-block size-[9px] shrink-0 rounded-[3px]" style={{ background: color }} aria-hidden />;
@@ -83,27 +85,28 @@ function Shell({ children }: { children: ReactNode }) {
 
 export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undefined }) {
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const projects = usePlannerStore((s) => s.projects);
   const items = usePlannerStore((s) => s.items);
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
+  const timeFormat = usePlannerStore((s) => s.timeFormat);
   const organizeOn = useOrganizeEnabled();
   const openConsole = useOpenConsole();
   const { todayStr, tz } = useToday();
   const liveIds = useLiveItemIds();
 
-  const container: Routine | Program | Project | undefined =
+  const container: Routine | Season | Project | undefined =
     kind === 'routine'
       ? routines.find((r) => r.id === id)
-      : kind === 'program'
-        ? programs.find((p) => p.id === id)
+      : kind === 'season'
+        ? seasons.find((p) => p.id === id)
         : projects.find((p) => p.id === id);
 
   const memberIds = useMemo(() => {
     if (!container) return [];
     if (kind === 'routine') return containerMemberIds({ kind, routine: container as Routine }, items, routines);
-    if (kind === 'program') return containerMemberIds({ kind, program: container as Program }, items, routines);
+    if (kind === 'season') return containerMemberIds({ kind, season: container as Season }, items, routines);
     return containerMemberIds({ kind, project: container as Project }, items, routines);
   }, [kind, container, items, routines]);
   const members = useMemo(() => {
@@ -112,14 +115,14 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   }, [memberIds, items]);
   const week = useWeekDotsFor(memberIds, undefined, kind === 'project' && container ? { block: container as Project } : undefined);
 
-  // Routines and programs live behind the Organize extension, as their console
+  // Routines and seasons live behind the Organize extension, as their console
   // sections do. Off is INERT, not "not found" — the /goal page's reasoning.
   if (kind !== 'project' && !organizeOn) {
     return (
       <Shell>
         <h1 className="text-foreground text-lg font-semibold">Organize is switched off</h1>
         <p className="text-muted-foreground text-sm" data-testid="container-page-extension-off">
-          Your routines and programs are still here — switch the extension back on and this page
+          Your routines and seasons are still here — switch the extension back on and this page
           picks up where it left off. Nothing was deleted.
         </p>
         <div className="flex gap-2">
@@ -163,7 +166,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   }
 
   const name = container.name;
-  const icon = kind === 'project' ? (container as Project).emoji : (container as Routine | Program).icon;
+  const icon = kind === 'project' ? (container as Project).emoji : (container as Routine | Season).icon;
   const accent = container.color ?? accentColorForName(name);
 
   const plural = (n: number, one: string) => `${n} ${n === 1 ? one : `${one}s`}`;
@@ -174,18 +177,19 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   if (kind === 'routine') {
     const routine = container as Routine;
     notes = routine.notes;
-    const holders = programs.filter((p) => p.routineIds.includes(routine.id));
-    const pill = routinePillLabel(routine, todayStr, tz, programs);
+    const holders = seasons.filter((p) => p.routineIds.includes(routine.id));
+    const pill = routinePillLabel(routine, todayStr, tz, seasons);
     props.push({ label: 'Status', value: <StatusValue on={!pill}>{pill ?? 'Active'}</StatusValue> });
     props.push({ label: 'Items', value: plural(countLive(routine.itemIds, liveIds), 'item') });
-    if (holders.length) props.push({ label: holders.length === 1 ? 'Program' : 'Programs', value: holders.map((p) => p.name).join(', ') });
-  } else if (kind === 'program') {
-    const program = container as Program;
-    notes = program.notes;
-    props.push({ label: 'Status', value: <StatusValue on={isProgramActiveOn(program, todayStr)}>{programPillLabel(program, todayStr) ?? 'On'}</StatusValue> });
-    props.push({ label: 'Routines', value: plural(program.routineIds.length, 'routine') });
+    if (routine.usualTime) props.push({ label: 'Usually at', value: formatCueTime(routine.usualTime, timeFormat) });
+    if (holders.length) props.push({ label: holders.length === 1 ? 'Season' : 'Seasons', value: holders.map((p) => p.name).join(', ') });
+  } else if (kind === 'season') {
+    const season = container as Season;
+    notes = season.notes;
+    props.push({ label: 'Status', value: <StatusValue on={isSeasonActiveOn(season, todayStr)}>{seasonPillLabel(season, todayStr) ?? 'On'}</StatusValue> });
+    props.push({ label: 'Routines', value: plural(season.routineIds.length, 'routine') });
     // The console pane's own sentence, so the two surfaces cannot disagree.
-    props.push({ label: 'Season', value: <ProgramStateNote program={program} live={isProgramActiveOn(program, todayStr)} /> });
+    props.push({ label: 'Schedule', value: <SeasonStateNote season={season} live={isSeasonActiveOn(season, todayStr)} /> });
   } else {
     const project = container as Project;
     notes = project.notes;
@@ -248,9 +252,17 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
             )}
           </header>
 
-          {kind === 'program' && (
-            <Section title="Season" testId="container-page-season">
-              <SeasonHeatmap program={container as Program} memberIds={memberIds} />
+          {/* A routine leads with today, in its order — the page is where you run
+              it from (⌘K "Run …" lands here). The Rhythm below is the week. */}
+          {kind === 'routine' && (
+            <Section title="Today" testId="container-page-today">
+              <RoutineToday routine={container as Routine} />
+            </Section>
+          )}
+
+          {kind === 'season' && (
+            <Section title="Calendar" testId="container-page-calendar">
+              <SeasonHeatmap season={container as Season} memberIds={memberIds} />
             </Section>
           )}
 
@@ -271,10 +283,10 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
             />
           )}
 
-          {kind === 'program' && (container as Program).routineIds.length > 0 && (
+          {kind === 'season' && (container as Season).routineIds.length > 0 && (
             <Section title="Routines">
               <ul className="flex flex-col">
-                {(container as Program).routineIds
+                {(container as Season).routineIds
                   .map((rid) => routines.find((r) => r.id === rid))
                   .filter((r): r is Routine => !!r)
                   .map((r) => (
@@ -292,24 +304,24 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
 
           {kind === 'routine' && (
             <Section title="Held by">
-              {programs.some((p) => p.routineIds.includes(container.id)) ? (
+              {seasons.some((p) => p.routineIds.includes(container.id)) ? (
                 <ul className="flex flex-col">
-                  {programs
+                  {seasons
                     .filter((p) => p.routineIds.includes(container.id))
                     .map((p) => (
                       <li key={p.id}>
-                        <Link href={`/program/${p.id}`} className={ROW_LINK}>
+                        <Link href={`/season/${p.id}`} className={ROW_LINK}>
                           <CategoryIcon glyph={p.icon} name={p.name} className="size-3.5" />
                           <span className="min-w-0 flex-1 truncate">{p.name}</span>
                           <span className="text-muted-foreground text-xs">
-                            {isProgramActiveOn(p, todayStr) ? 'on' : `off${p.startsOn && p.startsOn > todayStr ? ` until ${formatShort(p.startsOn)}` : ''}`}
+                            {isSeasonActiveOn(p, todayStr) ? 'on' : `off${p.startsOn && p.startsOn > todayStr ? ` until ${formatShort(p.startsOn)}` : ''}`}
                           </span>
                         </Link>
                       </li>
                     ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground text-sm">No program — it answers for itself.</p>
+                <p className="text-muted-foreground text-sm">No season — it answers for itself.</p>
               )}
             </Section>
           )}

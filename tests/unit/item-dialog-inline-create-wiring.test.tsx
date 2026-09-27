@@ -34,8 +34,8 @@ vi.mock('@/lib/db', async (importOriginal) => ({
   getItemEventsAvailable: () => false,
   createRoutine: vi.fn(async () => {}),
   updateRoutine: vi.fn(async () => {}),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
 }));
@@ -63,7 +63,7 @@ beforeEach(() => {
     items: [ITEM],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -93,7 +93,7 @@ const openEdit = () =>
  * deliberately start with zero containers, so every one of them starts unset and
  * every one has to be summoned. Matched on `data-value`, never on label copy.
  */
-const revealContainer = (kind: 'routine' | 'program' | 'goal') => {
+const revealContainer = (kind: 'routine' | 'season' | 'goal') => {
   fireEvent.click(screen.getByTestId('item-clearing-seed'));
   const option = screen
     .getAllByTestId('item-clearing-seed-option')
@@ -102,7 +102,7 @@ const revealContainer = (kind: 'routine' | 'program' | 'goal') => {
   fireEvent.click(option);
 };
 
-const inlineCreate = (kind: 'routine' | 'program' | 'goal', name: string) => {
+const inlineCreate = (kind: 'routine' | 'season' | 'goal', name: string) => {
   // Summoning a property opens its picker on its own — no second click.
   revealContainer(kind);
   fireEvent.click(screen.getByTestId(`item-dialog-${kind}-new-open`));
@@ -123,14 +123,14 @@ describe('inline-create attaches the edited item (C2)', () => {
     expect(routines[0].itemIds).toContain('t1');
   });
 
-  it('creates a program and joins the item to it', () => {
+  it('creates a season and joins the item to it', () => {
     openEdit();
-    inlineCreate('program', 'Autumn term');
+    inlineCreate('season', 'Autumn term');
 
-    const programs = usePlannerStore.getState().programs;
-    expect(programs).toHaveLength(1);
-    expect(programs[0].name).toBe('Autumn term');
-    expect(programs[0].itemIds).toContain('t1');
+    const seasons = usePlannerStore.getState().seasons;
+    expect(seasons).toHaveLength(1);
+    expect(seasons[0].name).toBe('Autumn term');
+    expect(seasons[0].itemIds).toContain('t1');
   });
 
   it('creates a goal and joins the item as a plain MEMBER, never a milestone', () => {

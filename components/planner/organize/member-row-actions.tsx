@@ -110,7 +110,7 @@ export function useMemberActions({ ownerName, onRemove, removable, todayState }:
 
 /* ── what a row may do ──────────────────────────────────────────────────── */
 
-interface Verbs {
+export interface Verbs {
   tick?: { label: string; run: () => void };
   skip?: () => void;
   pause?: () => void;
@@ -122,7 +122,12 @@ interface Verbs {
   del: () => void;
 }
 
-function useVerbs(
+/**
+ * Exported for the routine's Today checklist (components/planner/routine-today.tsx),
+ * which ticks and skips the same members for the same day and must not grow a
+ * second copy of these gates.
+ */
+export function useVerbs(
   item: Item,
   todayState: OccurrenceState | undefined,
   todayStr: string,

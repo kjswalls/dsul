@@ -39,7 +39,7 @@ vi.mock('@/lib/db', () => ({
   fetchProjects: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   fetchRoutines: vi.fn(async () => []),
-  fetchPrograms: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
@@ -74,7 +74,7 @@ beforeEach(() => {
     habits: [],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
   });
   useAISettingsStore.setState({ provider: 'anthropic' });
   useChatStore.setState({ messages: [], isLoading: false, openclawAgentIdDisplay: null });

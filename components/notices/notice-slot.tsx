@@ -126,7 +126,7 @@ export function NoticeSlot({
  * Beside the date, in the canvas header row.
  *
  * The end-of-day line's object is the DAY, and the day's canonical handle is its
- * date — not the geometric foot of a grid. This is the address ProgramNotice
+ * date — not the geometric foot of a grid. This is the address SeasonNotice
  * already argued its way to ("it is bound to a date… so it belongs beside the
  * date"), and E generalises that precedent rather than inventing a second one.
  *

@@ -134,7 +134,7 @@ export function ObjectRow({
   /**
    * Keep the selected row visible.
    *
-   * The case that needs it is the deep link: the program notice opens the
+   * The case that needs it is the deep link: the season notice opens the
    * console on a specific object, and the twelfth routine in a
    * list is below the fold, so without this the console arrives looking like
    * nothing was selected while the detail pane discusses something you cannot
@@ -218,7 +218,7 @@ export function ObjectRow({
 
 /**
  * Label left, control flush right — two clean vertical rules down the detail
- * pane. The project time block's controls use it; the goal, program and routine
+ * pane. The project time block's controls use it; the goal, season and routine
  * panes moved to the item edit pane's chip row (2026-09-25).
  */
 export function SettingRow({

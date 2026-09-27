@@ -46,7 +46,7 @@ export declare const ProjectSchema: z.ZodObject<{
     timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
     startTime: z.ZodOptional<z.ZodString>;
     duration: z.ZodOptional<z.ZodNumber>;
-    /** A free-text note — what this is for (migration 046). */
+    /** A free-text note — what this is for (migration 049). */
     notes: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     id: string;
@@ -89,9 +89,9 @@ export declare const HabitGroupSchema: z.ZodObject<{
     emoji: string;
     color?: string | undefined;
 }>;
-export declare const ProgramStateSchema: z.ZodEnum<["auto", "active", "paused"]>;
+export declare const SeasonStateSchema: z.ZodEnum<["auto", "active", "paused"]>;
 export declare const RoutineSchema: z.ZodObject<{
-    /** A free-text note — what this is for (migration 046). */
+    /** A free-text note — what this is for (migration 049). */
     notes: z.ZodOptional<z.ZodString>;
     /** Member item ids (routine_items), in routine-internal order. */
     itemIds: z.ZodArray<z.ZodString, "many">;
@@ -115,6 +115,15 @@ export declare const RoutineSchema: z.ZodObject<{
     /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
     color: z.ZodOptional<z.ZodString>;
     sortOrder: z.ZodOptional<z.ZodNumber>;
+    /**
+     * When the routine usually happens, as a local wall-clock 'HH:mm' — "Morning,
+     * usually at 7:00". A routine is things done regularly, together; this is the
+     * "regularly" said out loud. It moves nothing: members keep their own timing
+     * (a routine never writes a member's fields), and this only labels the
+     * routine and orders it among the others. Plain string on the READ shape, as
+     * every time here is — see TimeOfDaySchema.
+     */
+    usualTime: z.ZodOptional<z.ZodString>;
 }, "strip", z.ZodTypeAny, {
     id: string;
     name: string;
@@ -123,6 +132,7 @@ export declare const RoutineSchema: z.ZodObject<{
     notes?: string | undefined;
     icon?: string | undefined;
     sortOrder?: number | undefined;
+    usualTime?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
 }, {
@@ -133,10 +143,11 @@ export declare const RoutineSchema: z.ZodObject<{
     notes?: string | undefined;
     icon?: string | undefined;
     sortOrder?: number | undefined;
+    usualTime?: string | undefined;
     pausedAt?: string | undefined;
     pausedUntil?: string | undefined;
 }>;
-export declare const ProgramSchema: z.ZodObject<{
+export declare const SeasonSchema: z.ZodObject<{
     id: z.ZodString;
     name: z.ZodString;
     icon: z.ZodOptional<z.ZodString>;
@@ -144,30 +155,30 @@ export declare const ProgramSchema: z.ZodObject<{
     sortOrder: z.ZodOptional<z.ZodNumber>;
     /**
      * 'auto' follows startsOn/endsOn (no range = always on); 'active'/'paused'
-     * are manual overrides that always win, because flipping a program by hand
-     * must never be second-guessed by a date. Several programs may be active at
+     * are manual overrides that always win, because flipping a season by hand
+     * must never be second-guessed by a date. Several seasons may be active at
      * once — the resolver unions their members.
      */
     state: z.ZodEnum<["auto", "active", "paused"]>;
     /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
     startsOn: z.ZodOptional<z.ZodString>;
     endsOn: z.ZodOptional<z.ZodString>;
-    /** A free-text note — what this is for (migration 046). */
+    /** A free-text note — what this is for (migration 049). */
     notes: z.ZodOptional<z.ZodString>;
-    /** Directly-held item ids (program_items). */
+    /** Directly-held item ids (season_items). */
     itemIds: z.ZodArray<z.ZodString, "many">;
-    /** Held routine ids (program_routines) — their members ride along. */
+    /** Held routine ids (season_routines) — their members ride along. */
     routineIds: z.ZodArray<z.ZodString, "many">;
     /**
      * Trigger-maintained, READ-ONLY app-side. It exists for one consumer: the
      * overdue sweep's grace (c). A manual `paused` → `active` flip has no
      * recorded date — the tri-state keeps no history — so this is the only
-     * evidence that a program recently stopped hiding its members, and without it
-     * the morning after someone turns a program back on the sweep unschedules
+     * evidence that a season recently stopped hiding its members, and without it
+     * the morning after someone turns a season back on the sweep unschedules
      * every member at once.
      *
-     * Deliberately NOT in db.ts updateProgram's column allowlist: it appears in
-     * PROGRAM_FIELDS (which is Object.keys of this shape) and therefore in undo's
+     * Deliberately NOT in db.ts updateSeason's column allowlist: it appears in
+     * SEASON_FIELDS (which is Object.keys of this shape) and therefore in undo's
      * container diff, where a stale value would otherwise be written back over
      * the trigger's.
      */
@@ -231,7 +242,7 @@ export declare const GoalSchema: z.ZodObject<{
      * 'active'.
      *
      * App-written and IN db.ts's update allowlist — the deliberate opposite of
-     * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+     * Season.updatedAt, which is kept OUT of its allowlist because a trigger
      * owns it. The reason is undo: this field rides GOAL_FIELDS into the
      * container diff, which is what makes one ⌘Z after "Mark achieved" restore
      * `state: 'active'` AND clear the stamp together. Left out, undo would
@@ -631,7 +642,7 @@ export declare const HABIT_FIELDS: (keyof z.infer<typeof HabitItemSchema>)[];
 export declare const PROJECT_FIELDS: (keyof z.infer<typeof ProjectSchema>)[];
 export declare const HABIT_GROUP_FIELDS: (keyof z.infer<typeof HabitGroupSchema>)[];
 export declare const ROUTINE_FIELDS: (keyof z.infer<typeof RoutineSchema>)[];
-export declare const PROGRAM_FIELDS: (keyof z.infer<typeof ProgramSchema>)[];
+export declare const SEASON_FIELDS: (keyof z.infer<typeof SeasonSchema>)[];
 export declare const GOAL_FIELDS: (keyof z.infer<typeof GoalSchema>)[];
 export declare const TaskItemSchema: z.ZodEffects<z.ZodObject<{
     /**
@@ -2512,6 +2523,7 @@ export declare const RoutineCreateSchema: z.ZodEffects<z.ZodObject<{
      * pause already running. `null` means "paused with no end date".
      */
     pausedUntil: z.ZodOptional<z.ZodNullable<z.ZodString>>;
+    usualTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     id: z.ZodEffects<z.ZodOptional<z.ZodNullable<z.ZodString>>, string | undefined, string | null | undefined>;
     itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     name: z.ZodString;
@@ -2526,6 +2538,7 @@ export declare const RoutineCreateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }, {
@@ -2535,6 +2548,7 @@ export declare const RoutineCreateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }>, {
@@ -2544,6 +2558,7 @@ export declare const RoutineCreateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }, {
@@ -2553,6 +2568,7 @@ export declare const RoutineCreateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }>;
@@ -2566,6 +2582,7 @@ export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
      */
     pausedUntil: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     name: z.ZodOptional<z.ZodString>;
+    usualTime: z.ZodOptional<z.ZodNullable<z.ZodString>>;
     itemIds: z.ZodOptional<z.ZodArray<z.ZodString, "many">>;
     /** icon:<LucideName> token, matching the container convention. */
     icon: z.ZodOptional<z.ZodNullable<z.ZodString>>;
@@ -2577,6 +2594,7 @@ export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }, {
@@ -2585,6 +2603,7 @@ export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }>, {
@@ -2593,6 +2612,7 @@ export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }, {
@@ -2601,10 +2621,11 @@ export declare const RoutineUpdateSchema: z.ZodEffects<z.ZodObject<{
     paused?: boolean | undefined;
     icon?: string | null | undefined;
     sortOrder?: number | null | undefined;
+    usualTime?: string | null | undefined;
     itemIds?: string[] | undefined;
     pausedUntil?: string | null | undefined;
 }>;
-export declare const ProgramCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+export declare const SeasonCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     paused: z.ZodOptional<z.ZodUnknown>;
     pausedUntil: z.ZodOptional<z.ZodUnknown>;
     /**
@@ -2703,7 +2724,7 @@ export declare const ProgramCreateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<
     endsOn?: string | null | undefined;
     routineIds?: string[] | undefined;
 }>;
-export declare const ProgramUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
+export declare const SeasonUpdateSchema: z.ZodEffects<z.ZodEffects<z.ZodObject<{
     paused: z.ZodOptional<z.ZodUnknown>;
     pausedUntil: z.ZodOptional<z.ZodUnknown>;
     /**
@@ -3574,7 +3595,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         timeBucket: z.ZodOptional<z.ZodEnum<["anytime", "morning", "afternoon", "evening"]>>;
         startTime: z.ZodOptional<z.ZodString>;
         duration: z.ZodOptional<z.ZodNumber>;
-        /** A free-text note — what this is for (migration 046). */
+        /** A free-text note — what this is for (migration 049). */
         notes: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         id: string;
@@ -4201,7 +4222,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         aiStatusAt?: string | undefined;
     }>, "many">>;
     routines: z.ZodOptional<z.ZodArray<z.ZodObject<{
-        /** A free-text note — what this is for (migration 046). */
+        /** A free-text note — what this is for (migration 049). */
         notes: z.ZodOptional<z.ZodString>;
         /** Member item ids (routine_items), in routine-internal order. */
         itemIds: z.ZodArray<z.ZodString, "many">;
@@ -4225,6 +4246,15 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         /** CSS color, usually a var(--accent-N) token; unset → name-hash ramp. */
         color: z.ZodOptional<z.ZodString>;
         sortOrder: z.ZodOptional<z.ZodNumber>;
+        /**
+         * When the routine usually happens, as a local wall-clock 'HH:mm' — "Morning,
+         * usually at 7:00". A routine is things done regularly, together; this is the
+         * "regularly" said out loud. It moves nothing: members keep their own timing
+         * (a routine never writes a member's fields), and this only labels the
+         * routine and orders it among the others. Plain string on the READ shape, as
+         * every time here is — see TimeOfDaySchema.
+         */
+        usualTime: z.ZodOptional<z.ZodString>;
     }, "strip", z.ZodTypeAny, {
         id: string;
         name: string;
@@ -4233,6 +4263,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
+        usualTime?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
     }, {
@@ -4243,10 +4274,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
+        usualTime?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
     }>, "many">>;
-    programs: z.ZodOptional<z.ZodArray<z.ZodObject<{
+    seasons: z.ZodOptional<z.ZodArray<z.ZodObject<{
         id: z.ZodString;
         name: z.ZodString;
         icon: z.ZodOptional<z.ZodString>;
@@ -4254,30 +4286,30 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         sortOrder: z.ZodOptional<z.ZodNumber>;
         /**
          * 'auto' follows startsOn/endsOn (no range = always on); 'active'/'paused'
-         * are manual overrides that always win, because flipping a program by hand
-         * must never be second-guessed by a date. Several programs may be active at
+         * are manual overrides that always win, because flipping a season by hand
+         * must never be second-guessed by a date. Several seasons may be active at
          * once — the resolver unions their members.
          */
         state: z.ZodEnum<["auto", "active", "paused"]>;
         /** Inclusive bounds, either end open (yyyy-MM-dd). Only read when state is 'auto'. */
         startsOn: z.ZodOptional<z.ZodString>;
         endsOn: z.ZodOptional<z.ZodString>;
-        /** A free-text note — what this is for (migration 046). */
+        /** A free-text note — what this is for (migration 049). */
         notes: z.ZodOptional<z.ZodString>;
-        /** Directly-held item ids (program_items). */
+        /** Directly-held item ids (season_items). */
         itemIds: z.ZodArray<z.ZodString, "many">;
-        /** Held routine ids (program_routines) — their members ride along. */
+        /** Held routine ids (season_routines) — their members ride along. */
         routineIds: z.ZodArray<z.ZodString, "many">;
         /**
          * Trigger-maintained, READ-ONLY app-side. It exists for one consumer: the
          * overdue sweep's grace (c). A manual `paused` → `active` flip has no
          * recorded date — the tri-state keeps no history — so this is the only
-         * evidence that a program recently stopped hiding its members, and without it
-         * the morning after someone turns a program back on the sweep unschedules
+         * evidence that a season recently stopped hiding its members, and without it
+         * the morning after someone turns a season back on the sweep unschedules
          * every member at once.
          *
-         * Deliberately NOT in db.ts updateProgram's column allowlist: it appears in
-         * PROGRAM_FIELDS (which is Object.keys of this shape) and therefore in undo's
+         * Deliberately NOT in db.ts updateSeason's column allowlist: it appears in
+         * SEASON_FIELDS (which is Object.keys of this shape) and therefore in undo's
          * container diff, where a stale value would otherwise be written back over
          * the trigger's.
          */
@@ -4312,7 +4344,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
     /**
      * The containers that say WHY work exists (schemaVersion 5+).
      *
-     * Unlike routines and programs, a goal suppresses nothing — so an item's
+     * Unlike routines and seasons, a goal suppresses nothing — so an item's
      * absence from tasks[] is never explained by a goal. These are here for the
      * opposite reason: so an agent asked "how is Learn Chinese going" can answer
      * from progress and the next milestone rather than guessing from item titles.
@@ -4338,7 +4370,7 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
          * 'active'.
          *
          * App-written and IN db.ts's update allowlist — the deliberate opposite of
-         * Program.updatedAt, which is kept OUT of its allowlist because a trigger
+         * Season.updatedAt, which is kept OUT of its allowlist because a trigger
          * owns it. The reason is undo: this field rides GOAL_FIELDS into the
          * container diff, which is what makes one ⌘Z after "Mark achieved" restore
          * `state: 'active'` AND clear the stamp together. Left out, undo would
@@ -4563,10 +4595,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
+        usualTime?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
     }[] | undefined;
-    programs?: {
+    seasons?: {
         id: string;
         name: string;
         itemIds: string[];
@@ -4773,10 +4806,11 @@ export declare const DsulContextResponseSchema: z.ZodObject<{
         notes?: string | undefined;
         icon?: string | undefined;
         sortOrder?: number | undefined;
+        usualTime?: string | undefined;
         pausedAt?: string | undefined;
         pausedUntil?: string | undefined;
     }[] | undefined;
-    programs?: {
+    seasons?: {
         id: string;
         name: string;
         itemIds: string[];

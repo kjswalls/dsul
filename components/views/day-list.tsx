@@ -13,7 +13,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
-import { ProgramNotice } from '@/components/views/program-notice';
+import { SeasonNotice } from '@/components/views/season-notice';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -46,7 +46,7 @@ function defaultListGroups(rows: ListRow[]): RowGroup<ListRow>[] {
 
 export function DayList() {
   const day = useDayItems();
-  const { selectedDate, navDirection, routines, programs, goals, userTimezone } =
+  const { selectedDate, navDirection, routines, seasons, goals, userTimezone } =
     usePlannerStore();
   const canvasGroupBy = useCanvasGroupBy();
   const sortBy = useViewStore((s) => s.canvasSortBy);
@@ -76,7 +76,7 @@ export function DayList() {
   const groups = (
     canvasGroupBy === 'none'
       ? defaultListGroups(rows)
-      : groupRows(rows, canvasGroupBy, { routines, programs, goals })
+      : groupRows(rows, canvasGroupBy, { routines, seasons, goals })
   ).map((g) => ({ ...g, rows: orderRows(g.rows, sortBy, dateStr, completedAs) }));
 
   return (
@@ -92,7 +92,7 @@ export function DayList() {
         {/* Before the empty state, not after it: "nothing planned yet" is a
             lie on a day whose work is real and merely away, and that is exactly
             the day this line exists for. */}
-        <ProgramNotice />
+        <SeasonNotice />
 
         {day.totalCount === 0 ? (
           <div className="py-16 text-center">

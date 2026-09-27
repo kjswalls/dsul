@@ -72,7 +72,7 @@ import type { Goal, GroupBy } from './planner-types';
  *       the user card's Trash row, the palette's three Organize commands) is
  *       inert rather than absent.
  *     · nothing is written, and no container is deleted or hidden. Projects,
- *       routines, programs, habit groups and item types all keep working
+ *       routines, seasons, habit groups and item types all keep working
  *       everywhere else — what goes away is the BULK MANAGEMENT surface.
  *     · TRASH IS NOT PART OF IT. `extension: null` in console-rail.tsx keeps
  *       the Trash section alive whatever the toggles say, so the console still

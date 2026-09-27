@@ -9,7 +9,7 @@ import {
   weekStartOf,
   type ScheduleSource,
 } from '@/lib/container-schedule';
-import type { HabitItem, Item, Program, Routine, Task } from '@/lib/planner-types';
+import type { HabitItem, Item, Season, Routine, Task } from '@/lib/planner-types';
 
 /**
  * The schedule behind the container charts. What is pinned is what the design
@@ -54,7 +54,7 @@ function source(items: (Task | HabitItem)[], extra: Partial<ScheduleSource> = {}
     tasks: items.filter((i) => (i as { type: string }).type === 'task') as Task[],
     habits: items.filter((i) => (i as { type: string }).type === 'habit') as HabitItem[],
     routines: [],
-    programs: [],
+    seasons: [],
     timezone: 'UTC',
     ...extra,
   };
@@ -180,8 +180,8 @@ describe('deriveContainerSchedule', () => {
     expect([...rows.keys()]).toEqual(['review', 'water']);
   });
 
-  it('follows a program\'s dates when it switches on mid-range', () => {
-    const p: Program = {
+  it('follows a season\'s dates when it switches on mid-range', () => {
+    const p: Season = {
       id: 'p1',
       name: 'Term',
       state: 'auto',
@@ -191,7 +191,7 @@ describe('deriveContainerSchedule', () => {
     };
     const s = deriveContainerSchedule({
       memberIds: ['stretch'],
-      source: source([habit('stretch')], { programs: [p] }),
+      source: source([habit('stretch')], { seasons: [p] }),
       from: TODAY,
       days: 4,
       todayStr: TODAY,
@@ -260,10 +260,10 @@ describe('weekBuckets from mid-week', () => {
 });
 
 describe('containerMemberIds', () => {
-  it('counts a program\'s routines\' members, and a project by folded name', () => {
+  it('counts a season\'s routines\' members, and a project by folded name', () => {
     const r: Routine = { id: 'r1', name: 'Mornings', itemIds: ['a', 'b'] };
-    const p: Program = { id: 'p1', name: 'Term', state: 'auto', itemIds: ['b', 'c'], routineIds: ['r1'] };
-    expect(containerMemberIds({ kind: 'program', program: p }, [], [r]).sort()).toEqual(['a', 'b', 'c']);
+    const p: Season = { id: 'p1', name: 'Term', state: 'auto', itemIds: ['b', 'c'], routineIds: ['r1'] };
+    expect(containerMemberIds({ kind: 'season', season: p }, [], [r]).sort()).toEqual(['a', 'b', 'c']);
     const items = [
       { id: 'x', type: 'task', title: 'x', project: 'Home' },
       { id: 'y', type: 'task', title: 'y', project: 'home' },
@@ -284,11 +284,11 @@ describe('chart ranges', () => {
     expect(goalRange(undefined, undefined, TODAY)).toMatchObject({ from: TODAY, days: 84, open: true });
   });
 
-  it('week-aligns a program\'s run, and gives an undated one sixteen weeks', async () => {
-    const { programRange } = await import('@/components/planner/schedule/schedule-views');
-    const run = programRange({ state: 'auto', startsOn: '2026-09-01', endsOn: '2026-12-18' }, TODAY, 'monday');
+  it('week-aligns a season\'s run, and gives an undated one sixteen weeks', async () => {
+    const { seasonRange } = await import('@/components/planner/schedule/schedule-views');
+    const run = seasonRange({ state: 'auto', startsOn: '2026-09-01', endsOn: '2026-12-18' }, TODAY, 'monday');
     expect(run.from).toBe('2026-08-31');
-    expect(programRange({ state: 'active' }, TODAY, 'sunday')).toMatchObject({ from: '2026-09-20', days: 112, bounded: false });
+    expect(seasonRange({ state: 'active' }, TODAY, 'sunday')).toMatchObject({ from: '2026-09-20', days: 112, bounded: false });
   });
 
   it('never shows a long goal as a window wholly after its target', async () => {
@@ -299,16 +299,16 @@ describe('chart ranges', () => {
     expect(addDaysStr(past.from, past.days - 1)).toBe('2025-12-31');
   });
 
-  it('keeps today in view for a long program, and never runs a started one into the past only', async () => {
-    const { programRange } = await import('@/components/planner/schedule/schedule-views');
-    const long = programRange({ state: 'auto', startsOn: '2025-01-01', endsOn: '2026-12-31' }, TODAY, 'sunday');
+  it('keeps today in view for a long season, and never runs a started one into the past only', async () => {
+    const { seasonRange } = await import('@/components/planner/schedule/schedule-views');
+    const long = seasonRange({ state: 'auto', startsOn: '2025-01-01', endsOn: '2026-12-31' }, TODAY, 'sunday');
     expect(long.capped).toBe(true);
     expect(long.from <= TODAY && addDaysStr(long.from, long.days - 1) >= TODAY).toBe(true);
     // Open-ended, started months ago: sixteen weeks from THIS week.
-    expect(programRange({ state: 'auto', startsOn: '2026-03-01' }, TODAY, 'sunday').from).toBe('2026-09-20');
+    expect(seasonRange({ state: 'auto', startsOn: '2026-03-01' }, TODAY, 'sunday').from).toBe('2026-09-20');
     // Starting later: from its start.
-    expect(programRange({ state: 'auto', startsOn: '2026-11-04' }, TODAY, 'sunday').from).toBe('2026-11-01');
+    expect(seasonRange({ state: 'auto', startsOn: '2026-11-04' }, TODAY, 'sunday').from).toBe('2026-11-01');
     // Inverted dates never produce a negative span.
-    expect(programRange({ state: 'auto', startsOn: '2026-10-04', endsOn: '2026-10-01' }, TODAY, 'sunday').days).toBeGreaterThan(0);
+    expect(seasonRange({ state: 'auto', startsOn: '2026-10-04', endsOn: '2026-10-01' }, TODAY, 'sunday').days).toBeGreaterThan(0);
   });
 });

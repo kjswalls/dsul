@@ -186,7 +186,7 @@ function defaultBucketGroups(rows: GroupableRow[]): RowGroup<GroupableRow>[] {
 function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurrent, variant, dateStr }: DayBucketProps) {
   const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const dragging = !!activeId;
 
@@ -248,7 +248,7 @@ function DayBucket({ bucket, tasks, habits, recurringProjects, activeId, isCurre
   const { completedAs, rootRef } = useSinkHold(setBucketRef);
   const untimedGroups = (
     canvasGroupBy !== 'none' && groupBySupport('day', 'buckets', canvasGroupBy).honoured
-      ? groupRows(untimedRows, canvasGroupBy, { routines, programs, goals })
+      ? groupRows(untimedRows, canvasGroupBy, { routines, seasons, goals })
       : defaultBucketGroups(untimedRows)
   ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, dateStr, completedAs) }));
 

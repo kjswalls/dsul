@@ -449,8 +449,8 @@ describe('settings search', () => {
 
   it('surfaces destinations for configuration that lives elsewhere', () => {
     // The whole reason the rail can stay at six panes.
-    const { destinations } = searchSettings('program', ctx);
-    expect(destinations.map((d) => d.record.id)).toContain('dest.programs');
+    const { destinations } = searchSettings('season', ctx);
+    expect(destinations.map((d) => d.record.id)).toContain('dest.seasons');
   });
 
   it('the per-pane counts add up and name only panes that actually have hits', () => {

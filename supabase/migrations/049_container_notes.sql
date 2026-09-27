@@ -1,5 +1,5 @@
 -- ─────────────────────────────────────────────────────────────────────────────
--- 046_container_notes.sql — a free-text note on routines, programs and projects
+-- 049_container_notes.sql — a free-text note on routines, seasons and projects
 --
 -- WHY. The container panes were redrawn in a Linear-like grammar (2026-09-27):
 -- a title, a row of properties, then a plain document block saying what the
@@ -13,9 +13,10 @@
 -- the OpenClaw plugin's safeParse strips unknown keys and requires none of it.
 --
 -- Idempotent, and replays onto an empty database (000_baseline creates
--- `projects`; 024 creates `routines` and `programs`).
+-- `projects`; 024 creates `routines` and `programs`, which 046 renames to
+-- `seasons`).
 -- ─────────────────────────────────────────────────────────────────────────────
 
 alter table public.routines add column if not exists notes text;
-alter table public.programs add column if not exists notes text;
+alter table public.seasons add column if not exists notes text;
 alter table public.projects add column if not exists notes text;

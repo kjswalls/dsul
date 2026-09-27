@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase';
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type DbClient = any;
-import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, Routine, Program, Goal, GoalRole } from './planner-types';
+import type { Task, Habit, Item, ItemTypeDef, TaskItem, HabitItem, Project, Routine, Season, Goal, GoalRole } from './planner-types';
 import { ITEM_TYPES, getItemTypeConfig } from './item-registry';
 import { notifyPlugins } from './openclaw-registry';
 import { COMPLETION_RETRACTION_WINDOW_DAYS, windowStart } from './completion-window';
@@ -820,6 +820,42 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
 }
 
 /**
+ * When each of `ids` was completed — `items.completed_at` (migration 048), by
+ * id, for the rows that have one.
+ *
+ * A side channel rather than a field on Item, for the reasons TrashEntry gives
+ * below for `deletedAt`: the stamp is trigger-maintained and must never enter
+ * TASK_FIELDS, where undo would carry it and the frozen `tasks[]` projection
+ * would publish it. Its one reader is the completion filing
+ * (hooks/use-completion-filing.ts), which asks only about the handful of
+ * finished rows still sitting in the braindump.
+ *
+ * Reads `items`, not items_windowed: the column is not a completion array and
+ * needs no window. A database without the column (pre-048) errors here, and the
+ * caller treats any error as "file nothing".
+ */
+export async function fetchCompletedAt(
+  ids: readonly string[],
+  client?: DbClient,
+): Promise<Map<string, string>> {
+  const supabase = client ?? createClient();
+  const stamps = new Map<string, string>();
+  // Chunked so a large pile cannot outgrow the request URL an `in` list lives in.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from('items')
+      .select('id, completed_at')
+      .in('id', ids.slice(i, i + 100))
+      .not('completed_at', 'is', null);
+    if (error) throw error;
+    for (const row of (data ?? []) as { id: string; completed_at: string | null }[]) {
+      if (row.completed_at) stamps.set(row.id, row.completed_at);
+    }
+  }
+  return stamps;
+}
+
+/**
  * Resolve a container NAME to its id, server-side (migration 027).
  *
  * THE AGENT PATH HAS NO STORE. Every client write goes through planner-store's
@@ -971,7 +1007,7 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
 }
 
 /**
- * A container write that survives a database without migration 046's `notes`
+ * A container write that survives a database without migration 049's `notes`
  * column. PostgREST rejects a whole row naming a column it lacks, so a note
  * riding along would sink a rename, a pause or an undo's full restore with it.
  * A missing-column rejection with `notes` in the row retries once without it:
@@ -989,7 +1025,7 @@ async function writeWithoutNotesFallback(
     delete rest.notes;
     console.warn(
       `[db] ${table} is missing a column this build writes (${error.message}). ` +
-        'Retrying without the note — apply supabase/migrations/046_container_notes.sql.',
+        'Retrying without the note — apply supabase/migrations/049_container_notes.sql.',
     );
     if (Object.keys(rest).length === 0) return false;
     ({ error } = await write(rest));
@@ -1675,7 +1711,7 @@ export async function deleteItemType(id: string, client?: DbClient): Promise<voi
  * user has touched a toggle; absent slugs fall back to the manifest's
  * defaultEnabled (lib/extension-registry.ts).
  *
- * Contract (the programs/routines discrimination, not fetchItemTypes' loose
+ * Contract (the seasons/routines discrimination, not fetchItemTypes' loose
  * one): null means THE TABLE IS MISSING (migration 026 not applied) — the
  * store latches the feature off and its settings rows explain the migration.
  * Any other error (network blip, 5xx, auth hiccup) RETHROWS, because a
@@ -1773,7 +1809,7 @@ export async function setUserExtensionEnabled(
   if (error) throw error;
 }
 
-// ---- Programs & routines (migration 024) ----
+// ---- Seasons & routines (migration 024) ----
 //
 // Two container kinds that gate VISIBILITY rather than describe an item, plus
 // their membership join tables. Deliberately unlike projects in
@@ -1782,7 +1818,7 @@ export async function setUserExtensionEnabled(
 //
 // No webhook notifications, unlike createProject below. The
 // event-name enum is closed and notifyPlugins silently DROPS names a plugin
-// never registered, so a 'programs.updated' would go nowhere; and a synthetic
+// never registered, so a 'seasons.updated' would go nowhere; and a synthetic
 // tasks.updated nudge is equally dead, because every write here is
 // browser-initiated while the plugin registry is an in-memory Map that only
 // ever exists server-side. Deployed plugins refresh on their own ~5-minute
@@ -1803,7 +1839,7 @@ export async function setUserExtensionEnabled(
  * fetchItemTypes uses.
  *
  * The migration is a PARAMETER because this helper is shared. It used to
- * hardcode "024 … programs/routines disabled", so the day goals arrived the one
+ * hardcode "024 … seasons/routines disabled", so the day goals arrived the one
  * diagnostic anybody sees during a deploy window pointed at the wrong migration
  * AND the wrong feature — in exactly the window the message exists to explain.
  */
@@ -1838,11 +1874,12 @@ interface RoutineRow {
   paused_at?: string | null;
   paused_until?: string | null;
   sort_order?: number | null;
-  /** 046. Absent on a database the migration has not reached. */
+  usual_time?: string | null;
+  /** 049. Absent on a database the migration has not reached. */
   notes?: string | null;
 }
 
-interface ProgramRow {
+interface SeasonRow {
   id: string;
   user_id: string;
   name: string;
@@ -1852,9 +1889,9 @@ interface ProgramRow {
   starts_on?: string | null;
   ends_on?: string | null;
   sort_order?: number | null;
-  /** Trigger-maintained; read-only here. See ProgramSchema.updatedAt. */
+  /** Trigger-maintained; read-only here. See SeasonSchema.updatedAt. */
   updated_at?: string | null;
-  /** 046. */
+  /** 049. */
   notes?: string | null;
 }
 
@@ -1961,7 +1998,7 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
       .order('item_id', { ascending: true }),
   ]);
   const error = routines.error ?? members.error;
-  if (error) return unavailable('fetchRoutines', error, '024', 'programs/routines');
+  if (error) return unavailable('fetchRoutines', error, '024', 'seasons/routines');
   const itemIdsByRoutine = new Map<string, string[]>();
   for (const row of (members.data ?? []) as { routine_id: string; item_id: string }[]) {
     const list = itemIdsByRoutine.get(row.routine_id);
@@ -1976,6 +2013,7 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
     pausedAt: row.paused_at ?? undefined,
     pausedUntil: row.paused_until ?? undefined,
     sortOrder: row.sort_order ?? undefined,
+    usualTime: row.usual_time ?? undefined,
     notes: row.notes ?? undefined,
     itemIds: itemIdsByRoutine.get(row.id) ?? [],
   }));
@@ -1992,7 +2030,10 @@ export async function createRoutine(userId: string, routine: Routine, client?: D
     paused_at: routine.pausedAt ?? null,
     paused_until: routine.pausedUntil ?? null,
     sort_order: routine.sortOrder ?? null,
-    // Only when set: a build that lands before 046 must still create.
+    // Only when set, so a database without 047 still takes every routine that
+    // does not use it — the same tolerance pauseColumns keeps for items.
+    ...(routine.usualTime ? { usual_time: routine.usualTime } : {}),
+    // Only when set: a build that lands before 049 must still create.
     ...(routine.notes ? { notes: routine.notes } : {}),
   }, (row) => supabase.from('routines').insert(row));
   if (routine.itemIds.length > 0) {
@@ -2025,6 +2066,7 @@ export async function updateRoutine(
   if ('pausedAt' in updates) row.paused_at = updates.pausedAt ?? null;
   if ('pausedUntil' in updates) row.paused_until = updates.pausedUntil ?? null;
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
+  if ('usualTime' in updates) row.usual_time = updates.usualTime ?? null;
   if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
     await writeWithoutNotesFallback('routines', row, (r) =>
@@ -2061,97 +2103,97 @@ export async function restoreRoutine(userId: string, id: string, client?: DbClie
   if (error) throw error;
 }
 
-export async function fetchPrograms(userId: string, client?: DbClient): Promise<Program[] | null> {
+export async function fetchSeasons(userId: string, client?: DbClient): Promise<Season[] | null> {
   const supabase = client ?? createClient();
-  const [programs, itemMembers, routineMembers] = await Promise.all([
+  const [seasons, itemMembers, routineMembers] = await Promise.all([
     supabase
-      .from('programs')
+      .from('seasons')
       .select('*')
       .eq('user_id', userId)
       .is('deleted_at', null)
       .order('sort_order', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: true }),
-    // Program membership carries no sort_order (only routines order their
+    // Season membership carries no sort_order (only routines order their
     // members), so sort by the member id purely for stability — see the
     // routine_items tiebreak above.
     supabase
-      .from('program_items')
-      .select('program_id, item_id')
+      .from('season_items')
+      .select('season_id, item_id')
       .eq('user_id', userId)
       .order('item_id', { ascending: true }),
     supabase
-      .from('program_routines')
-      .select('program_id, routine_id')
+      .from('season_routines')
+      .select('season_id, routine_id')
       .eq('user_id', userId)
       .order('routine_id', { ascending: true }),
   ]);
-  const error = programs.error ?? itemMembers.error ?? routineMembers.error;
-  if (error) return unavailable('fetchPrograms', error, '024', 'programs/routines');
+  const error = seasons.error ?? itemMembers.error ?? routineMembers.error;
+  if (error) return unavailable('fetchSeasons', error, '024', 'seasons/routines');
   const groupBy = (rows: Record<string, string>[], key: string) => {
     const map = new Map<string, string[]>();
     for (const row of rows) {
-      const list = map.get(row.program_id);
+      const list = map.get(row.season_id);
       if (list) list.push(row[key]);
-      else map.set(row.program_id, [row[key]]);
+      else map.set(row.season_id, [row[key]]);
     }
     return map;
   };
-  const itemIdsByProgram = groupBy((itemMembers.data ?? []) as Record<string, string>[], 'item_id');
-  const routineIdsByProgram = groupBy((routineMembers.data ?? []) as Record<string, string>[], 'routine_id');
-  return (programs.data as ProgramRow[]).map((row) => ({
+  const itemIdsBySeason = groupBy((itemMembers.data ?? []) as Record<string, string>[], 'item_id');
+  const routineIdsBySeason = groupBy((routineMembers.data ?? []) as Record<string, string>[], 'routine_id');
+  return (seasons.data as SeasonRow[]).map((row) => ({
     id: row.id,
     name: row.name,
     icon: row.icon ?? undefined,
     color: row.color ?? undefined,
-    state: row.state as Program['state'],
+    state: row.state as Season['state'],
     startsOn: row.starts_on ?? undefined,
     endsOn: row.ends_on ?? undefined,
     sortOrder: row.sort_order ?? undefined,
-    itemIds: itemIdsByProgram.get(row.id) ?? [],
-    routineIds: routineIdsByProgram.get(row.id) ?? [],
+    itemIds: itemIdsBySeason.get(row.id) ?? [],
+    routineIds: routineIdsBySeason.get(row.id) ?? [],
     updatedAt: row.updated_at ?? undefined,
     notes: row.notes ?? undefined,
   }));
 }
 
-export async function createProgram(userId: string, program: Program, client?: DbClient): Promise<void> {
+export async function createSeason(userId: string, season: Season, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  await writeWithoutNotesFallback('programs', {
-    id: program.id,
+  await writeWithoutNotesFallback('seasons', {
+    id: season.id,
     user_id: userId,
-    name: program.name,
-    icon: program.icon ?? null,
-    color: program.color ?? null,
-    state: program.state,
-    starts_on: program.startsOn ?? null,
-    ends_on: program.endsOn ?? null,
-    sort_order: program.sortOrder ?? null,
-    ...(program.notes ? { notes: program.notes } : {}),
-  }, (row) => supabase.from('programs').insert(row));
+    name: season.name,
+    icon: season.icon ?? null,
+    color: season.color ?? null,
+    state: season.state,
+    starts_on: season.startsOn ?? null,
+    ends_on: season.endsOn ?? null,
+    sort_order: season.sortOrder ?? null,
+    ...(season.notes ? { notes: season.notes } : {}),
+  }, (row) => supabase.from('seasons').insert(row));
   try {
-    if (program.itemIds.length > 0) {
+    if (season.itemIds.length > 0) {
       await reconcileMembership(
-        supabase, 'program_items', 'program_id', program.id, 'item_id', userId, program.itemIds,
+        supabase, 'season_items', 'season_id', season.id, 'item_id', userId, season.itemIds,
       );
     }
-    if (program.routineIds.length > 0) {
+    if (season.routineIds.length > 0) {
       await reconcileMembership(
-        supabase, 'program_routines', 'program_id', program.id, 'routine_id', userId, program.routineIds,
+        supabase, 'season_routines', 'season_id', season.id, 'routine_id', userId, season.routineIds,
       );
     }
   } catch (membershipError) {
     // See createRoutine. Both reconciles sit inside one try because the second
     // failing must also undo the first — the join rows go with the container
     // by CASCADE, so deleting it is enough.
-    await supabase.from('programs').delete().eq('id', program.id).eq('user_id', userId);
+    await supabase.from('seasons').delete().eq('id', season.id).eq('user_id', userId);
     throw membershipError;
   }
 }
 
-export async function updateProgram(
+export async function updateSeason(
   userId: string,
   id: string,
-  updates: Partial<Program>,
+  updates: Partial<Season>,
   client?: DbClient,
 ): Promise<void> {
   const supabase = client ?? createClient();
@@ -2165,36 +2207,36 @@ export async function updateProgram(
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
   if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
-    await writeWithoutNotesFallback('programs', row, (r) =>
-      supabase.from('programs').update(r).eq('id', id).eq('user_id', userId),
+    await writeWithoutNotesFallback('seasons', row, (r) =>
+      supabase.from('seasons').update(r).eq('id', id).eq('user_id', userId),
     );
   }
   if (updates.itemIds) {
     await reconcileMembership(
-      supabase, 'program_items', 'program_id', id, 'item_id', userId, updates.itemIds,
+      supabase, 'season_items', 'season_id', id, 'item_id', userId, updates.itemIds,
     );
   }
   if (updates.routineIds) {
     await reconcileMembership(
-      supabase, 'program_routines', 'program_id', id, 'routine_id', userId, updates.routineIds,
+      supabase, 'season_routines', 'season_id', id, 'routine_id', userId, updates.routineIds,
     );
   }
 }
 
-export async function deleteProgram(userId: string, id: string, client?: DbClient): Promise<void> {
+export async function deleteSeason(userId: string, id: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase
-    .from('programs')
+    .from('seasons')
     .update({ deleted_at: new Date().toISOString() })
     .eq('id', id)
     .eq('user_id', userId);
   if (error) throw error;
 }
 
-export async function restoreProgram(userId: string, id: string, client?: DbClient): Promise<void> {
+export async function restoreSeason(userId: string, id: string, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
   const { error } = await supabase
-    .from('programs')
+    .from('seasons')
     .update({ deleted_at: null })
     .eq('id', id)
     .eq('user_id', userId);
@@ -2204,7 +2246,7 @@ export async function restoreProgram(userId: string, id: string, client?: DbClie
 // ---- Goals (migration 036) ----
 //
 // The third container role: goals say why work matters and suppress nothing.
-// Their one structural difference from routines/programs is that membership
+// Their one structural difference from routines/seasons is that membership
 // carries a ROLE, which is why they do not reuse reconcileMembership.
 
 interface GoalRow {
@@ -2520,7 +2562,7 @@ export async function updateGoal(
   if ('why' in updates) row.why = updates.why ?? null;
   if ('icon' in updates) row.icon = updates.icon ?? null;
   if ('color' in updates) row.color = updates.color ?? null;
-  // `!= null`, matching updateProgram on the identical NOT NULL + CHECK column.
+  // `!= null`, matching updateSeason on the identical NOT NULL + CHECK column.
   // Every other field here is `?? null`, which is right for a nullable column;
   // state is the one where null is illegal, so a `{ state: undefined }` patch
   // (trivially produced by spreading an optional) would otherwise serialise to
@@ -2528,7 +2570,7 @@ export async function updateGoal(
   if ('state' in updates && updates.state != null) row.state = updates.state;
   if ('startsOn' in updates) row.starts_on = updates.startsOn ?? null;
   if ('targetOn' in updates) row.target_on = updates.targetOn ?? null;
-  // IN the allowlist, unlike Program.updatedAt — see GoalSchema.achievedAt. Undo
+  // IN the allowlist, unlike Season.updatedAt — see GoalSchema.achievedAt. Undo
   // of "Mark achieved" has to clear this stamp in the same replay that restores
   // the state, and an allowlist that filtered it out would strand the timestamp
   // on a goal that is active again.
@@ -2707,7 +2749,7 @@ interface ProjectRow {
   time_bucket?: string | null;
   start_time?: string | null;
   duration?: number | null;
-  /** 046. */
+  /** 049. */
   notes?: string | null;
 }
 
@@ -2740,7 +2782,7 @@ function projectToRow(userId: string, project: Project): ProjectRow {
     time_bucket: project.timeBucket ?? null,
     start_time: project.startTime ?? null,
     duration: project.duration ?? null,
-    // Only when set: a build that lands before 046 must still create.
+    // Only when set: a build that lands before 049 must still create.
     ...(project.notes ? { notes: project.notes } : {}),
   };
 }
@@ -2803,7 +2845,7 @@ export async function updateProject(userId: string, id: string, updates: Partial
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
   const wrote = await writeWithoutNotesFallback('projects', row, (r) => supabase.from('projects').update(r).eq('id', id));
-  // A note-only edit against a pre-046 database wrote nothing — say nothing.
+  // A note-only edit against a pre-049 database wrote nothing — say nothing.
   if (wrote) notifyContainerChange(userId, { action: 'update', id, updates });
 }
 
@@ -2881,7 +2923,7 @@ export async function restoreProject(userId: string, id: string, client?: DbClie
 // 'project' — the migration moved the row, `deleted_at` and all, so the bin's
 // contents survive the collapse rather than being orphaned in a table nothing
 // reads.
-export type TrashKind = 'item' | 'project' | 'routine' | 'program' | 'goal';
+export type TrashKind = 'item' | 'project' | 'routine' | 'season' | 'goal';
 
 /**
  * One row of the bin: what it is, what it was called, when it went, and the
@@ -2902,12 +2944,12 @@ export type TrashKind = 'item' | 'project' | 'routine' | 'program' | 'goal';
  *    and is the only producer of `Item[]` and of the frozen `tasks[]`/`habits[]`
  *    legacy projections, so the field would be permanently undefined in every
  *    Task the app or the OpenClaw plugin has ever seen.
- *  - `Program.updatedAt` is the in-repo precedent for exactly this trap, and it
- *    is kept OUT of `updateProgram`'s allowlist for exactly this reason.
+ *  - `Season.updatedAt` is the in-repo precedent for exactly this trap, and it
+ *    is kept OUT of `updateSeason`'s allowlist for exactly this reason.
  *
  * So the timestamp lives here, in the one file that has to own this anyway:
  * every row mapper it needs (`itemFromRow`, `projectFromRow`,
- * `habitGroupFromRow`, and the private `RoutineRow`/`ProgramRow`) is
+ * `habitGroupFromRow`, and the private `RoutineRow`/`SeasonRow`) is
  * module-private. `entity` is a clean, live-shaped object — it never carries a
  * deletion stamp, so nothing a restore hands the store can enter a snapshot and
  * come back as a write.
@@ -2940,7 +2982,7 @@ export interface TrashEntry {
    * then, so the reconnection has to be read back out of the database here.
    */
   memberIds?: string[];
-  entity: Item | Project | Routine | Program | Goal;
+  entity: Item | Project | Routine | Season | Goal;
 }
 
 /** A row shape plus the stamp `select('*')` returns but the interface omits. */
@@ -2997,7 +3039,7 @@ export async function listDeleted(
   const [
     initialItems, projects,
     routines, routineMembers,
-    programs, programItems, programRoutines,
+    seasons, seasonItems, seasonRoutines,
     goals, goalMembers,
   ] =
     await Promise.all([
@@ -3012,10 +3054,10 @@ export async function listDeleted(
         .eq('user_id', userId)
         .order('sort_order', { ascending: true, nullsFirst: false })
         .order('item_id', { ascending: true }),
-      deleted(supabase.from('programs').select('*')).order('deleted_at', { ascending: false }),
-      supabase.from('program_items').select('program_id, item_id')
+      deleted(supabase.from('seasons').select('*')).order('deleted_at', { ascending: false }),
+      supabase.from('season_items').select('season_id, item_id')
         .eq('user_id', userId).order('item_id', { ascending: true }),
-      supabase.from('program_routines').select('program_id, routine_id')
+      supabase.from('season_routines').select('season_id, routine_id')
         .eq('user_id', userId).order('routine_id', { ascending: true }),
       deleted(supabase.from('goals').select('*')).order('deleted_at', { ascending: false }),
       // The ROLE comes back with the id, and that is the whole point. A bin
@@ -3047,7 +3089,7 @@ export async function listDeleted(
   // kind", not "the bin is broken". Without this the goals arm took the WHOLE
   // trash down on every pre-036 database: the bin's consumer turns any
   // rejection into its terminal state, so items, projects,
-  // routines and programs would all have vanished from the 30-day recovery
+  // routines and seasons would all have vanished from the 30-day recovery
   // path until someone ran `db push`. That directly contradicts the deploy-
   // order promise 036's own header makes, and it is exactly why fetchGoals
   // returns null rather than throwing.
@@ -3059,7 +3101,7 @@ export async function listDeleted(
   }
   const failure =
     items.error ?? projects.error ?? routines.error ??
-    routineMembers.error ?? programs.error ?? programItems.error ?? programRoutines.error ??
+    routineMembers.error ?? seasons.error ?? seasonItems.error ?? seasonRoutines.error ??
     (goalsMissing ? null : (goals.error ?? goalMembers.error));
   if (failure) throw failure;
 
@@ -3076,8 +3118,8 @@ export async function listDeleted(
     return map;
   };
   const itemsByRoutine = groupIds((routineMembers.data ?? []) as Record<string, string>[], 'routine_id', 'item_id');
-  const itemsByProgram = groupIds((programItems.data ?? []) as Record<string, string>[], 'program_id', 'item_id');
-  const routinesByProgram = groupIds((programRoutines.data ?? []) as Record<string, string>[], 'program_id', 'routine_id');
+  const itemsBySeason = groupIds((seasonItems.data ?? []) as Record<string, string>[], 'season_id', 'item_id');
+  const routinesBySeason = groupIds((seasonRoutines.data ?? []) as Record<string, string>[], 'season_id', 'routine_id');
 
   // Role-split, matching fetchGoals — including its degrade-to-member rule for
   // a role this build does not recognise, so a restore can never drop a member
@@ -3165,6 +3207,7 @@ export async function listDeleted(
         pausedAt: row.paused_at ?? undefined,
         pausedUntil: row.paused_until ?? undefined,
         sortOrder: row.sort_order ?? undefined,
+        usualTime: row.usual_time ?? undefined,
         itemIds: itemsByRoutine.get(row.id) ?? [],
       },
     });
@@ -3198,21 +3241,21 @@ export async function listDeleted(
     });
   }
 
-  for (const row of (programs.data ?? []) as Trashed<ProgramRow>[]) {
+  for (const row of (seasons.data ?? []) as Trashed<SeasonRow>[]) {
     entries.push({
-      kind: 'program', id: row.id, name: row.name, deletedAt: row.deleted_at,
+      kind: 'season', id: row.id, name: row.name, deletedAt: row.deleted_at,
       icon: row.icon ?? undefined, color: row.color ?? undefined,
       entity: {
         id: row.id,
         name: row.name,
         icon: row.icon ?? undefined,
         color: row.color ?? undefined,
-        state: row.state as Program['state'],
+        state: row.state as Season['state'],
         startsOn: row.starts_on ?? undefined,
         endsOn: row.ends_on ?? undefined,
         sortOrder: row.sort_order ?? undefined,
-        itemIds: itemsByProgram.get(row.id) ?? [],
-        routineIds: routinesByProgram.get(row.id) ?? [],
+        itemIds: itemsBySeason.get(row.id) ?? [],
+        routineIds: routinesBySeason.get(row.id) ?? [],
         updatedAt: row.updated_at ?? undefined,
       },
     });

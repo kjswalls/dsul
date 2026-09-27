@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { buildDsulContext } from '@/lib/ai-context';
-import type { Item, Program, Routine } from '@/lib/planner-types';
+import type { Item, Season, Routine } from '@/lib/planner-types';
 
 /**
  * Beacon's account of the work it is NOT showing (plan Phase 4).
@@ -30,7 +30,7 @@ const task = (id: string, title: string, over: Partial<Item> = {}): Item =>
 const build = (over: {
   items: Item[];
   routines?: Routine[];
-  programs?: Program[];
+  seasons?: Season[];
 }) =>
   buildDsulContext({
     projects: [],
@@ -78,7 +78,7 @@ describe('the Paused section', () => {
   });
 
   it('groups by cause and blames the container, not the item', () => {
-    const program: Program = {
+    const season: Season = {
       id: 'p1',
       name: 'Summer',
       state: 'paused',
@@ -87,10 +87,10 @@ describe('the Paused section', () => {
     };
     const out = build({
       items: [task('t1', 'Swim'), task('t2', 'Read'), task('t3', 'Write report')],
-      programs: [program],
+      seasons: [season],
     });
-    // One line, both titles, the program named with the article-and-noun rule.
-    expect(out).toContain('- Hidden with your Summer program (2): Swim, Read');
+    // One line, both titles, the season named with the article-and-noun rule.
+    expect(out).toContain('- Hidden with your Summer season (2): Swim, Read');
     expect(out).not.toContain('Write report (');
   });
 
@@ -104,7 +104,7 @@ describe('the Paused section', () => {
 
   it('caps the titles per cause but keeps the true count', () => {
     const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
-    const program: Program = {
+    const season: Season = {
       id: 'p1',
       name: 'Summer',
       state: 'paused',
@@ -113,7 +113,7 @@ describe('the Paused section', () => {
     };
     const out = build({
       items: ids.map((id) => task(id, `Item ${id}`)),
-      programs: [program],
+      seasons: [season],
     });
     expect(out).toContain('(7):');
     expect(out).toContain('+2 more');

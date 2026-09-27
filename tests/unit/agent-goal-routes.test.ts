@@ -6,7 +6,7 @@ import { NextRequest } from 'next/server';
  * stand-in (plan Phase 4).
  *
  * **This is not the plan's Phase 4 gate.** That gate is live calls against a
- * running server — the standard programs was held to — and it is still owed:
+ * running server — the standard seasons was held to — and it is still owed:
  * this container has no Supabase credentials, so no goal route in this
  * repository has ever spoken to a database.
  *
@@ -581,7 +581,7 @@ describe('PATCH /api/agent/goals/:id', () => {
     };
     expect(body.error).toBe('Validation failed');
     const message = body.details.fieldErrors.state.join(' ');
-    expect(message).toContain('program');
+    expect(message).toContain('season');
     expect(message).toContain("state: 'achieved'");
     expect(db.goals[0].state).toBe('active');
   });

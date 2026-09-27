@@ -95,7 +95,7 @@ export default function ItemPage() {
   const isLoading = usePlannerStore((s) => s.isLoading);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const [editState, setEditState] = useState<ItemDialogState | null>(null);
   // Latched on the first Edit press — see the note on the dynamic import.
   const [everOpened, setEverOpened] = useState(false);
@@ -142,13 +142,13 @@ export default function ItemPage() {
   // on no grid column, and nothing on the page says why.
   const activationTz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   // The full reason, not just the item's own pause: a member of a paused
-  // routine or an out-of-season program is equally absent from every grid
+  // routine or a switched-off season is equally absent from every grid
   // column, and this page's header otherwise asserts a startDate and a bucket
   // with nothing explaining why.
   const activationReason = suppressionReason(item, toDateStr(new Date(), activationTz), {
     userTimezone: activationTz,
     routines,
-    programs,
+    seasons,
   });
   // The When band's own content, resolved before the JSX so the band can ask
   // whether it has anything to say. A habit has no startDate to answer with —
@@ -227,7 +227,7 @@ export default function ItemPage() {
         {/* The bands — the same rows, in the same order, under the same nouns
             as the edit panel (components/planner/item-bands.tsx). The page had
             been showing a project and nothing else: an item could sit in three
-            routines, a program and two goals and its own page never said so.
+            routines, a season and two goals and its own page never said so.
 
             The container bands come from the registry, which is also what makes
             the empty ones render: a band you have never used is still a band

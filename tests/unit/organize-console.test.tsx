@@ -55,7 +55,7 @@ describe('the Organize console frame', () => {
     // PROJECTS rather than to routines: a habit group described what a habit is
     // about, which is what a project is, not when it counts.
     //
-    // Goals sit LAST in CONTAINERS: routines and programs answer "is this on
+    // Goals sit LAST in CONTAINERS: routines and seasons answer "is this on
     // today", goals answer "why is any of it here", and the daily questions
     // belong above the long one.
     // OVERVIEW leads: the console's front door and the map a first arrival
@@ -63,7 +63,7 @@ describe('the Organize console frame', () => {
     expect(screen.getAllByRole('tab').map((el) => el.textContent)).toEqual([
       'Overview',
       'Routines',
-      'Programs',
+      'Seasons',
       'Goals',
       'Projects',
       'Item types',
@@ -99,23 +99,23 @@ describe('the Organize console frame', () => {
   });
 
   it('lands on the section it is opened with', () => {
-    render(<OrganizeConsole open onOpenChange={() => {}} section="programs" />);
-    expect(tab('Programs')).toHaveAttribute('aria-selected', 'true');
+    render(<OrganizeConsole open onOpenChange={() => {}} section="seasons" />);
+    expect(tab('Seasons')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('re-lands when reopened on a DIFFERENT section without unmounting', () => {
     // The whole reason ActiveDialog carries `tab`: the console stays mounted
     // between opens, so nothing resets on its own. A door that deep-links to
-    // programs after a visit to projects must not land on projects.
+    // seasons after a visit to projects must not land on projects.
     const { rerender } = render(
       <OrganizeConsole open onOpenChange={() => {}} section="projects" />
     );
     expect(tab('Projects')).toHaveAttribute('aria-selected', 'true');
 
     rerender(<OrganizeConsole open={false} onOpenChange={() => {}} section="projects" />);
-    rerender(<OrganizeConsole open onOpenChange={() => {}} section="programs" />);
+    rerender(<OrganizeConsole open onOpenChange={() => {}} section="seasons" />);
 
-    expect(tab('Programs')).toHaveAttribute('aria-selected', 'true');
+    expect(tab('Seasons')).toHaveAttribute('aria-selected', 'true');
   });
 
   it('does not remember the last section a visit ended on', () => {
@@ -139,7 +139,7 @@ describe('the Organize console frame', () => {
     tab('Routines').focus();
     fireEvent.focus(tab('Routines'));
 
-    for (const next of ['Programs', 'Goals', 'Projects', 'Item types', 'Trash']) {
+    for (const next of ['Seasons', 'Goals', 'Projects', 'Item types', 'Trash']) {
       fireEvent.keyDown(document.activeElement!, { key: 'ArrowDown' });
       await tick();
       expect(tab(next)).toHaveFocus();
@@ -173,9 +173,9 @@ describe('the Organize console frame', () => {
     // Today these sentences live only in an empty state and vanish the moment
     // one container exists, taking the only in-app explanation of what a routine
     // IS with them.
-    render(<OrganizeConsole open onOpenChange={() => {}} section="programs" />);
+    render(<OrganizeConsole open onOpenChange={() => {}} section="seasons" />);
     expect(
-      screen.getByText(/A program is a stretch of life/)
+      screen.getByText(/A season is a stretch of life/)
     ).toBeInTheDocument();
   });
 });
@@ -191,7 +191,7 @@ describe('console section slugs', () => {
     // Every existing openDialog({ tab }) literal must keep working — that was a
     // variant rename, not a value migration.
     const ids = CONSOLE_SECTIONS.map((s) => s.id);
-    for (const legacy of ['routines', 'programs', 'projects', 'types']) {
+    for (const legacy of ['routines', 'seasons', 'projects', 'types']) {
       expect(ids).toContain(legacy);
     }
   });

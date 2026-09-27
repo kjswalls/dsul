@@ -23,7 +23,7 @@ import type {
   Project,
   ItemTypeDef,
   Routine,
-  Program,
+  Season,
   Goal,
   GoalRole,
   Proposal,
@@ -63,17 +63,17 @@ import {
   updateRoutine as rawUpdateRoutine,
   deleteRoutine as rawDeleteRoutine,
   restoreRoutine as rawRestoreRoutine,
-  fetchPrograms,
+  fetchSeasons,
   fetchGoals,
   createGoal as dbCreateGoal,
   updateGoal as rawUpdateGoal,
   deleteGoal as rawDeleteGoal,
   recordCheckin as dbRecordCheckin,
   restoreGoal as rawRestoreGoal,
-  createProgram as dbCreateProgram,
-  updateProgram as rawUpdateProgram,
-  deleteProgram as rawDeleteProgram,
-  restoreProgram as rawRestoreProgram,
+  createSeason as dbCreateSeason,
+  updateSeason as rawUpdateSeason,
+  deleteSeason as rawDeleteSeason,
+  restoreSeason as rawRestoreSeason,
   itemDbType,
   adoptContainerMembers,
   type TrashEntry,
@@ -83,13 +83,13 @@ import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
   isPausedOn,
-  isProgramActiveOn,
+  isSeasonActiveOn,
   inactiveItemIdsOn,
   resolvePauseWrite,
   suppressionReason,
   suppressionLabel,
 } from './active';
-import { programStateForSwitch } from './scope-rail';
+import { seasonStateForSwitch } from './scope-rail';
 import { conversionBlock, convertItem, type ConvertRepeat } from './item-convert';
 import { recordReleased } from './sweep-grace';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
@@ -98,7 +98,7 @@ import type { ClearScope } from './local-state';
 import {
   PROJECT_FIELDS,
   ROUTINE_FIELDS,
-  PROGRAM_FIELDS,
+  SEASON_FIELDS,
   GOAL_FIELDS,
 } from '@dsul/types';
 import { saveSettings } from './settings-service';
@@ -337,6 +337,13 @@ interface PlannerStore {
       startTime?: string;
     }[]
   ) => void;
+  /**
+   * File finished braindump items onto the days they were finished on — the
+   * completion filing (lib/completion-filing.ts). Each entry names its own day.
+   * One set(), one history entry, one undo; milestones are refused here as well
+   * as by the selection.
+   */
+  fileCompletedToDays: (entries: readonly { id: string; date: string }[]) => void;
   reorderTasks: (taskIds: string[]) => void;
   /**
    * Apply an accepted AI proposal. Operations are re-validated against the type
@@ -359,14 +366,14 @@ interface PlannerStore {
   /** Bulk assign a mixed selection to a time bucket, untimed (group drag). */
   assignItemsToBucket: (ids: string[], bucket: TimeBucket) => void;
   /**
-   * Add or remove a whole selection's membership of one routine or program, in
+   * Add or remove a whole selection's membership of one routine or season, in
    * one set() ⇒ one undo. The registry gates eligibility (subtasks are not
    * collectible), so a mixed selection collects its eligible subset rather than
    * refusing wholesale — same posture as the other bulk verbs.
    */
   setItemsCollected: (
     ids: string[],
-    kind: 'routine' | 'program',
+    kind: 'routine' | 'season',
     containerId: string,
     member: boolean,
   ) => void;
@@ -469,13 +476,13 @@ interface PlannerStore {
    *  on this, or writes look like they landed and vanish on reload. */
   collectionsAvailable: boolean;
   /**
-   * `programIds`: programs to hold the new routine, in the SAME undo entry.
-   * The link lives in program_routines (FK to routines), so it is written only
+   * `seasonIds`: seasons to hold the new routine, in the SAME undo entry.
+   * The link lives in season_routines (FK to routines), so it is written only
    * once the routine's own row has landed.
    */
   addRoutine: (
     routine: Omit<Routine, 'id'> & { id?: string },
-    opts?: { programIds?: string[]; newItemCount?: number }
+    opts?: { seasonIds?: string[]; newItemCount?: number }
   ) => string;
   updateRoutine: (id: string, updates: Partial<Omit<Routine, 'id'>>) => void;
   removeRoutine: (id: string) => void;
@@ -489,29 +496,29 @@ interface PlannerStore {
    */
   setRoutinePaused: (id: string, paused: boolean, until?: string | null) => void;
 
-  // Programs (migration 024). A period of life — summer, a school year — holding
+  // Seasons (migration 024). A period of life — summer, a school year — holding
   // items and/or whole routines. Same undo/redo treatment as routines, and
   // gated by the same `collectionsAvailable` flag.
-  programs: Program[];
+  seasons: Season[];
   /** `newItemCount`: members created alongside it (createFromDraft) — only for the failure message. */
-  addProgram: (program: Omit<Program, 'id'> & { id?: string }, opts?: { newItemCount?: number }) => string;
-  updateProgram: (id: string, updates: Partial<Omit<Program, 'id'>>) => void;
-  removeProgram: (id: string) => void;
+  addSeason: (season: Omit<Season, 'id'> & { id?: string }, opts?: { newItemCount?: number }) => string;
+  updateSeason: (id: string, updates: Partial<Omit<Season, 'id'>>) => void;
+  removeSeason: (id: string) => void;
   /**
-   * Set a program's tri-state. Separate from `updateProgram` for the same reason
+   * Set a season's tri-state. Separate from `updateSeason` for the same reason
    * `setRoutinePaused` is: it stamps its own action-log label, and the history
    * subscriber fires synchronously inside set().
    */
-  setProgramState: (id: string, state: Program['state']) => void;
+  setSeasonState: (id: string, state: Season['state']) => void;
   /**
-   * Activate one program and pause every other one that is currently on, in a
-   * SINGLE set() — decision 3's "swap programs is just pause A + activate B",
+   * Activate one season and pause every other one that is currently on, in a
+   * SINGLE set() — decision 3's "swap seasons is just pause A + activate B",
    * made one gesture so it is also one ⌘Z.
    */
-  swapToProgram: (id: string) => void;
+  swapToSeason: (id: string) => void;
 
   // Goals (migration 036). The third container role: a goal says WHY work
-  // matters and suppresses nothing, so unlike routines and programs it never
+  // matters and suppresses nothing, so unlike routines and seasons it never
   // reaches lib/active.ts. Its members carry a ROLE — plain member, milestone
   // (a one-shot checkpoint whose startDate is its target date) or check-in (a
   // recurring review) — and the role belongs to the membership, not the item.
@@ -527,7 +534,7 @@ interface PlannerStore {
   /**
    * Move a goal between active / achieved / abandoned.
    *
-   * Separate from `updateGoal` for the reason `setProgramState` is — it stamps
+   * Separate from `updateGoal` for the reason `setSeasonState` is — it stamps
    * its own action-log label — and because the `achievedAt` rule belongs in one
    * place: resolveGoalStateWrite (lib/goals.ts) decides what a state change
    * actually writes, so a same-state write never restamps an achievement date
@@ -607,7 +614,7 @@ const emptyAccountData = () => ({
   projects: [],
   itemTypes: [],
   routines: [],
-  programs: [],
+  seasons: [],
   collectionsAvailable: true,
   // Goals reset with every other slice. Missed, the previous account's goal
   // names, whys and target dates stay in memory after SIGNED_OUT — and
@@ -703,7 +710,7 @@ const unfiled = (item: Item, projects: Project[], removedId: string): Item => {
  */
 export interface Memberships {
   routineIds?: string[];
-  programIds?: string[];
+  seasonIds?: string[];
   goalIds?: string[];
   /**
    * The role the new item takes in every goal named by `goalIds`.
@@ -712,7 +719,7 @@ export interface Memberships {
    * exactly two flows that create a pre-linked item — the Goal chip in the add
    * dialog (plain member) and the console's "new milestone" — and neither
    * creates one item as a milestone here and a check-in there. Deliberately NOT
-   * generalised into `{id, role}[]`: routineIds/programIds are flat arrays and
+   * generalised into `{id, role}[]`: routineIds/seasonIds are flat arrays and
    * `withMembership` is generic over a single `itemIds`, so widening the shape
    * would ripple through both other chips for a case nothing asks for.
    */
@@ -723,7 +730,7 @@ export interface Memberships {
  * Create the item row, THEN its join rows.
  *
  * The order is load-bearing and cannot be parallelised: routine_items and
- * program_items each carry a composite FK (item_id, user_id) -> items(id,
+ * season_items each carry a composite FK (item_id, user_id) -> items(id,
  * user_id), so a join insert that lands before the item does fails with 23503
  * and the membership is silently lost — the store would show it, and a reload
  * would not. Chaining off the create is the whole point of this helper existing
@@ -747,9 +754,9 @@ function persistNewItem(
   });
 
   const routineIds = memberships?.routineIds ?? [];
-  const programIds = memberships?.programIds ?? [];
+  const seasonIds = memberships?.seasonIds ?? [];
   const goalIds = memberships?.goalIds ?? [];
-  if (routineIds.length === 0 && programIds.length === 0 && goalIds.length === 0) return;
+  if (routineIds.length === 0 && seasonIds.length === 0 && goalIds.length === 0) return;
 
   created
     .then(() =>
@@ -760,9 +767,9 @@ function persistNewItem(
           const routine = get().routines.find((r) => r.id === rid);
           return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
         }),
-        ...programIds.map((pid) => {
-          const program = get().programs.find((p) => p.id === pid);
-          return program ? dbUpdateProgram(userId, pid, { itemIds: program.itemIds }) : undefined;
+        ...seasonIds.map((pid) => {
+          const season = get().seasons.find((p) => p.id === pid);
+          return season ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }) : undefined;
         }),
         // All three role arrays, even though only one of them changed: the
         // reconcile diffs whichever roles it is given, so sending the whole
@@ -805,7 +812,7 @@ function withMembership<T extends { id: string; itemIds: string[] }>(
  *
  * Its own function rather than a generalisation, because a goal's membership is
  * three arrays and a role, not one `itemIds`. Widening the generic to carry a
- * role would touch the routine and program chips — which have no roles — for a
+ * role would touch the routine and season chips — which have no roles — for a
  * case only goals have.
  */
 function withGoalMembership(
@@ -833,7 +840,7 @@ function withGoalMembership(
  * is indistinguishable from a bug.
  *
  * Resolved at the TARGET date, not today: dropping a task on a column after a
- * program ends is exactly the case this exists for, and today would answer
+ * season ends is exactly the case this exists for, and today would answer
  * about the wrong day. Suppression that is dateless (a paused item, a paused
  * routine) answers the same on every date, so it is covered by the same call.
  *
@@ -842,13 +849,13 @@ function withGoalMembership(
  * through these actions. One definition, per lib/overdue.ts's founding lesson.
  */
 function landingReceipt(
-  state: { items: Item[]; routines: Routine[]; programs: Program[]; userTimezone: string | null },
+  state: { items: Item[]; routines: Routine[]; seasons: Season[]; userTimezone: string | null },
   ids: readonly string[],
   dateStr?: string,
 ): string | undefined {
   const tz = state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const target = dateStr ?? toDateStr(new Date(), tz);
-  const ctx = { userTimezone: tz, routines: state.routines, programs: state.programs };
+  const ctx = { userTimezone: tz, routines: state.routines, seasons: state.seasons };
   const labels = ids
     .map((id) => state.items.find((i) => i.id === id))
     .filter((item): item is Item => !!item)
@@ -866,7 +873,7 @@ function landingReceipt(
 
 /**
  * The same receipt, for an item CREATED straight into a gate — the item
- * dialog's Routine and Program chips in add mode.
+ * dialog's Routine and Season chips in add mode.
  *
  * setItemsCollected already says this out loud when a selection is collected
  * into a container that is currently off, and creating an item into one is the
@@ -875,9 +882,9 @@ function landingReceipt(
  * it. ADD mode is what this covers, and it is the mode that needs covering
  * most: there is no item yet and the dialog closes on save, so nothing on the
  * surface survives to say anything. EDIT mode is NOT covered and is an open
- * follow-up — its chip writes through `updateProgram` (label `Edit program:`,
+ * follow-up — its chip writes through `updateSeason` (label `Edit season:`,
  * no receipt) and the dialog's activation note resolves at today rather than at
- * the item's date, so a program whose window excludes a future-dated item is
+ * the item's date, so a season whose window excludes a future-dated item is
  * silent there while it speaks here.
  *
  * Both sides are handed in PROSPECTIVELY, and that is the whole difficulty: the
@@ -891,19 +898,19 @@ function landingReceipt(
  * never hide anything and must not be charged for a lookup that says so.
  */
 function newMemberReceipt(
-  state: { items: Item[]; routines: Routine[]; programs: Program[]; userTimezone: string | null },
+  state: { items: Item[]; routines: Routine[]; seasons: Season[]; userTimezone: string | null },
   item: Item,
   memberships: Memberships | undefined,
   dateStr?: string,
 ): string | undefined {
   const routineIds = memberships?.routineIds ?? [];
-  const programIds = memberships?.programIds ?? [];
-  if (routineIds.length === 0 && programIds.length === 0) return undefined;
+  const seasonIds = memberships?.seasonIds ?? [];
+  if (routineIds.length === 0 && seasonIds.length === 0) return undefined;
   return landingReceipt(
     {
       items: [...state.items, item],
       routines: withMembership(state.routines, item.id, routineIds),
-      programs: withMembership(state.programs, item.id, programIds),
+      seasons: withMembership(state.seasons, item.id, seasonIds),
       userTimezone: state.userTimezone,
     },
     [item.id],
@@ -919,14 +926,14 @@ function newMemberReceipt(
  * to work that was never at risk.
  */
 function suppressedNow(
-  state: { items: Item[]; routines: Routine[]; programs: Program[] },
+  state: { items: Item[]; routines: Routine[]; seasons: Season[] },
   todayStr: string,
   tz: string,
 ): Set<string> {
   return inactiveItemIdsOn(state.items, todayStr, {
     userTimezone: tz,
     routines: state.routines,
-    programs: state.programs,
+    seasons: state.seasons,
   });
 }
 
@@ -938,7 +945,7 @@ interface HistoryState {
   // change un-undoable AND would let an unrelated undo silently revert them,
   // since applyHistoryState writes the whole snapshot back.
   routines: Routine[];
-  programs: Program[];
+  seasons: Season[];
   // Goals join for the same reason, with one extra: their membership carries a
   // ROLE, so an undo that restored bare ids would flatten every milestone and
   // check-in back to a plain member — changing a goal's progress denominator
@@ -972,7 +979,7 @@ export type ActionLogEntry = {
  * builds both from these, so the copy and this guard can't drift apart silently.
  */
 export const BUILTIN_ITEM_TYPE_NAMES: readonly string[] = ['task', 'habit', 'custom'];
-export const ORGANIZER_TYPE_NAMES: readonly string[] = ['goal', 'routine', 'program', 'project'];
+export const ORGANIZER_TYPE_NAMES: readonly string[] = ['goal', 'routine', 'season', 'project'];
 export const RESERVED_ITEM_TYPE_NAMES: readonly string[] = [
   ...BUILTIN_ITEM_TYPE_NAMES,
   ...ORGANIZER_TYPE_NAMES,
@@ -1017,7 +1024,7 @@ const TRASH_NOUNS: Record<TrashEntry['kind'], string> = {
   item: 'item',
   project: 'project',
   routine: 'routine',
-  program: 'program',
+  season: 'season',
   goal: 'goal',
 };
 
@@ -1060,7 +1067,7 @@ const saveToHistory = (state: HistoryState) => {
     items: JSON.parse(JSON.stringify(state.items)),
     projects: JSON.parse(JSON.stringify(state.projects)),
     routines: JSON.parse(JSON.stringify(state.routines)),
-    programs: JSON.parse(JSON.stringify(state.programs)),
+    seasons: JSON.parse(JSON.stringify(state.seasons)),
     goals: JSON.parse(JSON.stringify(state.goals)),
   };
 
@@ -1167,14 +1174,14 @@ export const wasNeverCreated = (id: string): boolean => neverCreated.has(id);
  * been the third time.
  */
 /** Every container kind a create can be refused for. */
-type RefusableKind = 'project' | 'routine' | 'program' | 'goal';
+type RefusableKind = 'project' | 'routine' | 'season' | 'goal';
 
 /**
  * The state without a refused container — and without every reference to it,
  * so no later save re-sends an id no row will match: an item's project link,
- * or a program's hold on a routine that never existed.
+ * or a season's hold on a routine that never existed.
  */
-function withoutContainer<S extends Pick<HistoryState, 'items' | 'projects' | 'routines' | 'programs' | 'goals'>>(
+function withoutContainer<S extends Pick<HistoryState, 'items' | 'projects' | 'routines' | 'seasons' | 'goals'>>(
   state: S,
   kind: RefusableKind,
   id: string,
@@ -1190,12 +1197,12 @@ function withoutContainer<S extends Pick<HistoryState, 'items' | 'projects' | 'r
     case 'routine':
       return {
         routines: state.routines.filter((r) => r.id !== id),
-        programs: state.programs.map((p) =>
+        seasons: state.seasons.map((p) =>
           p.routineIds.includes(id) ? { ...p, routineIds: p.routineIds.filter((r) => r !== id) } : p
         ),
       };
-    case 'program':
-      return { programs: state.programs.filter((p) => p.id !== id) };
+    case 'season':
+      return { seasons: state.seasons.filter((p) => p.id !== id) };
     case 'goal':
       return { goals: state.goals.filter((g) => g.id !== id) };
   }
@@ -1228,7 +1235,7 @@ const removeRefusedContainer = (
     usePlannerStore.setState((state) => {
       // Items filed into a refused project lose the reference too, or the next
       // save re-sends an id no row will ever match; a refused routine leaves
-      // every program that was holding it. See withoutContainer.
+      // every season that was holding it. See withoutContainer.
       const next = withoutContainer(state, kind, id);
       return next.items ? { ...next, ...projectItems(next.items) } : next;
     });
@@ -1240,7 +1247,7 @@ const removeRefusedContainer = (
       items: s.items,
       projects: s.projects,
       routines: s.routines,
-      programs: s.programs,
+      seasons: s.seasons,
       goals: s.goals,
     });
   } finally {
@@ -1314,7 +1321,7 @@ const undoFailedCreate = (
 };
 
 /**
- * A routine, program or goal the database refused — taken back out of the
+ * A routine, season or goal the database refused — taken back out of the
  * store AND out of every history snapshot, exactly as a refused project is
  * (removeRefusedContainer), and said out loud.
  *
@@ -1324,7 +1331,7 @@ const undoFailedCreate = (
  * closes, so "the last entry" at set() time would name the wrong one.
  */
 const undoFailedContainerCreate = (
-  kind: 'routine' | 'program' | 'goal',
+  kind: 'routine' | 'season' | 'goal',
   error: unknown,
   id: string,
   name: string,
@@ -1338,8 +1345,8 @@ const undoFailedContainerCreate = (
   const has = (snap: HistoryState) =>
     kind === 'routine'
       ? snap.routines.some((r) => r.id === id)
-      : kind === 'program'
-        ? snap.programs.some((p) => p.id === id)
+      : kind === 'season'
+        ? snap.seasons.some((p) => p.id === id)
         : snap.goals.some((g) => g.id === id);
   let entryId: string | null = null;
   for (let i = 1; i < historyStack.length; i += 1) {
@@ -1389,7 +1396,7 @@ function afterItemCreates<T>(ids: readonly string[], write: () => Promise<T>): P
 }
 
 /**
- * Routine / program / goal creates still in flight, by id.
+ * Routine / season / goal creates still in flight, by id.
  *
  * A container born holding brand-new items waits a round trip before its own
  * INSERT (above) — and in that window the user can already act on it: "Add &
@@ -1429,12 +1436,12 @@ const dbDeleteRoutine: typeof rawDeleteRoutine = (userId, id, ...rest) =>
   afterContainerCreate(id, () => rawDeleteRoutine(userId, id, ...rest));
 const dbRestoreRoutine: typeof rawRestoreRoutine = (userId, id, ...rest) =>
   afterContainerCreate(id, () => rawRestoreRoutine(userId, id, ...rest));
-const dbUpdateProgram: typeof rawUpdateProgram = (userId, id, ...rest) =>
-  afterContainerCreate(id, () => rawUpdateProgram(userId, id, ...rest));
-const dbDeleteProgram: typeof rawDeleteProgram = (userId, id, ...rest) =>
-  afterContainerCreate(id, () => rawDeleteProgram(userId, id, ...rest));
-const dbRestoreProgram: typeof rawRestoreProgram = (userId, id, ...rest) =>
-  afterContainerCreate(id, () => rawRestoreProgram(userId, id, ...rest));
+const dbUpdateSeason: typeof rawUpdateSeason = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawUpdateSeason(userId, id, ...rest));
+const dbDeleteSeason: typeof rawDeleteSeason = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawDeleteSeason(userId, id, ...rest));
+const dbRestoreSeason: typeof rawRestoreSeason = (userId, id, ...rest) =>
+  afterContainerCreate(id, () => rawRestoreSeason(userId, id, ...rest));
 const dbUpdateGoal: typeof rawUpdateGoal = (userId, id, ...rest) =>
   afterContainerCreate(id, () => rawUpdateGoal(userId, id, ...rest));
 const dbDeleteGoal: typeof rawDeleteGoal = (userId, id, ...rest) =>
@@ -1588,7 +1595,7 @@ export const usePlannerStore = create<PlannerStore>()(
        * Diffed rather than inferred from the patch: "was hidden, is now
        * visible" is the only question that matters, and the path algebra makes
        * it genuinely hard to answer any other way (an item with a second live
-       * path was never hidden; one held by two paused programs still is).
+       * path was never hidden; one held by two paused seasons still is).
        */
       const withReleaseGrace = (mutate: () => void) => {
         const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -2089,7 +2096,7 @@ export const usePlannerStore = create<PlannerStore>()(
         if (!get().itemTypesAvailable) return;
         const name = def.name.trim().toLowerCase();
         // The organizer nouns are reserved for NEW types (2026-09-25): the "new"
-        // dialog's type menu lists Goal / Routine / Program / Project beside the
+        // dialog's type menu lists Goal / Routine / Season / Project beside the
         // item types, and a same-named type would read as the organizer. Types
         // that already carry one of these names keep it; this only refuses new
         // ones. Mirrored, with a sentence, by the console's slugProblem.
@@ -2122,28 +2129,28 @@ export const usePlannerStore = create<PlannerStore>()(
       addRoutine: (routine, opts) => {
         const userId = get().userId;
         const full: Routine = { ...routine, id: routine.id ?? crypto.randomUUID() };
-        const programIds = (opts?.programIds ?? []).filter((pid) => get().programs.some((p) => p.id === pid));
+        const seasonIds = (opts?.seasonIds ?? []).filter((pid) => get().seasons.some((p) => p.id === pid));
         const label = `Add routine: ${full.name}`;
         setNextActionLabel(label);
         // Born with members, a routine can RELEASE items — one a paused routine
         // was hiding gets a live path through this one — and the sweep's grace
         // has to hear about it, exactly as it does for updateRoutine. Joining a
-        // program can do the same (or hide them, which needs no grace).
+        // season can do the same (or hide them, which needs no grace).
         const run = () =>
           set({
             routines: [...get().routines, full],
-            programs: programIds.length
-              ? get().programs.map((p) =>
-                  programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, full.id] } : p
+            seasons: seasonIds.length
+              ? get().seasons.map((p) =>
+                  seasonIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, full.id] } : p
                 )
-              : get().programs,
+              : get().seasons,
           });
-        if (full.itemIds.length > 0 || programIds.length > 0) withReleaseGrace(run);
+        if (full.itemIds.length > 0 || seasonIds.length > 0) withReleaseGrace(run);
         else run();
         if (userId) {
           // IN ORDER: brand-new member items first, then the routine (its
-          // routine_items rows point at them), then the programs' holds (their
-          // program_routines rows point at it). Each FK is composite, and a join
+          // routine_items rows point at them), then the seasons' holds (their
+          // season_routines rows point at it). Each FK is composite, and a join
           // written early is skipped as "member no longer exists".
           const waitingOn = full.itemIds.filter((m) => pendingItemCreates.has(m));
           const created = afterItemCreates(full.itemIds, () => dbCreateRoutine(userId, full));
@@ -2152,14 +2159,14 @@ export const usePlannerStore = create<PlannerStore>()(
             .then(
               () =>
                 Promise.all(
-                  programIds.map((pid) => {
-                    const program = get().programs.find((p) => p.id === pid);
-                    return program
-                      ? dbUpdateProgram(userId, pid, { routineIds: program.routineIds }).catch((error) => {
+                  seasonIds.map((pid) => {
+                    const season = get().seasons.find((p) => p.id === pid);
+                    return season
+                      ? dbUpdateSeason(userId, pid, { routineIds: season.routineIds }).catch((error) => {
                           // The routine is real; only the hold failed. Say so,
                           // and leave the routine standing.
-                          console.error('link routine to program failed', error);
-                          toast.error(`“${full.name}” was saved, but couldn't be added to ${program.name}.`);
+                          console.error('link routine to season failed', error);
+                          toast.error(`“${full.name}” was saved, but couldn't be added to ${season.name}.`);
                         })
                       : undefined;
                   })
@@ -2257,136 +2264,136 @@ export const usePlannerStore = create<PlannerStore>()(
         if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
       },
 
-      // ── Programs (Phase 3) ─────────────────────────────────────────────────
-      programs: [],
-      addProgram: (program, opts) => {
+      // ── Seasons (Phase 3) ─────────────────────────────────────────────────
+      seasons: [],
+      addSeason: (season, opts) => {
         const userId = get().userId;
-        const full: Program = { ...program, id: program.id ?? crypto.randomUUID() };
-        const label = `Add program: ${full.name}`;
+        const full: Season = { ...season, id: season.id ?? crypto.randomUUID() };
+        const label = `Add season: ${full.name}`;
         setNextActionLabel(label);
-        // See addRoutine: a program born live with members can release items.
-        const run = () => set({ programs: [...get().programs, full] });
+        // See addRoutine: a season born live with members can release items.
+        const run = () => set({ seasons: [...get().seasons, full] });
         if (full.itemIds.length > 0 || full.routineIds.length > 0) withReleaseGrace(run);
         else run();
         // Brand-new member items first — see addRoutine.
         if (userId) {
           const waitingOn = full.itemIds.filter((m) => pendingItemCreates.has(m));
           // A picked routine may itself still be waiting to land (it was just
-          // made with new items): its program_routines row would 23503 and be
+          // made with new items): its season_routines row would 23503 and be
           // skipped, so the hold would vanish on reload. Wait for it too.
           const routineWaits = full.routineIds
             .map((r) => pendingContainerCreates.get(r))
             .filter((p): p is Promise<void> => !!p);
-          const create = () => afterItemCreates(full.itemIds, () => dbCreateProgram(userId, full));
+          const create = () => afterItemCreates(full.itemIds, () => dbCreateSeason(userId, full));
           const created = routineWaits.length ? Promise.all(routineWaits).then(create) : create();
           trackContainerCreate(full.id, created, waitingOn, routineWaits.length > 0);
           created.catch((error) =>
-            undoFailedContainerCreate('program', error, full.id, full.name, opts?.newItemCount)
+            undoFailedContainerCreate('season', error, full.id, full.name, opts?.newItemCount)
           );
         }
         return full.id;
       },
-      updateProgram: (id, updates) => {
+      updateSeason: (id, updates) => {
         const userId = get().userId;
-        const program = get().programs.find((p) => p.id === id);
-        if (!program) return;
-        setNextActionLabel(`Edit program: ${updates.name ?? program.name}`);
+        const season = get().seasons.find((p) => p.id === id);
+        if (!season) return;
+        setNextActionLabel(`Edit season: ${updates.name ?? season.name}`);
         const run = () =>
-          set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...updates } : p)) });
+          set({ seasons: get().seasons.map((p) => (p.id === id ? { ...p, ...updates } : p)) });
         // Membership OR a date range: moving `startsOn` earlier switches the
-        // program on for today just as surely as adding a member does.
+        // season on for today just as surely as adding a member does.
         if (updates.itemIds || updates.routineIds || 'startsOn' in updates || 'endsOn' in updates) {
           withReleaseGrace(run);
         } else {
           run();
         }
-        if (userId) dbUpdateProgram(userId, id, updates).catch(console.error);
+        if (userId) dbUpdateSeason(userId, id, updates).catch(console.error);
       },
-      removeProgram: (id) => {
+      removeSeason: (id) => {
         const userId = get().userId;
-        const program = get().programs.find((p) => p.id === id);
-        if (!program) return;
+        const season = get().seasons.find((p) => p.id === id);
+        if (!season) return;
         // Soft delete, and the join rows survive it — so a restore inside the
         // 30-day purge window brings the membership back intact, and undo of a
         // delete is a real undo rather than an empty shell. Note the members
-        // REAPPEAR while the program is trashed: a routine it was the only
+        // REAPPEAR while the season is trashed: a routine it was the only
         // holder of falls back to standalone (resolver decision 3). That is the
         // designed behaviour — a container in the trash must not keep hiding
         // work behind a control nobody can reach.
-        setNextActionLabel(`Delete program: ${program.name}`);
-        withReleaseGrace(() => set({ programs: get().programs.filter((p) => p.id !== id) }));
-        if (userId) dbDeleteProgram(userId, id).catch(console.error);
+        setNextActionLabel(`Delete season: ${season.name}`);
+        withReleaseGrace(() => set({ seasons: get().seasons.filter((p) => p.id !== id) }));
+        if (userId) dbDeleteSeason(userId, id).catch(console.error);
       },
-      setProgramState: (id, state) => {
+      setSeasonState: (id, state) => {
         const userId = get().userId;
-        const program = get().programs.find((p) => p.id === id);
-        if (!program || program.state === state) return;
+        const season = get().seasons.find((p) => p.id === id);
+        if (!season || season.state === state) return;
         const verb =
           state === 'active' ? 'Activate' : state === 'paused' ? 'Pause' : 'Auto-schedule';
-        // Written directly rather than through updateProgram for the same
-        // reason setRoutinePaused is: that action stamps its own "Edit program"
+        // Written directly rather than through updateSeason for the same
+        // reason setRoutinePaused is: that action stamps its own "Edit season"
         // label, and the history subscriber fires synchronously inside its
         // set(), so a label applied afterwards lands on the user's NEXT action.
-        setNextActionLabel(`${verb} program: ${program.name}`);
+        setNextActionLabel(`${verb} season: ${season.name}`);
         // `updatedAt` is stamped optimistically to mirror what the DB trigger is
         // about to do. Without it the store keeps the value it loaded with, and
-        // the overdue sweep's grace (c) — whose ONLY evidence that a program
+        // the overdue sweep's grace (c) — whose ONLY evidence that a season
         // recently stopped hiding its members is this timestamp — would not fire
-        // until the next reload. Turning a program on and leaving the tab open
+        // until the next reload. Turning a season on and leaving the tab open
         // overnight is exactly the case it protects.
         const stamped = { state, updatedAt: new Date().toISOString() };
-        set({ programs: get().programs.map((p) => (p.id === id ? { ...p, ...stamped } : p)) });
-        if (userId) dbUpdateProgram(userId, id, { state }).catch(console.error);
+        set({ seasons: get().seasons.map((p) => (p.id === id ? { ...p, ...stamped } : p)) });
+        if (userId) dbUpdateSeason(userId, id, { state }).catch(console.error);
       },
-      swapToProgram: (id) => {
+      swapToSeason: (id) => {
         const userId = get().userId;
-        const target = get().programs.find((p) => p.id === id);
+        const target = get().seasons.find((p) => p.id === id);
         if (!target) return;
-        // Resolved at TODAY, never at selectedDate — switching programs is a
+        // Resolved at TODAY, never at selectedDate — switching seasons is a
         // statement about now, not about the week being browsed.
         const tz = get().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
         const todayStr = toDateStr(new Date(), tz);
 
-        const patches = new Map<string, Partial<Program>>();
-        // Only write a program that is not ALREADY where the swap wants it. An
-        // `auto` program inside its own date range is already carrying its
+        const patches = new Map<string, Partial<Season>>();
+        // Only write a season that is not ALREADY where the swap wants it. An
+        // `auto` season inside its own date range is already carrying its
         // members, and stamping 'active' would silently convert a self-managing
-        // program into one the user must remember to turn off.
+        // season into one the user must remember to turn off.
         //
-        // The state written comes from `programStateForSwitch` — the same rule
+        // The state written comes from `seasonStateForSwitch` — the same rule
         // the scope rail and the palette use — rather than a literal
         // 'active'/'paused'. Writing the literal is only half right: it can
-        // never hand a program back to `auto`, so swapping away from a summer
+        // never hand a season back to `auto`, so swapping away from a summer
         // and back again loses the Aug 31 end it was following.
-        if (!isProgramActiveOn(target, todayStr)) {
-          patches.set(id, { state: programStateForSwitch(target, true, todayStr) });
+        if (!isSeasonActiveOn(target, todayStr)) {
+          patches.set(id, { state: seasonStateForSwitch(target, true, todayStr) });
         }
-        for (const program of get().programs) {
-          if (program.id === id) continue;
-          if (isProgramActiveOn(program, todayStr)) {
-            patches.set(program.id, { state: programStateForSwitch(program, false, todayStr) });
+        for (const season of get().seasons) {
+          if (season.id === id) continue;
+          if (isSeasonActiveOn(season, todayStr)) {
+            patches.set(season.id, { state: seasonStateForSwitch(season, false, todayStr) });
           }
         }
         if (patches.size === 0) return;
 
         // ONE set() for the whole swap: one history entry, one ⌘Z. A loop over
-        // setProgramState would cost one undo press per program that happened
+        // setSeasonState would cost one undo press per season that happened
         // to be on, which for a verb the user experiences as a single switch is
         // effectively not undoable.
-        setNextActionLabel(`Switch to program: ${target.name}`);
+        setNextActionLabel(`Switch to season: ${target.name}`);
         const now = new Date().toISOString();
         set({
-          programs: get().programs.map((p) => {
+          seasons: get().seasons.map((p) => {
             const patch = patches.get(p.id);
-            // Same optimistic `updatedAt` as setProgramState, and needed most
-            // here: a swap is precisely the moment a dormant program's members
+            // Same optimistic `updatedAt` as setSeasonState, and needed most
+            // here: a swap is precisely the moment a dormant season's members
             // flood back in, already carrying weeks of accrued overdue age.
             return patch ? { ...p, ...patch, updatedAt: now } : p;
           }),
         });
         if (userId) {
-          for (const [programId, patch] of patches) {
-            dbUpdateProgram(userId, programId, patch).catch(console.error);
+          for (const [seasonId, patch] of patches) {
+            dbUpdateSeason(userId, seasonId, patch).catch(console.error);
           }
         }
       },
@@ -2611,7 +2618,7 @@ export const usePlannerStore = create<PlannerStore>()(
             projects,
             itemTypesResult,
             routinesResult,
-            programsResult,
+            seasonsResult,
             goalsResult,
           ] =
             await Promise.all([
@@ -2621,13 +2628,13 @@ export const usePlannerStore = create<PlannerStore>()(
               fetchRoutines(userId),
               // Rides the SAME Promise.all as items, deliberately: the overdue
               // sweep's only hydration gate is `!isLoading`, which is cleared by
-              // the single set() below. Fetch programs anywhere else — a lazy
+              // the single set() below. Fetch seasons anywhere else — a lazy
               // load, a second effect — and the sweep runs against an empty
-              // list, reads every member of an inactive program as unprotected,
+              // list, reads every member of an inactive season as unprotected,
               // and unschedules them in one silent batch. See use-overdue-sweep.
-              fetchPrograms(userId),
+              fetchSeasons(userId),
               // Goals ride the same Promise.all, and for the sweep's sake as
-              // much as the programs above: the auto-age sweep subtracts
+              // much as the seasons above: the auto-age sweep subtracts
               // milestone-role items before unscheduling anything, and its only
               // hydration gate is the `!isLoading` that the single set() below
               // clears. Fetch goals anywhere else and the sweep runs against an
@@ -2672,13 +2679,13 @@ export const usePlannerStore = create<PlannerStore>()(
           // null means the table is unreachable, NOT "no rows" — the flag gates
           // the UI so a write can't look like it landed and vanish.
           const routines = routinesResult ?? [];
-          const programs = programsResult ?? [];
+          const seasons = seasonsResult ?? [];
           const goals = goalsResult ?? [];
 
           // Custom types must be resolvable before any item renders.
           hydrateCustomTypes(itemTypes);
 
-          const snapshot = { items, projects, routines, programs, goals };
+          const snapshot = { items, projects, routines, seasons, goals };
 
           // Manually push the initial state to history (session start)
           historyStack.push(JSON.parse(JSON.stringify(snapshot)));
@@ -2699,11 +2706,11 @@ export const usePlannerStore = create<PlannerStore>()(
             itemTypes,
             itemTypesAvailable: itemTypesResult !== null,
             routines,
-            programs,
+            seasons,
             // Both tables arrive with migration 024, so either coming back
             // unreachable means the same thing: the whole collections feature
             // is not deployed and its UI must stay hidden.
-            collectionsAvailable: routinesResult !== null && programsResult !== null,
+            collectionsAvailable: routinesResult !== null && seasonsResult !== null,
             goals,
             goalsAvailable: goalsResult !== null,
             isLoading: false,
@@ -2792,7 +2799,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ...projectItems([...state.items, item]),
           routines: withMembership(state.routines, item.id, memberships?.routineIds),
           goals: withGoalMembership(state.goals, item.id, memberships?.goalIds, memberships?.goalRole),
-          programs: withMembership(state.programs, item.id, memberships?.programIds),
+          seasons: withMembership(state.seasons, item.id, memberships?.seasonIds),
         }));
 
         const userId = get().userId;
@@ -2813,7 +2820,7 @@ export const usePlannerStore = create<PlannerStore>()(
           projectId: projectIdFor(taskData.project, get().projects),
         };
         // Resolved at the item's OWN start date, not today — a task created
-        // for a Monday inside a program that ends on Sunday is exactly the case
+        // for a Monday inside a season that ends on Sunday is exactly the case
         // decision 11's receipt exists for, and today would answer about the
         // wrong day. Undated (braindump) items have no landing date but they do
         // have a landing surface, so they fall back to today like every other
@@ -2826,7 +2833,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ...projectItems([...state.items, task]),
           routines: withMembership(state.routines, task.id, memberships?.routineIds),
           goals: withGoalMembership(state.goals, task.id, memberships?.goalIds, memberships?.goalRole),
-          programs: withMembership(state.programs, task.id, memberships?.programIds),
+          seasons: withMembership(state.seasons, task.id, memberships?.seasonIds),
         }));
 
         const userId = get().userId;
@@ -3443,6 +3450,42 @@ export const usePlannerStore = create<PlannerStore>()(
         );
       },
 
+      fileCompletedToDays: (entries) => {
+        const dateById = new Map(entries.map((e) => [e.id, e.date]));
+        // Milestones refused at the verb too, not only by the selection that
+        // feeds it — the same belt-and-braces unscheduleTasks and
+        // moveTasksToDate wear, because a milestone's startDate is its target.
+        const milestones = milestoneItemIds(get().goals);
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && dateById.has(i.id) && !milestones.has(i.id),
+        );
+        if (targets.length === 0) return;
+
+        // Not a SIGNIFICANT_ACTIONS prefix (hooks/use-undo-toast.ts), on
+        // purpose: this runs unattended at load, and a five-second toast is a
+        // confirmation of something the user just did. ⌘Z still reverses it.
+        setNextActionLabel(`Filed finished items: ${targets.length}`);
+
+        // Field-for-field the landing moveTasksToDate gives a bulk carry: dated,
+        // in a bucket so the day actually draws it, untimed so a filed row
+        // never claims a slot on the grid after the fact.
+        const updatesFor = (id: string): Partial<Task> => ({
+          startDate: dateById.get(id)!,
+          timeBucket: 'anytime',
+          startTime: undefined,
+          isScheduled: false,
+        });
+
+        const targetIds = new Set(targets.map((t) => t.id));
+        set((state) => projectItems(state.items.map((i) => (
+          targetIds.has(i.id) ? ({ ...i, ...updatesFor(i.id) } as Item) : i
+        ))));
+
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), updatesFor(item.id)).catch(console.error),
+        );
+      },
+
       reorderTasks: (taskIds) => {
         setNextActionLabel('Reorder tasks');
         // Tasks absent from taskIds keep their current order — a partial list
@@ -3591,7 +3634,7 @@ export const usePlannerStore = create<PlannerStore>()(
       },
 
       /**
-       * Collect a selection into a routine or program, or release it.
+       * Collect a selection into a routine or season, or release it.
        *
        * The membership half of the bulk verbs, and the reason it is one action
        * rather than N calls to updateRoutine: each of those would push its own
@@ -3601,7 +3644,7 @@ export const usePlannerStore = create<PlannerStore>()(
        * Both directions have a consequence the user must be told about, and they
        * are opposites:
        *  · ADDING to a container that is currently off hides the items on the
-       *    spot. Allowed — that is what collecting into a paused program means —
+       *    spot. Allowed — that is what collecting into a paused season means —
        *    but never silently, so it carries decision 11's receipt.
        *  · REMOVING from a container that was hiding them makes them visible
        *    again, possibly weeks overdue, so it needs the sweep's release grace
@@ -3617,7 +3660,7 @@ export const usePlannerStore = create<PlannerStore>()(
           .map((i) => i.id);
         if (eligible.length === 0) return;
 
-        const list = kind === 'routine' ? get().routines : get().programs;
+        const list = kind === 'routine' ? get().routines : get().seasons;
         const container = list.find((c) => c.id === containerId);
         if (!container) return;
 
@@ -3633,7 +3676,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const withNext = <T extends { id: string; itemIds: string[] }>(cs: T[]) =>
           cs.map((c) => (c.id === containerId ? { ...c, itemIds: nextIds } : c));
         const nextRoutines = kind === 'routine' ? withNext(get().routines) : get().routines;
-        const nextPrograms = kind === 'program' ? withNext(get().programs) : get().programs;
+        const nextSeasons = kind === 'season' ? withNext(get().seasons) : get().seasons;
 
         // Resolved against the PROSPECTIVE containers, not the current ones.
         // Every other caller of landingReceipt moves an item's date while the
@@ -3646,7 +3689,7 @@ export const usePlannerStore = create<PlannerStore>()(
               {
                 items: get().items,
                 routines: nextRoutines,
-                programs: nextPrograms,
+                seasons: nextSeasons,
                 userTimezone: get().userTimezone,
               },
               eligible,
@@ -3661,14 +3704,14 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         withReleaseGrace(() =>
-          set(kind === 'routine' ? { routines: nextRoutines } : { programs: nextPrograms }),
+          set(kind === 'routine' ? { routines: nextRoutines } : { seasons: nextSeasons }),
         );
 
         if (userId) {
           const write =
             kind === 'routine'
               ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds })
-              : dbUpdateProgram(userId, containerId, { itemIds: nextIds });
+              : dbUpdateSeason(userId, containerId, { itemIds: nextIds });
           write.catch(console.error);
         }
       },
@@ -4101,7 +4144,7 @@ export const usePlannerStore = create<PlannerStore>()(
           ...projectItems([...state.items, habit]),
           routines: withMembership(state.routines, habit.id, memberships?.routineIds),
           goals: withGoalMembership(state.goals, habit.id, memberships?.goalIds, memberships?.goalRole),
-          programs: withMembership(state.programs, habit.id, memberships?.programIds),
+          seasons: withMembership(state.seasons, habit.id, memberships?.seasonIds),
         }));
 
         const userId = get().userId;
@@ -4386,7 +4429,7 @@ export const usePlannerStore = create<PlannerStore>()(
             items: s.items,
             projects: s.projects,
             routines: s.routines,
-            programs: s.programs,
+            seasons: s.seasons,
             goals: s.goals,
           };
           updatePrevStateBaseline(seeded);
@@ -4769,10 +4812,10 @@ export const usePlannerStore = create<PlannerStore>()(
               // very membership the soft delete preserved.
               return { routines: [...state.routines, routine] };
             }
-            case 'program': {
-              const program = entry.entity as Program;
-              if (state.programs.some((p) => p.id === program.id)) return null;
-              return { programs: [...state.programs, program] };
+            case 'season': {
+              const season = entry.entity as Season;
+              if (state.seasons.some((p) => p.id === season.id)) return null;
+              return { seasons: [...state.seasons, season] };
             }
             case 'goal': {
               const goal = entry.entity as Goal;
@@ -4799,7 +4842,7 @@ export const usePlannerStore = create<PlannerStore>()(
          * A restored container releases its members' suppression, so this rides
          * withReleaseGrace exactly as removeRoutine and updateRoutine do.
          */
-        if (entry.kind === 'routine' || entry.kind === 'program') {
+        if (entry.kind === 'routine' || entry.kind === 'season') {
           withReleaseGrace(() => set(next));
         } else {
           set(next);
@@ -4816,8 +4859,8 @@ export const usePlannerStore = create<PlannerStore>()(
           case 'routine':
             dbRestoreRoutine(userId, entry.id).catch(console.error);
             break;
-          case 'program':
-            dbRestoreProgram(userId, entry.id).catch(console.error);
+          case 'season':
+            dbRestoreSeason(userId, entry.id).catch(console.error);
             break;
           case 'goal':
             // No withReleaseGrace above for this kind, deliberately: a goal
@@ -4987,7 +5030,7 @@ function applyHistoryState(
   // "every row deleted" and syncContainers will faithfully soft-delete them all.
   // Every key of HistoryState must be snapshotted; this only softens the crash.
   const restoredRoutines: Routine[] = JSON.parse(JSON.stringify(target.routines ?? []));
-  const restoredPrograms: Program[] = JSON.parse(JSON.stringify(target.programs ?? []));
+  const restoredSeasons: Season[] = JSON.parse(JSON.stringify(target.seasons ?? []));
   const restoredGoals: Goal[] = JSON.parse(JSON.stringify(target.goals ?? []));
 
   const info = getHistoryInfo();
@@ -4995,7 +5038,7 @@ function applyHistoryState(
     ...projectItems(restoredItems),
     projects: restoredProjects,
     routines: restoredRoutines,
-    programs: restoredPrograms,
+    seasons: restoredSeasons,
     goals: restoredGoals,
     canUndo: flags.canUndo,
     canRedo: flags.canRedo,
@@ -5007,7 +5050,7 @@ function applyHistoryState(
     items: restoredItems,
     projects: restoredProjects,
     routines: restoredRoutines,
-    programs: restoredPrograms,
+    seasons: restoredSeasons,
     goals: restoredGoals,
   });
 
@@ -5102,15 +5145,15 @@ function applyHistoryState(
     (id, patch) => dbUpdateRoutine(userId, id, patch),
     (id) => dbDeleteRoutine(userId, id),
   );
-  // Programs carry TWO member arrays (itemIds and routineIds), both in
-  // PROGRAM_FIELDS and both reconciled by dbUpdateProgram against their own
+  // Seasons carry TWO member arrays (itemIds and routineIds), both in
+  // SEASON_FIELDS and both reconciled by dbUpdateSeason against their own
   // join table. Undoing "added Morning to Summer" therefore arrives here as a
   // {routineIds} patch and deletes exactly that one join row.
   syncContainers(
-    currentState.programs, restoredPrograms, PROGRAM_FIELDS,
-    (id) => dbRestoreProgram(userId, id),
-    (id, patch) => dbUpdateProgram(userId, id, patch),
-    (id) => dbDeleteProgram(userId, id),
+    currentState.seasons, restoredSeasons, SEASON_FIELDS,
+    (id) => dbRestoreSeason(userId, id),
+    (id, patch) => dbUpdateSeason(userId, id, patch),
+    (id) => dbDeleteSeason(userId, id),
   );
   // Goals carry THREE member arrays, all in GOAL_FIELDS, and dbUpdateGoal
   // reconciles whichever of them the diff produced — a patch naming one role
@@ -5190,7 +5233,7 @@ const historySlice = (s: HistoryState): HistoryState => ({
   items: s.items,
   projects: s.projects,
   routines: s.routines,
-  programs: s.programs,
+  seasons: s.seasons,
   goals: s.goals,
 });
 

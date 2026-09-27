@@ -11,8 +11,8 @@ import * as TabsPrimitive from '@radix-ui/react-tabs';
  * as siblings of the tabs INSIDE the TabsList. That is a structural change to a
  * `role="tablist"`, and two things have to survive it:
  *
- *   1. `getByRole('tab', { name: 'Programs' })` must keep resolving. The e2e suite
- *      drives the manager that way (programs.spec.ts) and
+ *   1. `getByRole('tab', { name: 'Seasons' })` must keep resolving. The e2e suite
+ *      drives the manager that way (seasons.spec.ts) and
  *      Phase 2's acceptance criterion is that that spec runs UNCHANGED.
  *
  *   2. Radix's RovingFocusGroup must step OVER the non-tab children rather than
@@ -34,7 +34,7 @@ function Rail({ value = 'routines' }: { value?: string }) {
       <TabsPrimitive.List aria-label="Sections">
         <div role="presentation">CONTAINERS</div>
         <TabsPrimitive.Trigger value="routines">Routines</TabsPrimitive.Trigger>
-        <TabsPrimitive.Trigger value="programs">Programs</TabsPrimitive.Trigger>
+        <TabsPrimitive.Trigger value="seasons">Seasons</TabsPrimitive.Trigger>
         <div role="presentation">LABELS</div>
         <TabsPrimitive.Trigger value="projects">Projects</TabsPrimitive.Trigger>
         <TabsPrimitive.Trigger value="types">Item types</TabsPrimitive.Trigger>
@@ -43,7 +43,7 @@ function Rail({ value = 'routines' }: { value?: string }) {
         <TabsPrimitive.Trigger value="trash">Trash</TabsPrimitive.Trigger>
       </TabsPrimitive.List>
       <TabsPrimitive.Content value="routines">routines pane</TabsPrimitive.Content>
-      <TabsPrimitive.Content value="programs">programs pane</TabsPrimitive.Content>
+      <TabsPrimitive.Content value="seasons">seasons pane</TabsPrimitive.Content>
       <TabsPrimitive.Content value="projects">projects pane</TabsPrimitive.Content>
       <TabsPrimitive.Content value="types">types pane</TabsPrimitive.Content>
       <TabsPrimitive.Content value="groups">groups pane</TabsPrimitive.Content>
@@ -55,7 +55,7 @@ function Rail({ value = 'routines' }: { value?: string }) {
 describe('Organize rail — vertical Tabs with presentation-role group headers', () => {
   it('still exposes every section as role="tab", by its visible name', () => {
     render(<Rail />);
-    for (const name of ['Routines', 'Programs', 'Projects', 'Item types', 'Habit groups', 'Trash']) {
+    for (const name of ['Routines', 'Seasons', 'Projects', 'Item types', 'Habit groups', 'Trash']) {
       expect(screen.getByRole('tab', { name })).toBeInTheDocument();
     }
     // Six tabs and no more: the eyebrows must not have joined the set.
@@ -95,12 +95,12 @@ describe('Organize rail — vertical Tabs with presentation-role group headers',
     // sets document.activeElement, which is what RovingFocusGroup reads to find
     // its place; fireEvent.focus is what runs React's onFocus inside act(), which
     // is what registers the roving tab stop.
-    tab('Programs').focus();
-    fireEvent.focus(tab('Programs'));
+    tab('Seasons').focus();
+    fireEvent.focus(tab('Seasons'));
 
-    // Programs is the last tab under CONTAINERS. Its next DOM sibling is the
+    // Seasons is the last tab under CONTAINERS. Its next DOM sibling is the
     // LABELS eyebrow; roving focus has to step over it and land on Projects.
-    await arrowDown('Programs');
+    await arrowDown('Seasons');
     expect(tab('Projects')).toHaveFocus();
 
     await arrowDown('Projects');
@@ -129,8 +129,8 @@ describe('Organize rail — vertical Tabs with presentation-role group headers',
   });
 
   it('lands on the section it is opened with, so deep-linking a tab works', () => {
-    render(<Rail value="programs" />);
-    expect(screen.getByRole('tab', { name: 'Programs' })).toHaveAttribute('aria-selected', 'true');
-    expect(screen.getByText('programs pane')).toBeInTheDocument();
+    render(<Rail value="seasons" />);
+    expect(screen.getByRole('tab', { name: 'Seasons' })).toHaveAttribute('aria-selected', 'true');
+    expect(screen.getByText('seasons pane')).toBeInTheDocument();
   });
 });

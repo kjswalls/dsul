@@ -175,9 +175,9 @@ describe('dispatch to agent handlers', () => {
 
   it('routes each collection kind to its own handler', async () => {
     await POST(call('dsul_create_collection', { kind: 'goal', name: 'Run a 10k' }));
-    await POST(call('dsul_update_collection', { kind: 'program', id: 'p1', state: 'active' }));
+    await POST(call('dsul_update_collection', { kind: 'season', id: 'p1', state: 'active' }));
     await POST(call('dsul_delete_collection', { kind: 'routine', id: 'r1' }));
-    expect(calls.map((c) => c.handler)).toEqual(['create:goal', 'patch:program', 'delete:routine']);
+    expect(calls.map((c) => c.handler)).toEqual(['create:goal', 'patch:season', 'delete:routine']);
   });
 
   it('builds an absolute URL on the request origin', async () => {

@@ -2,7 +2,7 @@ import { AiStatusSchema } from '@dsul/types'
 import { isItemActiveOn, isOpenLoopOn } from '../active'
 import { AGENT_QUIET_AFTER_MS } from '../agent-status'
 import { getItemTypeConfig } from '../item-registry'
-import type { Item, Routine, Program } from '../planner-types'
+import type { Item, Routine, Season } from '../planner-types'
 import type { McpToolDescriptor } from './protocol'
 
 /**
@@ -97,7 +97,7 @@ const HABIT_WRITE_KEYS = [
 
 const COLLECTION_PATHS: Record<string, string> = {
   routine: 'routines',
-  program: 'programs',
+  season: 'seasons',
   goal: 'goals',
 }
 
@@ -107,8 +107,8 @@ const COLLECTION_PATHS: Record<string, string> = {
  * routine write is how a model concludes it created milestones it did not.
  */
 const COLLECTION_KEYS: Record<string, string[]> = {
-  routine: ['name', 'icon', 'color', 'itemIds', 'paused', 'pausedUntil'],
-  program: ['name', 'icon', 'color', 'itemIds', 'routineIds', 'state', 'startsOn', 'endsOn'],
+  routine: ['name', 'icon', 'color', 'usualTime', 'itemIds', 'paused', 'pausedUntil'],
+  season: ['name', 'icon', 'color', 'itemIds', 'routineIds', 'state', 'startsOn', 'endsOn'],
   goal: ['name', 'icon', 'color', 'why', 'state', 'startsOn', 'targetOn', 'memberIds', 'milestoneIds', 'checkinIds'],
 }
 
@@ -200,9 +200,9 @@ interface AssignedItem {
  */
 
 /**
- * Which of these items a routine or program has switched off today.
+ * Which of these items a routine or season has switched off today.
  *
- * Uses the routines and programs the context response already carries, so the
+ * Uses the routines and seasons the context response already carries, so the
  * suppression answer here is the same one the grid gives — computed, never
  * guessed. Absent arrays mean "the server did not say", which is not the same
  * as "you have none": with nothing to gate on, nothing is suppressed.
@@ -210,12 +210,12 @@ interface AssignedItem {
 function inactiveIdsFrom(
   items: Item[],
   dateStr: string,
-  root: { userTimezone?: unknown; routines?: unknown; programs?: unknown }
+  root: { userTimezone?: unknown; routines?: unknown; seasons?: unknown }
 ): Set<string> {
   const ctx = {
     userTimezone: typeof root.userTimezone === 'string' ? root.userTimezone : 'UTC',
     routines: Array.isArray(root.routines) ? (root.routines as Routine[]) : [],
-    programs: Array.isArray(root.programs) ? (root.programs as Program[]) : [],
+    seasons: Array.isArray(root.seasons) ? (root.seasons as Season[]) : [],
   }
   const inactive = new Set<string>()
   for (const item of items) {
@@ -237,7 +237,7 @@ export function selectAssignedWork(
     fetchedAt?: unknown
     userTimezone?: unknown
     routines?: unknown
-    programs?: unknown
+    seasons?: unknown
   }
   const items = Array.isArray(root.items) ? root.items : []
 
@@ -453,7 +453,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_get_context',
     description:
       "Read the user's whole planner: today's tasks, habits and streaks, projects, " +
-      'routines, programs and goals, plus their timezone. Call this before any write — ' +
+      'routines, seasons and goals, plus their timezone. Call this before any write — ' +
       'ids come from here, and answering from memory is how a stale plan gets acted on. ' +
       'Note tasks[] and habits[] omit work that is paused or out of season; items[] does not.',
     inputSchema: obj({}),
@@ -644,21 +644,23 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_create_collection',
     description:
-      'Create a routine (a set of items that switch on and off together), a program (a ' +
-      'dated season holding items and routines), or a goal (something being worked ' +
-      'towards, whose members can be milestones or check-ins). Membership arrays are ' +
-      'whole sets, not additions.',
+      'Create a routine (things done regularly, together and in order — a morning, a ' +
+      'workout week — which pause as one), a season (a stretch of life, optionally dated, ' +
+      'holding items and routines that show only while it is on), or a goal (something ' +
+      'being worked towards, whose members can be milestones or check-ins). Membership ' +
+      'arrays are whole sets, not additions; a routine\'s itemIds are in the order they are done.',
     inputSchema: obj(
       {
-        kind: { type: 'string', enum: ['routine', 'program', 'goal'] },
+        kind: { type: 'string', enum: ['routine', 'season', 'goal'] },
         name: str('What to call it.'),
         icon: str('An icon token like "icon:Sparkles".'),
         color: str('A colour token.'),
-        itemIds: { type: 'array', items: { type: 'string' }, description: 'Routines and programs only.' },
-        routineIds: { type: 'array', items: { type: 'string' }, description: 'Programs only.' },
-        state: { type: 'string', description: 'Programs: auto|active|paused. Goals: active|achieved|abandoned.' },
+        itemIds: { type: 'array', items: { type: 'string' }, description: 'Routines and seasons only.' },
+        usualTime: str('Routines only: when it usually happens, 24-hour HH:mm. A label — members keep their own times.'),
+        routineIds: { type: 'array', items: { type: 'string' }, description: 'Seasons only.' },
+        state: { type: 'string', description: 'Seasons: auto|active|paused. Goals: active|achieved|abandoned.' },
         startsOn: DATE,
-        endsOn: { ...DATE, description: 'Programs only. yyyy-MM-dd the season ends.' },
+        endsOn: { ...DATE, description: 'Seasons only. yyyy-MM-dd the season ends.' },
         why: str('Goals only: why this matters to the user, in their words.'),
         targetOn: { ...DATE, description: 'Goals only: the date being aimed at.' },
         memberIds: { type: 'array', items: { type: 'string' }, description: 'Goals only: supporting work.' },
@@ -672,17 +674,18 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_update_collection',
     description:
-      'Change a routine, program or goal. Membership arrays REPLACE the whole set, so ' +
+      'Change a routine, season or goal. Membership arrays REPLACE the whole set, so ' +
       'read the current members from get_context and send the full list, or you will ' +
       'remove everything you left out.',
     inputSchema: obj(
       {
-        kind: { type: 'string', enum: ['routine', 'program', 'goal'] },
+        kind: { type: 'string', enum: ['routine', 'season', 'goal'] },
         id: ID,
         name: str('New name.'),
         icon: str('An icon token like "icon:Sparkles".'),
         color: str('A colour token.'),
         itemIds: { type: 'array', items: { type: 'string' } },
+        usualTime: str('Routines only: when it usually happens, HH:mm. Send null to clear it.'),
         routineIds: { type: 'array', items: { type: 'string' } },
         state: { type: 'string' },
         startsOn: DATE,
@@ -692,7 +695,7 @@ export const MCP_TOOLS: McpTool[] = [
         memberIds: { type: 'array', items: { type: 'string' } },
         milestoneIds: { type: 'array', items: { type: 'string' } },
         checkinIds: { type: 'array', items: { type: 'string' } },
-        paused: { type: 'boolean', description: 'Routines only — programs use state.' },
+        paused: { type: 'boolean', description: 'Routines only — seasons use state.' },
         pausedUntil: DATE,
       },
       ['kind', 'id']
@@ -702,11 +705,11 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_delete_collection',
     description:
-      'Delete a routine, program or goal. Its member items are NOT deleted — they simply ' +
+      'Delete a routine, season or goal. Its member items are NOT deleted — they simply ' +
       'stop belonging to it.',
     inputSchema: obj(
       {
-        kind: { type: 'string', enum: ['routine', 'program', 'goal'] },
+        kind: { type: 'string', enum: ['routine', 'season', 'goal'] },
         id: ID,
       },
       ['kind', 'id']

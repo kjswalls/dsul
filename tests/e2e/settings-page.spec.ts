@@ -92,8 +92,8 @@ test.describe('Settings page', () => {
   test('search reaches configuration that deliberately lives elsewhere', async ({ page }) => {
     // The mechanism that lets the rail stay at six panes.
     await gotoSettings(page, 'day');
-    await page.getByTestId('settings-search').fill('program');
-    await expect(page.getByText('Programs', { exact: true })).toBeVisible({ timeout: 5_000 });
+    await page.getByTestId('settings-search').fill('season');
+    await expect(page.getByText('Seasons', { exact: true })).toBeVisible({ timeout: 5_000 });
   });
 
   test('a query that means nothing here says so, and offers a way on', async ({ page }) => {

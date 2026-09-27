@@ -30,7 +30,7 @@ import type { ItemTypeConfig } from './item-registry';
  *     rather than a migration. `habit_groups` and `items."group"` survive as
  *     frozen rollback ballast — nothing here reads them.
  *
- *   GATE — routines, programs. Many-to-many through join tables, and membership
+ *   GATE — routines, seasons. Many-to-many through join tables, and membership
  *     does not describe the work, it SWITCHES it — pausing a routine takes its
  *     members off the grid. An item can sit in three routines at once, so there
  *     is no "the" routine to file it under; `lib/grouping.ts` groups by routine
@@ -47,7 +47,7 @@ import type { ItemTypeConfig } from './item-registry';
  *     (`member` | `milestone` | `checkin`, on goal_items), which is the one
  *     thing no other kind has — and the reason it is a role of its own rather
  *     than a gate with suppression turned off: an item can sit in a goal AND a
- *     program at once (the Chinese habit inside the school-year program), so
+ *     season at once (the Chinese habit inside the school-year season), so
  *     the two questions have to be asked separately or the answers merge.
  *     Since the goal display work it IS a filter and a grouping axis — by id,
  *     never by ref, and never as suppression; see the seam below.
@@ -73,7 +73,7 @@ import type { ItemTypeConfig } from './item-registry';
  *     a goal cannot enter `containers` and `containerRefOf` cannot return one.
  *     The two clauses never mix.
  *   - `lib/grouping.ts` takes whole `readonly Goal[]` records, exactly as it
- *     already takes `Routine[]` and `Program[]`: a section needs the name for
+ *     already takes `Routine[]` and `Season[]`: a section needs the name for
  *     its heading and the role arrays to claim its rows. That is more than an
  *     id and it is still inside the seam — nothing in a `Goal` resolves
  *     activation, and the kind never appears.
@@ -129,7 +129,7 @@ import type { ItemTypeConfig } from './item-registry';
  */
 export type ClassifyKind = 'project';
 /** Kinds that switch items off. Many-to-many; the scope rail's axis. */
-export type GateKind = 'routine' | 'program';
+export type GateKind = 'routine' | 'season';
 /**
  * Kinds that say why work matters. Many-to-many, and they suppress NOTHING —
  * deliberately not a `GateKind`, so a goal can never reach a resolver.
@@ -168,7 +168,7 @@ export interface ContainerKindConfig {
    *
    * Set on every kind that offers inline creation from the item dialog. It used
    * to be projects-only — gates and goals were created solely in the Organize
-   * console — but "attach this to a NEW goal (or routine, or program)" is a real
+   * console — but "attach this to a NEW goal (or routine, or season)" is a real
    * gesture the add dialog now answers, so each kind names its create row here
    * and the console stays the place to rename and delete. `null` only if a kind
    * should never be inline-creatable.
@@ -262,13 +262,13 @@ export const CONTAINER_KINDS: Record<ContainerKind, ContainerKindConfig> = {
     itemTypeKey: null,
     caseFold: false,
   },
-  program: {
-    kind: 'program',
+  season: {
+    kind: 'season',
     role: 'gate',
-    label: 'Program',
-    labelPlural: 'Programs',
+    label: 'Season',
+    labelPlural: 'Seasons',
     unsetLabel: null,
-    newLabel: 'New program',
+    newLabel: 'New season',
     itemField: null,
     itemTypeKey: null,
     caseFold: false,
@@ -332,7 +332,7 @@ export const ASPIRE_KINDS: readonly AspireKind[] = Object.values(CONTAINER_KINDS
  * blob migration for no gain — `normalizeFilters` instead rewrites the retired
  * `group:` prefix to `project:` on read.
  *
- * Only CLASSIFY kinds have refs. Routines, programs and goals are referenced by
+ * Only CLASSIFY kinds have refs. Routines, seasons and goals are referenced by
  * id, because their names are not unique and rename ships from day one.
  */
 export const containerRef = (kind: ClassifyKind, name: string): string => `${kind}:${name}`;

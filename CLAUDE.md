@@ -108,7 +108,7 @@ discriminated-union narrowing keeps working, but the DB stores the bare slug in
 `items.type`. `itemDbType()` in [lib/db.ts](lib/db.ts) is the boundary.
 
 **One CLASSIFY kind.** [lib/container-registry.ts](lib/container-registry.ts) sorts the
-container tables into three ROLES — classify (project), gate (routine, program), aspire
+container tables into three ROLES — classify (project), gate (routine, season), aspire
 (goal) — and there is exactly ONE classify kind since migration 039 folded habit groups
 into projects. Every type answers with `items.project`; `containerRequired` is what still
 makes a habit different. The `habit_groups` TABLE is frozen ballast — never query it. The
@@ -274,6 +274,13 @@ registry, or the agent API.
 [keyboard-shortcuts.md](memory/plans/keyboard-shortcuts.md) records why the shortcuts
 table lives in the settings manifest and renders in two shells — read it before touching
 `lib/commands/keys.ts`, the `keys` control kind, or anything that derives a binding list.
+[programs-routines.md](memory/plans/programs-routines.md) is the plan for the two GATE
+containers. **"Program" is now "Season"** (2026-09-27, migration 046) — code-deep: the
+`seasons`/`season_items`/`season_routines` tables, the `Season` type, `/api/agent/seasons`,
+`seasons[]` in the context (schemaVersion 6). The plan's body predates the rename and keeps
+the old noun; its addendum at the top says what changed. A routine is things done
+regularly, in order — not merely "items you pause together" — and has a Today checklist
+and an optional `usualTime` (047) that labels and orders it but never moves a member.
 [long-term-goals.md](memory/plans/long-term-goals.md) does the same for **goals** — the
 third container role (`aspire`), where milestones and check-ins are ordinary items wearing
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or

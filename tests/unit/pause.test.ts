@@ -27,11 +27,11 @@ vi.mock('@/lib/db', async (importOriginal) => {
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -463,7 +463,7 @@ describe('create-with-membership is one gesture', () => {
  * Release grace (plan decision 9, the arm that stored data cannot answer).
  *
  * The sweep's other grace arms read a date off a row: an item's or a routine's
- * `pausedUntil`, a program's `startsOn` or `updatedAt`. Deleting a container —
+ * `pausedUntil`, a season's `startsOn` or `updatedAt`. Deleting a container —
  * or pulling a member out of one — releases items with no such record anywhere,
  * because the row it would have been read from is exactly what was removed. The
  * item then reappears carrying every day of age it accrued while hidden, and
@@ -522,22 +522,22 @@ describe('container edits record the suppressions they end', () => {
     expect(releasedOn('habit-1')).toBeUndefined();
   });
 
-  it('deleting a paused PROGRAM graces its members too', () => {
-    const id = store().addProgram({
+  it('deleting a paused SEASON graces its members too', () => {
+    const id = store().addSeason({
       name: 'Summer',
       state: 'paused',
       itemIds: ['habit-1'],
       routineIds: [],
     });
-    store().removeProgram(id);
+    store().removeSeason(id);
     expect(releasedOn('habit-1')).toBe(TODAY);
   });
 
-  // item -> routine -> program: pulling the ROUTINE out of the program hands
+  // item -> routine -> season: pulling the ROUTINE out of the season hands
   // the answer back to the routine, which is live, so the members return.
-  it('graces members released by detaching a routine from a program', () => {
+  it('graces members released by detaching a routine from a season', () => {
     const routineId = store().addRoutine({ name: 'Morning', itemIds: ['habit-1'] });
-    const programId = store().addProgram({
+    const seasonId = store().addSeason({
       name: 'Summer',
       state: 'paused',
       itemIds: [],
@@ -545,12 +545,12 @@ describe('container edits record the suppressions they end', () => {
     });
     expect(releasedOn('habit-1')).toBeUndefined();
 
-    store().updateProgram(programId, { routineIds: [] });
+    store().updateSeason(seasonId, { routineIds: [] });
     expect(releasedOn('habit-1')).toBe(TODAY);
   });
 
   it('graces members released by moving an auto range to cover today', () => {
-    const id = store().addProgram({
+    const id = store().addSeason({
       name: 'Term',
       state: 'auto',
       startsOn: '2026-06-01',
@@ -559,7 +559,7 @@ describe('container edits record the suppressions they end', () => {
     });
     expect(releasedOn('habit-1')).toBeUndefined();
 
-    store().updateProgram(id, { startsOn: '2026-01-01' });
+    store().updateSeason(id, { startsOn: '2026-01-01' });
     expect(releasedOn('habit-1')).toBe(TODAY);
   });
 

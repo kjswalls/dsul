@@ -41,11 +41,11 @@ export type ActiveDialog =
    */
   | {
       type: 'organize';
-      /** 'routines' | 'programs' | 'projects' | 'types' | 'groups' | 'trash'. */
+      /** 'routines' | 'seasons' | 'projects' | 'types' | 'groups' | 'trash'. */
       section?: string;
       /** Select this object on arrival. */
       focusId?: string;
-      /** Put the cursor in the create row — the "New routine or program" entry. */
+      /** Put the cursor in the create row — the "New routine or season" entry. */
       focusNew?: boolean;
     }
   // Settings is a route (/settings), not a dialog — see
@@ -80,7 +80,7 @@ export type ActiveDialog =
   | { type: 'launcher'; query?: string };
 
 /** The organizers the "new" dialog can make. Item types are console-only. */
-export type NewContainerKind = 'goal' | 'routine' | 'program' | 'project';
+export type NewContainerKind = 'goal' | 'routine' | 'season' | 'project';
 
 export interface ConfirmRequest {
   title: string;

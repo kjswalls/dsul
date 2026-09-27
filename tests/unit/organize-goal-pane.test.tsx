@@ -52,7 +52,7 @@ function seed(state: Partial<ReturnType<typeof usePlannerStore.getState>>) {
   usePlannerStore.setState({
     items: [],
     routines: [],
-    programs: [],
+    seasons: [],
     projects: [],
     itemTypes: [],
     goals: [],
