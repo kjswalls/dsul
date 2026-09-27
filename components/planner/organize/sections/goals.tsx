@@ -45,6 +45,7 @@ import { GoalSchedule, useWeekDotsFor } from '@/components/planner/schedule/sche
 import { ContainerCreateForm } from '../container-create-form';
 import { GOAL_STATES, heldElsewhere } from '../container-fields';
 import { cn } from '@/lib/utils';
+import { cadenceLabel } from '@/lib/cadence';
 import type { Goal, Item } from '@/lib/planner-types';
 
 /**
@@ -120,6 +121,13 @@ function RoleList({
 
 /** Shared, so a fresh Set per render never churns a memo downstream. */
 const EMPTY_IDS: ReadonlySet<string> = new Set();
+
+/**
+ * The goal lists' meta column: wide enough for a cadence and a last-done date
+ * ("Mon, Wed · last Sep 21"), which the 64px default cannot hold. Goal rows
+ * draw no week dots — the timeline above carries the time — so the room is free.
+ */
+const GOAL_META_WIDTH = 150;
 
 /* ── the section ──────────────────────────────────────────────────────────── */
 
@@ -454,10 +462,10 @@ function GoalDetail({
         </button>
       );
     },
-    meta: (item) => ({
-      text: 'startDate' in item && item.startDate ? formatShort(item.startDate) : '',
-      numeric: true,
-    }),
+    // A milestone is one-shot: its target day, or "No date" — saying nothing
+    // left an undated checkpoint looking like a row that failed to load.
+    meta: (item) => ({ text: cadenceLabel(item as never), numeric: true }),
+    metaWidth: GOAL_META_WIDTH,
   };
 
   // Row controls (member-row-actions.tsx), one set per role so "Remove"
@@ -486,8 +494,15 @@ function GoalDetail({
     leading: () => <Repeat className="text-muted-foreground size-3.5" aria-hidden />,
     meta: (item) => {
       const last = lastDone(item);
-      return { text: last ? `last ${formatShort(last)}` : '', numeric: false };
+      const cadence = cadenceLabel(item as never);
+      return { text: last ? `${cadence} · last ${formatShort(last)}` : cadence, numeric: false };
     },
+    metaWidth: GOAL_META_WIDTH,
+  };
+  // Supporting work is habits and tasks of any timing: say which.
+  const memberRow: MemberRowParts = {
+    meta: (item) => ({ text: cadenceLabel(item as never), numeric: false }),
+    metaWidth: GOAL_META_WIDTH,
   };
 
   return (
@@ -665,7 +680,7 @@ function GoalDetail({
           // non-collectible types — against locked decision 3, which says plain
           // `member` reuses isCollectible with its subtask exclusion.
           eligible={(i) => isCollectible(i) && !heldElsewhere(goal, 'memberIds', i.id)}
-          row={memberControls}
+          row={{ ...memberRow, ...memberControls }}
           onChange={(ids) => members({ memberIds: ids })}
           footer={
             <InlineAddRow

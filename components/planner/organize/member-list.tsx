@@ -168,6 +168,12 @@ export interface MemberRowParts {
   leading?: (item: Item) => ReactNode;
   /** Replaces the when-column — a milestone's date, a check-in's "last Sep 20". */
   meta?: (item: Item) => { text: string; numeric: boolean };
+  /**
+   * The meta column's width. 64px fits a clock time or a bucket; a list that
+   * says CADENCE ("Mon, Wed, Fri · last Sep 21") and draws no week dots can
+   * give it the dots' room instead.
+   */
+  metaWidth?: number;
   /** Done, not hidden: the title goes muted (never struck through). */
   done?: (item: Item) => boolean;
   /** After the meta column, before the controls — the week's dots (schedule-views.tsx). */
@@ -476,9 +482,11 @@ export function ItemMemberList({
                   <span
                     data-testid={`${testPrefix}-member-meta`}
                     className={cn(
-                      'text-muted-foreground w-[64px] shrink-0 text-right text-2xs',
+                      'text-muted-foreground shrink-0 truncate text-right text-2xs',
                       meta.numeric && 'font-num'
                     )}
+                    style={{ width: row?.metaWidth ?? 64 }}
+                    title={meta.text || undefined}
                   >
                     {meta.text}
                   </span>
