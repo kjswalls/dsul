@@ -19,7 +19,7 @@ import {
   type OccurrenceState,
 } from '@/lib/container-schedule';
 import { cn } from '@/lib/utils';
-import type { Item, Program, Project, Routine } from '@/lib/planner-types';
+import type { HabitItem, Item, Program, Project, Routine, Task } from '@/lib/planner-types';
 
 /**
  * THE CONTAINER SCHEDULE CHARTS (Kirby, 2026-09-26; design canvas
@@ -48,6 +48,12 @@ export interface ScheduleOverrides {
   /** A draft container the store has not seen yet — the create modal's preview. */
   routines?: readonly Routine[];
   programs?: readonly Program[];
+  /**
+   * Rows typed into a create form but not yet created (lib/new-item-shape.ts
+   * previewItem) — drawn beside the store's items so the chart shows them as
+   * they will be. Added to, never replacing, the store's list.
+   */
+  items?: readonly Item[];
 }
 
 /**
@@ -70,12 +76,22 @@ export function useContainerSchedule(
   const { todayStr, tz } = useToday();
   const routines = overrides?.routines ?? storeRoutines;
   const programs = overrides?.programs ?? storePrograms;
+  const drafts = overrides?.items;
   const key = memberIds.join(',');
   return useMemo(
     () =>
       deriveContainerSchedule({
         memberIds,
-        source: { items, tasks, habits, routines, programs, timezone: tz },
+        source: drafts?.length
+          ? {
+              items: [...items, ...drafts],
+              tasks: [...tasks, ...(drafts.filter((i) => i.type !== 'habit') as unknown as Task[])],
+              habits: [...habits, ...(drafts.filter((i) => i.type === 'habit') as unknown as HabitItem[])],
+              routines,
+              programs,
+              timezone: tz,
+            }
+          : { items, tasks, habits, routines, programs, timezone: tz },
         from,
         days,
         todayStr,
@@ -83,7 +99,7 @@ export function useContainerSchedule(
       }),
     // `key` stands in for `memberIds`: callers build the array per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, items, tasks, habits, routines, programs, tz, from, days, todayStr, block]
+    [key, items, tasks, habits, routines, programs, drafts, tz, from, days, todayStr, block]
   );
 }
 
@@ -152,13 +168,19 @@ function Mark({
 /* ── week dots on a member row ─────────────────────────────────────────── */
 
 /** The dates of the current week, from the user's week start. */
-export function useThisWeek(): string[] {
+/**
+ * The seven days a week strip draws: the calendar week holding today (the
+ * user's week start), or — `ahead` — today and the six days after it, for a
+ * create form, where what matters is how the coming week will look, not the
+ * days already behind a thing that does not exist yet.
+ */
+export function useThisWeek(ahead = false): string[] {
   const { todayStr } = useToday();
   const weekStartDay = useWeekStartDay();
   return useMemo(() => {
-    const start = weekStartOf(todayStr, weekStartDay);
+    const start = ahead ? todayStr : weekStartOf(todayStr, weekStartDay);
     return Array.from({ length: 7 }, (_, i) => addDaysStr(start, i));
-  }, [todayStr, weekStartDay]);
+  }, [todayStr, weekStartDay, ahead]);
 }
 
 export function WeekDots({
@@ -230,8 +252,12 @@ export function WeekDotsHeader({ dates, todayStr, trailingPad }: { dates: readon
  * letters over them. One schedule for the whole list, so seven days cost seven
  * resolver passes however many rows there are.
  */
-export function useWeekDotsFor(memberIds: readonly string[], overrides?: ScheduleOverrides) {
-  const dates = useThisWeek();
+export function useWeekDotsFor(
+  memberIds: readonly string[],
+  overrides?: ScheduleOverrides,
+  opts?: { ahead?: boolean },
+) {
+  const dates = useThisWeek(opts?.ahead);
   const { todayStr } = useToday();
   const schedule = useContainerSchedule(memberIds, dates[0], 7, overrides);
   const byItem = useMemo(() => occurrencesByItem(schedule), [schedule]);
@@ -501,11 +527,14 @@ export function SeasonHeatmap({
   memberIds,
   overrides,
   testId = 'season-heatmap',
+  hideEmptyGrid = false,
 }: {
   program: Pick<Program, 'state' | 'startsOn' | 'endsOn'>;
   memberIds: readonly string[];
   overrides?: ScheduleOverrides;
   testId?: string;
+  /** A create form's: with nothing dated in range, draw no grid — only the tray. */
+  hideEmptyGrid?: boolean;
 }) {
   const { todayStr } = useToday();
   const weekStartDay = useWeekStartDay();
@@ -513,7 +542,8 @@ export function SeasonHeatmap({
   const schedule = useContainerSchedule(memberIds, range.from, range.days, overrides);
   const [hover, setHover] = useState<string | null>(null);
   const items = usePlannerStore((s) => s.items);
-  const titleOf = (id: string) => items.find((i) => i.id === id)?.title ?? '';
+  const titleOf = (id: string) =>
+    (items.find((i) => i.id === id) ?? overrides?.items?.find((i) => i.id === id))?.title ?? '';
 
   const inRun = (d: string) =>
     program.state !== 'auto' ||
@@ -560,6 +590,14 @@ export function SeasonHeatmap({
     `${doneTotal} done so far` +
     (heaviest && heaviest.occurrences.length ? `, busiest ahead ${formatShort(heaviest.date)}` : '');
   const rangeNotes = `${!range.bounded ? ' No run set — showing sixteen weeks.' : ''}${range.capped ? ' Long run — showing the first 400 days.' : ''}`;
+
+  if (hideEmptyGrid && !schedule.days.some((d) => d.occurrences.length > 0)) {
+    return (
+      <div className="flex flex-col gap-2" data-testid={testId}>
+        <UnscheduledTray items={schedule.unscheduled} />
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-2" data-testid={testId}>
@@ -704,7 +742,8 @@ export function GoalTimeline({
   const byItem = useMemo(() => occurrencesByItem(schedule), [schedule]);
   const pct = (d: string) => `${(daysBetween(range.from, d) / range.days) * 100}%`;
   const todayIn = todayStr >= range.from && daysBetween(range.from, todayStr) < range.days;
-  const title = (id: string) => items.find((i) => i.id === id)?.title ?? '';
+  const title = (id: string) =>
+    (items.find((i) => i.id === id) ?? overrides?.items?.find((i) => i.id === id))?.title ?? '';
 
   const milestones = goal.milestoneIds.flatMap((id) => [...(byItem.get(id)?.values() ?? [])]);
   const lanes = [...goal.checkinIds, ...goal.memberIds].filter((id) => byItem.has(id));

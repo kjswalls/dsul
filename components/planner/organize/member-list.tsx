@@ -2,10 +2,12 @@
 
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { LinkExistingPill, OrganizerSection } from '@/components/primitives/organizer-chips';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
 import { countLive, swapMembers, useLiveItemIds } from '@/lib/collections';
 import { inActiveSection, useEscapeRung } from './escape-ladder';
@@ -205,6 +207,7 @@ export function ItemMemberList({
   emptyPoolLabel,
   emptyHint,
   removable,
+  openItems = false,
   onChange,
 }: {
   /** The section heading — "Items", "Milestones". */
@@ -244,6 +247,13 @@ export function ItemMemberList({
    * reshuffles.
    */
   orderable?: boolean;
+  /**
+   * Each title opens its item (/item/[id]). Off in a create form, where
+   * leaving would drop the unsaved draft. Out of the console it LEAVES the
+   * console — the item panel cannot sit over it — so it closes the dialog on
+   * navigate (onNavigate, so a ⌘-click to a new tab keeps this one open).
+   */
+  openItems?: boolean;
   /**
    * Which items may be added, when plain collectibility is not the question.
    *
@@ -438,15 +448,30 @@ export function ItemMemberList({
                       aside. A DONE milestone is muted the same way and for the
                       mirror reason: its check already says done, and a strike
                       on top would say it twice. */}
-                  <span
-                    title={item.title}
-                    className={cn(
-                      'font-content text-content min-w-0 flex-1 truncate',
-                      hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
-                    )}
-                  >
-                    {item.title}
-                  </span>
+                  {openItems ? (
+                    <Link
+                      href={`/item/${item.id}`}
+                      onNavigate={() => useUIStore.getState().closeDialog()}
+                      title={item.title}
+                      data-testid={`${testPrefix}-member-open`}
+                      className={cn(
+                        'font-content text-content min-w-0 flex-1 truncate underline-offset-2 hover:underline',
+                        hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {item.title}
+                    </Link>
+                  ) : (
+                    <span
+                      title={item.title}
+                      className={cn(
+                        'font-content text-content min-w-0 flex-1 truncate',
+                        hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {item.title}
+                    </span>
+                  )}
 
                   <span
                     data-testid={`${testPrefix}-member-meta`}

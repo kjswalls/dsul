@@ -179,10 +179,46 @@ describe('the create modal previews the DRAFT', () => {
     expect(id('week-dots').getAttribute('aria-label')).not.toContain('Sat due');
   });
 
-  it('gives a new program a season to look at before anything is linked', () => {
+  it('shows no season until the program holds something to place', () => {
     seed();
     render(<ContainerDialog state={{ kind: 'program', title: 'Term' }} onOpenChange={() => {}} />);
-    expect(id('program-dialog-season-heatmap-info').textContent).toContain('link routines or items');
+    expect(screen.queryByTestId('program-dialog-season')).toBeNull();
+    fireEvent.click(id('program-dialog-items-member-add'));
+    fireEvent.click(
+      screen.getAllByTestId('program-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!
+    );
+    expect(screen.queryByTestId('program-dialog-season')).not.toBeNull();
+  });
+
+  it('draws a NEW routine habit on its chosen days before it exists', () => {
+    seed();
+    render(<ContainerDialog state={{ kind: 'routine', title: 'Mornings' }} onOpenChange={() => {}} />);
+    const input = id('routine-dialog-create-item-new-name') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Journal' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    // Seeded daily. The form looks AHEAD — today (a Saturday) and the six days
+    // after — so every one of them carries a mark.
+    const label = () => id('week-dots').getAttribute('aria-label')!;
+    expect(label()).toContain('Journal this week: Sat due, Sun');
+    expect(label()).toContain('Fri');
+    // Weekdays: the weekend drops out, Monday stays.
+    fireEvent.click(id('routine-dialog-create-item-when'));
+    fireEvent.click(id('routine-dialog-create-item-when-weekdays'));
+    expect(label()).not.toContain('Sat');
+    expect(label()).not.toContain('Sun');
+    expect(label()).toContain('Mon');
+    expect(id('routine-dialog-create-item-when').textContent).toContain('Weekdays');
+  });
+
+  it('shows a goal no chart until it has something to place', () => {
+    seed();
+    render(<ContainerDialog state={{ kind: 'goal', title: 'Run a 10k' }} onOpenChange={() => {}} />);
+    expect(screen.queryByTestId('goal-dialog-schedule')).toBeNull();
+    const input = id('goal-dialog-create-checkin-new-name') as HTMLInputElement;
+    fireEvent.change(input, { target: { value: 'Weekly review' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(screen.queryByTestId('goal-dialog-schedule')).not.toBeNull();
+    expect(id('goal-dialog-create-checkin-when').textContent).toContain('Sun');
   });
 });
 
@@ -199,5 +235,18 @@ describe('a project', () => {
     expect(screen.getAllByTestId('project-member')).toHaveLength(2);
     expect(screen.getAllByTestId('week-dots')[0].getAttribute('aria-label')).toContain('Fix sink this week: Sat due');
     expect(id('project-unscheduled').textContent).toContain('Paint');
+    // Each member opens its item.
+    const links = screen.getAllByTestId('project-member-open');
+    expect(links.map((a) => a.getAttribute('href'))).toEqual(['/item/a', '/item/b']);
+  });
+
+  it('never links a member out of a create form, where leaving drops the draft', () => {
+    seed();
+    render(<ContainerDialog state={{ kind: 'routine', title: 'Mornings' }} onOpenChange={() => {}} />);
+    fireEvent.click(id('routine-dialog-items-member-add'));
+    fireEvent.click(
+      screen.getAllByTestId('routine-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!
+    );
+    expect(screen.queryByTestId('routine-dialog-items-member-open')).toBeNull();
   });
 });

@@ -266,6 +266,7 @@ function ProjectDetail({
 
       <div className="mt-5 flex flex-col gap-4">
         <ItemMemberList
+        openItems
           label="Items"
           ownerId={project.id}
           ownerName={project.name}

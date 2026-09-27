@@ -51,10 +51,13 @@ import { cn } from '@/lib/utils';
  * adding `/organize` later is an additive PR that renders this same tree rather
  * than a rebuild. Buy the URL when the URL is wanted.
  *
- * GEOMETRY — 938 × 640, fixed aspect, sized from the columns up:
- *   rail 180 | 1px | list 300 | 1px | detail 456   = 938
+ * GEOMETRY — 1082 × 640, fixed aspect, sized from the columns up:
+ *   rail 180 | 1px | list 300 | 1px | detail 600   = 1082
  *   header 48 + body 560 + footer 32               = 640
- * It needs a 1002×720 viewport, so it fits 1280×800 with 278×80 to spare. Fixed
+ * The detail column grew from 456 when member rows gained week dots and a
+ * wider control rail: at 456 a title kept ~64px. It needs a 1146×720 viewport,
+ * so it fits 1280×800 with 134×80 to spare; narrower, the plate shrinks with
+ * the window and the detail column (flex-1) gives up the difference. Fixed
  * is the point: the frame never resizes on a section change, which is the
  * loudest un-premium tell in both dialogs it replaces.
  *
@@ -273,10 +276,10 @@ export function OrganizeConsole({
         className={cn(
           // The stock DialogContent base is `grid gap-4 rounded-lg border p-6
           // shadow-lg duration-200 zoom-95 max-w-[calc(100%-2rem)] sm:max-w-lg`
-          // and every one of those fights a number below. zoom-95 on a 938px
-          // plate is a 47px lurch.
+          // and every one of those fights a number below. zoom-95 on a 1082px
+          // plate is a 54px lurch.
           'flex flex-col gap-0 overflow-hidden p-0',
-          'w-[min(938px,calc(100vw-64px))] max-w-none sm:max-w-none',
+          'w-[min(1082px,calc(100vw-64px))] max-w-none sm:max-w-none',
           'h-[min(640px,calc(100vh-80px))]',
           'bg-modal border-border rounded-[20px] border',
           'shadow-[var(--shadow-elev-plate)]',
@@ -323,7 +326,11 @@ export function OrganizeConsole({
               value={s.id}
               // A tabpanel that is the flex row itself, so the list and detail
               // columns are its children rather than nested one level deeper.
-              className="flex min-h-0 flex-1 data-[state=inactive]:hidden"
+              // min-w-0: a flex item's floor is otherwise its content's
+              // min-content width, and one wide row in the detail pane then
+              // widened the whole panel past the plate, clipping the pane's
+              // right edge (its buttons, toggles and pills) under overflow-hidden.
+              className="flex min-h-0 min-w-0 flex-1 data-[state=inactive]:hidden"
             >
               <SectionBody
                 section={s.id}

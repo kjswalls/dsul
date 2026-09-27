@@ -136,7 +136,7 @@ export function ContainerDialog({
         }}
         // An organizer's body carries its member lists, so it is a little wider
         // than an item's quick capture. A project's is not.
-        className={cn(ADD_MODAL_CLASS, last.kind !== 'project' && 'sm:max-w-[520px]')}
+        className={cn(ADD_MODAL_CLASS, last.kind !== 'project' && 'sm:max-w-[560px]')}
       >
         <SurfaceA11yHeader panel={false}>
           <ResponsiveModalTitle>New {label.toLowerCase()}</ResponsiveModalTitle>
@@ -259,7 +259,10 @@ function ContainerForm({
 
   return (
     <div
-      className="flex flex-col gap-4"
+      // min-w-0: this is a grid item of the dialog, and a grid item's floor is
+      // its min-content — one long member title then pushed the whole body
+      // past the plate and clipped its right edge.
+      className="flex min-w-0 flex-col gap-4"
       onKeyDown={(e) => {
         // ItemDialog's Enter rule, plus two clauses. The event must come from
         // inside this dialog's own DOM: the IconPicker's search field is
@@ -320,7 +323,7 @@ function ContainerForm({
         </div>
         {/* Zone 1 — icon + the serif title. */}
         <div className="flex items-center gap-2.5">
-          <IconPicker value={icon} name={trimmed} onSelect={setIcon} className="size-[30px]" />
+          <IconPicker value={icon} name={trimmed} onSelect={setIcon} className="size-7 [&_svg]:size-4" />
           <Input
             ref={nameRef}
             autoFocus

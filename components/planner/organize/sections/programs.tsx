@@ -382,6 +382,7 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
             arranged here would survive until the next fetch and then silently
             reshuffle. */}
         <ItemMemberList
+        openItems
           label="Items"
           ownerId={program.id}
           ownerName={program.name}

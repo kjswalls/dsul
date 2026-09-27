@@ -99,7 +99,7 @@ export function ListColumn({
         // list is 480px of unpannable content in a 393px sheet — the add button,
         // the count column, the state pill and the drill-in chevron all live in
         // the clipped 119px. `md:flex-none` restores exactly `shrink-0` above the
-        // breakpoint, so the 180 | 300 | 456 arithmetic is untouched; `min-w-0`
+        // breakpoint, so the 180 | 300 | 600 arithmetic is untouched; `min-w-0`
         // also drops the min-content floor the fixed width imposed on the row.
         'border-border flex min-h-0 min-w-0 flex-1 flex-col border-r md:w-[300px] md:flex-none',
         hasSelection && 'hidden md:flex'
@@ -735,8 +735,10 @@ export function CreateForm({
     <div className="flex flex-col" data-testid={`${testPrefix}-create-form`}>
       <Eyebrow>{eyebrow}</Eyebrow>
 
-      <div className="mt-3.5 flex items-center gap-3">
-        <IconPicker value={icon} name={name} onSelect={setIcon} />
+      <div className="mt-3.5 flex items-center gap-2.5">
+        {/* Smaller than the detail pane's identity glyph: here it is a secondary
+            choice beside the name, not the object's face. */}
+        <IconPicker value={icon} name={name} onSelect={setIcon} className="size-7 [&_svg]:size-4" />
         <input
           ref={ref}
           value={name}

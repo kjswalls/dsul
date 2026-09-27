@@ -96,6 +96,7 @@ function RoleList({
 }) {
   return (
     <ItemMemberList
+        openItems
       label={title}
       count={count}
       lead={lead}
