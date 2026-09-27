@@ -62,6 +62,7 @@ import { useCommandContext } from '@/hooks/use-command-context';
 import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
+import { useCompletionFiling } from '@/hooks/use-completion-filing';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { createClient } from '@/lib/supabase';
@@ -188,6 +189,10 @@ export function AppShell() {
   // survives view changes — and declared AFTER useUndoToast so the batched
   // unschedule it fires is picked up by the already-mounted toast subscriber.
   useOverdueSweep();
+  // Finished braindump items move onto the day they were finished on, once
+  // that day is over (lib/completion-filing.ts). Always on; same mount point
+  // and the same load-time gates as the sweep above.
+  useCompletionFiling();
 
   const router = useRouter();
   const [mounted, setMounted] = useState(false);

@@ -337,6 +337,13 @@ interface PlannerStore {
       startTime?: string;
     }[]
   ) => void;
+  /**
+   * File finished braindump items onto the days they were finished on — the
+   * completion filing (lib/completion-filing.ts). Each entry names its own day.
+   * One set(), one history entry, one undo; milestones are refused here as well
+   * as by the selection.
+   */
+  fileCompletedToDays: (entries: readonly { id: string; date: string }[]) => void;
   reorderTasks: (taskIds: string[]) => void;
   /**
    * Apply an accepted AI proposal. Operations are re-validated against the type
@@ -3436,6 +3443,42 @@ export const usePlannerStore = create<PlannerStore>()(
         // One set() => one history entry => one undo (see moveTasksToDate).
         set((state) => projectItems(state.items.map((i) => (
           i.type !== 'habit' && byId.has(i.id) ? ({ ...i, ...updatesFor(i.id) } as Item) : i
+        ))));
+
+        targets.forEach((item) =>
+          dbUpdateItem(item.id, dbTypeOf(item), updatesFor(item.id)).catch(console.error),
+        );
+      },
+
+      fileCompletedToDays: (entries) => {
+        const dateById = new Map(entries.map((e) => [e.id, e.date]));
+        // Milestones refused at the verb too, not only by the selection that
+        // feeds it — the same belt-and-braces unscheduleTasks and
+        // moveTasksToDate wear, because a milestone's startDate is its target.
+        const milestones = milestoneItemIds(get().goals);
+        const targets = get().items.filter(
+          (i) => i.type !== 'habit' && dateById.has(i.id) && !milestones.has(i.id),
+        );
+        if (targets.length === 0) return;
+
+        // Not a SIGNIFICANT_ACTIONS prefix (hooks/use-undo-toast.ts), on
+        // purpose: this runs unattended at load, and a five-second toast is a
+        // confirmation of something the user just did. ⌘Z still reverses it.
+        setNextActionLabel(`Filed finished items: ${targets.length}`);
+
+        // Field-for-field the landing moveTasksToDate gives a bulk carry: dated,
+        // in a bucket so the day actually draws it, untimed so a filed row
+        // never claims a slot on the grid after the fact.
+        const updatesFor = (id: string): Partial<Task> => ({
+          startDate: dateById.get(id)!,
+          timeBucket: 'anytime',
+          startTime: undefined,
+          isScheduled: false,
+        });
+
+        const targetIds = new Set(targets.map((t) => t.id));
+        set((state) => projectItems(state.items.map((i) => (
+          targetIds.has(i.id) ? ({ ...i, ...updatesFor(i.id) } as Item) : i
         ))));
 
         targets.forEach((item) =>

@@ -781,6 +781,42 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
 }
 
 /**
+ * When each of `ids` was completed — `items.completed_at` (migration 048), by
+ * id, for the rows that have one.
+ *
+ * A side channel rather than a field on Item, for the reasons TrashEntry gives
+ * below for `deletedAt`: the stamp is trigger-maintained and must never enter
+ * TASK_FIELDS, where undo would carry it and the frozen `tasks[]` projection
+ * would publish it. Its one reader is the completion filing
+ * (hooks/use-completion-filing.ts), which asks only about the handful of
+ * finished rows still sitting in the braindump.
+ *
+ * Reads `items`, not items_windowed: the column is not a completion array and
+ * needs no window. A database without the column (pre-048) errors here, and the
+ * caller treats any error as "file nothing".
+ */
+export async function fetchCompletedAt(
+  ids: readonly string[],
+  client?: DbClient,
+): Promise<Map<string, string>> {
+  const supabase = client ?? createClient();
+  const stamps = new Map<string, string>();
+  // Chunked so a large pile cannot outgrow the request URL an `in` list lives in.
+  for (let i = 0; i < ids.length; i += 100) {
+    const { data, error } = await supabase
+      .from('items')
+      .select('id, completed_at')
+      .in('id', ids.slice(i, i + 100))
+      .not('completed_at', 'is', null);
+    if (error) throw error;
+    for (const row of (data ?? []) as { id: string; completed_at: string | null }[]) {
+      if (row.completed_at) stamps.set(row.id, row.completed_at);
+    }
+  }
+  return stamps;
+}
+
+/**
  * Resolve a container NAME to its id, server-side (migration 027).
  *
  * THE AGENT PATH HAS NO STORE. Every client write goes through planner-store's
