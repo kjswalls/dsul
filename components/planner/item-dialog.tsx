@@ -86,6 +86,7 @@ import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, milestoneItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
 import { useUIStore, openBulkAdd, openNewContainer } from '@/lib/ui-store';
+import { subscribeClickAway } from '@/lib/click-away';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
@@ -2628,6 +2629,18 @@ function ItemDialogInner({
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
+  }, [presentation, open, onOpenChange]);
+
+  // A click on empty desktop space closes the panel (lib/click-away.ts decides
+  // what "empty" is). Same exit as Escape — flush first, so a queued autosave
+  // lands now rather than whenever the body unmounts after its close grace.
+  useEffect(() => {
+    if (presentation !== 'panel' || !open) return;
+    return subscribeClickAway(() => {
+      flush.current();
+      setSaving(false);
+      onOpenChange(false);
+    });
   }, [presentation, open, onOpenChange]);
 
   /**

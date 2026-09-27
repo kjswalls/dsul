@@ -20,7 +20,9 @@ import { reloadApp, itemCard } from './helpers/app';
  *  · the panel is NON-MODAL — the canvas behind it stays operable, which is the
  *    entire reason it stopped being a dialog;
  *  · clicking another item RETARGETS the one panel rather than stacking a
- *    second one.
+ *    second one;
+ *  · a click on EMPTY space closes it and lets go of the selection — and flushes
+ *    the edit on the way out (lib/click-away.ts).
  */
 
 const openPanelFor = async (page: import('@playwright/test').Page, id: string, title: string) => {
@@ -29,6 +31,29 @@ const openPanelFor = async (page: import('@playwright/test').Page, id: string, t
   await expect(panel).toBeVisible();
   await expect(panel).toHaveAttribute('data-mode', 'edit');
   return panel;
+};
+
+/**
+ * Click the desktop shell's own gutter — the root's padding left of the
+ * sidebar, which is inside the click-away scope and under nothing else. Checked
+ * rather than assumed, so a layout change fails here and not as a mystery
+ * "panel still visible".
+ */
+const clickEmptySpace = async (
+  page: import('@playwright/test').Page,
+  opts: { modifiers?: Array<'Meta' | 'Shift' | 'Control'> } = {}
+) => {
+  const at = { x: 5, y: 400 };
+  const hit = await page.evaluate(({ x, y }) => {
+    const el = document.elementFromPoint(x, y);
+    return !!el?.closest('[data-click-away-scope]') && !el.closest('[data-item-id],button');
+  }, at);
+  expect(hit, 'the gutter point is no longer bare click-away space').toBe(true);
+  await page.mouse.move(at.x, at.y);
+  for (const m of opts.modifiers ?? []) await page.keyboard.down(m);
+  await page.mouse.down();
+  await page.mouse.up();
+  for (const m of opts.modifiers ?? []) await page.keyboard.up(m);
 };
 
 test.describe('Item panel', () => {
@@ -145,6 +170,103 @@ test.describe('Item panel', () => {
       );
     } finally {
       await cleanupTestData(page, accessToken, [firstId, secondId]);
+    }
+  });
+
+  test('a click on empty space closes the panel, drops the selection, and keeps the edit', async ({
+    page,
+  }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = testTitle('click-away');
+    const renamed = `${taskTitle} renamed`;
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      startDate: getTodayStr(),
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await reloadApp(page);
+      await expect(itemCard(page, taskId)).toBeVisible({ timeout: 10_000 });
+      const panel = await openPanelFor(page, taskId, taskTitle);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-selected', 'true');
+
+      // Clicks INSIDE the panel and on the row itself are not click-away.
+      await panel.getByTestId('item-dialog-notes').click();
+      await itemCard(page, taskId).getByText(taskTitle, { exact: true }).click();
+      await expect(panel).toBeVisible();
+
+      // Type, then click away before the debounce can fire: the panel must
+      // flush on its way out rather than leave the write to its unmount grace.
+      await panel.getByTestId('item-dialog-title-input').fill(renamed);
+      await expect(panel).toHaveAttribute('data-autosave', 'pending');
+      await clickEmptySpace(page);
+
+      await expect(page.getByTestId('item-dialog')).toHaveCount(0);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-selected', 'false');
+      await expect
+        .poll(async () => (await fetchTestTask(page, taskId))?.title, { timeout: 15_000 })
+        .toBe(renamed);
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('closing the panel with Done lets go of the row it opened', async ({ page }) => {
+    const accessToken = await getAccessToken(page);
+    const taskTitle = testTitle('done-deselect');
+    const taskId = await createTestTask(page, accessToken, {
+      title: taskTitle,
+      startDate: getTodayStr(),
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await reloadApp(page);
+      await expect(itemCard(page, taskId)).toBeVisible({ timeout: 10_000 });
+      const panel = await openPanelFor(page, taskId, taskTitle);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-selected', 'true');
+
+      await panel.getByTestId('item-dialog-submit').click();
+      await expect(page.getByTestId('item-dialog')).toHaveCount(0);
+      await expect(itemCard(page, taskId)).toHaveAttribute('data-selected', 'false');
+    } finally {
+      await cleanupTestData(page, accessToken, [taskId]);
+    }
+  });
+
+  test('a click on empty space clears a multi-selection, a modifier click does not', async ({
+    page,
+  }) => {
+    const accessToken = await getAccessToken(page);
+    const today = getTodayStr();
+    const titles = [testTitle('multi-a'), testTitle('multi-b')];
+    const ids = await Promise.all(
+      titles.map((title) =>
+        createTestTask(page, accessToken, { title, startDate: today, isScheduled: true, timeBucket: 'morning' })
+      )
+    );
+    const mod = process.platform === 'darwin' ? 'Meta' : 'Control';
+
+    try {
+      await reloadApp(page);
+      for (const id of ids) await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      for (const [i, id] of ids.entries()) {
+        await itemCard(page, id).getByText(titles[i], { exact: true }).click({ modifiers: [mod] });
+      }
+      await expect(page.getByTestId('bulk-action-bar')).toBeVisible();
+
+      // A mis-aimed ⌘-click while building the selection must not wipe it.
+      await clickEmptySpace(page, { modifiers: [mod] });
+      await expect(page.getByTestId('bulk-action-bar')).toBeVisible();
+
+      await clickEmptySpace(page);
+      await expect(page.getByTestId('bulk-action-bar')).toHaveCount(0);
+      for (const id of ids) await expect(itemCard(page, id)).toHaveAttribute('data-selected', 'false');
+    } finally {
+      await cleanupTestData(page, accessToken, ids);
     }
   });
 });
