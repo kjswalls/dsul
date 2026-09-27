@@ -720,10 +720,11 @@
      than staying the same colour it had while floating. */
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
 
-  /* Launcher input's leading-glyph tile — a dark chip with a white mark, kept
-     dark in BOTH themes (the summoned card's one spot of deliberate chrome). */
-  --omni-tile: oklch(0.28 0.012 272);
-  --omni-tile-ink: oklch(0.98 0 0);
+  /* Launcher input's leading-glyph tile — the summoned card's one spot of
+     deliberate chrome, drawn as the theme's inverse: a pale chip with a dark
+     mark here, a dark chip with a light mark in .dark. */
+  --omni-tile: oklch(0.93 0.006 272);
+  --omni-tile-ink: oklch(0.28 0.012 272);
 
   /* Body panel. The elev family is all vertical offsets (0 x), so nothing ever
      falls on the sidebar sitting to the panel's left — the edge where the two
@@ -969,7 +970,7 @@
 
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
 
-  /* Launcher tile — slightly below the card so the white mark reads (see :root). */
+  /* Launcher tile — slightly below the card so the light mark reads (see :root). */
   --omni-tile: oklch(0.20 0.006 286);
   --omni-tile-ink: oklch(0.96 0.002 286);
 
