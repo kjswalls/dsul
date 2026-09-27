@@ -45,7 +45,7 @@ import { ContainerCreateForm } from '../container-create-form';
 import { ROUTINE_STATES } from '../container-fields';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
-import { useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { useWeekDotsFor, WeekProgress } from '@/components/planner/schedule/schedule-views';
 import { cn } from '@/lib/utils';
 import type { Item, Program, Routine } from '@/lib/planner-types';
 
@@ -467,6 +467,8 @@ function RoutineDetail({
         />
       </div>
 
+      <WeekProgress totals={week.weekTotals(routine.itemIds)} />
+
       <div className="mt-1.5 flex flex-col gap-5">
         <ItemMemberList
         openItems
@@ -482,7 +484,8 @@ function RoutineDetail({
           testPrefix="routine"
           orderable
           lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
-          row={{ trailing: week.trailing, ...controls }}
+          count={week.todayCount(routine.itemIds)}
+          row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
           onChange={(itemIds) => updateRoutine(routine.id, { itemIds })}
         />
 

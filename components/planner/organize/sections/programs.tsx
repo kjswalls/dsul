@@ -32,8 +32,10 @@ import {
   ScheduleHeading,
   SeasonHeatmap,
   useWeekDotsFor,
+  ProgressLine,
+  WeekProgress,
 } from '@/components/planner/schedule/schedule-views';
-import { containerMemberIds } from '@/lib/container-schedule';
+import { containerMemberIds, daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { programStates } from '../container-fields';
 import type { Item, Program, Routine } from '@/lib/planner-types';
@@ -358,10 +360,7 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
         </button>
       )}
 
-      <section className="flex flex-col gap-2" data-testid="program-season">
-        <ScheduleHeading label="Season" />
-        <SeasonHeatmap program={program} memberIds={seasonIds} />
-      </section>
+      <ProgramProgress program={program} seasonIds={seasonIds} todayStr={todayStr} />
 
       <div className="mt-1.5 flex flex-col gap-5">
         <RoutineMemberList
@@ -399,12 +398,51 @@ function ProgramDetail({ program, onBack }: { program: Program; onBack: () => vo
           })}
           testPrefix="program"
           lead={members.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
-          row={{ trailing: week.trailing, ...controls }}
+          count={week.todayCount(program.itemIds)}
+          row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
           onChange={(itemIds) => updateProgram(program.id, { itemIds })}
         />
       </div>
+
+      {/* At the foot: the season is good to look at, not something to act on
+          (Kirby, 2026-09-27), so the lists come first. */}
+      <section className="flex flex-col gap-2" data-testid="program-season">
+        <ScheduleHeading label="Season" />
+        <SeasonHeatmap program={program} memberIds={seasonIds} />
+      </section>
     </div>
   );
+}
+
+/**
+ * The program's one line of progress. A dated run says where in it today is
+ * ("Week 13 of 13 · ends Aug 31"); an undated or hand-held one says this
+ * week's count across everything it switches on.
+ */
+function ProgramProgress({
+  program,
+  seasonIds,
+  todayStr,
+}: {
+  program: Program;
+  seasonIds: string[];
+  todayStr: string;
+}) {
+  const week = useWeekDotsFor(seasonIds);
+  const dated = program.state === 'auto' && program.startsOn && program.endsOn && program.endsOn >= program.startsOn;
+  if (dated && todayStr >= program.startsOn! && todayStr <= program.endsOn!) {
+    const total = Math.max(1, Math.ceil((daysBetween(program.startsOn!, program.endsOn!) + 1) / 7));
+    const at = Math.min(total, Math.floor(daysBetween(program.startsOn!, todayStr) / 7) + 1);
+    return (
+      <ProgressLine fraction={(daysBetween(program.startsOn!, todayStr) + 1) / (daysBetween(program.startsOn!, program.endsOn!) + 1)} testId="program-progress">
+        <span className="text-foreground/85 font-medium tabular-nums">
+          Week {at} of {total}
+        </span>{' '}
+        · ends {formatShort(program.endsOn!)}
+      </ProgressLine>
+    );
+  }
+  return <WeekProgress totals={week.weekTotals(seasonIds)} testId="program-progress" />;
 }
 
 /**

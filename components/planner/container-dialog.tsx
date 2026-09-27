@@ -331,7 +331,9 @@ function ContainerForm({
             placeholder={`Name this ${noun}`}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            className={SERIF_TITLE_CLASS}
+            // The item dialog's title recipe, set in sans: organizers use the
+            // Linear-style head their panes do (detail-parts TitleRow).
+            className={cn(SERIF_TITLE_CLASS, 'font-sans text-xl font-semibold tracking-[-0.01em] md:text-xl')}
           />
         </div>
       </div>

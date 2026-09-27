@@ -751,7 +751,7 @@ export function ContainerDraftFields({
             // routine_items keeps an order; program_items does not.
             orderable={kind === 'routine'}
             lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
-            row={{ trailing: week.trailing }}
+            row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true }}
             emptyHint={
               hasNew('items')
                 ? undefined
@@ -883,7 +883,7 @@ function ProgramPicker({
   const programs = usePlannerStore((s) => s.programs);
   return (
     <section className="flex flex-col gap-1.5" data-testid={`${testPrefix}-programs`}>
-      <p id={`${testPrefix}-programs-label`} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+      <p id={`${testPrefix}-programs-label`} className="text-muted-foreground text-xs font-medium">
         In programs
       </p>
       <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={`${testPrefix}-programs-label`}>

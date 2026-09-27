@@ -140,11 +140,11 @@ describe('the goal pane', () => {
       goals: [goal({ milestoneIds: ['m1', 'm2'] })],
     });
     openGoal();
-    expect(id('goal-milestone-members')).toHaveTextContent('Milestones · 0 of 2');
+    expect(id('goal-milestone-members')).toHaveTextContent('Milestones 0 of 2');
 
     fireEvent.click(screen.getAllByTestId('goal-milestone-check')[0]);
     expect(usePlannerStore.getState().items.find((i) => i.id === 'm1')?.status).toBe('completed');
-    expect(id('goal-milestone-members')).toHaveTextContent('Milestones · 1 of 2');
+    expect(id('goal-milestone-members')).toHaveTextContent('Milestones 1 of 2');
 
     const row = screen.getAllByTestId('goal-milestone-member')[0];
     expect(row).toHaveAttribute('data-done');

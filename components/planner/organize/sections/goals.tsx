@@ -2,7 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Check, Flag, Maximize2, Repeat, Trash2 } from 'lucide-react';
+import { Check, Flag, Maximize2, Trash2 } from 'lucide-react';
 import {
   ChoiceChip,
   ColorChip,
@@ -41,7 +41,8 @@ import {
 } from '../detail-parts';
 import { ItemMemberList, type MemberRowParts } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
-import { GoalSchedule, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { GoalSchedule, ProgressLine, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { daysBetween } from '@/lib/container-schedule';
 import { ContainerCreateForm } from '../container-create-form';
 import { GOAL_STATES, heldElsewhere } from '../container-fields';
 import { cn } from '@/lib/utils';
@@ -450,6 +451,8 @@ function GoalDetail({
           data-testid="goal-milestone-check"
           aria-pressed={done}
           aria-label={done ? `Mark ${item.title} not reached` : `Mark ${item.title} reached`}
+          // The diamond is the milestone's own tick box — it says so on hover.
+          title={done ? 'Milestone · reached — click to undo' : 'Milestone · not reached yet — click to mark reached'}
           className={cn(
             'flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
@@ -491,7 +494,7 @@ function GoalDetail({
   });
 
   const checkinRow: MemberRowParts = {
-    leading: () => <Repeat className="text-muted-foreground size-3.5" aria-hidden />,
+    leading: week.leading,
     meta: (item) => {
       const last = lastDone(item);
       const cadence = cadenceLabel(item as never);
@@ -501,6 +504,7 @@ function GoalDetail({
   };
   // Supporting work is habits and tasks of any timing: say which.
   const memberRow: MemberRowParts = {
+    leading: week.leading,
     meta: (item) => ({ text: cadenceLabel(item as never), numeric: false }),
     metaWidth: GOAL_META_WIDTH,
   };
@@ -611,6 +615,8 @@ function GoalDetail({
         testId="goal-why"
       />
 
+      <GoalProgress goal={goal} achieved={achieved} total={total} />
+
       <GoalSchedule goal={goal} />
 
       {/*
@@ -713,6 +719,40 @@ function GoalDetail({
  *
  * It sits where the item pane puts its paused note, above the chips.
  */
+/**
+ * The goal's one line of progress, a breath below the why: where in its window
+ * today is, and how many milestones are behind it. The ring fills by the
+ * milestones when there are any, else by the window.
+ */
+function GoalProgress({ goal, achieved, total }: { goal: Goal; achieved: number; total: number }) {
+  const { todayStr } = useToday();
+  const from = goal.startsOn;
+  const to = goal.targetOn;
+  const inWindow = from && to && to >= from && todayStr >= from && todayStr <= to;
+  const weeks = inWindow ? Math.max(1, Math.ceil((daysBetween(from!, to!) + 1) / 7)) : 0;
+  const week = inWindow ? Math.min(weeks, Math.floor(daysBetween(from!, todayStr) / 7) + 1) : 0;
+  if (!inWindow && total === 0) return null;
+  const fraction = total > 0 ? achieved / total : (daysBetween(from!, todayStr) + 1) / (daysBetween(from!, to!) + 1);
+  return (
+    <div className="mt-2">
+      <ProgressLine fraction={fraction} testId="goal-progress">
+        {inWindow && (
+          <span className="text-foreground/85 font-medium tabular-nums">
+            Week {week} of {weeks}
+          </span>
+        )}
+        {inWindow && total > 0 && ' · '}
+        {total > 0 && (
+          <>
+            <span className="tabular-nums">{achieved}</span> of <span className="tabular-nums">{total}</span>{' '}
+            {total === 1 ? 'milestone' : 'milestones'}
+          </>
+        )}
+      </ProgressLine>
+    </div>
+  );
+}
+
 function EndedNotice({
   goal,
   itemsById,

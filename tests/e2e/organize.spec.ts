@@ -139,6 +139,8 @@ test.describe('organize — projects, types and groups', () => {
       await openConsole(page, 'Projects');
       await createLabel(page, 'project', name);
 
+      // The block's controls live in its property chip's popover.
+      await page.getByTestId('project-time-block-chip').click();
       await page.getByTestId('project-block-toggle').click();
       await expect(page.getByTestId('project-start-time')).toBeVisible();
       // Afternoon rather than morning, and a COUNT rather than a visibility
@@ -173,6 +175,7 @@ test.describe('organize — projects, types and groups', () => {
       await reloadApp(page);
       await openConsole(page, 'Projects');
       await createLabel(page, 'project', name);
+      await page.getByTestId('project-more').click();
       await page.getByTestId('project-delete').click();
       // Reads the count out of the copy, which fails loudly if the association
       // ever breaks — the survival assertion below would not.
@@ -262,6 +265,7 @@ test.describe('organize — projects, types and groups', () => {
       await createLabel(page, 'project', scope.title('Haven'));
       await createLabel(page, 'project', doomed);
 
+      await page.getByTestId('project-more').click();
       await page.getByTestId('project-delete').click();
       // Asserted on the confirm itself rather than by walking up from the button
       // with an xpath — the prompt is the surface the user actually reads, and
@@ -373,6 +377,7 @@ test.describe('organize — projects, types and groups', () => {
       await openConsole(page, 'Projects');
       await page.locator(`[data-testid="project-row"][data-project-id="${projectId}"]`).click();
 
+      await page.getByTestId('project-more').click();
       await page.getByTestId('project-delete').click();
       // The count proves the association before anything is deleted — it fails
       // loudly if the fixture ever stops linking.
@@ -479,6 +484,7 @@ test.describe('organize — projects, types and groups', () => {
     try {
       await openConsole(page, 'Projects');
       await createLabel(page, 'project', name);
+      await page.getByTestId('project-more').click();
       await page.getByTestId('project-delete').click();
       await page.getByTestId('category-delete-confirm').click();
       await closeConsole(page);

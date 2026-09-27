@@ -174,7 +174,7 @@ describe('OrganizerSection + LinkExistingPill', () => {
       </OrganizerSection>
     );
     const sec = screen.getByTestId('sec');
-    expect(sec.textContent).toContain('Milestones · 2 of 5');
+    expect(sec.textContent).toContain('Milestones 2 of 5');
     expect(within(sec).getByText('row')).toBeTruthy();
     fireEvent.click(screen.getByTestId('link'));
     expect(onLink).toHaveBeenCalled();

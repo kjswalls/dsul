@@ -386,7 +386,7 @@ describe('a routine a program is holding off', () => {
     click('routine-row');
     const rows = screen.getAllByTestId('routine-member');
     for (const row of rows) {
-      expect(within(row).getByTitle(/Stretch|Read/)).toHaveClass('text-muted-foreground');
+      expect(within(row).getByTitle(/^(Stretch|Read)/)).toHaveClass('text-muted-foreground');
     }
   });
 });
@@ -421,7 +421,7 @@ describe('a member the routine is NOT the only path to', () => {
     twoRoutines();
     open('routines');
     fireEvent.click(screen.getAllByTestId('routine-row')[0]); // Morning
-    expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-foreground');
+    expect(within(id('routine-member')).getByTitle(/^Stretch/)).toHaveClass('text-foreground');
   });
 
   it('does not promise a delete will bring back what never left', () => {
@@ -458,7 +458,7 @@ describe('a member the routine is NOT the only path to', () => {
     click('routine-row');
     expect(deleteSentence('routine')).not.toContain('come back into view');
     // …and it IS greyed, because it is genuinely not on the grid.
-    expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-muted-foreground');
+    expect(within(id('routine-member')).getByTitle(/^Stretch/)).toHaveClass('text-muted-foreground');
   });
 });
 
@@ -660,7 +660,8 @@ describe('the label sections', () => {
     open('projects');
     expect(within(id('project-row')).getByText('3')).toBeInTheDocument();
     click('project-row');
-    expect(id('project-meta')).toHaveTextContent('Project · 3 items');
+    // None of the three lands today, so the heading keeps the plain count.
+    expect(id('project-members')).toHaveTextContent('Items 3');
   });
 
   it('names the container the habits will actually land in', () => {
@@ -677,9 +678,9 @@ describe('the label sections', () => {
     });
     open('projects');
     fireEvent.click(screen.getAllByTestId('project-row')[0]);
-    const zone = id('project-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('The habit moves to “Evening”');
-    expect(zone).toHaveTextContent('⌘Z brings it back');
+    const sentence = deleteSentence('project');
+    expect(sentence).toContain('The habit moves to “Evening”');
+    expect(sentence).toContain('⌘Z brings it back');
   });
 
   it('says nothing about a destination when no member needs one', () => {
@@ -694,9 +695,9 @@ describe('the label sections', () => {
     });
     open('projects');
     fireEvent.click(screen.getAllByTestId('project-row')[0]);
-    const zone = id('project-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('stops being filed under Morning');
-    expect(zone).not.toHaveTextContent('moves to');
+    const sentence = deleteSentence('project');
+    expect(sentence).toContain('stops being filed under Morning');
+    expect(sentence).not.toContain('moves to');
   });
 
   it('warns that an item type is the one delete with no way back', () => {
@@ -714,14 +715,16 @@ describe('the label sections', () => {
     expect(id('type-delete').className).toContain('bg-destructive text-destructive-foreground');
   });
 
-  it('keeps the other four delete buttons quiet', () => {
+  it('keeps a project’s delete behind ⋯, with no red button on the pane', () => {
+    // A project goes to the Trash and comes back, like the other containers,
+    // so its Delete is a menu item now — the filled button is the item type's
+    // alone (the one delete with no way back).
     seed({ projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }] });
     open('projects');
     click('project-row');
-    // An outline, not a fill. `hover:bg-destructive/10` is in there, so the
-    // assertion has to name the filled pair rather than the substring.
-    expect(id('project-delete').className).not.toContain('bg-destructive text-destructive-foreground');
-    expect(id('project-delete').className).toContain('border-destructive/40');
+    expect(maybe('project-delete')).toBeNull();
+    expect(id('organize-detail').querySelector('.bg-destructive')).toBeNull();
+    expect(deleteSentence('project')).toContain('Nothing is filed under it');
   });
 
   it('hashes an item type’s accent from its slug, not its label', () => {
@@ -744,7 +747,7 @@ describe('the label sections', () => {
     open('projects');
     click('project-row');
 
-    fireEvent.click(screen.getByRole('button', { name: /Project color/i }));
+    click('project-color');
     fireEvent.click(screen.getByRole('button', { name: /^Auto$/i }));
     expect(usePlannerStore.getState().projects[0].color).toBeUndefined();
   });
@@ -970,6 +973,8 @@ describe('the project time block', () => {
     seed({ projects: [p] });
     open('projects');
     click('project-row');
+    // The controls live in the chip's popover now (TimeBlockChip).
+    click('project-time-block-chip');
   };
 
   it('writes all three fields the grid needs when switched on', () => {
@@ -1244,34 +1249,27 @@ describe('a member row', () => {
       routines: [routine('r1', 'Morning', { itemIds: ['i1', 'i2', 'i3'] })],
     });
 
-  it('carries a type glyph, so two items with ONE title are two rows', () => {
+  it('tells two items with ONE title apart', () => {
     /**
-     * Both are called "Stretch". Without the glyph these rows are identical,
-     * here and in the search that adds them — and picking the wrong one is a
-     * silent write that only diverges later, when the habit keeps recurring.
+     * Both are called "Stretch". Without a type cue these rows are identical —
+     * and picking the wrong one is a silent write that only diverges later,
+     * when the habit keeps recurring.
      *
-     * ASSERTED AGAINST THE REGISTRY TOKEN, not merely "the two differ". The
-     * first version compared the two svg class attributes, and passed with BOTH
-     * `glyph` entries deleted from ITEM_TYPES — because CategoryIcon's
-     * name-hash fallback already yields different icons for "Task" and "Habit".
-     * It tested the fallback and called it a test of the feature.
+     * ASSERTED AGAINST THE REGISTRY'S LABELS, not merely "the two differ", so
+     * the test fails if the tooltip stops naming the type the registry gives.
      */
     mixed();
     open('routines');
     click('routine-row');
     const rows = screen.getAllByTestId('routine-member');
-    const glyphOf = (row: HTMLElement) => row.querySelector('svg');
-    // lucide stamps `lucide-<kebab>` from the icon's own name, so the registry's
-    // token is checkable end to end without hard-coding a class here.
-    const fromToken = (type: 'task' | 'habit') => {
-      const token = ITEM_TYPES[type].glyph;
-      expect(token).toBeDefined();
-      return `lucide-${token!.replace('icon:', '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}`;
-    };
-
-    expect(glyphOf(rows[0])).toHaveClass(fromToken('habit'));
-    expect(glyphOf(rows[1])).toHaveClass(fromToken('task'));
-    expect(fromToken('habit')).not.toEqual(fromToken('task'));
+    // The row now leads with today's STATUS (TodayGlyph), not the type icon —
+    // so the two "Stretch" rows are told apart by the glyph's type, named from
+    // the registry in its tooltip, and by its shape (a one-off task is square).
+    const status = rows.map((r) => within(r).getByTestId('today-glyph'));
+    expect(status[0].getAttribute('title')).toMatch(new RegExp(`^${ITEM_TYPES.habit.label} ·`));
+    expect(status[1].getAttribute('title')).toMatch(new RegExp(`^${ITEM_TYPES.task.label} ·`));
+    expect(status[0].querySelector('circle')).not.toBeNull();
+    expect(status[1].querySelector('rect')).not.toBeNull();
   });
 
   it('shows a clock time in tabular figures and a bucket name in prose', () => {

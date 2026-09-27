@@ -1,7 +1,9 @@
 'use client';
 
 import { useMemo, useState } from 'react';
-import { ProjectTimeBlock } from '../project-time-block';
+import { TimeBlockChip } from '../project-time-block';
+import { Trash2 } from 'lucide-react';
+import { ColorChip } from '@/components/primitives/organizer-chips';
 import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { byName, matching, useToday } from '@/lib/collections';
@@ -15,10 +17,12 @@ import {
   DangerZone,
   CreateForm,
   DetailColumn,
+  DetailHead,
   IdentityRow,
   ListColumn,
   OpenAsPageLink,
   SectionWelcome,
+  TitleRow,
 } from '../detail-parts';
 import type { Item, ItemTypeDef, Project } from '@/lib/planner-types';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -27,6 +31,7 @@ import {
   UnscheduledTray,
   useContainerSchedule,
   useWeekDotsFor,
+  WeekProgress,
 } from '@/components/planner/schedule/schedule-views';
 import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
 import { useMemberActions } from '../member-row-actions';
@@ -187,7 +192,7 @@ function ProjectDetail({
   }, [project, items]);
   const memberIds = projectMembers.map((i) => i.id);
   const setItemsProject = usePlannerStore((s) => s.setItemsProject);
-  const week = useWeekDotsFor(memberIds);
+  const week = useWeekDotsFor(memberIds, undefined, { block: project });
   const { todayStr } = useToday();
   const { unscheduled } = useContainerSchedule(memberIds, todayStr, 1);
   const controls = useMemberActions({
@@ -216,15 +221,45 @@ function ProjectDetail({
       : '') +
     ' ⌘Z brings it back now, and it stays in the Trash for 30 days.';
 
-  return (
-    <div className="flex flex-col" data-testid="project-detail" data-project-id={project.id}>
-      <BackRow label="Projects" testId="project-detail-back" onBack={onBack} />
+  const requestDelete = () =>
+    confirm({
+      title: `Delete “${project.name}”?`,
+      description: consequence,
+      confirmLabel: 'Delete',
+      testId: 'category-delete-confirm',
+      onConfirm: () => {
+        removeProject(project.id);
+        onBack();
+      },
+    });
 
-      <IdentityRow
+  return (
+    <div className="flex flex-col gap-4" data-testid="project-detail" data-project-id={project.id}>
+      {/* The pane head the other containers use (DetailHead): a path, the
+          open-as-page verb, and Delete in the ⋯ menu — a project goes to the
+          Trash and comes back from it, so it no longer needs a red zone. */}
+      <DetailHead
+        kind="Project"
+        color={project.color}
+        name={project.name}
+        testPrefix="project"
+        back={{ label: 'Projects', testId: 'project-detail-back', onBack }}
+        actions={<OpenAsPageLink href={`/project/${project.id}`} testId="project-open-page" />}
+        menu={[
+          {
+            label: 'Delete project',
+            icon: <Trash2 className="size-3.5" />,
+            testId: 'project-delete',
+            destructive: true,
+            onSelect: requestDelete,
+          },
+        ]}
+      />
+
+      <TitleRow
         id={project.id}
         name={project.name}
         icon={project.emoji}
-        color={project.color}
         label="Project"
         testPrefix="project"
         // Unparked by migration 027: items point at this project by ID now, and
@@ -237,11 +272,6 @@ function ProjectDetail({
         validate={(next) =>
           takenBy(projects, project.id, next, 'project') ??
           heldByTrash(trashed, next, 'project')
-        }
-        meta={
-          <>
-            Project · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'}
-          </>
         }
         // The persisted canvas/braindump filters hold `project:<NAME>` and a
         // stale ref empties the view rather than degrading — but the remap is
@@ -256,15 +286,18 @@ function ProjectDetail({
         }
       />
 
-      <div className="mt-2 flex">
-        <OpenAsPageLink href={`/project/${project.id}`} testId="project-open-page" />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <ColorChip
+          value={project.color}
+          testId="project-color"
+          onChange={(color) => updateProject(project.id, { color })}
+        />
+        <TimeBlockChip project={project} />
       </div>
 
-      <div className="bg-border my-4 h-px" />
+      <WeekProgress totals={week.weekTotals(memberIds)} testId="project-progress" />
 
-      <ProjectTimeBlock project={project} />
-
-      <div className="mt-5 flex flex-col gap-4">
+      <div className="mt-1.5 flex flex-col gap-4">
         <ItemMemberList
         openItems
           label="Items"
@@ -274,8 +307,16 @@ function ProjectDetail({
           members={projectMembers}
           hiddenIds={NOTHING_HIDDEN}
           testPrefix="project"
-          lead={projectMembers.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU) : undefined}
-          row={{ trailing: week.trailing, ...controls }}
+          lead={
+            projectMembers.length > 0 || week.blockRow(MEMBER_ROW_TRAILING_PAD_WITH_MENU) ? (
+              <>
+                {week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU)}
+                {week.blockRow(MEMBER_ROW_TRAILING_PAD_WITH_MENU)}
+              </>
+            ) : undefined
+          }
+          count={week.todayCount(memberIds)}
+          row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
           removable={canBulkClearProject}
           // What setItemsProject will actually accept, and nothing already
           // filed elsewhere — linking would re-file it without a word.
@@ -301,23 +342,6 @@ function ProjectDetail({
         <UnscheduledTray items={unscheduled} testId="project-unscheduled" />
       </div>
 
-      <DangerZone
-        label="Delete this project"
-        testId="project-delete"
-        consequence={consequence}
-        onDelete={() =>
-          confirm({
-            title: `Delete “${project.name}”?`,
-            description: consequence,
-            confirmLabel: 'Delete',
-            testId: 'category-delete-confirm',
-            onConfirm: () => {
-              removeProject(project.id);
-              onBack();
-            },
-          })
-        }
-      />
     </div>
   );
 }

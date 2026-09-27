@@ -19,6 +19,9 @@ import {
   type OccurrenceState,
 } from '@/lib/container-schedule';
 import { cn } from '@/lib/utils';
+import { isRecurring } from '@/lib/recurrence';
+import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { accentColorForName } from '@/lib/accent-colors';
 import type { HabitItem, Item, Program, Project, Routine, Task } from '@/lib/planner-types';
 
 /**
@@ -255,20 +258,291 @@ export function WeekDotsHeader({ dates, todayStr, trailingPad }: { dates: readon
 export function useWeekDotsFor(
   memberIds: readonly string[],
   overrides?: ScheduleOverrides,
-  opts?: { ahead?: boolean },
+  opts?: { ahead?: boolean; block?: Project },
 ) {
   const dates = useThisWeek(opts?.ahead);
   const { todayStr } = useToday();
-  const schedule = useContainerSchedule(memberIds, dates[0], 7, overrides);
+  const schedule = useContainerSchedule(memberIds, dates[0], 7, overrides, opts?.block);
   const byItem = useMemo(() => occurrencesByItem(schedule), [schedule]);
+  const todayState = (itemId: string) => byItem.get(itemId)?.get(todayStr)?.state;
   return {
     /** Today's occurrence for a member — what the row controls gate ticks and skips on. */
-    todayState: (itemId: string) => byItem.get(itemId)?.get(todayStr)?.state,
+    todayState,
     header: (trailingPad: number) => <WeekDotsHeader dates={dates} todayStr={todayStr} trailingPad={trailingPad} />,
     trailing: (item: Item) => (
       <WeekDots row={byItem.get(item.id)} dates={dates} todayStr={todayStr} title={item.title} />
     ),
+    /**
+     * A project's time block as a row in the same columns as the dots — a
+     * slim bar per day with the block's hours lit. Null when it has no block.
+     */
+    blockRow: (trailingPad: number) =>
+      opts?.block?.startTime && opts.block.timeBucket && opts.block.repeatFrequency ? (
+        <BlockWeekRow
+          block={opts.block}
+          days={dates.map((d) => ({ date: d, on: !!schedule.days.find((x) => x.date === d)?.block }))}
+          todayStr={todayStr}
+          trailingPad={trailingPad}
+        />
+      ) : null,
+    /** The row's leading status: where this member stands TODAY. */
+    leading: (item: Item) => <TodayGlyph item={item} state={todayState(item.id)} todayStr={todayStr} />,
+    /**
+     * "1/3 today" for a list's heading — of the members that occur today, how
+     * many are done. Undefined when none occur today (the heading keeps its
+     * plain count then). Skipped days are not counted either way.
+     */
+    /** This week's occurrences among `ids`: how many there are and how many are done. */
+    weekTotals: (ids: readonly string[]) => {
+      let done = 0;
+      let total = 0;
+      for (const id of ids) {
+        for (const o of byItem.get(id)?.values() ?? []) {
+          if (o.state === 'skipped') continue;
+          total += 1;
+          if (o.state === 'done') done += 1;
+        }
+      }
+      return { done, total };
+    },
+    todayCount: (ids: readonly string[]): string | undefined => {
+      let done = 0;
+      let on = 0;
+      for (const id of ids) {
+        const st = todayState(id);
+        if (st === undefined || st === 'skipped') continue;
+        on += 1;
+        if (st === 'done') done += 1;
+      }
+      return on ? `${done}/${on} today` : undefined;
+    },
   };
+}
+
+/** "18:30" / "6:30pm" → minutes after midnight. */
+function minutesOf(time: string): number {
+  const m = /^(\d{1,2}):(\d{2})/.exec(time);
+  return m ? Number(m[1]) * 60 + Number(m[2]) : 0;
+}
+
+function clockLabel(mins: number): string {
+  const h = Math.floor(mins / 60) % 24;
+  const m = mins % 60;
+  const hh = h % 12 === 0 ? 12 : h % 12;
+  return `${hh}${m ? `:${String(m).padStart(2, '0')}` : ''}${h < 12 ? 'am' : 'pm'}`;
+}
+
+/** The window each day-bar draws: 6am to midnight, the planner's waking hours. */
+const DAY_FROM = 6 * 60;
+const DAY_TO = 24 * 60;
+
+/**
+ * A project's time block across the week: each day a slim bar (6am at the top,
+ * midnight at the foot) with the block's slice lit in the project's colour, on
+ * the days it lands. Aligned to the week-dots columns (WeekDotsHeader's
+ * geometry), so it reads as the first row of the list.
+ */
+export function BlockWeekRow({
+  block,
+  days,
+  todayStr,
+  trailingPad,
+}: {
+  block: Project;
+  days: { date: string; on: boolean }[];
+  todayStr: string;
+  trailingPad: number;
+}) {
+  const start = minutesOf(block.startTime!);
+  const end = Math.min(DAY_TO, start + (block.duration ?? 60));
+  const span = DAY_TO - DAY_FROM;
+  const top = Math.max(0, Math.min(1, (start - DAY_FROM) / span));
+  // At least 3px of a 24px bar, or an hour-long block is a hairline.
+  const height = Math.max(3 / 24, (end - Math.max(start, DAY_FROM)) / span);
+  // The project's own colour, or the accent its square is drawn in when none is stored.
+  const color = block.color ?? accentColorForName(block.name);
+  const when = `${clockLabel(start)}–${clockLabel(end)}`;
+  return (
+    <div
+      // The scrollbar gutter the member rows and the letters reserve, or the
+      // bars sit a gutter's width right of the columns they belong to.
+      className="hidden h-9 items-center gap-[9px] overflow-hidden px-[7px] [scrollbar-gutter:stable] sm:flex"
+      style={{ paddingRight: trailingPad }}
+      data-testid="project-block-row"
+      role="img"
+      aria-label={`Time block ${when}, ${days.filter((d) => d.on).length} days this week`}
+    >
+      <span className="flex w-[18px] shrink-0 justify-center" aria-hidden>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round">
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 7v5l3 2" />
+        </svg>
+      </span>
+      <span className="text-muted-foreground min-w-0 flex-1 truncate text-xs">{when} block</span>
+      <span className="flex items-center gap-[3px]" aria-hidden>
+        {days.map((d) => (
+          <span
+            key={d.date}
+            className={cn('flex h-9 w-[11px] items-center justify-center', d.date === todayStr && 'bg-muted/60 rounded-[3px]')}
+            title={d.on ? when : 'No block'}
+          >
+            <span className="bg-foreground/10 relative h-6 w-[5px] overflow-hidden rounded-full">
+              {d.on && (
+                <span
+                  className="absolute inset-x-0 rounded-full"
+                  style={{ top: `${top * 100}%`, height: `${height * 100}%`, background: color }}
+                />
+              )}
+            </span>
+          </span>
+        ))}
+      </span>
+    </div>
+  );
+}
+
+/**
+ * The pane's one line of progress — a small ring and a sentence, in place of a
+ * dashboard: "◔ 9 of 14 this week", "◔ Week 13 of 13 · ends Sun". The ring
+ * fills lime by `fraction`; the words carry the numbers.
+ */
+export function ProgressLine({
+  fraction,
+  children,
+  testId = 'progress-line',
+  action,
+}: {
+  fraction: number;
+  children: ReactNode;
+  testId?: string;
+  /** Right-aligned — the goal's Timeline/Bars switch. */
+  action?: ReactNode;
+}) {
+  const f = Math.max(0, Math.min(1, fraction));
+  const a = f * 2 * Math.PI;
+  const x = 7 + 6 * Math.sin(a);
+  const y = 7 - 6 * Math.cos(a);
+  return (
+    <div className="text-muted-foreground flex min-h-6 items-center gap-2 text-xs" data-testid={testId}>
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden className="shrink-0">
+        <circle cx="7" cy="7" r="6" fill="none" className="stroke-border" strokeWidth="2" />
+        {f >= 0.999 ? (
+          <circle cx="7" cy="7" r="6" fill="none" className="stroke-primary" strokeWidth="2" />
+        ) : f > 0 ? (
+          <path d={`M7 1 A6 6 0 ${f > 0.5 ? 1 : 0} 1 ${x.toFixed(2)} ${y.toFixed(2)}`} fill="none" className="stroke-primary" strokeWidth="2" />
+        ) : null}
+      </svg>
+      <span className="min-w-0 flex-1 truncate">{children}</span>
+      {action}
+    </div>
+  );
+}
+
+/** "◔ 9 of 14 this week" — nothing at all when nothing lands this week. */
+export function WeekProgress({ totals, testId }: { totals: { done: number; total: number }; testId?: string }) {
+  if (totals.total === 0) return null;
+  return (
+    <ProgressLine fraction={totals.done / totals.total} testId={testId}>
+      <span className="text-foreground/85 font-medium tabular-nums">
+        {totals.done} of {totals.total}
+      </span>{' '}
+      this week
+    </ProgressLine>
+  );
+}
+
+/**
+ * A member's status TODAY, Linear's status circle in the app's own vocabulary:
+ *   ○  due today            ◔  a counted habit part-way (2 of 3)
+ *   ●✓ done today (lime)     ◌  not on today (dashed, faint)
+ *   ○– skipped today
+ * One-off tasks draw a rounded square rather than a circle, as a task's
+ * checkbox does elsewhere. Never a warning mark: a past day with nothing
+ * recorded is not this glyph's business, only today is.
+ */
+export function TodayGlyph({
+  item,
+  state,
+  todayStr,
+}: {
+  item: Item;
+  state: OccurrenceState | undefined;
+  todayStr: string;
+}) {
+  const square = !isRecurring(item as { repeatFrequency?: string });
+  const target = item.type === 'habit' ? ((item as HabitItem).timesPerDay ?? 1) : 1;
+  const count = item.type === 'habit' ? (((item as HabitItem).dailyCounts ?? {})[todayStr] ?? 0) : 0;
+  const label =
+    state === 'done'
+      ? 'Done today'
+      : state === 'skipped'
+        ? 'Skipped today'
+        : state === 'due'
+          ? target > 1
+            ? `${count} of ${target} today`
+            : 'Due today'
+          : 'Not on today';
+  const r = square ? 3 : 6;
+  const box = square ? { x: 1.5, y: 1.5, w: 11, h: 11 } : null;
+  // The type rides along in the tooltip: the glyph replaced the type icon in
+  // this slot, and two rows can share a title ("Stretch" the habit and
+  // "Stretch" the task) — hovering the circle tells them apart.
+  const typeLabel = getItemTypeConfig(itemTypeName(item)).label;
+  return (
+    <span
+      className="flex size-[18px] shrink-0 items-center justify-center"
+      title={`${typeLabel} · ${label}`}
+      data-type={itemTypeName(item)}
+      data-testid="today-glyph"
+      data-state={state ?? 'none'}
+    >
+      <svg width="14" height="14" viewBox="0 0 14 14" aria-label={label} role="img">
+        {state === 'done' ? (
+          <>
+            {box ? (
+              <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={r} className="fill-primary" />
+            ) : (
+              <circle cx="7" cy="7" r="6.5" className="fill-primary" />
+            )}
+            <path
+              d="M4.2 7.2l1.9 1.9 3.7-3.9"
+              fill="none"
+              className="stroke-primary-foreground"
+              strokeWidth="1.6"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </>
+        ) : state === undefined ? (
+          box ? (
+            <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={r} fill="none" className="stroke-muted-foreground/40" strokeWidth="1.5" strokeDasharray="2 2" />
+          ) : (
+            <circle cx="7" cy="7" r="6" fill="none" className="stroke-muted-foreground/40" strokeWidth="1.5" strokeDasharray="2 2" />
+          )
+        ) : (
+          <>
+            {box ? (
+              <rect x={box.x} y={box.y} width={box.w} height={box.h} rx={r} fill="none" className="stroke-muted-foreground" strokeWidth="1.5" />
+            ) : (
+              <circle cx="7" cy="7" r="6" fill="none" className="stroke-muted-foreground" strokeWidth="1.5" />
+            )}
+            {state === 'skipped' && <path d="M4.5 7h5" className="stroke-muted-foreground" strokeWidth="1.5" strokeLinecap="round" />}
+            {state === 'due' && target > 1 && count > 0 && (
+              <path d={piePath(Math.min(count / target, 0.999))} className="fill-muted-foreground" />
+            )}
+          </>
+        )}
+      </svg>
+    </span>
+  );
+}
+
+/** A pie wedge from 12 o'clock, `frac` of the way round, inside the 6-radius ring. */
+function piePath(frac: number): string {
+  const a = frac * 2 * Math.PI;
+  const x = 7 + 4.5 * Math.sin(a);
+  const y = 7 - 4.5 * Math.cos(a);
+  return `M7 7 L7 2.5 A4.5 4.5 0 ${frac > 0.5 ? 1 : 0} 1 ${x.toFixed(2)} ${y.toFixed(2)} Z`;
 }
 
 /* ── shared chrome ─────────────────────────────────────────────────────── */
@@ -284,7 +558,7 @@ export function ScheduleHeading({
 }) {
   return (
     <div className="flex min-h-5 items-center justify-between gap-2" data-testid={testId}>
-      <p className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">{label}</p>
+      <p className="text-muted-foreground text-xs font-medium">{label}</p>
       {children}
     </div>
   );
