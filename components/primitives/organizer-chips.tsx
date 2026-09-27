@@ -13,12 +13,12 @@ import { useEscapeRung } from '@/components/planner/organize/escape-ladder';
 
 /**
  * The chip-and-section vocabulary the organizer surfaces share — the "new"
- * dialog's goal/routine/program/project bodies and the console's detail panes.
+ * dialog's goal/routine/season/project bodies and the console's detail panes.
  * Everything here is built on PropertyChip, so an organizer's window or colour
  * reads exactly like an item's date or project: unset shows the noun, dashed;
  * set shows the value.
  *
- * Dates cross these props as `yyyy-MM-dd` strings, the shape goals and programs
+ * Dates cross these props as `yyyy-MM-dd` strings, the shape goals and seasons
  * store them in, and are only turned into Dates (local noon, via parseDay) for
  * the calendar.
  */
@@ -49,7 +49,7 @@ export function rangeCopy(
 /**
  * A start → end pair of days as one chip. One calendar, not two: a
  * two-segment switch above it picks which side the next click sets, and each
- * side's days are fenced so the range can never invert (a program whose start
+ * side's days are fenced so the range can never invert (a season whose start
  * falls after its end is live on no date at all — lib/active.ts).
  */
 export function DateRangeChip({

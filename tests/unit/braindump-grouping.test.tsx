@@ -50,11 +50,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -111,7 +111,7 @@ function seed(braindumpSortBy: SortBy) {
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
     routines: [],
-    programs: [],
+    seasons: [],
   });
   useViewStore.setState({
     braindumpGroupBy: 'project',
@@ -190,7 +190,7 @@ beforeEach(() => {
 describe('braindump: grouping by a gate', () => {
   it('sections unscheduled items by their routine, with a pause switch on the header', () => {
     // The one-line fix that makes gate grouping resolve at all: braindump.tsx
-    // passing { routines, programs } to groupRows instead of an empty ctx. With
+    // passing { routines, seasons } to groupRows instead of an empty ctx. With
     // the empty ctx this routine's item fell into "No routine" and the switch
     // never rendered.
     const zebra = {
@@ -209,7 +209,7 @@ describe('braindump: grouping by a gate', () => {
       habits: [],
       projects: [],
       routines: [{ id: 'r', name: 'Mornings', itemIds: ['z'] }],
-      programs: [],
+      seasons: [],
     });
     useViewStore.setState({
       braindumpGroupBy: 'routine',
@@ -259,7 +259,7 @@ describe('braindump: the aspire axis', () => {
       habits: [],
       projects: [],
       routines: [],
-      programs: [],
+      seasons: [],
       goals: [
         {
           id: 'g1',
@@ -350,7 +350,7 @@ describe('braindump: grouping by priority', () => {
       habits: habits as never,
       projects: [],
       routines: [],
-      programs: [],
+      seasons: [],
     });
     localStorage.setItem(
       'dsul-view',

@@ -13,7 +13,7 @@
  * the whole thing testable and timezone-stable.
  *
  * Three layers answer "is it live": the item's own pause, the routines holding
- * it, and the programs holding those (or holding it directly). They combine
+ * it, and the seasons holding those (or holding it directly). They combine
  * through the path algebra in {@link isItemActiveOn} — read that first; the
  * rest of this file is its supporting cast.
  *
@@ -22,7 +22,7 @@
 
 import { isRecurring, isCompletedOnDate, isSkippedOnDate, toDateStr } from './recurrence';
 import { toDateOnly } from './overdue';
-import type { Item, Routine, Program } from './planner-types';
+import type { Item, Routine, Season } from './planner-types';
 
 /**
  * Everything the resolver needs beyond the item and the date.
@@ -47,13 +47,13 @@ export interface ActivationContext {
    */
   routines?: readonly Routine[];
   /**
-   * The user's LIVE programs, same soft-delete contract as `routines` and for a
-   * sharper reason: a trashed program must not keep suppressing the items it
+   * The user's LIVE seasons, same soft-delete contract as `routines` and for a
+   * sharper reason: a trashed season must not keep suppressing the items it
    * held. Trashing it removes its paths, so a routine it was the only holder of
    * falls back to standalone and its members return — which is what makes
    * "restore within 30 days" restore the suppression too, intact.
    */
-  programs?: readonly Program[];
+  seasons?: readonly Season[];
 }
 
 /** The pause columns, on an item or (from Phase 2) a routine. */
@@ -167,12 +167,12 @@ function pauseStartDate(pausedAt: string, userTimezone: string): string | null {
 }
 
 /**
- * Is this program switched on for `dateStr`?
+ * Is this season switched on for `dateStr`?
  *
  * The tri-state exists because a period of life has two different kinds of
  * boundary. `auto` follows the calendar — a summer that starts on Jun 1 should
  * not need a reminder to turn itself on. `active`/`paused` are manual overrides
- * and they ALWAYS win, because a person who flips a program by hand ("we came
+ * and they ALWAYS win, because a person who flips a season by hand ("we came
  * back early") must never be second-guessed by a date they set weeks ago.
  *
  * Only `auto` is date-resolved. The manual states genuinely have no date
@@ -182,16 +182,16 @@ function pauseStartDate(pausedAt: string, userTimezone: string): string | null {
  * not contain, and a week view would render a boundary that never happened.
  *
  * The range is INCLUSIVE at both ends, unlike a pause's exclusive upper bound.
- * A pause is written as "until Sep 1" (come back ON the 1st); a program range is
+ * A pause is written as "until Sep 1" (come back ON the 1st); a season range is
  * written as a period you are inside — "Jun 1 to Aug 31" plainly includes Aug 31.
  * The two read differently in the UI, so they resolve differently here.
  */
-export function isProgramActiveOn(program: Program, dateStr: string): boolean {
-  if (program.state === 'active') return true;
-  if (program.state === 'paused') return false;
+export function isSeasonActiveOn(season: Season, dateStr: string): boolean {
+  if (season.state === 'active') return true;
+  if (season.state === 'paused') return false;
   const day = toDateOnly(dateStr);
-  if (program.startsOn && day < toDateOnly(program.startsOn)) return false;
-  if (program.endsOn && day > toDateOnly(program.endsOn)) return false;
+  if (season.startsOn && day < toDateOnly(season.startsOn)) return false;
+  if (season.endsOn && day > toDateOnly(season.endsOn)) return false;
   return true;
 }
 
@@ -210,26 +210,26 @@ export function routinesForItem(
   return routines.filter((r) => r.itemIds.includes(itemId));
 }
 
-/** The programs holding `item` DIRECTLY — not the ones reached through a routine. */
-export function programsForItem(
+/** The seasons holding `item` DIRECTLY — not the ones reached through a routine. */
+export function seasonsForItem(
   itemId: string,
-  programs: readonly Program[] | undefined,
-): readonly Program[] {
-  if (!programs?.length) return EMPTY_PROGRAMS;
-  return programs.filter((p) => p.itemIds.includes(itemId));
+  seasons: readonly Season[] | undefined,
+): readonly Season[] {
+  if (!seasons?.length) return EMPTY_SEASONS;
+  return seasons.filter((p) => p.itemIds.includes(itemId));
 }
 
 const EMPTY_ROUTINES: readonly Routine[] = [];
-const EMPTY_PROGRAMS: readonly Program[] = [];
+const EMPTY_SEASONS: readonly Season[] = [];
 
 /**
- * One way an item can be scoped: a routine, a program, or a routine inside a
- * program. Never neither — an item with no paths is unconditionally live and
+ * One way an item can be scoped: a routine, a season, or a routine inside a
+ * season. Never neither — an item with no paths is unconditionally live and
  * never produces one of these.
  */
 export interface ActivationPath {
   routine?: Routine;
-  program?: Program;
+  season?: Season;
 }
 
 /**
@@ -238,28 +238,28 @@ export interface ActivationPath {
  * Three shapes, and the third is the one that carries the design:
  *
  *   1. direct      item → P
- *   2. via routine item → R → P   (one path per program holding R)
- *   3. standalone  item → R       (only when R belongs to NO program)
+ *   2. via routine item → R → P   (one path per season holding R)
+ *   3. standalone  item → R       (only when R belongs to NO season)
  *
- * The standalone rule is why attaching a routine to its first program is a
+ * The standalone rule is why attaching a routine to its first season is a
  * visible event rather than a no-op: before the attach, the routine answers for
- * itself; after it, the program answers too. Detaching from the last program
+ * itself; after it, the season answers too. Detaching from the last season
  * hands the answer back. The manager's attach flow states this consequence out
  * loud (decision 3's "known discontinuity, accepted") because a join write that
  * silently hides five items would otherwise read as a bug.
  *
- * Soft-deleted containers are already absent — `ctx.routines`/`ctx.programs`
- * carry live rows only — which is what makes trashing a program restore its
+ * Soft-deleted containers are already absent — `ctx.routines`/`ctx.seasons`
+ * carry live rows only — which is what makes trashing a season restore its
  * routine to standalone rather than stranding its members behind a container
  * nobody can see or resume.
  */
 export function activationPathsFor(itemId: string, ctx: ActivationContext): ActivationPath[] {
   const paths: ActivationPath[] = [];
-  for (const program of programsForItem(itemId, ctx.programs)) paths.push({ program });
+  for (const season of seasonsForItem(itemId, ctx.seasons)) paths.push({ season });
   for (const routine of routinesForItem(itemId, ctx.routines)) {
-    const holders = (ctx.programs ?? []).filter((p) => p.routineIds.includes(routine.id));
+    const holders = (ctx.seasons ?? []).filter((p) => p.routineIds.includes(routine.id));
     if (holders.length === 0) paths.push({ routine });
-    else for (const program of holders) paths.push({ routine, program });
+    else for (const season of holders) paths.push({ routine, season });
   }
   return paths;
 }
@@ -267,7 +267,7 @@ export function activationPathsFor(itemId: string, ctx: ActivationContext): Acti
 /** A path carries the item on `dateStr` iff every container on it is switched on. */
 export function isPathLiveOn(path: ActivationPath, dateStr: string, tz: string): boolean {
   if (path.routine && isPausedOn(path.routine, dateStr, tz)) return false;
-  if (path.program && !isProgramActiveOn(path.program, dateStr)) return false;
+  if (path.season && !isSeasonActiveOn(path.season, dateStr)) return false;
   return true;
 }
 
@@ -357,7 +357,7 @@ export function isOpenLoopSuppressedOn(
  *
  * The pure derivations downstream (deriveDayItems, selectOverdue) take this Set
  * rather than the containers themselves: they are store-free by design, and
- * from Phase 2 resolving an item would mean walking item → routine → program.
+ * from Phase 2 resolving an item would mean walking item → routine → season.
  * Resolving once per rendered date and passing ids keeps that walk in one place.
  */
 export function inactiveItemIdsOn(
@@ -366,7 +366,7 @@ export function inactiveItemIdsOn(
   ctx: ActivationContext,
 ): Set<string> {
   // Invert the membership ONCE. Calling activationPathsFor per item would be
-  // O(items × routines × programs) on every rendered column of every week view;
+  // O(items × routines × seasons) on every rendered column of every week view;
   // this is O(total memberships + items). The value is the item's live-path
   // count on this date, which is all the algebra needs: >0 live, or 0 with no
   // paths at all.
@@ -381,24 +381,24 @@ export function inactiveItemIdsOn(
     }
   };
 
-  // Resolve each program's state ONCE — a program held by four routines would
+  // Resolve each season's state ONCE — a season held by four routines would
   // otherwise be re-resolved four times per column.
-  const programs = ctx.programs ?? [];
-  const programLive = new Map<string, boolean>();
-  for (const program of programs) programLive.set(program.id, isProgramActiveOn(program, dateStr));
+  const seasons = ctx.seasons ?? [];
+  const seasonLive = new Map<string, boolean>();
+  for (const season of seasons) seasonLive.set(season.id, isSeasonActiveOn(season, dateStr));
 
-  // Direct item → program paths.
-  for (const program of programs) {
-    const live = programLive.get(program.id) ? 1 : 0;
-    for (const itemId of program.itemIds) bump(itemId, 1, live);
+  // Direct item → season paths.
+  for (const season of seasons) {
+    const live = seasonLive.get(season.id) ? 1 : 0;
+    for (const itemId of season.itemIds) bump(itemId, 1, live);
   }
 
   const holdersByRoutine = new Map<string, string[]>();
-  for (const program of programs) {
-    for (const routineId of program.routineIds) {
+  for (const season of seasons) {
+    for (const routineId of season.routineIds) {
       const holders = holdersByRoutine.get(routineId);
-      if (holders) holders.push(program.id);
-      else holdersByRoutine.set(routineId, [program.id]);
+      if (holders) holders.push(season.id);
+      else holdersByRoutine.set(routineId, [season.id]);
     }
   }
 
@@ -411,7 +411,7 @@ export function inactiveItemIdsOn(
     const total = holders?.length ?? 1;
     const live = routinePaused
       ? 0
-      : (holders?.filter((id) => programLive.get(id)).length ?? 1);
+      : (holders?.filter((id) => seasonLive.get(id)).length ?? 1);
     for (const itemId of routine.itemIds) bump(itemId, total, live);
   }
 
@@ -438,28 +438,28 @@ export function inactiveItemIdsOn(
 export type SuppressionReason =
   | { kind: 'paused'; until?: string }
   | { kind: 'routine'; routine: Routine; until?: string }
-  | { kind: 'program'; program: Program; routine?: Routine; until?: string };
+  | { kind: 'season'; season: Season; routine?: Routine; until?: string };
 
 /**
- * The date an inactive program switches itself back on, if it will.
+ * The date an inactive season switches itself back on, if it will.
  *
- * Only an `auto` program with a future start has one. A manually paused program
+ * Only an `auto` season with a future start has one. A manually paused season
  * has no scheduled return by construction, and one past its `endsOn` is over —
  * both correctly answer "no date", which the ranking below reads as "returns
  * last" rather than inventing a reassurance the row cannot support.
  *
- * Exported for the scope rail, which has to rank a routine's blocking programs
+ * Exported for the scope rail, which has to rank a routine's blocking seasons
  * by the same rule. A second copy of this over there is precisely how the
  * binding-constraint reasoning would drift out of agreement with itself.
  */
-export function programResumeDate(program: Program, dateStr: string): string | undefined {
-  if (program.state !== 'auto' || !program.startsOn) return undefined;
+export function seasonResumeDate(season: Season, dateStr: string): string | undefined {
+  if (season.state !== 'auto' || !season.startsOn) return undefined;
   // An INVERTED range (startsOn after endsOn) is never live on any date, so its
   // start is not a return date — it is a date on which nothing will happen.
   // Promising it would be the exact failure the binding-constraint rule exists
   // to prevent, one layer down: the user waits for Sep 1 and Sep 1 does nothing.
-  if (program.endsOn && toDateOnly(program.startsOn) > toDateOnly(program.endsOn)) return undefined;
-  return toDateOnly(dateStr) < toDateOnly(program.startsOn) ? program.startsOn : undefined;
+  if (season.endsOn && toDateOnly(season.startsOn) > toDateOnly(season.endsOn)) return undefined;
+  return toDateOnly(dateStr) < toDateOnly(season.startsOn) ? season.startsOn : undefined;
 }
 
 /**
@@ -467,16 +467,16 @@ export function programResumeDate(program: Program, dateStr: string): string | u
  * rest of the app is doing about it.
  *
  * THE SPLIT IS THE POINT. A routine has a switch of its own AND can sit inside
- * programs that answer for it, so "is this routine on?" has two different true
+ * seasons that answer for it, so "is this routine on?" has two different true
  * answers and each is correct for a different job. `localOn` is what the user
  * set and what a control must write back; `effectiveOn` is what the resolver
  * obeys and therefore what the rest of the screen has to agree with. A surface
  * that resolves only the local pause shows `Active` with un-greyed members while
- * a program holds the whole thing off — which is exactly what the console did,
+ * a season holds the whole thing off — which is exactly what the console did,
  * one column away from a ScopeRail reporting the opposite.
  *
  * DISJUNCTIVE, matching {@link isItemActiveOn}: a standalone routine answers for
- * itself, and one held by several programs is live while ANY holder is. Read the
+ * itself, and one held by several seasons is live while ANY holder is. Read the
  * `blockers.length < holders.length` test as "at least one holder is carrying
  * it" — counting rather than `.some()` because `blockers` is wanted anyway.
  *
@@ -489,35 +489,35 @@ export interface RoutineStanding {
   localOn: boolean;
   /** What the resolver obeys, and so what the member list must grey on. */
   effectiveOn: boolean;
-  /** Every program holding this routine, on or off. */
-  holders: readonly Program[];
+  /** Every season holding this routine, on or off. */
+  holders: readonly Season[];
   /** Holders that are switched off on this date. */
-  blockers: readonly Program[];
+  blockers: readonly Season[];
   /**
    * The blocker that comes back first — undefined only when nothing blocks.
    *
-   * Ranked by {@link programResumeDate}, with "no return date" sorting LAST: a
-   * manually paused program has no scheduled return by construction, and letting
+   * Ranked by {@link seasonResumeDate}, with "no return date" sorting LAST: a
+   * manually paused season has no scheduled return by construction, and letting
    * it win the ranking would name it as the thing to wait for when it is the one
    * thing that will never arrive on its own.
    */
-  soonestBlocker?: Program;
+  soonestBlocker?: Season;
 }
 
 export function routineStandingOn(
   routine: Routine,
-  programs: readonly Program[] | undefined,
+  seasons: readonly Season[] | undefined,
   dateStr: string,
   tz: string,
 ): RoutineStanding {
   const localOn = !isPausedOn(routine, dateStr, tz);
-  const holders = (programs ?? EMPTY_PROGRAMS).filter((p) => p.routineIds.includes(routine.id));
-  const blockers = holders.filter((p) => !isProgramActiveOn(p, dateStr));
+  const holders = (seasons ?? EMPTY_SEASONS).filter((p) => p.routineIds.includes(routine.id));
+  const blockers = holders.filter((p) => !isSeasonActiveOn(p, dateStr));
   const effectiveOn = localOn && (holders.length === 0 || blockers.length < holders.length);
 
   const ranked = [...blockers].sort((a, b) => {
-    const da = programResumeDate(a, dateStr);
-    const db = programResumeDate(b, dateStr);
+    const da = seasonResumeDate(a, dateStr);
+    const db = seasonResumeDate(b, dateStr);
     if (da === db) return 0;
     if (!da) return 1;
     if (!db) return -1;
@@ -535,12 +535,12 @@ export function routineStandingOn(
  * ITEM on the grid" are different questions, and a surface that answers the
  * first while phrasing the second is wrong exactly when an item has a second
  * live path — which the disjunctive rule exists to create. The Organize console
- * shipped that mistake in a delete confirm: a routine held off by an out-of-
- * season program promised "and they come back into view" for items another
- * routine was carrying the whole time, and for items the same program also held
+ * shipped that mistake in a delete confirm: a routine held off by a switched-
+ * off season promised "and they come back into view" for items another
+ * routine was carrying the whole time, and for items the same season also held
  * directly. Nothing left; nothing came back.
  *
- * `wouldHide` in the console's programs section already reasons this way — the
+ * `wouldHide` in the console's seasons section already reasons this way — the
  * shared shape, so it stops being copied.
  *
  * Cost is two `inactiveItemIdsOn` passes, linear in items + memberships, on a
@@ -566,7 +566,7 @@ export function membersRevealedByRemoving(
  * containers to blame.
  *
  * "Which to blame" is the whole difficulty. A path through a paused routine
- * inside an out-of-season program is blocked twice, and naming the one that
+ * inside a switched-off season is blocked twice, and naming the one that
  * clears FIRST would promise a return date the item will not honour — the user
  * resumes the routine on the strength of the note and nothing appears. So the
  * binding constraint wins: whichever clears last, with an unknown return
@@ -578,31 +578,31 @@ function deadPathExplanation(
   tz: string,
 ): { returnsOn?: string; reason: SuppressionReason } {
   const routineBlocks = !!path.routine && isPausedOn(path.routine, dateStr, tz);
-  const programBlocks = !!path.program && !isProgramActiveOn(path.program, dateStr);
+  const seasonBlocks = !!path.season && !isSeasonActiveOn(path.season, dateStr);
   const routineReturns = routineBlocks ? path.routine!.pausedUntil : undefined;
-  const programReturns = programBlocks ? programResumeDate(path.program!, dateStr) : undefined;
+  const seasonReturns = seasonBlocks ? seasonResumeDate(path.season!, dateStr) : undefined;
 
-  const nameProgram =
-    programBlocks &&
+  const nameSeason =
+    seasonBlocks &&
     (!routineBlocks ||
-      !programReturns ||
-      (!!routineReturns && programReturns >= routineReturns));
+      !seasonReturns ||
+      (!!routineReturns && seasonReturns >= routineReturns));
 
   // The path clears only when BOTH constraints do, so an unknown on either side
   // makes the whole path's return unknown.
   const returnsOn =
-    (routineBlocks && !routineReturns) || (programBlocks && !programReturns)
+    (routineBlocks && !routineReturns) || (seasonBlocks && !seasonReturns)
       ? undefined
-      : [routineReturns, programReturns].filter(Boolean).sort().pop();
+      : [routineReturns, seasonReturns].filter(Boolean).sort().pop();
 
-  if (nameProgram) {
+  if (nameSeason) {
     return {
       returnsOn,
       reason: {
-        kind: 'program',
-        program: path.program!,
+        kind: 'season',
+        season: path.season!,
         routine: path.routine,
-        until: programReturns,
+        until: seasonReturns,
       },
     };
   }
@@ -618,7 +618,7 @@ function deadPathExplanation(
  * Three surfaces render this — the item panel's activation line, the /item/[id]
  * header chip, and the braindump's Paused section — and they were already
  * drifting at two. The `long` variant has room for the article-and-noun copy
- * rule ("your Summer program", never a bare "Program") and a return date; the
+ * rule ("your Summer season", never a bare "Season") and a return date; the
  * short one is for chips, where the container's name is the whole message.
  *
  * Never a warning colour and never an apology, per the guilt-free law
@@ -633,10 +633,10 @@ export function suppressionLabel(reason: SuppressionReason, opts: { long?: boole
       return opts.long
         ? `Hidden with your ${reason.routine.name} routine${back}`
         : `Hidden with ${reason.routine.name}`;
-    case 'program':
+    case 'season':
       return opts.long
-        ? `Hidden with your ${reason.program.name} program${back}`
-        : `Hidden with ${reason.program.name}`;
+        ? `Hidden with your ${reason.season.name} season${back}`
+        : `Hidden with ${reason.season.name}`;
   }
 }
 

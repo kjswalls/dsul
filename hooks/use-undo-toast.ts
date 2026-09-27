@@ -73,7 +73,7 @@ const SIGNIFICANT_ACTIONS = [
  * attached one only because the item it just created is not visible where the
  * user just put it (plan decision 11), which is the exact condition this toast
  * exists for — and creating is far too ordinary a verb to list. An item created
- * straight into a program that is currently off is gone from the grid the moment
+ * straight into a season that is currently off is gone from the grid the moment
  * the dialog closes, and the list alone would let that happen in silence while
  * the bulk "Add to …" path announced the identical write.
  *
@@ -84,7 +84,7 @@ const SIGNIFICANT_ACTIONS = [
  *  - `Edit task:` attaches its receipt on `'startDate' in updates` — key
  *    PRESENCE, not change — and the mobile modal commits the whole DRAFT_KEYS
  *    payload on every Save, so changing only a priority on a task in a paused
- *    program would toast. It needs `updates.startDate !== task.startDate`
+ *    season would toast. It needs `updates.startDate !== task.startDate`
  *    there before a receipt on it means anything.
  *  - EOD's "Move all to tomorrow" carries N suppressed rows through that same
  *    action; React batches them into ONE toast, which names one arbitrary row

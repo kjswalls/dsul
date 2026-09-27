@@ -608,7 +608,7 @@ export function AppShell() {
           item — its own slot and component, the same shell (see
           components/planner/container-dialog.tsx). Mounted beside the add
           modal, and like it on every shell: the palette's New goal / routine /
-          program reaches it on mobile and in Zen too. */}
+          season reaches it on mobile and in Zen too. */}
       <ContainerDialog
         state={activeDialog?.type === 'new-container' ? activeDialog : null}
         onOpenChange={(open) => !open && closeDialog()}

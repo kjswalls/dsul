@@ -91,7 +91,7 @@ function usePastDue() {
    */
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const todayStr = toDateStr(
     new Date(),
     userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone
@@ -105,9 +105,9 @@ function usePastDue() {
     return summarizeOverdue(
       items,
       todayStr,
-      inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, programs })
+      inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons })
     );
-  }, [items, routines, programs, todayStr, userTimezone]);
+  }, [items, routines, seasons, todayStr, userTimezone]);
 
   // n === 0 hides the notice — EXCEPT while the tray is open. The `|| isOpen` is
   // load-bearing: without it, actioning the last item yanks the tray out from

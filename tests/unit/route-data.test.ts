@@ -33,7 +33,7 @@ const ITEM_FIELDS = [
   'habits',
   'projects',
   'routines',
-  'programs',
+  'seasons',
   'goals',
   'itemTypes',
 ];

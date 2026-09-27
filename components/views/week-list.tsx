@@ -23,7 +23,7 @@ import { cn } from '@/lib/utils';
 
 function DaySection({ date }: { date: Date }) {
   const day = useDayItems(date);
-  const { selectedDate, setSelectedDate, routines, programs, goals, userTimezone } =
+  const { selectedDate, setSelectedDate, routines, seasons, goals, userTimezone } =
     usePlannerStore();
   const groupBy = useCanvasGroupBy();
   const sortBy = useViewStore((s) => s.canvasSortBy);
@@ -58,7 +58,7 @@ function DaySection({ date }: { date: Date }) {
     [date, userTimezone]
   );
   const { completedAs, rootRef } = useSinkHold<HTMLElement>();
-  const groups = groupRows(flattenDayRows(day), groupBy, { routines, programs, goals }).map((g) => ({
+  const groups = groupRows(flattenDayRows(day), groupBy, { routines, seasons, goals }).map((g) => ({
     ...g,
     rows: orderRows(g.rows, sortBy, dateStr, completedAs),
   }));

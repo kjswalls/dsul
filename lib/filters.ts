@@ -50,7 +50,7 @@ export interface ViewFilters {
    * The classify axis is a name namespace (`project:Work`) because that is what
    * the item column holds; a goal is referenced by id everywhere else in the
    * app (container-registry's ref grammar says so in as many words: routines,
-   * programs and goals have no refs, because their names are not unique and
+   * seasons and goals have no refs, because their names are not unique and
    * rename shipped on day one).
    *
    * See `passesGoalFilter` for what a selection means and why the resolution

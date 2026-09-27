@@ -14,7 +14,7 @@
  */
 
 import { addDays, format, parseISO } from 'date-fns'
-import { fetchItems, fetchRoutines, fetchPrograms } from '../db'
+import { fetchItems, fetchRoutines, fetchSeasons } from '../db'
 import { settleOneDay } from '../stakes/settle'
 import type { createServiceClient } from '../supabase-service'
 import {
@@ -279,21 +279,21 @@ export async function runReminderScan(
 
       summary.users += 1
 
-      const [items, routines, programs] = await Promise.all([
+      const [items, routines, seasons] = await Promise.all([
         fetchItems(user.user_id, undefined, service),
         fetchRoutines(user.user_id, service),
-        fetchPrograms(user.user_id, service),
+        fetchSeasons(user.user_id, service),
       ])
 
-      // routines/programs return null when their tables are unreachable. Passing
+      // routines/seasons return null when their tables are unreachable. Passing
       // the nulls through as "no memberships known" is the ActivationContext
       // contract and leaves item-level pause still honoured — which is the safe
-      // direction: the worst case is a nudge for something a paused PROGRAM
+      // direction: the worst case is a nudge for something a paused SEASON
       // covers, not a nudge for something the user paused by hand.
       const ctx: ActivationContext = {
         userTimezone: timezone,
         routines: routines ?? undefined,
-        programs: programs ?? undefined,
+        seasons: seasons ?? undefined,
       }
 
       const timeFormat: TimeFormat = user.time_format === '24h' ? '24h' : '12h'

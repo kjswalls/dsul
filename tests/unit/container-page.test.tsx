@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
- * /routine/[id], /program/[id], /project/[id] (Kirby, 2026-09-26) — the goal
+ * /routine/[id], /season/[id], /project/[id] (Kirby, 2026-09-26) — the goal
  * page's posture for the other containers: deep-linkable, inert when their
  * extension is off, loading-aware, and editing only through the console door.
  */
@@ -45,7 +45,7 @@ function seed(over: Record<string, unknown> = {}) {
     tasks: [],
     habits: items,
     routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'] }],
-    programs: [
+    seasons: [
       { id: 'p1', name: 'Autumn term', state: 'auto', startsOn: '2026-09-01', endsOn: '2026-12-18', itemIds: [], routineIds: ['r1'] },
     ],
     projects: [{ id: 'pr1', name: 'Home', emoji: '' }],
@@ -72,12 +72,22 @@ afterEach(() => {
 });
 
 describe('the routine page', () => {
-  it('reads the routine: its rhythm, and the program holding it', () => {
+  it('reads the routine: its rhythm, and the season holding it', () => {
     render(<ContainerPage kind="routine" id="r1" />);
     expect(screen.getByRole('heading', { level: 1 }).textContent).toContain('Mornings');
     expect(screen.getAllByTestId('container-page-rhythm-row')).toHaveLength(1);
-    expect(screen.getByRole('link', { name: 'Stretch' }).getAttribute('href')).toBe('/item/h1');
-    expect(screen.getByRole('link', { name: /Autumn term/ }).getAttribute('href')).toBe('/program/p1');
+    // Twice — today's checklist leads, and the rhythm follows — and both go to the item.
+    const links = screen.getAllByRole('link', { name: 'Stretch' });
+    expect(links).toHaveLength(2);
+    for (const link of links) expect(link.getAttribute('href')).toBe('/item/h1');
+    expect(screen.getByTestId('container-page-today').textContent).toContain('Stretch');
+    expect(screen.getByRole('link', { name: /Autumn term/ }).getAttribute('href')).toBe('/season/p1');
+  });
+
+  it('says when the routine usually happens, in the user’s clock format', () => {
+    seed({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], usualTime: '07:00' }], timeFormat: '12h' });
+    render(<ContainerPage kind="routine" id="r1" />);
+    expect(screen.getByTestId('container-page-summary').textContent).toContain('usually at 7:00 am');
   });
 
   it('edits through the console door — arm the slot, then go where the console lives', () => {
@@ -104,10 +114,10 @@ describe('the routine page', () => {
   });
 });
 
-describe('the program page', () => {
+describe('the season page', () => {
   it('leads with its season, counting its routines\' members', () => {
-    render(<ContainerPage kind="program" id="p1" />);
-    expect(screen.getByTestId('container-page-season')).toBeTruthy();
+    render(<ContainerPage kind="season" id="p1" />);
+    expect(screen.getByTestId('container-page-calendar')).toBeTruthy();
     expect(screen.getByTestId('container-page-summary').textContent).toContain('Runs');
     expect(screen.getByTestId('container-page-summary').textContent).toContain('On now');
     expect(screen.getAllByTestId('container-page-rhythm-row')).toHaveLength(1);

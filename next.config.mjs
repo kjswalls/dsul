@@ -27,6 +27,15 @@ const nextConfig = {
         destination: 'https://do.dsul.app/:path*',
         permanent: false,
       },
+      // Seasons were "programs" until migration 046, and a season's page lived
+      // at /program/[id]. The id is unchanged, so an old link or bookmark lands
+      // on the same season. Not permanent, for the apex rule's reason: a cached
+      // 308 cannot be taken back if the path is ever reused.
+      {
+        source: '/program/:id',
+        destination: '/season/:id',
+        permanent: false,
+      },
     ];
   },
 };

@@ -65,12 +65,12 @@ That's it. Your agent now sees your tasks from Discord, webchat, Signal — ever
 
 ## Collections
 - Routine: Morning [id: …]
-- Program: Summer [id: …] (auto 2026-06-01 → 2026-08-31)
+- Season: Summer [id: …] (auto 2026-06-01 → 2026-08-31)
 
 ## Set aside
 Deliberately paused — NOT overdue and not missed. …
 - Read 30 min [id: …] — paused until 2026-09-01
-- Swim [id: …] — set aside with the Summer program
+- Swim [id: …] — set aside with the Summer season
 ```
 
 **Set aside** is there so an absence never has to be guessed at. Paused work is
@@ -87,13 +87,13 @@ dsul keeps them in the trash for 30 days.
 `dsul_pause` puts a task, habit, or routine down without deleting it —
 streak, history and dates all survive, and resuming brings it back exactly as it
 was. `dsul_create_collection` / `dsul_update_collection` /
-`dsul_delete_collection` manage routines and programs. Membership arrays
+`dsul_delete_collection` manage routines and seasons. Membership arrays
 REPLACE the whole set rather than adding to it, so a retried call can't
 double-add.
 
-Programs aren't switched through `dsul_pause`, deliberately: they carry a
+Seasons aren't switched through `dsul_pause`, deliberately: they carry a
 tri-state where `auto` follows the date range and `active`/`paused` override it
-until changed back. Writing `active` onto a program that was following its dates
+until changed back. Writing `active` onto a season that was following its dates
 would silently end that, so switching one is an explicit `state` on
 `dsul_update_collection` rather than a boolean that hides the difference.
 

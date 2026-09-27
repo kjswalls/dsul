@@ -111,7 +111,7 @@ export function EODReview() {
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
   const streaksOn = useStreaksEnabled();
@@ -133,7 +133,7 @@ export function EODReview() {
       // or a terminal status, so `completedTasks` passes through untouched:
       // an item paused after being ticked today still shows under Done today
       // (the history rule).
-      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, programs }))
+      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, seasons }))
         return false;
       // One-off tasks: match by startDate
       if (!isRecurring(t)) return t.startDate === today;
@@ -150,7 +150,7 @@ export function EODReview() {
       completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, routines, programs, today, userTimezone]);
+  }, [tasks, routines, seasons, today, userTimezone]);
 
   // Tasks marked complete during this EOD session
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());

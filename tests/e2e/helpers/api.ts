@@ -77,7 +77,7 @@ export function testTitle(label: string): string {
  * playwright.config.ts documents.
  *
  * Was `collectionScope`, and containers were the only half it covered — which
- * left `programs.spec` scoping its containers correctly
+ * left `seasons.spec` scoping its containers correctly
  * while still calling `cleanupByTitlePrefix(TEST_TITLE_PREFIX)` on the line
  * above and deleting every other spec's ITEMS. Half a fix reads like a whole one
  * at the call site, so the scope now spans both and there is no bare-prefix
@@ -95,7 +95,7 @@ export function testTitle(label: string): string {
  * @example
  *   const scope = specScope('rail');
  *   await cleanupTestCollections(scope.prefix);
- *   await createContainer(page, 'program', scope.title('Summer'));
+ *   await createContainer(page, 'season', scope.title('Summer'));
  */
 export function specScope(spec: string): { prefix: string; title: (label: string) => string } {
   const prefix = `${TEST_TITLE_PREFIX}${spec}_`;
@@ -106,22 +106,22 @@ export function specScope(spec: string): { prefix: string; title: (label: string
  * The containers as STORED, straight from the database.
  *
  * Every container write in the app is fire-and-forget
- * (`dbUpdateProgram(...).catch(console.error)`), so a DOM assertion right after
+ * (`dbUpdateSeason(...).catch(console.error)`), so a DOM assertion right after
  * a click proves only that the optimistic `set()` ran. Reload on the strength of
  * that and `page.reload()` can abort the PATCH still in flight — the test then
- * carries on against a program that never changed, and the failure surfaces
+ * carries on against a season that never changed, and the failure surfaces
  * several steps later as something else entirely.
  *
  * Poll this before any reload that is meant to prove persistence.
  */
 export async function fetchTestCollections(
-  table: 'routines' | 'programs',
+  table: 'routines' | 'seasons',
   prefix: string
 ): Promise<{ id: string; name: string; state?: string; paused_at?: string | null }[]> {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL!;
   const key = process.env.SUPABASE_SECRET_KEY!;
   const res = await fetch(
-    `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&select=id,name,${table === 'programs' ? 'state' : 'paused_at'}`,
+    `${url}/rest/v1/${table}?user_id=eq.${testUserId()}&select=id,name,${table === 'seasons' ? 'state' : 'paused_at'}`,
     { headers: { apikey: key, Authorization: `Bearer ${key}` } }
   );
   if (!res.ok) throw new Error(`[fetchTestCollections] ${table}: ${res.status} ${await res.text()}`);
@@ -308,7 +308,7 @@ export async function cleanupTestData(
 }
 
 /**
- * Delete every routine and program whose name starts with `prefix`.
+ * Delete every routine and season whose name starts with `prefix`.
  *
  * Direct service-key REST, following the resetUserSettings precedent, because
  * there is no agent route for containers — v1 has no agent write surface for
@@ -324,7 +324,7 @@ export async function cleanupTestData(
  * actually reporting.
  */
 export async function cleanupTestCollections(prefix: string): Promise<void> {
-  await sweepByNamePrefix(['programs', 'routines'], prefix);
+  await sweepByNamePrefix(['seasons', 'routines'], prefix);
 }
 
 /**

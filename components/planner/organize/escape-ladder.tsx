@@ -95,7 +95,7 @@ export function useEscapeRung(rung: Rung) {
  * Adding `forceMount` to preserve a section's scroll position — an entirely
  * reasonable future change — would mount all six at once, and without this guard
  * a search box left open in Routines would silently eat the Escape you pressed
- * while looking at Programs. One `closest()` call is a cheap way to make that
+ * while looking at Seasons. One `closest()` call is a cheap way to make that
  * change safe instead of subtly broken.
  */
 export function inActiveSection(node: Element | null | undefined): boolean {

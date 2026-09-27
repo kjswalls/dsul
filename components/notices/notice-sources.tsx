@@ -151,7 +151,7 @@ export function useSweepNotice(): DockNotice | null {
  * instead of ambushing whatever the user was doing at 21:00.
  *
  * ANCHORED BESIDE THE DATE, in the canvas header row. The review's object is the
- * day, and a day's handle is its date — the same argument ProgramNotice makes
+ * day, and a day's handle is its date — the same argument SeasonNotice makes
  * from the same address. The slot is live only on today, so arrowing to Thursday
  * puts the line back on the dock rather than beside a date it is not about.
  *

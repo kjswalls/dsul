@@ -1,5 +1,41 @@
 # Programs & Routines — layered activation over unified items
 
+> **Addendum (Kirby, 2026-09-27): Program → Season, and what a routine is.**
+>
+> **The rename.** Locked decision 12 is amended: the entity is now a **Season**.
+> "Program" didn't say what the thing is for — Kirby, who designed it, couldn't tell
+> from the name. A season is a stretch of life (a summer, a school term, a training
+> block) that switches whole routines on and off, and the word fits the semantics
+> decision 12 cared about: seasons *recur* (every summer), several *overlap* in plain
+> English ("marathon season" inside "busy season"), and "out of season" is exactly the
+> suppressed state. The code was already reaching for it ("Plan a season", the season
+> heatmap, "out of season" in agent copy). The rename is code-deep, like the original:
+> migration 046 renames `programs`/`program_items`/`program_routines` (and the
+> `program_id` columns, constraints, indexes, policy, trigger and purge cron) to
+> `season*`; `Program`→`Season`, `/program/[id]`→`/season/[id]`,
+> `/api/agent/programs`→`/api/agent/seasons`, `programs[]`→`seasons[]` in the context
+> (schemaVersion 6 — older plugin builds see the key absent, which the optional-array
+> rule already makes a quiet loss, not a throw). The season's heatmap section, which
+> was headed "Season", is now "Calendar". A persisted `'program'` grouping reads back
+> as `'season'` (lib/view-store.ts `renamedAxis`). **The body below predates the rename
+> and keeps "program" throughout** — read it as "season".
+>
+> **Routines.** A routine was defined in copy as "items you want to pause together",
+> which described the mechanism (a gate) rather than the purpose. It is now **a set of
+> things you do regularly, in order** — a morning, a workout week — and two behaviours
+> back that up:
+> - **Today, in order** (components/planner/routine-today.tsx): today's members as a
+>   checklist in `routine_items.sort_order`, the first open one marked next, "2 of 5
+>   done". It leads the routine page and sits in the console pane while the routine is
+>   carrying anything; ⌘K "Run ‹routine›" goes to the page. Which members are on today
+>   is the grid's own answer (useContainerSchedule), and a tick is the console row's
+>   verb (member-row-actions.tsx `useVerbs`) — nothing re-derives either.
+> - **Usually at** (`routines.usual_time`, migration 047, 'HH:mm'): a label and an
+>   ordering only. It orders the ⌘K Run rows and shows on the page, pane and checklist.
+>   It never moves a member — decision 8 (a container never writes its members' fields)
+>   is untouched. Laying untimed members out at the routine's time on the grid is a
+>   possible next step, deliberately not taken here.
+
 **Status (2026-08-08): DRAFT, round-1 adversarially reviewed, naming settled.**
 Product direction settled in conversation with Kirby (decisions recorded below); the
 design survived a 5-lens adversarial review (4 blockers, 22 should-fixes, 9 notes —

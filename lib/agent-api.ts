@@ -7,8 +7,8 @@ import {
   HabitUpdateSchema,
   RoutineCreateSchema,
   RoutineUpdateSchema,
-  ProgramCreateSchema,
-  ProgramUpdateSchema,
+  SeasonCreateSchema,
+  SeasonUpdateSchema,
   GoalCreateSchema,
   GoalUpdateSchema,
 } from '@dsul/types'
@@ -23,9 +23,9 @@ import {
   createRoutine,
   updateRoutine,
   deleteRoutine,
-  createProgram,
-  updateProgram,
-  deleteProgram,
+  createSeason,
+  updateSeason,
+  deleteSeason,
   createGoal,
   updateGoal,
   deleteGoal,
@@ -49,7 +49,7 @@ import type {
   Habit,
   Item,
   KnownItemType,
-  Program,
+  Season,
   Routine,
   Task,
 } from './planner-types'
@@ -213,7 +213,7 @@ interface MemberRow {
  *
  * "Exists" deliberately INCLUDES trashed items. Join rows outlive an item's
  * soft delete by design so a restore inside the 30-day window brings membership
- * back intact, and fetchRoutines/fetchPrograms read the join tables unfiltered
+ * back intact, and fetchRoutines/fetchSeasons read the join tables unfiltered
  * — so /api/agent/context publishes those ids. Filtering them here made the API
  * refuse an array it had just handed out: the documented read-modify-write
  * ("read the current members, send the full list") 400'd, and so did an
@@ -252,7 +252,7 @@ async function validateItemMembers(
 }
 
 /**
- * Same contract for a program's routineIds — trashed included, for the same
+ * Same contract for a season's routineIds — trashed included, for the same
  * reason. Routines have no subtask analog, so existence is the whole check.
  */
 async function validateRoutineMembers(
@@ -571,9 +571,9 @@ export function makeAgentItemHandlers(type: KnownItemType) {
   return { PATCH, DELETE }
 }
 
-// ── Routines & programs ───────────────────────────────────────────────────────
+// ── Routines & seasons ───────────────────────────────────────────────────────
 // Agent-writable from schemaVersion 4. Reads stay on /api/agent/context, which
-// serves routines[] and programs[] alongside the items they gate — the same
+// serves routines[] and seasons[] alongside the items they gate — the same
 // split tasks and habits have always had.
 
 /**
@@ -585,11 +585,11 @@ export function makeAgentItemHandlers(type: KnownItemType) {
  * arrays and no pause verb — so they get their own handlers below rather than a
  * row in CONTAINER_API.
  */
-export type GatedContainerKind = 'routine' | 'program'
+export type GatedContainerKind = 'routine' | 'season'
 
 interface ContainerApiConfig {
   payloadKey: GatedContainerKind
-  table: 'routines' | 'programs'
+  table: 'routines' | 'seasons'
   createSchema: ZodType
   updateSchema: ZodType
   /** Merged UNDER the body on create — the columns the db layer requires. */
@@ -603,7 +603,7 @@ interface ContainerApiConfig {
   usesPauseVerb: boolean
   /** Where this container's item membership lives, for the trashed-member rule. */
   itemJoin: JoinTable
-  /** Only programs hold routines. */
+  /** Only seasons hold routines. */
   routineJoin?: JoinTable
 }
 
@@ -629,33 +629,33 @@ const CONTAINER_API: Record<GatedContainerKind, ContainerApiConfig> = {
       memberTable: 'items',
     },
   },
-  program: {
-    payloadKey: 'program',
-    table: 'programs',
-    createSchema: ProgramCreateSchema,
-    updateSchema: ProgramUpdateSchema,
+  season: {
+    payloadKey: 'season',
+    table: 'seasons',
+    createSchema: SeasonCreateSchema,
+    updateSchema: SeasonUpdateSchema,
     // 'auto' with no range means "always on", which is the least surprising
-    // thing a program created without a state can be — and unlike a pause it
+    // thing a season created without a state can be — and unlike a pause it
     // needs no timestamp, so there is nothing to derive.
     createDefaults: { state: 'auto', itemIds: [], routineIds: [] },
-    create: (userId, entity, client) => createProgram(userId, entity as Program, client),
+    create: (userId, entity, client) => createSeason(userId, entity as Season, client),
     update: (userId, id, updates, client) =>
-      updateProgram(userId, id, updates as Partial<Program>, client),
-    remove: (userId, id, client) => deleteProgram(userId, id, client),
+      updateSeason(userId, id, updates as Partial<Season>, client),
+    remove: (userId, id, client) => deleteSeason(userId, id, client),
     holdsRoutines: true,
-    // Programs express the same idea as a tri-state enum, which carries no
+    // Seasons express the same idea as a tri-state enum, which carries no
     // derived timestamp and therefore needs no verb translation: `state` IS the
-    // verb. See isProgramActiveOn for why the two containers differ.
+    // verb. See isSeasonActiveOn for why the two containers differ.
     usesPauseVerb: false,
     itemJoin: {
-      table: 'program_items',
-      ownerCol: 'program_id',
+      table: 'season_items',
+      ownerCol: 'season_id',
       memberCol: 'item_id',
       memberTable: 'items',
     },
     routineJoin: {
-      table: 'program_routines',
-      ownerCol: 'program_id',
+      table: 'season_routines',
+      ownerCol: 'season_id',
       memberCol: 'routine_id',
       memberTable: 'routines',
     },
@@ -749,7 +749,7 @@ async function pausePatchForContainer(
   return 'reason' in resolved ? { error: resolved.reason } : { patch: resolved.patch }
 }
 
-/** POST /api/agent/<routines|programs> */
+/** POST /api/agent/<routines|seasons> */
 export function makeContainerCreateHandler(kind: GatedContainerKind) {
   const config = CONTAINER_API[kind]
   return async function POST(req: NextRequest) {
@@ -799,7 +799,7 @@ export function makeContainerCreateHandler(kind: GatedContainerKind) {
   }
 }
 
-/** PATCH + DELETE /api/agent/<routines|programs>/:id */
+/** PATCH + DELETE /api/agent/<routines|seasons>/:id */
 export function makeContainerItemHandlers(kind: GatedContainerKind) {
   const config = CONTAINER_API[kind]
 

@@ -68,7 +68,7 @@ beforeEach(() => {
     items: [ITEM],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -111,7 +111,7 @@ const renderOnShell = () =>
 /* Panel + edit is CLEARING mode: an unset container has no chip at rest, so
    every one of these has to be summoned from the "Add property" seed first.
    Matched on `data-value`, never on label copy. */
-const pressDoor = (kind: 'routine' | 'program' | 'goal') => {
+const pressDoor = (kind: 'routine' | 'season' | 'goal') => {
   fireEvent.click(screen.getByTestId('item-clearing-seed'));
   const option = screen
     .getAllByTestId('item-clearing-seed-option')
@@ -130,7 +130,7 @@ const armed = () => useUIStore.getState().activeDialog;
    same helper anyway, and the source guard below is what holds it there. */
 const DOORS = [
   { kind: 'routine', section: 'routines' },
-  { kind: 'program', section: 'programs' },
+  { kind: 'season', section: 'seasons' },
   { kind: 'goal', section: 'goals' },
 ] as const;
 
@@ -227,7 +227,7 @@ const DIRECT_ARM_ALLOWED: Readonly<Record<string, string>> = {
     'useCommandShortcuts mount solely inside AppShell, which they do today',
   'components/sidebar/braindump.tsx': 'Sidebar → DesktopShell → AppShell',
   'components/sidebar/user-card.tsx': 'Sidebar → DesktopShell → AppShell',
-  'components/views/program-notice.tsx': 'a day view, so always inside AppShell',
+  'components/views/season-notice.tsx': 'a day view, so always inside AppShell',
 };
 
 describe('nothing arms an organize slot behind the helper\'s back', () => {

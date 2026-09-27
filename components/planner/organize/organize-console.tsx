@@ -23,7 +23,7 @@ import { useConsoleHost } from '@/lib/console-door';
 import { KeyCap } from './primitives';
 import { useEscapeLadder } from './escape-ladder';
 import { RoutinesSection } from './sections/routines';
-import { ProgramsSection } from './sections/programs';
+import { SeasonsSection } from './sections/seasons';
 import { GoalsSection } from './sections/goals';
 import { ProjectsSection, TypesSection } from './sections/labels';
 import { OverviewSection } from './sections/overview';
@@ -161,7 +161,7 @@ export function OrganizeConsole({
     // would open whatever row happened to share an index, which reads as the
     // console losing its place.
     setSelectedId(null);
-    // Nor does a half-written new one: arriving in Programs still offering to
+    // Nor does a half-written new one: arriving in Seasons still offering to
     // name a routine is the same lost-place bug wearing a form.
     setCreating(false);
   }, []);
@@ -173,8 +173,8 @@ export function OrganizeConsole({
    * Clearing the selection is right for the rail, where a section change means
    * "show me the projects" and carrying an id across would open whatever row
    * shared an index. Here the id is the entire point of the move: the routine
-   * detail's reverse view is naming a specific program, and landing on the
-   * Programs list with nothing selected would make the user find it again.
+   * detail's reverse view is naming a specific season, and landing on the
+   * Seasons list with nothing selected would make the user find it again.
    *
    * Not routed through `onValueChange` — that would clear the id on the way past.
    */
@@ -291,7 +291,7 @@ export function OrganizeConsole({
             Organize
           </ResponsiveModalTitle>
           <ResponsiveModalDescription className="sr-only">
-            Your routines, programs, projects and item types — and anything
+            Your routines, seasons, projects and item types — and anything
             you&apos;ve deleted in the last 30 days.
           </ResponsiveModalDescription>
           {/* Ours, on the header band's baseline, rather than the stock close
@@ -414,7 +414,7 @@ function SectionBody({
   section: ConsoleSection;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** Jump to another section AND select something in it. See ProgramHolders. */
+  /** Jump to another section AND select something in it. See SeasonHolders. */
   onNavigate: (section: ConsoleSection, id: string) => void;
   /** The detail pane is holding this section's create form. */
   creating: boolean;
@@ -438,13 +438,13 @@ function SectionBody({
       <RoutinesSection
         selectedId={selectedId}
         onSelect={onSelect}
-        onOpenProgram={(id) => onNavigate('programs', id)}
+        onOpenSeason={(id) => onNavigate('seasons', id)}
         {...make}
       />
     );
   }
-  if (section === 'programs') {
-    return <ProgramsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
+  if (section === 'seasons') {
+    return <SeasonsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
   if (section === 'goals') {
     return <GoalsSection selectedId={selectedId} onSelect={onSelect} {...make} />;

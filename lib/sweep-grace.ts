@@ -9,7 +9,7 @@
  * period and everything resurfaces already past the line.
  *
  * Most of the grace is answerable from stored data, and where it is, it stays
- * there: `pausedUntil` records an item's or a routine's resume, and a program's
+ * there: `pausedUntil` records an item's or a routine's resume, and a season's
  * `startsOn` / `updatedAt` cover its range opening and its manual flips. Those
  * arms are strictly better than this module, because a row travels — resume on
  * your phone and the laptop's sweep still sees it tomorrow.
@@ -22,7 +22,7 @@
  *     from — and its members reappear carrying every day of accrued age.
  *   - Removing an item from a container that was suppressing it. The join row
  *     is gone; the same problem, one row smaller.
- *   - Pulling a routine out of the program that was holding it off.
+ *   - Pulling a routine out of the season that was holding it off.
  *
  * All three are ordinary tidying gestures, and all three currently end with the
  * item visible, ancient, and one overnight sweep away from being unscheduled.

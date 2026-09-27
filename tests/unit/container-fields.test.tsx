@@ -32,8 +32,8 @@ vi.mock('@/lib/db', async (importOriginal) => ({
   createItem: vi.fn(async () => {}),
   createGoal: vi.fn(async () => {}),
   createRoutine: vi.fn(async () => {}),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
 }));
 
 const toastMock = vi.hoisted(() => Object.assign(vi.fn(), { error: vi.fn(), success: vi.fn() }));
@@ -56,7 +56,7 @@ import { ContainerDialog } from '@/components/planner/container-dialog';
 import { OrganizeConsole } from '@/components/planner/organize/organize-console';
 import {
   buildGoal,
-  buildProgram,
+  buildSeason,
   buildRoutine,
   draftConsequence,
   initialDraft,
@@ -87,7 +87,7 @@ const seed = (over: Record<string, unknown> = {}) =>
     items: [habit('h1', 'Stretch'), habit('h2', 'Journal'), task('t1', 'Run a 10k', { startDate: '2026-10-10' })],
     projects: [],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -162,23 +162,23 @@ describe('the builders', () => {
     expect(buildRoutine('Mornings', undefined, d, TODAY, NOW, 'UTC').pausedUntil).toBe('2026-09-27');
   });
 
-  it('keeps a program\'s dates under a manual state, as the row does', () => {
-    const d = { ...initialDraft('program', TODAY), programState: 'paused' as const, startsOn: '2026-10-01' };
-    expect(buildProgram('Term', undefined, d)).toMatchObject({ state: 'paused', startsOn: '2026-10-01' });
+  it('keeps a season\'s dates under a manual state, as the row does', () => {
+    const d = { ...initialDraft('season', TODAY), seasonState: 'paused' as const, startsOn: '2026-10-01' };
+    expect(buildSeason('Term', undefined, d)).toMatchObject({ state: 'paused', startsOn: '2026-10-01' });
   });
 });
 
 describe('draftConsequence', () => {
   const items = [habit('h1', 'Stretch'), habit('h2', 'Journal')];
 
-  it('counts what a paused routine or an off program would hide', () => {
+  it('counts what a paused routine or an off season would hide', () => {
     const d = { ...initialDraft('routine', TODAY), routinePaused: true, itemIds: ['h1', 'h2'] };
-    expect(draftConsequence('routine', d, { items, routines: [], programs: [] }, TODAY, NOW, 'UTC')).toEqual({
+    expect(draftConsequence('routine', d, { items, routines: [], seasons: [] }, TODAY, NOW, 'UTC')).toEqual({
       hides: 2,
       shows: 0,
     });
-    const off = { ...initialDraft('program', TODAY), programState: 'paused' as const, itemIds: ['h1'] };
-    expect(draftConsequence('program', off, { items, routines: [], programs: [] }, TODAY, NOW, 'UTC')).toEqual({
+    const off = { ...initialDraft('season', TODAY), seasonState: 'paused' as const, itemIds: ['h1'] };
+    expect(draftConsequence('season', off, { items, routines: [], seasons: [] }, TODAY, NOW, 'UTC')).toEqual({
       hides: 1,
       shows: 0,
     });
@@ -188,7 +188,7 @@ describe('draftConsequence', () => {
     const paused: Routine = { id: 'r1', name: 'Old', pausedAt: '2026-09-01T00:00:00Z', itemIds: ['h1'] };
     const d = { ...initialDraft('routine', TODAY), itemIds: ['h1'] };
     expect(
-      draftConsequence('routine', d, { items, routines: [paused], programs: [] }, TODAY, NOW, 'UTC')
+      draftConsequence('routine', d, { items, routines: [paused], seasons: [] }, TODAY, NOW, 'UTC')
     ).toEqual({ hides: 0, shows: 1 });
   });
 
@@ -198,13 +198,13 @@ describe('draftConsequence', () => {
     const undated = task('t9', 'Someday');
     const d = { ...initialDraft('routine', TODAY), routinePaused: true, itemIds: ['h1', 't9'] };
     expect(
-      draftConsequence('routine', d, { items: [ticked, undated], routines: [], programs: [] }, TODAY, NOW, 'UTC')
+      draftConsequence('routine', d, { items: [ticked, undated], routines: [], seasons: [] }, TODAY, NOW, 'UTC')
     ).toEqual({ hides: 2, shows: 0 });
   });
 
   it('says nothing for a goal, which never hides', () => {
     const d = { ...initialDraft('goal', TODAY), memberIds: ['h1'] };
-    expect(draftConsequence('goal', d, { items, routines: [], programs: [] }, TODAY, NOW, 'UTC')).toEqual({
+    expect(draftConsequence('goal', d, { items, routines: [], seasons: [] }, TODAY, NOW, 'UTC')).toEqual({
       hides: 0,
       shows: 0,
     });
@@ -311,18 +311,18 @@ describe('the "new" dialog, every field', () => {
     expect(addGoal).toHaveBeenCalledWith(expect.objectContaining({ state: 'achieved', achievedAt: NOW }));
   });
 
-  it('asks a program for its status, and says an Off program hides what it holds', () => {
-    const addProgram = vi.fn(() => 'p-new');
-    usePlannerStore.setState({ addProgram });
-    newContainer('program', 'Autumn term');
-    link('program-dialog-items', 'Stretch');
-    click('program-dialog-state-chip');
-    click('program-dialog-state-paused');
+  it('asks a season for its status, and says an Off season hides what it holds', () => {
+    const addSeason = vi.fn(() => 'p-new');
+    usePlannerStore.setState({ addSeason });
+    newContainer('season', 'Autumn term');
+    link('season-dialog-items', 'Stretch');
+    click('season-dialog-state-chip');
+    click('season-dialog-state-paused');
     // Off: the Runs range has no effect, so it is not offered.
-    expect(screen.queryByTestId('program-dialog-runs-chip')).toBeNull();
-    expect(id('program-dialog-note-hides').textContent).toContain('puts 1 item on hold');
-    click('program-dialog-add');
-    expect(addProgram).toHaveBeenCalledWith(
+    expect(screen.queryByTestId('season-dialog-runs-chip')).toBeNull();
+    expect(id('season-dialog-note-hides').textContent).toContain('puts 1 item on hold');
+    click('season-dialog-add');
+    expect(addSeason).toHaveBeenCalledWith(
       expect.objectContaining({ state: 'paused', itemIds: ['h1'], routineIds: [] })
     );
   });
@@ -380,7 +380,7 @@ describe('addGoal', () => {
   });
 });
 
-describe('new items and programs at birth', () => {
+describe('new items and seasons at birth', () => {
   it('creates a typed-in milestone and links it, in ONE undo entry', () => {
     seed({ items: [] });
     newContainer('goal', 'Half marathon');
@@ -413,20 +413,20 @@ describe('new items and programs at birth', () => {
     expect(usePlannerStore.getState().items).toEqual([]);
   });
 
-  it('puts a new routine into a program, and says when that program is off', () => {
+  it('puts a new routine into a season, and says when that season is off', () => {
     const addRoutine = vi.fn(() => 'r-new');
     seed({
-      programs: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] }],
+      seasons: [{ id: 'p1', name: 'Summer', state: 'paused', itemIds: [], routineIds: [] }],
     });
     usePlannerStore.setState({ addRoutine });
     newContainer('routine');
     link('routine-dialog-items', 'Stretch');
-    click('routine-dialog-program');
+    click('routine-dialog-season');
     expect(id('routine-dialog-note-hides').textContent).toContain('puts 1 item on hold');
     click('routine-dialog-add');
     expect(addRoutine).toHaveBeenCalledWith(
       expect.objectContaining({ itemIds: ['h1'] }),
-      expect.objectContaining({ programIds: ['p1'] })
+      expect.objectContaining({ seasonIds: ['p1'] })
     );
   });
 });
@@ -465,7 +465,7 @@ describe('a new item typed into a routine', () => {
   });
 });
 
-describe('a new item typed into a goal or program', () => {
+describe('a new item typed into a goal or season', () => {
   it('can be given a day, and is then born on it', () => {
     seed({ items: [] });
     newContainer('goal');
@@ -486,13 +486,13 @@ describe('a new item typed into a goal or program', () => {
 
   it('can repeat, and a repeating task is anchored so it shows on a day', () => {
     seed({ items: [] });
-    newContainer('program');
-    const field = id('program-dialog-create-item-new-name');
+    newContainer('season');
+    const field = id('season-dialog-create-item-new-name');
     fireEvent.change(field, { target: { value: 'Study' } });
     fireEvent.keyDown(field, { key: 'Enter' });
-    click('program-dialog-create-item-when');
-    click('program-dialog-create-item-when-weekdays');
-    click('program-dialog-add');
+    click('season-dialog-create-item-when');
+    click('season-dialog-create-item-when-weekdays');
+    click('season-dialog-add');
     const made = usePlannerStore.getState().items.find((i) => i.title === 'Study')!;
     expect(made).toMatchObject({ type: 'task', repeatFrequency: 'weekdays', timeBucket: 'anytime' });
     expect((made as { startDate?: string }).startDate).toBeTruthy();

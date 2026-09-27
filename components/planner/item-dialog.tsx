@@ -324,8 +324,8 @@ export interface ItemDraft {
    * Deliberately absent from DRAFT_KEYS for the same reason.
    */
   routineIds: string[];
-  /** Program ids, ADD MODE ONLY — same two-write-paths reasoning as routineIds. */
-  programIds: string[];
+  /** Season ids, ADD MODE ONLY — same two-write-paths reasoning as routineIds. */
+  seasonIds: string[];
   /**
    * Goal ids, ADD MODE ONLY — same reasoning again.
    *
@@ -462,7 +462,7 @@ function makeAddDraft(type: string, seed: AddSeed): ItemDraft {
     reminderAnchor: '',
     routineIds: [],
     goalIds: [],
-    programIds: [],
+    seasonIds: [],
     newContainer: {
       show: false,
       name: '',
@@ -507,13 +507,13 @@ function draftFromItem(item: Item): ItemDraft {
     reminderAnchor: item.reminderAnchor || '',
     // Always empty, and that is not an oversight: in edit mode the membership
     // chips read the LIVE join off the store and write through
-    // updateRoutine/updateProgram, so a draft copy would be a second source of
+    // updateRoutine/updateSeason, so a draft copy would be a second source of
     // truth that the panel's scoped-write machinery would then try to persist
     // as a column. Present so the object satisfies ItemDraft; deliberately
     // never read on the edit path.
     routineIds: [],
     goalIds: [],
-    programIds: [],
+    seasonIds: [],
     newContainer: {
       show: false,
       name: '',
@@ -632,18 +632,18 @@ function ItemDialogInner({
     userTimezone,
     setItemPaused,
     routines,
-    programs,
+    seasons,
     collectionsAvailable,
     updateRoutine,
-    updateProgram,
+    updateSeason,
     goals,
     goalsAvailable,
     updateGoal,
     // Inline container creation from the membership chips (C2): each returns the
-    // new id, which toggleRoutine/Program/Goal then ticks on in whichever mode
+    // new id, which toggleRoutine/Season/Goal then ticks on in whichever mode
     // the dialog is in.
     addRoutine,
-    addProgram,
+    addSeason,
     addGoal,
   } = usePlannerStore();
   /**
@@ -791,7 +791,7 @@ function ItemDialogInner({
     ? suppressionReason(editItem, toDateStr(new Date(), activationTz), {
         userTimezone: activationTz,
         routines,
-        programs,
+        seasons,
       })
     : null;
   const canPause = !!editItem && isPausable(editItem);
@@ -947,7 +947,7 @@ function ItemDialogInner({
           // an item whose chip is hidden.
           routineIds: config.collectible ? from.routineIds : [],
           goalIds: config.collectible ? from.goalIds : [],
-          programIds: config.collectible ? from.programIds : [],
+          seasonIds: config.collectible ? from.seasonIds : [],
         },
       };
     });
@@ -1028,7 +1028,7 @@ function ItemDialogInner({
         reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
-      }, { routineIds: d.routineIds, programIds: d.programIds, goalIds: d.goalIds });
+      }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
     } else {
       addHabit({
         title: d.title.trim(),
@@ -1043,7 +1043,7 @@ function ItemDialogInner({
         timesPerDay: parseInt(d.timesPerDay) || 1,
         reminderTime: d.reminderTime || undefined,
         reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
-      }, { routineIds: d.routineIds, programIds: d.programIds, goalIds: d.goalIds });
+      }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
     }
 
     resetAddDrafts();
@@ -1424,35 +1424,35 @@ function ItemDialogInner({
       });
     };
 
-    // ── program membership ────────────────────────────────────────────────
+    // ── season membership ────────────────────────────────────────────────
     // Only DIRECT membership, deliberately. An item can also be inside a
-    // program through a routine, but this chip both reads and WRITES, and
-    // unticking an indirect program here could only mean "pull the routine
+    // season through a routine, but this chip both reads and WRITES, and
+    // unticking an indirect season here could only mean "pull the routine
     // out", which would silently rescope every other member of that routine.
-    // The manager is where a routine's programs are edited.
-    const memberPrograms = editingItem
-      ? programs.filter((p) => p.itemIds.includes(editingItem.id))
-      : programs.filter((p) => d.programIds.includes(p.id));
-    const memberProgramIds = memberPrograms.map((p) => p.id);
-    const programChipValue = membershipSummary(memberPrograms.map((p) => p.name));
+    // The manager is where a routine's seasons are edited.
+    const memberSeasons = editingItem
+      ? seasons.filter((p) => p.itemIds.includes(editingItem.id))
+      : seasons.filter((p) => d.seasonIds.includes(p.id));
+    const memberSeasonIds = memberSeasons.map((p) => p.id);
+    const seasonChipValue = membershipSummary(memberSeasons.map((p) => p.name));
 
-    const toggleProgram = (programId: string, on: boolean) => {
+    const toggleSeason = (seasonId: string, on: boolean) => {
       if (!editingItem) {
         patch({
-          programIds: on
-            ? [...d.programIds, programId]
-            : d.programIds.filter((x) => x !== programId),
+          seasonIds: on
+            ? [...d.seasonIds, seasonId]
+            : d.seasonIds.filter((x) => x !== seasonId),
         });
         return;
       }
-      // LIVE state, not the render-closure `programs`: inline create (C2) makes
-      // a program and toggles it on in the same handler — see toggleRoutine.
-      const program = usePlannerStore.getState().programs.find((p) => p.id === programId);
-      if (!program) return;
-      updateProgram(programId, {
+      // LIVE state, not the render-closure `seasons`: inline create (C2) makes
+      // a season and toggles it on in the same handler — see toggleRoutine.
+      const season = usePlannerStore.getState().seasons.find((p) => p.id === seasonId);
+      if (!season) return;
+      updateSeason(seasonId, {
         itemIds: on
-          ? [...program.itemIds, editingItem.id]
-          : program.itemIds.filter((x) => x !== editingItem.id),
+          ? [...season.itemIds, editingItem.id]
+          : season.itemIds.filter((x) => x !== editingItem.id),
       });
     };
 
@@ -1723,7 +1723,7 @@ function ItemDialogInner({
       </PropertyChip>
     );
 
-    /* Programs get their own chip rather than sharing the routine one.
+    /* Seasons get their own chip rather than sharing the routine one.
        They are different questions — "which routine is this part of" vs
        "which stretch of life does this belong to" — and a merged picker
        would have to invent a grouping the user never asked for.
@@ -1738,65 +1738,65 @@ function ItemDialogInner({
 
        EDIT mode does not, and it is an open follow-up rather than
        something this chip should paper over. Its write goes through
-       `updateProgram`, whose label is `Edit program:` with no receipt and
+       `updateSeason`, whose label is `Edit season:` with no receipt and
        no SIGNIFICANT_ACTIONS match, so the toast never fires; and the
        activation note above resolves at TODAY (decision 3 — pausing is
-       dateless), not at the item's date. So ticking a program whose window
+       dateless), not at the item's date. So ticking a season whose window
        excludes an item's future date, while today sits inside that window,
        is silent here and spoken in add mode. The fix is the note taking the
        item's date, not a warning in this popover. */
-    const programControl = (
+    const seasonControl = (
       <PropertyChip
         icon={Plus}
         // No band label carries the noun any more, so the chip carries it
         // itself — an unset membership reads as its kind, not as a nameless
         // "Add" — and the accessible name says the same either way.
-        label={CONTAINER_KINDS.program.label}
-        defaultOpen={autoOpenProp === 'program'}
+        label={CONTAINER_KINDS.season.label}
+        defaultOpen={autoOpenProp === 'season'}
         ariaLabel={
-          programChipValue
-            ? `${CONTAINER_KINDS.program.label}: ${programChipValue}`
-            : CONTAINER_KINDS.program.label
+          seasonChipValue
+            ? `${CONTAINER_KINDS.season.label}: ${seasonChipValue}`
+            : CONTAINER_KINDS.season.label
         }
-        value={programChipValue}
+        value={seasonChipValue}
         swatch={
-          memberPrograms[0]
-            ? memberPrograms[0].color ?? accentColorForName(memberPrograms[0].name)
+          memberSeasons[0]
+            ? memberSeasons[0].color ?? accentColorForName(memberSeasons[0].name)
             : undefined
         }
         swatchShape="square"
         contentClassName="w-56"
-        testId="item-dialog-program-chip"
+        testId="item-dialog-season-chip"
       >
         {(close) => (
           <div className="max-h-64 overflow-y-auto" data-chip-scroll>
-            {programs.map((program) => {
-              const on = memberProgramIds.includes(program.id);
+            {seasons.map((season) => {
+              const on = memberSeasonIds.includes(season.id);
               return (
                 <ChipOption
-                  key={program.id}
+                  key={season.id}
                   selected={on}
-                  onSelect={() => toggleProgram(program.id, !on)}
-                  testId="item-dialog-program-option"
-                  value={program.id}
+                  onSelect={() => toggleSeason(season.id, !on)}
+                  testId="item-dialog-season-option"
+                  value={season.id}
                 >
-                  <ColorSquare color={program.color ?? accentColorForName(program.name)} />
-                  <span className="truncate">{program.name}</span>
+                  <ColorSquare color={season.color ?? accentColorForName(season.name)} />
+                  <span className="truncate">{season.name}</span>
                   {on && <Check className="ml-auto size-3.5 shrink-0" />}
                 </ChipOption>
               );
             })}
-            {/* Make one without leaving the dialog (C2). New programs are
+            {/* Make one without leaving the dialog (C2). New seasons are
                 'auto' with no dates, exactly as the console's create row makes
-                them — a program you just made must not hide anything. */}
-            {CONTAINER_KINDS.program.newLabel && (
+                them — a season you just made must not hide anything. */}
+            {CONTAINER_KINDS.season.newLabel && (
               <InlineCreate
-                label={CONTAINER_KINDS.program.newLabel}
+                label={CONTAINER_KINDS.season.newLabel}
                 defaultIcon={makeIconToken('CalendarRange')}
-                testId="item-dialog-program-new"
+                testId="item-dialog-season-new"
                 onCreate={(name, icon) =>
-                  toggleProgram(
-                    addProgram({ name, icon, state: 'auto', itemIds: [], routineIds: [] }),
+                  toggleSeason(
+                    addSeason({ name, icon, state: 'auto', itemIds: [], routineIds: [] }),
                     true
                   )
                 }
@@ -1809,12 +1809,12 @@ function ItemDialogInner({
                 tone="muted"
                 onSelect={() => {
                   close();
-                  openConsole({ section: 'programs' });
+                  openConsole({ section: 'seasons' });
                 }}
-                testId="item-dialog-program-manage"
+                testId="item-dialog-season-manage"
               >
                 <Plus className="size-3.5" />
-                Organize programs…
+                Organize seasons…
               </ChipOption>
             )}
           </div>
@@ -1826,7 +1826,7 @@ function ItemDialogInner({
        `goals.length > 0`.
 
        The two chips above carry that extra condition and it is the
-       programs feature's own recorded failure: with zero containers the
+       seasons feature's own recorded failure: with zero containers the
        chip vanishes, and the chip's popover is one of the few doors to the
        manager — so the surface that would let you make your first one is
        hidden until you already have one. On mobile there is no palette and
@@ -2323,7 +2323,7 @@ function ItemDialogInner({
       counts: {
         project: containers.length,
         routine: routines.length,
-        program: programs.length,
+        season: seasons.length,
         goal: goals.length,
       },
     });
@@ -2338,7 +2338,7 @@ function ItemDialogInner({
     const bandControls: Record<ContainerKind, ReactNode> = {
       project: containerControl,
       routine: routineControl,
-      program: programControl,
+      season: seasonControl,
       goal: goalControl,
     };
     // ── The field: the SET properties, plus one seed for the rest ───────────
@@ -2367,7 +2367,7 @@ function ItemDialogInner({
     const containerSet: Record<ContainerKind, boolean> = {
       project: d.container !== 'none',
       routine: memberRoutines.length > 0,
-      program: memberPrograms.length > 0,
+      season: memberSeasons.length > 0,
       // Ended counts. A membership that has outlived its goal is still the
       // reason this item is on the grid, so it holds the chip open — see
       // `goalChipValue`, which is what the chip then says.
@@ -3231,7 +3231,7 @@ function ItemDialogInner({
                 >
                   <Moon className="size-4 shrink-0 text-muted-foreground" />
                   {/* suppressionLabel, not a local ternary. A hand-rolled one
-                      here had only a `routine` arm, so a program-caused
+                      here had only a `routine` arm, so a season-caused
                       suppression fell through to the item-pause wording and
                       told the user "Paused until Sep 1" about an item they
                       never paused — while the overflow menu beside it offered

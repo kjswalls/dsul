@@ -30,7 +30,7 @@ vi.mock('@/lib/planner-store', () => ({
       items: [parent, existingChild, unrelated],
       itemTypes: [],
       routines: [],
-      programs: [],
+      seasons: [],
       // plannerContext reads goals for milestoneItemIds — a proposal that
       // clears a date is a bulk date verb and must subtract milestones.
       goals: [],

@@ -246,7 +246,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── dsul_pause ──────────────────────────────────────────────────────────
   //
   // One tool for the three entities that pause through the same two columns.
-  // Programs are deliberately NOT here: they switch through `state`, and the
+  // Seasons are deliberately NOT here: they switch through `state`, and the
   // difference matters enough to make the caller say it — see
   // dsul_update_collection.
   api.registerTool({
@@ -282,7 +282,7 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
         // names what to do instead rather than only what is wrong.
         const hint =
           params.kind === 'goal'
-            ? " Goals do not pause — they hide nothing. Use dsul_update_collection with state: achieved or abandoned to close one, or put the work in a program to set it aside for a season."
+            ? " Goals do not pause — they hide nothing. Use dsul_update_collection with state: achieved or abandoned to close one, or put the work in a season to set it aside for a season."
             : ''
         return errorResult(
           400,
@@ -312,42 +312,42 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── dsul_create_collection ──────────────────────────────────────────────
   api.registerTool({
     name: 'dsul_create_collection',
-    label: 'dsul: Create Routine, Program or Goal',
+    label: 'dsul: Create Routine, Season or Goal',
     description:
-      'Create a ROUTINE (a small reusable set of items — a morning routine — ' +
-      'that can be paused as one), a PROGRAM (a period of life, like a ' +
+      'Create a ROUTINE (things done regularly, together and in order — a ' +
+      'morning, a workout week — that can be paused as one), a SEASON (a period of life, like a ' +
       'summer or a term, holding items and/or routines that appear only while ' +
       'it is on), or a GOAL (a long-horizon aspiration — learn Chinese, build ' +
       'the business — holding work in three roles). Members must already ' +
       'exist; create the items first and pass their ids. Subtasks cannot be ' +
-      'members. Goals HIDE NOTHING: use a program if the intent is to set work ' +
+      'members. Goals HIDE NOTHING: use a season if the intent is to set work ' +
       'aside for a season.',
     parameters: Type.Object({
-      kind: Type.String({ description: 'routine | program | goal' }),
+      kind: Type.String({ description: 'routine | season | goal' }),
       name: Type.String({ description: 'Display name' }),
       itemIds: Type.Optional(
         Type.Array(Type.String(), {
           description:
-            'Routines and programs only — member task/habit UUIDs. A GOAL uses ' +
+            'Routines and seasons only — member task/habit UUIDs. A GOAL uses ' +
             'memberIds / milestoneIds / checkinIds instead, because its ' +
             'membership carries a role.',
         }),
       ),
       routineIds: Type.Optional(
-        Type.Array(Type.String(), { description: 'Held routine UUIDs (programs only)' }),
+        Type.Array(Type.String(), { description: 'Held routine UUIDs (seasons only)' }),
       ),
       state: Type.Optional(
         Type.String({
           description:
-            'Programs: auto (default) follows startsOn/endsOn; active and ' +
+            'Seasons: auto (default) follows startsOn/endsOn; active and ' +
             'paused are manual overrides that IGNORE the dates until changed ' +
             'back. Goals: active (default) | achieved | abandoned.',
         }),
       ),
       startsOn: Type.Optional(
-        Type.String({ description: 'YYYY-MM-DD, inclusive. Programs and goals.' }),
+        Type.String({ description: 'YYYY-MM-DD, inclusive. Seasons and goals.' }),
       ),
-      endsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD, inclusive' })),
+      endsOn: Type.Optional(Type.String({ description: 'Seasons only, YYYY-MM-DD, inclusive' })),
       why: Type.Optional(Type.String({ description: "Goals only — the motivation line" })),
       targetOn: Type.Optional(
         Type.String({ description: 'Goals only, YYYY-MM-DD — when it is meant to be done' }),
@@ -378,38 +378,38 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── dsul_update_collection ──────────────────────────────────────────────
   api.registerTool({
     name: 'dsul_update_collection',
-    label: 'dsul: Update Routine, Program or Goal',
+    label: 'dsul: Update Routine, Season or Goal',
     description:
-      'Update a routine, program or goal. Membership arrays REPLACE the whole ' +
+      'Update a routine, season or goal. Membership arrays REPLACE the whole ' +
       'set rather than adding to it — read the current members from context ' +
-      'first and send the full intended list. To switch a program on or off, ' +
+      'first and send the full intended list. To switch a season on or off, ' +
       'set state: active or paused; to hand it back to its dates, set state: ' +
       'auto. Prefer state: auto when the user describes a period ("all ' +
       'summer") so it turns itself off on time. To close a goal, set state: ' +
       'achieved or abandoned — the achievement date is stamped for you, and ' +
       'setting state back to active clears it. Goals do not pause.',
     parameters: Type.Object({
-      kind: Type.String({ description: 'routine | program | goal' }),
-      id: Type.String({ description: 'Routine, program or goal UUID' }),
+      kind: Type.String({ description: 'routine | season | goal' }),
+      id: Type.String({ description: 'Routine, season or goal UUID' }),
       name: Type.Optional(Type.String()),
       itemIds: Type.Optional(
         Type.Array(Type.String(), {
           description:
-            'Routines and programs only — FULL replacement member list. A GOAL ' +
+            'Routines and seasons only — FULL replacement member list. A GOAL ' +
             'uses memberIds / milestoneIds / checkinIds instead.',
         }),
       ),
       routineIds: Type.Optional(
-        Type.Array(Type.String(), { description: 'FULL replacement routine list (programs only)' }),
+        Type.Array(Type.String(), { description: 'FULL replacement routine list (seasons only)' }),
       ),
       state: Type.Optional(
         Type.String({
           description:
-            'Programs: auto | active | paused. Goals: active | achieved | abandoned.',
+            'Seasons: auto | active | paused. Goals: active | achieved | abandoned.',
         }),
       ),
-      startsOn: Type.Optional(Type.String({ description: 'Programs and goals, YYYY-MM-DD' })),
-      endsOn: Type.Optional(Type.String({ description: 'Programs only, YYYY-MM-DD' })),
+      startsOn: Type.Optional(Type.String({ description: 'Seasons and goals, YYYY-MM-DD' })),
+      endsOn: Type.Optional(Type.String({ description: 'Seasons only, YYYY-MM-DD' })),
       why: Type.Optional(Type.String({ description: 'Goals only — the motivation line' })),
       targetOn: Type.Optional(Type.String({ description: 'Goals only, YYYY-MM-DD' })),
       memberIds: Type.Optional(
@@ -437,16 +437,16 @@ export function registerTools(api: OpenClawPluginApi, cfg: PluginConfig): void {
   // ── dsul_delete_collection ──────────────────────────────────────────────
   api.registerTool({
     name: 'dsul_delete_collection',
-    label: 'dsul: Delete Routine, Program or Goal',
+    label: 'dsul: Delete Routine, Season or Goal',
     description:
-      'Soft-delete a routine, program or goal (recoverable for 30 days). Its ' +
+      'Soft-delete a routine, season or goal (recoverable for 30 days). Its ' +
       'MEMBERS are not deleted — they are released and become visible again ' +
       'immediately. To hide the members instead, pause the collection. For a ' +
       'goal that is over rather than mistaken, prefer state: achieved or ' +
       'abandoned — that keeps the record and its milestones.',
     parameters: Type.Object({
-      kind: Type.String({ description: 'routine | program | goal' }),
-      id: Type.String({ description: 'Routine, program or goal UUID' }),
+      kind: Type.String({ description: 'routine | season | goal' }),
+      id: Type.String({ description: 'Routine, season or goal UUID' }),
     }),
     async execute(_toolCallId: string, params: { kind: string; id: string }) {
       const path = COLLECTION_PATHS[params.kind]
@@ -479,7 +479,7 @@ const PAUSE_PATHS: Record<string, string | undefined> = {
 
 const COLLECTION_PATHS: Record<string, string | undefined> = {
   routine: 'routines',
-  program: 'programs',
+  season: 'seasons',
   goal: 'goals',
 }
 
@@ -494,13 +494,13 @@ const COLLECTION_KINDS = Object.keys(COLLECTION_PATHS).join(', ')
  */
 const KIND_KEYS: Record<string, readonly string[]> = {
   routine: ['name', 'itemIds'],
-  program: ['name', 'itemIds', 'routineIds', 'state', 'startsOn', 'endsOn'],
+  season: ['name', 'itemIds', 'routineIds', 'state', 'startsOn', 'endsOn'],
   goal: ['name', 'why', 'state', 'startsOn', 'targetOn', 'memberIds', 'milestoneIds', 'checkinIds'],
 }
 
 const KIND_LABELS: Record<string, string> = {
   routine: 'Routine',
-  program: 'Program',
+  season: 'Season',
   goal: 'Goal',
 }
 

@@ -2,7 +2,7 @@
  * Which routes need the seven-table item load, and which only need to know who
  * is signed in.
  *
- * `initializeStore` fetches items, projects, item types, routines, programs and
+ * `initializeStore` fetches items, projects, item types, routines, seasons and
  * goals in one `Promise.all`, then takes two full deep clones of the result
  * (`JSON.parse(JSON.stringify(...))` for the undo baseline and a
  * `JSON.stringify` for the change detector). On the planner that is the page.

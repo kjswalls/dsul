@@ -41,7 +41,7 @@ export function OverviewSection({
   onCreate: (section: ConsoleSection) => void;
 }) {
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const projects = usePlannerStore((s) => s.projects);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
@@ -53,7 +53,7 @@ export function OverviewSection({
 
   const counts: Partial<Record<ConsoleSection, number>> = {
     routines: routines.length,
-    programs: programs.length,
+    seasons: seasons.length,
     goals: goals.length,
     projects: projects.length,
     types: itemTypes.length,
@@ -71,7 +71,7 @@ export function OverviewSection({
   const ready = !!userId && !isLoading;
   const canCreate: Partial<Record<ConsoleSection, boolean>> = {
     routines: collectionsAvailable && ready,
-    programs: collectionsAvailable && ready,
+    seasons: collectionsAvailable && ready,
     goals: goalsAvailable && ready,
     projects: ready,
     types: itemTypesAvailable && ready,

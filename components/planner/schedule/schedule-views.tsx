@@ -19,7 +19,7 @@ import {
   type OccurrenceState,
 } from '@/lib/container-schedule';
 import { cn } from '@/lib/utils';
-import type { HabitItem, Item, Program, Project, Routine, Task } from '@/lib/planner-types';
+import type { HabitItem, Item, Season, Project, Routine, Task } from '@/lib/planner-types';
 
 /**
  * THE CONTAINER SCHEDULE CHARTS (Kirby, 2026-09-26; design canvas
@@ -28,7 +28,7 @@ import type { HabitItem, Item, Program, Project, Routine, Task } from '@/lib/pla
  *   · WeekDots        — seven dots on a member row: the rhythm grid, folded
  *                       into the list it would otherwise repeat.
  *   · RhythmGrid      — the same, wide: item × day for a week or four.
- *   · SeasonHeatmap   — a program's run, one square per day.
+ *   · SeasonHeatmap   — a season's run, one square per day.
  *   · GoalTimeline    — a goal's window, one lane per item; GoalBars is its
  *                       per-week alternative behind a toggle.
  *   · UnscheduledTray — members with no date at all.
@@ -47,7 +47,7 @@ import type { HabitItem, Item, Program, Project, Routine, Task } from '@/lib/pla
 export interface ScheduleOverrides {
   /** A draft container the store has not seen yet — the create modal's preview. */
   routines?: readonly Routine[];
-  programs?: readonly Program[];
+  seasons?: readonly Season[];
   /**
    * Rows typed into a create form but not yet created (lib/new-item-shape.ts
    * previewItem) — drawn beside the store's items so the chart shows them as
@@ -58,7 +58,7 @@ export interface ScheduleOverrides {
 
 /**
  * The schedule for `memberIds` from `from` for `days` days, memoized on the
- * store slices it reads. `overrides` replaces the routine/program lists that
+ * store slices it reads. `overrides` replaces the routine/season lists that
  * activation resolves against (pass the store's plus a draft).
  */
 export function useContainerSchedule(
@@ -72,10 +72,10 @@ export function useContainerSchedule(
   const tasks = usePlannerStore((s) => s.tasks);
   const habits = usePlannerStore((s) => s.habits);
   const storeRoutines = usePlannerStore((s) => s.routines);
-  const storePrograms = usePlannerStore((s) => s.programs);
+  const storeSeasons = usePlannerStore((s) => s.seasons);
   const { todayStr, tz } = useToday();
   const routines = overrides?.routines ?? storeRoutines;
-  const programs = overrides?.programs ?? storePrograms;
+  const seasons = overrides?.seasons ?? storeSeasons;
   const drafts = overrides?.items;
   const key = memberIds.join(',');
   return useMemo(
@@ -88,10 +88,10 @@ export function useContainerSchedule(
               tasks: [...tasks, ...(drafts.filter((i) => i.type !== 'habit') as unknown as Task[])],
               habits: [...habits, ...(drafts.filter((i) => i.type === 'habit') as unknown as HabitItem[])],
               routines,
-              programs,
+              seasons,
               timezone: tz,
             }
-          : { items, tasks, habits, routines, programs, timezone: tz },
+          : { items, tasks, habits, routines, seasons, timezone: tz },
         from,
         days,
         todayStr,
@@ -99,7 +99,7 @@ export function useContainerSchedule(
       }),
     // `key` stands in for `memberIds`: callers build the array per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [key, items, tasks, habits, routines, programs, drafts, tz, from, days, todayStr, block]
+    [key, items, tasks, habits, routines, seasons, drafts, tz, from, days, todayStr, block]
   );
 }
 
@@ -486,26 +486,26 @@ export function RhythmGrid({
   );
 }
 
-/* ── season heatmap (programs) ─────────────────────────────────────────── */
+/* ── season heatmap (seasons) ─────────────────────────────────────────── */
 
 /**
- * The run, or — for a program with no dates, or held On/Off by hand — the
+ * The run, or — for a season with no dates, or held On/Off by hand — the
  * next sixteen weeks from this one. A long run is capped (MAX_SCHEDULE_DAYS).
  */
-export function programRange(program: Pick<Program, 'state' | 'startsOn' | 'endsOn'>, todayStr: string, weekStartDay: 'sunday' | 'monday' | 'saturday') {
-  const auto = program.state === 'auto';
-  if (auto && program.startsOn && program.endsOn && program.endsOn >= program.startsOn) {
-    const start = weekStartOf(program.startsOn, weekStartDay);
-    const full = daysBetween(start, program.endsOn) + 1;
+export function seasonRange(season: Pick<Season, 'state' | 'startsOn' | 'endsOn'>, todayStr: string, weekStartDay: 'sunday' | 'monday' | 'saturday') {
+  const auto = season.state === 'auto';
+  if (auto && season.startsOn && season.endsOn && season.endsOn >= season.startsOn) {
+    const start = weekStartOf(season.startsOn, weekStartDay);
+    const full = daysBetween(start, season.endsOn) + 1;
     if (full <= MAX_SCHEDULE_DAYS) return { from: start, days: full, capped: false, bounded: true };
     // Too long to draw whole: keep today in view, week-aligned, inside the run.
-    const latest = weekStartOf(addDaysStr(program.endsOn, -(MAX_SCHEDULE_DAYS - 7)), weekStartDay);
+    const latest = weekStartOf(addDaysStr(season.endsOn, -(MAX_SCHEDULE_DAYS - 7)), weekStartDay);
     const from = weekStartOf(clampWindowStart(todayStr, start, latest, 0), weekStartDay);
     return { from, days: MAX_SCHEDULE_DAYS, capped: true, bounded: true };
   }
   // Open-ended (or held by hand): sixteen weeks from this one — or from the
   // start, while that is still ahead — never a stretch that is all behind us.
-  const anchor = auto && program.startsOn && program.startsOn > todayStr ? program.startsOn : todayStr;
+  const anchor = auto && season.startsOn && season.startsOn > todayStr ? season.startsOn : todayStr;
   return { from: weekStartOf(anchor, weekStartDay), days: 16 * 7, capped: false, bounded: false };
 }
 
@@ -523,13 +523,13 @@ function clampWindowStart(todayStr: string, start: string, to: string, span = MA
 }
 
 export function SeasonHeatmap({
-  program,
+  season,
   memberIds,
   overrides,
   testId = 'season-heatmap',
   hideEmptyGrid = false,
 }: {
-  program: Pick<Program, 'state' | 'startsOn' | 'endsOn'>;
+  season: Pick<Season, 'state' | 'startsOn' | 'endsOn'>;
   memberIds: readonly string[];
   overrides?: ScheduleOverrides;
   testId?: string;
@@ -538,7 +538,7 @@ export function SeasonHeatmap({
 }) {
   const { todayStr } = useToday();
   const weekStartDay = useWeekStartDay();
-  const range = programRange(program, todayStr, weekStartDay);
+  const range = seasonRange(season, todayStr, weekStartDay);
   const schedule = useContainerSchedule(memberIds, range.from, range.days, overrides);
   const [hover, setHover] = useState<string | null>(null);
   const items = usePlannerStore((s) => s.items);
@@ -546,8 +546,8 @@ export function SeasonHeatmap({
     (items.find((i) => i.id === id) ?? overrides?.items?.find((i) => i.id === id))?.title ?? '';
 
   const inRun = (d: string) =>
-    program.state !== 'auto' ||
-    ((!program.startsOn || d >= program.startsOn) && (!program.endsOn || d <= program.endsOn));
+    season.state !== 'auto' ||
+    ((!season.startsOn || d >= season.startsOn) && (!season.endsOn || d <= season.endsOn));
 
   // Columns are weeks; rows are the seven weekdays from the user's week start.
   const weeks: { date: string; n: number; done: number; once: boolean; inRun: boolean }[][] = [];
@@ -650,7 +650,7 @@ export function SeasonHeatmap({
             Nothing ahead in this range{doneTotal ? ` — ${doneTotal} done before today` : ''}.{rangeNotes}
           </>
         ) : (
-          'Nothing lands on it yet — link routines or items to see its season.'
+          'Nothing lands on it yet — link routines or items to see its calendar.'
         )}
       </p>
       <UnscheduledTray items={schedule.unscheduled} />

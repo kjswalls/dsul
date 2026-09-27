@@ -49,11 +49,11 @@ export function GroupSection({
    */
   groupKey?: string;
   /**
-   * Present only on GATE sections (routine/program) — `RowGroup.gate`. When set,
+   * Present only on GATE sections (routine/season) — `RowGroup.gate`. When set,
    * the header carries a pause switch for that container. Omitted everywhere
    * else, so no other heading gains a control.
    */
-  gate?: { kind: 'routine' | 'program'; id: string };
+  gate?: { kind: 'routine' | 'season'; id: string };
   children: React.ReactNode;
   className?: string;
   variant?: 'canvas' | 'sidebar';

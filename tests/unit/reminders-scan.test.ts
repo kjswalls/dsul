@@ -13,7 +13,7 @@ const fetchItems = vi.fn(async (): Promise<Item[]> => []);
 vi.mock('@/lib/db', () => ({
   fetchItems: () => fetchItems(),
   fetchRoutines: async () => [],
-  fetchPrograms: async () => [],
+  fetchSeasons: async () => [],
 }));
 
 import { runReminderScan, localClock } from '@/lib/reminders/scan';

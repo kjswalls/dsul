@@ -13,7 +13,7 @@ import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryIcon } from '@/lib/category-icons';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
-import { isItemActiveOn, isProgramActiveOn, resolvePauseWrite } from '@/lib/active';
+import { isItemActiveOn, isSeasonActiveOn, resolvePauseWrite } from '@/lib/active';
 import { addDaysStr } from '@/lib/container-schedule';
 import { resolveGoalStateWrite } from '@/lib/goals';
 import {
@@ -33,7 +33,7 @@ import {
   useWeekDotsFor,
 } from '@/components/planner/schedule/schedule-views';
 import { containerMemberIds } from '@/lib/container-schedule';
-import type { Goal, GoalRole, Item, Program, Routine, TimeBucket } from '@/lib/planner-types';
+import type { Goal, GoalRole, Item, Season, Routine, TimeBucket } from '@/lib/planner-types';
 
 /**
  * EVERY FIELD AN ORGANIZER HAS, ASKED AT BIRTH (Kirby, 2026-09-26).
@@ -52,26 +52,26 @@ import type { Goal, GoalRole, Item, Program, Routine, TimeBucket } from '@/lib/p
  * (Kirby, 2026-09-27) rather than left out:
  *  · NEW items typed into a section ("Add milestone…") — each item's row lands
  *    before the container's join row that points at it (awaitItemCreates);
- *  · a routine's programs — program_routines rows are written once the
- *    routine's own row has landed (addRoutine's `programIds`).
+ *  · a routine's seasons — season_routines rows are written once the
+ *    routine's own row has landed (addRoutine's `seasonIds`).
  * `createFromDraft` folds all of it into ONE history entry, so ⌘Z still takes
  * the whole birth back in one press.
  */
 
-export type DraftKind = 'goal' | 'routine' | 'program';
+export type DraftKind = 'goal' | 'routine' | 'season';
 
 export interface ContainerDraft {
   color?: string;
-  /** Goal: the window's start. Program: the run's start. */
+  /** Goal: the window's start. Season: the run's start. */
   startsOn?: string;
-  /** Goal: `targetOn`. Program: `endsOn`. One field, because the chip is one range. */
+  /** Goal: `targetOn`. Season: `endsOn`. One field, because the chip is one range. */
   endsOn?: string;
   goalState: Goal['state'];
   why: string;
   routinePaused: boolean;
   /** Routine: the resume date, EXCLUSIVE (live again on it). Only read while paused. */
   pausedUntil?: string;
-  programState: Program['state'];
+  seasonState: Season['state'];
   itemIds: string[];
   routineIds: string[];
   memberIds: string[];
@@ -79,8 +79,8 @@ export interface ContainerDraft {
   checkinIds: string[];
   /** Items typed in as NEW — created (then linked) only when the form is submitted. */
   newItems: NewItemDraft[];
-  /** Routine: programs to hold it from birth. */
-  programIds: string[];
+  /** Routine: seasons to hold it from birth. */
+  seasonIds: string[];
 }
 
 export type NewItemRole = 'items' | GoalRole;
@@ -88,7 +88,7 @@ export type NewItemRole = 'items' | GoalRole;
 export interface NewItemDraft {
   key: string;
   title: string;
-  /** Which section it was typed into: a goal role, or a routine/program's items. */
+  /** Which section it was typed into: a goal role, or a routine/season's items. */
   role: NewItemRole;
   /** When it happens — seeded by defaultWhen, changed on the row's chip. */
   when: NewItemWhen;
@@ -128,7 +128,7 @@ function withPreviewMembers(draft: ContainerDraft): ContainerDraft {
 /**
  * The defaults — the answers that need no asking. Active, auto-coloured, a
  * goal's window opening TODAY (the user's today, as useToday resolves it), a
- * program on its (absent) dates, which is always-on and hides nothing.
+ * season on its (absent) dates, which is always-on and hides nothing.
  */
 export function initialDraft(kind: DraftKind, todayStr: string, notes?: string): ContainerDraft {
   return {
@@ -142,14 +142,14 @@ export function initialDraft(kind: DraftKind, todayStr: string, notes?: string):
     why: notes ?? '',
     routinePaused: false,
     pausedUntil: undefined,
-    programState: 'auto',
+    seasonState: 'auto',
     itemIds: [],
     routineIds: [],
     memberIds: [],
     milestoneIds: [],
     checkinIds: [],
     newItems: [],
-    programIds: [],
+    seasonIds: [],
   };
 }
 
@@ -157,7 +157,7 @@ export function initialDraft(kind: DraftKind, todayStr: string, notes?: string):
  * Create the container the draft describes, with everything in it, as ONE ⌘Z:
  * the new items first (addTask, each registering its in-flight INSERT), then
  * the container carrying their ids — the store's add waits for those INSERTs
- * before writing the join rows, and for a routine writes its programs' holds
+ * before writing the join rows, and for a routine writes its seasons' holds
  * last. Returns the new id, or '' when the store refused (addGoal's guard).
  */
 export function createFromDraft(
@@ -205,15 +205,15 @@ export function createFromDraft(
           ? store.addGoal(buildGoal(name, icon, d, nowIso), { newItemCount })
           : store.addGoal(buildGoal(name, icon, d, nowIso))
         : kind === 'routine'
-          ? d.programIds.length || newItemCount
+          ? d.seasonIds.length || newItemCount
             ? store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz), {
-                programIds: d.programIds,
+                seasonIds: d.seasonIds,
                 newItemCount,
               })
             : store.addRoutine(buildRoutine(name, icon, d, todayStr, nowIso, tz))
           : newItemCount
-            ? store.addProgram(buildProgram(name, icon, d), { newItemCount })
-            : store.addProgram(buildProgram(name, icon, d));
+            ? store.addSeason(buildSeason(name, icon, d), { newItemCount })
+            : store.addSeason(buildSeason(name, icon, d));
   });
   return id;
 }
@@ -286,18 +286,18 @@ export function buildRoutine(
 
 /**
  * The dates travel whatever the state, as they do on the row: under On or Off
- * they wait, unread, until the program is put back on its dates.
+ * they wait, unread, until the season is put back on its dates.
  */
-export function buildProgram(
+export function buildSeason(
   name: string,
   icon: string | undefined,
   d: ContainerDraft,
-): Omit<Program, 'id'> {
+): Omit<Season, 'id'> {
   return {
     name,
     icon,
     color: d.color,
-    state: d.programState,
+    state: d.seasonState,
     startsOn: d.startsOn,
     endsOn: d.endsOn,
     itemIds: d.itemIds,
@@ -320,9 +320,9 @@ export const ROUTINE_STATES = [
 
 /**
  * `auto` is "Dates", and its dot follows whether the dates have it on today — the
- * chip then says what the program is doing, not only how it was set.
+ * chip then says what the season is doing, not only how it was set.
  */
-export function programStates(live: boolean): ChoiceOption<Program['state']>[] {
+export function seasonStates(live: boolean): ChoiceOption<Season['state']>[] {
   return [
     { value: 'active', label: 'On', dot: 'lime' },
     { value: 'paused', label: 'Off', dot: 'muted' },
@@ -333,12 +333,12 @@ export function programStates(live: boolean): ChoiceOption<Program['state']>[] {
 /* ── the sentences ────────────────────────────────────────────────────── */
 
 /**
- * What a program's dates will do, in words — the Runs chip alone doesn't say
- * that a program on its dates switches ITSELF. Inclusive at both ends, as
- * isProgramActiveOn reads them; no dates means "on every day", which needs no
+ * What a season's dates will do, in words — the Runs chip alone doesn't say
+ * that a season on its dates switches ITSELF. Inclusive at both ends, as
+ * isSeasonActiveOn reads them; no dates means "on every day", which needs no
  * sentence.
  */
-export function programRunsCopy(
+export function seasonRunsCopy(
   startsOn: string | undefined,
   endsOn: string | undefined,
   todayStr: string,
@@ -353,21 +353,21 @@ export function programRunsCopy(
   return null;
 }
 
-/** The program's state sentence at birth — the manual states need one too. */
-function programStateCopy(d: ContainerDraft, todayStr: string): string | null {
+/** The season's state sentence at birth — the manual states need one too. */
+function seasonStateCopy(d: ContainerDraft, todayStr: string): string | null {
   // Dates picked under Dates and then hidden by switching to On/Off are still
   // written — so say so, rather than store something the form no longer shows.
   const waiting = d.startsOn || d.endsOn ? ' Its dates are kept, unused, for if you put it back on them.' : '';
-  if (d.programState === 'active') return `On until you switch it off.${waiting}`;
-  if (d.programState === 'paused') return `Off from the start — everything it holds is on hold.${waiting}`;
-  return programRunsCopy(d.startsOn, d.endsOn, todayStr);
+  if (d.seasonState === 'active') return `On until you switch it off.${waiting}`;
+  if (d.seasonState === 'paused') return `Off from the start — everything it holds is on hold.${waiting}`;
+  return seasonRunsCopy(d.startsOn, d.endsOn, todayStr);
 }
 
 const DRAFT_ID = '__draft__';
 
 /**
  * What creating this would do to its members' ACTIVATION, asked of the resolver
- * rather than guessed: a paused routine puts its members on hold, a program that
+ * rather than guessed: a paused routine puts its members on hold, a season that
  * is off does the same to what it holds, and linking an item a paused routine was
  * holding into a LIVE container gives it a path back.
  *
@@ -380,7 +380,7 @@ const DRAFT_ID = '__draft__';
 export function draftConsequence(
   kind: DraftKind,
   d: ContainerDraft,
-  store: { items: readonly Item[]; routines: readonly Routine[]; programs: readonly Program[] },
+  store: { items: readonly Item[]; routines: readonly Routine[]; seasons: readonly Season[] },
   todayStr: string,
   nowIso: string,
   tz: string,
@@ -388,10 +388,10 @@ export function draftConsequence(
   if (kind === 'goal') return { hides: 0, shows: 0 }; // goals never hide anything
   if (d.itemIds.length === 0 && d.routineIds.length === 0) return { hides: 0, shows: 0 };
   const affected = new Set(d.itemIds);
-  if (kind === 'program') {
+  if (kind === 'season') {
     for (const rid of d.routineIds) store.routines.find((r) => r.id === rid)?.itemIds.forEach((id) => affected.add(id));
   }
-  const ctx = { userTimezone: tz, routines: store.routines, programs: store.programs };
+  const ctx = { userTimezone: tz, routines: store.routines, seasons: store.seasons };
   const after =
     kind === 'routine'
       ? {
@@ -400,13 +400,13 @@ export function draftConsequence(
             ...store.routines,
             { id: DRAFT_ID, ...buildRoutine('', undefined, d, todayStr, nowIso, tz) },
           ],
-          // Joining a program that is off puts the routine's items on hold —
-          // the attach discontinuity the program pane confirms, said here.
-          programs: store.programs.map((p) =>
-            d.programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
+          // Joining a season that is off puts the routine's items on hold —
+          // the attach discontinuity the season pane confirms, said here.
+          seasons: store.seasons.map((p) =>
+            d.seasonIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
           ),
         }
-      : { ...ctx, programs: [...store.programs, { id: DRAFT_ID, ...buildProgram('', undefined, d) }] };
+      : { ...ctx, seasons: [...store.seasons, { id: DRAFT_ID, ...buildSeason('', undefined, d) }] };
   let hides = 0;
   let shows = 0;
   for (const item of store.items) {
@@ -462,7 +462,7 @@ export function ContainerDraftFields({
 }) {
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const p = testPrefix;
 
   const byId = useMemo(() => new Map(items.map((i) => [i.id, i])), [items]);
@@ -470,8 +470,8 @@ export function ContainerDraftFields({
 
   const consequence = useMemo(
     () =>
-      draftConsequence(kind, draft, { items, routines, programs }, todayStr, new Date().toISOString(), tz),
-    [kind, draft, items, routines, programs, todayStr, tz],
+      draftConsequence(kind, draft, { items, routines, seasons }, todayStr, new Date().toISOString(), tz),
+    [kind, draft, items, routines, seasons, todayStr, tz],
   );
 
   // Local noon on the day after the user's today — the resume picker's floor.
@@ -481,7 +481,7 @@ export function ContainerDraftFields({
 
   // The charts preview the DRAFT: activation resolves against the store's lists
   // plus this container as it would be created, so a paused routine's dots go
-  // quiet and an Off program's season goes blank before anything is written.
+  // quiet and an Off season's calendar goes blank before anything is written.
   //
   // New rows ride along as preview items (their row key as the id), so a habit
   // typed in with its days shows in the week dots and the charts before it
@@ -499,24 +499,24 @@ export function ContainerDraftFields({
     if (kind === 'routine') {
       return {
         routines: [...routines, { id: DRAFT_ID, ...buildRoutine('', undefined, preview, todayStr, nowIso, tz) }],
-        programs: programs.map((p) =>
-          draft.programIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
+        seasons: seasons.map((p) =>
+          draft.seasonIds.includes(p.id) ? { ...p, routineIds: [...p.routineIds, DRAFT_ID] } : p
         ),
         items: previewItems,
       };
     }
-    if (kind === 'program') {
-      return { programs: [...programs, { id: DRAFT_ID, ...buildProgram('', undefined, preview) }], items: previewItems };
+    if (kind === 'season') {
+      return { seasons: [...seasons, { id: DRAFT_ID, ...buildSeason('', undefined, preview) }], items: previewItems };
     }
     return previewItems ? { items: previewItems } : undefined;
-  }, [kind, draft, preview, previewItems, routines, programs, todayStr, tz]);
+  }, [kind, draft, preview, previewItems, routines, seasons, todayStr, tz]);
   // The coming seven days, not the calendar week: nothing here exists yet, so
   // the days already behind it would only ever read as empty.
   const week = useWeekDotsFor(preview.itemIds, overrides, { ahead: true });
-  const seasonIds =
-    kind === 'program'
+  const calendarIds =
+    kind === 'season'
       ? containerMemberIds(
-          { kind: 'program', program: { id: DRAFT_ID, ...buildProgram('', undefined, preview) } },
+          { kind: 'season', season: { id: DRAFT_ID, ...buildSeason('', undefined, preview) } },
           previewItems ? [...items, ...previewItems] : items,
           routines
         )
@@ -527,14 +527,14 @@ export function ContainerDraftFields({
     preview.memberIds.length + preview.milestoneIds.length + preview.checkinIds.length > 0;
 
   const live =
-    kind === 'program' &&
-    isProgramActiveOn({ id: DRAFT_ID, ...buildProgram('', undefined, draft) }, todayStr);
+    kind === 'season' &&
+    isSeasonActiveOn({ id: DRAFT_ID, ...buildSeason('', undefined, draft) }, todayStr);
 
   const hasNew = (role: NewItemRole) => draft.newItems.some((n) => n.role === role);
 
   const notes: { key: string; text: string }[] = [];
-  if (kind === 'program') {
-    const copy = programStateCopy(draft, todayStr);
+  if (kind === 'season') {
+    const copy = seasonStateCopy(draft, todayStr);
     if (copy) notes.push({ key: 'state', text: copy });
   }
   if (kind === 'routine' && draft.routinePaused) {
@@ -591,13 +591,13 @@ export function ContainerDraftFields({
             onChange={(next) => onChange({ pausedUntil: next })}
           />
         )}
-        {kind === 'program' && (
+        {kind === 'season' && (
           <ChoiceChip
             label="Status"
-            value={draft.programState}
-            options={programStates(live)}
+            value={draft.seasonState}
+            options={seasonStates(live)}
             testIdPrefix={`${p}-state`}
-            onChange={(programState) => onChange({ programState })}
+            onChange={(seasonState) => onChange({ seasonState })}
           />
         )}
         {kind === 'goal' && (
@@ -614,7 +614,7 @@ export function ContainerDraftFields({
         )}
         {/* Under Dates alone, as in the detail pane: On and Off are overrides
             that always win, so a range beside them would do nothing. */}
-        {kind === 'program' && draft.programState === 'auto' && (
+        {kind === 'season' && draft.seasonState === 'auto' && (
           <DateRangeChip
             label="Runs"
             start={draft.startsOn}
@@ -656,15 +656,15 @@ export function ContainerDraftFields({
           testId={`${p}-schedule`}
         />
       )}
-      {kind === 'program' && seasonIds.length > 0 && (
-        <section className="flex flex-col gap-2" data-testid={`${p}-season`}>
-          <ScheduleHeading label="Season" />
+      {kind === 'season' && calendarIds.length > 0 && (
+        <section className="flex flex-col gap-2" data-testid={`${p}-calendar`}>
+          <ScheduleHeading label="Calendar" />
           <SeasonHeatmap
-            program={{ state: draft.programState, startsOn: draft.startsOn, endsOn: draft.endsOn }}
-            memberIds={seasonIds}
+            season={{ state: draft.seasonState, startsOn: draft.startsOn, endsOn: draft.endsOn }}
+            memberIds={calendarIds}
             overrides={overrides}
-            testId={`${p}-season-heatmap`}
-            // A program that is off today keeps its (blank) season drawn —
+            testId={`${p}-calendar-heatmap`}
+            // A season that is off today keeps its (blank) calendar drawn —
             // that is the preview of what off does. A live one with nothing
             // dated is just its tray.
             hideEmptyGrid={live}
@@ -721,9 +721,9 @@ export function ContainerDraftFields({
             />
           </>
         )}
-        {kind === 'program' && (
+        {kind === 'season' && (
           <RoutineMemberList
-            program={{ id: DRAFT_ID, name: ownerName }}
+            season={{ id: DRAFT_ID, name: ownerName }}
             live={live}
             members={draft.routineIds
               .map((id) => routines.find((r) => r.id === id))
@@ -739,7 +739,7 @@ export function ContainerDraftFields({
             emptyHint="Routines this stretch switches on and off with it."
           />
         )}
-        {(kind === 'routine' || kind === 'program') && (
+        {(kind === 'routine' || kind === 'season') && (
           <ItemMemberList
             label="Items"
             ownerId={DRAFT_ID}
@@ -748,7 +748,7 @@ export function ContainerDraftFields({
             members={pick(draft.itemIds)}
             hiddenIds={NOTHING_HIDDEN}
             testPrefix={`${p}-items`}
-            // routine_items keeps an order; program_items does not.
+            // routine_items keeps an order; season_items does not.
             orderable={kind === 'routine'}
             lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
             row={{ trailing: week.trailing }}
@@ -774,8 +774,8 @@ export function ContainerDraftFields({
             }
           />
         )}
-        {kind === 'routine' && programs.length > 0 && (
-          <ProgramPicker draft={draft} onChange={onChange} todayStr={todayStr} testPrefix={p} />
+        {kind === 'routine' && seasons.length > 0 && (
+          <SeasonPicker draft={draft} onChange={onChange} todayStr={todayStr} testPrefix={p} />
         )}
       </div>
     </div>
@@ -804,7 +804,7 @@ function NewItemRows({
   testPrefix: string;
   placeholder: string;
   todayStr: string;
-  /** The list's week dots, drawn for the row's preview item (routine/program items). */
+  /** The list's week dots, drawn for the row's preview item (routine/season items). */
   trailing?: (item: Item) => React.ReactNode;
 }) {
   const rows = draft.newItems.filter((n) => n.role === role);
@@ -865,11 +865,11 @@ function NewItemRows({
 }
 
 /**
- * A routine's programs, chosen at birth. The hold is written after the
- * routine's own row lands (addRoutine's `programIds`); the consequence line
- * above says when joining an Off program would put its items on hold.
+ * A routine's seasons, chosen at birth. The hold is written after the
+ * routine's own row lands (addRoutine's `seasonIds`); the consequence line
+ * above says when joining an Off season would put its items on hold.
  */
-function ProgramPicker({
+function SeasonPicker({
   draft,
   onChange,
   todayStr,
@@ -880,27 +880,27 @@ function ProgramPicker({
   todayStr: string;
   testPrefix: string;
 }) {
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   return (
-    <section className="flex flex-col gap-1.5" data-testid={`${testPrefix}-programs`}>
-      <p id={`${testPrefix}-programs-label`} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
-        In programs
+    <section className="flex flex-col gap-1.5" data-testid={`${testPrefix}-seasons`}>
+      <p id={`${testPrefix}-seasons-label`} className="text-muted-foreground text-[10px] font-semibold tracking-wider uppercase">
+        In seasons
       </p>
-      <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={`${testPrefix}-programs-label`}>
-        {programs.map((program) => {
-          const on = draft.programIds.includes(program.id);
+      <div className="flex flex-wrap gap-1.5" role="group" aria-labelledby={`${testPrefix}-seasons-label`}>
+        {seasons.map((season) => {
+          const on = draft.seasonIds.includes(season.id);
           return (
             <button
-              key={program.id}
+              key={season.id}
               type="button"
               aria-pressed={on}
-              data-testid={`${testPrefix}-program`}
-              data-program-id={program.id}
+              data-testid={`${testPrefix}-season`}
+              data-season-id={season.id}
               onClick={() =>
                 onChange({
-                  programIds: on
-                    ? draft.programIds.filter((id) => id !== program.id)
-                    : [...draft.programIds, program.id],
+                  seasonIds: on
+                    ? draft.seasonIds.filter((id) => id !== season.id)
+                    : [...draft.seasonIds, season.id],
                 })
               }
               className={cn(
@@ -909,9 +909,9 @@ function ProgramPicker({
                 on ? 'bg-secondary text-foreground border-transparent' : 'text-muted-foreground border-input border-dashed hover-wash'
               )}
             >
-              <CategoryIcon glyph={program.icon} name={program.name} className="size-3" />
-              {program.name}
-              {!isProgramActiveOn(program, todayStr) && <span className="text-muted-foreground">· off</span>}
+              <CategoryIcon glyph={season.icon} name={season.name} className="size-3" />
+              {season.name}
+              {!isSeasonActiveOn(season, todayStr) && <span className="text-muted-foreground">· off</span>}
             </button>
           );
         })}

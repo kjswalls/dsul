@@ -6,7 +6,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { useViewStore } from '@/lib/view-store';
-import { programSuppressionOn } from '@/lib/program-boundaries';
+import { seasonSuppressionOn } from '@/lib/season-boundaries';
 import { toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
 
@@ -19,7 +19,7 @@ import { cn } from '@/lib/utils';
  * than the transition: this many items are not here, and this is what is
  * holding them.
  *
- * It renders on NO other day, which is the point. A program that is off and
+ * It renders on NO other day, which is the point. A season that is off and
  * hiding nothing gets no line; a paused item gets no line either, because that
  * was the user's own decision about that row and it already has a home in the
  * braindump's Paused section. Only work that vanished because of a decision
@@ -44,10 +44,10 @@ import { cn } from '@/lib/utils';
  * (components/primitives/gate-switch.tsx) and the Display menu's "Paused
  * scopes" list (components/primitives/display-menu.tsx).
  */
-export function ProgramNotice({ className }: { className?: string }) {
+export function SeasonNotice({ className }: { className?: string }) {
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const selectedDate = usePlannerStore((s) => s.selectedDate);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const scope = useViewStore((s) => s.scope);
@@ -58,9 +58,9 @@ export function ProgramNotice({ className }: { className?: string }) {
   const dateStr = toDateStr(selectedDate, tz);
 
   const suppression = useMemo(() => {
-    if (programs.length === 0) return null;
-    return programSuppressionOn(dateStr, items, { userTimezone: tz, routines, programs });
-  }, [dateStr, items, routines, programs, tz]);
+    if (seasons.length === 0) return null;
+    return seasonSuppressionOn(dateStr, items, { userTimezone: tz, routines, seasons });
+  }, [dateStr, items, routines, seasons, tz]);
 
   // Day scope only. In a week view `selectedDate` is one column of seven, so a
   // line reporting its suppression sits above six other days it is not about —
@@ -68,7 +68,7 @@ export function ProgramNotice({ className }: { className?: string }) {
   // drawn between the columns where the change actually happens.
   if (scope !== 'day' || !suppression) return null;
 
-  const { programs: off, hidden } = suppression;
+  const { seasons: off, hidden } = suppression;
   const names = off.map((p) => p.name).join(' and ');
 
   return (
@@ -76,19 +76,19 @@ export function ProgramNotice({ className }: { className?: string }) {
       type="button"
       // The console is where this is undone, so the sentence that reports the
       // consequence is also the way back to the control that caused it — and it
-      // lands on the program actually doing the hiding rather than on the list.
+      // lands on the season actually doing the hiding rather than on the list.
       // With several off, the first named is the one the sentence leads with.
       // The way back is the console, so with the console off this sentence
       // still REPORTS the suppression — which is the part that matters, since
       // rows are hidden either way — and simply stops being a button. The
-      // program is unpaused from its own scope-rail entry meanwhile.
+      // season is unpaused from its own scope-rail entry meanwhile.
       onClick={() =>
         organizeOn
-          ? openDialog({ type: 'organize', section: 'programs', focusId: off[0]?.id })
+          ? openDialog({ type: 'organize', section: 'seasons', focusId: off[0]?.id })
           : undefined
       }
       disabled={!organizeOn}
-      data-testid="program-notice"
+      data-testid="season-notice"
       data-date={dateStr}
       data-hidden-count={hidden}
       className={cn(

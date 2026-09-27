@@ -14,7 +14,7 @@ import {
 } from './container-fields';
 
 /**
- * The console's "+ New" for a goal, routine or program — CreateForm's shell (its
+ * The console's "+ New" for a goal, routine or season — CreateForm's shell (its
  * testids, its Escape rungs, its Cancel) around the SAME body the "new" dialog
  * renders, so the two create surfaces cannot drift apart again.
  */
@@ -36,15 +36,15 @@ const COPY: Record<
     placeholder: 'Name your routine…',
     addLabel: 'Create routine',
     icon: makeIconToken('Repeat'),
-    hint: 'A routine groups items you want to pause together.',
+    hint: 'A routine is a set of things you do regularly, in order — a morning, a workout week. Pause it and they all step off your day together.',
   },
-  program: {
-    eyebrow: 'NEW PROGRAM',
-    placeholder: 'Name your program…',
-    addLabel: 'Create program',
+  season: {
+    eyebrow: 'NEW SEASON',
+    placeholder: 'Name your season…',
+    addLabel: 'Create season',
     icon: makeIconToken('CalendarRange'),
     hint:
-      'A program is a stretch of life — a summer, a term — that switches whole routines on and off. Without dates it starts always-on, hiding nothing.',
+      'A season is a stretch of life — a summer, a term, a training block — that switches whole routines on and off. Without dates it starts always-on, hiding nothing.',
   },
 };
 

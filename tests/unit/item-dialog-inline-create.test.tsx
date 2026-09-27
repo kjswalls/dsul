@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 
 /**
  * InlineCreate — the "make one without leaving the dialog" affordance the
- * routine / program / goal membership chips grow (C2).
+ * routine / season / goal membership chips grow (C2).
  *
  * The wiring (create the container, then tick it on) is three short closures in
  * item-dialog.tsx, typechecked and exercised by the e2e specs that drive the

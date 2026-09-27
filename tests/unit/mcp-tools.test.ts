@@ -120,8 +120,8 @@ describe('pause', () => {
   });
 
   it('refuses a kind that has no pause verb', () => {
-    // Programs use `state`, not pause.
-    expect(plan('dsul_pause', { kind: 'program', id: 'p1', paused: true })).toMatchObject({
+    // Seasons use `state`, not pause.
+    expect(plan('dsul_pause', { kind: 'season', id: 'p1', paused: true })).toMatchObject({
       error: expect.stringContaining('kind must be one of'),
     });
   });
@@ -139,8 +139,8 @@ describe('collections', () => {
       method: 'POST',
       path: '/api/agent/routines',
     });
-    expect(plan('dsul_create_collection', { kind: 'program', name: 'Marathon block' })).toMatchObject({
-      path: '/api/agent/programs',
+    expect(plan('dsul_create_collection', { kind: 'season', name: 'Marathon block' })).toMatchObject({
+      path: '/api/agent/seasons',
     });
     expect(plan('dsul_create_collection', { kind: 'goal', name: 'Run a 10k' })).toMatchObject({
       path: '/api/agent/goals',
@@ -175,8 +175,8 @@ describe('collections', () => {
       })
     ).toMatchObject({ method: 'POST', path: '/api/agent/goals' });
     expect(
-      plan('dsul_update_collection', { kind: 'program', id: 'p1', routineIds: ['r1'], state: 'active' })
-    ).toMatchObject({ method: 'PATCH', path: '/api/agent/programs/p1' });
+      plan('dsul_update_collection', { kind: 'season', id: 'p1', routineIds: ['r1'], state: 'active' })
+    ).toMatchObject({ method: 'PATCH', path: '/api/agent/seasons/p1' });
   });
 
   it('warns in the tool text that membership replaces rather than appends', () => {

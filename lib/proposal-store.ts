@@ -153,7 +153,7 @@ function plannerContext() {
     items: state.items,
     customTypeNames: state.itemTypes.map((t) => t.name),
     todayStr: today,
-    // Work a routine or program has paused today is not "waiting on you" — the
+    // Work a routine or season has paused today is not "waiting on you" — the
     // same rule the auto-age sweep and the past-due bar obey.
     // Every bulk date verb subtracts these; a proposal that clears a date is
     // one. See the note on ProposalContext.
@@ -162,7 +162,7 @@ function plannerContext() {
       // Same fallback the store uses everywhere it needs a zone.
       userTimezone: state.userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone,
       routines: state.routines,
-      programs: state.programs,
+      seasons: state.seasons,
     }),
   };
 }

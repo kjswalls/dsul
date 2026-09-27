@@ -223,7 +223,7 @@ const KIND_LABEL: Record<TrashKind, string> = {
   item: 'Item',
   project: 'Project',
   routine: 'Routine',
-  program: 'Program',
+  season: 'Season',
   goal: 'Goal',
 };
 
@@ -501,7 +501,7 @@ function ContainerFacts({ entry }: { entry: TrashEntry }) {
         ? `Restoring brings the project back and re-files the ${members} ${members === 1 ? 'item' : 'items'} still pointing at it.`
         : 'Restoring brings the project back. Nothing is filed under it right now.',
     routine: 'Restoring brings the routine back, along with the items it grouped.',
-    program: 'Restoring brings the program back, along with the routines and items it held.',
+    season: 'Restoring brings the season back, along with the routines and items it held.',
     goal: 'Restoring brings the goal back, along with its milestones, check-ins and members.',
   };
   return (

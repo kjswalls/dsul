@@ -4,12 +4,12 @@ import { useMemo, useState } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import {
   isPausedOn,
-  isProgramActiveOn,
-  programResumeDate,
+  isSeasonActiveOn,
+  seasonResumeDate,
   routineStandingOn,
 } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
-import type { Program, Routine } from '@/lib/planner-types';
+import type { Season, Routine } from '@/lib/planner-types';
 
 /**
  * Shared machinery for the container surfaces — the manager and the Organize
@@ -75,14 +75,14 @@ export function useLiveItemIds(): Set<string> {
   return useMemo(() => new Set(items.map((i) => i.id)), [items]);
 }
 
-/** The same rule one layer up: `program.routineIds` may name a trashed routine. */
+/** The same rule one layer up: `season.routineIds` may name a trashed routine. */
 export function useLiveRoutineIds(): Set<string> {
   const routines = usePlannerStore((s) => s.routines);
   return useMemo(() => new Set(routines.map((r) => r.id)), [routines]);
 }
 
 /**
- * Count only the ids that still resolve. Never a raw `.length` — a program that
+ * Count only the ids that still resolve. Never a raw `.length` — a season that
  * holds one live and two trashed routines reads "3" from a length and "1" from
  * the detail pane one click away, so the manager disagrees with itself
  * permanently rather than for a frame.
@@ -99,9 +99,9 @@ export const countLive = (ids: readonly string[], live: Set<string>) =>
  * This is the guilt-free law (overlap-blocks decision 1): never a warning
  * colour, never a badge, never a dotted border.
  *
- * `programs` is optional so the callers that genuinely have no container context
+ * `seasons` is optional so the callers that genuinely have no container context
  * keep working, but the console passes it — without it this answered the LOCAL
- * pause only, so a routine held off by a program wore no pill and read as live
+ * pause only, so a routine held off by a season wore no pill and read as live
  * in the list while the detail pane beside it said held and the rail dimmed its
  * row. Three views of one routine, two answers.
  */
@@ -109,25 +109,25 @@ export function routinePillLabel(
   routine: Routine,
   todayStr: string,
   tz: string,
-  programs?: readonly Program[],
+  seasons?: readonly Season[],
 ): string | null {
   if (isPausedOn(routine, todayStr, tz)) {
     return routine.pausedUntil ? `Until ${formatShort(routine.pausedUntil)}` : 'Paused';
   }
-  if (!programs?.length) return null;
+  if (!seasons?.length) return null;
   // Its own switch is on and nothing is carrying it — a different sentence from
   // "Paused", because the user did not do this and resuming is not the fix.
-  const { effectiveOn, soonestBlocker } = routineStandingOn(routine, programs, todayStr, tz);
+  const { effectiveOn, soonestBlocker } = routineStandingOn(routine, seasons, todayStr, tz);
   if (effectiveOn || !soonestBlocker) return null;
-  const back = programResumeDate(soonestBlocker, todayStr);
+  const back = seasonResumeDate(soonestBlocker, todayStr);
   return back ? `Held · ${formatShort(back)}` : 'Held';
 }
 
-/** The same, for a program's three ways of being off. */
-export function programPillLabel(program: Program, todayStr: string): string | null {
-  if (isProgramActiveOn(program, todayStr)) return null;
-  if (program.state === 'paused') return 'Paused';
-  if (program.startsOn && todayStr < program.startsOn) return `From ${formatShort(program.startsOn)}`;
+/** The same, for a season's three ways of being off. */
+export function seasonPillLabel(season: Season, todayStr: string): string | null {
+  if (isSeasonActiveOn(season, todayStr)) return null;
+  if (season.state === 'paused') return 'Paused';
+  if (season.startsOn && todayStr < season.startsOn) return `From ${formatShort(season.startsOn)}`;
   return 'Ended';
 }
 
