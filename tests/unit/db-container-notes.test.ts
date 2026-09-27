@@ -28,9 +28,10 @@ vi.mock('@/lib/supabase', () => ({
     }),
   }),
 }));
-vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins: vi.fn() }));
+const notifyPlugins = vi.hoisted(() => vi.fn());
+vi.mock('@/lib/openclaw-registry', () => ({ notifyPlugins }));
 
-import { createProject, createRoutine, updateProgram, updateRoutine } from '@/lib/db';
+import { createProject, createRoutine, updateProgram, updateProject, updateRoutine } from '@/lib/db';
 
 /**
  * Migration 046 adds `notes` to routines, programs and projects, and a build
@@ -44,6 +45,7 @@ describe('container writes before migration 046', () => {
     writes.length = 0;
     hasNotesColumn = false;
     otherError = null;
+    notifyPlugins.mockClear();
     vi.spyOn(console, 'warn').mockImplementation(() => {});
   });
 
@@ -79,5 +81,12 @@ describe('container writes before migration 046', () => {
     otherError = { code: '42501', message: 'permission denied' };
     await expect(updateRoutine('u1', 'r1', { name: 'x', notes: 'n' })).rejects.toMatchObject({ code: '42501' });
     expect(writes).toHaveLength(1);
+  });
+
+  it('announces no project change when the note was all it had and it did not land', async () => {
+    await updateProject('u1', 'pr1', { notes: 'Chores.' });
+    expect(notifyPlugins).not.toHaveBeenCalled();
+    await updateProject('u1', 'pr1', { name: 'House', notes: 'Chores.' });
+    expect(notifyPlugins).toHaveBeenCalled();
   });
 });

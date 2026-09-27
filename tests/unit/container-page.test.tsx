@@ -154,6 +154,9 @@ describe('the project page', () => {
     });
     render(<ContainerPage kind="project" id="pr1" />);
     expect(screen.getByTestId('container-page-rhythm-block').textContent).toContain('10:00');
+    // The console chip's own words, never the stored slug.
+    expect(screen.getByTestId('container-page-summary').textContent).toContain('Chosen days · ');
+    expect(screen.getByTestId('container-page-summary').textContent).not.toContain('custom');
     expect(screen.getAllByTestId('container-page-rhythm-row')).toHaveLength(1);
   });
 

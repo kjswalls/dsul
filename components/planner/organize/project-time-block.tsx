@@ -55,6 +55,18 @@ const REPEATS: { value: RepeatFrequency; label: string }[] = [
 ];
 
 /**
+ * "Every day · 6pm–7pm" — the block in one line, for the console chip and the
+ * project page alike so the two cannot word it differently. Undefined when
+ * there is no block: day-items' own rule (lib/project-block.ts) — a row
+ * missing its repeat draws on no day, so it must not read "Every day".
+ */
+export function timeBlockSummary(project: Project): string | undefined {
+  if (!hasTimeBlock(project)) return undefined;
+  const repeat = REPEATS.find((r) => r.value === project.repeatFrequency)?.label ?? project.repeatFrequency;
+  return `${repeat} · ${blockWhen(project)}`;
+}
+
+/**
  * `none` is absent on purpose. A block with no repeat renders on no day —
  * day-items.ts's switch sends it to the `default` arm, which reads `repeatDays`,
  * and a `none` project has none — so offering it would be an option that
@@ -332,11 +344,7 @@ const bucketDefault = (bucket: TimeBucket) =>
  * so it sits with the others rather than as a settings section of its own.
  */
 export function TimeBlockChip({ project }: { project: Project }) {
-  // day-items' own rule (lib/project-block.ts): a row missing its repeat draws
-  // on no day, so it must not read "Every day" here.
-  const on = hasTimeBlock(project);
-  const repeat = REPEATS.find((r) => r.value === project.repeatFrequency)?.label ?? project.repeatFrequency;
-  const value = on ? `${repeat} · ${blockWhen(project)}` : undefined;
+  const value = timeBlockSummary(project);
   return (
     <PropertyChip
       label="＋ Time block"

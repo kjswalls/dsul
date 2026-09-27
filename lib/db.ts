@@ -976,13 +976,13 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
  * riding along would sink a rename, a pause or an undo's full restore with it.
  * A missing-column rejection with `notes` in the row retries once without it:
  * everything else lands, the note does not. A row that was ONLY the note has
- * nothing left to write.
+ * nothing left to write — false then, so a caller does not announce a change.
  */
 async function writeWithoutNotesFallback(
   table: string,
   row: Record<string, unknown>,
   write: (row: Record<string, unknown>) => PromiseLike<{ error: { code?: string; message?: string } | null }>,
-): Promise<void> {
+): Promise<boolean> {
   let { error } = await write(row);
   if (error && isMissingColumnError(error) && 'notes' in row) {
     const rest = { ...row };
@@ -991,10 +991,11 @@ async function writeWithoutNotesFallback(
       `[db] ${table} is missing a column this build writes (${error.message}). ` +
         'Retrying without the note — apply supabase/migrations/046_container_notes.sql.',
     );
-    if (Object.keys(rest).length === 0) return;
+    if (Object.keys(rest).length === 0) return false;
     ({ error } = await write(rest));
   }
   if (error) throw error;
+  return true;
 }
 
 export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
@@ -2801,8 +2802,9 @@ export async function updateProject(userId: string, id: string, updates: Partial
   const row = projectUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  await writeWithoutNotesFallback('projects', row, (r) => supabase.from('projects').update(r).eq('id', id));
-  notifyContainerChange(userId, { action: 'update', id, updates });
+  const wrote = await writeWithoutNotesFallback('projects', row, (r) => supabase.from('projects').update(r).eq('id', id));
+  // A note-only edit against a pre-046 database wrote nothing — say nothing.
+  if (wrote) notifyContainerChange(userId, { action: 'update', id, updates });
 }
 
 /**

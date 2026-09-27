@@ -22,7 +22,7 @@ import { containerMemberIds } from '@/lib/container-schedule';
 import { CategoryIcon } from '@/lib/category-icons';
 import { RhythmGrid, SeasonHeatmap, WeekProgress, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
 import { ContainerActivity } from '@/components/planner/organize/container-activity';
-import { blockWhen, hasTimeBlock } from '@/lib/project-block';
+import { timeBlockSummary } from '@/components/planner/organize/project-time-block';
 import { ProgramStateNote } from '@/components/planner/organize/sections/programs';
 import type { Item, Program, Project, Routine } from '@/lib/planner-types';
 
@@ -191,9 +191,8 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
     notes = project.notes;
     // Live items, as the routine counts them — not finished one-offs.
     props.push({ label: 'Items', value: plural(countLive(memberIds, liveIds), 'item') });
-    if (hasTimeBlock(project)) {
-      props.push({ label: 'Time block', value: `${blockWhen(project)} · ${project.repeatFrequency}` });
-    }
+    const block = timeBlockSummary(project);
+    if (block) props.push({ label: 'Time block', value: block });
   }
   props.push({
     label: 'Color',
