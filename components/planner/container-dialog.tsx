@@ -11,6 +11,7 @@ import {
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { PropertyChip } from '@/components/primitives/property-chip';
 import { ColorChip } from '@/components/primitives/organizer-chips';
+import { NotesField } from '@/components/planner/organize/detail-parts';
 import {
   ADD_MODAL_CLASS,
   EnterHint,
@@ -232,7 +233,11 @@ function ContainerForm({
   const create = (): string | null => {
     // One ⌘Z per kind, with everything the dialog asked for in it — new
     // member items included, created first and linked in order.
-    if (kind === 'project') return addProject(trimmed, icon ?? '', color ? { color } : undefined);
+    if (kind === 'project') {
+      const notes = draft.why.trim();
+      const extra = { ...(color ? { color } : {}), ...(notes ? { notes } : {}) };
+      return addProject(trimmed, icon ?? '', Object.keys(extra).length ? extra : undefined);
+    }
     return createFromDraft(kind, trimmed, icon, draft, todayStr, tz);
   };
 
@@ -339,9 +344,19 @@ function ContainerForm({
       </div>
 
       {kind === 'project' ? (
-        <div className="flex flex-wrap items-center gap-1.5">
-          <ColorChip value={color} onChange={setColor} testId="project-dialog-color" />
-        </div>
+        <>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <ColorChip value={color} onChange={setColor} testId="project-dialog-color" />
+          </div>
+          {/* Shown, not just carried: converting an item brings its notes. */}
+          <NotesField
+            value={draft.why}
+            onChange={(why) => setDraft((d) => ({ ...d, why }))}
+            placeholder="Add a note…"
+            ariaLabel="Project note"
+            testId="project-dialog-note-field"
+          />
+        </>
       ) : (
         <ContainerDraftFields
           kind={kind}

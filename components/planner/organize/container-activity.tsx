@@ -5,7 +5,7 @@ import { OrganizerSection } from '@/components/primitives/organizer-chips';
 import { fetchItemEventsFor } from '@/lib/db';
 import { formatShort, useToday } from '@/lib/collections';
 import { addDaysStr } from '@/lib/container-schedule';
-import { deriveActivity, type ActivityEvent } from '@/lib/container-activity';
+import { ACTIVITY_DAYS, deriveActivity, type ActivityEvent } from '@/lib/container-activity';
 import { cn } from '@/lib/utils';
 import type { Item } from '@/lib/planner-types';
 
@@ -13,9 +13,12 @@ import type { Item } from '@/lib/planner-types';
  * A container pane's Activity — what happened to its members lately, newest
  * first (lib/container-activity.ts says what counts and why it is only days).
  *
- * The creates come from `item_events`, fetched once per member set; the
- * completions come from the store, so ticking a member updates this at once.
- * A failed or absent fetch leaves only the completions — never an error.
+ * Recurring completions come from the store, so ticking a habit shows at once.
+ * Creates and one-off completions come from `item_events`, re-read whenever
+ * the member set or a member's status changes — and read twice: those rows are
+ * written fire-and-forget AFTER the item write resolves, so a read at the
+ * instant the store changed usually beats them there. A failed or absent fetch
+ * leaves only the store's completions — never an error.
  * Nothing to show, no section: an empty "Activity" heading says nothing.
  */
 export function ContainerActivity({
@@ -27,22 +30,31 @@ export function ContainerActivity({
 }) {
   const { todayStr, tz } = useToday();
   const [events, setEvents] = useState<ActivityEvent[]>([]);
-  const key = members.map((m) => m.id).join(',');
+  const ids = members.map((m) => m.id).join(',');
+  const key = `${ids}|${members.map((m) => m.status).join(',')}`;
 
   useEffect(() => {
     let live = true;
-    const ids = key ? key.split(',') : [];
-    Promise.resolve()
-      .then(() => fetchItemEventsFor(ids))
-      .then((rows) => {
-        if (live) setEvents(rows);
-      })
-      .catch(() => {
-        // The feed is a courtesy — a failed read is a shorter feed.
-      });
+    const list = ids ? ids.split(',') : [];
+    // A day of slack past the window: deriveActivity cuts by the user's date.
+    const since = new Date(Date.now() - (ACTIVITY_DAYS + 1) * 86_400_000).toISOString();
+    const read = () =>
+      Promise.resolve()
+        .then(() => fetchItemEventsFor(list, since))
+        .then((rows) => {
+          if (live) setEvents(rows);
+        })
+        .catch(() => {
+          // The feed is a courtesy — a failed read is a shorter feed.
+        });
+    void read();
+    const again = setTimeout(() => void read(), 2000);
     return () => {
       live = false;
+      clearTimeout(again);
     };
+    // `key` carries the statuses; `ids` alone would miss a one-off ticked.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
 
   const entries = useMemo(

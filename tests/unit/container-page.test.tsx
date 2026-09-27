@@ -80,6 +80,32 @@ describe('the routine page', () => {
     expect(screen.getByRole('link', { name: /Autumn term/ }).getAttribute('href')).toBe('/program/p1');
   });
 
+  it('reads its note under the title, and its properties beside it', () => {
+    const done = habit('h1', 'Stretch', { completedDates: ['2026-09-26'] });
+    seed({
+      items: [done],
+      habits: [done],
+      routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], notes: 'Before the phone.' }],
+    });
+    render(<ContainerPage kind="routine" id="r1" />);
+    expect(screen.getByTestId('container-page-notes').textContent).toBe('Before the phone.');
+    const props = screen.getByTestId('container-page-summary');
+    expect(props.textContent).toContain('Active');
+    expect(props.textContent).toContain('Autumn term');
+    // Saturday, done today. The six earlier days recorded nothing — open, not
+    // missed — so they are not counted against it.
+    expect(screen.getByTestId('container-page-progress').textContent).toContain('1 of 1');
+  });
+
+  it('never lights a paused routine lime, and says nothing when there is no note', () => {
+    seed({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], pausedAt: '2026-09-20T12:00:00Z' }] });
+    render(<ContainerPage kind="routine" id="r1" />);
+    expect(screen.queryByTestId('container-page-notes')).toBeNull();
+    const props = screen.getByTestId('container-page-summary');
+    expect(props.textContent).toContain('Paused');
+    expect(props.querySelector('.bg-primary')).toBeNull();
+  });
+
   it('edits through the console door — arm the slot, then go where the console lives', () => {
     render(<ContainerPage kind="routine" id="r1" />);
     fireEvent.click(screen.getByTestId('container-page-organize'));

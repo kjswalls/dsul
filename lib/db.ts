@@ -722,22 +722,29 @@ export async function fetchItemEvents(itemId: string, client?: DbClient): Promis
 }
 
 /**
- * The recent create and update events of a SET of items — a container's
+ * The recent create and status events of a SET of items — a container's
  * members — for the container panes' Activity (2026-09-27). Newest first,
- * capped; the pane derives "Added X" from creates and "Completed X" from an
- * update that set a one-off's status to completed. Same quiet failure as
- * fetchItemEvents: a missing line in a feed, never an error.
+ * since `sinceIso`; the pane derives "Added X" from creates and "Completed X"
+ * from an update that set a one-off's status. Filtered to those two shapes
+ * server-side: nearly every edit writes an update event (a drag, a rename, a
+ * sweep), and fetched raw, a busy week of them crowds the creates out of the
+ * cap. Same quiet failure as fetchItemEvents: a missing line, never an error.
  */
-export async function fetchItemEventsFor(itemIds: readonly string[], client?: DbClient): Promise<ItemEvent[]> {
+export async function fetchItemEventsFor(
+  itemIds: readonly string[],
+  sinceIso: string,
+  client?: DbClient,
+): Promise<ItemEvent[]> {
   if (!itemEventsAvailable || itemIds.length === 0) return [];
   const supabase = client ?? createClient();
   const { data, error } = await supabase
     .from('item_events')
     .select('id, item_id, item_type, action, payload, created_at')
     .in('item_id', itemIds.slice(0, 200) as string[])
-    .in('action', ['create', 'update'])
+    .gte('created_at', sinceIso)
+    .or('action.eq.create,and(action.eq.update,payload->>status.not.is.null)')
     .order('created_at', { ascending: false })
-    .limit(60);
+    .limit(200);
   if (error) {
     if (missingEventsTable(error)) itemEventsAvailable = false;
     else console.error('item_events fetch failed', error);
@@ -961,6 +968,33 @@ function isMissingColumnError(error: { code?: string; message?: string } | null)
   if (!error) return false;
   if (error.code === '42703' || error.code === 'PGRST204') return true;
   return /column\b.*\bdoes not exist/i.test(error.message ?? '');
+}
+
+/**
+ * A container write that survives a database without migration 046's `notes`
+ * column. PostgREST rejects a whole row naming a column it lacks, so a note
+ * riding along would sink a rename, a pause or an undo's full restore with it.
+ * A missing-column rejection with `notes` in the row retries once without it:
+ * everything else lands, the note does not. A row that was ONLY the note has
+ * nothing left to write.
+ */
+async function writeWithoutNotesFallback(
+  table: string,
+  row: Record<string, unknown>,
+  write: (row: Record<string, unknown>) => PromiseLike<{ error: { code?: string; message?: string } | null }>,
+): Promise<void> {
+  let { error } = await write(row);
+  if (error && isMissingColumnError(error) && 'notes' in row) {
+    const rest = { ...row };
+    delete rest.notes;
+    console.warn(
+      `[db] ${table} is missing a column this build writes (${error.message}). ` +
+        'Retrying without the note — apply supabase/migrations/046_container_notes.sql.',
+    );
+    if (Object.keys(rest).length === 0) return;
+    ({ error } = await write(rest));
+  }
+  if (error) throw error;
 }
 
 export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
@@ -1948,7 +1982,7 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
 
 export async function createRoutine(userId: string, routine: Routine, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('routines').insert({
+  await writeWithoutNotesFallback('routines', {
     id: routine.id,
     user_id: userId,
     name: routine.name,
@@ -1959,8 +1993,7 @@ export async function createRoutine(userId: string, routine: Routine, client?: D
     sort_order: routine.sortOrder ?? null,
     // Only when set: a build that lands before 046 must still create.
     ...(routine.notes ? { notes: routine.notes } : {}),
-  });
-  if (error) throw error;
+  }, (row) => supabase.from('routines').insert(row));
   if (routine.itemIds.length > 0) {
     try {
       await reconcileMembership(
@@ -1993,8 +2026,9 @@ export async function updateRoutine(
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
   if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
-    const { error } = await supabase.from('routines').update(row).eq('id', id).eq('user_id', userId);
-    if (error) throw error;
+    await writeWithoutNotesFallback('routines', row, (r) =>
+      supabase.from('routines').update(r).eq('id', id).eq('user_id', userId),
+    );
   }
   if (updates.itemIds) {
     await reconcileMembership(
@@ -2081,7 +2115,7 @@ export async function fetchPrograms(userId: string, client?: DbClient): Promise<
 
 export async function createProgram(userId: string, program: Program, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('programs').insert({
+  await writeWithoutNotesFallback('programs', {
     id: program.id,
     user_id: userId,
     name: program.name,
@@ -2092,8 +2126,7 @@ export async function createProgram(userId: string, program: Program, client?: D
     ends_on: program.endsOn ?? null,
     sort_order: program.sortOrder ?? null,
     ...(program.notes ? { notes: program.notes } : {}),
-  });
-  if (error) throw error;
+  }, (row) => supabase.from('programs').insert(row));
   try {
     if (program.itemIds.length > 0) {
       await reconcileMembership(
@@ -2131,8 +2164,9 @@ export async function updateProgram(
   if ('sortOrder' in updates) row.sort_order = updates.sortOrder ?? null;
   if ('notes' in updates) row.notes = updates.notes ?? null;
   if (Object.keys(row).length > 0) {
-    const { error } = await supabase.from('programs').update(row).eq('id', id).eq('user_id', userId);
-    if (error) throw error;
+    await writeWithoutNotesFallback('programs', row, (r) =>
+      supabase.from('programs').update(r).eq('id', id).eq('user_id', userId),
+    );
   }
   if (updates.itemIds) {
     await reconcileMembership(
@@ -2757,8 +2791,9 @@ function notifyContainerChange(userId: string, data: Record<string, unknown>): v
 
 export async function createProject(userId: string, project: Project, client?: DbClient): Promise<void> {
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('projects').insert(projectToRow(userId, project));
-  if (error) throw error;
+  await writeWithoutNotesFallback('projects', projectToRow(userId, project) as unknown as Record<string, unknown>, (row) =>
+    supabase.from('projects').insert(row),
+  );
   notifyContainerChange(userId, { action: 'create', project });
 }
 
@@ -2766,8 +2801,7 @@ export async function updateProject(userId: string, id: string, updates: Partial
   const row = projectUpdatesToRow(updates);
   if (Object.keys(row).length === 0) return;
   const supabase = client ?? createClient();
-  const { error } = await supabase.from('projects').update(row).eq('id', id);
-  if (error) throw error;
+  await writeWithoutNotesFallback('projects', row, (r) => supabase.from('projects').update(r).eq('id', id));
   notifyContainerChange(userId, { action: 'update', id, updates });
 }
 

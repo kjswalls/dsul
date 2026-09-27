@@ -646,8 +646,8 @@ export function ContainerDraftFields({
         value={draft.why}
         onChange={(why) => onChange({ why })}
         placeholder={kind === 'goal' ? 'Why this matters…' : 'Add a note…'}
-        ariaLabel={kind === 'goal' ? 'Why this goal matters' : `${kind === 'routine' ? 'Routine' : 'Program'} note`}
-        testId={kind === 'goal' ? `${p}-why` : `${p}-notes`}
+        ariaLabel={kind === 'goal' ? 'Why this goal matters' : `${kind.charAt(0).toUpperCase()}${kind.slice(1)} note`}
+        testId={kind === 'goal' ? `${p}-why` : `${p}-note-field`}
       />
 
       {kind === 'goal' && goalHasMembers && (

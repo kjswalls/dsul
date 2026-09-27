@@ -1,4 +1,5 @@
 import { addDaysStr } from './container-schedule';
+import { getItemTypeConfig, itemTypeName } from './item-registry';
 import { toDateStr } from './recurrence';
 import type { Item } from './planner-types';
 
@@ -7,8 +8,10 @@ import type { Item } from './planner-types';
  *
  * Built only from what the app already stores, never from a log of its own:
  *  · "Completed X" — each date in a member's `completedDates` (the per-date
- *    record recurring items keep), and a one-off task's status set to its done
- *    status, from the `item_events` update that wrote it;
+ *    record recurring items keep), and a one-off's LATEST status event when it
+ *    set the type's done status and the item still holds it — un-ticking
+ *    writes a later event, and a feed that kept the first one would say done
+ *    about something that is not;
  *  · "Added X" — the member's `item_events` create.
  * Day-granular on purpose: a completion is recorded as a DATE, and a feed
  * that invented times for some rows and not others would read as precise
@@ -22,8 +25,8 @@ export interface ActivityEntry {
   title: string;
   /** yyyy-MM-dd in the user's zone. */
   date: string;
-  /** For ordering within a day; the date's own midnight when only a date is known. */
-  sortKey: string;
+  /** For ordering within a day: the event's instant, or '' when only a date is known. */
+  at: string;
 }
 
 export interface ActivityEvent {
@@ -62,21 +65,35 @@ export function deriveActivity({
 
   for (const m of members) {
     for (const d of m.completedDates ?? []) {
-      push({ kind: 'completed', itemId: m.id, title: m.title, date: d, sortKey: `${d}T00:00:00` });
+      push({ kind: 'completed', itemId: m.id, title: m.title, date: d, at: '' });
     }
   }
-  for (const ev of events) {
+  // Newest first, so the first status event met per item is its latest.
+  const ordered = [...events].sort((a, b) => cmp(b.createdAt, a.createdAt));
+  const statusSeen = new Set<string>();
+  for (const ev of ordered) {
     const m = byId.get(ev.itemId);
     if (!m) continue;
     const date = toDateStr(new Date(ev.createdAt), tz);
     if (ev.action === 'create') {
-      push({ kind: 'added', itemId: m.id, title: m.title, date, sortKey: ev.createdAt });
-    } else if (ev.action === 'update' && (ev.payload.status === 'completed' || ev.payload.status === 'done')) {
-      // A one-off's completion — recurring ones are already counted by date.
+      push({ kind: 'added', itemId: m.id, title: m.title, date, at: ev.createdAt });
+    } else if (ev.action === 'update' && typeof ev.payload.status === 'string') {
+      if (statusSeen.has(m.id)) continue;
+      statusSeen.add(m.id);
+      const done = getItemTypeConfig(itemTypeName(m)).doneStatus;
+      if (ev.payload.status !== done || m.status !== done) continue;
+      // Recurring completions are already counted by date.
       if ((m.completedDates ?? []).includes(date)) continue;
-      push({ kind: 'completed', itemId: m.id, title: m.title, date, sortKey: ev.createdAt });
+      push({ kind: 'completed', itemId: m.id, title: m.title, date, at: ev.createdAt });
     }
   }
 
-  return out.sort((a, b) => (a.sortKey < b.sortKey ? 1 : a.sortKey > b.sortKey ? -1 : 0)).slice(0, limit);
+  // The day decides, then the instant within it. Both keys are compared in
+  // the user's zone: a UTC timestamp against a local date string would put a
+  // west-of-UTC evening above the next morning.
+  return out.sort((a, b) => cmp(b.date, a.date) || cmp(b.at, a.at)).slice(0, limit);
+}
+
+function cmp(a: string, b: string): number {
+  return a < b ? -1 : a > b ? 1 : 0;
 }
