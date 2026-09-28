@@ -75,7 +75,7 @@ import { useChatStore } from '../chat-store';
 import { useProposalStore } from '../proposal-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
+import { getItemTypeConfig } from '../item-registry';
 import { selectOverdue } from '../overdue';
 import { inactiveItemIdsOn, isPausedOn, isSeasonActiveOn } from '../active';
 import { seasonStateForSwitch } from '../scope-rail';
@@ -88,11 +88,9 @@ import {
   isCancelled,
   isDoneOn,
   isHabit,
-  isPausedNow,
-  isSkippedOn,
   isTaskLike,
+  fromVerb,
   itemCommand,
-  nextDayStr,
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
@@ -321,11 +319,7 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'complete done finish tick check off mark',
     aliases: ['complete', 'done'],
     emptyLabel: 'Nothing left to complete',
-    eligible: (item, dateStr) => !isDoneOn(item, dateStr) && !isCancelled(item),
-    run: (item) =>
-      isHabit(item)
-        ? planner().toggleHabitStatus(item.id, 'done')
-        : planner().toggleTaskStatus(item.id, 'completed'),
+    ...fromVerb('complete'),
     // A batch loops the single verbs rather than calling setItemsCompleted:
     // they keep per-date completion for recurring items, the +1 streak per
     // habit and the live Beeminder post. Quiet so the loop celebrates once and
@@ -340,23 +334,8 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'delete remove destroy trash',
     aliases: ['delete'],
     emptyLabel: 'Nothing to delete',
-    // The one command here with no eligibility rule beyond existing: you can
-    // always delete anything, including something already completed.
-    eligible: () => true,
-    run: (item) => {
-      const config = getItemTypeConfig(itemTypeName(item));
-      // Confirmed, not immediate. Every other item command is a single undo
-      // away; this one destroys a habit's whole history with it, so it goes
-      // through the same prompt the item dialog uses, with that type's copy.
-      useUIStore.getState().confirm({
-        title: `Delete ${config.label.toLowerCase()}?`,
-        description: config.form.deleteDescription(item.title),
-        confirmLabel: 'Delete',
-        destructive: true,
-        onConfirm: () =>
-          isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id),
-      });
-    },
+    // Always eligible, and confirmed with the type's own copy — lib/item-verbs.ts.
+    ...fromVerb('delete'),
     // Not the default loop: `confirm` is a single slot, so N prompts would
     // leave only the last standing and delete one item. One prompt, then one
     // deleteItems — a single entry that raises the undo strip, which is why
@@ -391,10 +370,12 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'snooze postpone defer later push tomorrow delay',
     aliases: ['snooze'],
     emptyLabel: 'Nothing to snooze',
-    // Habits are date-blind by construction (dateAnchored: false) — there is
-    // no date on them to move.
-    eligible: (item, dateStr) => isTaskLike(item) && !isDoneOn(item, dateStr) && !isCancelled(item),
-    run: (item, dateStr) => planner().updateTask(item.id, { startDate: nextDayStr(item, dateStr) }),
+    // The rows' carry (lib/row-moves.ts via the shared verb): a dated one-off
+    // only. It used to take any open task-like item and write startDate + 1,
+    // which on a recurring task rewrote the series anchor, dropped an overdue
+    // item one day later but still in the past, and stranded a task inside a
+    // project block. Habits are date-blind — there is no date on them to move.
+    ...fromVerb('nextDay'),
   }),
   itemCommand({
     id: 'items.skip',
@@ -408,11 +389,7 @@ export const STATIC_COMMANDS: Command[] = [
     // Registry capability, not "is it a habit": any recurring occurrence of a
     // skippable type can be skipped (#194). One-shot items are excluded by
     // isSkippable — they get completed or cancelled, never skipped.
-    eligible: (item, dateStr) =>
-      isSkippable(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
-    // No date argument, exactly as before: the store resolves the selected day,
-    // which is the same day `dateStr` was derived from.
-    run: (item) => planner().setItemSkipped(item.id, true),
+    ...fromVerb('skip'),
   }),
   itemCommand({
     id: 'items.resetStreak',
@@ -423,9 +400,8 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['streak'],
     placeholder: 'Which habit?',
     emptyLabel: 'No habit has a streak to reset',
-    eligible: (item) => isHabit(item) && item.streak > 0 && streaksEnabled(),
+    ...fromVerb('resetStreak'),
     detail: (item) => (isHabit(item) && streaksEnabled() ? `🔥 ${item.streak}` : undefined),
-    run: (item) => planner().resetHabitStreak(item.id),
   }),
   itemCommand({
     id: 'items.leaveProjectBlock',
@@ -436,11 +412,7 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['unblock'],
     placeholder: 'Which task?',
     emptyLabel: 'No task is in a project block',
-    // Task-like, matching the verb: moveTaskOutOfProjectBlock resolves against
-    // findTaskLike now, so a custom item that got into a block can get out of
-    // one. It used to resolve 'task' exactly, which is why this was narrower.
-    eligible: (item) => item.type !== 'habit' && !!item.inProjectBlock,
-    run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
+    ...fromVerb('leaveProjectBlock'),
   }),
   // Pause / Resume deliberately ignore the dateStr these predicates are handed:
   // that is the SELECTED day, and pausing is dateless (plan decision 3). Keying
@@ -458,8 +430,7 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'pause hold suspend set aside break vacation hide later',
     aliases: ['pause'],
     emptyLabel: 'Nothing to pause',
-    eligible: (item) => isPausable(item) && !isPausedNow(item),
-    run: (item) => planner().setItemPaused(item.id, true),
+    ...fromVerb('pause'),
   }),
   itemCommand({
     id: 'items.resume',
@@ -470,8 +441,7 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['resume'],
     placeholder: 'Which paused item?',
     emptyLabel: 'Nothing is paused',
-    eligible: (item) => isPausedNow(item),
-    run: (item) => planner().setItemPaused(item.id, false),
+    ...fromVerb('resume'),
   }),
   ...priorityCommands(),
   ...bucketCommands(),

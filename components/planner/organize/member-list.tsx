@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
@@ -197,6 +197,8 @@ export interface MemberRowParts {
    */
   capsule?: (item: Item) => ReactNode;
   menu?: (item: Item) => ReactNode;
+  /** Wraps the row in its right-click menu (components/planner/item-context-menu.tsx). */
+  contextMenu?: (item: Item, row: ReactElement) => ReactElement;
 }
 
 /**
@@ -447,9 +449,8 @@ export function ItemMemberList({
             {members.map((item, i) => {
               const meta = (row?.meta ?? memberMeta)(item);
               const done = row?.done?.(item) ?? false;
-              return (
+              const rowEl = (
                 <div
-                  key={item.id}
                   data-testid={`${testPrefix}-member`}
                   data-item-id={item.id}
                   data-member-index={i}
@@ -556,6 +557,8 @@ export function ItemMemberList({
                   </ControlRail>
                 </div>
               );
+              // Keyed outside the wrapper: a right-click root renders no DOM of its own.
+              return <Fragment key={item.id}>{row?.contextMenu ? row.contextMenu(item, rowEl) : rowEl}</Fragment>;
             })}
           </div>
         )}

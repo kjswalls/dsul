@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   STATIC_COMMANDS,
   findCommand,
@@ -487,14 +487,46 @@ describe('entity arguments: several at once', () => {
     expect(priorityOf('t1')).toBe('high');
   });
 
-  it('snoozes each item from its own date', () => {
-    seedStore([
-      task({ id: 't1', title: 'One', startDate: TODAY }),
-      task({ id: 't2', title: 'Two', startDate: '2026-03-20' }),
-    ]);
-    entityArg('items.snooze').runMany(ctx, ['t1', 't2']);
-    const dates = usePlannerStore.getState().items.map((i) => ('startDate' in i ? i.startDate : null));
-    expect(dates).toEqual(['2026-03-11', '2026-03-21']);
+  describe('snooze', () => {
+    // The carry is clamped to real today (lib/row-moves.ts nextDayTarget), so
+    // the wall clock has to agree with the fixtures' TODAY.
+    beforeEach(() => {
+      vi.useFakeTimers({ toFake: ['Date'] });
+      vi.setSystemTime(new Date(`${TODAY}T12:00:00Z`));
+    });
+    afterEach(() => vi.useRealTimers());
+
+    const dateOf = (id: string) =>
+      (usePlannerStore.getState().items.find((i) => i.id === id) as { startDate?: string }).startDate;
+
+    it('snoozes each item from its own date', () => {
+      seedStore([
+        task({ id: 't1', title: 'One', startDate: TODAY }),
+        task({ id: 't2', title: 'Two', startDate: '2026-03-20' }),
+      ]);
+      entityArg('items.snooze').runMany(ctx, ['t1', 't2']);
+      expect([dateOf('t1'), dateOf('t2')]).toEqual(['2026-03-11', '2026-03-21']);
+    });
+
+    it('carries an overdue item to tomorrow, never to another past day', () => {
+      seedStore([task({ id: 'late', title: 'Late', startDate: '2026-03-02' })]);
+      entityArg('items.snooze').runMany(ctx, ['late']);
+      expect(dateOf('late')).toBe('2026-03-11');
+    });
+
+    it('offers only what the rows may carry', () => {
+      seedStore([
+        task({ id: 'once', title: 'File taxes', startDate: TODAY }),
+        // Its startDate is the series anchor: moving it rewrites the series.
+        task({ id: 'series', title: 'Water plants', startDate: '2026-03-01', repeatFrequency: 'daily' }),
+        // Neither verb clears inProjectBlock, so it would land nowhere visible.
+        task({ id: 'block', title: 'Deep work', startDate: TODAY, inProjectBlock: true }),
+        // No day to put off from — that is Schedule, not Snooze.
+        task({ id: 'undated', title: 'Someday' }),
+        task({ id: 'done', title: 'Done', startDate: TODAY, status: 'completed' }),
+      ]);
+      expect(picks('items.snooze')).toEqual(['once']);
+    });
   });
 
   it('labels a batch complete the way the bulk bar does', () => {

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import { TimeBlockChip } from '../project-time-block';
 import { Trash2 } from 'lucide-react';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import { ColorChip } from '@/components/primitives/organizer-chips';
 import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -121,6 +122,11 @@ export function ProjectsSection({
               key={project.id}
               testId="project-row"
               idAttr={{ 'data-project-id': project.id }}
+              wrap={(row) => (
+                <ContainerContextMenu kind="project" id={project.id} inConsole>
+                  {row}
+                </ContainerContextMenu>
+              )}
               icon={project.emoji}
               color={project.color}
               name={project.name}

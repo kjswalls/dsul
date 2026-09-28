@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { CalendarRange, Trash2 } from 'lucide-react';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import { ChoiceChip, ColorChip, DateRangeChip } from '@/components/primitives/organizer-chips';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -117,6 +118,11 @@ export function SeasonsSection({
               key={season.id}
               testId="season-row"
               idAttr={{ 'data-season-id': season.id }}
+              wrap={(row) => (
+                <ContainerContextMenu kind="season" id={season.id} inConsole>
+                  {row}
+                </ContainerContextMenu>
+              )}
               icon={season.icon}
               color={season.color}
               name={season.name}

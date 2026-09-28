@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -32,22 +32,13 @@ import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useToday, parseDay } from '@/lib/collections';
-import { isRecurring } from '@/lib/recurrence';
-import { getItemTypeConfig, isPausable, isSkippable, itemTypeName } from '@/lib/item-registry';
 import { milestoneItemIds } from '@/lib/goals';
-import { toggleRowDone, toggleTaskDone } from '@/lib/item-toggle';
 import { toDateStr } from '@/lib/recurrence';
-import { isPausedOn } from '@/lib/active';
-import {
-  canMoveToNextDay,
-  canSendToBraindump,
-  formatTargetDay,
-  nextDayLabel,
-  nextDayTarget,
-} from '@/lib/row-moves';
+import { ITEM_VERBS, type VerbContext, type VerbId } from '@/lib/item-verbs';
 import { addDaysStr, weekStartOf, type OccurrenceState } from '@/lib/container-schedule';
+import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
 import { cn } from '@/lib/utils';
-import type { HabitItem, Item, Task } from '@/lib/planner-types';
+import type { Item } from '@/lib/planner-types';
 
 /**
  * CONTROLS ON A CONSOLE MEMBER ROW (Kirby, 2026-09-26; design boards 4A + 4B).
@@ -58,8 +49,9 @@ import type { HabitItem, Item, Task } from '@/lib/planner-types';
  * over the console (a second role="dialog" cannot coexist with it), so "Open
  * item" LEAVES for /item/[id] and closes the console on the way.
  *
- * Nothing here decides anything new. Every verb is the planner row's own store
- * action behind the planner row's own gate:
+ * Nothing here decides anything new. Every verb is a shared declaration from
+ * lib/item-verbs.ts — the planner row's own store action behind the planner
+ * row's own gate:
  *  · the put-off verbs (next day, braindump) ask lib/row-moves.ts, which refuses
  *    recurring items (their date is the series anchor), habits, finished work,
  *    in-block tasks and — for the braindump — milestones;
@@ -105,6 +97,32 @@ export function useMemberActions({ ownerName, onRemove, removable, todayState }:
         milestoneIds={milestoneIds}
       />
     ),
+    // The right-click menu, acting on TODAY as the rest of the row does, with
+    // the week schedule's answer for whether the item falls on it. "Open item"
+    // leaves for the page: the item panel cannot sit over the console.
+    contextMenu: (item: Item, row: ReactElement) => {
+      const canRemove = removable?.(item) ?? true;
+      return (
+        <ItemContextMenu
+          item={item}
+          date="today"
+          occurrence={todayState(item.id) ?? 'absent'}
+          openHref
+          extra={
+            canRemove ? (
+              <ItemMenuRow
+                icon={<Unlink className="size-3.5" />}
+                label={`Remove from ${ownerName}`}
+                testId="item-menu-remove"
+                onSelect={() => onRemove(item.id)}
+              />
+            ) : undefined
+          }
+        >
+          {row}
+        </ItemContextMenu>
+      );
+    },
   };
 }
 
@@ -123,9 +141,10 @@ export interface Verbs {
 }
 
 /**
- * Exported for the routine's Today checklist (components/planner/routine-today.tsx),
- * which ticks and skips the same members for the same day and must not grow a
- * second copy of these gates.
+ * The row's verbs, from the shared declarations (lib/item-verbs.ts) acting on
+ * TODAY. Exported for the routine's Today checklist
+ * (components/planner/routine-today.tsx), which ticks and skips the same
+ * members for the same day and must not grow a second copy of these gates.
  */
 export function useVerbs(
   item: Item,
@@ -134,35 +153,25 @@ export function useVerbs(
   milestoneIds: ReadonlySet<string>,
   onRemove?: (id: string) => void,
 ): Verbs {
-  const toggleTaskStatus = usePlannerStore((s) => s.toggleTaskStatus);
-  const toggleHabitStatus = usePlannerStore((s) => s.toggleHabitStatus);
-  const setItemSkipped = usePlannerStore((s) => s.setItemSkipped);
-  const setItemPaused = usePlannerStore((s) => s.setItemPaused);
-  const moveTaskToDate = usePlannerStore((s) => s.moveTaskToDate);
-  const unscheduleTask = usePlannerStore((s) => s.unscheduleTask);
-  const deleteTask = usePlannerStore((s) => s.deleteTask);
-  const deleteHabit = usePlannerStore((s) => s.deleteHabit);
-  const confirm = useUIStore((s) => s.confirm);
-
-  const isHabit = item.type === 'habit';
-  const itemType = isHabit ? 'habit' : 'task';
-  const recurring = isRecurring(item as { repeatFrequency?: string });
-  const config = getItemTypeConfig(itemTypeName(item));
-  const status = (item as { status?: string }).status;
-  const startDate = (item as { startDate?: string }).startDate;
+  // Selected so a change of zone re-renders; read again at click time below.
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  // `todayState` comes from the row's week schedule, which knows whether the
+  // item falls on today at all; undefined there means it does not.
+  const occurrence = todayState ?? 'absent';
+  const ctx: VerbContext = { dateStr: todayStr, date: new Date(), todayStr, tz, milestoneIds, occurrence };
   // Built at CLICK time, not render time: a console left open past midnight
   // must write to the day it now is. The store resolves the instant in the
   // user's zone; the string is resolved the same way here.
-  const tz = usePlannerStore.getState().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const now = () => {
+  const now = (): VerbContext => {
+    const zone = usePlannerStore.getState().userTimezone ?? tz;
     const date = new Date();
-    return { date, dateStr: toDateStr(date, tz) };
+    return { ...ctx, date, tz: zone, dateStr: toDateStr(date, zone) };
   };
-  const actions = { toggleTaskStatus, toggleHabitStatus };
-  // Whether a recurring row may be ticked or skipped was decided for the day
-  // this rendered on. Past midnight that answer is stale (nothing re-renders
-  // the console on the hour), so a per-day write waits for a fresh look rather
-  // than landing on a day nobody was shown.
+  // Whether a per-day verb may run was decided for the day this rendered on.
+  // Past midnight that answer is stale (nothing re-renders the console on the
+  // hour), so a per-day write waits for a fresh look rather than landing on a
+  // day nobody was shown.
   const sameDay = (run: () => void) => () => {
     if (now().dateStr !== todayStr) {
       toast("It's a new day — close and reopen this list to see today's.");
@@ -170,84 +179,27 @@ export function useVerbs(
     }
     run();
   };
+  const can = (id: VerbId) => ITEM_VERBS[id].eligible(item, ctx);
+  const perDay = (id: VerbId) => sameDay(() => ITEM_VERBS[id].run(item, now()));
+  const anyDay = (id: VerbId) => () => ITEM_VERBS[id].run(item, ctx);
 
-  const verbs: Verbs = {
-    remove: () => onRemove?.(item.id),
-    del: () =>
-      confirm({
-        title: `Delete ${config.label}?`,
-        description: config.form.deleteDescription(item.title),
-        confirmLabel: 'Delete',
-        destructive: true,
-        onConfirm: () => (isHabit ? deleteHabit(item.id) : deleteTask(item.id)),
-      }),
-  };
-
-  if (recurring) {
-    // Only on a day it actually occurs — the week schedule's own answer.
-    if (todayState !== undefined) {
-      if (todayState === 'skipped') {
-        // The planner row's Unskip, NOT a tick: ticking a skipped day wrote
-        // skipped-AND-completed on a task and a count step on a counted habit
-        // (lib/item-toggle.ts toggleRowDone refuses it for that reason).
-        verbs.tick = { label: 'Unskip today', run: sameDay(() => setItemSkipped(item.id, false, now().date)) };
-      } else {
-        const target = isHabit ? ((item as HabitItem).timesPerDay ?? 1) : 1;
-        const count = isHabit ? ((item as HabitItem).dailyCounts ?? {})[todayStr] ?? 0 : 0;
-        verbs.tick = {
-          // A counted habit steps one at a time, as its row's checkbox does.
-          label:
-            todayState === 'done'
-              ? 'Undo today'
-              : target > 1
-                ? `Count one (${count}/${target})`
-                : 'Done today',
-          run: sameDay(() =>
-            toggleRowDone(
-              isHabit
-                ? { itemType: 'habit', item: item as HabitItem }
-                : { itemType: 'task', item: item as Task },
-              now(),
-              actions
-            )
-          ),
-        };
-      }
-    }
-    // The registry's own gates — the ones the store would enforce silently.
-    if (todayState === 'due' && isSkippable(item)) {
-      verbs.skip = sameDay(() => setItemSkipped(item.id, true, now().date));
-    }
-    if (isPausable(item)) {
-      // A paused item drops out of the week, so its row still needs a way back.
-      if (isPausedOn(item, todayStr, tz)) verbs.resume = () => setItemPaused(item.id, false);
-      else verbs.pause = () => setItemPaused(item.id, true);
-    }
-  } else if (status !== 'cancelled') {
-    verbs.tick = {
-      label: status === config.doneStatus ? 'Mark not done' : 'Mark done',
-      run: () => toggleTaskDone(item as Task, now(), actions),
+  const verbs: Verbs = { remove: () => onRemove?.(item.id), del: anyDay('delete') };
+  // One checkbox, three meanings: a skipped day's box undoes the skip.
+  if (can('unskip')) verbs.tick = { label: ITEM_VERBS.unskip.label(item, ctx), run: perDay('unskip') };
+  else if (can('tick')) verbs.tick = { label: ITEM_VERBS.tick.label(item, ctx), run: perDay('tick') };
+  if (can('skip')) verbs.skip = perDay('skip');
+  // A paused item drops out of the week, so its row still needs a way back.
+  if (can('resume')) verbs.resume = anyDay('resume');
+  else if (can('pause')) verbs.pause = anyDay('pause');
+  if (can('nextDay')) {
+    verbs.nextDay = {
+      label: ITEM_VERBS.nextDay.label(item, ctx),
+      detail: ITEM_VERBS.nextDay.detail!(item, ctx)!,
+      run: anyDay('nextDay'),
     };
   }
-
-  if (!recurring && itemType === 'task') {
-    const rowDate = startDate ?? todayStr;
-    if (startDate && canMoveToNextDay(item, 'task', rowDate)) {
-      const target = nextDayTarget(rowDate, todayStr);
-      verbs.nextDay = {
-        label: nextDayLabel(target, todayStr),
-        detail: formatTargetDay(target),
-        run: () => moveTaskToDate(item.id, target),
-      };
-    }
-    // Rescheduling is the next-day verb's gate with the day left open.
-    if (canMoveToNextDay(item, 'task', rowDate)) {
-      verbs.reschedule = (dateStr) => moveTaskToDate(item.id, dateStr);
-    }
-    if (startDate && canSendToBraindump(item, 'task', rowDate, milestoneIds)) {
-      verbs.braindump = () => unscheduleTask(item.id);
-    }
-  }
+  if (can('reschedule')) verbs.reschedule = (dateStr) => ITEM_VERBS.reschedule.run(item, ctx, dateStr);
+  if (can('braindump')) verbs.braindump = anyDay('braindump');
   return verbs;
 }
 

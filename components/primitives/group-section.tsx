@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { ChevronDown } from 'lucide-react';
 import { BUCKET_LABEL_INK } from '@/components/primitives/bucket-card';
 import { GateSwitch } from '@/components/primitives/gate-switch';
+import { ContainerContextMenu, type ContainerMenuKind } from '@/components/planner/container-context-menu';
 import { CategoryIcon } from '@/lib/category-icons';
 import { containerKindOf, containerName, sameContainerName } from '@/lib/container-registry';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -108,22 +109,37 @@ export function GroupSection({
     </button>
   );
 
+  // The container this heading names, for its right-click menu: a gate carries
+  // its id; a project heading only its name, resolved the way the glyph is.
+  const projectId =
+    kind === 'project' ? projects.find((p) => sameContainerName('project', p.name, name))?.id : undefined;
+  const menuTarget: { kind: ContainerMenuKind; id: string } | undefined =
+    gate ?? (projectId ? { kind: 'project', id: projectId } : undefined);
+
+  const head = gate ? (
+    // A gate section pairs the collapse control with a pause switch. The
+    // switch must be a SIBLING of the button, not nested inside it —
+    // interactive controls cannot nest, and the outer button's click would
+    // otherwise toggle collapse. pr matches the button's own px so the switch
+    // lands on the row's right padding.
+    <div
+      className={cn('flex items-center rounded-[5px] hover:bg-accent', isCanvas ? 'pr-2' : 'pr-1')}
+    >
+      {heading}
+      <GateSwitch kind={gate.kind} id={gate.id} />
+    </div>
+  ) : (
+    heading
+  );
+
   return (
     <div className={className}>
-      {gate ? (
-        // A gate section pairs the collapse control with a pause switch. The
-        // switch must be a SIBLING of the button, not nested inside it —
-        // interactive controls cannot nest, and the outer button's click would
-        // otherwise toggle collapse. pr matches the button's own px so the switch
-        // lands on the row's right padding.
-        <div
-          className={cn('flex items-center rounded-[5px] hover:bg-accent', isCanvas ? 'pr-2' : 'pr-1')}
-        >
-          {heading}
-          <GateSwitch kind={gate.kind} id={gate.id} />
-        </div>
+      {menuTarget ? (
+        <ContainerContextMenu kind={menuTarget.kind} id={menuTarget.id}>
+          {head}
+        </ContainerContextMenu>
       ) : (
-        heading
+        head
       )}
       {!collapsed && <div className="space-y-0">{children}</div>}
     </div>
