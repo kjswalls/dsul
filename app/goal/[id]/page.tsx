@@ -13,6 +13,9 @@ import {
   MilestoneTimeline,
 } from '@/components/planner/goal-sections';
 import { usePlannerStore } from '@/lib/planner-store';
+import { BufferedTextarea, TitleRow } from '@/components/planner/organize/detail-parts';
+import { GOAL_STATES } from '@/components/planner/organize/container-fields';
+import { ChoiceChip, ColorChip, DateRangeChip } from '@/components/primitives/organizer-chips';
 import { useUIStore } from '@/lib/ui-store';
 import { checkinStanding, isGoalActive } from '@/lib/goals';
 import { useGoalsEnabled } from '@/lib/extension-gates';
@@ -26,8 +29,9 @@ import { accentColorForName } from '@/lib/accent-colors';
  * Follows /item/[id]'s model exactly: a client route, deep-linkable so Beacon
  * can answer with a URL, with the same client-side auth posture (the root
  * layout hydrates the store when a session exists; without one this page has no
- * goals and shows the not-found state). Editing stays in the Organize console —
- * this page is where you come to see where you are, not to change it.
+ * goals and shows the not-found state). Its fields — name, why, status, window,
+ * colour — edit in place with the console pane's own controls (Kirby,
+ * 2026-09-27); membership still lives in the Organize console.
  *
  * See memory/plans/long-term-goals.md, Phase 2.
  */
@@ -61,6 +65,8 @@ export default function GoalPage() {
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
   const openDialog = useUIStore((s) => s.openDialog);
+  const updateGoal = usePlannerStore((s) => s.updateGoal);
+  const setGoalState = usePlannerStore((s) => s.setGoalState);
   const router = useRouter();
   const { todayStr, tz } = useToday();
 
@@ -155,18 +161,54 @@ export default function GoalPage() {
 
       <header className="flex flex-col gap-4">
         <div className="flex items-start justify-between gap-4">
-          <div className="flex flex-col gap-2">
-            <h1 className="text-foreground text-2xl font-semibold tracking-tight text-balance">
-              {goal.name}
-            </h1>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            {/* The title is a field now; the heading stays for the outline. */}
+            <h1 className="sr-only">{goal.name}</h1>
+            <TitleRow
+              id={goal.id}
+              name={goal.name}
+              icon={goal.icon}
+              label="Goal"
+              testPrefix="goal-page"
+              size="page"
+              onPatch={(patch) => updateGoal(goal.id, patch)}
+            />
             {/* The why sits directly under the name and above every number.
                 It is the reason a three-year goal survives, and the numbers
-                below only mean anything in its light. */}
-            {goal.why && (
-              <p className="text-muted-foreground max-w-prose text-sm leading-relaxed">
-                {goal.why}
-              </p>
-            )}
+                below only mean anything in its light. Buffered, as in the
+                pane; emptying it removes it. */}
+            <BufferedTextarea
+              value={goal.why ?? ''}
+              onCommit={(next) => updateGoal(goal.id, { why: next.trim() || undefined })}
+              placeholder="Why this matters…"
+              ariaLabel="Why this goal matters"
+              testId="goal-page-why"
+              className="text-muted-foreground focus:text-foreground max-w-prose"
+            />
+            <div className="flex flex-wrap items-center gap-1.5" data-testid="goal-page-properties">
+              {/* setGoalState directly — it stamps achievedAt and its own label. */}
+              <ChoiceChip
+                label="Status"
+                value={goal.state}
+                options={GOAL_STATES}
+                testIdPrefix="goal-page-state"
+                onChange={(state) => setGoalState(goal.id, state)}
+              />
+              <DateRangeChip
+                start={goal.startsOn}
+                end={goal.targetOn}
+                startLabel="Started"
+                endLabel="Target"
+                emptyLabel="Target"
+                testIdPrefix="goal-page-window"
+                onChange={(startsOn, targetOn) => updateGoal(goal.id, { startsOn, targetOn })}
+              />
+              <ColorChip
+                value={goal.color}
+                testId="goal-page-color"
+                onChange={(color) => updateGoal(goal.id, { color })}
+              />
+            </div>
           </div>
           {/* Editing lives in one place, and getting there means NAVIGATING
               there: OrganizeConsole is mounted once, in AppShell, which this
@@ -251,14 +293,6 @@ export default function GoalPage() {
             )}
           </Section>
 
-          {goal.startsOn || goal.targetOn ? (
-            <Section title="Window">
-              <div className="text-muted-foreground flex flex-col gap-1 text-[13px]">
-                {goal.startsOn && <span>Started {formatShort(goal.startsOn)}</span>}
-                {goal.targetOn && <span>Target {formatShort(goal.targetOn)}</span>}
-              </div>
-            </Section>
-          ) : null}
         </aside>
       </div>
     </main>

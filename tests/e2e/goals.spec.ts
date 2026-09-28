@@ -109,7 +109,8 @@ test.describe('goals', () => {
     await page.getByTestId('goal-open-page').click();
 
     await expect(page).toHaveURL(/\/goal\/[0-9a-f-]+$/);
-    await expect(page.getByRole('heading', { name })).toBeVisible();
+    // The title is an editable field now; the h1 is kept for the outline only.
+    await expect(page.getByTestId('goal-page-name-input')).toHaveValue(name);
   });
 
   test('the goal page’s Organize button actually reaches the console', async ({ page }) => {

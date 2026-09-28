@@ -72,6 +72,7 @@ export function SurfaceRoot({
 
 export function SurfaceContent({
   panel,
+  inline = false,
   open,
   flat,
   panelLabel,
@@ -81,6 +82,8 @@ export function SurfaceContent({
   ...props
 }: ComponentProps<typeof ResponsiveModalContent> & {
   panel: boolean;
+  /** Laid into a page's flow (/item/[id]): no width, no card, no scroll box. */
+  inline?: boolean;
   open: boolean;
   /** Docked on the backdrop (shell column) vs floating as an overlay card
    *  (the /item page). Flat drops the card chrome; floating keeps it. */
@@ -115,7 +118,9 @@ export function SurfaceContent({
         //    column clips (overflow-hidden) for its width animation, which would
         //    eat an outer cast.
         className={
-          flat
+          inline
+            ? 'flex w-full min-w-0 flex-col outline-none'
+            : flat
             ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
             : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'
         }
