@@ -536,6 +536,7 @@ export function TitleRow({
   testPrefix,
   onPatch,
   validate,
+  size = 'pane',
 }: {
   id: string;
   name: string;
@@ -545,6 +546,8 @@ export function TitleRow({
   testPrefix: string;
   onPatch: (patch: { name?: string; icon?: string }) => void;
   validate?: (next: string) => string | null;
+  /** 'page' — a container page's title, a step larger than the console pane's. */
+  size?: 'pane' | 'page';
 }) {
   const nameDraft = useNameDraft(id, name, (next) => onPatch({ name: next }), validate);
   const ref = useRef<HTMLInputElement>(null);
@@ -578,7 +581,10 @@ export function TitleRow({
           }}
           aria-label={`${label} name`}
           data-testid={`${testPrefix}-name-input`}
-          className="text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 text-xl leading-snug font-semibold tracking-[-0.01em] outline-none"
+          className={cn(
+            'text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 leading-snug font-semibold tracking-[-0.01em] outline-none',
+            size === 'page' ? 'text-2xl' : 'text-xl'
+          )}
         />
       </div>
       {nameDraft.problem && (
@@ -1057,6 +1063,7 @@ export function DayChip({
   clearLabel,
   disabledDays,
   onChange,
+  keyed = true,
 }: {
   /** The noun unset, the muted key set — "Comes back". */
   label: string;
@@ -1065,13 +1072,15 @@ export function DayChip({
   clearLabel: string;
   disabledDays?: { before: Date } | { after: Date };
   onChange: (next: string | undefined) => void;
+  /** False drops the muted key from a set chip — for a labelled row that already names it. */
+  keyed?: boolean;
 }) {
   return (
     <PropertyChip
       label={label}
       value={value ? formatShort(value) : undefined}
       display={
-        value ? (
+        value && keyed ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-muted-foreground">{label}</span>
             <span className="font-num">{formatShort(value)}</span>
@@ -1132,6 +1141,7 @@ export function TimeChip({
   testId,
   clearLabel,
   onChange,
+  keyed = true,
 }: {
   label: string;
   value?: string;
@@ -1140,6 +1150,8 @@ export function TimeChip({
   testId: string;
   clearLabel: string;
   onChange: (next: string | undefined) => void;
+  /** False drops the muted key from a set chip — see DayChip. */
+  keyed?: boolean;
 }) {
   // Enter commits AND blurs, and the blur commits again before the store's
   // write has re-rendered `value` — so without this one keypress is two
@@ -1150,7 +1162,7 @@ export function TimeChip({
       label={label}
       value={display}
       display={
-        display ? (
+        display && keyed ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-muted-foreground">{label}</span>
             <span className="font-num">{display}</span>

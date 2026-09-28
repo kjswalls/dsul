@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useRef, useState, type ReactNode } from 'react';
-import { ChevronDown, type LucideIcon } from 'lucide-react';
+import { ChevronDown, X, type LucideIcon } from 'lucide-react';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { cn } from '@/lib/utils';
 
@@ -36,6 +36,8 @@ export function PropertyChip({
   testId,
   defaultOpen = false,
   onCloseAutoFocus,
+  onClear,
+  clearLabel,
 }: {
   icon?: LucideIcon;
   /** Lets a <label htmlFor> point at the trigger. Without it the association is
@@ -72,9 +74,16 @@ export function PropertyChip({
   /** Radix's close-time focus return, for a picker whose close should not pull
    *  focus back to its own trigger. */
   onCloseAutoFocus?: (e: Event) => void;
+  /** A SET chip grows an × on its right edge that takes the value off in one
+   *  click, without opening the picker. Omit for a property that cannot be
+   *  unset (a habit's project, a status). */
+  onClear?: () => void;
+  /** The ×'s accessible name — "Remove from Chores". Defaults to "Clear <label>". */
+  clearLabel?: string;
 }) {
   const [open, setOpen] = useState(defaultOpen);
   const isSet = !!value;
+  const clearable = isSet && !!onClear;
 
   // These pickers are portalled outside the Dialog, so the modal's scroll lock
   // (react-remove-scroll) preventDefaults wheel/touchmove over them and a long
@@ -98,7 +107,7 @@ export function PropertyChip({
     wheelCleanup.current = () => el.removeEventListener('wheel', onWheel);
   }, []);
 
-  return (
+  const popover = (
     <Popover
       open={open}
       onOpenChange={(next) => {
@@ -128,6 +137,9 @@ export function PropertyChip({
             isSet
               ? 'border-transparent bg-secondary text-foreground hover-wash'
               : 'border-input border-dashed text-muted-foreground hover-wash',
+            // The × sits flush against the right edge, so the pair reads as
+            // one pill: square the join, and trim the padding before it.
+            clearable && 'rounded-r-none pr-1.5',
             className
           )}
         >
@@ -164,6 +176,29 @@ export function PropertyChip({
         {children(() => setOpen(false))}
       </PopoverContent>
     </Popover>
+  );
+
+  if (!clearable) return popover;
+  // A sibling of the trigger, never inside it — a button in a button is
+  // invalid, and the click must not open the picker it sits beside.
+  return (
+    <span className="inline-flex min-w-0 max-w-full items-center" data-chip-group>
+      {popover}
+      <button
+        type="button"
+        aria-label={clearLabel ?? `Clear ${label.toLowerCase()}`}
+        title={clearLabel ?? `Clear ${label.toLowerCase()}`}
+        data-testid={testId ? `${testId}-clear` : undefined}
+        disabled={disabled}
+        onClick={onClear}
+        className={cn(
+          'bg-secondary text-muted-foreground hover:text-foreground hover-wash inline-flex h-7 shrink-0 items-center rounded-r-sm pr-2 pl-1',
+          'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none disabled:pointer-events-none disabled:opacity-50'
+        )}
+      >
+        <X className="size-3" aria-hidden />
+      </button>
+    </span>
   );
 }
 

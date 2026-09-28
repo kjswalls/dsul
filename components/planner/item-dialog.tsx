@@ -286,8 +286,14 @@ interface ItemDialogProps {
    * no overlay, no focus trap, no scroll lock — it is a layout sibling of the
    * canvas, so the shell compresses the day rather than covering it, and you
    * can keep working behind it. Edit-only; add is always a modal.
+   *
+   * 'inline' is the panel's body laid into a page's flow — /item/[id], where
+   * the item IS the page, so its fields edit in place with no Edit button and
+   * nothing to close (Kirby, 2026-09-27). It autosaves like the panel; Escape,
+   * click-away, Done and the close X are all absent, and Enter flushes rather
+   * than leaving. `onOpenChange(false)` then means only "the item is gone".
    */
-  presentation?: 'modal' | 'panel';
+  presentation?: 'modal' | 'panel' | 'inline';
   /**
    * Docked-panel only. When true the panel drops its card chrome (bg, border,
    * radius) and sits flat on the app backdrop — the plane BELOW the <main>
@@ -743,7 +749,9 @@ function ItemDialogInner({
   }
   const open = !!state;
   const mode = last?.mode ?? 'add';
-  const isPanel = presentation === 'panel';
+  const inline = presentation === 'inline';
+  // Inline IS a panel in every respect but its frame and its exits.
+  const isPanel = presentation === 'panel' || inline;
   /** Only the docked panel saves itself; the modal still commits on submit. */
   const autosaves = isPanel && mode === 'edit';
   /**
@@ -1136,7 +1144,8 @@ function ItemDialogInner({
     // a second round trip, a second webhook, a second activity row.
     if (autosaves) {
       flushNow();
-      onOpenChange(false);
+      // Nothing to leave on a page — Enter just lands what is queued.
+      if (!inline) onOpenChange(false);
       return;
     }
     commitEdit(editItem, editDraft, DRAFT_KEYS);
@@ -1229,6 +1238,12 @@ function ItemDialogInner({
         value={d.priority === 'none' ? undefined : PRIORITY_LABELS[d.priority]}
         swatch={d.priority === 'none' ? undefined : `var(--priority-${d.priority})`}
         contentClassName="w-48"
+        testId="item-dialog-priority-chip"
+        clearLabel="Clear priority"
+        onClear={() => {
+          revealProp('priority');
+          patch({ priority: 'none' });
+        }}
       >
         {(close) =>
           PRIORITY_ORDER.map((p) => (
@@ -1542,6 +1557,12 @@ function ItemDialogInner({
         testId="item-dialog-container-chip"
         defaultOpen={autoOpenProp === 'project'}
         value={d.container === 'none' ? undefined : d.container}
+        // A required container (a habit's project) has no "none" to go back
+        // to — the picker says so instead of offering a remove that can't land.
+        onClear={
+          config.containerRequired ? undefined : () => clearProp('project', { container: 'none' })
+        }
+        clearLabel={`Remove from ${d.container}`}
         // NO `capitalize`. The habit-group side of the axis carried it,
         // because `makeAddDraft`'s fallback writes a lowercase 'personal';
         // one kind means one rule, and applying it to every container is
@@ -1618,6 +1639,15 @@ function ItemDialogInner({
                 <Plus className="size-3.5" />
                 {config.form.newContainerLabel}
               </ChipOption>
+              {config.containerRequired && (
+                <p
+                  className="text-muted-foreground px-2 pt-1 pb-1.5 text-[11px] leading-snug"
+                  data-testid="item-dialog-container-required"
+                >
+                  {config.labelPlural} always belong to a{' '}
+                  {config.form.containerLabel.toLowerCase()} — pick another to move it.
+                </p>
+              )}
             </div>
           )
         }
@@ -1660,6 +1690,15 @@ function ItemDialogInner({
         swatchShape="square"
         contentClassName="w-56"
         testId="item-dialog-routine-chip"
+        clearLabel={
+          memberRoutines.length === 1
+            ? `Remove from ${memberRoutines[0].name}`
+            : `Remove from all ${CONTAINER_KINDS.routine.labelPlural.toLowerCase()}`
+        }
+        onClear={() => {
+          revealProp('routine');
+          for (const id of memberIds) toggleRoutine(id, false);
+        }}
       >
         {(close) => (
           <div className="max-h-64 overflow-y-auto" data-chip-scroll>
@@ -1679,6 +1718,15 @@ function ItemDialogInner({
                 </ChipOption>
               );
             })}
+            <RemoveRows
+              names={memberRoutines}
+              testId="item-dialog-routine-remove"
+              onRemove={(id) => {
+                revealProp('routine');
+                toggleRoutine(id, false);
+                close();
+              }}
+            />
             {/* Make one without leaving the dialog (C2). No trashed-name guard
                 like the project chip's: routines carry no unique name, so there
                 is no bin slot to collide with. */}
@@ -1768,6 +1816,15 @@ function ItemDialogInner({
         swatchShape="square"
         contentClassName="w-56"
         testId="item-dialog-season-chip"
+        clearLabel={
+          memberSeasons.length === 1
+            ? `Remove from ${memberSeasons[0].name}`
+            : `Remove from all ${CONTAINER_KINDS.season.labelPlural.toLowerCase()}`
+        }
+        onClear={() => {
+          revealProp('season');
+          for (const id of memberSeasonIds) toggleSeason(id, false);
+        }}
       >
         {(close) => (
           <div className="max-h-64 overflow-y-auto" data-chip-scroll>
@@ -1787,6 +1844,15 @@ function ItemDialogInner({
                 </ChipOption>
               );
             })}
+            <RemoveRows
+              names={memberSeasons}
+              testId="item-dialog-season-remove"
+              onRemove={(id) => {
+                revealProp('season');
+                toggleSeason(id, false);
+                close();
+              }}
+            />
             {/* Make one without leaving the dialog (C2). New seasons are
                 'auto' with no dates, exactly as the console's create row makes
                 them — a season you just made must not hide anything. */}
@@ -1857,6 +1923,15 @@ function ItemDialogInner({
         swatchShape="square"
         contentClassName="w-64"
         testId="item-dialog-goal-chip"
+        clearLabel={
+          memberGoals.length + endedGoals.length === 1
+            ? `Remove from ${(memberGoals[0] ?? endedGoals[0]).name}`
+            : `Remove from all ${CONTAINER_KINDS.goal.labelPlural.toLowerCase()}`
+        }
+        onClear={() => {
+          revealProp('goal');
+          for (const g of [...memberGoals, ...endedGoals]) toggleGoal(g.id, false);
+        }}
       >
         {(close) => (
           <div className="max-h-64 overflow-y-auto" data-chip-scroll>
@@ -1892,6 +1967,16 @@ function ItemDialogInner({
                 </ChipOption>
               );
             })}
+
+            <RemoveRows
+              names={memberGoals}
+              testId="item-dialog-goal-remove"
+              onRemove={(id) => {
+                revealProp('goal');
+                toggleGoal(id, false);
+                close();
+              }}
+            />
 
             {endedGoals.length > 0 && (
               <>
@@ -1966,6 +2051,8 @@ function ItemDialogInner({
         defaultOpen={autoOpenProp === 'date'}
         testId="item-dialog-date-chip"
         value={d.startDate ? format(d.startDate, 'MMM d') : undefined}
+        clearLabel="Clear date"
+        onClear={() => clearProp('date', { startDate: undefined })}
         contentClassName="w-auto p-0"
       >
         {(close) => (
@@ -2047,7 +2134,9 @@ function ItemDialogInner({
               <ChipOption
                 key={b}
                 selected={effectiveBucket === b}
-                onSelect={() => patch({ timeBucket: b })}
+                // Anytime hides the time field, so it drops the time too —
+                // otherwise a time nobody can see is still saved and drawn.
+                onSelect={() => patch(b === 'anytime' ? { timeBucket: b, startTime: '' } : { timeBucket: b })}
               >
                 {BUCKET_LABELS[b]}
                 {effectiveBucket === b && <Check className="ml-auto size-3.5" />}
@@ -2066,6 +2155,18 @@ function ItemDialogInner({
                     data-sub-input
                   />
                 </div>
+                {/* A time, once set, comes back off through the chip — not only
+                    through the browser's own clear on the time input. */}
+                {d.startTime && (
+                  <ChipOption
+                    tone="muted"
+                    testId="item-time-clear"
+                    onSelect={() => patch({ startTime: '' })}
+                  >
+                    <X className="size-3.5" />
+                    No specific time
+                  </ChipOption>
+                )}
               </>
             )}
 
@@ -2126,6 +2227,14 @@ function ItemDialogInner({
         defaultOpen={autoOpenProp === 'repeat'}
         value={repeatValue()}
         contentClassName="w-[19rem]"
+        testId="item-dialog-repeat-chip"
+        // Only a type that may stop repeating — a habit always repeats.
+        onClear={
+          (config.allowedFrequencies as readonly string[]).includes('none')
+            ? () => clearProp('repeat', { repeatFrequency: 'none' })
+            : undefined
+        }
+        clearLabel="Stop repeating"
       >
         {(close) => (
           <>
@@ -2240,6 +2349,9 @@ function ItemDialogInner({
         defaultOpen={autoOpenProp === 'remind'}
         value={d.reminderTime || undefined}
         contentClassName="w-[19rem]"
+        testId="item-dialog-remind-chip"
+        clearLabel="Remove reminder"
+        onClear={() => clearProp('remind', { reminderTime: '', reminderAnchor: '' })}
       >
         {(close) => (
           <>
@@ -2934,7 +3046,7 @@ function ItemDialogInner({
           and it must flush before it goes. An autosaving panel doesn't: its
           top-rail "Done" already flushes + closes, so a second dismiss control
           doing the identical thing would just be noise beside it. */}
-      {isPanel && !autosaves && (
+      {isPanel && !inline && !autosaves && (
         <Button
           variant="ghost"
           size="icon"
@@ -3119,6 +3231,7 @@ function ItemDialogInner({
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
         <SurfaceContent
           panel={isPanel}
+          inline={inline}
           open={open}
           flat={isPanel && flat}
           panelLabel={`${activeConfig.label} details`}
@@ -3218,7 +3331,7 @@ function ItemDialogInner({
                 >
                   {mode === 'add' ? typeControl : typeSwitch}
                   {headerActions}
-                  {autosaves && doneButton}
+                  {autosaves && !inline && doneButton}
                 </div>
                 {/* Zone 1 — the title. Priority and the mode label are not here:
                     priority rides the chip field below with every other
@@ -3504,5 +3617,33 @@ function ItemDialogInner({
         </AlertDialogContent>
       </AlertDialog>
     </>
+  );
+}
+
+/**
+ * The explicit way OUT of a multi-valued membership chip: one "Remove from …"
+ * row per container the item is in, under a divider. Unticking a checked row
+ * does the same write, but a tick is not where anyone looks for "remove"
+ * (Kirby, 2026-09-27).
+ */
+function RemoveRows({
+  names,
+  onRemove,
+  testId,
+}: {
+  names: readonly { id: string; name: string }[];
+  onRemove: (id: string) => void;
+  testId: string;
+}) {
+  if (names.length === 0) return null;
+  return (
+    <div className="mt-1 border-t pt-1">
+      {names.map((c) => (
+        <ChipOption key={c.id} tone="muted" testId={testId} value={c.id} onSelect={() => onRemove(c.id)}>
+          <X className="size-3.5 shrink-0" />
+          <span className="truncate">Remove from {c.name}</span>
+        </ChipOption>
+      ))}
+    </div>
   );
 }

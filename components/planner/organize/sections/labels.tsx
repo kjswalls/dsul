@@ -603,7 +603,7 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
  * would orphan every item of that type with no fan-out possible. The item-type
  * row edits `label`/`labelPlural` and leaves the slug alone.
  */
-function renameIconKey<K extends 'emoji' | 'icon'>(
+export function renameIconKey<K extends 'emoji' | 'icon'>(
   patch: { name?: string; icon?: string; color?: string },
   iconKey: K
 ): { color?: string } & Partial<Record<K, string>> {
@@ -632,7 +632,7 @@ function renameIconKey<K extends 'emoji' | 'icon'>(
  * self so that fixing the capitalisation of your own project is still allowed —
  * a rename to a different id is the collision, a rename to your own case is not.
  */
-function takenBy(
+export function takenBy(
   siblings: { id: string; name: string }[],
   selfId: string,
   next: string,

@@ -569,6 +569,35 @@ describe('emptying a property keeps its chip', () => {
     openChipAndClear('item-dialog-date-chip', 'No date');
     expect(field().textContent).not.toContain('30 min');
   });
+
+  it('takes a specific time back off through the Time chip', () => {
+    // A time, once set, had no way off but the browser's own clear on the
+    // time input — every property that can be added comes back off in the chip.
+    const timed = task({ startDate: '2026-09-18', timeBucket: 'morning', startTime: '09:00', isScheduled: true });
+    seed({ items: [timed] });
+    panel(timed);
+    expect(field().textContent).toContain('09:00');
+    const chip = Array.from(field().querySelectorAll('button')).find((b) => b.textContent?.includes('09:00'))!;
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByTestId('item-time-clear'));
+    expect(field().textContent).not.toContain('09:00');
+    expect(field().textContent).toContain('Morning');
+  });
+
+  it('drops a hidden time when the bucket goes to Anytime', () => {
+    // Anytime hides the time field; a time nobody can see must not survive it
+    // and reappear when a named bucket comes back.
+    const timed = task({ startDate: '2026-09-18', timeBucket: 'morning', startTime: '09:00', isScheduled: true });
+    seed({ items: [timed] });
+    panel(timed);
+    const option = (text: string) =>
+      Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === text)!;
+    fireEvent.click(Array.from(field().querySelectorAll('button')).find((b) => b.textContent?.includes('09:00'))!);
+    fireEvent.click(option('Anytime'));
+    fireEvent.click(option('Morning'));
+    expect(field().textContent).toContain('Morning');
+    expect(field().textContent).not.toContain('09:00');
+  });
 });
 
 describe('a goal that ended still says so', () => {
@@ -896,5 +925,95 @@ describe('the edit pane: type switch and row controls', () => {
     fireEvent.click(option);
     fireEvent.click(screen.getByTestId('item-dialog-type-confirm-accept'));
     expect(usePlannerStore.getState().items.find((i) => i.id === 'h1')?.type).toBe('task');
+  });
+});
+
+describe('every membership comes back off, from the pill or the picker', () => {
+  /**
+   * Kirby, 2026-09-27: "you couldn't remove an item from a container from the
+   * edit panel — there's no remove option in the dropdown or on the pill."
+   * Unticking a checked row did it, and nobody looks for remove in a tick.
+   */
+  const routineOf = () => usePlannerStore.getState().routines[0];
+
+  it('takes a routine off from the × on its pill, and keeps the chip to re-pick', () => {
+    seed({ routines: [routine({ itemIds: ['t1'] })] });
+    panel();
+    const x = screen.getByTestId('item-dialog-routine-chip-clear');
+    expect(x.getAttribute('aria-label')).toBe('Remove from Deep work');
+    fireEvent.click(x);
+    expect(routineOf().itemIds).toEqual([]);
+    // Emptied, not folded away — the same rule "No date" follows.
+    expect(screen.getByTestId('item-dialog-routine-chip')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-routine-chip-clear')).toBeNull();
+  });
+
+  it('names each membership as a "Remove from …" row in the picker', () => {
+    seed({ seasons: [season({ itemIds: ['t1'] }), season({ id: 'p2', name: 'Winter', itemIds: ['t1'] })] });
+    panel();
+    fireEvent.click(screen.getByTestId('item-dialog-season-chip'));
+    const rows = screen.getAllByTestId('item-dialog-season-remove');
+    expect(rows.map((r) => r.textContent)).toEqual(['Remove from Autumn term', 'Remove from Winter']);
+    fireEvent.click(rows[1]);
+    const seasons = usePlannerStore.getState().seasons;
+    expect(seasons.find((p) => p.id === 'p2')!.itemIds).toEqual([]);
+    // Only the one it named.
+    expect(seasons.find((p) => p.id === 'p1')!.itemIds).toEqual(['t1']);
+  });
+
+  it('removes from a goal whatever role it held there', () => {
+    seed({ goals: [goal({ milestoneIds: ['t1'] })] });
+    panel();
+    fireEvent.click(screen.getByTestId('item-dialog-goal-chip-clear'));
+    expect(usePlannerStore.getState().goals[0].milestoneIds).toEqual([]);
+  });
+
+  it('clears an optional project from its pill', () => {
+    seed({ items: [task({ project: 'Onboarding' })] });
+    panel(task({ project: 'Onboarding' }));
+    fireEvent.click(screen.getByTestId('item-dialog-container-chip-clear'));
+    expect(field().textContent).not.toContain('Onboarding');
+  });
+
+  it('offers no remove on a habit’s project, and says why in the picker', () => {
+    const h = habitItem({ project: 'Onboarding' });
+    seed({ items: [h] });
+    panel(h);
+    expect(screen.queryByTestId('item-dialog-container-chip-clear')).toBeNull();
+    fireEvent.click(screen.getByTestId('item-dialog-container-chip'));
+    expect(screen.getByTestId('item-dialog-container-required').textContent).toContain(
+      'always belong to a'
+    );
+  });
+
+  it('clears priority and date from their pills', () => {
+    const t = task({ priority: 'high', startDate: '2026-09-18' });
+    seed({ items: [t] });
+    panel(t);
+    fireEvent.click(screen.getByTestId('item-dialog-priority-chip-clear'));
+    fireEvent.click(screen.getByTestId('item-dialog-date-chip-clear'));
+    expect(field().textContent).not.toContain('High');
+    expect(field().textContent).not.toContain('Sep 18');
+  });
+});
+
+describe('the inline presentation — /item/[id]', () => {
+  it('edits in place with nothing to close: no Done, no X, and Enter does not leave', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <ItemDialog
+        presentation="inline"
+        state={{ mode: 'edit', item: task() }}
+        withDetailSections={false}
+        onOpenChange={onOpenChange}
+      />
+    );
+    expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-submit')).toBeNull();
+    expect(screen.queryByTestId('item-dialog-close')).toBeNull();
+    const title = screen.getByDisplayValue('Draft the Q3 handoff note');
+    fireEvent.keyDown(title, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

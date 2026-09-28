@@ -5,7 +5,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 /**
  * /routine/[id], /season/[id], /project/[id] (Kirby, 2026-09-26) — the goal
  * page's posture for the other containers: deep-linkable, inert when their
- * extension is off, loading-aware, and editing only through the console door.
+ * extension is off, loading-aware. Fields edit in place (2026-09-27); membership
+ * still goes through the console door.
  */
 
 const push = vi.hoisted(() => vi.fn());
@@ -99,7 +100,7 @@ describe('the routine page', () => {
       routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], notes: 'Before the phone.' }],
     });
     render(<ContainerPage kind="routine" id="r1" />);
-    expect(screen.getByTestId('container-page-notes').textContent).toBe('Before the phone.');
+    expect((screen.getByTestId('container-page-notes') as HTMLTextAreaElement).value).toBe('Before the phone.');
     const props = screen.getByTestId('container-page-summary');
     expect(props.textContent).toContain('Active');
     expect(props.textContent).toContain('Autumn term');
@@ -108,10 +109,10 @@ describe('the routine page', () => {
     expect(screen.getByTestId('container-page-progress').textContent).toContain('1 of 1');
   });
 
-  it('never lights a paused routine lime, and says nothing when there is no note', () => {
+  it('never lights a paused routine lime, and offers an empty note field when there is none', () => {
     seed({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], pausedAt: '2026-09-20T12:00:00Z' }] });
     render(<ContainerPage kind="routine" id="r1" />);
-    expect(screen.queryByTestId('container-page-notes')).toBeNull();
+    expect((screen.getByTestId('container-page-notes') as HTMLTextAreaElement).value).toBe('');
     const props = screen.getByTestId('container-page-summary');
     expect(props.textContent).toContain('Paused');
     expect(props.querySelector('.bg-primary')).toBeNull();
@@ -138,6 +139,72 @@ describe('the routine page', () => {
     seed();
     render(<ContainerPage kind="routine" id="nope" />);
     expect(screen.getByTestId('container-page-missing').textContent).toBe('Routine not found');
+  });
+});
+
+describe('editing on the page', () => {
+  const routine = () => usePlannerStore.getState().routines[0];
+
+  it('renames and re-notes a routine in place, and an emptied note is removed', () => {
+    seed({ routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'], notes: 'Before the phone.' }] });
+    render(<ContainerPage kind="routine" id="r1" />);
+    const name = screen.getByTestId('container-page-name-input');
+    fireEvent.change(name, { target: { value: 'Early mornings' } });
+    fireEvent.blur(name);
+    expect(routine().name).toBe('Early mornings');
+
+    const notes = screen.getByTestId('container-page-notes');
+    fireEvent.change(notes, { target: { value: '   ' } });
+    fireEvent.blur(notes);
+    expect(routine().notes).toBeUndefined();
+  });
+
+  it('sets and clears a routine’s usual time and colour from the properties column', () => {
+    render(<ContainerPage kind="routine" id="r1" />);
+    fireEvent.click(screen.getByTestId('container-page-routine-usual-time'));
+    const input = screen.getByTestId('container-page-routine-usual-time-input');
+    fireEvent.change(input, { target: { value: '07:30' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(routine().usualTime).toBe('07:30');
+
+    fireEvent.click(screen.getByTestId('container-page-routine-usual-time'));
+    fireEvent.click(screen.getByTestId('container-page-routine-usual-time-clear'));
+    expect(routine().usualTime).toBeUndefined();
+
+    fireEvent.click(screen.getByTestId('container-page-color'));
+    fireEvent.click(screen.getByRole('button', { name: 'Auto' }).parentElement!.querySelector('button')!);
+    expect(routine().color).toBeTruthy();
+    fireEvent.click(screen.getByTestId('container-page-color'));
+    fireEvent.click(screen.getByRole('button', { name: 'Auto' }));
+    expect(routine().color).toBeUndefined();
+  });
+
+  it('pauses a routine from its status chip', () => {
+    render(<ContainerPage kind="routine" id="r1" />);
+    fireEvent.click(screen.getByTestId('container-page-routine-state-chip'));
+    fireEvent.click(screen.getByTestId('container-page-routine-state-paused'));
+    expect(routine().pausedAt).toBeTruthy();
+    // The resume date appears once it is paused.
+    expect(screen.getByTestId('container-page-routine-resume')).toBeTruthy();
+  });
+
+  it('switches a season off, and hides its dates while they would do nothing', () => {
+    render(<ContainerPage kind="season" id="p1" />);
+    expect(screen.getByTestId('container-page-season-runs-chip')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('container-page-season-state-chip'));
+    fireEvent.click(screen.getByTestId('container-page-season-state-paused'));
+    expect(usePlannerStore.getState().seasons[0].state).toBe('paused');
+    expect(screen.queryByTestId('container-page-season-runs-chip')).toBeNull();
+  });
+
+  it('refuses a project rename onto a sibling’s name, and says so', () => {
+    seed({ projects: [{ id: 'pr1', name: 'Home', emoji: '' }, { id: 'pr2', name: 'Work', emoji: '' }] });
+    render(<ContainerPage kind="project" id="pr1" />);
+    const name = screen.getByTestId('container-page-name-input');
+    fireEvent.change(name, { target: { value: 'work' } });
+    fireEvent.blur(name);
+    expect(screen.getByTestId('container-page-name-problem').textContent).toContain('already have a project called');
+    expect(usePlannerStore.getState().projects[0].name).toBe('Home');
   });
 });
 
