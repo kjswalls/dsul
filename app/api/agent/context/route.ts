@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import type { HabitItem, TaskItem } from '@dsul/types'
 import { createClient } from '@/lib/supabase-server'
 import { createServiceClient, resolveUserIdFromApiKey } from '@/lib/supabase-service'
-import { fetchItems, fetchProjects, fetchRoutines, fetchPrograms, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
+import { fetchItems, fetchProjects, fetchRoutines, fetchSeasons, toLegacyTask, toLegacyHabit, fetchGoals } from '@/lib/db'
 import { isOpenLoopSuppressedOn } from '@/lib/active'
 import { toDateStr } from '@/lib/recurrence'
 
@@ -35,7 +35,7 @@ export async function GET(req: NextRequest) {
     items,
     projects,
     routinesResult,
-    programsResult,
+    seasonsResult,
     goalsResult,
     settingsResult,
   ] =
@@ -46,7 +46,7 @@ export async function GET(req: NextRequest) {
       // suppression. Without them the server answers "pending" for work the app
       // itself hides, and the plugin nags about it.
       fetchRoutines(userId, dbClient),
-      fetchPrograms(userId, dbClient),
+      fetchSeasons(userId, dbClient),
       fetchGoals(userId, dbClient),
       serviceClient
         .from('user_settings')
@@ -59,10 +59,10 @@ export async function GET(req: NextRequest) {
   //
   // The nullable results stay in scope: the FILTER wants `[]` (resolve what we
   // can), but the RESPONSE must not, because emitting an empty array asserts
-  // "you have no programs" to a consumer that could act on it. Those are
+  // "you have no seasons" to a consumer that could act on it. Those are
   // different answers to different questions off one fetch.
   const routines = routinesResult ?? []
-  const programs = programsResult ?? []
+  const seasons = seasonsResult ?? []
 
   // Timezone priority: stored user setting → X-Timezone header fallback → UTC
   // The client syncs the browser timezone to user_settings on every app load,
@@ -94,7 +94,7 @@ export async function GET(req: NextRequest) {
   // that was already marked today is NOT an open loop, so it stays in these
   // arrays and the plugin's narration keeps matching the EOD review.
   const visible = items.filter(
-    (i) => !isOpenLoopSuppressedOn(i, todayStr, { userTimezone, routines, programs })
+    (i) => !isOpenLoopSuppressedOn(i, todayStr, { userTimezone, routines, seasons })
   )
   const tasks = visible.filter((i): i is TaskItem => i.type === 'task').map(toLegacyTask)
   const habits = visible.filter((i): i is HabitItem => i.type === 'habit').map(toLegacyHabit)
@@ -129,18 +129,18 @@ export async function GET(req: NextRequest) {
     items,
     // The suppression CAUSES, so a consumer can explain an absence instead of
     // guessing at it. Without these, an item that leaves tasks[] because its
-    // program went out of season is indistinguishable from one that was
+    // season was switched off is indistinguishable from one that was
     // deleted — and the sensible-looking repair (recreate it) is the wrong
     // move on every count.
     //
     // Spread, not `routines: routinesResult ?? []`: see the note above the
     // coalesce. An unreachable table omits the key rather than claiming zero.
     ...(routinesResult ? { routines: routinesResult } : {}),
-    ...(programsResult ? { programs: programsResult } : {}),
+    ...(seasonsResult ? { seasons: seasonsResult } : {}),
     // Same spread-or-omit rule, and the same reason: `[]` asserts "you have no
     // goals" to a consumer whose natural repair is to offer to make one.
     ...(goalsResult ? { goals: goalsResult } : {}),
-    schemaVersion: 5,
+    schemaVersion: 6,
   })
 }
 

@@ -7,7 +7,7 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
  * that render it differently on purpose.
  *
  * Ticket D4 gave the item surface a stack of labelled BANDS: Project
- * (classify), Routine and Program (gate), Goal (aspire), ordered by the ROLE
+ * (classify), Routine and Season (gate), Goal (aspire), ordered by the ROLE
  * that lib/container-registry.ts spends four screens distinguishing and which,
  * as five identical pills in source order, had reached the user as no
  * distinction at all.
@@ -68,7 +68,7 @@ import { CONTAINER_KINDS } from '@/lib/container-registry';
 import { usePlannerStore } from '@/lib/planner-store';
 import { EXT_GOALS, EXT_ORGANIZE } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
-import type { Goal, Item, Program, Routine, TaskItem } from '@/lib/planner-types';
+import type { Goal, Item, Season, Routine, TaskItem } from '@/lib/planner-types';
 
 /* ── the pure module ────────────────────────────────────────────────────── */
 
@@ -98,7 +98,7 @@ describe('the band list is derived from the container registry', () => {
     // gate band would have to invent one, which is the literal this whole module
     // exists to avoid.
     const gates = CONTAINER_BANDS.filter((b) => b.role === 'gate');
-    expect(gates.map((b) => b.kind)).toEqual(['routine', 'program']);
+    expect(gates.map((b) => b.kind)).toEqual(['routine', 'season']);
   });
 });
 
@@ -109,7 +109,7 @@ const ctx = (over: Partial<ContainerBandContext> = {}): ContainerBandContext => 
   goalsAvailable: true,
   goalsEnabled: true,
   organizeEnabled: true,
-  counts: { project: 0, routine: 0, program: 0, goal: 0 },
+  counts: { project: 0, routine: 0, season: 0, goal: 0 },
   ...over,
 });
 
@@ -121,12 +121,12 @@ describe('which bands render', () => {
     // The module is asked the same question by both surfaces; what differs is
     // what they do with a kind the item has not joined. The readout draws it as
     // an empty band; the field folds it into the seed.
-    expect(kindsFor()).toEqual(['project', 'routine', 'program', 'goal']);
+    expect(kindsFor()).toEqual(['project', 'routine', 'season', 'goal']);
   });
 
   it('gives the classify band only to a type that answers with that kind', () => {
     expect(kindsFor({ classifyKind: null })).not.toContain('project');
-    expect(kindsFor({ classifyKind: null })).toEqual(['routine', 'program', 'goal']);
+    expect(kindsFor({ classifyKind: null })).toEqual(['routine', 'season', 'goal']);
   });
 
   it('drops a gate band with nothing to join AND no console to open', () => {
@@ -195,7 +195,7 @@ const routine = (over: Partial<Routine> = {}): Routine => ({
   ...over,
 });
 
-const program = (over: Partial<Program> = {}): Program => ({
+const season = (over: Partial<Season> = {}): Season => ({
   id: 'p1',
   name: 'Autumn term',
   state: 'auto',
@@ -219,7 +219,7 @@ const seed = (over: Record<string, unknown> = {}) =>
     items: [task()],
     projects: [{ name: 'Onboarding' }],
     routines: [routine()],
-    programs: [program()],
+    seasons: [season()],
     goals: [goal()],
     itemTypes: [],
     collectionsAvailable: true,
@@ -292,7 +292,7 @@ describe('every item surface renders the Clearing field, not bands', () => {
     panel();
     const field = screen.getByTestId('item-clearing-field');
     expect(field.querySelector('[data-testid="item-clearing-seed"]')).toBeTruthy();
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(field.textContent).not.toContain(CONTAINER_KINDS[kind].label);
     }
   });
@@ -401,12 +401,12 @@ describe('the capture surface gets the field too', () => {
     // Priority left the header for the field, and a fresh task has none — so it
     // is reachable BY NAME from the seed rather than parked unset on screen.
     expect(field().textContent).not.toContain('Priority');
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(field().textContent).not.toContain(CONTAINER_KINDS[kind].label);
     }
     fireEvent.click(screen.getByTestId('item-clearing-seed'));
     expect(seedOptions().some((t) => t.includes('Priority'))).toBe(true);
-    for (const kind of ['project', 'routine', 'program', 'goal'] as const) {
+    for (const kind of ['project', 'routine', 'season', 'goal'] as const) {
       expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS[kind].label))).toBe(true);
     }
   });
@@ -490,13 +490,13 @@ describe('the capture surface gets the field too', () => {
     expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
   });
 
-  it('offers the type as a control here and only whispers it when editing', () => {
+  it('picks the type when adding and switches it when editing', () => {
     capture();
     expect(screen.getByTestId('item-dialog-type-chip')).toBeTruthy();
-    expect(screen.queryByTestId('item-dialog-type-whisper')).toBeNull();
+    expect(screen.queryByTestId('item-dialog-type-switch')).toBeNull();
     cleanup();
     panel();
-    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.getByTestId('item-dialog-type-switch')).toBeTruthy();
     expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
   });
 
@@ -569,6 +569,35 @@ describe('emptying a property keeps its chip', () => {
     openChipAndClear('item-dialog-date-chip', 'No date');
     expect(field().textContent).not.toContain('30 min');
   });
+
+  it('takes a specific time back off through the Time chip', () => {
+    // A time, once set, had no way off but the browser's own clear on the
+    // time input — every property that can be added comes back off in the chip.
+    const timed = task({ startDate: '2026-09-18', timeBucket: 'morning', startTime: '09:00', isScheduled: true });
+    seed({ items: [timed] });
+    panel(timed);
+    expect(field().textContent).toContain('09:00');
+    const chip = Array.from(field().querySelectorAll('button')).find((b) => b.textContent?.includes('09:00'))!;
+    fireEvent.click(chip);
+    fireEvent.click(screen.getByTestId('item-time-clear'));
+    expect(field().textContent).not.toContain('09:00');
+    expect(field().textContent).toContain('Morning');
+  });
+
+  it('drops a hidden time when the bucket goes to Anytime', () => {
+    // Anytime hides the time field; a time nobody can see must not survive it
+    // and reappear when a named bucket comes back.
+    const timed = task({ startDate: '2026-09-18', timeBucket: 'morning', startTime: '09:00', isScheduled: true });
+    seed({ items: [timed] });
+    panel(timed);
+    const option = (text: string) =>
+      Array.from(document.querySelectorAll('button')).find((b) => b.textContent?.trim() === text)!;
+    fireEvent.click(Array.from(field().querySelectorAll('button')).find((b) => b.textContent?.includes('09:00'))!);
+    fireEvent.click(option('Anytime'));
+    fireEvent.click(option('Morning'));
+    expect(field().textContent).toContain('Morning');
+    expect(field().textContent).not.toContain('09:00');
+  });
 });
 
 describe('a goal that ended still says so', () => {
@@ -622,11 +651,11 @@ describe('the mobile drawer: Clearing without autosave', () => {
    * fixture that can prove the layout is universal while the COMMIT affordance
    * still tracks persistence.
    */
-  it('gets the field and the whisper, like every other surface', () => {
+  it('gets the field and the type switch, like every other surface', () => {
     modalEdit();
     expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
     expect(document.querySelectorAll('[data-testid^="item-band-"]').length).toBe(0);
-    expect(screen.getByTestId('item-dialog-type-whisper')).toBeTruthy();
+    expect(screen.getByTestId('item-dialog-type-switch')).toBeTruthy();
     expect(screen.queryByTestId('item-dialog-type-chip')).toBeNull();
   });
 
@@ -653,29 +682,29 @@ describe('the /item/[id] readout', () => {
     return onAdd;
   };
 
-  it('finally says which routines, programs and goals an item serves', () => {
+  it('finally says which routines, seasons and goals an item serves', () => {
     // The page showed a project and nothing else: an item could sit in a
-    // routine, a program and a goal and its own page never said so.
+    // routine, a season and a goal and its own page never said so.
     seed({
       routines: [routine({ itemIds: ['t1'] })],
-      programs: [program({ itemIds: ['t1'] })],
+      seasons: [season({ itemIds: ['t1'] })],
       goals: [goal({ memberIds: ['t1'] })],
     });
     readout(task({ project: 'Onboarding' }));
     expect(screen.getByTestId(bandTestId('project')).textContent).toContain('Onboarding');
     expect(screen.getByTestId(bandTestId('routine')).textContent).toContain('Deep work');
-    expect(screen.getByTestId(bandTestId('program')).textContent).toContain('Autumn term');
+    expect(screen.getByTestId(bandTestId('season')).textContent).toContain('Autumn term');
     expect(screen.getByTestId(bandTestId('goal')).textContent).toContain('Ship v2');
   });
 
   it('renders an empty band as a way in rather than a blank, and hands editing back', () => {
     const onAdd = readout(task());
-    const add = screen.getByTestId('band-add-program');
+    const add = screen.getByTestId('band-add-season');
     fireEvent.click(add);
     // One write path, still: the readout opens the editor, it does not grow a
     // second way to change a membership.
     expect(onAdd).toHaveBeenCalledTimes(1);
-    expect(onAdd.mock.calls[0][0].kind).toBe('program');
+    expect(onAdd.mock.calls[0][0].kind).toBe('season');
   });
 
   // NOTE: the readout and the dialog's chip now DIVERGE here, deliberately. The
@@ -850,5 +879,141 @@ describe('a property summoned from the seed opens its own picker', () => {
     const pickers = document.querySelectorAll('[data-radix-popper-content-wrapper]');
     expect(pickers).toHaveLength(1);
     expect(pickers[0].querySelector('[data-testid="item-dialog-date-shortcut"]')).toBeTruthy();
+  });
+});
+
+describe('the edit pane: type switch and row controls', () => {
+  const today = new Date().toISOString().slice(0, 10);
+  const controls = () =>
+    Array.from(
+      screen.getByTestId('item-dialog-row-controls').querySelectorAll('button[data-testid]')
+    ).map((b) => b.getAttribute('data-testid'));
+
+  it('gives a habit the row capsule: Skip today, Pause and Delete', () => {
+    seed({ items: [habitItem({ project: 'Onboarding' })] });
+    panel(habitItem({ project: 'Onboarding' }));
+    expect(controls()).toEqual([
+      'item-dialog-skip',
+      'item-dialog-pause',
+      'item-dialog-pause-until',
+      'item-dialog-delete',
+    ]);
+  });
+
+  it('gives a one-off task on the grid the put-it-off pair instead of Skip', () => {
+    const t = task({ isScheduled: true, startDate: today, timeBucket: 'morning' });
+    seed({ items: [t] });
+    panel(t);
+    expect(controls()).toEqual([
+      'item-dialog-tomorrow',
+      'item-dialog-unschedule',
+      'item-dialog-pause',
+      'item-dialog-pause-until',
+      'item-dialog-delete',
+    ]);
+  });
+
+  it('switches a habit to a task through the chip and its confirm', () => {
+    const h = habitItem({ project: 'Onboarding', streak: 4 });
+    seed({ items: [h] });
+    panel(h);
+    fireEvent.click(screen.getByTestId('item-dialog-type-switch'));
+    const option = Array.from(
+      document.querySelectorAll('[data-testid="item-dialog-type-switch-option"]')
+    ).find((o) => o.getAttribute('data-value') === 'task') as HTMLElement;
+    expect(option.textContent).toContain('Drops the 4 day streak');
+    fireEvent.click(option);
+    fireEvent.click(screen.getByTestId('item-dialog-type-confirm-accept'));
+    expect(usePlannerStore.getState().items.find((i) => i.id === 'h1')?.type).toBe('task');
+  });
+});
+
+describe('every membership comes back off, from the pill or the picker', () => {
+  /**
+   * Kirby, 2026-09-27: "you couldn't remove an item from a container from the
+   * edit panel — there's no remove option in the dropdown or on the pill."
+   * Unticking a checked row did it, and nobody looks for remove in a tick.
+   */
+  const routineOf = () => usePlannerStore.getState().routines[0];
+
+  it('takes a routine off from the × on its pill, and keeps the chip to re-pick', () => {
+    seed({ routines: [routine({ itemIds: ['t1'] })] });
+    panel();
+    const x = screen.getByTestId('item-dialog-routine-chip-clear');
+    expect(x.getAttribute('aria-label')).toBe('Remove from Deep work');
+    fireEvent.click(x);
+    expect(routineOf().itemIds).toEqual([]);
+    // Emptied, not folded away — the same rule "No date" follows.
+    expect(screen.getByTestId('item-dialog-routine-chip')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-routine-chip-clear')).toBeNull();
+  });
+
+  it('names each membership as a "Remove from …" row in the picker', () => {
+    seed({ seasons: [season({ itemIds: ['t1'] }), season({ id: 'p2', name: 'Winter', itemIds: ['t1'] })] });
+    panel();
+    fireEvent.click(screen.getByTestId('item-dialog-season-chip'));
+    const rows = screen.getAllByTestId('item-dialog-season-remove');
+    expect(rows.map((r) => r.textContent)).toEqual(['Remove from Autumn term', 'Remove from Winter']);
+    fireEvent.click(rows[1]);
+    const seasons = usePlannerStore.getState().seasons;
+    expect(seasons.find((p) => p.id === 'p2')!.itemIds).toEqual([]);
+    // Only the one it named.
+    expect(seasons.find((p) => p.id === 'p1')!.itemIds).toEqual(['t1']);
+  });
+
+  it('removes from a goal whatever role it held there', () => {
+    seed({ goals: [goal({ milestoneIds: ['t1'] })] });
+    panel();
+    fireEvent.click(screen.getByTestId('item-dialog-goal-chip-clear'));
+    expect(usePlannerStore.getState().goals[0].milestoneIds).toEqual([]);
+  });
+
+  it('clears an optional project from its pill', () => {
+    seed({ items: [task({ project: 'Onboarding' })] });
+    panel(task({ project: 'Onboarding' }));
+    fireEvent.click(screen.getByTestId('item-dialog-container-chip-clear'));
+    expect(field().textContent).not.toContain('Onboarding');
+  });
+
+  it('offers no remove on a habit’s project, and says why in the picker', () => {
+    const h = habitItem({ project: 'Onboarding' });
+    seed({ items: [h] });
+    panel(h);
+    expect(screen.queryByTestId('item-dialog-container-chip-clear')).toBeNull();
+    fireEvent.click(screen.getByTestId('item-dialog-container-chip'));
+    expect(screen.getByTestId('item-dialog-container-required').textContent).toContain(
+      'always belong to a'
+    );
+  });
+
+  it('clears priority and date from their pills', () => {
+    const t = task({ priority: 'high', startDate: '2026-09-18' });
+    seed({ items: [t] });
+    panel(t);
+    fireEvent.click(screen.getByTestId('item-dialog-priority-chip-clear'));
+    fireEvent.click(screen.getByTestId('item-dialog-date-chip-clear'));
+    expect(field().textContent).not.toContain('High');
+    expect(field().textContent).not.toContain('Sep 18');
+  });
+});
+
+describe('the inline presentation — /item/[id]', () => {
+  it('edits in place with nothing to close: no Done, no X, and Enter does not leave', () => {
+    const onOpenChange = vi.fn();
+    render(
+      <ItemDialog
+        presentation="inline"
+        state={{ mode: 'edit', item: task() }}
+        withDetailSections={false}
+        onOpenChange={onOpenChange}
+      />
+    );
+    expect(screen.getByTestId('item-clearing-field')).toBeTruthy();
+    expect(screen.queryByTestId('item-dialog-submit')).toBeNull();
+    expect(screen.queryByTestId('item-dialog-close')).toBeNull();
+    const title = screen.getByDisplayValue('Draft the Q3 handoff note');
+    fireEvent.keyDown(title, { key: 'Enter' });
+    fireEvent.keyDown(window, { key: 'Escape' });
+    expect(onOpenChange).not.toHaveBeenCalled();
   });
 });

@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { flushSync } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
@@ -24,6 +25,7 @@ import {
   type ZenRow,
 } from '@/lib/zen';
 import { toDateStr } from '@/lib/recurrence';
+import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
 
 /**
@@ -81,6 +83,15 @@ export function ZenSurface() {
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const streaksOn = useStreaksEnabled();
   const [foldOpen, setFoldOpen] = useState(false);
+  /*
+   * The fold's height while it is moving, in real pixels. `max-height` cannot
+   * interpolate to or from `none`, so the old cap-to-undefined swap snapped
+   * open and shut. A toggle pins the box to a measured height for the length
+   * of the transition, and transitionend drops it back to null — open resting
+   * as `none`, so a row added later is never clipped by a stale measurement.
+   */
+  const [foldMax, setFoldMax] = useState<number | null>(null);
+  const foldRef = useRef<HTMLDivElement>(null);
 
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const nowMin = useNowMinutes(timezone);
@@ -207,6 +218,28 @@ export function ZenSurface() {
    */
   const foldRowCount = ledger.length + doneRows.length + (doneRows.length > 0 ? 1 : 0);
   const foldable = foldRowCount > FOLDED_ROWS;
+  const foldCap = FOLDED_ROWS * ROW_PX;
+
+  const toggleFold = () => {
+    const el = foldRef.current;
+    const next = !foldOpen;
+    if (!el || prefersReducedMotion()) {
+      setFoldMax(null);
+      setFoldOpen(next);
+      return;
+    }
+    if (next) {
+      // Cap → full height; transitionend releases it to `none`.
+      setFoldMax(el.scrollHeight);
+    } else {
+      // `none` → cap has no start value to animate from, so pin the current
+      // height first and force a layout before handing it the cap.
+      flushSync(() => setFoldMax(el.scrollHeight));
+      void el.offsetHeight;
+      setFoldMax(foldCap);
+    }
+    setFoldOpen(next);
+  };
 
   const pct = elapsedPct(hero, nowMin);
   const remaining = remainingMins(hero, nowMin);
@@ -336,8 +369,14 @@ export function ZenSurface() {
               frost field behind it.
             */}
             <div
-              className="relative mt-1.5 overflow-hidden transition-[max-height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)]"
-              style={{ maxHeight: !foldable || foldOpen ? undefined : FOLDED_ROWS * ROW_PX }}
+              ref={foldRef}
+              className="relative mt-1.5 overflow-hidden transition-[max-height] duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none"
+              style={{
+                maxHeight: !foldable ? undefined : (foldMax ?? (foldOpen ? undefined : foldCap)),
+              }}
+              onTransitionEnd={(e) => {
+                if (e.target === e.currentTarget && e.propertyName === 'max-height') setFoldMax(null);
+              }}
             >
               {ledger.length > 0 && (
                 <ul className="m-0 flex list-none flex-col p-0">
@@ -376,21 +415,26 @@ export function ZenSurface() {
                 </>
               )}
 
-              {foldable && !foldOpen && (
-                <div className="pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-surface-0" />
+              {foldable && (
+                <div
+                  className={cn(
+                    'pointer-events-none absolute inset-x-0 bottom-0 h-16 bg-gradient-to-b from-transparent to-surface-0 transition-opacity duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none',
+                    foldOpen && 'opacity-0',
+                  )}
+                />
               )}
             </div>
 
             {foldable && (
             <button
               type="button"
-              onClick={() => setFoldOpen((v) => !v)}
+              onClick={toggleFold}
               aria-expanded={foldOpen}
               aria-label={foldOpen ? 'Fold the day away' : 'Show the rest of the day'}
               className="mt-4 flex h-[30px] w-[30px] items-center justify-center self-center rounded-full border border-border bg-surface-3 text-muted-foreground transition-colors duration-150 hover:border-muted-foreground/60 hover:text-foreground"
             >
               <ChevronDown
-                className={cn('h-3 w-3 transition-transform duration-300', foldOpen && 'rotate-180')}
+                className={cn('h-3 w-3 transition-transform duration-500 ease-[cubic-bezier(0.22,1,0.36,1)] motion-reduce:transition-none', foldOpen && 'rotate-180')}
               />
             </button>
             )}

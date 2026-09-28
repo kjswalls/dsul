@@ -48,7 +48,7 @@ vi.mock('@/lib/db', async () => {
     fetchProjects: async () => [],
     fetchItemTypes: async () => [],
     fetchRoutines: async () => [],
-    fetchPrograms: async () => [],
+    fetchSeasons: async () => [],
     fetchGoals: async () => [],
   };
 });

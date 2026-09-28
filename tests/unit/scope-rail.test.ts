@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { buildScopeRows, programStateForSwitch, type ScopeRow } from '@/lib/scope-rail';
-import type { Routine, Program } from '@dsul/types';
+import { buildScopeRows, seasonStateForSwitch, type ScopeRow } from '@/lib/scope-rail';
+import type { Routine, Season } from '@dsul/types';
 
 const TZ = 'America/New_York';
 const TODAY = '2026-08-10';
@@ -14,68 +14,68 @@ const routine = (id: string, over: Partial<Routine> = {}): Routine => ({
   ...over,
 });
 
-const program = (id: string, over: Partial<Program> = {}): Program => ({
+const season = (id: string, over: Partial<Season> = {}): Season => ({
   id,
-  name: `Program ${id}`,
+  name: `Season ${id}`,
   state: 'auto',
   itemIds: [],
   routineIds: [],
   ...over,
 });
 
-const build = (routines: Routine[], programs: Program[]) =>
-  buildScopeRows(routines, programs, TODAY, TZ);
+const build = (routines: Routine[], seasons: Season[]) =>
+  buildScopeRows(routines, seasons, TODAY, TZ);
 
 const row = (rows: ScopeRow[], id: string) => rows.find((r) => r.id === id)!;
 
-describe('programStateForSwitch — prefer auto whenever auto already answers', () => {
+describe('seasonStateForSwitch — prefer auto whenever auto already answers', () => {
   // The rule that keeps a binary switch from destroying a tri-state. Both
   // directions matter: turning a live summer off with `paused` and back on with
   // `active` loses its Aug 31 end, and turning a future term on with `active`
   // and off again with `paused` loses its Sep 1 start.
-  const summer = program('s', { startsOn: '2026-06-01', endsOn: '2026-08-31' });
-  const term = program('t', { startsOn: '2026-09-01', endsOn: '2026-12-20' });
+  const summer = season('s', { startsOn: '2026-06-01', endsOn: '2026-08-31' });
+  const term = season('t', { startsOn: '2026-09-01', endsOn: '2026-12-20' });
 
   it('writes a manual override only when it is genuinely needed', () => {
     // Summer is live today; asking for OFF disagrees with the calendar.
-    expect(programStateForSwitch(summer, false, TODAY)).toBe('paused');
+    expect(seasonStateForSwitch(summer, false, TODAY)).toBe('paused');
     // Term is off today; asking for ON disagrees with the calendar.
-    expect(programStateForSwitch(term, true, TODAY)).toBe('active');
+    expect(seasonStateForSwitch(term, true, TODAY)).toBe('active');
   });
 
   it('returns to auto when auto is already producing the requested state', () => {
-    expect(programStateForSwitch({ ...summer, state: 'paused' }, true, TODAY)).toBe('auto');
-    expect(programStateForSwitch({ ...term, state: 'active' }, false, TODAY)).toBe('auto');
+    expect(seasonStateForSwitch({ ...summer, state: 'paused' }, true, TODAY)).toBe('auto');
+    expect(seasonStateForSwitch({ ...term, state: 'active' }, false, TODAY)).toBe('auto');
   });
 
-  it('round-trips a dated program without losing its dates', () => {
-    const off = programStateForSwitch(summer, false, TODAY);
-    const back = programStateForSwitch({ ...summer, state: off }, true, TODAY);
+  it('round-trips a dated season without losing its dates', () => {
+    const off = seasonStateForSwitch(summer, false, TODAY);
+    const back = seasonStateForSwitch({ ...summer, state: off }, true, TODAY);
     expect(back).toBe('auto');
-    const on = programStateForSwitch(term, true, TODAY);
-    const again = programStateForSwitch({ ...term, state: on }, false, TODAY);
+    const on = seasonStateForSwitch(term, true, TODAY);
+    const again = seasonStateForSwitch({ ...term, state: on }, false, TODAY);
     expect(again).toBe('auto');
   });
 
-  it('a rangeless program still switches off manually', () => {
-    const p = program('p');
-    expect(programStateForSwitch(p, false, TODAY)).toBe('paused');
-    expect(programStateForSwitch({ ...p, state: 'paused' }, true, TODAY)).toBe('auto');
+  it('a rangeless season still switches off manually', () => {
+    const p = season('p');
+    expect(seasonStateForSwitch(p, false, TODAY)).toBe('paused');
+    expect(seasonStateForSwitch({ ...p, state: 'paused' }, true, TODAY)).toBe('auto');
   });
 });
 
 describe('buildScopeRows — the local/effective split', () => {
-  it('a program has nothing above it, so its switch IS its effect', () => {
-    const rows = build([], [program('p', { state: 'paused' })]);
+  it('a season has nothing above it, so its switch IS its effect', () => {
+    const rows = build([], [season('p', { state: 'paused' })]);
     expect(row(rows, 'p').localOn).toBe(false);
     expect(row(rows, 'p').effectiveOn).toBe(false);
   });
 
-  it('a routine held off by its program keeps its own switch ON', () => {
+  it('a routine held off by its season keeps its own switch ON', () => {
     // The correctness constraint. Render this routine as "off" and resuming the
-    // program hands back a routine the user believes they turned off.
+    // season hands back a routine the user believes they turned off.
     const r = routine('r', { name: 'Mornings' });
-    const p = program('p', { name: 'Term', state: 'paused', routineIds: ['r'] });
+    const p = season('p', { name: 'Term', state: 'paused', routineIds: ['r'] });
     const rows = build([r], [p]);
     expect(row(rows, 'r').localOn).toBe(true);
     expect(row(rows, 'r').effectiveOn).toBe(false);
@@ -87,8 +87,8 @@ describe('buildScopeRows — the local/effective split', () => {
     const rows = build(
       [r],
       [
-        program('off', { state: 'paused', routineIds: ['r'] }),
-        program('on', { state: 'active', routineIds: ['r'] }),
+        season('off', { state: 'paused', routineIds: ['r'] }),
+        season('on', { state: 'active', routineIds: ['r'] }),
       ]
     );
     expect(row(rows, 'r').effectiveOn).toBe(true);
@@ -100,8 +100,8 @@ describe('buildScopeRows — the local/effective split', () => {
     const rows = build(
       [r],
       [
-        program('later', { name: 'Later', startsOn: '2026-10-01', routineIds: ['r'] }),
-        program('soon', { name: 'Soon', startsOn: '2026-09-01', routineIds: ['r'] }),
+        season('later', { name: 'Later', startsOn: '2026-10-01', routineIds: ['r'] }),
+        season('soon', { name: 'Soon', startsOn: '2026-09-01', routineIds: ['r'] }),
       ]
     );
     // Disjunctive: the routine comes back when the FIRST holder does.
@@ -117,7 +117,7 @@ describe('buildScopeRows — the local/effective split', () => {
 });
 
 describe('buildScopeRows — the state line', () => {
-  const line = (p: Partial<Program>) => row(build([], [program('p', p)]), 'p').state;
+  const line = (p: Partial<Season>) => row(build([], [season('p', p)]), 'p').state;
 
   it('distinguishes a manual override from the calendar', () => {
     expect(line({ state: 'active' })).toBe('On · you turned it on');
@@ -139,10 +139,10 @@ describe('buildScopeRows — the state line', () => {
 });
 
 describe('buildScopeRows — ordering', () => {
-  it('puts off containers last without dropping them, programs before routines', () => {
+  it('puts off containers last without dropping them, seasons before routines', () => {
     const rows = build(
       [routine('r-on'), routine('r-off', { pausedAt: JUL01 })],
-      [program('p-on', { state: 'active' }), program('p-off', { state: 'paused' })]
+      [season('p-on', { state: 'active' }), season('p-off', { state: 'paused' })]
     );
     expect(rows.map((r) => r.id)).toEqual(['p-on', 'r-on', 'p-off', 'r-off']);
   });
@@ -154,7 +154,7 @@ describe('buildScopeRows — ordering', () => {
     // this test is the one that fails.
     const rows = build(
       [routine('r-held'), routine('r-free')],
-      [program('p-off', { state: 'paused', routineIds: ['r-held'] })]
+      [season('p-off', { state: 'paused', routineIds: ['r-held'] })]
     );
     expect(rows.map((r) => r.id)).toEqual(['r-free', 'p-off', 'r-held']);
     expect(row(rows, 'r-held').localOn).toBe(true);

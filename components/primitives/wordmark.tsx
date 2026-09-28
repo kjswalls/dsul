@@ -10,6 +10,8 @@ import './wordmark.css';
 const SETTLE_MS = 900;
 /** Past the slowest collapse (serif: 320ms plus 91ms of stagger), then back to classic. */
 const REST_MS = 450;
+/** How long the return-to-classic sweep runs: the last initial's delay plus its settle. */
+const RESTORE_MS = 760;
 const GLYPHS = '!<>-_/[]{}=+*^?#01%$';
 
 /**
@@ -32,9 +34,11 @@ export function Wordmark({ className, ...props }: React.ComponentProps<'div'>) {
   const [flavor, setFlavor] = useState<WordmarkFlavor>('classic');
   const [open, setOpen] = useState(false);
   const [settled, setSettled] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [scrambled, setScrambled] = useState<Record<number, string> | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const restTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const restoreTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const raf = useRef(0);
   const lastPointer = useRef('mouse');
 
@@ -42,6 +46,7 @@ export function Wordmark({ className, ...props }: React.ComponentProps<'div'>) {
     () => () => {
       clearTimeout(settleTimer.current);
       clearTimeout(restTimer.current);
+      clearTimeout(restoreTimer.current);
       cancelAnimationFrame(raf.current);
     },
     [],
@@ -75,6 +80,8 @@ export function Wordmark({ className, ...props }: React.ComponentProps<'div'>) {
   const enter = () => {
     if (open) return;
     clearTimeout(restTimer.current);
+    clearTimeout(restoreTimer.current);
+    setRestoring(false);
     const f = takeNextFlavor();
     setFlavor(f);
     setOpen(true);
@@ -90,7 +97,17 @@ export function Wordmark({ className, ...props }: React.ComponentProps<'div'>) {
     stopScramble();
     setOpen(false);
     setSettled(false);
-    restTimer.current = setTimeout(() => setFlavor('classic'), REST_MS);
+    // The swap back to classic changes the face and size under the four
+    // initials in one frame, so it is dressed as a sweep: the initials settle
+    // in left to right from a soft blur behind a shine (wordmark.css,
+    // [data-restoring]). Classic has nothing to hide and just rests.
+    const wasClassic = flavor === 'classic';
+    restTimer.current = setTimeout(() => {
+      setFlavor('classic');
+      if (wasClassic) return;
+      setRestoring(true);
+      restoreTimer.current = setTimeout(() => setRestoring(false), RESTORE_MS);
+    }, REST_MS);
   };
 
   return (
@@ -101,6 +118,7 @@ export function Wordmark({ className, ...props }: React.ComponentProps<'div'>) {
         data-flavor={flavor}
         data-open={open || undefined}
         data-settled={settled || undefined}
+        data-restoring={restoring || undefined}
         className={cn('wordmark', wordmarkFontVars)}
         style={{ '--wm-fill-count': WORDMARK_FILL_COUNT } as React.CSSProperties}
         // Touch and pen get the tap toggle below instead: a pen's contact fires

@@ -60,7 +60,7 @@ export const CANVAS_GROUP_BY_OPTIONS: ViewOption<GroupBy>[] = [
   { value: 'priority', label: 'Priority', icon: Flag },
   { value: 'bucket', label: 'Time bucket', icon: Hourglass },
   { value: 'routine', label: 'Routine', icon: Repeat },
-  { value: 'program', label: 'Program', icon: CalendarRange },
+  { value: 'season', label: 'Season', icon: CalendarRange },
   // Target, matching the Goal chip in the item dialog and the console rail —
   // one glyph for the container wherever it is named.
   { value: 'goal', label: 'Goal', icon: Target },
@@ -167,6 +167,6 @@ export const BRAINDUMP_GROUP_BY_OPTIONS: ViewOption<BraindumpGroupBy>[] = [
   { value: 'project', label: 'Project', icon: Folder },
   { value: 'priority', label: 'Priority', icon: Flag },
   { value: 'routine', label: 'Routine', icon: Repeat },
-  { value: 'program', label: 'Program', icon: CalendarRange },
+  { value: 'season', label: 'Season', icon: CalendarRange },
   { value: 'goal', label: 'Goal', icon: Target },
 ];

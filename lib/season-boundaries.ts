@@ -1,7 +1,7 @@
 /**
- * program-boundaries — where a run of days changes hands.
+ * season-boundaries — where a run of days changes hands.
  *
- * A week that spans a program's start or end renders live and suppressed
+ * A week that spans a season's start or end renders live and suppressed
  * columns side by side. That is the showcase for date-parameterized activation
  * (plan decision 3), and it is also the moment the grid becomes confusing: five
  * columns carry the summer routine and two do not, and the two that don't look
@@ -18,14 +18,14 @@
  * came to exist.
  */
 
-import { isProgramActiveOn, inactiveItemIdsOn, type ActivationContext } from './active';
-import type { Item, Program } from './planner-types';
+import { isSeasonActiveOn, inactiveItemIdsOn, type ActivationContext } from './active';
+import type { Item, Season } from './planner-types';
 
-export interface ProgramBoundary {
-  /** Programs that begin carrying their members on this date. */
-  started: Program[];
-  /** Programs that stopped: live on the previous date in the run, not on this one. */
-  ended: Program[];
+export interface SeasonBoundary {
+  /** Seasons that begin carrying their members on this date. */
+  started: Season[];
+  /** Seasons that stopped: live on the previous date in the run, not on this one. */
+  ended: Season[];
 }
 
 /**
@@ -37,27 +37,27 @@ export interface ProgramBoundary {
  * be an assertion the user cannot check. Walk to the previous week and the same
  * boundary appears in its rightful place.
  *
- * Programs with no date range never appear here. Only `auto` programs flip on a
+ * Seasons with no date range never appear here. Only `auto` seasons flip on a
  * date; the manual states apply uniformly to every column (they have no
  * recorded history to place a boundary at), so a manual flip correctly produces
  * no marker anywhere.
  */
-export function programBoundaries(
+export function seasonBoundaries(
   dateStrs: readonly string[],
-  programs: readonly Program[],
-): Map<string, ProgramBoundary> {
-  const boundaries = new Map<string, ProgramBoundary>();
-  if (programs.length === 0) return boundaries;
+  seasons: readonly Season[],
+): Map<string, SeasonBoundary> {
+  const boundaries = new Map<string, SeasonBoundary>();
+  if (seasons.length === 0) return boundaries;
 
   let previous: Set<string> | null = null;
   for (const dateStr of dateStrs) {
     const live = new Set<string>();
-    for (const program of programs) {
-      if (isProgramActiveOn(program, dateStr)) live.add(program.id);
+    for (const season of seasons) {
+      if (isSeasonActiveOn(season, dateStr)) live.add(season.id);
     }
     if (previous) {
-      const started = programs.filter((p) => live.has(p.id) && !previous!.has(p.id));
-      const ended = programs.filter((p) => !live.has(p.id) && previous!.has(p.id));
+      const started = seasons.filter((p) => live.has(p.id) && !previous!.has(p.id));
+      const ended = seasons.filter((p) => !live.has(p.id) && previous!.has(p.id));
       if (started.length || ended.length) boundaries.set(dateStr, { started, ended });
     }
     previous = live;
@@ -74,49 +74,49 @@ export function programBoundaries(
  * to check. What a day view can honestly say is the consequence: this many
  * things are not here, and this is what is holding them.
  *
- * Returns null on any date where no program is hiding anything, which is the
+ * Returns null on any date where no season is hiding anything, which is the
  * overwhelming majority of days — the notice must not become furniture.
  *
- * `hidden` counts only what the programs named here are responsible for. An
+ * `hidden` counts only what the seasons named here are responsible for. An
  * item the user paused by hand is their own decision and already has a home in
  * the braindump's Paused section; folding it into this count would make the
- * program look responsible for work it never touched.
+ * season look responsible for work it never touched.
  */
-export interface ProgramSuppression {
-  programs: Program[];
+export interface SeasonSuppression {
+  seasons: Season[];
   hidden: number;
 }
 
-export function programSuppressionOn(
+export function seasonSuppressionOn(
   dateStr: string,
   items: readonly Item[],
   ctx: ActivationContext,
-): ProgramSuppression | null {
-  const off = (ctx.programs ?? []).filter((p) => !isProgramActiveOn(p, dateStr));
+): SeasonSuppression | null {
+  const off = (ctx.seasons ?? []).filter((p) => !isSeasonActiveOn(p, dateStr));
   if (off.length === 0) return null;
 
-  // The difference between "hidden with programs in play" and "hidden with them
-  // all switched on" is exactly what the programs are responsible for. Asking
+  // The difference between "hidden with seasons in play" and "hidden with them
+  // all switched on" is exactly what the seasons are responsible for. Asking
   // the resolver twice beats re-deriving the path algebra here — that second
   // derivation is what lib/overdue.ts exists to warn about.
-  const withPrograms = inactiveItemIdsOn(items, dateStr, ctx);
-  if (withPrograms.size === 0) return null;
-  const withoutPrograms = inactiveItemIdsOn(items, dateStr, { ...ctx, programs: [] });
+  const withSeasons = inactiveItemIdsOn(items, dateStr, ctx);
+  if (withSeasons.size === 0) return null;
+  const withoutSeasons = inactiveItemIdsOn(items, dateStr, { ...ctx, seasons: [] });
 
   let hidden = 0;
-  for (const id of withPrograms) if (!withoutPrograms.has(id)) hidden += 1;
+  for (const id of withSeasons) if (!withoutSeasons.has(id)) hidden += 1;
   if (hidden === 0) return null;
 
-  return { programs: off, hidden };
+  return { seasons: off, hidden };
 }
 
 /**
  * The marker's words. Short enough for a 140px week column, and phrased from
  * the reader's side of the screen — "Summer starts" describes the day they are
- * looking at, where "Program activated" describes the database.
+ * looking at, where "Season activated" describes the database.
  */
-export function boundaryLabel(boundary: ProgramBoundary): string {
-  const names = (list: Program[]) => list.map((p) => p.name).join(' & ');
+export function boundaryLabel(boundary: SeasonBoundary): string {
+  const names = (list: Season[]) => list.map((p) => p.name).join(' & ');
   if (boundary.started.length && boundary.ended.length) {
     return `${names(boundary.ended)} → ${names(boundary.started)}`;
   }

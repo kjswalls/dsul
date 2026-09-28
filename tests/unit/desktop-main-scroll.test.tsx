@@ -15,7 +15,7 @@ vi.mock('@/components/views/view-router', () => ({
     </div>
   ),
 }));
-vi.mock('@/components/views/program-notice', () => ({ ProgramNotice: () => null }));
+vi.mock('@/components/views/season-notice', () => ({ SeasonNotice: () => null }));
 vi.mock('@/components/notices/notice-slot', () => ({ DayHeaderNotice: () => null }));
 vi.mock('@/components/canvas/week-scale', () => ({ WeekScale: () => null }));
 vi.mock('@/components/planner/item-dialog', () => ({ ItemDialog: () => null }));
@@ -997,7 +997,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     const main = await layOut();
     focusAndReveal(main, 'clipped-control', 100);
     await frame();
-    // The program line's button, shrunk to nothing at 460 with its 12px icon
+    // The season line's button, shrunk to nothing at 460 with its 12px icon
     // overflowing it: 71 shows the icon, which at rest sits wholly past the edge.
     const button = screen.getByTestId('wide-control');
     place('wide-control', 460, 0);

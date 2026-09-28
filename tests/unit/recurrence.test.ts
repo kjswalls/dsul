@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS } from '@/lib/planner-types';
-import { shouldShowOnDate, toDateStr, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
+import { anchoredSeriesOn, firstRepeatDayFrom, shouldShowOnDate, toDateStr, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 
 const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
@@ -129,5 +129,27 @@ describe('habit / task recurrence logic', () => {
     const shortMonthHabit = { repeatFrequency: 'monthly', repeatMonthDay: 31 };
     expect(shouldShowOnDate(shortMonthHabit, '2025-02-28', tz)).toBe(true);  // clamped to last day
     expect(shouldShowOnDate(shortMonthHabit, '2025-02-27', tz)).toBe(false);
+  });
+});
+
+describe('anchored series', () => {
+  const thursdays = { repeatFrequency: 'custom', repeatDays: [4] };
+
+  it('counts the start date, then the repeat, and nothing before the start', () => {
+    // 2026-09-25 is a Friday.
+    expect(anchoredSeriesOn(thursdays, '2026-09-25', '2026-09-25', tz)).toBe(true);
+    expect(anchoredSeriesOn(thursdays, '2026-09-25', '2026-09-24', tz)).toBe(false);
+    expect(anchoredSeriesOn(thursdays, '2026-09-25', '2026-10-01', tz)).toBe(true);
+    expect(anchoredSeriesOn(thursdays, '2026-09-25', '2026-10-02', tz)).toBe(false);
+    // Legacy ISO start dates compare by day.
+    expect(anchoredSeriesOn(thursdays, '2026-09-25T00:00:00Z', '2026-09-25', tz)).toBe(true);
+  });
+
+  it('finds the first repeat day on or after a date, across a month end', () => {
+    expect(firstRepeatDayFrom(thursdays, '2026-09-24')).toBe('2026-09-24');
+    expect(firstRepeatDayFrom(thursdays, '2026-09-25')).toBe('2026-10-01');
+    expect(firstRepeatDayFrom({ repeatFrequency: 'monthly', repeatMonthDay: 31 }, '2026-02-02')).toBe('2026-02-28');
+    // A rule that falls on no day keeps the date it was given.
+    expect(firstRepeatDayFrom({ repeatFrequency: 'custom', repeatDays: [] }, '2026-09-25')).toBe('2026-09-25');
   });
 });

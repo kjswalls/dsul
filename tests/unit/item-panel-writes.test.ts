@@ -36,7 +36,7 @@ const draft: ItemDraft = {
   // column. The assertions below prove it doesn't.
   routineIds: ['routine-1'],
   goalIds: ['goal-1'],
-  programIds: ['program-1'],
+  seasonIds: ['season-1'],
   newContainer: { show: false, name: '', icon: '' },
 };
 
@@ -61,13 +61,13 @@ describe('panel writes are scoped to what was touched', () => {
   });
 
   it('never persists membership as a column, not even on a full save', () => {
-    // routineIds/programIds are join rows written through updateRoutine /
-    // updateProgram, so they are deliberately absent from DRAFT_KEYS. If one
+    // routineIds/seasonIds are join rows written through updateRoutine /
+    // updateSeason, so they are deliberately absent from DRAFT_KEYS. If one
     // were ever added there, these builders would start sending it to
     // updateItem, where db.ts's allowlist would silently drop it — a
     // membership edit that looks saved and is gone on reload.
     expect(DRAFT_KEYS).not.toContain('routineIds');
-    expect(DRAFT_KEYS).not.toContain('programIds');
+    expect(DRAFT_KEYS).not.toContain('seasonIds');
     // Goals are the same shape of thing — join rows written through updateGoal,
     // never a column on the item — so they stay out for the same reason.
     expect(DRAFT_KEYS).not.toContain('goalIds');
@@ -77,7 +77,7 @@ describe('panel writes are scoped to what was touched', () => {
     ]) {
       expect(payload).not.toHaveProperty('routineIds');
       expect(payload).not.toHaveProperty('goalIds');
-      expect(payload).not.toHaveProperty('programIds');
+      expect(payload).not.toHaveProperty('seasonIds');
     }
   });
 

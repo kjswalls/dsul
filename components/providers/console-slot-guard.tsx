@@ -16,7 +16,8 @@ import { useUIStore } from '@/lib/ui-store';
  * trip home springs it open unasked. lib/console-door.ts stops a DOOR arming a
  * slot it cannot open; this stops an already-open console outliving its route.
  *
- * The console's own outward links close it themselves (organize/sections/goals.tsx),
+ * The console's own outward links close it themselves (organize/sections/goals.tsx, and
+ * every "Open as page" via OpenAsPageLink in organize/detail-parts.tsx),
  * which covers the deliberate exits. This covers the one the user brings: browser
  * Back, the Android hardware button, the iOS edge swipe — on mobile the console
  * is a bottom sheet and back-to-dismiss is the reflex.

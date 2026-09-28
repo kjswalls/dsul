@@ -56,7 +56,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
     fetchProjects: vi.fn(async () => []),
     fetchItemTypes: vi.fn(async () => []),
     fetchRoutines: vi.fn(async () => []),
-    fetchPrograms: vi.fn(async () => []),
+    fetchSeasons: vi.fn(async () => []),
     fetchGoals: vi.fn(async () => []),
     fetchContainersSeeded: vi.fn(() => {
       ctl.seedReads++;

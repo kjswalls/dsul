@@ -276,9 +276,9 @@ interface BraindumpProps {
    * the top, where this header is the tab's whole chrome: the capsule, and the
    * notice slot under it, are inset off the screen edge so they line up with
    * the dated tabs' header card and with the dock; and every control in the
-   * header — the Display shelf's text included — reaches 28px for a thumb. The
-   * shelf has no ✕ there: see the foot of components/primitives/display-shelf.tsx.
-   * Everything below that already sits on the paper backdrop on both shells.
+   * header — the Display shelf's text and ✕s included — reaches 28px for a
+   * thumb. Everything below that already sits on the paper backdrop on both
+   * shells.
    */
   variant?: 'sidebar' | 'mobile';
   /**
@@ -291,7 +291,7 @@ interface BraindumpProps {
 }
 
 export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpProps = {}) {
-  const { tasks, habits, items, routines, programs, goals, userTimezone } = usePlannerStore();
+  const { tasks, habits, items, routines, seasons, goals, userTimezone } = usePlannerStore();
   // Action selector, not a whole-store destructure: actions are stable, and a
   // bare useUIStore() here re-rendered this whole column on every dialog open.
   const openDialog = useUIStore((s) => s.openDialog);
@@ -306,10 +306,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
   // new row stays visible above the sticky capture row.
   const listRef = useRef<HTMLDivElement>(null);
   // The Display menu's handle, shared with the shelf under the header: the
-  // shelf's text opens the menu through it, and on a pointer its ✕ parks
-  // focus on the trigger before the reset takes the shelf away. A ref rather
-  // than open state held here, so opening and closing the menu re-render the
-  // menu alone and not every row of this list.
+  // shelf's text opens the menu through it, and its ✕s park focus on the
+  // trigger before the last setting, or a reset, takes the shelf away. A ref
+  // rather than open state held here, so opening and closing the menu
+  // re-render the menu alone and not every row of this list.
   const displayRef = useRef<DisplayMenuHandle>(null);
 
   const { isOver, setNodeRef } = useDroppable({ id: 'sidebar' });
@@ -329,9 +329,9 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     return inactiveItemIdsOn(items, toDateStr(new Date(), tz), {
       userTimezone: tz,
       routines,
-      programs,
+      seasons,
     });
-  }, [items, routines, programs, userTimezone]);
+  }, [items, routines, seasons, userTimezone]);
 
   /**
    * The goal clause, resolved to item ids.
@@ -470,14 +470,14 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     const todayStr = toDateStr(new Date(), tz);
     // Grouped BY CAUSE rather than listed flat. With three layers able to hide
     // an item, a flat list of twelve rows can't tell you whether to resume an
-    // item, a routine or a program — and the heading is the only place to say
+    // item, a routine or a season — and the heading is the only place to say
     // so, because the row's trailing rail is width-budgeted down to the pixel
     // and has no slot to spend (see task-row.tsx's "quiet rail" note).
     const groups = new Map<string, PausedGroup>();
     for (const item of items) {
       if (!suppressedIds.has(item.id)) continue;
       if ('parentItemId' in item && item.parentItemId) continue;
-      const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, programs });
+      const reason = suppressionReason(item, todayStr, { userTimezone: tz, routines, seasons });
       // Self-paused items key on their RESUME DATE as well as the cause. The
       // heading is taken from whichever row lands in the bucket first, and
       // store order is sort_order/created_at — nothing to do with pause dates —
@@ -489,8 +489,8 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         ? 'paused'
         : reason.kind === 'routine'
           ? `routine:${reason.routine.id}`
-          : reason.kind === 'program'
-            ? `program:${reason.program.id}`
+          : reason.kind === 'season'
+            ? `season:${reason.season.id}`
             : `paused:${reason.until ?? ''}`;
       const row: RowItem =
         item.type === 'habit'
@@ -504,7 +504,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       else groups.set(key, { key, label: reason ? suppressionLabel(reason) : 'Paused', rows: [row] });
     }
     return [...groups.values()];
-  }, [items, suppressedIds, routines, programs, userTimezone]);
+  }, [items, suppressedIds, routines, seasons, userTimezone]);
 
   const pausedCount = pausedGroups.reduce((n, g) => n + g.rows.length, 0);
 
@@ -539,12 +539,12 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
             { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
           ].filter((g) => g.rows.length > 0)
-        : // routines/programs feed the gate values ('routine', 'program') and
+        : // routines/seasons feed the gate values ('routine', 'season') and
           // goals the aspire one; each is inert for the values it does not
           // answer, so passing all three always is harmless.
-          groupRows(rows, braindumpGroupBy, { routines, programs, goals });
+          groupRows(rows, braindumpGroupBy, { routines, seasons, goals });
     return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null, completedAs) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy, routines, programs, goals, completedAs]);
+  }, [rows, braindumpGroupBy, braindumpSortBy, routines, seasons, goals, completedAs]);
 
   const organizeButton = (
     <Button

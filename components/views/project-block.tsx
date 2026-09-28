@@ -2,6 +2,8 @@
 
 import { type MouseEvent as ReactMouseEvent } from 'react';
 import { useDraggable, useDroppable } from '@dnd-kit/core';
+import { ItemContextMenu } from '@/components/planner/item-context-menu';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import { Check, GripVertical, ChevronsRight, ArrowRight, Clock } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -78,36 +80,38 @@ function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; d
       >
         <GripVertical className="h-4 w-4" />
       </button>
-      <div
-        onClick={handleClick}
-        // No done-fade on this container — it would composite the lime check down
-        // with everything else, and 60% lime on the dark ramp is olive. The title
-        // carries the fade instead (below).
-        className={cn(
-          'flex flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition-colors',
-          // Selected keeps a latched wash, a notch above hover — the same
-          // --row-selected highlight the list rows use (reads over surface-3).
-          isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/70 hover-wash'
-        )}
-      >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            toggleTaskStatus(task.id, undefined, recurring ? blockDate : undefined);
-          }}
+      <ItemContextMenu item={task} date={blockDate}>
+        <div
+          onClick={handleClick}
+          // No done-fade on this container — it would composite the lime check down
+          // with everything else, and 60% lime on the dark ramp is olive. The title
+          // carries the fade instead (below).
           className={cn(
-            'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors',
-            done ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary'
+            'flex flex-1 cursor-pointer items-center gap-2 rounded-lg px-3 py-2 transition-colors',
+            // Selected keeps a latched wash, a notch above hover — the same
+            // --row-selected highlight the list rows use (reads over surface-3).
+            isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/70 hover-wash'
           )}
         >
-          {done && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-        </button>
-        <span
-          className={cn('flex-1 font-content text-content', done && 'text-muted-foreground line-through opacity-60')}
-        >
-          {task.title}
-        </span>
-      </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              toggleTaskStatus(task.id, undefined, recurring ? blockDate : undefined);
+            }}
+            className={cn(
+              'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded-full border-2 transition-colors',
+              done ? 'border-primary bg-primary' : 'border-muted-foreground/40 hover:border-primary'
+            )}
+          >
+            {done && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+          </button>
+          <span
+            className={cn('flex-1 font-content text-content', done && 'text-muted-foreground line-through opacity-60')}
+          >
+            {task.title}
+          </span>
+        </div>
+      </ItemContextMenu>
     </div>
   );
 }
@@ -192,18 +196,20 @@ export function ProjectBlock({
         className="absolute inset-y-0 left-0 w-[3px]"
         style={{ background: isOver ? 'var(--primary)' : projectColor }}
       />
-      <div className="mb-2 flex items-center gap-2">
-        <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4 flex-shrink-0" />
-        {/* Truncation is a no-op at day width; in a ~240px week column it is the
-            difference between "name pushes the time out of the clipped card" and
-            "name ellipsises, time stays". No sizing of its own. */}
-        <span className="min-w-0 truncate font-content text-content text-foreground">{project.name}</span>
-        <span className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
-          <Clock className="h-3 w-3" />
-          {project.startTime}
-          {project.duration ? ` · ${project.duration}m` : ''}
-        </span>
-      </div>
+      <ContainerContextMenu kind="project" id={project.id}>
+        <div className="mb-2 flex items-center gap-2">
+          <CategoryIcon glyph={project.emoji} name={project.name} className="h-4 w-4 flex-shrink-0" />
+          {/* Truncation is a no-op at day width; in a ~240px week column it is the
+              difference between "name pushes the time out of the clipped card" and
+              "name ellipsises, time stays". No sizing of its own. */}
+          <span className="min-w-0 truncate font-content text-content text-foreground">{project.name}</span>
+          <span className="flex flex-shrink-0 items-center gap-1 whitespace-nowrap text-xs text-muted-foreground">
+            <Clock className="h-3 w-3" />
+            {project.startTime}
+            {project.duration ? ` · ${project.duration}m` : ''}
+          </span>
+        </div>
+      </ContainerContextMenu>
 
       {/* Week caps the body and scrolls it — see the `variant` doc above. Day
           stays unbounded, exactly as before. Plain overflow-y-auto, not

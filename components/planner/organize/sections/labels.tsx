@@ -1,10 +1,13 @@
 'use client';
 
-import { useState } from 'react';
-import { ProjectTimeBlock } from '../project-time-block';
+import { useMemo, useState } from 'react';
+import { TimeBlockChip } from '../project-time-block';
+import { Trash2 } from 'lucide-react';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
+import { ColorChip } from '@/components/primitives/organizer-chips';
 import { BUILTIN_ITEM_TYPE_NAMES, ORGANIZER_TYPE_NAMES, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
-import { byName, matching } from '@/lib/collections';
+import { byName, matching, useToday } from '@/lib/collections';
 import { makeIconToken } from '@/lib/category-icons';
 import { ObjectRow, SettingRow } from '../primitives';
 import { heldByTrash, useTrashedNames } from '../use-trashed-names';
@@ -12,15 +15,33 @@ import type { TrashedName } from '@/lib/db';
 import {
   BackRow,
   BufferedInput,
+  BufferedTextarea,
   DangerZone,
   CreateForm,
   DetailColumn,
+  DetailHead,
   IdentityRow,
   ListColumn,
+  OpenAsPageLink,
   SectionWelcome,
+  TitleRow,
 } from '../detail-parts';
 import type { Item, ItemTypeDef, Project } from '@/lib/planner-types';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { containerMemberIds } from '@/lib/container-schedule';
+import {
+  UnscheduledTray,
+  useContainerSchedule,
+  useWeekDotsFor,
+  WeekProgress,
+} from '@/components/planner/schedule/schedule-views';
+import { ItemMemberList, MEMBER_ROW_TRAILING_PAD_WITH_MENU } from '../member-list';
+import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
+import { canBulkClearProject, canBulkSetProject } from '@/lib/bulk-edit';
+
+/** Projects never suppress, so nothing here is dimmed for activation. */
+const NOTHING_HIDDEN: ReadonlySet<string> = new Set();
 
 /**
  * PROJECTS and ITEM TYPES — the half of the console that came from
@@ -101,6 +122,11 @@ export function ProjectsSection({
               key={project.id}
               testId="project-row"
               idAttr={{ 'data-project-id': project.id }}
+              wrap={(row) => (
+                <ContainerContextMenu kind="project" id={project.id} inConsole>
+                  {row}
+                </ContainerContextMenu>
+              )}
               icon={project.emoji}
               color={project.color}
               name={project.name}
@@ -165,6 +191,24 @@ function ProjectDetail({
   const confirm = useUIStore((s) => s.confirm);
 
   const n = countProjectItems(items, project.name);
+  // Held BY NAME (items.project), folded as every project lookup is.
+  const projectMembers = useMemo(() => {
+    const ids = new Set(containerMemberIds({ kind: 'project', project }, items, []));
+    // Not subtasks: they carry their parent's project but no scheduling, and
+    // every row verb here would be wrong for one.
+    return items.filter((i) => ids.has(i.id) && !(i as { parentItemId?: string }).parentItemId);
+  }, [project, items]);
+  const memberIds = projectMembers.map((i) => i.id);
+  const setItemsProject = usePlannerStore((s) => s.setItemsProject);
+  const week = useWeekDotsFor(memberIds, undefined, { block: project });
+  const { todayStr } = useToday();
+  const { unscheduled } = useContainerSchedule(memberIds, todayStr, 1);
+  const controls = useMemberActions({
+    ownerName: project.name,
+    onRemove: (id) => setItemsProject([id], undefined),
+    removable: canBulkClearProject,
+    todayState: week.todayState,
+  });
 
   // THE SENTENCE MIRRORS `unfiled`, which is what removeProject actually runs.
   // Most items are simply unfiled; a type whose container is REQUIRED (a habit)
@@ -185,15 +229,45 @@ function ProjectDetail({
       : '') +
     ' ⌘Z brings it back now, and it stays in the Trash for 30 days.';
 
-  return (
-    <div className="flex flex-col" data-testid="project-detail" data-project-id={project.id}>
-      <BackRow label="Projects" testId="project-detail-back" onBack={onBack} />
+  const requestDelete = () =>
+    confirm({
+      title: `Delete “${project.name}”?`,
+      description: consequence,
+      confirmLabel: 'Delete',
+      testId: 'category-delete-confirm',
+      onConfirm: () => {
+        removeProject(project.id);
+        onBack();
+      },
+    });
 
-      <IdentityRow
+  return (
+    <div className="flex flex-col gap-4" data-testid="project-detail" data-project-id={project.id}>
+      {/* The pane head the other containers use (DetailHead): a path, the
+          open-as-page verb, and Delete in the ⋯ menu — a project goes to the
+          Trash and comes back from it, so it no longer needs a red zone. */}
+      <DetailHead
+        kind="Project"
+        color={project.color}
+        name={project.name}
+        testPrefix="project"
+        back={{ label: 'Projects', testId: 'project-detail-back', onBack }}
+        actions={<OpenAsPageLink href={`/project/${project.id}`} testId="project-open-page" />}
+        menu={[
+          {
+            label: 'Delete project',
+            icon: <Trash2 className="size-3.5" />,
+            testId: 'project-delete',
+            destructive: true,
+            onSelect: requestDelete,
+          },
+        ]}
+      />
+
+      <TitleRow
         id={project.id}
         name={project.name}
         icon={project.emoji}
-        color={project.color}
         label="Project"
         testPrefix="project"
         // Unparked by migration 027: items point at this project by ID now, and
@@ -206,11 +280,6 @@ function ProjectDetail({
         validate={(next) =>
           takenBy(projects, project.id, next, 'project') ??
           heldByTrash(trashed, next, 'project')
-        }
-        meta={
-          <>
-            Project · <span className="font-num">{n}</span> {n === 1 ? 'item' : 'items'}
-          </>
         }
         // The persisted canvas/braindump filters hold `project:<NAME>` and a
         // stale ref empties the view rather than degrading — but the remap is
@@ -225,27 +294,71 @@ function ProjectDetail({
         }
       />
 
-      <div className="bg-border my-4 h-px" />
+      <div className="flex flex-wrap items-center gap-1.5">
+        <ColorChip
+          value={project.color}
+          testId="project-color"
+          onChange={(color) => updateProject(project.id, { color })}
+        />
+        <TimeBlockChip project={project} />
+      </div>
 
-      <ProjectTimeBlock project={project} />
-
-      <DangerZone
-        label="Delete this project"
-        testId="project-delete"
-        consequence={consequence}
-        onDelete={() =>
-          confirm({
-            title: `Delete “${project.name}”?`,
-            description: consequence,
-            confirmLabel: 'Delete',
-            testId: 'category-delete-confirm',
-            onConfirm: () => {
-              removeProject(project.id);
-              onBack();
-            },
-          })
-        }
+      <BufferedTextarea
+        value={project.notes ?? ''}
+        onCommit={(next) => updateProject(project.id, { notes: next.trim() || undefined })}
+        placeholder="Add a note…"
+        ariaLabel="Project note"
+        testId="project-notes"
       />
+
+      <WeekProgress totals={week.weekTotals(memberIds)} testId="project-progress" />
+
+      <div className="mt-1.5 flex flex-col gap-4">
+        <ItemMemberList
+        openItems
+          label="Items"
+          ownerId={project.id}
+          ownerName={project.name}
+          memberIds={memberIds}
+          members={projectMembers}
+          hiddenIds={NOTHING_HIDDEN}
+          testPrefix="project"
+          lead={
+            projectMembers.length > 0 || week.blockRow(MEMBER_ROW_TRAILING_PAD_WITH_MENU) ? (
+              <>
+                {week.header(MEMBER_ROW_TRAILING_PAD_WITH_MENU)}
+                {week.blockRow(MEMBER_ROW_TRAILING_PAD_WITH_MENU)}
+              </>
+            ) : undefined
+          }
+          count={week.todayCount(memberIds)}
+          row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true, ...controls }}
+          removable={canBulkClearProject}
+          // What setItemsProject will actually accept, and nothing already
+          // filed elsewhere — linking would re-file it without a word.
+          eligible={(i) =>
+            canBulkSetProject(i) &&
+            !(i as { parentItemId?: string }).parentItemId &&
+            !(i as { project?: string }).project
+          }
+          pickerHint="Items not yet in a project."
+          emptyPoolLabel="Everything is already filed somewhere — move items from their own project."
+          // Membership is the item's own `project` field, so linking and
+          // removing are re-files — setItemsProject, which also brings a task
+          // out of the old block it was parked in.
+          onChange={(next) => {
+            const before = new Set(memberIds);
+            const after = new Set(next);
+            const added = next.filter((id) => !before.has(id));
+            const removed = memberIds.filter((id) => !after.has(id));
+            if (added.length) setItemsProject(added, project.name);
+            if (removed.length) setItemsProject(removed, undefined);
+          }}
+        />
+        <UnscheduledTray items={unscheduled} testId="project-unscheduled" />
+        <ContainerActivity members={projectMembers} testId="project-activity" />
+      </div>
+
     </div>
   );
 }
@@ -496,7 +609,7 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
  * would orphan every item of that type with no fan-out possible. The item-type
  * row edits `label`/`labelPlural` and leaves the slug alone.
  */
-function renameIconKey<K extends 'emoji' | 'icon'>(
+export function renameIconKey<K extends 'emoji' | 'icon'>(
   patch: { name?: string; icon?: string; color?: string },
   iconKey: K
 ): { color?: string } & Partial<Record<K, string>> {
@@ -525,7 +638,7 @@ function renameIconKey<K extends 'emoji' | 'icon'>(
  * self so that fixing the capitalisation of your own project is still allowed —
  * a rename to a different id is the collision, a rename to your own case is not.
  */
-function takenBy(
+export function takenBy(
   siblings: { id: string; name: string }[],
   selfId: string,
   next: string,

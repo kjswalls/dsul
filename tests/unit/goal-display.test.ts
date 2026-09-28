@@ -306,7 +306,7 @@ describe('a goal clause on the canvas day derivation', () => {
 describe('a goal never switches an item off', () => {
   it('leaves the activation resolver goal-blind, whatever the goal is doing', () => {
     // `inactiveItemIdsOn` is the one place suppression is decided, and its
-    // context carries routines and programs only — there is no goal channel to
+    // context carries routines and seasons only — there is no goal channel to
     // pass, by construction (lib/container-registry.ts's role seam). Asserted
     // at runtime as well as in the type, because "a goal you are behind on is
     // the last thing that should hide its work" is a product promise, not an
@@ -316,7 +316,7 @@ describe('a goal never switches an item off', () => {
     const inactive = inactiveItemIdsOn(items, DATE_STR, {
       userTimezone: TZ,
       routines: [],
-      programs: [],
+      seasons: [],
     });
 
     expect(inactive.size).toBe(0);
@@ -335,7 +335,7 @@ describe('a goal never switches an item off', () => {
   });
 
   it('gives a goal section no gate, so its heading has no switch', () => {
-    // The aspire role in one field. A routine/program section carries `gate`
+    // The aspire role in one field. A routine/season section carries `gate`
     // and its header renders a pause switch; a goal has nothing to switch.
     const out = groupRows([t('t1'), h('h1')], 'goal', {
       goals: [goal('g1', { memberIds: ['t1', 'h1'] })],

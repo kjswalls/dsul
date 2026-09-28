@@ -130,8 +130,9 @@ export function HeaderCapsule() {
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   // The Display menu's handle, shared with the shelf under the pill, as in the
-  // braindump: the shelf's text opens the menu through it, and its ✕ parks
-  // focus on the trigger before the reset takes the shelf away.
+  // braindump: the shelf's text opens the menu through it, and its ✕s park
+  // focus on the trigger before the last setting, or a reset, takes the shelf
+  // away.
   const displayRef = useRef<DisplayMenuHandle>(null);
 
   useEffect(() => {
@@ -269,7 +270,7 @@ export function HeaderCapsule() {
           the shelf would never stack — its fit needs its width from outside.
           Contained, the capsule keeps the width its two rows give it and the
           shelf takes that. px-4 puts the text under the Layout icon, and
-          pr-3.5 the ✕ under the Zen leaf, which the pill insets 14px (its
+          pr-3.5 the reset ✕ under the Zen leaf, which the pill insets 14px (its
           px-1.5, then half of what w-8 leaves around the 16px leaf); pt-1
           and pb-px keep the braindump's 8px above and 9px below. */}
       <DisplayShelf

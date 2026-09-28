@@ -47,7 +47,7 @@ export interface ExtensionManifest {
  * Everything else in this catalog is a peripheral: a heatmap, a burst of
  * confetti, six ways to reach out of the app. "The Weight of dsul" found the
  * registry was gating only those, so a brand-new account arrived holding the
- * entire conceptual model — goals, programs, routines, two rituals and a
+ * entire conceptual model — goals, seasons, routines, two rituals and a
  * twelve-section console — on day one. These two are the first half of the
  * answer, and they are the two the audit named as safest to cut first: goals
  * were built as a role that deliberately reaches nothing downstream, and the
@@ -138,7 +138,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     slug: EXT_ORGANIZE,
     name: 'Organize console',
     description:
-      'One console for bulk container management — routines, programs, projects, item types, habit groups and the trash.',
+      'One console for bulk container management — routines, seasons, projects, item types, habit groups and the trash.',
     icon: FolderCog,
     category: 'planning',
     // Defaults ON since the console was made approachable (2026-08-28): a warm

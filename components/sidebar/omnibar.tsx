@@ -151,7 +151,7 @@ export function Omnibar({
     getProjectEmoji,
     userTimezone,
     routines,
-    programs,
+    seasons,
     goals,
     animationsEnabled,
   } = usePlannerStore();
@@ -586,23 +586,33 @@ export function Omnibar({
    * Launcher only: a lime "↵ verb" pill previewing what Enter does on the
    * HIGHLIGHTED row. Hidden until the row is cmdk-selected (via group-data on the
    * CommandItem, which carries `group` + `data-selected`), so exactly one is ever
-   * lit — the accent spent once, on the active row. Returns null in the dock,
-   * which keeps its plain right-aligned key hints. The `ml-auto` right-aligns it;
-   * where a row also has a CommandShortcut, the pill sits just left of it.
+   * lit — the accent spent once, on the active row. Renders nothing in the dock,
+   * which keeps its plain right-aligned key hints.
+   *
+   * The pill is always the LAST thing in the row, inside one `ml-auto` trailing
+   * slot that also holds the row's hint (shortcut, "Paused", goal state). It
+   * used to carry its own `ml-auto` beside the hint's, and flex splits free
+   * space between auto margins — so the pill floated mid-row at a spot set by
+   * the title's length. One auto margin pins its right edge to the row's.
    * `leading-none` keeps it shorter than the row's 17px line: with the inherited
    * line-height it measured 21px and grew the highlighted row by 4px on hover.
    */
-  const enterPill = (verb: string) =>
-    isLauncher ? (
-      <span
-        aria-hidden
-        data-testid="omnibar-enter-pill"
-        className="ml-auto hidden items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] leading-none font-medium text-primary-foreground group-data-[selected=true]:inline-flex"
-      >
-        <CornerDownLeft className="size-3" />
-        {verb}
+  const trailing = (verb: string, hint?: ReactNode) =>
+    !isLauncher && !hint ? null : (
+      <span className="ml-auto flex shrink-0 items-center gap-2">
+        {hint}
+        {isLauncher && (
+          <span
+            aria-hidden
+            data-testid="omnibar-enter-pill"
+            className="hidden items-center gap-1 rounded-full bg-primary px-2 py-0.5 text-[11px] leading-none font-medium text-primary-foreground group-data-[selected=true]:inline-flex"
+          >
+            <CornerDownLeft className="size-3" />
+            {verb}
+          </span>
+        )}
       </span>
-    ) : null;
+    );
 
   const renderCommandRow = (row: CommandRow) => {
     const Icon = row.arg?.icon ?? row.command.icon;
@@ -636,11 +646,13 @@ export function Omnibar({
           {row.label}
           {needsArgument && <span className="text-muted-foreground">…</span>}
         </span>
-        {enterPill('run')}
-        {hint && (
-          <CommandShortcut className={cn(!keyHint && 'font-mono tracking-normal')}>
-            {hint}
-          </CommandShortcut>
+        {trailing(
+          'run',
+          hint && (
+            <CommandShortcut className={cn(!keyHint && 'font-mono tracking-normal')}>
+              {hint}
+            </CommandShortcut>
+          ),
         )}
       </CommandItem>
     );
@@ -892,7 +904,7 @@ export function Omnibar({
                             '…'
                           )}
                         </span>
-                        {enterPill('ask')}
+                        {trailing('ask')}
                       </CommandItem>
                     </CommandGroup>
                   )}
@@ -917,11 +929,13 @@ export function Omnibar({
                         >
                           <Target className="size-4 shrink-0" />
                           <span className="truncate">{goal.name}</span>
-                          {enterPill('open')}
-                          {goal.state !== 'active' && (
-                            <span className="text-muted-foreground ml-auto text-[11px]">
-                              {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
-                            </span>
+                          {trailing(
+                            'open',
+                            goal.state !== 'active' && (
+                              <span className="text-muted-foreground text-[11px]">
+                                {goal.state === 'achieved' ? 'Achieved' : 'Set aside'}
+                              </span>
+                            ),
                           )}
                         </CommandItem>
                       ))}
@@ -949,7 +963,7 @@ export function Omnibar({
                         const paused = !!suppressionReason(item, searchTodayStr, {
                           userTimezone: searchTz,
                           routines,
-                          programs,
+                          seasons,
                         });
                         return (
                           <CommandItem
@@ -988,8 +1002,7 @@ export function Omnibar({
                             </span>
                             {/* Short on purpose: the panel is ~320px and the
                                 title truncates against it. */}
-                            {enterPill('open')}
-                            {paused && <CommandShortcut>Paused</CommandShortcut>}
+                            {trailing('open', paused && <CommandShortcut>Paused</CommandShortcut>)}
                           </CommandItem>
                         );
                       })}
@@ -1027,7 +1040,7 @@ export function Omnibar({
                               '…'
                             )}
                           </span>
-                          {enterPill('add')}
+                          {trailing('add')}
                         </CommandItem>
                       )}
                       {commandRows.map(renderCommandRow)}
@@ -1045,7 +1058,7 @@ export function Omnibar({
                               '…'
                             )}
                           </span>
-                          {enterPill('ask')}
+                          {trailing('ask')}
                         </CommandItem>
                       )}
                       {isCommandMode && commandRows.length === 0 && (

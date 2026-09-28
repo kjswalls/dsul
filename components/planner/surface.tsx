@@ -72,6 +72,7 @@ export function SurfaceRoot({
 
 export function SurfaceContent({
   panel,
+  inline = false,
   open,
   flat,
   panelLabel,
@@ -81,6 +82,8 @@ export function SurfaceContent({
   ...props
 }: ComponentProps<typeof ResponsiveModalContent> & {
   panel: boolean;
+  /** Laid into a page's flow (/item/[id]): no width, no card, no scroll box. */
+  inline?: boolean;
   open: boolean;
   /** Docked on the backdrop (shell column) vs floating as an overlay card
    *  (the /item page). Flat drops the card chrome; floating keeps it. */
@@ -115,7 +118,9 @@ export function SurfaceContent({
         //    column clips (overflow-hidden) for its width animation, which would
         //    eat an outer cast.
         className={
-          flat
+          inline
+            ? 'flex w-full min-w-0 flex-col outline-none'
+            : flat
             ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
             : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'
         }
@@ -182,13 +187,13 @@ export function EnterHint({ verb }: { verb: string }) {
 // ── The type menu ────────────────────────────────────────────────────────────
 
 /** The organizers in menu order: the aspiration, the two gates, the label. */
-export const ORGANIZER_KINDS: readonly NewContainerKind[] = ['goal', 'routine', 'program', 'project'];
+export const ORGANIZER_KINDS: readonly NewContainerKind[] = ['goal', 'routine', 'season', 'project'];
 
 /** Each organizer's console section — the Open / Add & open destination. */
-export const ORGANIZER_SECTION: Record<NewContainerKind, 'goals' | 'routines' | 'programs' | 'projects'> = {
+export const ORGANIZER_SECTION: Record<NewContainerKind, 'goals' | 'routines' | 'seasons' | 'projects'> = {
   goal: 'goals',
   routine: 'routines',
-  program: 'programs',
+  season: 'seasons',
   project: 'projects',
 };
 
@@ -209,7 +214,7 @@ export function OrganizerGlyph({ kind, className }: { kind: NewContainerKind; cl
 const ORGANIZER_HINT: Record<NewContainerKind, string> = {
   goal: 'Something to reach',
   routine: 'A run of habits',
-  program: 'A season',
+  season: 'A stretch of life',
   project: 'A home for work',
 };
 
@@ -229,7 +234,7 @@ export function useOrganizerGates(): Record<NewContainerKind, boolean> {
   return {
     goal: goalsOn && goalsAvailable,
     routine: collections,
-    program: collections,
+    season: collections,
     project: true,
   };
 }

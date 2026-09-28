@@ -23,7 +23,7 @@ import { useConsoleHost } from '@/lib/console-door';
 import { KeyCap } from './primitives';
 import { useEscapeLadder } from './escape-ladder';
 import { RoutinesSection } from './sections/routines';
-import { ProgramsSection } from './sections/programs';
+import { SeasonsSection } from './sections/seasons';
 import { GoalsSection } from './sections/goals';
 import { ProjectsSection, TypesSection } from './sections/labels';
 import { OverviewSection } from './sections/overview';
@@ -51,10 +51,16 @@ import { cn } from '@/lib/utils';
  * adding `/organize` later is an additive PR that renders this same tree rather
  * than a rebuild. Buy the URL when the URL is wanted.
  *
- * GEOMETRY — 938 × 640, fixed aspect, sized from the columns up:
- *   rail 180 | 1px | list 300 | 1px | detail 456   = 938
- *   header 48 + body 560 + footer 32               = 640
- * It needs a 1002×720 viewport, so it fits 1280×800 with 278×80 to spare. Fixed
+ * GEOMETRY — 1082 × up to 820, sized from the columns up:
+ *   rail 180 | 1px | list 300 | 1px | detail 600   = 1082
+ *   header 48 + body 740 + footer 32               = 820 (was 640)
+ * The height is still FIXED per viewport — it never changes on a section
+ * change — but takes up to 820 of it (min with 100vh − 80), so a goal with a
+ * timeline and three lists reads without a scroll on an ordinary laptop.
+ * The detail column grew from 456 when member rows gained week dots and a
+ * wider control rail: at 456 a title kept ~64px. It needs a 1146×720 viewport,
+ * so it fits 1280×800 with 134×80 to spare; narrower, the plate shrinks with
+ * the window and the detail column (flex-1) gives up the difference. Fixed
  * is the point: the frame never resizes on a section change, which is the
  * loudest un-premium tell in both dialogs it replaces.
  *
@@ -158,7 +164,7 @@ export function OrganizeConsole({
     // would open whatever row happened to share an index, which reads as the
     // console losing its place.
     setSelectedId(null);
-    // Nor does a half-written new one: arriving in Programs still offering to
+    // Nor does a half-written new one: arriving in Seasons still offering to
     // name a routine is the same lost-place bug wearing a form.
     setCreating(false);
   }, []);
@@ -170,8 +176,8 @@ export function OrganizeConsole({
    * Clearing the selection is right for the rail, where a section change means
    * "show me the projects" and carrying an id across would open whatever row
    * shared an index. Here the id is the entire point of the move: the routine
-   * detail's reverse view is naming a specific program, and landing on the
-   * Programs list with nothing selected would make the user find it again.
+   * detail's reverse view is naming a specific season, and landing on the
+   * Seasons list with nothing selected would make the user find it again.
    *
    * Not routed through `onValueChange` — that would clear the id on the way past.
    */
@@ -273,11 +279,11 @@ export function OrganizeConsole({
         className={cn(
           // The stock DialogContent base is `grid gap-4 rounded-lg border p-6
           // shadow-lg duration-200 zoom-95 max-w-[calc(100%-2rem)] sm:max-w-lg`
-          // and every one of those fights a number below. zoom-95 on a 938px
-          // plate is a 47px lurch.
+          // and every one of those fights a number below. zoom-95 on a 1082px
+          // plate is a 54px lurch.
           'flex flex-col gap-0 overflow-hidden p-0',
-          'w-[min(938px,calc(100vw-64px))] max-w-none sm:max-w-none',
-          'h-[min(640px,calc(100vh-80px))]',
+          'w-[min(1082px,calc(100vw-64px))] max-w-none sm:max-w-none',
+          'h-[min(820px,calc(100vh-80px))]',
           'bg-modal border-border rounded-[20px] border',
           'shadow-[var(--shadow-elev-plate)]',
           'duration-150 data-[state=open]:zoom-in-[0.98] data-[state=closed]:zoom-out-[0.98]'
@@ -288,7 +294,7 @@ export function OrganizeConsole({
             Organize
           </ResponsiveModalTitle>
           <ResponsiveModalDescription className="sr-only">
-            Your routines, programs, projects and item types — and anything
+            Your routines, seasons, projects and item types — and anything
             you&apos;ve deleted in the last 30 days.
           </ResponsiveModalDescription>
           {/* Ours, on the header band's baseline, rather than the stock close
@@ -323,7 +329,11 @@ export function OrganizeConsole({
               value={s.id}
               // A tabpanel that is the flex row itself, so the list and detail
               // columns are its children rather than nested one level deeper.
-              className="flex min-h-0 flex-1 data-[state=inactive]:hidden"
+              // min-w-0: a flex item's floor is otherwise its content's
+              // min-content width, and one wide row in the detail pane then
+              // widened the whole panel past the plate, clipping the pane's
+              // right edge (its buttons, toggles and pills) under overflow-hidden.
+              className="flex min-h-0 min-w-0 flex-1 data-[state=inactive]:hidden"
             >
               <SectionBody
                 section={s.id}
@@ -407,7 +417,7 @@ function SectionBody({
   section: ConsoleSection;
   selectedId: string | null;
   onSelect: (id: string | null) => void;
-  /** Jump to another section AND select something in it. See ProgramHolders. */
+  /** Jump to another section AND select something in it. See SeasonHolders. */
   onNavigate: (section: ConsoleSection, id: string) => void;
   /** The detail pane is holding this section's create form. */
   creating: boolean;
@@ -431,13 +441,13 @@ function SectionBody({
       <RoutinesSection
         selectedId={selectedId}
         onSelect={onSelect}
-        onOpenProgram={(id) => onNavigate('programs', id)}
+        onOpenSeason={(id) => onNavigate('seasons', id)}
         {...make}
       />
     );
   }
-  if (section === 'programs') {
-    return <ProgramsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
+  if (section === 'seasons') {
+    return <SeasonsSection selectedId={selectedId} onSelect={onSelect} {...make} />;
   }
   if (section === 'goals') {
     return <GoalsSection selectedId={selectedId} onSelect={onSelect} {...make} />;

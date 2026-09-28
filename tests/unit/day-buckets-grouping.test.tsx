@@ -44,7 +44,7 @@ vi.mock('@/lib/db', () => ({
   deleteItem: vi.fn(async () => {}),
   setItemCompletion: vi.fn(async () => {}),
   fetchRoutines: vi.fn(async () => []),
-  fetchPrograms: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
@@ -113,7 +113,7 @@ function seed(canvasGroupBy: GroupBy) {
       { id: 'g1', name: 'Health', emoji: '💚' },
     ],
     routines: [],
-    programs: [],
+    seasons: [],
     showCompletedTasks: true,
     showPausedOnGrid: true,
   });

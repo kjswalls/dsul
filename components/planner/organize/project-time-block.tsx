@@ -15,13 +15,15 @@ import { WEEKDAY_LABELS } from '@/lib/planner-types';
 import { Segmented, SegmentedOption, SettingRow } from './primitives';
 import { BufferedInput } from './detail-parts';
 import { cn } from '@/lib/utils';
+import { PropertyChip } from '@/components/primitives/property-chip';
+import { blockWhen, hasTimeBlock } from '@/lib/project-block';
 import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
 
 /**
  * A project's repeating block on the grid.
  *
  * ABSORBED FROM EditProjectDialog, which is deleted in the same commit — it was
- * a 425px modal opened from inside a 938px modal, and the only thing it did that
+ * a 425px modal opened from inside a 938px (now 1082px) modal, and the only thing it did that
  * the detail pane cannot is offer a Cancel.
  *
  * THE SAVE CONTRACT CHANGED, deliberately. That dialog buffered EVERYTHING
@@ -51,6 +53,18 @@ const REPEATS: { value: RepeatFrequency; label: string }[] = [
   { value: 'monthly', label: 'Monthly' },
   { value: 'custom', label: 'Chosen days' },
 ];
+
+/**
+ * "Every day · 6pm–7pm" — the block in one line, for the console chip and the
+ * project page alike so the two cannot word it differently. Undefined when
+ * there is no block: day-items' own rule (lib/project-block.ts) — a row
+ * missing its repeat draws on no day, so it must not read "Every day".
+ */
+export function timeBlockSummary(project: Project): string | undefined {
+  if (!hasTimeBlock(project)) return undefined;
+  const repeat = REPEATS.find((r) => r.value === project.repeatFrequency)?.label ?? project.repeatFrequency;
+  return `${repeat} · ${blockWhen(project)}`;
+}
 
 /**
  * `none` is absent on purpose. A block with no repeat renders on no day —
@@ -322,3 +336,28 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
 
 const bucketDefault = (bucket: TimeBucket) =>
   BUCKETS.find((b) => b.value === bucket)?.defaultTime ?? '05:00';
+
+/**
+ * The block as a property chip in the pane's chip row — "Weekdays · 6–7pm",
+ * or "＋ Time block" when there is none — opening the same controls
+ * (ProjectTimeBlock) in its popover. The block is a property of the project,
+ * so it sits with the others rather than as a settings section of its own.
+ */
+export function TimeBlockChip({ project }: { project: Project }) {
+  const value = timeBlockSummary(project);
+  return (
+    <PropertyChip
+      label="＋ Time block"
+      value={value}
+      ariaLabel={value ? `Time block: ${value}` : 'Add a time block'}
+      testId="project-time-block-chip"
+      contentClassName="w-[22rem] p-3"
+    >
+      {() => (
+        <div className="flex flex-col gap-1">
+          <ProjectTimeBlock project={project} />
+        </div>
+      )}
+    </PropertyChip>
+  );
+}

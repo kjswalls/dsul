@@ -24,7 +24,7 @@ vi.mock('@/lib/db', () => ({
   fetchProjects: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   fetchRoutines: vi.fn(async () => []),
-  fetchPrograms: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
@@ -94,7 +94,7 @@ function seed(view: ViewSeed = {}, planner: PlannerSeed = {}) {
       { id: 'p2', name: 'Home', emoji: '🏠' },
     ],
     routines: [],
-    programs: [],
+    seasons: [],
     goals: GOALS,
     goalsAvailable: true,
     showPausedOnGrid: false,
@@ -125,6 +125,7 @@ const shelf = () => screen.getByTestId('display-shelf-canvas');
 const queryShelf = () => screen.queryByTestId('display-shelf-canvas');
 const opener = () => screen.getByTestId('display-shelf-open-canvas');
 const resetX = () => screen.getByTestId('display-shelf-reset-canvas');
+const removeXs = () => screen.queryAllByTestId('display-shelf-remove-canvas');
 const trigger = () => screen.getByTestId('display-trigger-canvas');
 
 /**
@@ -203,7 +204,8 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   it('is the capsule’s third row, contained, with no floor and pointer-sized targets', () => {
-    seed({ canvasGroupBy: 'project' });
+    // Two settings, so the reset ✕ is drawn beside the two settings' own.
+    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
     const { container } = renderCapsule();
     const capsule = container.firstElementChild!;
 
@@ -225,6 +227,8 @@ describe('the desktop mount, under the view pill', () => {
     expect(shelf().style.minWidth).toBe('');
     expect(opener()).not.toHaveClass('before:absolute');
     expect(resetX()).not.toHaveClass('before:absolute');
+    expect(removeXs()).toHaveLength(2);
+    for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
   });
 
   it('goes when the last setting does, and the capsule is back to two rows', () => {
@@ -244,9 +248,14 @@ describe('the desktop mount, under the view pill', () => {
     const type = shelf().querySelector('[data-clause="type"]')!;
     expect(type).toHaveTextContent(/^Showing Tasks$/);
     // The lead is muted as "Grouped by" is, so the value reads as the menu's row.
-    expect(type.firstElementChild).toHaveTextContent(/^Showing$/);
-    expect(type.firstElementChild).toHaveClass('text-muted-foreground');
+    const lead = type.querySelector('[data-chip-label]')!.firstElementChild;
+    expect(lead).toHaveTextContent(/^Showing$/);
+    expect(lead).toHaveClass('text-muted-foreground');
     expect(shelf().querySelector('[data-clause="group"]')).toHaveTextContent(/^Grouped by Project$/);
+    // Its ✕ says the same words.
+    expect(within(type as HTMLElement).getByTestId('display-shelf-remove-canvas')).toHaveAccessibleName(
+      'Remove Showing Tasks'
+    );
   });
 
   it('opens the canvas menu from its text, and Escape brings focus back to the text', async () => {
@@ -306,7 +315,7 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   it('hands focus to the Display trigger before the reset takes the shelf away', () => {
-    seed({ canvasGroupBy: 'project' });
+    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
     renderCapsule();
     // BEFORE: React batches the reset's re-render past the handler either
     // way, so only what the trigger sees as focus lands can tell the order.
@@ -325,14 +334,51 @@ describe('the desktop mount, under the view pill', () => {
     expect(setWhenFocused).toBe('project');
   });
 
-  it('names its ✕ in a tooltip on a pointer, and never with a native title', async () => {
+  it('takes one canvas setting off with its own ✕, and leaves the braindump alone', () => {
+    seed({
+      canvasGroupBy: 'project',
+      canvasFilters: filters({ priorities: ['high', 'low'] }),
+      braindumpGroupBy: 'project',
+      braindumpFilters: filters({ priorities: ['high'] }),
+    });
+    renderCapsule();
+    const high = removeXs().find((x) => x.getAttribute('aria-label') === 'Remove Priority: High')!;
+
+    fireEvent.click(high);
+
+    const v = useViewStore.getState();
+    expect(v.canvasFilters.priorities).toEqual(['low']);
+    expect(v.canvasGroupBy).toBe('project');
+    expect(v.braindumpFilters.priorities).toEqual(['high']);
+    expect(v.braindumpGroupBy).toBe('project');
+    // Focus went on to the next ✕ before this one left.
+    expect(document.activeElement).toHaveAccessibleName('Remove Priority: Low');
+  });
+
+  it('hands focus to the Display trigger when the last setting goes by its ✕', () => {
     seed({ canvasGroupBy: 'project' });
     renderCapsule();
-    expect(resetX()).not.toHaveAttribute('title');
+    const [only] = removeXs();
+    only.focus();
 
-    fireEvent.pointerEnter(resetX());
-    fireEvent.pointerMove(resetX());
-    expect(await screen.findByRole('tooltip')).toHaveTextContent('Reset display');
+    fireEvent.click(only);
+
+    expect(queryShelf()).toBeNull();
+    // Not <body>: the capsule handed the shelf the menu's ref.
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it.each([
+    { name: 'reset', x: () => resetX(), tip: 'Reset display' },
+    { name: 'per-setting', x: () => removeXs()[0], tip: 'Remove' },
+  ])('names its $name ✕ in a tooltip on a pointer, and never with a native title', async ({ x, tip }) => {
+    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    renderCapsule();
+    expect(x()).not.toHaveAttribute('title');
+
+    fireEvent.pointerEnter(x());
+    fireEvent.pointerMove(x());
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
   });
 
   it('has nothing that can fade a lime glyph between it and the capsule', () => {
@@ -352,7 +398,7 @@ describe('the phone mount, at the foot of the Today card', () => {
   });
 
   it('sits last in the card, under the week strip, with touch targets and no floor', () => {
-    seed({ canvasGroupBy: 'project' });
+    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
     renderPhoneHeader();
 
     // Last, so the date row, its week and the review notice about that date
@@ -369,9 +415,15 @@ describe('the phone mount, at the foot of the Today card', () => {
     expect(shelf()).toHaveClass('px-0', 'pt-0', 'pb-px');
     expect(shelf()).not.toHaveClass('contain-inline-size');
     expect(shelf().style.minWidth).toBe('');
-    // A 28px text on a thumb's surface, and no ✕ pressed up against it.
+    // 28px targets on a thumb's surface, as the Braindump tab's: the text and
+    // the reset ✕ reach 5px above and below, and each setting's ✕ is 25 × 28px,
+    // reaching only the 4px gap toward its words.
     expect(opener()).toHaveClass('before:absolute', 'before:-inset-y-[5px]');
-    expect(screen.queryByTestId('display-shelf-reset-canvas')).toBeNull();
+    expect(resetX()).toHaveClass('before:absolute', 'before:-inset-x-[6px]', 'before:-inset-y-[5px]');
+    expect(removeXs()).toHaveLength(2);
+    for (const x of removeXs()) {
+      expect(x).toHaveClass('w-3.5', 'before:absolute', 'before:-left-1', 'before:-right-[7px]', 'before:-inset-y-[5px]');
+    }
   });
 
   it('comes after the review notice while one is owed, so the date keeps its cluster', () => {

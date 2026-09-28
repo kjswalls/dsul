@@ -27,8 +27,8 @@ export type {
   Project,
   HabitGroupType,
   Routine,
-  Program,
-  ProgramState,
+  Season,
+  SeasonState,
   Goal,
   GoalState,
   GoalRole,
@@ -56,7 +56,7 @@ export type GroupBy =
   | 'priority'
   | 'bucket'
   | 'routine'
-  | 'program'
+  | 'season'
   | 'goal';
 
 export const GROUP_BY_VALUES: readonly GroupBy[] = [
@@ -65,7 +65,7 @@ export const GROUP_BY_VALUES: readonly GroupBy[] = [
   'priority',
   'bucket',
   'routine',
-  'program',
+  'season',
   'goal',
 ];
 

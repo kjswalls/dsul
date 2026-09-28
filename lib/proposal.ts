@@ -24,7 +24,7 @@ export interface ProposalContext {
   customTypeNames: string[]
   /**
    * Ids suppressed today (lib/active.ts `inactiveItemIdsOn`) — work paused by a
-   * routine or a program window. Optional here because most proposal work does
+   * routine or a season window. Optional here because most proposal work does
    * not need it, but `buildCatchUpProposal` REQUIRES it: offering to drag
    * deliberately-paused work back into today is the app arguing with a decision
    * the user already made.

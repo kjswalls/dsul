@@ -191,7 +191,7 @@ describe('groupRows — the bucket axis', () => {
 describe('groupRows — the aspire axis', () => {
   /**
    * A goal is many-to-many, so it is NOT a partition — the same shape routines
-   * and programs have, and these cases are deliberately the routine cases with
+   * and seasons have, and these cases are deliberately the routine cases with
    * a goal in them. The rule is first-claim-wins, borrowed rather than invented:
    * rendering a row under each of its goals is two checkboxes for one
    * obligation, and the second copy is a row shift-range and ⌘A silently skip.
@@ -288,10 +288,10 @@ describe('groupRows — the contract every caller depends on', () => {
     t('t2', { priority: 'high' }),
     t('t3', { project: 'Work' }),
   ];
-  const values: GroupBy[] = ['none', 'project', 'priority', 'bucket', 'routine', 'program', 'goal'];
+  const values: GroupBy[] = ['none', 'project', 'priority', 'bucket', 'routine', 'season', 'goal'];
   // A goal that claims SOME of the rows, so the 'goal' sweep exercises both a
   // real section and the loose bucket rather than one trivial group.
-  const ctx = { routines: [], programs: [], goals: [goal('g1', { memberIds: ['h1', 't2'] })] };
+  const ctx = { routines: [], seasons: [], goals: [goal('g1', { memberIds: ['h1', 't2'] })] };
 
   it('never loses a row and never renders one twice', () => {
     for (const value of values) {

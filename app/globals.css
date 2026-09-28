@@ -720,10 +720,11 @@
      than staying the same colour it had while floating. */
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
 
-  /* Launcher input's leading-glyph tile — a dark chip with a white mark, kept
-     dark in BOTH themes (the summoned card's one spot of deliberate chrome). */
-  --omni-tile: oklch(0.28 0.012 272);
-  --omni-tile-ink: oklch(0.98 0 0);
+  /* Launcher input's leading-glyph tile — the summoned card's one spot of
+     deliberate chrome, drawn as the theme's inverse: a pale chip with a dark
+     mark here, a dark chip with a light mark in .dark. */
+  --omni-tile: oklch(0.93 0.006 272);
+  --omni-tile-ink: oklch(0.28 0.012 272);
 
   /* Body panel. The elev family is all vertical offsets (0 x), so nothing ever
      falls on the sidebar sitting to the panel's left — the edge where the two
@@ -969,7 +970,7 @@
 
   --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
 
-  /* Launcher tile — slightly below the card so the white mark reads (see :root). */
+  /* Launcher tile — slightly below the card so the light mark reads (see :root). */
   --omni-tile: oklch(0.20 0.006 286);
   --omni-tile-ink: oklch(0.96 0.002 286);
 
@@ -1802,6 +1803,36 @@ body {
     animation: none;
     opacity: 0.38;
   }
+}
+
+/* ── Zen transition (components/zen/zen-stage.tsx) ─────────────────────
+   Two pieces that only exist for the second the switch takes.
+
+   The FROST BAND is a sheet of frosted glass that rides just ahead of the
+   RelayField ring: the stage re-masks it every frame to an annulus from the
+   ring outward, so the outgoing surface softens a beat before the tiles reach
+   it and nothing inside the reveal is frosted. The same weather as the room's
+   own frost, which is why it carries a whisper of lime mixed toward
+   transparent rather than faded. Masked shut until the first frame writes it.
+
+   The TRACE is the item's outline carrying it between its block and the
+   hero. Full-strength lime, and it leaves by a clip wiping it away — never
+   by opacity, which would composite the accent to olive. */
+.zen-transition-frost {
+  background: color-mix(
+    in oklab,
+    color-mix(in oklab, var(--lime-solid) 10%, var(--surface-0)) 38%,
+    transparent
+  );
+  -webkit-backdrop-filter: blur(14px) saturate(1.25);
+  backdrop-filter: blur(14px) saturate(1.25);
+  -webkit-mask-image: linear-gradient(transparent, transparent);
+  mask-image: linear-gradient(transparent, transparent);
+}
+
+.zen-trace {
+  border: 1.5px solid var(--lime-solid);
+  box-shadow: 0 0 18px color-mix(in oklab, var(--lime-solid) 40%, transparent);
 }
 
 [data-reduce-motion='true'] .zen-frost-a,

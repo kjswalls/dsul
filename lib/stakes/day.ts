@@ -73,7 +73,7 @@ export function settleDay(
     const born = createdOn(item.id)
     if (born !== undefined && born > dateStr) continue
     if (!occursOn(item, dateStr, ctx.userTimezone)) continue
-    // A suppressed day is not a missed day. Pausing a habit — or the program
+    // A suppressed day is not a missed day. Pausing a habit — or the season
     // that holds it — is a decision the user made, and billing them for it
     // would make the pause button cost money.
     if (!isItemActiveOn(item, dateStr, ctx)) continue

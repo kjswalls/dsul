@@ -53,7 +53,7 @@ beforeEach(() => {
   usePlannerStore.setState({
     items: [],
     routines: [{ id: 'r1', name: 'Morning', itemIds: [] }],
-    programs: [],
+    seasons: [],
     projects: [],
     itemTypes: [],
     collectionsAvailable: true,

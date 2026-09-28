@@ -22,7 +22,7 @@
  *
  * WHAT IS DELIBERATELY NOT AN INPUT: planner-store's `isLoading`. That flag
  * covers `initializeStore`'s seven-table fetch — items, projects, habit
- * groups, item types, routines, programs, goals — none of which this route
+ * groups, item types, routines, seasons, goals — none of which this route
  * reads (every `planner()` read in lib/settings/manifest.ts is a settings
  * FIELD). Waiting on it put the entire item load on the critical path of a
  * page that shows no items, and it is not even a conservative choice: as

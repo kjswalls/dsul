@@ -1266,7 +1266,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: extensionPaneId(EXT_ORGANIZE),
     label: 'Organize console',
     description:
-      'The console for routines, programs, projects, item types, habit groups and recently deleted. Switching it off closes the console; nothing in it is deleted.',
+      'The console for routines, seasons, projects, item types, habit groups and recently deleted. Switching it off closes the console; nothing in it is deleted.',
     control: 'switch',
     keywords: ['organize', 'organise', 'console', 'manage', 'containers', 'trash', 'bulk'],
     unavailable: extUnavailable,
@@ -1401,12 +1401,12 @@ export const DESTINATIONS: DestinationRecord[] = [
     section: 'routines',
   },
   {
-    id: 'dest.programs',
-    label: 'Programs',
+    id: 'dest.seasons',
+    label: 'Seasons',
     where: 'Organize',
-    keywords: ['program', 'plan', 'course', 'block', 'season'],
+    keywords: ['season', 'program', 'plan', 'course', 'block'],
     action: 'organize',
-    section: 'programs',
+    section: 'seasons',
   },
   {
     id: 'dest.goals',

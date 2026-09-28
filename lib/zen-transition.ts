@@ -17,9 +17,6 @@ export const ZEN_WAVE_MS = 1000;
 /** Width of the lit ring, as a fraction of the distance it travels. */
 export const ZEN_BAND_FRAC = 0.22;
 
-/** The share of the timeline the item spends lifting before it travels. */
-export const ZEN_LIFT_SHARE = 0.16;
-
 export function clamp01(n: number): number {
   return n < 0 ? 0 : n > 1 ? 1 : n;
 }
@@ -68,17 +65,19 @@ export function tilePhase(front: number, d: number, band: number): number | null
 }
 
 /**
- * The item's flight: a short lift in place, then an eased travel to its
- * destination. `lift` peaks mid-lift and settles to a held 1 for the travel,
- * so the item stays raised until it lands.
+ * The outline trace: the item's lime outline glides from its block to frame
+ * the hero over the first four fifths, the leaving title fades in the first
+ * quarter, the arriving one fades up as the outline lands, and the outline
+ * is wiped away over the last beat (`stroke` is how much of it remains).
  */
-export function flightAt(t: number): { lift: number; travel: number } {
+export function traceAt(t: number): { travel: number; out: number; in: number; stroke: number } {
   const c = clamp01(t);
-  if (c < ZEN_LIFT_SHARE) return { lift: easeOutCubic(c / ZEN_LIFT_SHARE), travel: 0 };
-  const travel = easeInOutCubic((c - ZEN_LIFT_SHARE) / (1 - ZEN_LIFT_SHARE));
-  // Settles back down over the last fifth, so it lands rather than drops.
-  const lift = travel > 0.8 ? 1 - (travel - 0.8) / 0.2 : 1;
-  return { lift, travel };
+  return {
+    travel: easeInOutCubic(clamp01(c / 0.8)),
+    out: easeOutCubic(clamp01(c / 0.25)),
+    in: easeOutCubic(clamp01((c - 0.6) / 0.35)),
+    stroke: 1 - clamp01((c - 0.85) / 0.15),
+  };
 }
 
 /**

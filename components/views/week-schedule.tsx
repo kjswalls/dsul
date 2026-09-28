@@ -38,8 +38,10 @@ import { groupBySupport } from '@/lib/view-options';
 import { useNowMinutes } from '@/lib/use-now-minutes';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { toDateStr } from '@/lib/recurrence';
+import { sinkCompleted } from '@/lib/sort-rows';
+import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useDayItemsForDates } from '@/hooks/use-day-items';
-import { programBoundaries, boundaryLabel } from '@/lib/program-boundaries';
+import { seasonBoundaries, boundaryLabel } from '@/lib/season-boundaries';
 import { cn } from '@/lib/utils';
 
 /**
@@ -68,7 +70,7 @@ const ANYTIME_MAX_H = 168;
  *  dashed border. What gets measured is the rows alone. */
 const ANYTIME_CHROME_PX = 10;
 /**
- * The program-boundary rail. Rendered on EVERY column of a week that has any
+ * The season-boundary rail. Rendered on EVERY column of a week that has any
  * boundary at all — including the empty ones, and including the hour gutter —
  * because the seven hour grids have to stay on the same baseline. Growing one
  * column by 18px would slew its whole day against its neighbours, which is the
@@ -114,7 +116,7 @@ interface ColumnData {
   dateStr: string;
   timed: TimedEntry[];
   untimed: RowItem[];
-  /** Set only on a column where a program's cover changes hands. */
+  /** Set only on a column where a season's cover changes hands. */
   boundary?: string;
 }
 
@@ -167,7 +169,7 @@ function WeekScheduleColumn({
 }) {
   const setSelectedDate = usePlannerStore((s) => s.setSelectedDate);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const canvasGroupBy = useCanvasGroupBy();
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
@@ -193,12 +195,17 @@ function WeekScheduleColumn({
 
   // Per column, like the overlap pass below: seven strips are seven independent
   // lists. `'none'` comes back as one unlabelled group — today's flat strip.
+  // Finished rows sink to the foot of this day's strip, held and then slid
+  // (hooks/use-sink-hold.ts). Resolved at the COLUMN's date: seven strips are
+  // seven days, and a habit ticked Tuesday must sink in Tuesday's alone.
+  const { completedAs, rootRef: anytimeRootRef } = useSinkHold(setNodeRef);
   const untimedGroups = useMemo(
     () =>
-      groupBySupport('week', 'schedule', canvasGroupBy).honoured
-        ? groupRows(col.untimed, canvasGroupBy, { routines, programs, goals })
-        : [{ key: '', label: '', rows: col.untimed }],
-    [col.untimed, canvasGroupBy, routines, programs, goals]
+      (groupBySupport('week', 'schedule', canvasGroupBy).honoured
+        ? groupRows(col.untimed, canvasGroupBy, { routines, seasons, goals })
+        : [{ key: '', label: '', rows: col.untimed }]
+      ).map((g) => ({ ...g, rows: sinkCompleted(g.rows, col.dateStr, completedAs) })),
+    [col.untimed, col.dateStr, canvasGroupBy, routines, seasons, goals, completedAs]
   );
 
   // Per COLUMN, not per week: seven days are seven independent grids, and memoising
@@ -295,13 +302,13 @@ function WeekScheduleColumn({
         className="sticky flex flex-col bg-canvas pb-2"
         style={{ top: headTop, zIndex: WEEK_HEAD_Z }}
       >
-        {/* Program boundary rail. Muted and unbordered — a handover is not a
+        {/* Season boundary rail. Muted and unbordered — a handover is not a
             warning, and the guilt-free law applies to the grid too. */}
         {showBoundaryRail && (
           <div
             style={{ height: BOUNDARY_H }}
             className="flex items-center justify-center overflow-hidden"
-            data-testid={col.boundary ? 'week-program-boundary' : undefined}
+            data-testid={col.boundary ? 'week-season-boundary' : undefined}
             data-date={col.boundary ? col.dateStr : undefined}
           >
             {col.boundary && (
@@ -348,7 +355,7 @@ function WeekScheduleColumn({
 
         {/* Per-day Anytime strip */}
         <div
-          ref={setNodeRef}
+          ref={anytimeRootRef}
           data-dnd-id={`week:${col.dateStr}:anytime`}
           data-dnd-over={isOver ? 'true' : 'false'}
           style={{ height: anytimeH }}
@@ -418,12 +425,12 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
   // Only what this file still reads for itself. Everything the day pipeline
   // needs — tasks, habits, projects, items, routines, the two show* prefs, and
   // both view-store filter slices — is read by useDayItemsForDates now.
-  // `programs` stays: the boundary rail is Week × Schedule's own.
+  // `seasons` stays: the boundary rail is Week × Schedule's own.
   const {
     selectedDate,
     weekStartDay,
     navDirection,
-    programs,
+    seasons,
     userTimezone,
     showCurrentTimeIndicator,
   } = usePlannerStore();
@@ -447,7 +454,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
 
   const perDay: ColumnData[] = useMemo(() => {
     const dateStrs = weekDays.map((d) => toDateStr(d, timezone));
-    const boundaries = programBoundaries(dateStrs, programs);
+    const boundaries = seasonBoundaries(dateStrs, seasons);
     return weekDays.map((d, i) => {
       const dateStr = dateStrs[i];
       const boundary = boundaries.get(dateStr);
@@ -459,7 +466,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
         boundary: boundary ? boundaryLabel(boundary) : undefined,
       };
     });
-  }, [weekDays, days, programs, timezone]);
+  }, [weekDays, days, seasons, timezone]);
 
   /**
    * ONE plan for the whole week — see the prop's note on WeekScheduleColumn.
@@ -478,9 +485,9 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
       planLanes(
         perDay.flatMap((c) => c.timed.map((e) => ({ itemType: e.itemType, item: e.item }))),
         canvasGroupBy,
-        { variant: 'week', routines, programs, goals }
+        { variant: 'week', routines, seasons, goals }
       ),
-    [perDay, canvasGroupBy, routines, programs, goals]
+    [perDay, canvasGroupBy, routines, seasons, goals]
   );
 
   // One shared range + hour height across the gutter and all 7 columns so the

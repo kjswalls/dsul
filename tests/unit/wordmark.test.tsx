@@ -122,6 +122,37 @@ describe('<Wordmark />', () => {
     expect(mark().hasAttribute('data-open')).toBe(true);
   });
 
+  it('dresses the swap back to classic in a restore sweep, and only for a flavor', () => {
+    localStorage.setItem(WORDMARK_CYCLE_KEY, '1');
+    render(<Wordmark />);
+    fireEvent.pointerEnter(mark(), { pointerType: 'mouse' });
+    fireEvent.pointerLeave(mark(), { pointerType: 'mouse' });
+    expect(mark().hasAttribute('data-restoring')).toBe(false);
+    act(() => vi.advanceTimersByTime(500));
+    expect(mark().dataset.flavor).toBe('classic');
+    expect(mark().hasAttribute('data-restoring')).toBe(true);
+    act(() => vi.advanceTimersByTime(800));
+    expect(mark().hasAttribute('data-restoring')).toBe(false);
+
+    localStorage.setItem(WORDMARK_CYCLE_KEY, '0');
+    fireEvent.pointerEnter(mark(), { pointerType: 'mouse' });
+    expect(mark().dataset.flavor).toBe('classic');
+    fireEvent.pointerLeave(mark(), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(500));
+    expect(mark().hasAttribute('data-restoring')).toBe(false);
+  });
+
+  it('a hover during the sweep cancels it', () => {
+    localStorage.setItem(WORDMARK_CYCLE_KEY, '1');
+    render(<Wordmark />);
+    fireEvent.pointerEnter(mark(), { pointerType: 'mouse' });
+    fireEvent.pointerLeave(mark(), { pointerType: 'mouse' });
+    act(() => vi.advanceTimersByTime(500));
+    fireEvent.pointerEnter(mark(), { pointerType: 'mouse' });
+    expect(mark().hasAttribute('data-restoring')).toBe(false);
+    expect(mark().hasAttribute('data-open')).toBe(true);
+  });
+
   it('toggles on tap', () => {
     render(<Wordmark />);
     fireEvent.pointerDown(mark(), { pointerType: 'touch' });

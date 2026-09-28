@@ -29,7 +29,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
     projects,
     items,
     routines,
-    programs,
+    seasons,
     goals,
     showCompletedTasks,
     showPausedOnGrid,
@@ -96,7 +96,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
           goalMemberIds,
           // Resolved against THIS column's date, not the store's selectedDate: a
           // week view renders seven days at once, and a pause that ends mid-week
-          // — or a program's range starting on Wednesday — must show the handoff
+          // — or a season's range starting on Wednesday — must show the handoff
           // in the right column rather than blanking or filling all seven.
           //
           // `showPausedOnGrid` drops the exclusion rather than emptying the set: the
@@ -109,7 +109,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
             : inactiveItemIdsOn(items, dateStr, {
                 userTimezone: timezone,
                 routines,
-                programs,
+                seasons,
               }),
         });
       }),
@@ -117,7 +117,7 @@ export function useDayItemsForDates(dates: Date[]): DayItems[] {
     // array as well would re-derive on every render for the array-literal
     // callers, which is every caller.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dateKey, tasks, habits, projects, items, routines, programs, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters, goalMemberIds]
+    [dateKey, tasks, habits, projects, items, routines, seasons, timezone, typeFilter, showCompletedTasks, showPausedOnGrid, canvasFilters, goalMemberIds]
   );
 }
 

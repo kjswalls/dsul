@@ -86,6 +86,16 @@ the URL is wanted, not before.
 1366×768, and fits 1024×768 exactly. Fixed is the point: the frame never resizes on a
 section change, which is the single loudest un-premium tell in both current dialogs.
 
+> **Revised (2026-09-26): 1082 × 640, detail 600.** Member rows grew week dots and a
+> four-button rail, and at 456 a title kept ~64px. The tabpanel also lacked `min-w-0`,
+> so one wide row pushed the whole panel past the plate and clipped the detail pane's
+> right edge. Needs 1146×720; below that the plate tracks the window and the detail
+> column (flex-1) absorbs the difference.
+>
+> **Revised (2026-09-27): height up to 820** (`min(820px, 100vh − 80px)`). Still fixed
+> per viewport, never per section — a goal pane with its timeline and three lists no
+> longer scrolls on a laptop.
+
 **Access: seven doors, one call** — `openDialog({ type: 'console', tab, focusId?, focusNew?, returnTo? })`.
 
 **Contents: six sections in two groups, and nothing else.** Settings stays out
@@ -443,9 +453,15 @@ already goes. A recovery feature only reachable from a rail nobody has opened is
   centrepiece re-merges the two surfaces `scope-rail.tsx:13-31` exists to keep split, and
   would ship the same switch twice with *different* semantics — the console's could only
   ever publish local state; the rail publishes local **and** effective.
-- **Item editing.** Member rows are addresses, not editors. `↵` opens the item and the
-  console closes — an honest exit, named in the footer bar so it is never a surprise.
-  (`item-panel.spec.ts:104` asserts a second `role="dialog"` cannot coexist with the panel.)
+- **Item editing.** ~~Member rows are addresses, not editors.~~ **Reversed 2026-09-26
+  (Kirby):** each container's member rows carry the planner row's own verbs — tick today,
+  skip, pause, next day, reschedule, braindump, remove, delete — in a hover capsule and a ⋯
+  menu (`organize/member-row-actions.tsx`, design boards 4A/4B). Every verb is the planner
+  row's store action behind the planner row's gate (`lib/row-moves.ts`, `lib/item-toggle.ts`);
+  nothing new is decided here. What survives: full item EDITING still is not in the console —
+  "Open item" leaves for `/item/[id]` and closes the console, because
+  `item-panel.spec.ts:104` asserts a second `role="dialog"` cannot coexist with the panel.
+  The bin still means "remove from this container"; Delete is in the ⋯ menu only.
 - **The common membership add-path.** Bulk `Collect` already exists in the selection bulk
   bar and is tri-state and correct. The console's member lists are for *curation*.
 - **Container creation, exclusively.** Creation stays distributed. *(Updated 2026-09-25.)*

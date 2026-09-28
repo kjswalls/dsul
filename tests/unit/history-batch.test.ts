@@ -17,7 +17,7 @@ vi.mock('@/lib/db', async (importOriginal) => {
     fetchProjects: vi.fn(async () => []),
     fetchItemTypes: vi.fn(async () => []),
     fetchRoutines: vi.fn(async () => []),
-    fetchPrograms: vi.fn(async () => []),
+    fetchSeasons: vi.fn(async () => []),
     fetchGoals: vi.fn(async () => []),
     createItem: vi.fn(async () => {}),
     updateItem: vi.fn(async () => {}),
@@ -39,7 +39,7 @@ import { batchHistory, getActionLog, usePlannerStore } from '@/lib/planner-store
 import { celebrateCompletion } from '@/lib/completion-confetti';
 import * as db from '@/lib/db';
 import { toast } from 'sonner';
-import type { Goal, Item, Program, Routine } from '@/lib/planner-types';
+import type { Goal, Item, Season, Routine } from '@/lib/planner-types';
 
 const USER = 'user-1';
 const TODAY = '2026-03-10';
@@ -91,13 +91,13 @@ const toastCalls = () => vi.mocked(toast).mock.calls as unknown as [string, Reco
 
 async function load(
   items: Item[],
-  extra: { goals?: Goal[]; programs?: Program[]; routines?: Routine[] } = {},
+  extra: { goals?: Goal[]; seasons?: Season[]; routines?: Routine[] } = {},
 ) {
   store().clearStore();
   vi.clearAllMocks();
   vi.mocked(db.fetchItems).mockResolvedValue(items);
   vi.mocked(db.fetchGoals).mockResolvedValue(extra.goals ?? []);
-  vi.mocked(db.fetchPrograms).mockResolvedValue(extra.programs ?? []);
+  vi.mocked(db.fetchSeasons).mockResolvedValue(extra.seasons ?? []);
   vi.mocked(db.fetchRoutines).mockResolvedValue(extra.routines ?? []);
   await store().initializeStore(USER);
   // View state, not history state: sets the day the verbs resolve against.
@@ -293,7 +293,7 @@ describe('batchHistory: quiet completion effects', () => {
 });
 
 describe('batchHistory: landing receipts', () => {
-  const paused: Program = {
+  const paused: Season = {
     id: 'p1',
     name: 'Summer',
     state: 'paused',
@@ -307,14 +307,14 @@ describe('batchHistory: landing receipts', () => {
     });
 
   it('says one shared reason once', async () => {
-    await load([task('t1'), task('t2'), task('t3')], { programs: [paused] });
+    await load([task('t1'), task('t2'), task('t3')], { seasons: [paused] });
     snooze();
-    expect(getActionLog()[0].receipt).toBe('Hidden with your Summer program');
+    expect(getActionLog()[0].receipt).toBe('Hidden with your Summer season');
   });
 
   it('counts when the reasons differ', async () => {
     await load([task('t1'), task('t2'), task('t3')], {
-      programs: [{ ...paused, itemIds: ['t1', 't2'] }],
+      seasons: [{ ...paused, itemIds: ['t1', 't2'] }],
       routines: [
         { id: 'r1', name: 'Mornings', itemIds: ['t3'], pausedAt: '2026-03-01T00:00:00.000Z' },
       ],

@@ -6,11 +6,13 @@ import { Check, Trash2, Minus, Plus, SkipForward, ArrowLeftToLine, Redo2, Undo2,
   Repeat,
 } from 'lucide-react';
 import { useDraggable } from '@dnd-kit/core';
+import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
+import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -85,7 +87,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
     selectedDate,
     userTimezone,
     routines,
-    programs,
+    seasons,
     goals,
   } = usePlannerStore();
   const confirm = useUIStore((s) => s.confirm);
@@ -121,7 +123,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
    * the row fell through to `selectedDate` and disagreed with the section it was
    * sitting in: walk the canvas to a September the user is merely browsing and a
    * live task in the working list greys itself and claims "Hidden with your
-   * Summer program", while a genuinely paused row under the Paused heading
+   * Summer season", while a genuinely paused row under the Paused heading
    * brightens because its resume date has passed on the day being looked at.
    * Neither has anything to do with what the user did.
    */
@@ -149,7 +151,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const suppression = suppressionReason(item as Item, suppressionDate, {
     userTimezone: timezone,
     routines,
-    programs,
+    seasons,
   });
   const suppressed = !!suppression;
 
@@ -228,6 +230,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const nextDay = nextDayTarget(dateStr, todayStr);
   const canNextDay = !inBraindump && canMoveToNextDay(item, itemType, dateStr);
   const canBraindump = !inBraindump && canSendToBraindump(item, itemType, dateStr, milestoneIds);
+  // Reschedule is the next-day carry's gate with the day left open — and, unlike
+  // the carry, it is offered in the braindump too, where it reads "Schedule".
+  const canReschedule = canMoveToNextDay(item, itemType, dateStr);
+  // The calendar is open: pins the hover cluster visible, or the trigger would
+  // fade out from under the picker as the pointer crosses onto it.
+  const [picking, setPicking] = useState(false);
   // The desktop hover cluster renders on every non-braindump row (Delete is
   // always in it), so this is also "does the title need its fade".
   const hasHoverControls = !inBraindump && !isMobile;
@@ -373,7 +381,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // otherwise the fade stays sized for the capsule as it was on entry.
   useLayoutEffect(() => {
     if (rowHovered.current) measureTitle();
-  }, [item.title, completed, canNextDay, canBraindump, skippable, multiTarget, habitEffectiveCount]);
+  }, [item.title, completed, canNextDay, canReschedule, canBraindump, skippable, multiTarget, habitEffectiveCount]);
   const tipAllowed = !isMobile && !isDragging && (titleHidden || suppressed);
 
   const handleRowClick = (e: ReactMouseEvent) => {
@@ -400,46 +408,48 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   if (skipped && !inBraindump) {
 
     return (
-      <div
-        data-testid="item-card"
-        data-item-id={item.id}
-        data-item-kind={itemType}
-        data-item-type={typeName}
-        // A skipped row is a COMPLETELY different DOM shape under the same
-        // testid — no complete button, no rail. Tests must be able to tell the
-        // two apart, or a drill to item-complete-button times out mysteriously.
-        data-row-variant="skipped"
-        // Selected == in the multi-select set; drives the persistent highlight.
-        data-selected={isMultiSelected ? 'true' : 'false'}
-        onClick={handleRowClick}
-        className={cn(
-          'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
-          // Selected keeps a latched wash, a notch above hover (its own indicator).
-          isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/60 hover-wash'
-        )}
-      >
-        <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
-        <span className="flex-1 truncate text-sm text-muted-foreground/70">{item.title}</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          data-testid="item-unskip-button"
+      <ItemContextMenu item={item} date={rowDate}>
+        <div
+          data-testid="item-card"
+          data-item-id={item.id}
+          data-item-kind={itemType}
+          data-item-type={typeName}
+          // A skipped row is a COMPLETELY different DOM shape under the same
+          // testid — no complete button, no rail. Tests must be able to tell the
+          // two apart, or a drill to item-complete-button times out mysteriously.
+          data-row-variant="skipped"
+          // Selected == in the multi-select set; drives the persistent highlight.
+          data-selected={isMultiSelected ? 'true' : 'false'}
+          onClick={handleRowClick}
           className={cn(
-            'px-2 text-xs text-muted-foreground hover:text-foreground',
-            // The only control on the strip, and on touch it sits inside a row
-            // whose own tap opens the edit dialog — 24px is too fine a target
-            // to aim at with a thumb.
-            isMobile ? 'h-8 px-3' : 'h-6'
+            'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
+            // Selected keeps a latched wash, a notch above hover (its own indicator).
+            isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/60 hover-wash'
           )}
-          onClick={(e) => {
-            e.stopPropagation();
-            setSkipped(false);
-          }}
         >
-          <Undo2 className="mr-1 h-3 w-3" />
-          Unskip
-        </Button>
-      </div>
+          <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
+          <span className="flex-1 truncate text-sm text-muted-foreground/70">{item.title}</span>
+          <Button
+            variant="ghost"
+            size="sm"
+            data-testid="item-unskip-button"
+            className={cn(
+              'px-2 text-xs text-muted-foreground hover:text-foreground',
+              // The only control on the strip, and on touch it sits inside a row
+              // whose own tap opens the edit dialog — 24px is too fine a target
+              // to aim at with a thumb.
+              isMobile ? 'h-8 px-3' : 'h-6'
+            )}
+            onClick={(e) => {
+              e.stopPropagation();
+              setSkipped(false);
+            }}
+          >
+            <Undo2 className="mr-1 h-3 w-3" />
+            Unskip
+          </Button>
+        </div>
+      </ItemContextMenu>
     );
   }
 
@@ -449,494 +459,535 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   };
 
   const rowContent = (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-      suppressHydrationWarning
-      // One testid for both kinds — the Phase 6 selector policy. Disambiguate
-      // with data-item-kind / data-item-type rather than a second testid, so a
-      // single helper can drive completion for any type.
-      data-testid="item-card"
-      // Identity, so assertions are id-based instead of hasText-based: a title
-      // filter breaks on truncation and cannot tell apart the same item
-      // rendered twice (a project-block task also renders in its bucket).
-      data-item-id={item.id}
-      data-item-kind={itemType}
-      // Registry type name ('task' | 'habit' | custom slug) — the Phase 6
-      // selector policy.
-      data-item-type={typeName}
-      data-row-variant="default"
-      // Selected == in the multi-select set; drives the persistent highlight and
-      // marks the current / open row.
-      data-selected={isMultiSelected ? 'true' : 'false'}
-      // Completion is otherwise observable only as Tailwind classes on the
-      // title and the checkbox, which is exactly the coupling a restyle breaks.
-      data-completed={completed ? 'true' : 'false'}
-      // Same reasoning for "set aside": the treatment is a muted title, and a
-      // spec that asserts a Tailwind class is asserting the wrong thing.
-      data-suppressed={suppressed ? 'true' : 'false'}
-      // A row's resolved slot. The visible start time is `hidden md:inline`, so
-      // without these a drop's inferred time is unassertable on narrow/mobile
-      // viewports — and these are what distinguish an untimed bucket drop from
-      // a timed one.
-      data-bucket={item.timeBucket ?? ''}
-      data-start-time={item.startTime ?? ''}
-      className={cn(
-        // No transition on the hover bg — highlights land instantly, like the
-        // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
-        // touch scrolling alive; TouchSensor's 250ms hold handles drags — which
-        // is only true since the shell stopped letting PointerSensor claim touch
-        // first (lib/dnd/sensors.ts). `touch-none` here would hand dnd-kit the
-        // whole gesture again and take the scroll back off the user.
-        // Hover cover: flat wash, Linear-style — no edge, no shadow. --accent is
-        // the token defined for exactly this (a light gray in light mode, a
-        // white 6% overlay in dark) so the highlight lifts off the card in dark
-        // mode instead of darkening it, which bg-muted/60 did.
-        'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2',
-        // Selected keeps a latched wash — the hover wash, one notch stronger
-        // (--row-selected) so a selection reads a touch above a passing hover. It
-        // marks the current / open row and every row in a multi-selection. A
-        // background wash (not opacity) keeps the lime rule: nothing here dims
-        // the lime completion mark through a parent's opacity.
-        isMultiSelected ? 'bg-[var(--row-selected)]' : 'hover:bg-accent',
-        compact ? 'py-1' : 'py-1.5',
-        isDragging && 'z-50 opacity-50'
-        // The completed fade is NOT applied here. Opacity on the row composites
-        // the checkbox too, and lime at 60% over the dark ramp turns olive — the
-        // one mark that has to stay bright, since it's the confirmation the
-        // click landed. The fade rides the title and the rail instead (below);
-        // opacity only ever goes down a tree, so a child can't opt back out.
-      )}
-      onClick={handleRowClick}
-      onMouseEnter={() => {
-        setHoveredItemRef(item.id, itemType);
-        rowHovered.current = true;
-        measureTitle();
-      }}
-      onMouseLeave={() => {
-        setHoveredItemRef(null, null);
-        rowHovered.current = false;
-        titleTip.reset();
-      }}
-      onPointerDownCapture={titleTip.reset}
-      onFocusCapture={measureTitle}
-    >
-
-      {/* Checkbox — 16px on EVERY row of both types in every state, so the
-          leading edge is one straight column and nothing downstream of it can
-          move. A multi-count habit shows its progress as a fill rising inside
-          the box (clipped to the rounded corners by overflow-hidden) rather
-          than by swapping in a wider stepper; the stepper itself lives in the
-          trailing rail, where revealing it costs no width. Clicking still
-          increments — handleHabitToggle counts up and lands on done at target. */}
-      <button
-        data-testid="item-complete-button"
-        onClick={(e) => {
-          e.stopPropagation();
-          if (isTask) handleTaskToggle();
-          else handleHabitToggle();
-        }}
-        onPointerDown={(e) => e.stopPropagation()}
-        aria-label={
-          multiTarget > 0
-            ? // At target a click clears the day; below it a click counts up.
-              `${completed ? 'Reset' : 'Increment'} — ${habitEffectiveCount} of ${multiTarget} complete`
-            : completed
-              ? 'Mark incomplete'
-              : 'Mark complete'
-        }
-        className={cn(
-          'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border transition-colors',
-          completed
-            ? 'border-primary bg-primary'
-            : multiPartial
-              ? 'border-primary/60 bg-surface-3 hover:border-primary'
-              : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
-        )}
-      >
-        {multiPartial && (
-          <span
-            aria-hidden="true"
-            className="absolute inset-x-0 bottom-0 bg-primary/70 transition-[height] duration-150"
-            style={{ height: `${multiPct}%` }}
-          />
-        )}
-        {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
-      </button>
-
-      {/* Title. The suppression reason used to ride a native `title` here;
-          it now shares the rail tooltip with the full title (pills.tsx: no
-          native titles). */}
-      <Tooltip
-        // The gate goes into the state, not only the prop: Radix's delay timer
-        // would otherwise latch `open` while the tip was gated off, and it
-        // would spring open unasked the moment the title became hidden.
-        open={titleTip.open && tipAllowed}
-        onOpenChange={(next) => titleTip.onOpenChange(next && tipAllowed)}
-      >
-        <TooltipTrigger asChild {...titleTip.triggerProps}>
-          <p
-            ref={titleRef}
-            className={cn(
-              // Content typeface via tokens: sans = Inter Regular 11.5,
-              // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
-              'min-w-0 flex-1 font-content text-foreground',
-              // Both densities take text-content: the week views render compact
-              // rows and the day view default ones, and a title that changed size
-              // between the two would break the token's whole purpose.
-              compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
-              suppressed && 'text-muted-foreground',
-              completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60',
-              // The fade under the hover controls (measureTitle). A mask, not an
-              // opacity: nothing lime lives in the title, but the fade has to
-              // fall off along the text, not dim all of it.
-              hasHoverControls &&
-                'group-hover:[mask-image:var(--title-mask,none)] group-has-[:focus-visible]:[mask-image:var(--title-mask,none)]'
-            )}
-          >
-            {item.title}
-          </p>
-        </TooltipTrigger>
-        <TooltipContent side="bottom" align="start" className="max-w-sm">
-          {(titleHidden || !suppression) && (
-            <div className={cn('px-0.5 text-xs text-foreground', suppression && 'mb-1')}>{item.title}</div>
-          )}
-          {suppression && (
-            <div className="px-0.5 text-2xs font-medium text-muted-foreground">
-              {suppressionLabel(suppression, { long: true })}
-            </div>
-          )}
-        </TooltipContent>
-      </Tooltip>
-      {/* The tooltip only describes the title while it is open, so the reason
-          a row is set aside stays readable to assistive tech here. */}
-      {suppression && <span className="sr-only">{suppressionLabel(suppression, { long: true })}</span>}
-
-      {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
-          column.
-
-          Not inside: the title is `line-clamp`ed, which is `overflow: hidden`,
-          so any title that filled its clamp hid the glyph entirely — and the
-          week columns render compact one-line rows in narrow columns, which is
-          exactly where titles overflow and where a week of checkpoints is most
-          worth scanning. It also sat under the paragraph's `title` attribute on
-          suppressed rows, firing a native tooltip on top of the Radix one that
-          RailTooltip exists to replace.
-
-          Not a rail column: the rail's five columns each reserve width on every
-          row of both types, so a sixth would cost 20px on every row in the app
-          to say something true of a handful of them.
-
-          Muted ink, never honey — being a milestone is an identity, not a
-          warning, and this is the row of a checkpoint that may well be late. On
-          touch the tooltip never fires, so the glyphs are ones a reader can
-          place unaided and the full attribution is one tap away in the edit
-          sheet's Goal chip. The sr-only text is for the reader the tooltip
-          never reaches at all. */}
-      {roles.length > 0 && (
-        <RailTooltip
-          label={roles[0].role === 'milestone' ? 'Milestone' : 'Check-in'}
-          detail={
-            roles.length === 1 ? roles[0].goalName : `${roles[0].goalName} +${roles.length - 1}`
-          }
-        >
-          <span
-            className="text-muted-foreground/70 -ml-0.5 flex flex-shrink-0 items-center"
-            data-testid="item-goal-role"
-            data-goal-role={roles[0].role}
-          >
-            {roles[0].role === 'milestone' ? (
-              <Flag className="size-3" aria-hidden />
-            ) : (
-              <Repeat className="size-3" aria-hidden />
-            )}
-            <span className="sr-only">
-              {roles[0].role === 'milestone' ? 'Milestone of ' : 'Check-in for '}
-              {roles[0].goalName}
-            </span>
-          </span>
-        </RailTooltip>
-      )}
-
-      {/* What the agent is doing with this, and for how long — a sibling of the
-          title for exactly the reasons the goal role above it is one, and
-          registry-gated so a type that cannot be delegated never reserves the
-          space. The pill returns null on its own for an unassigned or finished
-          item, so most rows render nothing and start no timer. */}
-      {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
-
-      {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
-          right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].
-          The last FOUR reserve width, and they do so on EVERY row of BOTH types,
-          so a mixed task+habit list forms four straight vertical rails plus the
-          row's own right edge:
-
-            days     59px   weekday dots — empty slot when the item doesn't repeat
-            identity 96px   tag dot + truncating name (6px, dot only, below lg)
-            glyph    36px   priority bars / streak flame + count
-            quantity 48px   duration, right-aligned tabular figures, both types
-
-          Every one of these columns is a de-chromed glyph or a bare numeral, and
-          none of them carries a label — which is what buys the alignment and what
-          costs the reader any way of knowing what they are looking at. Each one
-          therefore answers on hover, through RailTooltip (pills.tsx): an eyebrow
-          naming the column over the value in words. The native `title` attributes
-          these used to carry are gone; they fired a second, unstyleable tooltip
-          in a system font at the OS's own delay.
-
-          Reserving the first two is a change of mind, and the reason is that the
-          old rule ("only fixed-size things reserve") produced rails only at the
-          two outermost columns — the tag sized to its name, so its dot landed at
-          a different x on every row and the column read as debris rather than as
-          a column. Reserving costs a void on rows that lack the datum; a straight
-          edge down a dense list is worth more than those pixels. It stays cheap
-          because the two new slots only exist at lg and above, where the day view
-          has the room; below that the day dots unmount and the tag collapses to
-          its 6px dot.
-
-          Genuinely occasional metadata (start time, habit progress) is still NOT
-          reserved and now sits INBOARD of the day dots. Because the rail is
-          right-anchored, a variable item only moves what is to its left — so
-          parking them innermost lets the title's elastic gap absorb them while
-          every column outboard of them stays nailed down.
-
-          Action controls stay absolutely pinned to the left of the rail and only
-          fade in on hover/focus, so they reserve no space and shift nothing. */}
-      {/* gap-3 (12px), not gap-2: several rail items are bare text with no
-          container, and the day-letter run has its own 4px internal gap — at 8px
-          between items the run ran straight into its neighbour. 12px is wide
-          enough that the between-item gap clearly outranks the within-item one. */}
+    // Right-click, on the row's own day (components/planner/item-context-menu.tsx).
+    // Touch keeps the swipe and the ⋯ sheet — the trigger is off there.
+    <ItemContextMenu item={item} date={rowDate}>
       <div
+        ref={setNodeRef}
+        style={style}
+        {...attributes}
+        {...listeners}
+        suppressHydrationWarning
+        // One testid for both kinds — the Phase 6 selector policy. Disambiguate
+        // with data-item-kind / data-item-type rather than a second testid, so a
+        // single helper can drive completion for any type.
+        data-testid="item-card"
+        // Identity, so assertions are id-based instead of hasText-based: a title
+        // filter breaks on truncation and cannot tell apart the same item
+        // rendered twice (a project-block task also renders in its bucket).
+        data-item-id={item.id}
+        data-item-kind={itemType}
+        // Registry type name ('task' | 'habit' | custom slug) — the Phase 6
+        // selector policy.
+        data-item-type={typeName}
+        data-row-variant="default"
+        // Selected == in the multi-select set; drives the persistent highlight and
+        // marks the current / open row.
+        data-selected={isMultiSelected ? 'true' : 'false'}
+        // Completion is otherwise observable only as Tailwind classes on the
+        // title and the checkbox, which is exactly the coupling a restyle breaks.
+        data-completed={completed ? 'true' : 'false'}
+        // Same reasoning for "set aside": the treatment is a muted title, and a
+        // spec that asserts a Tailwind class is asserting the wrong thing.
+        data-suppressed={suppressed ? 'true' : 'false'}
+        // A row's resolved slot. The visible start time is `hidden md:inline`, so
+        // without these a drop's inferred time is unassertable on narrow/mobile
+        // viewports — and these are what distinguish an untimed bucket drop from
+        // a timed one.
+        data-bucket={item.timeBucket ?? ''}
+        data-start-time={item.startTime ?? ''}
         className={cn(
-          'relative z-10 flex flex-shrink-0 items-center gap-3',
-          completed && !suppressCompletedLook && 'opacity-60'
+          // No transition on the hover bg — highlights land instantly, like the
+          // omnibar's CommandItem. touch-manipulation (not touch-none) keeps
+          // touch scrolling alive; TouchSensor's 250ms hold handles drags — which
+          // is only true since the shell stopped letting PointerSensor claim touch
+          // first (lib/dnd/sensors.ts). `touch-none` here would hand dnd-kit the
+          // whole gesture again and take the scroll back off the user.
+          // Hover cover: flat wash, Linear-style — no edge, no shadow. --accent is
+          // the token defined for exactly this (a light gray in light mode, a
+          // white 6% overlay in dark) so the highlight lifts off the card in dark
+          // mode instead of darkening it, which bg-muted/60 did.
+          'group relative flex w-full cursor-pointer touch-manipulation items-center gap-3 rounded-[5px] px-2',
+          // Selected keeps a latched wash — the hover wash, one notch stronger
+          // (--row-selected) so a selection reads a touch above a passing hover. It
+          // marks the current / open row and every row in a multi-selection. A
+          // background wash (not opacity) keeps the lime rule: nothing here dims
+          // the lime completion mark through a parent's opacity.
+          isMultiSelected ? 'bg-[var(--row-selected)]' : 'hover:bg-accent',
+          compact ? 'py-1' : 'py-1.5',
+          isDragging && 'z-50 opacity-50'
+          // The completed fade is NOT applied here. Opacity on the row composites
+          // the checkbox too, and lime at 60% over the dark ramp turns olive — the
+          // one mark that has to stay bright, since it's the confirmation the
+          // click landed. The fade rides the title and the rail instead (below);
+          // opacity only ever goes down a tree, so a child can't opt back out.
         )}
-        onClick={(e) => e.stopPropagation()}
-        onPointerDown={(e) => e.stopPropagation()}
+        onClick={handleRowClick}
+        onMouseEnter={() => {
+          setHoveredItemRef(item.id, itemType);
+          rowHovered.current = true;
+          measureTitle();
+        }}
+        onMouseLeave={() => {
+          setHoveredItemRef(null, null);
+          rowHovered.current = false;
+          titleTip.reset();
+        }}
+        onPointerDownCapture={titleTip.reset}
+        onFocusCapture={measureTitle}
       >
-        {/* Action controls — one boxed cluster, absolutely positioned to the left
-            of the columns so it reserves no space. pointer-events gate off until
-            reveal so the invisible buttons aren't clickable while idle. */}
-        {!inBraindump && !isMobile && (
-          <span ref={clusterRef} className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100">
-            <RowControlGroup>
-              {/* Multi-count stepper — leads the capsule, so the destructive
-                  delete stays at the far end away from the one control here that
-                  gets clicked repeatedly. A hairline separates the value editor
-                  from the actions. The count it edits reads live as `n/target`
-                  in the rail to the right. */}
-              {multiTarget > 0 && (
-                <>
-                  <RowControl
-                    icon={Minus}
-                    label="Decrease count"
-                    testId="item-stepper-dec"
-                    disabled={habitEffectiveCount <= 0}
-                    onClick={handleHabitDecrement}
-                  />
-                  <RowControl
-                    icon={Plus}
-                    label="Increase count"
-                    testId="item-stepper-inc"
-                    disabled={habitEffectiveCount >= multiTarget}
-                    onClick={handleHabitIncrement}
-                  />
-                  <RowControlDivider />
-                </>
-              )}
-              {/* Put it off: the next day, or back to the braindump. Never on a
-                  recurring row (Skip today is its answer), and gated in one
-                  place — lib/row-moves.ts — so the blocks and the sheet agree. */}
-              {canNextDay && (
-                <RowControl
-                  icon={Redo2}
-                  label={nextDayLabel(nextDay, todayStr)}
-                  detail={formatTargetDay(nextDay)}
-                  testId="item-tomorrow-button"
-                  onClick={() => moveTaskToDate(item.id, nextDay)}
-                />
-              )}
-              {canBraindump && (
-                <RowControl
-                  icon={ArrowLeftToLine}
-                  label="Move to Braindump"
-                  testId="item-unschedule-button"
-                  onClick={() => unscheduleTask(item.id)}
-                />
-              )}
-              {skippable && !completed && (
-                <RowControl
-                  icon={SkipForward}
-                  label="Skip today"
-                  testId="item-skip-button"
-                  onClick={() => setSkipped(true)}
-                />
-              )}
-              <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
-            </RowControlGroup>
-          </span>
-        )}
 
-        {/* Mobile: no hover, so the stepper can't hide behind one — it renders
-            inline and always-on for multi-count habits (the leading checkbox
-            still increments; this is the only way back DOWN). Always present,
-            so it shifts nothing either. 28px to match the ellipsis beside it,
-            since 20px is too small a touch target; no tooltips on touch. */}
-        {!inBraindump && isMobile && multiTarget > 0 && (
-          <RowControlGroup>
-            <RowControl
-              icon={Minus}
-              label="Decrease count"
-              testId="item-stepper-dec"
-              disabled={habitEffectiveCount <= 0}
-              onClick={handleHabitDecrement}
-              className="h-7 w-7"
-              iconClassName="h-3.5 w-3.5"
-              tooltip={false}
+        {/* Checkbox — 16px on EVERY row of both types in every state, so the
+            leading edge is one straight column and nothing downstream of it can
+            move. A multi-count habit shows its progress as a fill rising inside
+            the box (clipped to the rounded corners by overflow-hidden) rather
+            than by swapping in a wider stepper; the stepper itself lives in the
+            trailing rail, where revealing it costs no width. Clicking still
+            increments — handleHabitToggle counts up and lands on done at target. */}
+        <button
+          data-testid="item-complete-button"
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isTask) handleTaskToggle();
+            else handleHabitToggle();
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          aria-label={
+            multiTarget > 0
+              ? // At target a click clears the day; below it a click counts up.
+                `${completed ? 'Reset' : 'Increment'} — ${habitEffectiveCount} of ${multiTarget} complete`
+              : completed
+                ? 'Mark incomplete'
+                : 'Mark complete'
+          }
+          className={cn(
+            'relative z-10 flex h-4 w-4 flex-shrink-0 items-center justify-center overflow-hidden rounded-[5px] border transition-colors',
+            completed
+              ? 'border-primary bg-primary'
+              : multiPartial
+                ? 'border-primary/60 bg-surface-3 hover:border-primary'
+                : 'border-muted-foreground/45 bg-surface-3 hover:border-primary'
+          )}
+        >
+          {multiPartial && (
+            <span
+              aria-hidden="true"
+              className="absolute inset-x-0 bottom-0 bg-primary/70 transition-[height] duration-150"
+              style={{ height: `${multiPct}%` }}
             />
-            <RowControl
-              icon={Plus}
-              label="Increase count"
-              testId="item-stepper-inc"
-              disabled={habitEffectiveCount >= multiTarget}
-              onClick={handleHabitIncrement}
-              className="h-7 w-7"
-              iconClassName="h-3.5 w-3.5"
-              tooltip={false}
-            />
-          </RowControlGroup>
-        )}
+          )}
+          {completed && <Check className="h-2.5 w-2.5 text-primary-foreground" />}
+        </button>
 
-        {/* Mobile: always-visible ellipsis → schedule/action sheet (touch has
-            no hover, so the desktop control cluster above is hidden on mobile). */}
-        {isMobile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-7 w-7 text-muted-foreground"
-            aria-label="Actions"
-            data-testid="item-actions-button"
-            onClick={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
-          >
-            <MoreHorizontal className="h-4 w-4" />
-          </Button>
-        )}
-
-        {/* Braindump (sidebar) delete — inline, since braindump rows carry no
-            tag or pills to sit beside.
-            -my-1.5 is a height neutralizer, not spacing: this 24px button was
-            the tallest thing in a braindump row (the rail it would otherwise
-            sit beside is gated off here), so it set the line box and made every
-            sidebar row 36px against the body's 29px — the same list at a looser
-            pitch. Flexbox sizes the line from items' OUTER hypothetical heights,
-            so cancelling the row's own py-1.5 drops this to 12px and the 17px
-            title takes the measurement back, exactly as it does in the body.
-            The button still draws at its full 24px and overhangs the padding.
-            Coupled to the row's py-1.5 above, like DAY_DOTS_HIT in pills.tsx. */}
-        {inBraindump && !isMobile && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="-my-1.5 h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-            onClick={handleDelete}
-            aria-label="Delete"
-            data-testid="item-delete-button"
-          >
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        )}
-
-        {!compact && !inBraindump && (
-          <>
-            {/* OCCASIONAL — unreserved and variable, so it sits innermost where
-                the title's elastic gap absorbs it and no rail outboard moves. */}
-            {item.startTime && (
-              <MetaText
-                testId="item-start-time"
-                className="hidden md:inline"
-                // Label only: the value is already the reading, so a body line
-                // would just print the same figure twice.
-                tooltip={{ label: 'Start time' }}
-              >
-                {item.startTime}
-              </MetaText>
-            )}
-            {habit && habit.timesPerDay && habit.timesPerDay > 1 && (
-              <MetaText
-                testId="item-count"
-                tooltip={{
-                  label: 'Times per day',
-                  detail: `${habitEffectiveCount || 0} of ${habit.timesPerDay} done today`,
-                }}
-              >
-                {habitEffectiveCount || 0}/{habit.timesPerDay}
-              </MetaText>
-            )}
-
-            {/* DAYS — 59px on every row. Habits and recurring tasks plot their
-                weekdays; one-off tasks render the empty slot, which is what
-                holds the tag column to a straight edge in a mixed list. Hidden
-                below lg, where the rail can't afford it. */}
-            <DayDots
-              frequency={item.repeatFrequency}
-              repeatDays={item.repeatDays}
-              highlightDay={rowDate.getDay()}
-              className="hidden lg:flex"
-            />
-
-            {/* IDENTITY — 96px at lg (dot + truncating name), 6px below it where
-                only the dot survives as a presence indicator, name on hover. */}
-            {tagName ? (
-              <TagDot
-                name={tagName}
-                color={tagColor}
-                // 'Project' or 'Group' from the registry — below lg the name is
-                // hidden and this is the column's only reading.
-                label={typeConfig.form.containerLabel}
-                className="w-1.5 lg:w-24"
-                nameClassName="hidden lg:block"
-              />
-            ) : (
-              <span aria-hidden className="w-1.5 flex-shrink-0 lg:w-24" />
-            )}
-
-            {/* GLYPH — 36px, reserved on every row of both types. Priority bars
-                for tasks, flame + streak count for habits: the first shared
-                rail. It was 16px while the streak count lived outboard in the
-                quantity slot; the extra 20px is that count's room. Both types
-                start their ink on the slot's left edge — the priority bars
-                occupy exactly the first 16px, as before — so nothing that was
-                already here moved and the column is still one straight rail. */}
-            <span className="flex w-9 flex-shrink-0 items-center">
-              {isTask
-                ? task?.priority && <PriorityGlyph priority={task.priority} />
-                : streaksOn && <StreakFlame streak={habit?.streak ?? 0} />}
-            </span>
-
-            {/* QUANTITY — 48px, right-aligned tabular figures: how long the item
-                takes, on EVERY type. This used to be duration for tasks and the
-                streak count for habits, which meant the app's most scannable
-                column held minutes on one row and days on the next — you could
-                read it as neither. Habits carry a real duration now (see
-                memory/plans/unified-items.md), so the column has one unit, and
-                the streak moved in beside its own flame. */}
-            <MetaText
-              testId="item-duration"
-              className="w-12 flex-shrink-0 text-right"
-              tooltip={
-                item.duration
-                  ? { label: 'Duration', detail: formatDurationLong(item.duration) }
-                  : undefined
-              }
+        {/* Title. The suppression reason used to ride a native `title` here;
+            it now shares the rail tooltip with the full title (pills.tsx: no
+            native titles). */}
+        <Tooltip
+          // The gate goes into the state, not only the prop: Radix's delay timer
+          // would otherwise latch `open` while the tip was gated off, and it
+          // would spring open unasked the moment the title became hidden.
+          open={titleTip.open && tipAllowed}
+          onOpenChange={(next) => titleTip.onOpenChange(next && tipAllowed)}
+        >
+          <TooltipTrigger asChild {...titleTip.triggerProps}>
+            <p
+              ref={titleRef}
+              className={cn(
+                // Content typeface via tokens: sans = Inter Regular 11.5,
+                // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
+                'min-w-0 flex-1 font-content text-foreground',
+                // Both densities take text-content: the week views render compact
+                // rows and the day view default ones, and a title that changed size
+                // between the two would break the token's whole purpose.
+                compact ? 'line-clamp-1 text-content' : 'line-clamp-2 text-content',
+                suppressed && 'text-muted-foreground',
+                completed && !suppressCompletedLook && 'text-muted-foreground line-through opacity-60',
+                // The fade under the hover controls (measureTitle). A mask, not an
+                // opacity: nothing lime lives in the title, but the fade has to
+                // fall off along the text, not dim all of it.
+                hasHoverControls &&
+                  'group-hover:[mask-image:var(--title-mask,none)] group-has-[:focus-visible]:[mask-image:var(--title-mask,none)]'
+              )}
             >
-              {item.duration ? formatDuration(item.duration) : ''}
-            </MetaText>
-          </>
+              {item.title}
+            </p>
+          </TooltipTrigger>
+          <TooltipContent side="bottom" align="start" className="max-w-sm">
+            {(titleHidden || !suppression) && (
+              <div className={cn('px-0.5 text-xs text-foreground', suppression && 'mb-1')}>{item.title}</div>
+            )}
+            {suppression && (
+              <div className="px-0.5 text-2xs font-medium text-muted-foreground">
+                {suppressionLabel(suppression, { long: true })}
+              </div>
+            )}
+          </TooltipContent>
+        </Tooltip>
+        {/* The tooltip only describes the title while it is open, so the reason
+            a row is set aside stays readable to assistive tech here. */}
+        {suppression && <span className="sr-only">{suppressionLabel(suppression, { long: true })}</span>}
+
+        {/* The goal role — a sibling of the title, NOT inside it and NOT a rail
+            column.
+
+            Not inside: the title is `line-clamp`ed, which is `overflow: hidden`,
+            so any title that filled its clamp hid the glyph entirely — and the
+            week columns render compact one-line rows in narrow columns, which is
+            exactly where titles overflow and where a week of checkpoints is most
+            worth scanning. It also sat under the paragraph's `title` attribute on
+            suppressed rows, firing a native tooltip on top of the Radix one that
+            RailTooltip exists to replace.
+
+            Not a rail column: the rail's five columns each reserve width on every
+            row of both types, so a sixth would cost 20px on every row in the app
+            to say something true of a handful of them.
+
+            Muted ink, never honey — being a milestone is an identity, not a
+            warning, and this is the row of a checkpoint that may well be late. On
+            touch the tooltip never fires, so the glyphs are ones a reader can
+            place unaided and the full attribution is one tap away in the edit
+            sheet's Goal chip. The sr-only text is for the reader the tooltip
+            never reaches at all. */}
+        {roles.length > 0 && (
+          <RailTooltip
+            label={roles[0].role === 'milestone' ? 'Milestone' : 'Check-in'}
+            detail={
+              roles.length === 1 ? roles[0].goalName : `${roles[0].goalName} +${roles.length - 1}`
+            }
+          >
+            <span
+              className="text-muted-foreground/70 -ml-0.5 flex flex-shrink-0 items-center"
+              data-testid="item-goal-role"
+              data-goal-role={roles[0].role}
+            >
+              {roles[0].role === 'milestone' ? (
+                <Flag className="size-3" aria-hidden />
+              ) : (
+                <Repeat className="size-3" aria-hidden />
+              )}
+              <span className="sr-only">
+                {roles[0].role === 'milestone' ? 'Milestone of ' : 'Check-in for '}
+                {roles[0].goalName}
+              </span>
+            </span>
+          </RailTooltip>
         )}
+
+        {/* What the agent is doing with this, and for how long — a sibling of the
+            title for exactly the reasons the goal role above it is one, and
+            registry-gated so a type that cannot be delegated never reserves the
+            space. The pill returns null on its own for an unassigned or finished
+            item, so most rows render nothing and start no timer. */}
+        {task && typeConfig.agentAssignable && <AgentPill item={task} className="-ml-0.5" />}
+
+        {/* Trailing metadata — the "quiet rail". Fixed order, innermost to the
+            right edge: [occasional] → [days] → [identity] → [glyph] → [quantity].
+            The last FOUR reserve width, and they do so on EVERY row of BOTH types,
+            so a mixed task+habit list forms four straight vertical rails plus the
+            row's own right edge:
+
+              days     59px   weekday dots — empty slot when the item doesn't repeat
+              identity 96px   tag dot + truncating name (6px, dot only, below lg)
+              glyph    36px   priority bars / streak flame + count
+              quantity 48px   duration, right-aligned tabular figures, both types
+
+            Every one of these columns is a de-chromed glyph or a bare numeral, and
+            none of them carries a label — which is what buys the alignment and what
+            costs the reader any way of knowing what they are looking at. Each one
+            therefore answers on hover, through RailTooltip (pills.tsx): an eyebrow
+            naming the column over the value in words. The native `title` attributes
+            these used to carry are gone; they fired a second, unstyleable tooltip
+            in a system font at the OS's own delay.
+
+            Reserving the first two is a change of mind, and the reason is that the
+            old rule ("only fixed-size things reserve") produced rails only at the
+            two outermost columns — the tag sized to its name, so its dot landed at
+            a different x on every row and the column read as debris rather than as
+            a column. Reserving costs a void on rows that lack the datum; a straight
+            edge down a dense list is worth more than those pixels. It stays cheap
+            because the two new slots only exist at lg and above, where the day view
+            has the room; below that the day dots unmount and the tag collapses to
+            its 6px dot.
+
+            Genuinely occasional metadata (start time, habit progress) is still NOT
+            reserved and now sits INBOARD of the day dots. Because the rail is
+            right-anchored, a variable item only moves what is to its left — so
+            parking them innermost lets the title's elastic gap absorb them while
+            every column outboard of them stays nailed down.
+
+            Action controls stay absolutely pinned to the left of the rail and only
+            fade in on hover/focus, so they reserve no space and shift nothing. */}
+        {/* gap-3 (12px), not gap-2: several rail items are bare text with no
+            container, and the day-letter run has its own 4px internal gap — at 8px
+            between items the run ran straight into its neighbour. 12px is wide
+            enough that the between-item gap clearly outranks the within-item one. */}
+        <div
+          className={cn(
+            'relative z-10 flex flex-shrink-0 items-center gap-3',
+            completed && !suppressCompletedLook && 'opacity-60'
+          )}
+          onClick={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          {/* Action controls — one boxed cluster, absolutely positioned to the left
+              of the columns so it reserves no space. pointer-events gate off until
+              reveal so the invisible buttons aren't clickable while idle. */}
+          {!inBraindump && !isMobile && (
+            <span
+              ref={clusterRef}
+              className={cn(
+                'pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100',
+                picking && 'pointer-events-auto opacity-100'
+              )}
+            >
+              <RowControlGroup>
+                {/* Multi-count stepper — leads the capsule, so the destructive
+                    delete stays at the far end away from the one control here that
+                    gets clicked repeatedly. A hairline separates the value editor
+                    from the actions. The count it edits reads live as `n/target`
+                    in the rail to the right. */}
+                {multiTarget > 0 && (
+                  <>
+                    <RowControl
+                      icon={Minus}
+                      label="Decrease count"
+                      testId="item-stepper-dec"
+                      disabled={habitEffectiveCount <= 0}
+                      onClick={handleHabitDecrement}
+                    />
+                    <RowControl
+                      icon={Plus}
+                      label="Increase count"
+                      testId="item-stepper-inc"
+                      disabled={habitEffectiveCount >= multiTarget}
+                      onClick={handleHabitIncrement}
+                    />
+                    <RowControlDivider />
+                  </>
+                )}
+                {/* Put it off: the next day, or back to the braindump. Never on a
+                    recurring row (Skip today is its answer), and gated in one
+                    place — lib/row-moves.ts — so the blocks and the sheet agree. */}
+                {canNextDay && (
+                  <RowControl
+                    icon={Redo2}
+                    label={nextDayLabel(nextDay, todayStr)}
+                    detail={formatTargetDay(nextDay)}
+                    testId="item-tomorrow-button"
+                    onClick={() => moveTaskToDate(item.id, nextDay)}
+                  />
+                )}
+                {canReschedule && (
+                  <RescheduleControl
+                    open={picking}
+                    onOpenChange={setPicking}
+                    todayStr={todayStr}
+                    value={task?.startDate}
+                    onPick={(day) => moveTaskToDate(item.id, day)}
+                    testId="item-reschedule-button"
+                    popoverTestId="item-reschedule-popover"
+                  />
+                )}
+                {canBraindump && (
+                  <RowControl
+                    icon={ArrowLeftToLine}
+                    label="Move to Braindump"
+                    testId="item-unschedule-button"
+                    onClick={() => unscheduleTask(item.id)}
+                  />
+                )}
+                {skippable && !completed && (
+                  <RowControl
+                    icon={SkipForward}
+                    label="Skip today"
+                    testId="item-skip-button"
+                    onClick={() => setSkipped(true)}
+                  />
+                )}
+                <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
+              </RowControlGroup>
+            </span>
+          )}
+
+          {/* Mobile: no hover, so the stepper can't hide behind one — it renders
+              inline and always-on for multi-count habits (the leading checkbox
+              still increments; this is the only way back DOWN). Always present,
+              so it shifts nothing either. 28px to match the ellipsis beside it,
+              since 20px is too small a touch target; no tooltips on touch. */}
+          {!inBraindump && isMobile && multiTarget > 0 && (
+            <RowControlGroup>
+              <RowControl
+                icon={Minus}
+                label="Decrease count"
+                testId="item-stepper-dec"
+                disabled={habitEffectiveCount <= 0}
+                onClick={handleHabitDecrement}
+                className="h-7 w-7"
+                iconClassName="h-3.5 w-3.5"
+                tooltip={false}
+              />
+              <RowControl
+                icon={Plus}
+                label="Increase count"
+                testId="item-stepper-inc"
+                disabled={habitEffectiveCount >= multiTarget}
+                onClick={handleHabitIncrement}
+                className="h-7 w-7"
+                iconClassName="h-3.5 w-3.5"
+                tooltip={false}
+              />
+            </RowControlGroup>
+          )}
+
+          {/* Mobile: always-visible ellipsis → schedule/action sheet (touch has
+              no hover, so the desktop control cluster above is hidden on mobile). */}
+          {isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-7 w-7 text-muted-foreground"
+              aria-label="Actions"
+              data-testid="item-actions-button"
+              onClick={() => useScheduleSheet.getState().open(row, inBraindump ? null : dateStr)}
+            >
+              <MoreHorizontal className="h-4 w-4" />
+            </Button>
+          )}
+
+          {/* Braindump (sidebar) schedule — the row's way onto a day without a
+              drag. Same reveal as the delete beside it, pinned while the calendar
+              is open; -my-1 neutralizes its 20px for the reason the delete's note gives. */}
+          {inBraindump && !isMobile && canReschedule && (
+            <span
+              className={cn(
+                '-my-1 flex opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
+                picking && 'opacity-100'
+              )}
+            >
+              <RescheduleControl
+                open={picking}
+                onOpenChange={setPicking}
+                todayStr={todayStr}
+                onPick={(day) => moveTaskToDate(item.id, day)}
+                testId="item-reschedule-button"
+                popoverTestId="item-reschedule-popover"
+              />
+            </span>
+          )}
+          {/* Braindump (sidebar) delete — inline, since braindump rows carry no
+              tag or pills to sit beside.
+              -my-1.5 is a height neutralizer, not spacing: this 24px button was
+              the tallest thing in a braindump row (the rail it would otherwise
+              sit beside is gated off here), so it set the line box and made every
+              sidebar row 36px against the body's 29px — the same list at a looser
+              pitch. Flexbox sizes the line from items' OUTER hypothetical heights,
+              so cancelling the row's own py-1.5 drops this to 12px and the 17px
+              title takes the measurement back, exactly as it does in the body.
+              The button still draws at its full 24px and overhangs the padding.
+              Coupled to the row's py-1.5 above, like DAY_DOTS_HIT in pills.tsx. */}
+          {inBraindump && !isMobile && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="-my-1.5 h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
+              onClick={handleDelete}
+              aria-label="Delete"
+              data-testid="item-delete-button"
+            >
+              <Trash2 className="h-3.5 w-3.5" />
+            </Button>
+          )}
+
+          {!compact && !inBraindump && (
+            <>
+              {/* OCCASIONAL — unreserved and variable, so it sits innermost where
+                  the title's elastic gap absorbs it and no rail outboard moves. */}
+              {item.startTime && (
+                <MetaText
+                  testId="item-start-time"
+                  className="hidden md:inline"
+                  // Label only: the value is already the reading, so a body line
+                  // would just print the same figure twice.
+                  tooltip={{ label: 'Start time' }}
+                >
+                  {item.startTime}
+                </MetaText>
+              )}
+              {habit && habit.timesPerDay && habit.timesPerDay > 1 && (
+                <MetaText
+                  testId="item-count"
+                  tooltip={{
+                    label: 'Times per day',
+                    detail: `${habitEffectiveCount || 0} of ${habit.timesPerDay} done today`,
+                  }}
+                >
+                  {habitEffectiveCount || 0}/{habit.timesPerDay}
+                </MetaText>
+              )}
+
+              {/* DAYS — 59px on every row. Habits and recurring tasks plot their
+                  weekdays; one-off tasks render the empty slot, which is what
+                  holds the tag column to a straight edge in a mixed list. Hidden
+                  below lg, where the rail can't afford it. */}
+              <DayDots
+                frequency={item.repeatFrequency}
+                repeatDays={item.repeatDays}
+                highlightDay={rowDate.getDay()}
+                className="hidden lg:flex"
+              />
+
+              {/* IDENTITY — 96px at lg (dot + truncating name), 6px below it where
+                  only the dot survives as a presence indicator, name on hover. */}
+              {tagName ? (
+                <TagDot
+                  name={tagName}
+                  color={tagColor}
+                  // 'Project' or 'Group' from the registry — below lg the name is
+                  // hidden and this is the column's only reading.
+                  label={typeConfig.form.containerLabel}
+                  className="w-1.5 lg:w-24"
+                  nameClassName="hidden lg:block"
+                />
+              ) : (
+                <span aria-hidden className="w-1.5 flex-shrink-0 lg:w-24" />
+              )}
+
+              {/* GLYPH — 36px, reserved on every row of both types. Priority bars
+                  for tasks, flame + streak count for habits: the first shared
+                  rail. It was 16px while the streak count lived outboard in the
+                  quantity slot; the extra 20px is that count's room. Both types
+                  start their ink on the slot's left edge — the priority bars
+                  occupy exactly the first 16px, as before — so nothing that was
+                  already here moved and the column is still one straight rail. */}
+              <span className="flex w-9 flex-shrink-0 items-center">
+                {isTask
+                  ? task?.priority && <PriorityGlyph priority={task.priority} />
+                  : streaksOn && <StreakFlame streak={habit?.streak ?? 0} />}
+              </span>
+
+              {/* QUANTITY — 48px, right-aligned tabular figures: how long the item
+                  takes, on EVERY type. This used to be duration for tasks and the
+                  streak count for habits, which meant the app's most scannable
+                  column held minutes on one row and days on the next — you could
+                  read it as neither. Habits carry a real duration now (see
+                  memory/plans/unified-items.md), so the column has one unit, and
+                  the streak moved in beside its own flame. */}
+              <MetaText
+                testId="item-duration"
+                className="w-12 flex-shrink-0 text-right"
+                tooltip={
+                  item.duration
+                    ? { label: 'Duration', detail: formatDurationLong(item.duration) }
+                    : undefined
+                }
+              >
+                {item.duration ? formatDuration(item.duration) : ''}
+              </MetaText>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </ItemContextMenu>
   );
 
   // Mobile: reveal Schedule / Complete / Delete on swipe-left. Desktop returns

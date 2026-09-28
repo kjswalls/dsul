@@ -24,7 +24,7 @@ vi.mock('@/lib/db', () => ({
   fetchHabitGroups: vi.fn(async () => []),
   fetchItemTypes: vi.fn(async () => []),
   fetchRoutines: vi.fn(async () => []),
-  fetchPrograms: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
@@ -504,7 +504,7 @@ describe('the end-of-day line', () => {
 
   it('goes back to the dock when you arrow to another day', () => {
     // The anchor is "the date this is about". Beside a Thursday it would be a
-    // line about a day that is not on screen, which is the failure ProgramNotice
+    // line about a day that is not on screen, which is the failure SeasonNotice
     // refuses for the same reason.
     usePlannerStore.setState({ selectedDate: new Date('2026-09-17T12:00:00Z') });
     render(

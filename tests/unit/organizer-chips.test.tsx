@@ -16,7 +16,7 @@ import {
 /**
  * The shared organizer chips: the copy each state reads as, the range fence
  * that keeps start ≤ end, and the add row's Enter/Escape grammar the goal,
- * program and routine panes (and their e2e `…-new-name` / `…-add` handles)
+ * season and routine panes (and their e2e `…-new-name` / `…-add` handles)
  * lean on.
  */
 
@@ -174,7 +174,7 @@ describe('OrganizerSection + LinkExistingPill', () => {
       </OrganizerSection>
     );
     const sec = screen.getByTestId('sec');
-    expect(sec.textContent).toContain('Milestones · 2 of 5');
+    expect(sec.textContent).toContain('Milestones 2 of 5');
     expect(within(sec).getByText('row')).toBeTruthy();
     fireEvent.click(screen.getByTestId('link'));
     expect(onLink).toHaveBeenCalled();

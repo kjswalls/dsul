@@ -1,24 +1,18 @@
-import { addDays, differenceInCalendarDays, format, parseISO } from 'date-fns';
+import { differenceInCalendarDays, format, parseISO } from 'date-fns';
 import { CheckCircle2, Flame } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 import { batchHistory, usePlannerStore } from '../planner-store';
 import { parseSearchQuery, searchItems } from '../search';
-import { isCompletedOnDate, isRecurring, toDateStr } from '../recurrence';
-import { isPausedOn } from '../active';
-import { getItemTypeConfig, itemTypeName } from '../item-registry';
+import { toDateStr } from '../recurrence';
+import { itemTypeName } from '../item-registry';
+import { milestoneItemIds } from '../goals';
+import { ITEM_VERBS, isDoneOn, type VerbContext, type VerbId } from '../item-verbs';
 import { resolveCategoryIcon } from '../category-icons';
 import { streaksEnabled } from '../extension-gates';
 import { scoreText } from './score';
 import type { Command, CommandEntityOption } from './types';
-import type {
-  CustomItem,
-  HabitItem,
-  Item,
-  Task,
-  TaskItem,
-  TimeBucket,
-} from '../planner-types';
+import type { Goal, HabitItem, Item, Task, TimeBucket } from '../planner-types';
 
 /**
  * The selection model.
@@ -57,54 +51,46 @@ export function activeDateStr(): string {
   );
 }
 
-export function isHabit(item: Item): item is HabitItem {
-  return item.type === 'habit';
-}
+// The item predicates live with the verbs they gate (lib/item-verbs.ts), so the
+// palette and the rows cannot answer "is it done?" two ways. Re-exported for
+// the callers that reach them through lib/commands.
+export { isCancelled, isDoneOn, isHabit, isSkippedOn, isTaskLike } from '../item-verbs';
 
-/** Task-shaped: a task or a custom type, which rides the task pipeline. */
-export function isTaskLike(item: Item): item is TaskItem | CustomItem {
-  return item.type !== 'habit';
-}
+/* ── verbs, as the palette sees them ───────────────────────────────────── */
 
-export function isCancelled(item: Item): boolean {
-  return item.type !== 'habit' && item.status === 'cancelled';
-}
-
-/**
- * "Done" means three different things depending on the item, and getting it
- * wrong makes Complete offer you rows it would silently un-complete:
- * a habit and a recurring task track completion per date, a one-shot item
- * carries a scalar status whose done value comes from its type config.
- */
-export function isDoneOn(item: Item, dateStr: string): boolean {
-  if (item.type === 'habit') return item.completedDates.includes(dateStr);
-  if (isRecurring(item)) return isCompletedOnDate(item, dateStr);
-  return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
-}
+let milestoneMemo: { goals: readonly Goal[] | undefined; ids: ReadonlySet<string> } = {
+  goals: undefined,
+  ids: new Set(),
+};
 
 /**
- * Skipping is per-DATE for every type that supports it (`skippedDates`), so
- * this reads the same array on a habit, a recurring task and a recurring
- * custom type. Whether the item may be skipped at all is `isSkippable`.
+ * The palette's context for a verb (lib/item-verbs.ts): the day on screen,
+ * which `dateStr` always is here, with the store's own `selectedDate` as the
+ * Date — the instant the store's writes resolved against before the verbs
+ * moved out, so a write lands on exactly the same day. It knows no schedule,
+ * so `occurrence` is left unknown.
  */
-export function isSkippedOn(item: Item, dateStr: string): boolean {
-  return (item.skippedDates ?? []).includes(dateStr);
-}
-
-/**
- * Is this item paused RIGHT NOW?
- *
- * Deliberately takes no dateStr, unlike its skip sibling above. Every other
- * item predicate here answers about the SELECTED day, which is right for
- * per-occurrence state — but a pause is a stretch of time, not an occurrence,
- * and the palette is a dateless surface (plan decision 3). Keyed on the
- * selected day instead, Pause and Resume would swap places as the user walked
- * the week across a resume boundary.
- */
-export function isPausedNow(item: Item): boolean {
-  const { userTimezone } = usePlannerStore.getState();
+export function paletteVerbContext(dateStr: string): VerbContext {
+  const { selectedDate, userTimezone, goals } = usePlannerStore.getState();
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  return isPausedOn(item, toDateStr(new Date(), tz), tz);
+  // Memoised on the goals array: every predicate here runs per item per keystroke.
+  if (milestoneMemo.goals !== goals) milestoneMemo = { goals, ids: milestoneItemIds(goals ?? []) };
+  return {
+    dateStr,
+    date: selectedDate,
+    todayStr: toDateStr(new Date(), tz),
+    tz,
+    milestoneIds: milestoneMemo.ids,
+  };
+}
+
+/** An item command's gate and effect, taken from the shared verb. */
+export function fromVerb(id: VerbId): Pick<ItemCommandSpec, 'eligible' | 'run'> {
+  const verb = ITEM_VERBS[id];
+  return {
+    eligible: (item, dateStr) => verb.eligible(item, paletteVerbContext(dateStr)),
+    run: (item, dateStr) => verb.run(item, paletteVerbContext(dateStr)),
+  };
 }
 
 /* ── candidates ────────────────────────────────────────────────────────── */
@@ -207,7 +193,7 @@ export function itemIcon(item: Item): LucideIcon {
  *
  * The key also carries WALL-CLOCK today. Every other predicate here (isDoneOn,
  * isSkippedOn) is a pure function of (items, dateStr), which is why that pair
- * was the whole key; isPausedNow is the first that reads `new Date()` itself,
+ * was the whole key; Pause and Resume read wall-clock today (paletteVerbContext),
  * because pausing is dateless (plan decision 3). Without today in the key, an
  * app left open overnight keeps answering with yesterday's verdict — offering
  * "Resume" for a pause that expired at midnight, then an empty picker.
@@ -378,12 +364,6 @@ export function itemCommand(spec: ItemCommandSpec): Command {
 }
 
 /* ── shared run helpers ────────────────────────────────────────────────── */
-
-/** Tomorrow relative to the item's own date, falling back to the day on screen. */
-export function nextDayStr(item: Item, dateStr: string): string {
-  const base = item.type !== 'habit' && item.startDate ? item.startDate : dateStr;
-  return format(addDays(parseISO(base), 1), 'yyyy-MM-dd');
-}
 
 /** Buckets exist on both shapes but are assigned through different actions. */
 export function assignBucket(item: Item, bucket: TimeBucket): void {

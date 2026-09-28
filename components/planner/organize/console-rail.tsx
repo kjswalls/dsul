@@ -22,7 +22,7 @@ import { CONTAINER_KINDS } from '@/lib/container-registry';
  * Built on `TabsPrimitive.Root orientation="vertical"` and that choice is load
  * bearing rather than convenient — it is what keeps
  * `getByRole('tab', { name: 'Routines' })` resolving, which
- * `tests/e2e/programs.spec.ts` drives the manager with. Phase 2's
+ * `tests/e2e/seasons.spec.ts` drives the manager with. Phase 2's
  * acceptance criterion is that that spec runs
  * UNCHANGED. It also gives roving tabindex and ↑/↓ traversal for free, and
  * `key={section}` remains the remount trick that makes a second open on a
@@ -39,7 +39,7 @@ import { CONTAINER_KINDS } from '@/lib/container-registry';
 export type ConsoleSection =
   | 'overview'
   | 'routines'
-  | 'programs'
+  | 'seasons'
   | 'goals'
   | 'projects'
   | 'types'
@@ -58,7 +58,7 @@ export type ConsoleSection =
  *
  *   TRASH rides NOTHING — `extension: null`, ungatable by construction. It is
  *     the only way back out of a delete (see sections/trash.tsx), and DELETION
- *     IS NOT GATED: items, projects, routines, programs, habit groups and goals
+ *     IS NOT GATED: items, projects, routines, seasons, habit groups and goals
  *     all still delete freely with the console off. Gating only the recovery
  *     half means the app's DEFAULT configuration — both extensions off, which
  *     is what every new account gets — can destroy work with no cross-session
@@ -90,11 +90,11 @@ export const CONSOLE_SECTIONS = [
   },
   { id: 'routines', label: 'Routines', group: 'CONTAINERS', eyebrow: 'ROUTINES',
     blurb: 'Pause a stack of items together.', extension: EXT_ORGANIZE, filterable: true },
-  { id: 'programs', label: 'Programs', group: null, eyebrow: 'PROGRAMS',
+  { id: 'seasons', label: 'Seasons', group: null, eyebrow: 'SEASONS',
     blurb: 'A stretch of life that switches routines on.', extension: EXT_ORGANIZE,
     filterable: true },
   // Third in CONTAINERS, and last of the three on purpose: routines and
-  // programs answer "is this on today", goals answer "why is any of it here".
+  // seasons answer "is this on today", goals answer "why is any of it here".
   // The daily questions sit above the long one.
   { id: 'goals', label: 'Goals', group: null, eyebrow: 'GOALS',
     blurb: 'Why the work matters.', extension: EXT_GOALS, filterable: true },
@@ -166,7 +166,7 @@ export const SECTION_IDENTITY: Record<
   // resting rows already use rather than a sixth hue.
   overview: { icon: LayoutGrid, accent: 'var(--muted-foreground)' },
   routines: { icon: Repeat, accent: 'var(--accent-2)' },
-  programs: { icon: CalendarRange, accent: 'var(--accent-3)' },
+  seasons: { icon: CalendarRange, accent: 'var(--accent-3)' },
   goals: { icon: Target, accent: 'var(--accent-6)' },
   projects: { icon: Folder, accent: 'var(--accent-1)' },
   types: { icon: Shapes, accent: 'var(--accent-4)' },

@@ -109,7 +109,7 @@ export interface ItemTypeConfig {
    */
   pausable: boolean
   /**
-   * May this type be collected into routines, programs and goals? Membership is
+   * May this type be collected into routines, seasons and goals? Membership is
    * what lets a whole slice of life switch off at once — and, for goals, what
    * lets a slice of life have a reason.
    */
@@ -486,7 +486,7 @@ export function buildCustomTypeConfig(
     skippable: true,
     skipStatus: null,
     // Custom types are task-shaped, so they pause and collect exactly like
-    // tasks — a new type needs no work to join a routine or a program.
+    // tasks — a new type needs no work to join a routine or a season.
     pausable: true,
     collectible: true,
     // Task-shaped here too: a one-shot custom item completes exactly like a
@@ -645,7 +645,7 @@ export function isRemindable(item: Item): boolean {
   return getItemTypeConfig(itemTypeName(item)).remindable
 }
 
-/** May this item join routines, programs and goals? Same subtask rule as isPausable. */
+/** May this item join routines, seasons and goals? Same subtask rule as isPausable. */
 export function isCollectible(item: Item): boolean {
   if ('parentItemId' in item && item.parentItemId) return false
   return getItemTypeConfig(itemTypeName(item)).collectible

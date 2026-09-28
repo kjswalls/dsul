@@ -217,7 +217,7 @@ export function useItemBands(item: Item): ResolvedBand[] {
   const projects = usePlannerStore((s) => s.projects);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
@@ -235,7 +235,7 @@ export function useItemBands(item: Item): ResolvedBand[] {
     counts: {
       project: projects.length,
       routine: routines.length,
-      program: programs.length,
+      season: seasons.length,
       goal: goals.length,
     },
   });
@@ -262,10 +262,10 @@ export function useItemBands(item: Item): ResolvedBand[] {
               color: r.color ?? accentColorForName(r.name),
             })),
         };
-      case 'program':
+      case 'season':
         return {
           band,
-          memberships: programs
+          memberships: seasons
             .filter((p) => p.itemIds.includes(item.id))
             .map((p) => ({
               key: p.id,
@@ -295,7 +295,7 @@ export function useItemBands(item: Item): ResolvedBand[] {
  * membership is a fact here rather than a picker, because the page is a place
  * you navigated to rather than a control you opened. Before this the page
  * showed a project and nothing else: an item could sit in three routines, a
- * program and two goals and its own page would not say so.
+ * season and two goals and its own page would not say so.
  *
  * An empty band still renders, and its affordance opens the editor rather than
  * inventing a second write path. That is what keeps this a readout: every

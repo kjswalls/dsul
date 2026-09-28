@@ -50,6 +50,7 @@ import {
   priorityFilterLabel,
   resetDisplay,
   useDisplaySummary,
+  withoutDisplayValue,
   type DisplaySurface,
 } from '@/lib/display-summary';
 import {
@@ -526,9 +527,9 @@ export function DisplayMenu({
   const [menuOpen, setMenuOpen] = useState(false);
   const projects = usePlannerStore((s) => s.projects);
   // Read purely to seed the grouping options' example lines — the Routine and
-  // Program group-by values name these, the way Project names `projects`.
+  // Season group-by values name these, the way Project names `projects`.
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const showPausedOnGrid = usePlannerStore((s) => s.showPausedOnGrid);
   const setShowPausedOnGrid = usePlannerStore((s) => s.setShowPausedOnGrid);
@@ -694,7 +695,7 @@ export function DisplayMenu({
     priority: previewNames(['High', 'Medium', 'Low']),
     bucket: previewNames(BUCKET_ORDER.map((b) => TIME_BUCKET_RANGES[b].label)),
     routine: previewNames(routines.map((r) => r.name)),
-    program: previewNames(programs.map((p) => p.name)),
+    season: previewNames(seasons.map((p) => p.name)),
     goal: previewNames(displayGoals(goals).map((g) => g.name)),
     // The braindump splits its corpus into exactly these two — see braindump.tsx.
     type: 'Tasks, Habits',
@@ -872,15 +873,24 @@ export function DisplayMenu({
       entries: [
         ...projects.map((p) => {
           const ref = containerRef('project', p.name);
+          // Folded, because the axis folds (`CONTAINER_KINDS.project.caseFold`)
+          // — a habit stored as 'personal' must tick the 'Personal' row.
+          const checked = selectedProjects.some((n) => sameContainerName('project', n, p.name));
           return rowEntry({
             key: ref,
             leading: <ContainerSquare color={getProjectColor(p.name)} />,
             label: p.name,
-            // Folded, because the axis folds (`CONTAINER_KINDS.project.caseFold`)
-            // — a habit stored as 'personal' must tick the 'Personal' row.
-            checked: selectedProjects.some((n) => sameContainerName('project', n, p.name)),
+            checked,
             keepOpen: true,
-            onToggle: () => patch({ containers: toggle(filters.containers, ref) }),
+            // Unticking folds too, or a row ticked by 'project:personal' would
+            // append 'project:Personal' beside it and stay ticked. The shelf's
+            // ✕ for the same value is this same removal.
+            onToggle: () =>
+              patch({
+                containers: checked
+                  ? withoutDisplayValue(filters, { id: 'project', key: ref }).containers
+                  : [...filters.containers, ref],
+              }),
           });
         }),
         ...(projects.length > 0 ? [{ kind: 'sep', key: 'none-sep' } satisfies Entry] : []),
@@ -1054,6 +1064,19 @@ export function DisplayMenu({
 
   const ariaLabel = activeCount > 0 ? `Display (${activeCount} active)` : 'Display';
 
+  /**
+   * A HELD key on the trigger opens nothing. Focus lands here when the shelf's
+   * last ✕ (or its reset) takes the shelf away, and a key still held from that
+   * press would otherwise autorepeat into the trigger, open the menu, and go on
+   * repeating into its first row. Radix's trigger toggles on every Enter or
+   * Space keydown without looking at `repeat`, and its handler runs after this
+   * one and stands down on a default already prevented; on touch the same
+   * keydown's default is the click that opens the sheet.
+   */
+  const ignoreHeldKey = (e: React.KeyboardEvent) => {
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault();
+  };
+
   // One button, whichever shell opens around it — the mounts size it from
   // outside (mobile-header grows the icon trigger to its 30px row slot), so it
   // must not change shape with the input device either.
@@ -1062,6 +1085,7 @@ export function DisplayMenu({
       <button
         ref={triggerRef}
         aria-label={ariaLabel}
+        onKeyDown={ignoreHeldKey}
         data-testid={`display-trigger-${surface}`}
         data-active={activeCount > 0 ? 'true' : 'false'}
         className={cn(
@@ -1078,6 +1102,7 @@ export function DisplayMenu({
       <button
         ref={triggerRef}
         aria-label={ariaLabel}
+        onKeyDown={ignoreHeldKey}
         data-testid={`display-trigger-${surface}`}
         data-active={activeCount > 0 ? 'true' : 'false'}
         className={cn(
@@ -1425,14 +1450,14 @@ function DisplaySheet({
  * OFF right now, each one click from back on.
  *
  * A gate container's home when it has no visible members — a fully-paused
- * routine, or an out-of-season program, produces no group header to switch, so
+ * routine, or a switched-off season, produces no group header to switch, so
  * without this list it would only be reachable from the Organize console. Shown
  * on BOTH surfaces because pausing is app-wide DB state, and hidden entirely
  * when nothing is off.
  *
- * "Off" means the container's OWN switch is off (`!localOn`): a routine a program
+ * "Off" means the container's OWN switch is off (`!localOn`): a routine a season
  * is merely holding down keeps its own switch on and is not listed here — the
- * blocking PROGRAM is, and turning it on brings the routine back. Mounted inside
+ * blocking SEASON is, and turning it on brings the routine back. Mounted inside
  * the open menu or sheet, so buildScopeRows only runs while one is on screen.
  */
 function PausedScopesSection({
@@ -1443,7 +1468,7 @@ function PausedScopesSection({
   onDismiss?: () => void;
 }) {
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
 
   const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1451,8 +1476,8 @@ function PausedScopesSection({
   // opened after midnight must offer the resume that is true now.
   const todayStr = toDateStr(new Date(), tz);
   const offRows = useMemo(
-    () => buildScopeRows(routines, programs, todayStr, tz).filter((row) => !row.localOn),
-    [routines, programs, todayStr, tz]
+    () => buildScopeRows(routines, seasons, todayStr, tz).filter((row) => !row.localOn),
+    [routines, seasons, todayStr, tz]
   );
 
   if (offRows.length === 0) return null;

@@ -18,7 +18,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useEODStore } from '@/lib/eod-store';
-import { shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
+import { anchoredSeriesOn, shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
 import { isOpenLoopSuppressedOn } from '@/lib/active';
 import type { Item, Task, TimeBucket } from '@/lib/planner-types';
@@ -111,7 +111,7 @@ export function EODReview() {
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const milestoneIds = useMemo(() => milestoneItemIds(goals), [goals]);
   const streaksOn = useStreaksEnabled();
@@ -133,7 +133,7 @@ export function EODReview() {
       // or a terminal status, so `completedTasks` passes through untouched:
       // an item paused after being ticked today still shows under Done today
       // (the history rule).
-      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, programs }))
+      if (isOpenLoopSuppressedOn(asItem(t), today, { userTimezone: resolvedTz, routines, seasons }))
         return false;
       // One-off tasks: match by startDate
       if (!isRecurring(t)) return t.startDate === today;
@@ -141,14 +141,16 @@ export function EODReview() {
       // shouldn't ask about it again, same as skipped habits (#194).
       if (isSkippedOnDate(t, today)) return false;
       // Recurring tasks: use recurrence filter (respects repeatFrequency, repeatDays, etc.)
-      return shouldShowOnDate(t, today, resolvedTz) && (!t.startDate || t.startDate <= today);
+      return t.startDate
+        ? anchoredSeriesOn(t, t.startDate, today, resolvedTz)
+        : shouldShowOnDate(t, today, resolvedTz);
     });
     return {
       pendingTasks: todayTasks.filter((t) => !isTaskDoneToday(t)),
       completedTasks: todayTasks.filter((t) => isTaskDoneToday(t)),
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tasks, routines, programs, today, userTimezone]);
+  }, [tasks, routines, seasons, today, userTimezone]);
 
   // Tasks marked complete during this EOD session
   const [justCompletedIds, setJustCompletedIds] = useState<Set<string>>(new Set());

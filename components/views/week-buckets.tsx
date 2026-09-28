@@ -53,7 +53,7 @@ function WeekBucketCell({
   const { tasksByBucket, habitsByBucket, recurringProjects } = useDayItems(date);
   const canvasGroupBy = useCanvasGroupBy();
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const tasks = tasksByBucket[bucket];
@@ -126,7 +126,7 @@ function WeekBucketCell({
   const { completedAs, rootRef } = useSinkHold(setNodeRef);
   const grouped =
     canvasGroupBy !== 'none' && groupBySupport('week', 'buckets', canvasGroupBy).honoured
-      ? groupRows(allRows, canvasGroupBy, { routines, programs, goals }).map((g) => ({
+      ? groupRows(allRows, canvasGroupBy, { routines, seasons, goals }).map((g) => ({
           ...g,
           rows: sinkCompleted(g.rows, completionDateStr, completedAs),
         }))

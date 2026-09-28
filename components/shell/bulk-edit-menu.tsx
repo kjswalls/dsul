@@ -66,7 +66,7 @@ import { cn } from '@/lib/utils';
  * set in a row; each is still one store action ⇒ one ⌘/Ctrl+Z.
  */
 
-type PaneKey = 'priority' | 'remind' | 'project' | 'routine' | 'program' | 'goal';
+export type PaneKey = 'priority' | 'remind' | 'project' | 'routine' | 'season' | 'goal';
 type Membership = 'none' | 'some' | 'all';
 
 const PRIORITY_ORDER = ['none', 'low', 'medium', 'high'] as const;
@@ -77,14 +77,14 @@ const PRIORITY_LABELS: Record<Priority | 'none', string> = {
   high: 'High',
 };
 
-const MIXED = 'Mixed';
+export const MIXED = 'Mixed';
 
 /**
  * The root row's value: the one value every item shares, nothing when they
  * share "unset", and "Mixed" otherwise. `key` is the comparison, `show` what
  * is printed — they differ for a container name, which compares folded.
  */
-function sharedSummary<T>(
+export function sharedSummary<T>(
   items: readonly Item[],
   read: (i: Item) => T | undefined,
   key: (v: T) => string = String,
@@ -115,10 +115,10 @@ const optionClass = cn(
   'hover:bg-accent focus-visible:bg-accent focus-visible:outline-none'
 );
 
-const sectionClass = 'px-2 pb-1 pt-1.5 text-2xs uppercase tracking-wide text-muted-foreground';
+export const sectionClass = 'px-2 pb-1 pt-1.5 text-2xs uppercase tracking-wide text-muted-foreground';
 
 /** " · 3" — only when the row reaches fewer than the whole selection. */
-function EligibleCount({ n, of }: { n: number; of: number }) {
+export function EligibleCount({ n, of }: { n: number; of: number }) {
   return n < of ? <span className="text-muted-foreground">· {n}</span> : null;
 }
 
@@ -132,7 +132,7 @@ function EligibleCount({ n, of }: { n: number; of: number }) {
  * intent is nearly always "put these there", and only the already-satisfied
  * case can safely mean the opposite.
  */
-type OptionSpec = {
+export type OptionSpec = {
   key: string;
   label: string;
   role: 'menuitemradio' | 'menuitemcheckbox';
@@ -147,11 +147,11 @@ type OptionSpec = {
 };
 
 /** The desktop row and panel: the sidebar Display menu's own. */
-const MENU_ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';
-const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
+export const MENU_ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';
+export const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
 
 /** A trailing check for all, a dash for some — the house selection grammar. */
-function OptionBody({ o }: { o: OptionSpec }) {
+export function OptionBody({ o }: { o: OptionSpec }) {
   return (
     <>
       {o.leading}
@@ -171,7 +171,7 @@ function OptionBody({ o }: { o: OptionSpec }) {
  * printable key (typeahead) at the content, so the wrapper keeps key events
  * from bubbling out: the field owns its keys, and Tab reaches Apply.
  */
-function RemindPane({
+export function RemindPane({
   value,
   onChange,
   undated,
@@ -242,11 +242,17 @@ function RemindPane({
   );
 }
 
-export function BulkEditMenu({ selected }: { selected: Item[] }) {
+/**
+ * The properties a selection can take and each one's options, as DATA — the
+ * one description every shell draws: this menu's flyout and touch popover, and
+ * the right-click menu (components/planner/item-context-menu.tsx), which hands
+ * in a selection of one. Exported for that reason; it renders nothing.
+ */
+export function useEditModel(selected: Item[]) {
   const projects = usePlannerStore((s) => s.projects);
   const getProjectColor = usePlannerStore((s) => s.getProjectColor);
   const routines = usePlannerStore((s) => s.routines);
-  const programs = usePlannerStore((s) => s.programs);
+  const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const goalsAvailable = usePlannerStore((s) => s.goalsAvailable);
@@ -256,15 +262,6 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
   const setItemsCollected = usePlannerStore((s) => s.setItemsCollected);
   const setItemsGoal = usePlannerStore((s) => s.setItemsGoal);
   const goalsOn = useGoalsEnabled();
-  // Which shell — the same live breakpoint the sidebar's Display menu uses.
-  const isTouch = useIsMobile();
-
-  const [open, setOpen] = useState(false);
-  const [pane, setPane] = useState<PaneKey | null>(null);
-  const [remindTime, setRemindTime] = useState('');
-  const bodyRef = useRef<HTMLDivElement>(null);
-  // The row last drilled from, so Back lands on it rather than on the top row.
-  const [drilledFrom, setDrilledFrom] = useState<PaneKey | null>(null);
 
   const count = selected.length;
 
@@ -343,12 +340,12 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
       visible: collectionsAvailable && collectible.length > 0 && routines.length > 0,
     },
     {
-      key: 'program',
-      label: CONTAINER_KINDS.program.label,
+      key: 'season',
+      label: CONTAINER_KINDS.season.label,
       icon: <CalendarRange className="size-3.5" />,
       eligible: collectible.length,
-      summary: membershipRowSummary(programs, containerState),
-      visible: collectionsAvailable && collectible.length > 0 && programs.length > 0,
+      summary: membershipRowSummary(seasons, containerState),
+      visible: collectionsAvailable && collectible.length > 0 && seasons.length > 0,
     },
     {
       key: 'goal',
@@ -362,41 +359,6 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
     },
   ];
   const visibleRows = rows.filter((r) => r.visible);
-
-  // Drilling in or out moves focus into the new level, so a keyboard user is
-  // never left holding focus on a row that just unmounted: a pane's first
-  // OPTION (the time field in Remind — not Back, which comes first in the
-  // DOM), and on the way out the row the user drilled from.
-  useEffect(() => {
-    if (!open) return;
-    const body = bodyRef.current;
-    if (!body) return;
-    const target = pane
-      ? body.querySelector<HTMLElement>(
-          pane === 'remind' ? '[data-testid="bulk-remind-time"]' : 'button:not([data-testid="bulk-edit-back"])'
-        )
-      : (drilledFrom &&
-          body.querySelector<HTMLElement>(`[data-testid="bulk-edit-row-${drilledFrom}"]`)) ||
-        body.querySelector<HTMLElement>('button');
-    target?.focus();
-  }, [open, pane, drilledFrom]);
-
-  if (visibleRows.length === 0) return null;
-
-  // The Remind field starts from the time the selection shares, recomputed on
-  // every entry so a Clear or an abandoned draft never lingers.
-  const prefillRemind = () => {
-    const shared = sharedSummary(remindable, (i) => i.reminderTime || undefined);
-    setRemindTime(shared && shared !== MIXED ? shared : '');
-  };
-
-  const drill = (key: PaneKey) => {
-    if (key === 'remind') prefillRemind();
-    setDrilledFrom(key);
-    setPane(key);
-  };
-
-  const current = rows.find((r) => r.key === pane);
 
   // ── each pane's options, as DATA, drawn by whichever shell is live ────────
   // Two shells, one description (display-menu.tsx's lesson: two bodies drift).
@@ -459,13 +421,13 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
         ];
       }
       case 'routine':
-      case 'program':
+      case 'season':
       case 'goal': {
         const list: readonly { c: { id: string; name: string; color?: string }; state: Membership }[] =
           key === 'routine'
             ? routines.map((c) => ({ c, state: containerState(c) }))
-            : key === 'program'
-              ? programs.map((c) => ({ c, state: containerState(c) }))
+            : key === 'season'
+              ? seasons.map((c) => ({ c, state: containerState(c) }))
               : activeGoals.map((c) => ({ c, state: goalState(c) }));
         return list.map(({ c, state }): OptionSpec => {
           return {
@@ -492,6 +454,65 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
     }
   };
 
+  return {
+    count,
+    rows,
+    visibleRows,
+    optionsFor,
+    remindable,
+    undatedReminders,
+    setItemsReminder,
+  };
+}
+
+export function BulkEditMenu({ selected }: { selected: Item[] }) {
+  const { count, rows, visibleRows, optionsFor, remindable, undatedReminders, setItemsReminder } =
+    useEditModel(selected);
+  // Which shell — the same live breakpoint the sidebar's Display menu uses.
+  const isTouch = useIsMobile();
+
+  const [open, setOpen] = useState(false);
+  const [pane, setPane] = useState<PaneKey | null>(null);
+  const [remindTime, setRemindTime] = useState('');
+  const bodyRef = useRef<HTMLDivElement>(null);
+  // The row last drilled from, so Back lands on it rather than on the top row.
+  const [drilledFrom, setDrilledFrom] = useState<PaneKey | null>(null);
+
+  // Drilling in or out moves focus into the new level, so a keyboard user is
+  // never left holding focus on a row that just unmounted: a pane's first
+  // OPTION (the time field in Remind — not Back, which comes first in the
+  // DOM), and on the way out the row the user drilled from.
+  useEffect(() => {
+    if (!open) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    const target = pane
+      ? body.querySelector<HTMLElement>(
+          pane === 'remind' ? '[data-testid="bulk-remind-time"]' : 'button:not([data-testid="bulk-edit-back"])'
+        )
+      : (drilledFrom &&
+          body.querySelector<HTMLElement>(`[data-testid="bulk-edit-row-${drilledFrom}"]`)) ||
+        body.querySelector<HTMLElement>('button');
+    target?.focus();
+  }, [open, pane, drilledFrom]);
+
+  if (visibleRows.length === 0) return null;
+
+  // The Remind field starts from the time the selection shares, recomputed on
+  // every entry so a Clear or an abandoned draft never lingers.
+  const prefillRemind = () => {
+    const shared = sharedSummary(remindable, (i) => i.reminderTime || undefined);
+    setRemindTime(shared && shared !== MIXED ? shared : '');
+  };
+
+  const drill = (key: PaneKey) => {
+    if (key === 'remind') prefillRemind();
+    setDrilledFrom(key);
+    setPane(key);
+  };
+
+  const current = rows.find((r) => r.key === pane);
+
   const remindBody = (onDone: () => void): ReactNode => (
     <RemindPane
       value={remindTime}
@@ -500,11 +521,11 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
       anySet={remindable.some((i) => !!i.reminderTime)}
       onApply={() => {
         if (!remindTime) return;
-        setItemsReminder(allIds(remindable), remindTime);
+        setItemsReminder(remindable.map((i) => i.id), remindTime);
         onDone();
       }}
       onClear={() => {
-        setItemsReminder(allIds(remindable), undefined);
+        setItemsReminder(remindable.map((i) => i.id), undefined);
         onDone();
       }}
     />

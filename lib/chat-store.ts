@@ -240,10 +240,10 @@ export function createChatStore(config: ChatThreadConfig) {
         let controller: AbortController | null = null;
 
         try {
-          const { items, projects, itemTypes, routines, programs, goals, userTimezone } =
+          const { items, projects, itemTypes, routines, seasons, goals, userTimezone } =
             usePlannerStore.getState();
           const context = buildDsulContext({
-            items, projects, routines, programs,
+            items, projects, routines, seasons,
             // Beacon is told about goals only while the user has the idea
             // switched on. `buildDsulContext` already renders nothing for an
             // empty list, so this removes a LINE from the context rather than

@@ -753,19 +753,19 @@ the canvas one rather than a smaller one: it has `type` and still lacks `bucket`
 **What it is.** A line of text inside the braindump header's grey capsule, under the white
 pill, saying in words what the Display menu has set: "Grouped by …", "Sorted by …", the
 priority values (the menu's dots; No priority is the hollow ring), the project values (the
-menu's colour squares; No project is the ring), the goal values (lucide `Target`), and "Hide
-finished" last. Values follow the menu's rows, never the order they were toggled in, and
-that includes a goal id nothing answers to, which follows its "Unknown goal" row, after the
-goals the store can name. A value with no row comes after those with one, in the order it
-was stored: a string no Priority row offers, and for projects a deleted project, then a ref
-of no project kind. No project is the exception, and stays last, where its row is. It is
-there exactly when the trigger's lime dot is lit, in the sidebar and in the phone's
-Braindump tab alike, so a braindump with nothing set keeps the bare capsule. Clicking the
-text opens the Display menu; on a pointer the ✕ beside it resets (touch has no ✕ since
-2026-09-26; see the canvas addendum). The dot says THAT the list is shaped and the shelf
-says how, and one case makes it more than a convenience: a filter that matches nothing
-leaves the list showing its "A clear head." empty-state poem, and the shelf is then the only
-thing on screen that says why. The component is
+menu's colour squares; No project is the ring), the goal values (lucide `Target`), and
+"Hide finished" last. Values follow the menu's rows, never the order they were toggled in,
+and that includes a goal id nothing answers to, which follows its "Unknown goal" row, after
+the goals the store can name. A value with no row comes after those with one, in the order it
+was stored: a string no Priority row offers, and for projects a deleted project, then a ref of
+no project kind. No project is the exception, and stays last, where its row is. It is
+there exactly when the trigger's lime dot is lit, in the sidebar and in
+the phone's Braindump tab alike, so a braindump with nothing set keeps the bare capsule.
+Clicking the text opens the Display menu. Every setting and every value wears a ✕ of its own
+that takes just that one off (added 2026-09-26, below), and the ✕ at the end resets them all. The dot says THAT the list
+is shaped and the shelf says how, and one case makes it more than a convenience: a filter
+that matches nothing leaves the list showing its "A clear head." empty-state poem, and the
+shelf is then the only thing on screen that says why. The component is
 [components/primitives/display-shelf.tsx](../../components/primitives/display-shelf.tsx). It
 hangs in SurfaceHeader's `below` slot, which renders straight after the pill with no
 wrapper, so a header that passes nothing (Beacon's) is unchanged and the pill stays the
@@ -794,14 +794,15 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   group-by and the Goals gate, so a grouping or goal selection the switch is keeping is
   neither counted nor named. `clauseText` is the one spelling of each clause: the fit is keyed
   on it, and the tests read the screen against it.
-- **The ✕ IS Reset display.** Both shells' Reset row and the ✕ call `resetDisplay(surface)`,
-  so they cannot drift. With Goals off it keeps the stranded goal selection and the stored
+- **The end ✕ IS Reset display.** Both shells' Reset row and the ✕ at the end of the shelf
+  call `resetDisplay(surface)`, so they cannot drift. It shows only while the settings wear
+  more than one ✕ between them: with one, it would be that setting's ✕ twice. With Goals off it keeps the stranded goal selection and the stored
   Goal grouping (off is lossless), and it never touches Show paused, which is app-wide. The
   ✕ moves focus to the trigger BEFORE it resets: a reset always takes the count to zero, so
   the shelf unmounts under the pressed button, and a focused element that unmounts leaves
   focus on `<body>`. On a pointer the ✕ wears the header's `RailTooltip` ("Reset display"),
   as every icon-only control in that header does, and never a native `title`, which would
-  fire a second tooltip. On touch there is no ✕ at all (see the canvas addendum).
+  fire a second tooltip; on the phone it has none.
 - **The text opens the menu through a handle, never a second trigger or lifted state.**
   `DisplayMenu` takes a React 19 `ref` prop exposing `open(from?)` and `focus()`. Radix keeps
   one trigger ref and one anchor per menu, so a second `DropdownMenuTrigger` would take both
@@ -896,16 +897,69 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   goals table that could not be reached), and `…` would have the shelf disagree with the
   menu it opens for as long as the failure lasted.
 - **The accessible name is the visible text** (WCAG 2.5.3, Label in Name), so an `aria-label`
-  here would trip axe's `label-content-name-mismatch`. sr-only `"; "` and `", "` separators
-  give the name its pauses. The nouns the glyphs stand for go in `aria-describedby` ("Display
-  settings. Priority: High, Low. Project: Work, No project. …"). `aria-haspopup` comes from
+  here would trip axe's `label-content-name-mismatch`. Since the per-setting ✕s, the opener
+  holds an sr-only copy of that text (`clauseText` joined with `"; "`, values with `", "`)
+  and the words on screen are aria-hidden; see below. The nouns the glyphs stand for go in
+  `aria-describedby` ("Display settings. Priority: High, Low. Project: Work, No project. …"),
+  from a `hidden` node now that each value's ✕ says its noun in the reading order. `aria-haspopup` comes from
   `useIsMobile()`, the hook DisplayMenu picks its shell with, and is `menu` or `dialog`. There
   is no `aria-expanded`, because what opens is modal and hides the section while it is up.
   There is also no live region and no heading.
-- **The phone's text is a 28px target, through a `::before` hit area** (the header's
-  existing idiom) on the BUTTON. The clipping `overflow-hidden` is on the lines box inside
-  the opener, so it never cuts the reach off. (The phone's ✕ had one too, until touch lost
-  its ✕.)
+- **The phone's targets are 28px, through a `::before` hit area** (the header's existing
+  idiom) on the BUTTONS: the opener's and the reset ✕'s. A per-setting ✕ is 25 × 28px, see
+  below.
+
+### Addendum (2026-09-26): a ✕ for each setting
+
+Each grouping, ordering and Hide finished phrase, and each priority, project and goal VALUE,
+now carries a small ✕ after it that takes off that one thing. The end ✕ still resets them all.
+
+- **One function, in the model.** The ✕ calls `removeDisplaySetting(surface, removal)` in
+  `lib/display-summary.ts`, next to `resetDisplay`, through the same setters (so the canvas
+  mirrors hold). A multi-select value is removed by its `DisplayValue.key` through the pure
+  `withoutDisplayValue`, which takes off EVERY stored entry the value stands for: duplicates
+  collapse into one drawn value, so removing only the spelling in the key would leave the
+  twin, and the value, on the shelf. Projects compare folded (`sameContainerRef`, as the menu's
+  tick does); a ref of no classify kind, the unset key, priorities and goals compare exactly,
+  as they are deduped. `display-summary.test.ts` removes every drawn thing in every case of
+  the matrix and checks that exactly that one disappears. The Goals gate needs no handling
+  here, because no ✕ is drawn for a goal clause or a Goal grouping while Goals is off.
+- **The opener sits UNDER the words.** A button cannot hold buttons, so the opener is an
+  `absolute inset-0` button behind the lines box. The lines box is `relative` (so it paints
+  above) and `pointer-events-none` (so a click on the words falls through to the opener); the
+  ✕s are `pointer-events-auto`. The opener's name is its own sr-only copy of the text, and the
+  words on screen are aria-hidden, so a screen reader meets the opener once and then the ✕s,
+  each named `Remove <phrase>` or `Remove <Noun>: <value>`. The opener is the `peer/open` the
+  words' hover colour reads, so it must stay the lines box's previous sibling. It sits outside
+  the clipping lines box so its focus ring is not cut off. `openerRef`, `open(from)` and the
+  focus return on close are unchanged.
+- **A ✕ belongs to its setting.** The ✕ sits inside the clause span or value span, after the
+  label, and never shrinks, so a phrase ellipsizes before its ✕ and a value never wraps away
+  from its own. It is rem-sized, like the gaps and dots, so the sample's rem already accounts
+  for it in the fit.
+- **Focus moves on first, as the reset's does.** The pressed ✕ unmounts, so before removing
+  anything, focus goes to the next per-setting ✕, or the previous one if this was the last, or
+  the trigger if nothing is left. It never goes to the reset ✕, which leaves with the
+  second-to-last setting. Every other ✕ survives because each is keyed by what it names. A
+  repeated (held) Enter is cancelled on keydown; otherwise autorepeat would walk the focus
+  from ✕ to ✕ and clear the shelf.
+- **Phone reach: 25 × 28px, lopsided on purpose.** The reach is 7px to the right but only 4px
+  to the left, which is the gap to its own words, so a tap at the end of a name still opens the
+  menu. The lines box clips, so it carries `py-[5px]`, taken back by `-my-[5px]`, to keep the
+  vertical reach from being cut. Accepted cost: a truncated phrase that fills a stacked line
+  puts its ✕ flush against the clip, which shortens that ✕'s right reach.
+- Per-setting ✕s wear the header's `RailTooltip` ("Remove") on a pointer and none on the
+  phone, as the end ✕ does.
+- **The menu unticks the way the ✕ removes.** A Project row is ticked by a folded match, so
+  a row ticked by a stored `project:work` has to untick through `withoutDisplayValue` too.
+  An exact-string toggle appended `project:Work` beside it and left the row ticked. Ticking
+  still appends the store's own spelling.
+- **The trigger ignores a held key.** The shelf's last ✕ (and its reset) hand focus to the
+  trigger, and a key still held from that press would autorepeat into it: Radix toggles on
+  every Enter/Space keydown regardless of `repeat`, so the menu would open and the repeat
+  would go on into its first row. `ignoreHeldKey` prevents the default of a repeated keydown
+  on both trigger variants; Radix's own handler runs after the child's under `asChild` and
+  stands down on a prevented default.
 
 ### Gotchas from the shelf
 
@@ -953,12 +1007,15 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   asked for. The cost is one frame in the old fit after a width change, in either direction:
   an unstack decided in the delivery to save that frame brings the error back on every
   widen.
+- **A click on the words cannot be `hover()`ed or `click()`ed by locator in Playwright.** The
+  words are `pointer-events-none` and Playwright refuses them as "not receiving pointer
+  events". Move or click the mouse at their coordinates instead, which is what a user does.
 - **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
   The tests query `[data-clause="…"]` instead.
-- **jsdom's accessible-name computation trims each element's text.** So the space inside an
-  sr-only separator does not survive it, and the computed name reads
-  `Grouped by Project;High,Low;…`. The test lets those spaces be missing from the name and
-  checks the separators' own text instead.
+- **jsdom's accessible-name computation trims each element's text.** So a space inside a
+  separate sr-only separator did not survive it (`Grouped by Project;High,Low;…`). Since the
+  per-setting ✕s, the opener's name is ONE sr-only string with its separators inline, so the
+  test pins it exactly. Keep it one string.
 - **vaul keeps a closed sheet mounted in jsdom and leaves the page `aria-hidden`.** Steps after
   a close therefore go by test id and `data-state`, never by role. The sheet's focus return
   CAN be observed, though: Radix's Presence holds the closed content until an `animationend`
@@ -970,7 +1027,9 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   how a trigger reopening a menu mid-exit is tested.
 
 **Manual QA states:** 406px and 280px sidebar and a 390px phone: one setting; everything on;
-a 4+ value priority or project filter at 280px (wraps between values); a long project name
+a 4+ value priority or project filter at 280px (wraps between values, each ✕ staying with its
+value); a ✕ press on the phone near the end of a name (opens the menu, not the ✕); each ✕ taken
+off in turn with the keyboard (focus walks on, then lands on the trigger); a long project name
 at 280px (ellipsizes); collapse and hover-peek with the shelf showing; open from the shelf and
 Escape (focus back on the shelf); a text-spacing bookmarklet or text-only zoom applied with the
 shelf on one line (it stacks rather than clip), then taken off (it goes back to one line);
@@ -985,18 +1044,19 @@ too"). On the desktop it is the HeaderCapsule's third row, under the view pill, 
 braindump's sits under its own; on the phone it is the last thing in the Today card, after
 the week strip and the review notice. It is the same component reading the same summary for
 `surface="canvas"`, so it shows exactly when the canvas trigger's dot is lit, its text opens
-the canvas menu through the same handle, and on a pointer its ✕ is the canvas's Reset
-display. Nothing in it is canvas-specific except the one clause only the canvas has, the
-type filter.
+the canvas menu through the same handle, each setting's ✕ takes that one canvas setting off,
+and the end ✕, while there is more than one, is the canvas's Reset display. Nothing in it is
+canvas-specific except the one clause only the canvas has, the type filter.
 
-**No ✕ on touch, on either surface.** A touch mount (the phone's Today card, and the
-Braindump tab, which had one from 2026-09-25) draws the text alone, and its reach runs the
-whole row. The repo's rule for the dock's notices (`components/sidebar/dock-notices.tsx`) is
-that a destructive target pressed up against a full-width tap target is a mis-tap generator
-with no hover to tell them apart, and this ✕ sat 2px from the text's reach and wiped every
-Display setting on the surface with nothing to undo it. The sheet the text opens has Reset
-display, with its count, on its root pane: one tap further, the way each notice's tray
-carries its own dismissal.
+**Touch keeps its ✕s, as the Braindump tab's.** This branch first drew the text alone on
+touch, on both surfaces, on the dock notices' rule (`components/sidebar/dock-notices.tsx`)
+that a destructive target pressed up against a full-width tap target is a mis-tap generator:
+the one ✕ then sat 2px from the text's reach and wiped every Display setting at once. The
+per-setting ✕s (above, 2026-09-26, merged into this branch from main) answered that
+differently: a setting's ✕ takes off that one setting, and its 25 × 28px reach runs only the
+4px gap toward its own words, so a tap at the end of a name still opens the menu. The merge
+took that design for the canvas's phone mount too, the reset ✕ with its 28px reach
+included, so the phone's two shelves stay one component with one set of targets.
 
 **Where, and what was weighed.** Three placements were rendered in the real header and put
 to Kirby on a card: under the pill (built), beside the pill in the header row's bottom band,
@@ -1014,7 +1074,7 @@ takes that. Without it, in Chromium, the capsule grew to the shelf's one line (3
 with every setting on) and the shelf never stacked. The phone card is stretched to the
 screen, so it needs none. Each mount's insets come in through `className`, merged over the
 root's with `cn`. The capsule's `px-4 pr-3.5 pt-1 pb-px` put the text under the Layout icon
-and the ✕ under the Zen leaf (the pill insets the leaf 14px, not 16), 8px under the pill and
+and the reset ✕ under the Zen leaf (the pill insets the leaf 14px, not 16), 8px under the pill and
 9px above the capsule's edge; the phone's `px-0 pt-0 pb-px` put the text on the date's edge.
 `floor` is the sidebar's alone: the capsule never animates, so every width it takes is one
 it rests at.

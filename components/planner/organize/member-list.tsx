@@ -1,15 +1,18 @@
 'use client';
 
-import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { LinkExistingPill, OrganizerSection } from '@/components/primitives/organizer-chips';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
 import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
 import { countLive, swapMembers, useLiveItemIds } from '@/lib/collections';
 import { inActiveSection, useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
+import { cadenceLabel } from '@/lib/cadence';
 import type { Item, Routine } from '@/lib/planner-types';
 
 /**
@@ -17,7 +20,7 @@ import type { Item, Routine } from '@/lib/planner-types';
  *
  * MOVED, NOT REWRITTEN (memory/plans/organize-console.md, Phase 2). Every
  * data-testid travels verbatim, because Phase 2's acceptance criterion is that
- * `tests/e2e/programs.spec.ts` runs UNCHANGED. The
+ * `tests/e2e/seasons.spec.ts` runs UNCHANGED. The
  * geometry is re-cut to console scale (30px rows, 5px radii, a reserved control
  * rail) but no behaviour changes here.
  *
@@ -42,9 +45,16 @@ import type { Item, Routine } from '@/lib/planner-types';
  * sub-24px targets are a mis-tap away from swapping in the wrong direction, and
  * the write goes straight to the DB.
  */
-function ControlRail({ children }: { children: React.ReactNode }) {
+function ControlRail({ children, wide = false }: { children: React.ReactNode; wide?: boolean }) {
   return (
-    <div className="flex w-[72px] shrink-0 items-center justify-end gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100">
+    <div
+      className={cn(
+        'flex shrink-0 items-center justify-end gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100',
+        // Sized for its fullest case — up, down, remove (3 × 24px + 2 gaps),
+        // plus the ⋯ menu when wide — so an orderable row never spills left.
+        wide ? 'w-[102px]' : 'w-[76px]'
+      )}
+    >
       {children}
     </div>
   );
@@ -124,6 +134,12 @@ function TypeGlyph({ item, className }: { item: Item; className?: string }) {
  * 64px, and most rows in a braindump-fed routine are unscheduled, so the word
  * would be the loudest repeated thing on the pane while carrying no signal.
  */
+/** "Journal · Weekdays · Evening" — a row's title and timing, for its tooltip. */
+function rowTip(item: Item): string {
+  const bucket = item.timeBucket && item.timeBucket !== 'anytime' ? BUCKET_TEXT[item.timeBucket] : undefined;
+  return [item.title, cadenceLabel(item as never), item.startTime ?? bucket].filter(Boolean).join(' · ');
+}
+
 function memberMeta(item: Item): { text: string; numeric: boolean } {
   if (item.startTime) return { text: item.startTime, numeric: true };
   if (item.timeBucket && item.timeBucket !== 'anytime') {
@@ -159,9 +175,40 @@ export interface MemberRowParts {
   leading?: (item: Item) => ReactNode;
   /** Replaces the when-column — a milestone's date, a check-in's "last Sep 20". */
   meta?: (item: Item) => { text: string; numeric: boolean };
+  /**
+   * The meta column's width. 64px fits a clock time or a bucket; a list that
+   * says CADENCE ("Mon, Wed, Fri · last Sep 21") and draws no week dots can
+   * give it the dots' room instead.
+   */
+  metaWidth?: number;
+  /**
+   * Draw no meta column: the row's timing goes in the title's tooltip. For a
+   * list whose rows already carry the week's dots — the words beside them made
+   * every row twice as long to scan (Kirby, 2026-09-27).
+   */
+  metaInTooltip?: boolean;
   /** Done, not hidden: the title goes muted (never struck through). */
   done?: (item: Item) => boolean;
+  /** After the meta column, before the controls — the week's dots (schedule-views.tsx). */
+  trailing?: (item: Item) => ReactNode;
+  /**
+   * The row's verbs (member-row-actions.tsx): a hover capsule laid over the
+   * meta column above md, and a ⋯ menu in the rail on every width.
+   */
+  capsule?: (item: Item) => ReactNode;
+  menu?: (item: Item) => ReactNode;
+  /** Wraps the row in its right-click menu (components/planner/item-context-menu.tsx). */
+  contextMenu?: (item: Item, row: ReactElement) => ReactElement;
 }
+
+/**
+ * How far a row's trailing slot sits from the row's right edge: the control
+ * rail (76px — ControlRail), the gap before it and the row's padding. A header
+ * drawn over the trailing slots (WeekDotsHeader) pads by this much to line up.
+ */
+export const MEMBER_ROW_TRAILING_PAD = 76 + 9 + 7;
+/** The same, for a list whose rail carries a ⋯ menu (`row.menu`). */
+export const MEMBER_ROW_TRAILING_PAD_WITH_MENU = 102 + 9 + 7;
 
 export function ItemMemberList({
   label,
@@ -179,6 +226,9 @@ export function ItemMemberList({
   orderable = false,
   eligible,
   emptyPoolLabel,
+  emptyHint,
+  removable,
+  openItems = false,
   onChange,
 }: {
   /** The section heading — "Items", "Milestones". */
@@ -202,7 +252,7 @@ export function ItemMemberList({
    * answer, never the owning container's state.
    *
    * This was a single boolean, and that was wrong in both directions. A routine
-   * held off by a program greyed an item that a SECOND routine was still
+   * held off by a season greyed an item that a SECOND routine was still
    * carrying, and a live routine drew an item at full contrast while the item's
    * own pause kept it off the grid. The container's state is not the item's:
    * the whole point of the disjunctive rule is that an item can have another
@@ -213,18 +263,25 @@ export function ItemMemberList({
   /**
    * Routines only, and not a taste call: `routine_items` carries a `sort_order`
    * column (written from the array index by reconcileMembership) and
-   * `program_items` does not. Offering the controls on a program would let the
+   * `season_items` does not. Offering the controls on a season would let the
    * user arrange an order that survives until the next fetch and then silently
    * reshuffles.
    */
   orderable?: boolean;
+  /**
+   * Each title opens its item (/item/[id]). Off in a create form, where
+   * leaving would drop the unsaved draft. Out of the console it LEAVES the
+   * console — the item panel cannot sit over it — so it closes the dialog on
+   * navigate (onNavigate, so a ⌘-click to a new tab keeps this one open).
+   */
+  openItems?: boolean;
   /**
    * Which items may be added, when plain collectibility is not the question.
    *
    * Goals need it: a milestone must additionally be one-shot and a check-in
    * must be recurring, so the picker for those lists is narrower than the one
    * for plain members. Defaults to `isCollectible`, which is what every
-   * container asked before and what routines and programs still ask.
+   * container asked before and what routines and seasons still ask.
    */
   eligible?: (item: Item) => boolean;
   /**
@@ -238,6 +295,18 @@ export function ItemMemberList({
    * confident wrong answer a picker should never give.
    */
   emptyPoolLabel?: string;
+  /**
+   * One muted line in place of rows while the list is empty — what belongs
+   * here, by example. The create forms use it so a new container's empty
+   * sections read as prompts rather than a blank form.
+   */
+  emptyHint?: string;
+  /**
+   * Whether a member may leave. Absent = always. A project cannot release a
+   * habit (its container is REQUIRED — canBulkClearProject), so its bin would
+   * be a button that silently does nothing.
+   */
+  removable?: (item: Item) => boolean;
   onChange: (ids: string[]) => void;
 }) {
   const items = usePlannerStore((s) => s.items);
@@ -369,18 +438,24 @@ export function ItemMemberList({
 
         {members.length > 0 && (
           /* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */
-          <div className="max-h-44 space-y-px overflow-y-auto">
+          <div
+            className={cn(
+              'max-h-44 space-y-px overflow-y-auto',
+              // With week dots, the header above must line up with the rows —
+              // so the scrollbar's gutter is reserved in both (WeekDotsHeader).
+              row?.trailing && '[scrollbar-gutter:stable]'
+            )}
+          >
             {members.map((item, i) => {
               const meta = (row?.meta ?? memberMeta)(item);
               const done = row?.done?.(item) ?? false;
-              return (
+              const rowEl = (
                 <div
-                  key={item.id}
                   data-testid={`${testPrefix}-member`}
                   data-item-id={item.id}
                   data-member-index={i}
                   data-done={done || undefined}
-                  className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
+                  className="hover:bg-accent group relative flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
                 >
                   {row?.leading ? (
                     <span className="flex w-[18px] shrink-0 justify-center">{row.leading(item)}</span>
@@ -393,25 +468,48 @@ export function ItemMemberList({
                       aside. A DONE milestone is muted the same way and for the
                       mirror reason: its check already says done, and a strike
                       on top would say it twice. */}
-                  <span
-                    title={item.title}
-                    className={cn(
-                      'font-content text-content min-w-0 flex-1 truncate',
-                      hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
-                    )}
-                  >
-                    {item.title}
-                  </span>
+                  {openItems ? (
+                    <Link
+                      href={`/item/${item.id}`}
+                      onNavigate={() => useUIStore.getState().closeDialog()}
+                      title={row?.metaInTooltip ? rowTip(item) : item.title}
+                      data-testid={`${testPrefix}-member-open`}
+                      className={cn(
+                        'font-content text-content min-w-0 flex-1 truncate underline-offset-2 hover:underline',
+                        hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {item.title}
+                    </Link>
+                  ) : (
+                    <span
+                      title={row?.metaInTooltip ? rowTip(item) : item.title}
+                      className={cn(
+                        'font-content text-content min-w-0 flex-1 truncate',
+                        hiddenIds.has(item.id) || done ? 'text-muted-foreground' : 'text-foreground'
+                      )}
+                    >
+                      {item.title}
+                    </span>
+                  )}
 
                   <span
                     data-testid={`${testPrefix}-member-meta`}
                     className={cn(
-                      'text-muted-foreground w-[64px] shrink-0 text-right text-2xs',
+                      'text-muted-foreground shrink-0 truncate text-right text-2xs',
+                      // In the tooltip from sm up, where the dots show; kept on a
+                      // phone, where they are hidden and this is the only "when".
+                      row?.metaInTooltip && 'sm:hidden',
                       meta.numeric && 'font-num'
                     )}
+                    style={{ width: row?.metaWidth ?? 64 }}
+                    title={meta.text || undefined}
                   >
                     {meta.text}
                   </span>
+
+                  {row?.trailing?.(item)}
+                  {row?.capsule?.(item)}
 
                   {/* Buttons, not drag. The console renders inside the shell's
                       DndContext, so a sortable list here would need a nested one
@@ -423,7 +521,7 @@ export function ItemMemberList({
                       a TRASHED item (join rows survive an item's soft delete by
                       design), so visible position and array position diverge
                       the moment one member is in the bin. */}
-                  <ControlRail>
+                  <ControlRail wide={!!row?.menu}>
                     {orderable && (
                       <>
                         <RailButton
@@ -448,18 +546,30 @@ export function ItemMemberList({
                         </RailButton>
                       </>
                     )}
-                    <RailButton
+                    {(removable?.(item) ?? true) && <RailButton
                       onClick={() => onChange(memberIds.filter((m) => m !== item.id))}
                       label={`Remove ${item.title} from ${ownerName}`}
                       testId={`${testPrefix}-member-remove`}
                     >
                       <Trash2 className="h-3.5 w-3.5" />
-                    </RailButton>
+                    </RailButton>}
+                    {row?.menu?.(item)}
                   </ControlRail>
                 </div>
               );
+              // Keyed outside the wrapper: a right-click root renders no DOM of its own.
+              return <Fragment key={item.id}>{row?.contextMenu ? row.contextMenu(item, rowEl) : rowEl}</Fragment>;
             })}
           </div>
+        )}
+
+        {members.length === 0 && !adding && emptyHint && (
+          <p
+            className="text-muted-foreground px-[7px] text-xs italic"
+            data-testid={`${testPrefix}-empty-hint`}
+          >
+            {emptyHint}
+          </p>
         )}
 
         {adding && (
@@ -596,10 +706,10 @@ export function ItemMemberList({
   );
 }
 
-/* ── routines held by a program ───────────────────────────────────────── */
+/* ── routines held by a season ───────────────────────────────────────── */
 
 /**
- * The routines a program holds.
+ * The routines a season holds.
  *
  * Attaching is the one membership write in the app with a NON-OBVIOUS
  * consequence, so it is the one that confirms first — the caller owns that
@@ -607,19 +717,25 @@ export function ItemMemberList({
  * the whole store and does not belong in a list component.
  */
 export function RoutineMemberList({
-  program,
+  season,
   live,
   members,
   candidates,
   onRequestAttach,
   onRemove,
+  testPrefix = 'season',
+  emptyHint,
 }: {
-  program: { id: string; name: string };
+  season: { id: string; name: string };
   live: boolean;
   members: Routine[];
   candidates: Routine[];
   onRequestAttach: (routine: Routine) => void;
   onRemove: (routineId: string) => void;
+  /** `season` in the detail pane (its testids predate this prop); the create forms pass their own. */
+  testPrefix?: string;
+  /** See ItemMemberList's `emptyHint`. */
+  emptyHint?: string;
 }) {
   const liveIds = useLiveItemIds();
   const [adding, setAdding] = useState(false);
@@ -627,10 +743,10 @@ export function RoutineMemberList({
 
   // Same render-phase reset as ItemMemberList, and for the same reason: above
   // `md` this component is never remounted, so an open candidate list would
-  // survive a click on a different program and stay pointed at the one you left.
-  const [lastProgramId, setLastProgramId] = useState(program.id);
-  if (program.id !== lastProgramId) {
-    setLastProgramId(program.id);
+  // survive a click on a different season and stay pointed at the one you left.
+  const [lastSeasonId, setLastSeasonId] = useState(season.id);
+  if (season.id !== lastSeasonId) {
+    setLastSeasonId(season.id);
     setAdding(false);
   }
 
@@ -654,13 +770,13 @@ export function RoutineMemberList({
       <OrganizerSection
         label="Routines"
         count={members.length > 0 ? members.length : undefined}
-        testId="program-routines"
+        testId={`${testPrefix}-routines`}
         action={
           <LinkExistingPill
-            testId="program-routine-add"
+            testId={`${testPrefix}-routine-add`}
             aria-expanded={adding}
             // Disabled with its reason on hover, rather than hidden: a missing
-            // pill reads as "programs cannot hold routines".
+            // pill reads as "seasons cannot hold routines".
             disabled={none}
             title={none ? 'Every routine is already here' : undefined}
             className="disabled:pointer-events-none disabled:opacity-50"
@@ -673,7 +789,7 @@ export function RoutineMemberList({
             {members.map((routine) => (
               <div
                 key={routine.id}
-                data-testid="program-routine-member"
+                data-testid={`${testPrefix}-routine-member`}
                 data-routine-id={routine.id}
                 className="hover:bg-accent group flex h-[30px] items-center gap-[9px] rounded-[5px] px-[7px]"
               >
@@ -694,8 +810,8 @@ export function RoutineMemberList({
                 <ControlRail>
                   <RailButton
                     onClick={() => onRemove(routine.id)}
-                    label={`Remove ${routine.name} from ${program.name}`}
-                    testId="program-routine-remove"
+                    label={`Remove ${routine.name} from ${season.name}`}
+                    testId={`${testPrefix}-routine-remove`}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </RailButton>
@@ -703,6 +819,15 @@ export function RoutineMemberList({
               </div>
             ))}
           </div>
+        )}
+
+        {members.length === 0 && !adding && emptyHint && (
+          <p
+            className="text-muted-foreground px-[7px] text-xs italic"
+            data-testid={`${testPrefix}-routines-empty-hint`}
+          >
+            {emptyHint}
+          </p>
         )}
 
         {adding && !none && (
@@ -715,7 +840,7 @@ export function RoutineMemberList({
                   setAdding(false);
                   onRequestAttach(routine);
                 }}
-                data-testid="program-routine-candidate"
+                data-testid={`${testPrefix}-routine-candidate`}
                 data-routine-id={routine.id}
                 className="hover:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm"
               >
@@ -729,7 +854,7 @@ export function RoutineMemberList({
               type="button"
               onClick={() => setAdding(false)}
               className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center rounded-[5px] px-[7px] text-left text-sm"
-              data-testid="program-routine-add-cancel"
+              data-testid={`${testPrefix}-routine-add-cancel`}
             >
               Cancel
             </button>

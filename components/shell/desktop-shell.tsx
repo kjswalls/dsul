@@ -1,14 +1,16 @@
 'use client';
 
-import { memo, useCallback, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
-import { ProgramNotice } from '@/components/views/program-notice';
+import { SeasonNotice } from '@/components/views/season-notice';
 import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { useUIStore } from '@/lib/ui-store';
+import { useSelectionStore } from '@/lib/selection-store';
+import { subscribeClickAway } from '@/lib/click-away';
 import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
@@ -60,15 +62,39 @@ export const DesktopShell = memo(function DesktopShell() {
 
   // Stable so the panel's Escape listener isn't torn down and re-bound on every
   // store tick.
+  //
+  // A plain row click both selects the row and opens it here, so closing the
+  // panel — Done, Escape, click-away — lets go of that one-row selection too;
+  // otherwise the row keeps its latched wash with nothing open. Only when the
+  // lone selected id IS the panel's item: a 2+ multi-select is the bulk bar's,
+  // and a single ⌘-clicked row that was never opened isn't the panel's to drop.
   const handlePanelOpenChange = useCallback(
     (open: boolean) => {
-      if (!open) closeDialog();
+      if (open) return;
+      const dialog = useUIStore.getState().activeDialog;
+      const selection = useSelectionStore.getState();
+      if (
+        dialog?.type === 'edit-item' &&
+        selection.selectedIds.size === 1 &&
+        selection.selectedIds.has(dialog.item.id)
+      ) {
+        selection.clear();
+      }
+      closeDialog();
     },
     [closeDialog]
   );
 
+  // Click on empty space clears the selection (lib/click-away.ts). The panel
+  // subscribes separately, while open, so it can flush before it closes.
+  useEffect(() => subscribeClickAway(() => useSelectionStore.getState().clear()), []);
+
   return (
-    <div className="relative hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex">
+    <div
+      // Clicks on empty space in here let go of the selection (lib/click-away).
+      data-click-away-scope=""
+      className="relative hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex"
+    >
       <Sidebar />
 
       {/* Body panel: a big card floating over the backdrop/sidebar field. The
@@ -127,10 +153,10 @@ export const DesktopShell = memo(function DesktopShell() {
               capsule at the bottom, so this never moves).
               Being here rather than inside a view is what gets it into `buckets`
               too — it used to exist only in day-schedule and day-list. */}
-          {/* max-w bounds the truncate: program names are user data, and an
+          {/* max-w bounds the truncate: season names are user data, and an
               unbounded line here would push WeekScale off the row's right end
               before it ever thought about eliding. */}
-          <ProgramNotice className="mt-2 h-8 min-w-0 max-w-[260px]" />
+          <SeasonNotice className="mt-2 h-8 min-w-0 max-w-[260px]" />
           {/* "Today's review is waiting" — beside the date it is about, on the
               same argument and in the same row as the line above it. Free, for
               the same reason: the row's height is max(children) and the capsule

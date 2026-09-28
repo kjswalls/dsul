@@ -14,6 +14,7 @@ vi.mock('@/lib/db', () => ({
   createItem: vi.fn(async () => {}),
   updateItem: vi.fn(async () => {}),
   deleteItem: vi.fn(async () => {}),
+  changeItemType: vi.fn(async () => {}),
   restoreItem: vi.fn(async () => {}),
   setItemCompletion: vi.fn(async () => {}),
   createProject: vi.fn(async () => {}),
@@ -28,11 +29,11 @@ vi.mock('@/lib/db', () => ({
   updateRoutine: vi.fn(async () => {}),
   deleteRoutine: vi.fn(async () => {}),
   restoreRoutine: vi.fn(async () => {}),
-  fetchPrograms: vi.fn(async () => []),
-  createProgram: vi.fn(async () => {}),
-  updateProgram: vi.fn(async () => {}),
-  deleteProgram: vi.fn(async () => {}),
-  restoreProgram: vi.fn(async () => {}),
+  fetchSeasons: vi.fn(async () => []),
+  createSeason: vi.fn(async () => {}),
+  updateSeason: vi.fn(async () => {}),
+  deleteSeason: vi.fn(async () => {}),
+  restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
@@ -175,13 +176,28 @@ describe('undo db sync (Phase 3 regression coverage)', () => {
     expect(db.updateItem).toHaveBeenCalledWith('habit-1', 'habit', { title: 'Stretch' });
   });
 
-  it('undoing an added item soft-deletes it; redo restores it', () => {
+  it('undoing an added item soft-deletes it; redo restores it', async () => {
     store().addTask({ title: 'Ephemeral' });
     const added = store().tasks.find((t) => t.title === 'Ephemeral')!;
     store().undo();
-    expect(db.deleteItem).toHaveBeenCalledWith(added.id, 'task');
+    await vi.waitFor(() => expect(db.deleteItem).toHaveBeenCalledWith(added.id, 'task'));
     store().redo();
-    expect(db.restoreItem).toHaveBeenCalledWith(added.id, 'task');
+    await vi.waitFor(() => expect(db.restoreItem).toHaveBeenCalledWith(added.id, 'task'));
+  });
+
+  it('a fast undo of a create waits for the INSERT before soft-deleting', async () => {
+    let land!: () => void;
+    const order: string[] = [];
+    vi.mocked(db.createItem).mockImplementationOnce(
+      () => new Promise<void>((resolve) => (land = () => { order.push('insert'); resolve(); }))
+    );
+    vi.mocked(db.deleteItem).mockImplementationOnce(async () => { order.push('delete'); });
+    store().addTask({ title: 'Racing' });
+    store().undo();
+    await Promise.resolve();
+    expect(order).toEqual([]);
+    land();
+    await vi.waitFor(() => expect(order).toEqual(['insert', 'delete']));
   });
 
   it('undoing a habit completion replays per-date intents, never an absolute completedDates write', () => {
@@ -272,5 +288,66 @@ describe('routines survive undo (Phase 2 review blocker regression)', () => {
     expect(db.updateRoutine).toHaveBeenCalledWith(
       USER, 'r1', expect.objectContaining({ itemIds: ['habit-1'] }),
     );
+  });
+});
+
+describe('type switch (edit pane type chip)', () => {
+  it('switches a habit to a task in place, keeping the id and history', async () => {
+    store().changeItemType('habit-1', 'task');
+    const item = store().items.find((i) => i.id === 'habit-1')!;
+    expect(item.type).toBe('task');
+    expect(store().habits).toHaveLength(0);
+    expect(store().tasks.map((t) => t.id)).toContain('habit-1');
+    await vi.waitFor(() => expect(db.changeItemType).toHaveBeenCalledWith(
+      'habit-1', 'habit', expect.objectContaining({ type: 'task', repeatFrequency: 'daily' }), USER,
+    ));
+  });
+
+  it('undo switches it back — it must NOT soft-delete the item', async () => {
+    store().changeItemType('habit-1', 'task');
+    await vi.waitFor(() => expect(db.changeItemType).toHaveBeenCalledTimes(1));
+    vi.mocked(db.changeItemType).mockClear();
+    store().undo();
+    const item = store().items.find((i) => i.id === 'habit-1')!;
+    expect(item.type).toBe('habit');
+    expect(item).toMatchObject({ streak: 2, project: 'Wellness' });
+    await vi.waitFor(() => expect(db.changeItemType).toHaveBeenCalledWith(
+      'habit-1', 'task', expect.objectContaining({ type: 'habit', streak: 2 }), USER,
+    ));
+    expect(db.deleteItem).not.toHaveBeenCalled();
+    expect(db.restoreItem).not.toHaveBeenCalled();
+  });
+
+  it('a one-off task becomes a habit with the repeat it was given', () => {
+    store().changeItemType('task-1', 'habit', { repeat: 'weekdays' });
+    const item = store().items.find((i) => i.id === 'task-1')!;
+    expect(item).toMatchObject({ type: 'habit', repeatFrequency: 'weekdays', streak: 0, project: 'Personal' });
+  });
+
+  it('refuses a switch the item cannot take (a task with subtasks → habit)', async () => {
+    store().clearStore();
+    vi.mocked(db.fetchItems).mockResolvedValue([
+      ...fixtures(),
+      { type: 'task', id: 'sub-1', title: 'Step', status: 'pending', isScheduled: false, order: 1, completedDates: [], parentItemId: 'task-1' },
+    ]);
+    await store().initializeStore(USER);
+    vi.mocked(db.changeItemType).mockClear();
+    store().changeItemType('task-1', 'habit');
+    await Promise.resolve();
+    expect(store().items.find((i) => i.id === 'task-1')!.type).toBe('task');
+    expect(db.changeItemType).not.toHaveBeenCalled();
+  });
+
+  it('an undo pressed before the switch lands waits for it (one switch at a time)', async () => {
+    let land!: () => void;
+    vi.mocked(db.changeItemType).mockImplementationOnce(() => new Promise<void>((r) => { land = r; }));
+    store().changeItemType('habit-1', 'task');
+    store().undo();
+    await vi.waitFor(() => expect(db.changeItemType).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(db.changeItemType).toHaveBeenCalledTimes(1);
+    land();
+    await vi.waitFor(() => expect(db.changeItemType).toHaveBeenCalledTimes(2));
+    expect(vi.mocked(db.changeItemType).mock.calls[1].slice(0, 2)).toEqual(['habit-1', 'task']);
   });
 });

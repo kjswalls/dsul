@@ -14,7 +14,7 @@ import { formatMoney, nameList, partnerDigest, pledgeSummary } from '@/lib/stake
 import { settleOneDay } from '@/lib/stakes/settle';
 import { daysToSettle } from '@/lib/reminders/scan';
 import type { ActivationContext } from '@/lib/active';
-import type { Item, Program } from '@dsul/types';
+import type { Item, Season } from '@dsul/types';
 import type { StakeContext } from '@/lib/stakes/types';
 
 vi.mock('@/lib/push-send', () => ({
@@ -82,9 +82,9 @@ describe('settleDay', () => {
     expect(settleDay0([paused], DAY, ctx).misses).toEqual([]);
   });
 
-  it('never charges for a day inside a paused program', () => {
-    const program = { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['h1'], routineIds: [] } as Program;
-    const out = settleDay0([habit()], DAY, { ...ctx, programs: [program] });
+  it('never charges for a day inside a paused season', () => {
+    const season = { id: 'p1', name: 'Summer', state: 'paused', itemIds: ['h1'], routineIds: [] } as Season;
+    const out = settleDay0([habit()], DAY, { ...ctx, seasons: [season] });
     expect(out.misses).toEqual([]);
   });
 
@@ -477,3 +477,21 @@ describe('daysToSettle', () => {
     }
   });
 });
+
+describe('birthDays (a type switch is a second birth)', () => {
+  it('moves an item’s birth to its latest type switch, and ignores switches for unknown items', async () => {
+    const { birthDays } = await import('@/lib/reminders/scan')
+    const days = birthDays(
+      [{ id: 'a', created_at: '2026-05-01T12:00:00Z' }, { id: 'b', created_at: '2026-09-01T12:00:00Z' }],
+      [
+        { item_id: 'a', created_at: '2026-09-20T12:00:00Z' },
+        { item_id: 'a', created_at: '2026-09-25T12:00:00Z' },
+        { item_id: 'ghost', created_at: '2026-09-25T12:00:00Z' },
+      ],
+      'UTC',
+    )
+    expect(days.get('a')).toBe('2026-09-25')
+    expect(days.get('b')).toBe('2026-09-01')
+    expect(days.has('ghost')).toBe(false)
+  })
+})

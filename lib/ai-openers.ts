@@ -27,7 +27,7 @@
 import { isOpenLoopOn } from './active'
 import { getItemTypeConfig, itemTypeName } from './item-registry'
 import { selectOverdue, toDateOnly } from './overdue'
-import { isRecurring, shouldShowOnDate } from './recurrence'
+import { anchoredSeriesOn, isRecurring, shouldShowOnDate } from './recurrence'
 import type { Item } from './planner-types'
 
 export interface ChatOpener {
@@ -44,7 +44,7 @@ export interface OpenerContext {
   /** yyyy-MM-dd, already resolved in the user's zone. */
   todayStr: string
   userTimezone: string
-  /** From lib/active.ts `inactiveItemIdsOn` — work a routine or program paused. */
+  /** From lib/active.ts `inactiveItemIdsOn` — work a routine or season paused. */
   inactiveIds?: ReadonlySet<string>
 }
 
@@ -77,6 +77,8 @@ export const BUSY_DAY_THRESHOLD = 6
  * task-like needs `startDate` AND `startDate <= today`. Recurrence says which
  * WEEKDAYS it lands on, not when the series begins — so a daily task starting
  * in December is "due today" to `shouldShowOnDate` alone, all year before it.
+ * And its start day counts even off the repeat (anchoredSeriesOn): a task moved
+ * to today is due today.
  */
 function openToday(ctx: OpenerContext): Item[] {
   const today = toDateOnly(ctx.todayStr)
@@ -98,7 +100,7 @@ function openToday(ctx: OpenerContext): Item[] {
     if (!('startDate' in item) || !item.startDate) return false
     const start = toDateOnly(item.startDate)
     if (isRecurring(item)) {
-      return shouldShowOnDate(item, ctx.todayStr, ctx.userTimezone) && start <= today
+      return anchoredSeriesOn(item, start, today, ctx.userTimezone)
     }
     return start === today
   })

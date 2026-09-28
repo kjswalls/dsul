@@ -2,7 +2,8 @@
 
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
-import { Check, Flag, Maximize2, Repeat, Trash2 } from 'lucide-react';
+import { Check, Flag, Maximize2, Trash2 } from 'lucide-react';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import {
   ChoiceChip,
   ColorChip,
@@ -13,7 +14,13 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
 import { isRecurring } from '@/lib/recurrence';
-import { goalProgress, isAchieved, isGoalActive, sortGoalsForDisplay } from '@/lib/goals';
+import {
+  goalProgress,
+  isAchieved,
+  isGoalActive,
+  newMemberTaskShape,
+  sortGoalsForDisplay,
+} from '@/lib/goals';
 import { GoalProgressTrack } from '@/components/planner/goal-sections';
 import {
   byName,
@@ -26,18 +33,22 @@ import {
 import { Eyebrow, ObjectRow } from '../primitives';
 import {
   BufferedTextarea,
-  CreateForm,
   DetailColumn,
   DetailHead,
   ListColumn,
-  NotesField,
   SectionWelcome,
   StatusStrip,
   TitleRow,
 } from '../detail-parts';
 import { ItemMemberList, type MemberRowParts } from '../member-list';
-import { makeIconToken } from '@/lib/category-icons';
+import { useMemberActions } from '../member-row-actions';
+import { ContainerActivity } from '../container-activity';
+import { GoalSchedule, ProgressLine, useWeekDotsFor } from '@/components/planner/schedule/schedule-views';
+import { daysBetween } from '@/lib/container-schedule';
+import { ContainerCreateForm } from '../container-create-form';
+import { GOAL_STATES, heldElsewhere } from '../container-fields';
 import { cn } from '@/lib/utils';
+import { cadenceLabel } from '@/lib/cadence';
 import type { Goal, Item } from '@/lib/planner-types';
 
 /**
@@ -49,23 +60,6 @@ import type { Goal, Item } from '@/lib/planner-types';
  *
  * See memory/plans/long-term-goals.md.
  */
-
-/**
- * Is this item already held by one of the goal's OTHER role arrays?
- *
- * The PK gives an item exactly one role per goal, so a picker that offered an
- * item already held elsewhere would be offering a contradiction — and the write
- * that follows is refused, leaving the store showing the item twice.
- */
-function heldElsewhere(
-  goal: Goal,
-  own: 'memberIds' | 'milestoneIds' | 'checkinIds',
-  itemId: string,
-): boolean {
-  return (['memberIds', 'milestoneIds', 'checkinIds'] as const)
-    .filter((k) => k !== own)
-    .some((k) => goal[k].includes(itemId));
-}
 
 /**
  * One role's section. The heading names the role — Milestone and Check-in are
@@ -106,6 +100,7 @@ function RoleList({
 }) {
   return (
     <ItemMemberList
+        openItems
       label={title}
       count={count}
       lead={lead}
@@ -130,6 +125,13 @@ function RoleList({
 /** Shared, so a fresh Set per render never churns a memo downstream. */
 const EMPTY_IDS: ReadonlySet<string> = new Set();
 
+/**
+ * The goal lists' meta column: wide enough for a cadence and a last-done date
+ * ("Mon, Wed · last Sep 21"), which the 64px default cannot hold. Goal rows
+ * draw no week dots — the timeline above carries the time — so the room is free.
+ */
+const GOAL_META_WIDTH = 150;
+
 /* ── the section ──────────────────────────────────────────────────────────── */
 
 export function GoalsSection({
@@ -148,7 +150,6 @@ export function GoalsSection({
 }) {
   const goals = usePlannerStore((s) => s.goals);
   const items = usePlannerStore((s) => s.items);
-  const addGoal = usePlannerStore((s) => s.addGoal);
   const addTask = usePlannerStore((s) => s.addTask);
   const deleteTask = usePlannerStore((s) => s.deleteTask);
   const deleteHabit = usePlannerStore((s) => s.deleteHabit);
@@ -217,39 +218,21 @@ export function GoalsSection({
    * column at all, while the bucket kept it out of the braindump too — the one
    * combination the item dialog itself cannot produce.
    *
-   * Anchored at TODAY: the cadence starts now, and an anchor in the past would
-   * back-date occurrences nobody agreed to.
+   * Anchored at the first Sunday from TODAY: the cadence starts now, an anchor
+   * in the past would back-date occurrences nobody agreed to, and a task's start
+   * date is itself an occurrence (anchoredSeriesOn), so anchoring on a weekday
+   * would add a check-in on that day too.
    */
   const createCheckin = (goal: Goal, title: string) => {
     addTask(
-      {
-        title,
-        status: 'pending',
-        isScheduled: false,
-        order: 0,
-        startDate: todayStr,
-        timeBucket: 'anytime',
-        repeatFrequency: 'custom',
-        // Sunday. A weekly review wants the seam between weeks, and picking a
-        // weekday would put it inside the week it is meant to be reviewing.
-        repeatDays: [0],
-        completedDates: [],
-        skippedDates: [],
-      } as never,
+      newMemberTaskShape('checkin', title, todayStr) as never,
       { goalIds: [goal.id], goalRole: 'checkin' },
     );
   };
 
   const createMilestone = (goal: Goal, title: string) => {
     addTask(
-      {
-        title,
-        status: 'pending',
-        isScheduled: false,
-        order: 0,
-        completedDates: [],
-        skippedDates: [],
-      } as never,
+      newMemberTaskShape('milestone', title, todayStr) as never,
       { goalIds: [goal.id], goalRole: 'milestone' },
     );
   };
@@ -261,32 +244,9 @@ export function GoalsSection({
    */
   const createMember = (goal: Goal, title: string) => {
     addTask(
-      {
-        title,
-        status: 'pending',
-        isScheduled: false,
-        order: 0,
-        completedDates: [],
-        skippedDates: [],
-      } as never,
+      newMemberTaskShape('member', title, todayStr) as never,
       { goalIds: [goal.id], goalRole: 'member' },
     );
-  };
-
-  /** One addGoal, carrying whatever the create form asked for — never a create then a patch. */
-  const create = (name: string, icon: string | undefined, extra: GoalCreateFields) => {
-    const id = addGoal({
-      name,
-      icon,
-      why: extra.why.trim() || undefined,
-      startsOn: extra.startsOn,
-      targetOn: extra.targetOn,
-      state: 'active',
-      memberIds: [],
-      milestoneIds: [],
-      checkinIds: [],
-    });
-    onCreated(id);
   };
 
   // BOTH columns, always — the console's contract (organize-console.tsx: "Each
@@ -332,6 +292,11 @@ export function GoalsSection({
                 <ObjectRow
                   testId="goal-row"
                   idAttr={{ 'data-goal-id': goal.id }}
+                  wrap={(row) => (
+                    <ContainerContextMenu kind="goal" id={goal.id} inConsole>
+                      {row}
+                    </ContainerContextMenu>
+                  )}
                   icon={goal.icon}
                   color={goal.color}
                   name={goal.name}
@@ -366,9 +331,10 @@ export function GoalsSection({
 
       <DetailColumn hasSelection={!!selected || showCreate}>
         {showCreate ? (
-          <GoalCreateForm
+          <ContainerCreateForm
+            kind="goal"
             autoFocus={creating}
-            onCreate={create}
+            onCreated={onCreated}
             onCancel={goals.length > 0 ? () => onCreated(null) : undefined}
           />
         ) : selected ? (
@@ -387,7 +353,7 @@ export function GoalsSection({
                 description:
                   'It stops repeating and moves to the trash for 30 days. Its history goes ' +
                   'with it. To keep the history and just pause it, open the item and put it ' +
-                  'in a program instead.',
+                  'in a season instead.',
                 confirmLabel: 'Delete',
                 destructive: true,
                 onConfirm: () =>
@@ -423,84 +389,6 @@ export function GoalsSection({
     </>
   );
 }
-
-/* ── making one ───────────────────────────────────────────────────────────── */
-
-interface GoalCreateFields {
-  why: string;
-  startsOn?: string;
-  targetOn?: string;
-}
-
-/**
- * "+ New" for a goal. The name, and the two things that DEFINE a goal beyond
- * it — why it matters and the window it runs in — asked at birth, the same
- * fields the "new" dialog's goal mode asks. The window starts today: a goal is
- * usually begun the day it is named, and a target is the half worth asking.
- */
-function GoalCreateForm({
-  autoFocus,
-  onCreate,
-  onCancel,
-}: {
-  autoFocus: boolean;
-  onCreate: (name: string, icon: string | undefined, extra: GoalCreateFields) => void;
-  onCancel?: () => void;
-}) {
-  const [why, setWhy] = useState('');
-  // The USER's today, as the "new" dialog seeds it — the browser's would stamp
-  // a different start for the same goal near midnight when the two zones differ.
-  const { todayStr } = useToday();
-  const [startsOn, setStartsOn] = useState<string | undefined>(todayStr);
-  const [targetOn, setTargetOn] = useState<string | undefined>(undefined);
-  return (
-    <CreateForm
-      eyebrow="NEW GOAL"
-      placeholder="Name your goal…"
-      addLabel="Create goal"
-      icon={makeIconToken('Target')}
-      testPrefix="goal"
-      autoFocus={autoFocus}
-      hint="A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in — and it never hides anything."
-      fields={
-        <>
-          <NotesField
-            value={why}
-            onChange={setWhy}
-            placeholder="Why this matters…"
-            ariaLabel="Why this goal matters"
-            testId="goal-new-why"
-          />
-          <div className="flex flex-wrap items-center gap-1.5">
-            <DateRangeChip
-              label="Window"
-              start={startsOn}
-              end={targetOn}
-              startLabel="Started"
-              endLabel="Target"
-              emptyLabel="Target"
-              testIdPrefix="goal-new-window"
-              onChange={(start, end) => {
-                setStartsOn(start);
-                setTargetOn(end);
-              }}
-            />
-          </div>
-        </>
-      }
-      onCreate={(name, icon) => onCreate(name, icon, { why, startsOn, targetOn })}
-      onCancel={onCancel}
-    />
-  );
-}
-
-/* ── the detail pane ──────────────────────────────────────────────────────── */
-
-const GOAL_STATES = [
-  { value: 'active', label: 'Active', dot: 'lime' },
-  { value: 'achieved', label: 'Achieved', dot: 'muted' },
-  { value: 'abandoned', label: 'Set aside', dot: 'muted' },
-] as const satisfies readonly { value: Goal['state']; label: string; dot: string }[];
 
 /** The latest day a recurring item was done, or undefined. yyyy-MM-dd sorts as text. */
 function lastDone(item: Item): string | undefined {
@@ -570,6 +458,8 @@ function GoalDetail({
           data-testid="goal-milestone-check"
           aria-pressed={done}
           aria-label={done ? `Mark ${item.title} not reached` : `Mark ${item.title} reached`}
+          // The diamond is the milestone's own tick box — it says so on hover.
+          title={done ? 'Milestone · reached — click to undo' : 'Milestone · not reached yet — click to mark reached'}
           className={cn(
             'flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
@@ -582,18 +472,48 @@ function GoalDetail({
         </button>
       );
     },
-    meta: (item) => ({
-      text: 'startDate' in item && item.startDate ? formatShort(item.startDate) : '',
-      numeric: true,
-    }),
+    // A milestone is one-shot: its target day, or "No date" — saying nothing
+    // left an undated checkpoint looking like a row that failed to load.
+    meta: (item) => ({ text: cadenceLabel(item as never), numeric: true }),
+    metaWidth: GOAL_META_WIDTH,
   };
 
+  // Row controls (member-row-actions.tsx), one set per role so "Remove"
+  // takes the item out of the list it is in. Today's state comes from the
+  // week's schedule — no dots here; the timeline above carries the time.
+  const week = useWeekDotsFor([...goal.milestoneIds, ...goal.checkinIds, ...goal.memberIds]);
+  const without = (key: 'memberIds' | 'milestoneIds' | 'checkinIds') => (id: string) =>
+    members({ [key]: goal[key].filter((m) => m !== id) });
+  const milestoneControls = useMemberActions({
+    ownerName: goal.name,
+    onRemove: without('milestoneIds'),
+    todayState: week.todayState,
+  });
+  const checkinControls = useMemberActions({
+    ownerName: goal.name,
+    onRemove: without('checkinIds'),
+    todayState: week.todayState,
+  });
+  const memberControls = useMemberActions({
+    ownerName: goal.name,
+    onRemove: without('memberIds'),
+    todayState: week.todayState,
+  });
+
   const checkinRow: MemberRowParts = {
-    leading: () => <Repeat className="text-muted-foreground size-3.5" aria-hidden />,
+    leading: week.leading,
     meta: (item) => {
       const last = lastDone(item);
-      return { text: last ? `last ${formatShort(last)}` : '', numeric: false };
+      const cadence = cadenceLabel(item as never);
+      return { text: last ? `${cadence} · last ${formatShort(last)}` : cadence, numeric: false };
     },
+    metaWidth: GOAL_META_WIDTH,
+  };
+  // Supporting work is habits and tasks of any timing: say which.
+  const memberRow: MemberRowParts = {
+    leading: week.leading,
+    meta: (item) => ({ text: cadenceLabel(item as never), numeric: false }),
+    metaWidth: GOAL_META_WIDTH,
   };
 
   return (
@@ -702,6 +622,10 @@ function GoalDetail({
         testId="goal-why"
       />
 
+      <GoalProgress goal={goal} achieved={achieved} total={total} />
+
+      <GoalSchedule goal={goal} />
+
       {/*
         Each picker excludes the OTHER two arrays as well as its own. Otherwise
         the natural "this member is really a milestone" gesture offers an item
@@ -726,7 +650,7 @@ function GoalDetail({
           eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(goal, 'milestoneIds', i.id)}
           emptyPool="Nothing eligible yet — a milestone is a one-shot item."
           lead={<GoalProgressTrack goal={goal} achieved={achieved} total={total} />}
-          row={milestoneRow}
+          row={{ ...milestoneRow, ...milestoneControls }}
           onChange={(ids) => members({ milestoneIds: ids })}
           footer={
             <InlineAddRow
@@ -746,7 +670,7 @@ function GoalDetail({
           testPrefix="goal-checkin"
           eligible={(i) => isCheckinEligible(i) && !heldElsewhere(goal, 'checkinIds', i.id)}
           emptyPool="Nothing eligible yet — a check-in is a repeating item."
-          row={checkinRow}
+          row={{ ...checkinRow, ...checkinControls }}
           onChange={(ids) => members({ checkinIds: ids })}
           footer={
             <InlineAddRow
@@ -769,6 +693,7 @@ function GoalDetail({
           // non-collectible types — against locked decision 3, which says plain
           // `member` reuses isCollectible with its subtask exclusion.
           eligible={(i) => isCollectible(i) && !heldElsewhere(goal, 'memberIds', i.id)}
+          row={{ ...memberRow, ...memberControls }}
           onChange={(ids) => members({ memberIds: ids })}
           footer={
             <InlineAddRow
@@ -777,6 +702,12 @@ function GoalDetail({
               onAdd={onCreateMember}
             />
           }
+        />
+        <ContainerActivity
+          members={[...goal.milestoneIds, ...goal.checkinIds, ...goal.memberIds]
+            .map((id) => itemsById.get(id))
+            .filter((m): m is Item => !!m)}
+          testId="goal-activity"
         />
       </div>
     </div>
@@ -795,12 +726,46 @@ function GoalDetail({
  * It names them and offers the two verbs that actually end a recurrence, and it
  * performs NEITHER on the goal's behalf: the goal writes nothing to its members
  * ever, so Delete is the ordinary store action and "Open" is the ordinary item
- * surface, where the Program chip is how you park something without losing it.
+ * surface, where the Season chip is how you park something without losing it.
  * A goal that quietly deleted a year of habits because you marked it achieved
  * would be the single worst thing this feature could do.
  *
  * It sits where the item pane puts its paused note, above the chips.
  */
+/**
+ * The goal's one line of progress, a breath below the why: where in its window
+ * today is, and how many milestones are behind it. The ring fills by the
+ * milestones when there are any, else by the window.
+ */
+function GoalProgress({ goal, achieved, total }: { goal: Goal; achieved: number; total: number }) {
+  const { todayStr } = useToday();
+  const from = goal.startsOn;
+  const to = goal.targetOn;
+  const inWindow = from && to && to >= from && todayStr >= from && todayStr <= to;
+  const weeks = inWindow ? Math.max(1, Math.ceil((daysBetween(from!, to!) + 1) / 7)) : 0;
+  const week = inWindow ? Math.min(weeks, Math.floor(daysBetween(from!, todayStr) / 7) + 1) : 0;
+  if (!inWindow && total === 0) return null;
+  const fraction = total > 0 ? achieved / total : (daysBetween(from!, todayStr) + 1) / (daysBetween(from!, to!) + 1);
+  return (
+    <div className="mt-2">
+      <ProgressLine fraction={fraction} testId="goal-progress">
+        {inWindow && (
+          <span className="text-foreground/85 font-medium tabular-nums">
+            Week {week} of {weeks}
+          </span>
+        )}
+        {inWindow && total > 0 && ' · '}
+        {total > 0 && (
+          <>
+            <span className="tabular-nums">{achieved}</span> of <span className="tabular-nums">{total}</span>{' '}
+            {total === 1 ? 'milestone' : 'milestones'}
+          </>
+        )}
+      </ProgressLine>
+    </div>
+  );
+}
+
 function EndedNotice({
   goal,
   itemsById,
@@ -823,7 +788,7 @@ function EndedNotice({
           ? 'This still repeats on its own schedule.'
           : `${recurring.length} of its items still repeat on their own schedules.`}{' '}
         Nothing was changed for you — {goal.state === 'achieved' ? 'an achieved' : 'a set-aside'}{' '}
-        goal never edits its members. Keep them as they are, open one to park it in a program,
+        goal never edits its members. Keep them as they are, open one to park it in a season,
         or delete it for good.
       </p>
       <div className="mt-2 flex flex-col gap-1">
@@ -834,7 +799,7 @@ function EndedNotice({
             data-testid="goal-wind-down-row"
           >
             <span className="min-w-0 flex-1 truncate">{item.title}</span>
-            {/* LABELLED. Decision 5's third affordance — park it in a program
+            {/* LABELLED. Decision 5's third affordance — park it in a season
                 rather than end it — used to be prose inside the DELETE confirm,
                 which meant discovering the non-destructive option required
                 opening a dialog whose button says Delete. */}

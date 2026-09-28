@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { farthestCorner, flightAt, revealRadius, tilePhase, waveFront } from '@/lib/zen-transition';
+import { farthestCorner, traceAt, revealRadius, tilePhase, waveFront } from '@/lib/zen-transition';
 
 describe('Relay Lift geometry', () => {
   it('reaches the farthest corner, not the nearest edge', () => {
@@ -28,12 +28,14 @@ describe('Relay Lift geometry', () => {
     expect(revealRadius(20, band)).toBe(0);
   });
 
-  it('lifts before it travels, and lands flat', () => {
-    expect(flightAt(0).travel).toBe(0);
-    expect(flightAt(0.1).travel).toBe(0);
-    expect(flightAt(0.1).lift).toBeGreaterThan(0);
-    const end = flightAt(1);
-    expect(end.travel).toBe(1);
-    expect(end.lift).toBeCloseTo(0);
+  it('carries the outline, not the words, and thins it away at the end', () => {
+    const start = traceAt(0);
+    expect(start).toMatchObject({ travel: 0, out: 0, in: 0, stroke: 1 });
+    // The leaving title is gone well before the outline lands…
+    expect(traceAt(0.3).out).toBe(1);
+    expect(traceAt(0.3).in).toBe(0);
+    // …and the arriving one is fully up, with the outline landed and gone.
+    const end = traceAt(1);
+    expect(end).toMatchObject({ travel: 1, out: 1, in: 1, stroke: 0 });
   });
 });

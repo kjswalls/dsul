@@ -18,6 +18,7 @@ import {
   Keyboard,
   Layers,
   Leaf,
+  ListChecks,
   ListPlus,
   MessageSquare,
   Moon,
@@ -74,10 +75,10 @@ import { useChatStore } from '../chat-store';
 import { useProposalStore } from '../proposal-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
-import { getItemTypeConfig, isSkippable, isPausable, itemTypeName } from '../item-registry';
+import { getItemTypeConfig } from '../item-registry';
 import { selectOverdue } from '../overdue';
-import { inactiveItemIdsOn, isPausedOn, isProgramActiveOn } from '../active';
-import { programStateForSwitch } from '../scope-rail';
+import { inactiveItemIdsOn, isPausedOn, isSeasonActiveOn } from '../active';
+import { seasonStateForSwitch } from '../scope-rail';
 import { toDateStr } from '../recurrence';
 import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from '../planner-types';
 import { isScalableLayout } from '../week-columns';
@@ -87,15 +88,13 @@ import {
   isCancelled,
   isDoneOn,
   isHabit,
-  isPausedNow,
-  isSkippedOn,
   isTaskLike,
+  fromVerb,
   itemCommand,
-  nextDayStr,
 } from './entities';
 import type { Command, CommandArgOption, CommandContext, CommandProvider } from './types';
 import type { TypeFilter, ViewLayout } from '../view-store';
-import type { GroupBy, Priority, TimeBucket, Routine, Program, Goal } from '../planner-types';
+import type { GroupBy, Priority, TimeBucket, Routine, Season, Goal } from '../planner-types';
 
 /**
  * The command registry.
@@ -263,22 +262,22 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'create.routine',
     label: 'New routine',
-    description: 'Group habits that run together',
+    description: 'Things you do regularly, in order',
     group: 'create',
     icon: RepeatIcon,
-    keywords: 'add create routine stack habits together pause',
+    keywords: 'add create routine stack habits together regular order morning checklist pause',
     availableWhen: () => organizeEnabled(),
     run: () => openNewContainer('routine'),
   },
   {
-    id: 'create.program',
-    label: 'New program',
+    id: 'create.season',
+    label: 'New season',
     description: 'Plan a season',
     group: 'create',
     icon: CalendarRange,
-    keywords: 'add create program season period term block dates',
+    keywords: 'add create season program period term block dates',
     availableWhen: () => organizeEnabled(),
-    run: () => openNewContainer('program'),
+    run: () => openNewContainer('season'),
   },
   {
     id: 'create.project',
@@ -320,11 +319,7 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'complete done finish tick check off mark',
     aliases: ['complete', 'done'],
     emptyLabel: 'Nothing left to complete',
-    eligible: (item, dateStr) => !isDoneOn(item, dateStr) && !isCancelled(item),
-    run: (item) =>
-      isHabit(item)
-        ? planner().toggleHabitStatus(item.id, 'done')
-        : planner().toggleTaskStatus(item.id, 'completed'),
+    ...fromVerb('complete'),
     // A batch loops the single verbs rather than calling setItemsCompleted:
     // they keep per-date completion for recurring items, the +1 streak per
     // habit and the live Beeminder post. Quiet so the loop celebrates once and
@@ -339,23 +334,8 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'delete remove destroy trash',
     aliases: ['delete'],
     emptyLabel: 'Nothing to delete',
-    // The one command here with no eligibility rule beyond existing: you can
-    // always delete anything, including something already completed.
-    eligible: () => true,
-    run: (item) => {
-      const config = getItemTypeConfig(itemTypeName(item));
-      // Confirmed, not immediate. Every other item command is a single undo
-      // away; this one destroys a habit's whole history with it, so it goes
-      // through the same prompt the item dialog uses, with that type's copy.
-      useUIStore.getState().confirm({
-        title: `Delete ${config.label.toLowerCase()}?`,
-        description: config.form.deleteDescription(item.title),
-        confirmLabel: 'Delete',
-        destructive: true,
-        onConfirm: () =>
-          isHabit(item) ? planner().deleteHabit(item.id) : planner().deleteTask(item.id),
-      });
-    },
+    // Always eligible, and confirmed with the type's own copy — lib/item-verbs.ts.
+    ...fromVerb('delete'),
     // Not the default loop: `confirm` is a single slot, so N prompts would
     // leave only the last standing and delete one item. One prompt, then one
     // deleteItems — a single entry that raises the undo strip, which is why
@@ -390,10 +370,12 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'snooze postpone defer later push tomorrow delay',
     aliases: ['snooze'],
     emptyLabel: 'Nothing to snooze',
-    // Habits are date-blind by construction (dateAnchored: false) — there is
-    // no date on them to move.
-    eligible: (item, dateStr) => isTaskLike(item) && !isDoneOn(item, dateStr) && !isCancelled(item),
-    run: (item, dateStr) => planner().updateTask(item.id, { startDate: nextDayStr(item, dateStr) }),
+    // The rows' carry (lib/row-moves.ts via the shared verb): a dated one-off
+    // only. It used to take any open task-like item and write startDate + 1,
+    // which on a recurring task rewrote the series anchor, dropped an overdue
+    // item one day later but still in the past, and stranded a task inside a
+    // project block. Habits are date-blind — there is no date on them to move.
+    ...fromVerb('nextDay'),
   }),
   itemCommand({
     id: 'items.skip',
@@ -407,11 +389,7 @@ export const STATIC_COMMANDS: Command[] = [
     // Registry capability, not "is it a habit": any recurring occurrence of a
     // skippable type can be skipped (#194). One-shot items are excluded by
     // isSkippable — they get completed or cancelled, never skipped.
-    eligible: (item, dateStr) =>
-      isSkippable(item) && !isDoneOn(item, dateStr) && !isSkippedOn(item, dateStr),
-    // No date argument, exactly as before: the store resolves the selected day,
-    // which is the same day `dateStr` was derived from.
-    run: (item) => planner().setItemSkipped(item.id, true),
+    ...fromVerb('skip'),
   }),
   itemCommand({
     id: 'items.resetStreak',
@@ -422,9 +400,8 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['streak'],
     placeholder: 'Which habit?',
     emptyLabel: 'No habit has a streak to reset',
-    eligible: (item) => isHabit(item) && item.streak > 0 && streaksEnabled(),
+    ...fromVerb('resetStreak'),
     detail: (item) => (isHabit(item) && streaksEnabled() ? `🔥 ${item.streak}` : undefined),
-    run: (item) => planner().resetHabitStreak(item.id),
   }),
   itemCommand({
     id: 'items.leaveProjectBlock',
@@ -435,11 +412,7 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['unblock'],
     placeholder: 'Which task?',
     emptyLabel: 'No task is in a project block',
-    // Task-like, matching the verb: moveTaskOutOfProjectBlock resolves against
-    // findTaskLike now, so a custom item that got into a block can get out of
-    // one. It used to resolve 'task' exactly, which is why this was narrower.
-    eligible: (item) => item.type !== 'habit' && !!item.inProjectBlock,
-    run: (item) => planner().moveTaskOutOfProjectBlock(item.id),
+    ...fromVerb('leaveProjectBlock'),
   }),
   // Pause / Resume deliberately ignore the dateStr these predicates are handed:
   // that is the SELECTED day, and pausing is dateless (plan decision 3). Keying
@@ -457,8 +430,7 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'pause hold suspend set aside break vacation hide later',
     aliases: ['pause'],
     emptyLabel: 'Nothing to pause',
-    eligible: (item) => isPausable(item) && !isPausedNow(item),
-    run: (item) => planner().setItemPaused(item.id, true),
+    ...fromVerb('pause'),
   }),
   itemCommand({
     id: 'items.resume',
@@ -469,8 +441,7 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['resume'],
     placeholder: 'Which paused item?',
     emptyLabel: 'Nothing is paused',
-    eligible: (item) => isPausedNow(item),
-    run: (item) => planner().setItemPaused(item.id, false),
+    ...fromVerb('resume'),
   }),
   ...priorityCommands(),
   ...bucketCommands(),
@@ -584,12 +555,12 @@ export const STATIC_COMMANDS: Command[] = [
       // the sweep in hooks/use-overdue-sweep.ts. Bare `format(new Date(), …)`
       // would read the machine tz and could grey this row out on a day the bar
       // is visibly showing overdue items.
-      const { items, routines, programs, userTimezone } = planner();
+      const { items, routines, seasons, userTimezone } = planner();
       const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
       const todayStr = toDateStr(new Date(), tz);
       // Dateless surface: resolve suppression at TODAY, never at the store's
       // navigable selectedDate (plan decision 3).
-      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, programs });
+      const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons });
       return selectOverdue(items, todayStr, inactive).length > 0;
     },
     // Reveal the surface BEFORE poking its state — the same guard openChat,
@@ -1109,10 +1080,10 @@ export const STATIC_COMMANDS: Command[] = [
     description: 'Greyed, in place, where they would have been',
     group: 'settings',
     icon: Moon,
-    keywords: 'paused hidden set aside routine program show grid ghost',
+    keywords: 'paused hidden set aside routine season show grid ghost',
     aliases: ['paused'],
     // Ungated, deliberately. It first carried `routines.length > 0 ||
-    // programs.length > 0` on the theory that the preference is unobservable
+    // seasons.length > 0` on the theory that the preference is unobservable
     // without a container — which is false: `inactiveItemIdsOn`'s own
     // `!isPausedOn(item, …)` arm needs no container at all, so Phase 1's
     // item-level pause is governed by this flag from a standing start. Worse,
@@ -1252,10 +1223,10 @@ export const STATIC_COMMANDS: Command[] = [
   },
   {
     id: 'app.collections',
-    label: 'Organize routines & programs',
+    label: 'Organize routines & seasons',
     group: 'app',
     icon: RepeatIcon,
-    keywords: 'routines programs collections manage organize group pause',
+    keywords: 'routines seasons collections manage organize group pause',
     aliases: ['routines'],
     // Not gated on collectionsAvailable: the console explains the situation
     // better than a missing row does, and a row that silently disappears reads
@@ -1413,7 +1384,7 @@ const routineCommands: CommandProvider = () => {
   if (routines === cachedRoutines) return cachedRoutineCommands;
 
   cachedRoutines = routines;
-  cachedRoutineCommands = routines.map((routine) => {
+  const switches = routines.map((routine) => {
     // Resolved per BUILD rather than per render, which is safe precisely
     // because the memo key is the routine array — and a pause writes to it.
     const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -1427,15 +1398,40 @@ const routineCommands: CommandProvider = () => {
       run: () => planner().setRoutinePaused(routine.id, !paused),
     } satisfies Command;
   });
+  // "Run Morning" — to the routine's page, which leads with today's members in
+  // the routine's order (components/planner/routine-today.tsx). Listed in the
+  // order the day runs them: by usual time, untimed routines last. Navigation,
+  // not a write, so unlike the switch above it has no state to resolve, and a
+  // paused routine keeps its row — its page says why nothing is on today.
+  const runs = [...routines]
+    .sort((a, b) => (a.usualTime ?? '99:99').localeCompare(b.usualTime ?? '99:99'))
+    .map(
+      (routine) =>
+        ({
+          id: `routine.run.${routine.id}`,
+          label: `Run ${routine.name}`,
+          group: 'items',
+          icon: ListChecks,
+          keywords: `routine ${routine.name} run start do checklist today order`,
+          // Client navigation, as goal.open does: a hard load would tear down
+          // the hydrated store and the undo stack.
+          run: (ctx) => {
+            const href = `/routine/${routine.id}`;
+            if (ctx.navigate) ctx.navigate(href);
+            else if (typeof window !== 'undefined') window.location.assign(href);
+          },
+        }) satisfies Command,
+    );
+  cachedRoutineCommands = [...runs, ...switches];
   return cachedRoutineCommands;
 };
 
-let cachedPrograms: readonly Program[] | null = null;
-let cachedProgramDay: string | null = null;
-let cachedProgramCommands: Command[] = [];
+let cachedSeasons: readonly Season[] | null = null;
+let cachedSeasonDay: string | null = null;
+let cachedSeasonCommands: Command[] = [];
 
 /**
- * Two commands per program, and both can render at once — unlike the routine
+ * Two commands per season, and both can render at once — unlike the routine
  * pair, where exactly one is a no-op.
  *
  * - "Turn on/off X" is the direct flip, and only the one that would CHANGE
@@ -1444,68 +1440,68 @@ let cachedProgramCommands: Command[] = [];
  *   appears when there is something to turn off, because with nothing else on
  *   it would be the first command wearing a second name.
  *
- * No aliases, for the reason spelled out above routineCommands: program names
- * are free text and a program called "settings" must not steal /settings.
+ * No aliases, for the reason spelled out above routineCommands: season names
+ * are free text and a season called "settings" must not steal /settings.
  */
-const programCommands: CommandProvider = () => {
-  const { programs, collectionsAvailable } = planner();
+const seasonCommands: CommandProvider = () => {
+  const { seasons, collectionsAvailable } = planner();
   if (!collectionsAvailable) return [];
   const tz = planner().userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const todayStr = toDateStr(new Date(), tz);
-  // The day is part of the key, not just the array. An `auto` program flips
+  // The day is part of the key, not just the array. An `auto` season flips
   // liveness at midnight with NO store write, so array identity alone cannot
   // express the passage of time — a tab left open overnight would keep serving
-  // yesterday's "Turn on Summer" for a program the calendar already turned on.
+  // yesterday's "Turn on Summer" for a season the calendar already turned on.
   // Same reasoning as the entity-eligibility memo, which had to learn this too.
-  if (programs === cachedPrograms && todayStr === cachedProgramDay) return cachedProgramCommands;
+  if (seasons === cachedSeasons && todayStr === cachedSeasonDay) return cachedSeasonCommands;
 
-  cachedPrograms = programs;
-  cachedProgramDay = todayStr;
-  const liveCount = programs.filter((p) => isProgramActiveOn(p, todayStr)).length;
+  cachedSeasons = seasons;
+  cachedSeasonDay = todayStr;
+  const liveCount = seasons.filter((p) => isSeasonActiveOn(p, todayStr)).length;
 
-  cachedProgramCommands = programs.flatMap((program) => {
-    const live = isProgramActiveOn(program, todayStr);
+  cachedSeasonCommands = seasons.flatMap((season) => {
+    const live = isSeasonActiveOn(season, todayStr);
     const commands: Command[] = [
       {
-        id: `program.${live ? 'pause' : 'activate'}.${program.id}`,
-        label: `Turn ${live ? 'off' : 'on'} ${program.name}`,
+        id: `season.${live ? 'pause' : 'activate'}.${season.id}`,
+        label: `Turn ${live ? 'off' : 'on'} ${season.name}`,
         group: 'items',
         icon: live ? PauseIcon : PlayIcon,
-        keywords: `program ${program.name} ${live ? 'off pause stop hide' : 'on activate start show'}`,
+        keywords: `season ${season.name} ${live ? 'off pause stop hide' : 'on activate start show'}`,
         // Re-resolved at RUN time, and belt-and-braces even with the day in the
         // key above. The label promises an OUTCOME ("on"), not a transition, so
         // if the world already reached it there is nothing to do.
         //
-        // The state itself comes from `programStateForSwitch`, the same rule the
+        // The state itself comes from `seasonStateForSwitch`, the same rule the
         // scope rail uses. Writing 'active'/'paused' straight was only ever half
-        // right: the FIRST flip of an `auto` program agrees either way, but the
-        // return flip does not, and this control could never hand a program back
+        // right: the FIRST flip of an `auto` season agrees either way, but the
+        // return flip does not, and this control could never hand a season back
         // to `auto`. Turn Summer off here and on again and its Aug 31 end is
         // gone — the exact loss two controls for one switch must not disagree
         // about.
         run: () => {
           const desiredOn = !live;
-          const current = planner().programs.find((p) => p.id === program.id);
+          const current = planner().seasons.find((p) => p.id === season.id);
           if (!current) return;
           const today = toDateStr(new Date(), tz);
-          if (isProgramActiveOn(current, today) === desiredOn) return;
-          planner().setProgramState(program.id, programStateForSwitch(current, desiredOn, today));
+          if (isSeasonActiveOn(current, today) === desiredOn) return;
+          planner().setSeasonState(season.id, seasonStateForSwitch(current, desiredOn, today));
         },
       },
     ];
     if (!live && liveCount > 0) {
       commands.push({
-        id: `program.swap.${program.id}`,
-        label: `Switch to ${program.name}`,
+        id: `season.swap.${season.id}`,
+        label: `Switch to ${season.name}`,
         group: 'items',
         icon: CalendarRange,
-        keywords: `program ${program.name} switch swap change season only`,
-        run: () => planner().swapToProgram(program.id),
+        keywords: `season program ${season.name} switch swap change only`,
+        run: () => planner().swapToSeason(season.id),
       });
     }
     return commands;
   });
-  return cachedProgramCommands;
+  return cachedSeasonCommands;
 };
 
 let cachedGoals: readonly Goal[] | null = null;
@@ -1514,7 +1510,7 @@ let cachedGoalCommands: Command[] = [];
 /**
  * "Open Learn Chinese", one per ACTIVE goal.
  *
- * One command rather than a pair, because unlike a routine or a program a goal
+ * One command rather than a pair, because unlike a routine or a season a goal
  * has no daily switch — its states are a lifecycle decision (achieved, set
  * aside) that belongs where the milestone list is visible, not on a row you
  * hit by typing three letters. So the palette's job here is navigation: it is
@@ -1522,7 +1518,7 @@ let cachedGoalCommands: Command[] = [];
  * actually visited on.
  *
  * Memoized on the goal array's identity, and ONLY the array — a goal's
- * liveness never changes with the calendar the way an `auto` program's does,
+ * liveness never changes with the calendar the way an `auto` season's does,
  * so there is no day to key on.
  *
  * Ended goals are omitted. They are a record rather than live work, and a
@@ -1571,7 +1567,7 @@ const goalCommands: CommandProvider = () => {
 const PROVIDERS: CommandProvider[] = [
   customTypeCommands,
   routineCommands,
-  programCommands,
+  seasonCommands,
   goalCommands,
 ];
 

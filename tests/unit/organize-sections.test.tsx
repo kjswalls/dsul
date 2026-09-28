@@ -6,7 +6,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { enableGoalsAndOrganize } from './support/extensions';
 import { accentColorForName } from '@/lib/accent-colors';
 import { ITEM_TYPES } from '@/lib/item-registry';
-import type { Item, Program, Project, Routine } from '@/lib/planner-types';
+import type { Item, Season, Project, Routine } from '@/lib/planner-types';
 
 /**
  * The Organize console's SECTION BODIES (memory/plans/organize-console.md,
@@ -62,7 +62,7 @@ const routine = (id: string, name: string, extra: Partial<Routine> = {}): Routin
   ...extra,
 });
 
-const program = (id: string, name: string, extra: Partial<Program> = {}): Program => ({
+const season = (id: string, name: string, extra: Partial<Season> = {}): Season => ({
   id,
   name,
   state: 'auto',
@@ -80,7 +80,7 @@ function seed(state: Partial<StoreState>) {
   usePlannerStore.setState({
     items: [],
     routines: [],
-    programs: [],
+    seasons: [],
     projects: [],
     itemTypes: [],
     collectionsAvailable: true,
@@ -123,7 +123,7 @@ const choose = (chipPrefix: string, value: string) => {
 
 /**
  * The delete sentence, as the confirm behind the pane's ⋯ menu states it. The
- * goal, program and routine panes carry their delete there (2026-09-25), so
+ * goal, season and routine panes carry their delete there (2026-09-25), so
  * the consequence is said once, in the prompt, instead of under a red zone.
  * Radix's DropdownMenuTrigger opens on pointerdown; the pane runs the action
  * once the menu has closed, which FocusScope schedules on a timer.
@@ -224,6 +224,35 @@ describe('the routines section', () => {
     expect(id('routine-paused-note')).toHaveTextContent('hidden until you resume');
   });
 
+  /**
+   * "Usually at" — a routine is things done regularly, and this is the
+   * regularly. Driven through the real store for the reason above: a spy
+   * proves wiring, only the store proves the field moved. Enter commits AND
+   * blurs, and must still be ONE write — two would be two undo entries.
+   */
+  it('sets and clears when the routine usually happens, in one write each', () => {
+    seed({ routines: [routine('r1', 'Morning')] });
+    open('routines');
+    click('routine-row');
+    let writes = 0;
+    const stop = usePlannerStore.subscribe((next, prev) => {
+      if (next.routines !== prev.routines) writes += 1;
+    });
+
+    click('routine-usual-time');
+    const input = id('routine-usual-time-input');
+    fireEvent.change(input, { target: { value: '07:30' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(usePlannerStore.getState().routines[0].usualTime).toBe('07:30');
+    expect(id('routine-usual-time')).toHaveTextContent('7:30 am');
+    expect(writes).toBe(1);
+
+    click('routine-usual-time');
+    click('routine-usual-time-clear');
+    expect(usePlannerStore.getState().routines[0].usualTime).toBeUndefined();
+    stop();
+  });
+
   it('shows the resume field and its note once the routine is paused', () => {
     seed({
       routines: [routine('r1', 'Morning', { pausedAt: PAUSED_AT, pausedUntil: '2026-09-01' })],
@@ -269,17 +298,17 @@ describe('the routines section', () => {
 
 /* ── effective state (Phase 5b) ───────────────────────────────────────── */
 
-describe('a routine a program is holding off', () => {
+describe('a routine a season is holding off', () => {
   /**
    * The correctness fix this phase exists for.
    *
    * `RoutineDetail` resolved `isPausedOn` alone — the routine's OWN switch — so
-   * a routine held off by a program rendered `Active`, with its members at full
+   * a routine held off by a season rendered `Active`, with its members at full
    * contrast and a delete confirm that said nothing about items reappearing,
    * while the ScopeRail one column away reported it off. Both were reading the
    * same store; only one of them was resolving the whole rule.
    *
-   * `off` here is a program whose season has passed, so `isProgramActiveOn`
+   * `off` here is a season whose dates have passed, so `isSeasonActiveOn`
    * returns false for a reason with no manual flag involved — the case a
    * `state === 'paused'` check would have missed.
    */
@@ -287,8 +316,8 @@ describe('a routine a program is holding off', () => {
     seed({
       items: [habit('i1', 'Stretch'), habit('i2', 'Read')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1', 'i2'] })],
-      programs: [
-        program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
+      seasons: [
+        season('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
       ],
     });
 
@@ -297,7 +326,7 @@ describe('a routine a program is holding off', () => {
     open('routines');
     click('routine-row');
     // Rendering this as Paused would be a lie about the stored value, and
-    // turning the program back on would hand back a routine the user believes
+    // turning the season back on would hand back a routine the user believes
     // they switched off.
     expect(id('routine-state-chip')).toHaveTextContent('Active');
     click('routine-state-chip');
@@ -311,8 +340,8 @@ describe('a routine a program is holding off', () => {
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      // Starts in the future, so programResumeDate has a date to give.
-      programs: [program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-09-01' })],
+      // Starts in the future, so seasonResumeDate has a date to give.
+      seasons: [season('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-09-01' })],
     });
     open('routines');
     click('routine-row');
@@ -326,29 +355,29 @@ describe('a routine a program is holding off', () => {
     expect(note).toHaveTextContent('Sep 1');
   });
 
-  it('promises no date when the blocking program has none to give', () => {
+  it('promises no date when the blocking season has none to give', () => {
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
       // Switched off by hand: no scheduled return exists, and inventing one is
       // the exact failure the binding-constraint rule guards against.
-      programs: [program('p1', 'Summer', { routineIds: ['r1'], state: 'paused' })],
+      seasons: [season('p1', 'Summer', { routineIds: ['r1'], state: 'paused' })],
     });
     open('routines');
     click('routine-row');
-    expect(id('routine-held-note')).toHaveTextContent('when one of those programs does');
+    expect(id('routine-held-note')).toHaveTextContent('when one of those seasons does');
   });
 
   it('stays quiet while ANY holder is carrying it', () => {
-    // Disjunctive, exactly as the resolver: one live program is enough, however
+    // Disjunctive, exactly as the resolver: one live season is enough, however
     // many others are off. Naming "Summer" here would report a suppression that
     // is not happening.
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      programs: [
-        program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
-        program('p2', 'Term', { routineIds: ['r1'], state: 'active' }),
+      seasons: [
+        season('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
+        season('p2', 'Term', { routineIds: ['r1'], state: 'active' }),
       ],
     });
     open('routines');
@@ -360,14 +389,14 @@ describe('a routine a program is holding off', () => {
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      programs: [
-        program('p1', 'Summer', { routineIds: ['r1'], state: 'paused' }),
-        program('p2', 'Term', { routineIds: ['r1'], state: 'paused' }),
+      seasons: [
+        season('p1', 'Summer', { routineIds: ['r1'], state: 'paused' }),
+        season('p2', 'Term', { routineIds: ['r1'], state: 'paused' }),
       ],
     });
     open('routines');
     click('routine-row');
-    expect(id('routine-held-note')).toHaveTextContent('All 2 programs holding it are off');
+    expect(id('routine-held-note')).toHaveTextContent('All 2 seasons holding it are off');
   });
 
   it('warns that deleting it puts the items BACK, which the local check missed', () => {
@@ -386,7 +415,7 @@ describe('a routine a program is holding off', () => {
     click('routine-row');
     const rows = screen.getAllByTestId('routine-member');
     for (const row of rows) {
-      expect(within(row).getByTitle(/Stretch|Read/)).toHaveClass('text-muted-foreground');
+      expect(within(row).getByTitle(/^(Stretch|Read)/)).toHaveClass('text-muted-foreground');
     }
   });
 });
@@ -401,7 +430,7 @@ describe('a member the routine is NOT the only path to', () => {
    * an item has a second live path — which is the situation the disjunctive rule
    * exists to create, so it is not an exotic case.
    *
-   * The repo already had the right shape: `wouldHide` in programs.tsx answers
+   * The repo already had the right shape: `wouldHide` in seasons.tsx answers
    * with an `inactiveItemIdsOn` DELTA rather than a container's own state.
    */
   const twoRoutines = () =>
@@ -412,8 +441,8 @@ describe('a member the routine is NOT the only path to', () => {
         routine('r2', 'Evening', { itemIds: ['i1'] }),
       ],
       // Holds Morning only, and is out of season.
-      programs: [
-        program('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
+      seasons: [
+        season('p1', 'Summer', { routineIds: ['r1'], startsOn: '2026-06-01', endsOn: '2026-07-31' }),
       ],
     });
 
@@ -421,7 +450,7 @@ describe('a member the routine is NOT the only path to', () => {
     twoRoutines();
     open('routines');
     fireEvent.click(screen.getAllByTestId('routine-row')[0]); // Morning
-    expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-foreground');
+    expect(within(id('routine-member')).getByTitle(/^Stretch/)).toHaveClass('text-foreground');
   });
 
   it('does not promise a delete will bring back what never left', () => {
@@ -446,31 +475,31 @@ describe('a member the routine is NOT the only path to', () => {
 
   it('does not promise a return for an item a SECOND path keeps hidden', () => {
     // The other direction: deleting this routine changes nothing, because the
-    // program holds the item directly too.
+    // season holds the item directly too.
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      programs: [
-        program('p1', 'Summer', { routineIds: ['r1'], itemIds: ['i1'], state: 'paused' }),
+      seasons: [
+        season('p1', 'Summer', { routineIds: ['r1'], itemIds: ['i1'], state: 'paused' }),
       ],
     });
     open('routines');
     click('routine-row');
     expect(deleteSentence('routine')).not.toContain('come back into view');
     // …and it IS greyed, because it is genuinely not on the grid.
-    expect(within(id('routine-member')).getByTitle('Stretch')).toHaveClass('text-muted-foreground');
+    expect(within(id('routine-member')).getByTitle(/^Stretch/)).toHaveClass('text-muted-foreground');
   });
 });
 
-describe('IN N PROGRAMS — the reverse view', () => {
+describe('IN N SEASONS — the reverse view', () => {
   const seeded = () =>
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      programs: [
-        program('p1', 'Summer', { routineIds: ['r1'], state: 'paused' }),
-        program('p2', 'Term', { routineIds: ['r1'], state: 'active' }),
-        program('p3', 'Other', { routineIds: [], state: 'active' }),
+      seasons: [
+        season('p1', 'Summer', { routineIds: ['r1'], state: 'paused' }),
+        season('p2', 'Term', { routineIds: ['r1'], state: 'active' }),
+        season('p3', 'Other', { routineIds: [], state: 'active' }),
       ],
     });
 
@@ -479,18 +508,18 @@ describe('IN N PROGRAMS — the reverse view', () => {
     open('routines');
     click('routine-row');
     const rows = screen.getAllByTestId('routine-holder');
-    expect(rows.map((r) => r.getAttribute('data-program-id'))).toEqual(['p1', 'p2']);
+    expect(rows.map((r) => r.getAttribute('data-season-id'))).toEqual(['p1', 'p2']);
     expect(rows[0]).toHaveAttribute('data-holder-state', 'off');
     expect(rows[1]).toHaveAttribute('data-holder-state', 'carrying');
   });
 
-  it('never says a live program is CARRYING a routine the user switched off', () => {
+  it('never says a live season is CARRYING a routine the user switched off', () => {
     // Both on one pane, three lines apart: "Its items are hidden until you
     // resume" above, and a holder row claiming to carry them below.
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'], pausedAt: PAUSED_AT })],
-      programs: [program('p1', 'Term', { routineIds: ['r1'], state: 'active' })],
+      seasons: [season('p1', 'Term', { routineIds: ['r1'], state: 'active' })],
     });
     open('routines');
     click('routine-row');
@@ -500,7 +529,7 @@ describe('IN N PROGRAMS — the reverse view', () => {
     expect(row).not.toHaveTextContent('carrying');
   });
 
-  it('is absent entirely for a routine no program holds', () => {
+  it('is absent entirely for a routine no season holds', () => {
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
@@ -510,47 +539,47 @@ describe('IN N PROGRAMS — the reverse view', () => {
     expect(maybe('routine-holders')).toBeNull();
   });
 
-  it('lands on that program, SELECTED — the point of the jump', () => {
+  it('lands on that season, SELECTED — the point of the jump', () => {
     seeded();
     open('routines');
     click('routine-row');
     fireEvent.click(screen.getAllByTestId('routine-holder')[0]);
 
     // A section change through the rail clears the selection by design. This one
-    // must not: arriving at the Programs list with nothing selected would make
-    // the user find the program the previous screen just named.
-    expect(id('program-detail')).toHaveAttribute('data-program-id', 'p1');
+    // must not: arriving at the Seasons list with nothing selected would make
+    // the user find the season the previous screen just named.
+    expect(id('season-detail')).toHaveAttribute('data-season-id', 'p1');
   });
 });
 
-/* ── programs ─────────────────────────────────────────────────────────── */
+/* ── seasons ─────────────────────────────────────────────────────────── */
 
-describe('the programs section', () => {
+describe('the seasons section', () => {
   it('counts routines as well as items', () => {
-    // A program is usually built out of routines; counting only itemIds would
+    // A season is usually built out of routines; counting only itemIds would
     // read as empty for the most common shape there is.
     seed({
       items: [task('i1', 'Plan')],
       routines: [routine('r1', 'Morning')],
-      programs: [program('p1', 'Term', { itemIds: ['i1'], routineIds: ['r1'] })],
+      seasons: [season('p1', 'Term', { itemIds: ['i1'], routineIds: ['r1'] })],
     });
-    open('programs');
-    expect(within(id('program-row')).getByText('2')).toBeInTheDocument();
+    open('seasons');
+    expect(within(id('season-row')).getByText('2')).toBeInTheDocument();
   });
 
   it('renders the date range under Dates and nowhere else', () => {
-    seed({ programs: [program('p1', 'Term', { state: 'active' })] });
-    open('programs');
-    click('program-row');
+    seed({ seasons: [season('p1', 'Term', { state: 'active' })] });
+    open('seasons');
+    click('season-row');
     // On and Off are manual overrides that always win, so pickers beside them
     // would be controls with no effect.
-    expect(maybe('program-runs-chip')).toBeNull();
+    expect(maybe('season-runs-chip')).toBeNull();
 
-    choose('program-state', 'auto');
-    expect(id('program-runs-chip')).toBeInTheDocument();
-    click('program-runs-chip');
-    expect(id('program-runs-start')).toBeInTheDocument();
-    expect(id('program-runs-end')).toBeInTheDocument();
+    choose('season-state', 'auto');
+    expect(id('season-runs-chip')).toBeInTheDocument();
+    click('season-runs-chip');
+    expect(id('season-runs-start')).toBeInTheDocument();
+    expect(id('season-runs-end')).toBeInTheDocument();
   });
 
   it.each([
@@ -560,34 +589,34 @@ describe('the programs section', () => {
     ['auto' as const, { startsOn: '2026-06-01', endsOn: '2026-08-31' }, 'Runs Jun 1 to Aug 31, inclusive. On now.'],
     ['auto' as const, { startsOn: '2026-09-01' }, 'Runs from Sep 1, inclusive. Off right now'],
   ])('states what %s with %o actually means', (state, dates, expected) => {
-    seed({ programs: [program('p1', 'Term', { state, ...dates })] });
-    open('programs');
-    click('program-row');
-    expect(id('program-state-note')).toHaveTextContent(expected);
+    seed({ seasons: [season('p1', 'Term', { state, ...dates })] });
+    open('seasons');
+    click('season-row');
+    expect(id('season-state-note')).toHaveTextContent(expected);
   });
 
-  it('hides the swap verb when no other program is on', () => {
+  it('hides the swap verb when no other season is on', () => {
     // With nothing to switch away FROM, "Switch to this" and "On" would be the
     // same button wearing two labels.
-    seed({ programs: [program('p1', 'Term', { state: 'paused' })] });
-    open('programs');
-    click('program-row');
-    expect(maybe('program-swap')).toBeNull();
+    seed({ seasons: [season('p1', 'Term', { state: 'paused' })] });
+    open('seasons');
+    click('season-row');
+    expect(maybe('season-swap')).toBeNull();
   });
 
   it('names what the swap would turn off', () => {
     seed({
-      programs: [
-        program('p1', 'Term', { state: 'paused' }),
-        program('p2', 'Summer', { state: 'active' }),
+      seasons: [
+        season('p1', 'Term', { state: 'paused' }),
+        season('p2', 'Summer', { state: 'active' }),
       ],
     });
-    open('programs');
-    fireEvent.click(screen.getAllByTestId('program-row')[0]);
-    expect(id('program-swap')).toHaveTextContent('Turns off Summer');
-    // One gesture, one undo — swapToProgram writes every program in a single
+    open('seasons');
+    fireEvent.click(screen.getAllByTestId('season-row')[0]);
+    expect(id('season-swap')).toHaveTextContent('Turns off Summer');
+    // One gesture, one undo — swapToSeason writes every season in a single
     // set() precisely so this promise is true.
-    expect(id('program-swap')).toHaveTextContent('One undo puts it all back');
+    expect(id('season-swap')).toHaveTextContent('One undo puts it all back');
   });
 
   it('confirms an attach only when it would really hide something', () => {
@@ -597,47 +626,47 @@ describe('the programs section', () => {
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      programs: [program('p1', 'Term', { state: 'paused' })],
+      seasons: [season('p1', 'Term', { state: 'paused' })],
     });
-    open('programs');
-    click('program-row');
-    click('program-routine-add');
-    click('program-routine-candidate');
+    open('seasons');
+    click('season-row');
+    click('season-routine-add');
+    click('season-routine-candidate');
 
     const request = useUIStore.getState().confirmRequest;
     expect(request?.title).toBe('This will hide 1 item for now');
-    expect(request?.testId).toBe('program-routine-attach-confirm');
+    expect(request?.testId).toBe('season-routine-attach-confirm');
     // Nothing is written until it is answered.
-    expect(usePlannerStore.getState().programs[0].routineIds).toEqual([]);
+    expect(usePlannerStore.getState().seasons[0].routineIds).toEqual([]);
   });
 
-  it('attaches straight through when the program is already on', () => {
+  it('attaches straight through when the season is already on', () => {
     seed({
       items: [habit('i1', 'Stretch')],
       routines: [routine('r1', 'Morning', { itemIds: ['i1'] })],
-      programs: [program('p1', 'Term', { state: 'active' })],
+      seasons: [season('p1', 'Term', { state: 'active' })],
     });
-    open('programs');
-    click('program-row');
-    click('program-routine-add');
-    click('program-routine-candidate');
+    open('seasons');
+    click('season-row');
+    click('season-routine-add');
+    click('season-routine-candidate');
 
     expect(useUIStore.getState().confirmRequest).toBeNull();
-    expect(usePlannerStore.getState().programs[0].routineIds).toEqual(['r1']);
+    expect(usePlannerStore.getState().seasons[0].routineIds).toEqual(['r1']);
   });
 
-  it('never offers reorder controls on a program’s items', () => {
-    // `program_items` has no sort_order column, so an order arranged here would
+  it('never offers reorder controls on a season’s items', () => {
+    // `season_items` has no sort_order column, so an order arranged here would
     // survive until the next fetch and then silently reshuffle.
     seed({
       items: [task('i1', 'Plan'), task('i2', 'Book')],
-      programs: [program('p1', 'Term', { itemIds: ['i1', 'i2'] })],
+      seasons: [season('p1', 'Term', { itemIds: ['i1', 'i2'] })],
     });
-    open('programs');
-    click('program-row');
-    expect(screen.getAllByTestId('program-member')).toHaveLength(2);
-    expect(maybe('program-member-up')).toBeNull();
-    expect(maybe('program-member-down')).toBeNull();
+    open('seasons');
+    click('season-row');
+    expect(screen.getAllByTestId('season-member')).toHaveLength(2);
+    expect(maybe('season-member-up')).toBeNull();
+    expect(maybe('season-member-down')).toBeNull();
   });
 });
 
@@ -660,7 +689,8 @@ describe('the label sections', () => {
     open('projects');
     expect(within(id('project-row')).getByText('3')).toBeInTheDocument();
     click('project-row');
-    expect(id('project-meta')).toHaveTextContent('Project · 3 items');
+    // None of the three lands today, so the heading keeps the plain count.
+    expect(id('project-members')).toHaveTextContent('Items 3');
   });
 
   it('names the container the habits will actually land in', () => {
@@ -677,9 +707,9 @@ describe('the label sections', () => {
     });
     open('projects');
     fireEvent.click(screen.getAllByTestId('project-row')[0]);
-    const zone = id('project-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('The habit moves to “Evening”');
-    expect(zone).toHaveTextContent('⌘Z brings it back');
+    const sentence = deleteSentence('project');
+    expect(sentence).toContain('The habit moves to “Evening”');
+    expect(sentence).toContain('⌘Z brings it back');
   });
 
   it('says nothing about a destination when no member needs one', () => {
@@ -694,9 +724,9 @@ describe('the label sections', () => {
     });
     open('projects');
     fireEvent.click(screen.getAllByTestId('project-row')[0]);
-    const zone = id('project-delete').closest('div')?.parentElement;
-    expect(zone).toHaveTextContent('stops being filed under Morning');
-    expect(zone).not.toHaveTextContent('moves to');
+    const sentence = deleteSentence('project');
+    expect(sentence).toContain('stops being filed under Morning');
+    expect(sentence).not.toContain('moves to');
   });
 
   it('warns that an item type is the one delete with no way back', () => {
@@ -714,14 +744,16 @@ describe('the label sections', () => {
     expect(id('type-delete').className).toContain('bg-destructive text-destructive-foreground');
   });
 
-  it('keeps the other four delete buttons quiet', () => {
+  it('keeps a project’s delete behind ⋯, with no red button on the pane', () => {
+    // A project goes to the Trash and comes back, like the other containers,
+    // so its Delete is a menu item now — the filled button is the item type's
+    // alone (the one delete with no way back).
     seed({ projects: [{ id: 'pr1', name: 'Work', emoji: 'icon:Briefcase' }] });
     open('projects');
     click('project-row');
-    // An outline, not a fill. `hover:bg-destructive/10` is in there, so the
-    // assertion has to name the filled pair rather than the substring.
-    expect(id('project-delete').className).not.toContain('bg-destructive text-destructive-foreground');
-    expect(id('project-delete').className).toContain('border-destructive/40');
+    expect(maybe('project-delete')).toBeNull();
+    expect(id('organize-detail').querySelector('.bg-destructive')).toBeNull();
+    expect(deleteSentence('project')).toContain('Nothing is filed under it');
   });
 
   it('hashes an item type’s accent from its slug, not its label', () => {
@@ -744,7 +776,7 @@ describe('the label sections', () => {
     open('projects');
     click('project-row');
 
-    fireEvent.click(screen.getByRole('button', { name: /Project color/i }));
+    click('project-color');
     fireEvent.click(screen.getByRole('button', { name: /^Auto$/i }));
     expect(usePlannerStore.getState().projects[0].color).toBeUndefined();
   });
@@ -970,6 +1002,8 @@ describe('the project time block', () => {
     seed({ projects: [p] });
     open('projects');
     click('project-row');
+    // The controls live in the chip's popover now (TimeBlockChip).
+    click('project-time-block-chip');
   };
 
   it('writes all three fields the grid needs when switched on', () => {
@@ -984,6 +1018,17 @@ describe('the project time block', () => {
     expect(p.timeBucket).toBe('morning');
     expect(p.startTime).toBe('05:00');
     expect(p.repeatFrequency).toBe('daily');
+  });
+
+  it('keeps a typed start time when the chip closes on Escape', () => {
+    // The start time commits on blur, and Escape unmounts the popover before
+    // any blur — PropertyChip blurs the field first so the edit lands.
+    openProject(project({ timeBucket: 'evening', startTime: '19:00', repeatFrequency: 'daily' }));
+    const field = id('project-start-time') as HTMLInputElement;
+    field.focus();
+    fireEvent.change(field, { target: { value: '20:30' } });
+    fireEvent.keyDown(field, { key: 'Escape' });
+    expect(usePlannerStore.getState().projects[0].startTime).toBe('20:30');
   });
 
   it('remembers the setup when switched off', () => {
@@ -1244,34 +1289,27 @@ describe('a member row', () => {
       routines: [routine('r1', 'Morning', { itemIds: ['i1', 'i2', 'i3'] })],
     });
 
-  it('carries a type glyph, so two items with ONE title are two rows', () => {
+  it('tells two items with ONE title apart', () => {
     /**
-     * Both are called "Stretch". Without the glyph these rows are identical,
-     * here and in the search that adds them — and picking the wrong one is a
-     * silent write that only diverges later, when the habit keeps recurring.
+     * Both are called "Stretch". Without a type cue these rows are identical —
+     * and picking the wrong one is a silent write that only diverges later,
+     * when the habit keeps recurring.
      *
-     * ASSERTED AGAINST THE REGISTRY TOKEN, not merely "the two differ". The
-     * first version compared the two svg class attributes, and passed with BOTH
-     * `glyph` entries deleted from ITEM_TYPES — because CategoryIcon's
-     * name-hash fallback already yields different icons for "Task" and "Habit".
-     * It tested the fallback and called it a test of the feature.
+     * ASSERTED AGAINST THE REGISTRY'S LABELS, not merely "the two differ", so
+     * the test fails if the tooltip stops naming the type the registry gives.
      */
     mixed();
     open('routines');
     click('routine-row');
     const rows = screen.getAllByTestId('routine-member');
-    const glyphOf = (row: HTMLElement) => row.querySelector('svg');
-    // lucide stamps `lucide-<kebab>` from the icon's own name, so the registry's
-    // token is checkable end to end without hard-coding a class here.
-    const fromToken = (type: 'task' | 'habit') => {
-      const token = ITEM_TYPES[type].glyph;
-      expect(token).toBeDefined();
-      return `lucide-${token!.replace('icon:', '').replace(/([a-z0-9])([A-Z])/g, '$1-$2').toLowerCase()}`;
-    };
-
-    expect(glyphOf(rows[0])).toHaveClass(fromToken('habit'));
-    expect(glyphOf(rows[1])).toHaveClass(fromToken('task'));
-    expect(fromToken('habit')).not.toEqual(fromToken('task'));
+    // The row now leads with today's STATUS (TodayGlyph), not the type icon —
+    // so the two "Stretch" rows are told apart by the glyph's type, named from
+    // the registry in its tooltip, and by its shape (a one-off task is square).
+    const status = rows.map((r) => within(r).getByTestId('today-glyph'));
+    expect(status[0].getAttribute('title')).toMatch(new RegExp(`^${ITEM_TYPES.habit.label} ·`));
+    expect(status[1].getAttribute('title')).toMatch(new RegExp(`^${ITEM_TYPES.task.label} ·`));
+    expect(status[0].querySelector('circle')).not.toBeNull();
+    expect(status[1].querySelector('rect')).not.toBeNull();
   });
 
   it('shows a clock time in tabular figures and a bucket name in prose', () => {
@@ -1473,26 +1511,26 @@ describe('the member picker', () => {
 
 /* ── making something (N1) ────────────────────────────────────────────────── */
 
-describe('making a program in the console', () => {
+describe('making a season in the console', () => {
   const day = (label: string) =>
     screen.getAllByRole('button').find((b) => b.getAttribute('aria-label')?.includes(label))!;
 
-  it('writes the Runs range in the one addProgram, as auto', () => {
+  it('writes the Runs range in the one addSeason, as auto', () => {
     // `auto`, so the dates ARE the switch; one call, so it is one undo entry.
-    seed({ programs: [] });
-    const addProgram = vi.fn(() => 'p-new');
-    usePlannerStore.setState({ addProgram });
-    open('programs');
-    click('program-new');
-    fireEvent.change(id('program-new-name'), { target: { value: 'Autumn term' } });
-    click('program-new-runs-chip');
+    seed({ seasons: [] });
+    const addSeason = vi.fn(() => 'p-new');
+    usePlannerStore.setState({ addSeason });
+    open('seasons');
+    click('season-new');
+    fireEvent.change(id('season-new-name'), { target: { value: 'Autumn term' } });
+    click('season-new-runs-chip');
     fireEvent.click(day('August 20th, 2026'));
     // Setting the start flips the calendar to the end, for the second half.
     fireEvent.click(day('August 30th, 2026'));
-    click('program-add');
+    click('season-add');
 
-    expect(addProgram).toHaveBeenCalledTimes(1);
-    expect(addProgram).toHaveBeenCalledWith(
+    expect(addSeason).toHaveBeenCalledTimes(1);
+    expect(addSeason).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'Autumn term',
         state: 'auto',
@@ -1522,7 +1560,7 @@ describe('the create flow lives in the detail pane', () => {
 
     expect(id('routine-create-form')).toBeTruthy();
     // It owns the detail pane, so the teaching line is gone while it is up.
-    expect(id('organize-detail').textContent).toContain('A routine groups items');
+    expect(id('organize-detail').textContent).toContain('A routine is a set of things you do regularly');
   });
 
   it('creates on the button and selects what it made', () => {
@@ -1602,9 +1640,9 @@ describe('the create flow lives in the detail pane', () => {
     click('routine-new');
     fireEvent.change(id('routine-new-name'), { target: { value: 'Half typed' } });
 
-    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Programs' }), { button: 0 });
+    fireEvent.mouseDown(screen.getByRole('tab', { name: 'Seasons' }), { button: 0 });
 
-    // Arriving in Programs still offering to name a ROUTINE would be the
+    // Arriving in Seasons still offering to name a ROUTINE would be the
     // console losing its place, wearing a form.
     expect(maybe('routine-create-form')).toBeNull();
   });
@@ -1639,7 +1677,7 @@ describe('the Overview maps the console', () => {
 
     const cards = screen.getAllByTestId('overview-card').map((c) => c.getAttribute('data-section'));
     // Everything the rail holds, minus the map itself.
-    expect(cards).toEqual(['routines', 'programs', 'goals', 'projects', 'types', 'trash']);
+    expect(cards).toEqual(['routines', 'seasons', 'goals', 'projects', 'types', 'trash']);
     const routinesCard = cards.indexOf('routines');
     expect(screen.getAllByTestId('overview-card')[routinesCard].textContent).toContain('2');
   });

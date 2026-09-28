@@ -107,9 +107,9 @@ beforeEach(() => {
     habit_groups: [],
     routines: [],
     routine_items: [],
-    programs: [],
-    program_items: [],
-    program_routines: [],
+    seasons: [],
+    season_items: [],
+    season_routines: [],
   };
 });
 
@@ -145,16 +145,16 @@ describe('listDeleted', () => {
     expect('deletedAt' in (entry.entity as object)).toBe(false);
   });
 
-  it('hydrates a trashed program from BOTH of its join tables', async () => {
+  it('hydrates a trashed season from BOTH of its join tables', async () => {
     // state: 'completed' rather than 'active', so a hard-coded default cannot
     // pass this by accident.
-    tables.programs = [{
+    tables.seasons = [{
       id: 'p1', user_id: U, name: 'Summer', icon: 'icon:Sun', color: '#f97316',
       state: 'completed', starts_on: '2026-06-01', ends_on: '2026-08-31',
       sort_order: 2, updated_at: T1, deleted_at: T2,
     }];
-    tables.program_items = [{ program_id: 'p1', item_id: 'a', user_id: U }];
-    tables.program_routines = [{ program_id: 'p1', routine_id: 'r9', user_id: U }];
+    tables.season_items = [{ season_id: 'p1', item_id: 'a', user_id: U }];
+    tables.season_routines = [{ season_id: 'p1', routine_id: 'r9', user_id: U }];
 
     const [entry] = await listDeleted(U);
     expect(entry.entity).toEqual({

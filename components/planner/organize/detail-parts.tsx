@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { format } from 'date-fns';
-import { ChevronLeft, MoreHorizontal, Plus, X } from 'lucide-react';
+import Link from 'next/link';
+import { ChevronLeft, Maximize2, MoreHorizontal, Plus, X } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
 import {
   DropdownMenu,
@@ -19,6 +20,7 @@ import { Eyebrow } from './primitives';
 import { SECTION_IDENTITY, type ConsoleSection } from './console-rail';
 import { useEscapeRung } from './escape-ladder';
 import { cn } from '@/lib/utils';
+import { useUIStore } from '@/lib/ui-store';
 
 /**
  * The pieces every detail pane in the Organize console is built from.
@@ -97,7 +99,7 @@ export function ListColumn({
         // list is 480px of unpannable content in a 393px sheet — the add button,
         // the count column, the state pill and the drill-in chevron all live in
         // the clipped 119px. `md:flex-none` restores exactly `shrink-0` above the
-        // breakpoint, so the 180 | 300 | 456 arithmetic is untouched; `min-w-0`
+        // breakpoint, so the 180 | 300 | 600 arithmetic is untouched; `min-w-0`
         // also drops the min-content floor the fixed width imposed on the row.
         'border-border flex min-h-0 min-w-0 flex-1 flex-col border-r md:w-[300px] md:flex-none',
         hasSelection && 'hidden md:flex'
@@ -296,10 +298,10 @@ export function IdentityRow({
   accentName?: string;
   icon?: string;
   color?: string;
-  /** "Routine", "Program", … — used for the control aria-labels. */
+  /** "Routine", "Season", … — used for the control aria-labels. */
   label: string;
   testPrefix: string;
-  /** `Routine · 6 items · in 1 program` — numerals in font-num. */
+  /** `Routine · 6 items · in 1 season` — numerals in font-num. */
   meta: React.ReactNode;
   onPatch: (patch: { name?: string; icon?: string; color?: string }) => void;
   /**
@@ -379,11 +381,11 @@ export function IdentityRow({
 /* ── the edit-pane head ──────────────────────────────────────────────── */
 
 /**
- * The top of a goal, program or routine pane, in the ITEM edit pane's grammar
+ * The top of a goal, season or routine pane, in the ITEM edit pane's grammar
  * (item-dialog.tsx): a whisper — the colour square and the kind, 11px muted —
  * with the pane's quiet verbs on the right, ending in a ⋯ menu.
  *
- * Delete lives in that menu and nowhere else. A goal, program or routine goes
+ * Delete lives in that menu and nowhere else. A goal, season or routine goes
  * to the trash and comes back from it, so a labelled red zone at the foot of
  * every pane was spending the loudest thing in the console on an undoable act;
  * the item pane already keeps its Delete one tap behind ⋯ for the same reason.
@@ -405,6 +407,30 @@ export interface DetailMenuAction {
   onSelect: () => void;
 }
 
+/**
+ * "Open as page" — the console's exit to a container's reading surface
+ * (/routine/[id], /season/[id], /project/[id], /goal/[id]).
+ *
+ * It leaves the route that mounts the console, so it shuts the console on the
+ * way out, and on `onNavigate` rather than `onClick`: next/link runs onClick
+ * before deciding a click is a navigation, so a ⌘-click into a background tab
+ * would otherwise close the console in this one (CLAUDE.md, the Organize
+ * console bullet). next/link, not <a>: a hard load tears down the store.
+ */
+export function OpenAsPageLink({ href, testId }: { href: string; testId: string }) {
+  return (
+    <Link
+      href={href}
+      data-testid={testId}
+      onNavigate={() => useUIStore.getState().closeDialog()}
+      className="text-muted-foreground hover:text-foreground inline-flex shrink-0 items-center gap-1 text-[11px] transition-colors"
+    >
+      <Maximize2 className="size-3" aria-hidden />
+      Open as page
+    </Link>
+  );
+}
+
 export function DetailHead({
   kind,
   color,
@@ -414,7 +440,7 @@ export function DetailHead({
   actions,
   menu,
 }: {
-  /** "Goal", "Program", "Routine". */
+  /** "Goal", "Season", "Routine". */
   kind: string;
   color?: string;
   /** Hashed for the square when no colour is stored, as ObjectRow does. */
@@ -441,7 +467,12 @@ export function DetailHead({
             style={{ background: color ?? accentColorForName(name) }}
             aria-hidden
           />
-          {kind}
+          {/* A path, Linear's way: where this lives, then what it is. The
+              section name is the back row's own label ("Routines"). */}
+          <span className="shrink-0">{back.label}</span>
+          <span aria-hidden className="text-muted-foreground/60">›</span>
+          <span className="text-foreground/80 min-w-0 truncate">{name}</span>
+          <span className="sr-only">({kind})</span>
         </span>
         {actions}
         <DropdownMenu>
@@ -490,8 +521,8 @@ export function DetailHead({
 }
 
 /**
- * Icon + name, as the item pane draws its title: a 30px glyph button and a
- * borderless SERIF heading. Colour is not here — it is a chip in the row below,
+ * Icon + name: a 30px glyph button and a borderless sans heading — the
+ * containers' Linear-style head (2026-09-27; it was the item pane's serif). Colour is not here — it is a chip in the row below,
  * the way an item's project is.
  *
  * Buffered exactly as IdentityRow is, and for the same reason (see there):
@@ -505,15 +536,18 @@ export function TitleRow({
   testPrefix,
   onPatch,
   validate,
+  size = 'pane',
 }: {
   id: string;
   name: string;
   icon?: string;
-  /** "Routine", "Program", … — the field's accessible name. */
+  /** "Routine", "Season", … — the field's accessible name. */
   label: string;
   testPrefix: string;
   onPatch: (patch: { name?: string; icon?: string }) => void;
   validate?: (next: string) => string | null;
+  /** 'page' — a container page's title, a step larger than the console pane's. */
+  size?: 'pane' | 'page';
 }) {
   const nameDraft = useNameDraft(id, name, (next) => onPatch({ name: next }), validate);
   const ref = useRef<HTMLInputElement>(null);
@@ -547,7 +581,10 @@ export function TitleRow({
           }}
           aria-label={`${label} name`}
           data-testid={`${testPrefix}-name-input`}
-          className="text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 font-serif text-lg leading-snug font-medium outline-none"
+          className={cn(
+            'text-foreground -mx-1 min-w-0 flex-1 truncate border-0 bg-transparent px-1 py-0 leading-snug font-semibold tracking-[-0.01em] outline-none',
+            size === 'page' ? 'text-2xl' : 'text-xl'
+          )}
         />
       </div>
       {nameDraft.problem && (
@@ -563,7 +600,7 @@ export function TitleRow({
 }
 
 /**
- * A state the pane has to explain — a paused routine, a program on its dates, a
+ * A state the pane has to explain — a paused routine, a season on its dates, a
  * goal's wind-down — in the item pane's paused-note dress: a quiet filled strip
  * with a leading glyph. Muted, never a warning colour: it states a fact.
  */
@@ -604,7 +641,7 @@ export function StatusStrip({
  * contract — a SENTENCE, never a silent disabled button — is unchanged.
  *
  * `fields` is the kind's own part of making one — a goal's why and window, a
- * program's run — so the things that DEFINE the object are asked for at birth
+ * season's run — so the things that DEFINE the object are asked for at birth
  * rather than left as post-create edits. The section owns their state and
  * reads it in `onCreate`; the form only places them.
  *
@@ -709,8 +746,10 @@ export function CreateForm({
     <div className="flex flex-col" data-testid={`${testPrefix}-create-form`}>
       <Eyebrow>{eyebrow}</Eyebrow>
 
-      <div className="mt-3.5 flex items-center gap-3">
-        <IconPicker value={icon} name={name} onSelect={setIcon} />
+      <div className="mt-3.5 flex items-center gap-2.5">
+        {/* Smaller than the detail pane's identity glyph: here it is a secondary
+            choice beside the name, not the object's face. */}
+        <IconPicker value={icon} name={name} onSelect={setIcon} className="size-7 [&_svg]:size-4" />
         <input
           ref={ref}
           value={name}
@@ -858,7 +897,7 @@ export function BufferedTextarea({
       onBlur={commit}
       className={cn(
         // The item pane's notes recipe, minus the shadcn Textarea it undoes.
-        'text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed outline-none placeholder:italic',
+        'text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 text-sm leading-relaxed outline-none',
         className
       )}
     />
@@ -918,7 +957,7 @@ export function NotesField({
       data-testid={testId}
       onChange={(e) => onChange(e.target.value)}
       // BufferedTextarea's recipe — spelled out, so caret-room can read it.
-      className="text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 font-serif text-sm leading-relaxed outline-none placeholder:italic"
+      className="text-foreground placeholder:text-muted-foreground -mx-1 block w-[calc(100%+0.5rem)] resize-none overflow-y-auto border-0 bg-transparent px-1 py-0 text-sm leading-relaxed outline-none"
     />
   );
 }
@@ -999,7 +1038,7 @@ export function BufferedInput({
 /* ── a day ────────────────────────────────────────────────────────────── */
 
 /**
- * One day as a chip — a routine's "Comes back". (A program's run and a goal's
+ * One day as a chip — a routine's "Comes back". (A season's run and a goal's
  * window are ranges, and use DateRangeChip.)
  *
  * Two rules it shares with every day picker in the console, each wrong in a
@@ -1024,6 +1063,7 @@ export function DayChip({
   clearLabel,
   disabledDays,
   onChange,
+  keyed = true,
 }: {
   /** The noun unset, the muted key set — "Comes back". */
   label: string;
@@ -1032,13 +1072,15 @@ export function DayChip({
   clearLabel: string;
   disabledDays?: { before: Date } | { after: Date };
   onChange: (next: string | undefined) => void;
+  /** False drops the muted key from a set chip — for a labelled row that already names it. */
+  keyed?: boolean;
 }) {
   return (
     <PropertyChip
       label={label}
       value={value ? formatShort(value) : undefined}
       display={
-        value ? (
+        value && keyed ? (
           <span className="inline-flex items-center gap-1.5">
             <span className="text-muted-foreground">{label}</span>
             <span className="font-num">{formatShort(value)}</span>
@@ -1069,6 +1111,92 @@ export function DayChip({
                 tone="muted"
                 testId={`${testId}-clear`}
                 onSelect={() => {
+                  onChange(undefined);
+                  close();
+                }}
+              >
+                <X className="size-3.5" />
+                {clearLabel}
+              </ChipOption>
+            </div>
+          )}
+        </div>
+      )}
+    </PropertyChip>
+  );
+}
+
+/**
+ * A wall-clock time as a chip — DayChip's shape for an 'HH:mm'.
+ *
+ * The field inside is a BufferedInput, so a half-typed time never writes: it
+ * commits on blur or Enter, and only a value the input itself accepts as a
+ * time. `display` formats through the user's 12h/24h preference; the stored
+ * value is always 24-hour.
+ */
+export function TimeChip({
+  label,
+  value,
+  display,
+  testId,
+  clearLabel,
+  onChange,
+  keyed = true,
+}: {
+  label: string;
+  value?: string;
+  /** The value as the user reads it — '7:00 am'. */
+  display?: string;
+  testId: string;
+  clearLabel: string;
+  onChange: (next: string | undefined) => void;
+  /** False drops the muted key from a set chip — see DayChip. */
+  keyed?: boolean;
+}) {
+  // Enter commits AND blurs, and the blur commits again before the store's
+  // write has re-rendered `value` — so without this one keypress is two
+  // writes and two undo entries.
+  const sent = useRef<string | null>(null);
+  return (
+    <PropertyChip
+      label={label}
+      value={display}
+      display={
+        display && keyed ? (
+          <span className="inline-flex items-center gap-1.5">
+            <span className="text-muted-foreground">{label}</span>
+            <span className="font-num">{display}</span>
+          </span>
+        ) : undefined
+      }
+      ariaLabel={display ? `${label}: ${display}` : label}
+      testId={testId}
+      contentClassName="w-auto p-1"
+    >
+      {(close) => (
+        <div className="flex flex-col gap-1">
+          <BufferedInput
+            type="time"
+            value={value ?? ''}
+            testId={`${testId}-input`}
+            ariaLabel={label}
+            className="w-[120px] px-2 py-1 font-num"
+            autoFocus
+            validate={(next) => /^([01][0-9]|2[0-3]):[0-5][0-9]$/.test(next)}
+            onCommit={(next) => {
+              if (sent.current === next) return;
+              sent.current = next;
+              onChange(next);
+              close();
+            }}
+          />
+          {value && (
+            <div className="border-t pt-1">
+              <ChipOption
+                tone="muted"
+                testId={`${testId}-clear`}
+                onSelect={() => {
+                  sent.current = null;
                   onChange(undefined);
                   close();
                 }}

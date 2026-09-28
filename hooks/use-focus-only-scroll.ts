@@ -219,7 +219,7 @@ function measure(box: HTMLElement, el: Element): Span | null {
   // A box squeezed below its content still paints what overflows it, unless it
   // clips it, and a box squeezed to nothing still paints its focus ring. With
   // the item panel docked the review notice's button shrinks to its padding and
-  // paints its icon and "Start" past it, and the program line's to nothing and
+  // paints its icon and "Start" past it, and the season line's to nothing and
   // paints its icon. Measure what they paint, so a slide can show it.
   // scrollWidth is whole pixels, hence the rounded-up box; it is also taken
   // before transforms, and nothing in the shell has one.

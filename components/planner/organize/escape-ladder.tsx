@@ -84,7 +84,8 @@ export function useEscapeRung(rung: Rung) {
 /**
  * Is this node in the section the user is actually looking at?
  *
- * TODAY THIS ALWAYS RETURNS TRUE, and it is kept anyway. Radix's `Tabs.Content`
+ * INSIDE THE CONSOLE THIS ALWAYS RETURNS TRUE, and it is kept anyway. (Outside
+ * any tabpanel — the "new" dialog — it is true by definition.) Radix's `Tabs.Content`
  * renders `{present && children}` — the panel element exists for every section
  * but only the ACTIVE one has a subtree, so only the visible section's rungs are
  * ever registered. Verified, not assumed: a probe render of the plate finds one
@@ -94,9 +95,13 @@ export function useEscapeRung(rung: Rung) {
  * Adding `forceMount` to preserve a section's scroll position — an entirely
  * reasonable future change — would mount all six at once, and without this guard
  * a search box left open in Routines would silently eat the Escape you pressed
- * while looking at Programs. One `closest()` call is a cheap way to make that
+ * while looking at Seasons. One `closest()` call is a cheap way to make that
  * change safe instead of subtly broken.
  */
 export function inActiveSection(node: Element | null | undefined): boolean {
-  return !!node?.closest('[role="tabpanel"][data-state="active"]');
+  if (!node) return false;
+  // Outside any section at all — the "new" dialog, which mounts the same member
+  // lists with a ladder of its own — there is no inactive panel to guard against.
+  const panel = node.closest('[role="tabpanel"]');
+  return !panel || panel.getAttribute('data-state') === 'active';
 }
