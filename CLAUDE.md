@@ -257,6 +257,13 @@ rather than taking the flag.
   `closeDialog()` on the way out (via `onNavigate`, so a ⌘-click into a new tab
   doesn't shut the one you are looking at), and `ConsoleSlotGuard` in the root
   layout drops a stranded slot when you leave `/` by any other means.
+- **An item verb is declared once, in [lib/item-verbs.ts](lib/item-verbs.ts)** — its gate
+  and its write, with the day it acts on passed in by the caller. The ⌘K item commands,
+  the Organize console's member rows and the right-click menu
+  ([item-context-menu.tsx](components/planner/item-context-menu.tsx)) all read it; a new
+  surface that wants "may I tick / skip / carry this?" asks there rather than re-deriving.
+  The right-click menus are pointer-only (long-press is drag on touch) and hold no Delete
+  for containers — each Organize pane words its own delete consequence.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone

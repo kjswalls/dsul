@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -36,6 +36,7 @@ import { milestoneItemIds } from '@/lib/goals';
 import { toDateStr } from '@/lib/recurrence';
 import { ITEM_VERBS, type VerbContext, type VerbId } from '@/lib/item-verbs';
 import { addDaysStr, weekStartOf, type OccurrenceState } from '@/lib/container-schedule';
+import { ItemContextMenu, ItemMenuRow } from '@/components/planner/item-context-menu';
 import { cn } from '@/lib/utils';
 import type { Item } from '@/lib/planner-types';
 
@@ -96,6 +97,32 @@ export function useMemberActions({ ownerName, onRemove, removable, todayState }:
         milestoneIds={milestoneIds}
       />
     ),
+    // The right-click menu, acting on TODAY as the rest of the row does, with
+    // the week schedule's answer for whether the item falls on it. "Open item"
+    // leaves for the page: the item panel cannot sit over the console.
+    contextMenu: (item: Item, row: ReactElement) => {
+      const canRemove = removable?.(item) ?? true;
+      return (
+        <ItemContextMenu
+          item={item}
+          date="today"
+          occurrence={todayState(item.id) ?? 'absent'}
+          openHref
+          extra={
+            canRemove ? (
+              <ItemMenuRow
+                icon={<Unlink className="size-3.5" />}
+                label={`Remove from ${ownerName}`}
+                testId="item-menu-remove"
+                onSelect={() => onRemove(item.id)}
+              />
+            ) : undefined
+          }
+        >
+          {row}
+        </ItemContextMenu>
+      );
+    },
   };
 }
 

@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Check, Flag, Maximize2, Trash2 } from 'lucide-react';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import {
   ChoiceChip,
   ColorChip,
@@ -291,6 +292,11 @@ export function GoalsSection({
                 <ObjectRow
                   testId="goal-row"
                   idAttr={{ 'data-goal-id': goal.id }}
+                  wrap={(row) => (
+                    <ContainerContextMenu kind="goal" id={goal.id} inConsole>
+                      {row}
+                    </ContainerContextMenu>
+                  )}
                   icon={goal.icon}
                   color={goal.color}
                   name={goal.name}

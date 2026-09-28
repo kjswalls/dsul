@@ -132,6 +132,27 @@ describe('a routine\'s rows', () => {
     expect(item('h1')).toBeTruthy(); // removed from the routine, not deleted
   });
 
+  it('right-clicks to the same verbs, on TODAY, with the row\'s own Remove', () => {
+    seed([habit('h1', 'Stretch'), habit('h2', 'Journal', { repeatFrequency: 'weekdays' })], {
+      routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1', 'h2'] }],
+    });
+    render(<OrganizeConsole open onOpenChange={() => {}} section="routines" focusId="r1" />);
+    fireEvent.contextMenu(rowOf('Stretch'), { clientX: 5, clientY: 5 });
+    let menu = screen.getByTestId('item-context-menu');
+    // The panel cannot sit over the console, so Open leaves for the page.
+    expect(within(menu).queryByTestId('item-menu-open')).toBeNull();
+    expect(within(menu).getByTestId('item-menu-open-page')).toBeTruthy();
+    fireEvent.click(within(menu).getByTestId('item-menu-tick'));
+    expect(item('h1').completedDates).toEqual([TODAY]);
+
+    // A weekday habit does not fall on this Saturday: no tick from here either.
+    fireEvent.contextMenu(rowOf('Journal'), { clientX: 5, clientY: 5 });
+    menu = screen.getByTestId('item-context-menu');
+    expect(within(menu).queryByTestId('item-menu-tick')).toBeNull();
+    fireEvent.click(within(menu).getByTestId('item-menu-remove'));
+    expect(usePlannerStore.getState().routines[0].itemIds).toEqual(['h1']);
+  });
+
   it('asks before Delete', () => {
     seed([habit('h1', 'Stretch')], { routines: [{ id: 'r1', name: 'Mornings', itemIds: ['h1'] }] });
     render(<OrganizeConsole open onOpenChange={() => {}} section="routines" focusId="r1" />);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, type ReactElement } from 'react';
 import { ChevronRight, Moon } from 'lucide-react';
 import { CategoryIcon } from '@/lib/category-icons';
 import { accentColorForName } from '@/lib/accent-colors';
@@ -87,6 +87,12 @@ export function StatePill({ label, testId }: { label: string; testId: string }) 
  * of name width, removes every hover-only affordance (touch and keyboard
  * parity solved by deletion rather than duplication), removes the mis-tap
  * delete, and leaves the list with exactly one interaction: select.
+ *
+ * The one addition (Kirby, 2026-09-28) is a pointer-only right-click menu
+ * (`wrap`, components/planner/container-context-menu.tsx), and it keeps
+ * the rule's point: it draws nothing, holds no delete, and every row in it is
+ * a door the detail pane or the page already has — nothing is reachable ONLY
+ * from a right-click.
  */
 export function ObjectRow({
   testId,
@@ -100,6 +106,7 @@ export function ObjectRow({
   pillTestId,
   count,
   onSelect,
+  wrap,
 }: {
   testId: string;
   idAttr?: Record<string, string>;
@@ -128,6 +135,12 @@ export function ObjectRow({
   pillTestId?: string;
   count: number;
   onSelect: () => void;
+  /**
+   * Wraps the row in its right-click menu. A render prop rather than the menu
+   * itself so this file stays import-light: /settings reaches it through the
+   * console rail, and the menu reads the account's data (tests/unit/route-data).
+   */
+  wrap?: (row: ReactElement) => ReactElement;
 }) {
   const ref = useRef<HTMLButtonElement>(null);
 
@@ -149,7 +162,7 @@ export function ObjectRow({
     if (selected) ref.current?.scrollIntoView({ block: 'nearest' });
   }, [selected]);
 
-  return (
+  const row = (
     <button
       ref={ref}
       type="button"
@@ -212,6 +225,8 @@ export function ObjectRow({
       <ChevronRight className="text-muted-foreground/60 h-3 w-3 shrink-0 md:hidden" />
     </button>
   );
+
+  return wrap ? wrap(row) : row;
 }
 
 /* ── settings row ─────────────────────────────────────────────────────── */

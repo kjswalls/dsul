@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import { Layers, Moon, Trash2 } from 'lucide-react';
+import { ContainerContextMenu } from '@/components/planner/container-context-menu';
 import {
   ChoiceChip,
   ColorChip,
@@ -206,6 +207,11 @@ export function RoutinesSection({
               key={routine.id}
               testId="routine-row"
               idAttr={{ 'data-routine-id': routine.id }}
+              wrap={(row) => (
+                <ContainerContextMenu kind="routine" id={routine.id} inConsole>
+                  {row}
+                </ContainerContextMenu>
+              )}
               icon={routine.icon}
               color={routine.color}
               name={routine.name}

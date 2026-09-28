@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable, useDraggable } from '@dnd-kit/core';
+import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { ArrowLeftToLine, Redo2, SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
@@ -970,29 +971,31 @@ export function ScheduleBlock({
           className="absolute h-[6px] w-[6px] rounded-full bg-muted-foreground/45 shadow-[0_0_0_1px_var(--canvas)]"
           style={{ left: L?.beadX ?? 3, top: -PANE_OFFSET - 3 }}
         />
-        <div
-          onClick={() => openEditFor(item, itemType)}
-          style={{ marginLeft: LANE_PX }}
-          className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
-        >
-          <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
-          <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
-            {item.title}
-          </span>
-          <button
-            type="button"
-            title="Unskip"
-            aria-label="Unskip"
-            data-testid="item-unskip-button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setItemSkipped(item.id, false, rowDate);
-            }}
-            className="-mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-muted-foreground hover-wash hover:text-foreground"
+        <ItemContextMenu item={item} date={rowDate}>
+          <div
+            onClick={() => openEditFor(item, itemType)}
+            style={{ marginLeft: LANE_PX }}
+            className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
           >
-            <Undo2 className="h-3 w-3" />
-          </button>
-        </div>
+            <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
+            <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+              {item.title}
+            </span>
+            <button
+              type="button"
+              title="Unskip"
+              aria-label="Unskip"
+              data-testid="item-unskip-button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setItemSkipped(item.id, false, rowDate);
+              }}
+              className="-mr-1 flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-[4px] text-muted-foreground hover-wash hover:text-foreground"
+            >
+              <Undo2 className="h-3 w-3" />
+            </button>
+          </div>
+        </ItemContextMenu>
       </div>
     );
   }
@@ -1178,231 +1181,234 @@ export function ScheduleBlock({
 
       {/* The pane. overflow-hidden for the wash and the title, which is exactly
           why the registration marks below are siblings, not children. */}
-      <div
-        ref={setNodeRef}
-        // The wrapper is the block's BAND, and a double-booking's members all
-        // share one band — only their panes tile inside it. So the pane is the
-        // only honest handle on "this item's pixels", for a test or anything else.
-        data-slot="pane"
-        {...attributes}
-        {...listeners}
-        // The pane is the block's only stable handle: the wrapper is
-        // pointer-events-none and the title is inside a content box that changes
-        // shape with the pane's width. `receded` rides it because that is the
-        // element the recession is spent on.
-        data-block-id={item.id}
-        data-receded={receded ? 'true' : 'false'}
-        onClick={(e) => {
-          if (wasDraggedRef.current) return;
-          const selection = useSelectionStore.getState();
-          if (e.metaKey || e.ctrlKey) {
-            selection.toggle(item.id);
-            return;
-          }
-          if (e.shiftKey) {
-            selection.selectRange(rangeIds(selection.anchorId, item.id));
-            return;
-          }
-          selection.replace([item.id]);
-          openEditFor(item, itemType);
-        }}
-        className={cn(
-          // In flow, not absolute: the wrapper's hover-expand height is `auto`,
-          // and an absolutely positioned pane would contribute nothing to it.
-          'pointer-events-auto relative h-full cursor-grab touch-manipulation overflow-hidden rounded-[5px] border border-border active:cursor-grabbing',
-          // …but `h-full` against that `auto` wrapper is a percentage of an
-          // indefinite height, so it collapses the pane to its CONTENT. On a
-          // block whose slot is taller than its title (a 3-hour block holding
-          // two lines) the pane shrank out from under the cursor on hover, hover
-          // was lost — the wrapper is pointer-events-none, so the pane is the
-          // only target — the pane sprang back, and the block flickered between
-          // the two sizes forever. The floor makes hovering a block that already
-          // fits a no-op, and only a genuinely clipped title grows past it.
-          canExpand && 'min-h-[var(--blk-h)]',
-          'bg-[var(--sched-pane)] shadow-[var(--sched-shadow)] transition-[background-color,box-shadow] duration-150',
-          // A NESTED plate is not glass. There is nothing informative behind it —
-          // it sits in a pocket in its parent, not on the hour grid — and on
-          // white, 94%-opaque over 80%-opaque is 0.00003 L apart, so translucency
-          // cannot express this step at all in light mode. Solid surface-2 over
-          // the pocket's ~0.975 is a real value step in both themes.
-          L?.solid && !done && 'bg-[var(--surface-2)]',
-          // Done recedes by thinning the plate and switching the lit edge off,
-          // never by fading the whole block — opacity here composites the lime
-          // checkbox down to olive. The text carries the rest of the fade.
-          done
-            ? 'bg-[var(--sched-pane-done)] shadow-[var(--sched-shadow-done)]'
-            : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]',
-          // Off-group: the plate thins and trades its modelling for a hairline.
-          // It KEEPS its hover lamp — a receded block is still a live target you
-          // can read, click and drag; recession says "not what you asked about",
-          // not "unavailable". Ordered after `done` so a finished off-group block
-          // stays finished-looking, which is the more specific fact.
-          // shadow-[var(--sched-shadow-off)], never the literal ring: see the
-          // token's own note in globals.css. A raw `shadow-[0_0_0_1px_…]` lands
-          // in a different tailwind-merge group from the base shadow, so both
-          // survive cn() and Tailwind's alphabetical utility order hands it to
-          // the base — the hairline never paints, in either theme.
-          receded && !done && 'bg-[var(--grp-off-pane)] shadow-[var(--sched-shadow-off)]',
-          // Selected brightens the pane — lit brighter than hover, its own
-          // latched state (the list rows latch a wash; a grid block latches the
-          // lamp). Kept off `done` blocks, whose lamp is deliberately out.
-          isMultiSelected && !done && 'bg-[var(--sched-pane-selected)] shadow-[var(--sched-shadow-hover)]'
-        )}
-        style={{ marginLeft: L?.paneLeft ?? LANE_PX, marginRight: L?.paneRight ?? 0 }}
-      >
-        {/* The pockets — one sunk well per child, above the wash and below the
-            content. This is what makes containment read in light mode, and the
-            reason this direction beat the ones that expressed depth with alpha. */}
-        {L?.pockets.map((p, i) => (
-          <span
-            key={i}
-            aria-hidden
-            className="pointer-events-none absolute left-[2px] right-0 z-[1] bg-[var(--sched-pocket)] shadow-[var(--sched-pocket-lip)]"
-            style={{ top: p.top, height: p.height }}
-          />
-        ))}
-        {/* The emission wash — the accent bleeding off the rail-facing edge into
-            the plate. Three stops, not two: a bright edge, a fast falloff by
-            40px, then a long tail out to the reach. A straight two-stop ramp
-            reads as a stripe with a soft right edge; this reads as light falling
-            across the card and dissolving into it.
-
-            Wide panes only. Across a 140px column an 84px gradient is more than
-            half the pane, which is a coloured container by area — and that was
-            always an argument about WIDTH, not about which view you are in, so it
-            keys off the same threshold the content treatment does. */}
-        {/* The wash is the block's lamp, and an off-group block is not lit. It
-            goes rather than dimming: the gradient is built from the item's own
-            accent, so fading it would be exactly the "lime through an opacity"
-            move the recession rule forbids. */}
-        {!done && !narrow && !receded && (
-          <span
-            aria-hidden
-            className={cn(
-              'pointer-events-none absolute inset-0 z-0 transition-opacity duration-150',
-              // A container stops being a lamp and becomes the FIELD its contents
-              // are lit against, so its own wash goes ambient. Without this the
-              // child's wash reads as a second light source inside the first.
-              L?.wash === 'field'
-                ? 'opacity-[var(--sched-wash-field)]'
-                : 'opacity-[var(--sched-wash)] group-hover/blk:opacity-[var(--sched-wash-hover)]'
-            )}
-            style={{
-              background:
-                `linear-gradient(90deg,` +
-                ` color-mix(in oklab, ${accent} 32%, transparent) 0px,` +
-                ` color-mix(in oklab, ${accent} 12%, transparent) 40px,` +
-                ` transparent var(--sched-wash-reach))`,
-            }}
-          />
-        )}
-
-        {/*
-          The content, re-anchored into its free band when something covers this
-          pane. This is the move that actually fixes the reported bug: a 7-hour
-          container used to centre its title over its WHOLE pane, so with a 3-hour
-          task covering the bottom the title landed under it. Now it centres in the
-          band above.
-
-          The height goes through a custom property, never an inline `height`: an
-          inline height on this div pins the indefinite-height chain that week's
-          `canExpand` rides, which would kill hover-expand for every block in the
-          grid. As a var it can be released on hover instead.
-        */}
+      {/* Right-click acts on THIS block's day — the week column it sits in. */}
+      <ItemContextMenu item={item} date={rowDate}>
         <div
+          ref={setNodeRef}
+          // The wrapper is the block's BAND, and a double-booking's members all
+          // share one band — only their panes tile inside it. So the pane is the
+          // only honest handle on "this item's pixels", for a test or anything else.
+          data-slot="pane"
+          {...attributes}
+          {...listeners}
+          // The pane is the block's only stable handle: the wrapper is
+          // pointer-events-none and the title is inside a content box that changes
+          // shape with the pane's width. `receded` rides it because that is the
+          // element the recession is spent on.
+          data-block-id={item.id}
+          data-receded={receded ? 'true' : 'false'}
+          onClick={(e) => {
+            if (wasDraggedRef.current) return;
+            const selection = useSelectionStore.getState();
+            if (e.metaKey || e.ctrlKey) {
+              selection.toggle(item.id);
+              return;
+            }
+            if (e.shiftKey) {
+              selection.selectRange(rangeIds(selection.anchorId, item.id));
+              return;
+            }
+            selection.replace([item.id]);
+            openEditFor(item, itemType);
+          }}
           className={cn(
-            'relative z-[2] flex min-w-0 flex-col gap-px',
-            L?.contentHeight != null ? 'h-[var(--clr-h)]' : 'h-full',
-            canExpand && 'group-hover/blk:h-auto',
-            narrow ? 'justify-start py-1.5 pl-1.5 pr-1' : 'justify-center pl-2.5 pr-2'
+            // In flow, not absolute: the wrapper's hover-expand height is `auto`,
+            // and an absolutely positioned pane would contribute nothing to it.
+            'pointer-events-auto relative h-full cursor-grab touch-manipulation overflow-hidden rounded-[5px] border border-border active:cursor-grabbing',
+            // …but `h-full` against that `auto` wrapper is a percentage of an
+            // indefinite height, so it collapses the pane to its CONTENT. On a
+            // block whose slot is taller than its title (a 3-hour block holding
+            // two lines) the pane shrank out from under the cursor on hover, hover
+            // was lost — the wrapper is pointer-events-none, so the pane is the
+            // only target — the pane sprang back, and the block flickered between
+            // the two sizes forever. The floor makes hovering a block that already
+            // fits a no-op, and only a genuinely clipped title grows past it.
+            canExpand && 'min-h-[var(--blk-h)]',
+            'bg-[var(--sched-pane)] shadow-[var(--sched-shadow)] transition-[background-color,box-shadow] duration-150',
+            // A NESTED plate is not glass. There is nothing informative behind it —
+            // it sits in a pocket in its parent, not on the hour grid — and on
+            // white, 94%-opaque over 80%-opaque is 0.00003 L apart, so translucency
+            // cannot express this step at all in light mode. Solid surface-2 over
+            // the pocket's ~0.975 is a real value step in both themes.
+            L?.solid && !done && 'bg-[var(--surface-2)]',
+            // Done recedes by thinning the plate and switching the lit edge off,
+            // never by fading the whole block — opacity here composites the lime
+            // checkbox down to olive. The text carries the rest of the fade.
+            done
+              ? 'bg-[var(--sched-pane-done)] shadow-[var(--sched-shadow-done)]'
+              : 'hover:bg-[var(--sched-pane-hover)] hover:shadow-[var(--sched-shadow-hover)]',
+            // Off-group: the plate thins and trades its modelling for a hairline.
+            // It KEEPS its hover lamp — a receded block is still a live target you
+            // can read, click and drag; recession says "not what you asked about",
+            // not "unavailable". Ordered after `done` so a finished off-group block
+            // stays finished-looking, which is the more specific fact.
+            // shadow-[var(--sched-shadow-off)], never the literal ring: see the
+            // token's own note in globals.css. A raw `shadow-[0_0_0_1px_…]` lands
+            // in a different tailwind-merge group from the base shadow, so both
+            // survive cn() and Tailwind's alphabetical utility order hands it to
+            // the base — the hairline never paints, in either theme.
+            receded && !done && 'bg-[var(--grp-off-pane)] shadow-[var(--sched-shadow-off)]',
+            // Selected brightens the pane — lit brighter than hover, its own
+            // latched state (the list rows latch a wash; a grid block latches the
+            // lamp). Kept off `done` blocks, whose lamp is deliberately out.
+            isMultiSelected && !done && 'bg-[var(--sched-pane-selected)] shadow-[var(--sched-shadow-hover)]'
           )}
-          style={
-            L?.contentHeight != null
-              ? ({ marginTop: L.contentTop ?? 0, '--clr-h': `${L.contentHeight}px` } as React.CSSProperties)
-              : undefined
-          }
+          style={{ marginLeft: L?.paneLeft ?? LANE_PX, marginRight: L?.paneRight ?? 0 }}
         >
-          {narrow ? (
-            /* Narrow panes: the title WRAPS to every line the block's height can
-               actually hold, and nothing competes with it for the width. The
-               start time is gone — the bead already pins it on the rail and the
-               shared gutter reads it off — and so are the duration and the
-               priority glyph, which between them cost about a quarter of a 140px
-               column. Height is finite, so the wrap is clamped rather than
-               allowed to spill; hovering releases the clamp and grows the block
-               (see canExpand), which is what makes the whole title readable
-               without a tooltip. */
-            <>
-              <div className="flex min-w-0 items-start gap-1.5">
-                {checkbox}
-                <span
-                  className={cn(
-                    titleClass,
-                    'break-words',
-                    LINE_CLAMP[Math.min(titleLines, LINE_CLAMP.length) - 1],
-                    canExpand && 'group-hover/blk:line-clamp-none'
-                  )}
-                  title={item.title}
-                >
-                  {item.title}
-                </span>
-              </div>
-              {/* No width to overlay here without covering the title, so the
-                  controls take their own row under it, shown only on hover. The
-                  row is part of what hover grows the block to fit (canExpand is
-                  always on here, since controls never show mid-resize), the same
-                  transient grow a clipped title already gets. Hover only, not
-                  keyboard focus: focus doesn't grow the block, so a focus-shown
-                  row would sit clipped below the pane; while hidden it is out of
-                  the tab order. */}
-              {controls && (
-                <div className="hidden pt-1 pl-[22px] [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:flex">
-                  {controls}
-                </div>
+          {/* The pockets — one sunk well per child, above the wash and below the
+              content. This is what makes containment read in light mode, and the
+              reason this direction beat the ones that expressed depth with alpha. */}
+          {L?.pockets.map((p, i) => (
+            <span
+              key={i}
+              aria-hidden
+              className="pointer-events-none absolute left-[2px] right-0 z-[1] bg-[var(--sched-pocket)] shadow-[var(--sched-pocket-lip)]"
+              style={{ top: p.top, height: p.height }}
+            />
+          ))}
+          {/* The emission wash — the accent bleeding off the rail-facing edge into
+              the plate. Three stops, not two: a bright edge, a fast falloff by
+              40px, then a long tail out to the reach. A straight two-stop ramp
+              reads as a stripe with a soft right edge; this reads as light falling
+              across the card and dissolving into it.
+
+              Wide panes only. Across a 140px column an 84px gradient is more than
+              half the pane, which is a coloured container by area — and that was
+              always an argument about WIDTH, not about which view you are in, so it
+              keys off the same threshold the content treatment does. */}
+          {/* The wash is the block's lamp, and an off-group block is not lit. It
+              goes rather than dimming: the gradient is built from the item's own
+              accent, so fading it would be exactly the "lime through an opacity"
+              move the recession rule forbids. */}
+          {!done && !narrow && !receded && (
+            <span
+              aria-hidden
+              className={cn(
+                'pointer-events-none absolute inset-0 z-0 transition-opacity duration-150',
+                // A container stops being a lamp and becomes the FIELD its contents
+                // are lit against, so its own wash goes ambient. Without this the
+                // child's wash reads as a second light source inside the first.
+                L?.wash === 'field'
+                  ? 'opacity-[var(--sched-wash-field)]'
+                  : 'opacity-[var(--sched-wash)] group-hover/blk:opacity-[var(--sched-wash-hover)]'
               )}
-            </>
-          ) : tall ? (
-            <>
+              style={{
+                background:
+                  `linear-gradient(90deg,` +
+                  ` color-mix(in oklab, ${accent} 32%, transparent) 0px,` +
+                  ` color-mix(in oklab, ${accent} 12%, transparent) 40px,` +
+                  ` transparent var(--sched-wash-reach))`,
+              }}
+            />
+          )}
+
+          {/*
+            The content, re-anchored into its free band when something covers this
+            pane. This is the move that actually fixes the reported bug: a 7-hour
+            container used to centre its title over its WHOLE pane, so with a 3-hour
+            task covering the bottom the title landed under it. Now it centres in the
+            band above.
+
+            The height goes through a custom property, never an inline `height`: an
+            inline height on this div pins the indefinite-height chain that week's
+            `canExpand` rides, which would kill hover-expand for every block in the
+            grid. As a var it can be released on hover instead.
+          */}
+          <div
+            className={cn(
+              'relative z-[2] flex min-w-0 flex-col gap-px',
+              L?.contentHeight != null ? 'h-[var(--clr-h)]' : 'h-full',
+              canExpand && 'group-hover/blk:h-auto',
+              narrow ? 'justify-start py-1.5 pl-1.5 pr-1' : 'justify-center pl-2.5 pr-2'
+            )}
+            style={
+              L?.contentHeight != null
+                ? ({ marginTop: L.contentTop ?? 0, '--clr-h': `${L.contentHeight}px` } as React.CSSProperties)
+                : undefined
+            }
+          >
+            {narrow ? (
+              /* Narrow panes: the title WRAPS to every line the block's height can
+                 actually hold, and nothing competes with it for the width. The
+                 start time is gone — the bead already pins it on the rail and the
+                 shared gutter reads it off — and so are the duration and the
+                 priority glyph, which between them cost about a quarter of a 140px
+                 column. Height is finite, so the wrap is clamped rather than
+                 allowed to spill; hovering releases the clamp and grows the block
+                 (see canExpand), which is what makes the whole title readable
+                 without a tooltip. */
+              <>
+                <div className="flex min-w-0 items-start gap-1.5">
+                  {checkbox}
+                  <span
+                    className={cn(
+                      titleClass,
+                      'break-words',
+                      LINE_CLAMP[Math.min(titleLines, LINE_CLAMP.length) - 1],
+                      canExpand && 'group-hover/blk:line-clamp-none'
+                    )}
+                    title={item.title}
+                  >
+                    {item.title}
+                  </span>
+                </div>
+                {/* No width to overlay here without covering the title, so the
+                    controls take their own row under it, shown only on hover. The
+                    row is part of what hover grows the block to fit (canExpand is
+                    always on here, since controls never show mid-resize), the same
+                    transient grow a clipped title already gets. Hover only, not
+                    keyboard focus: focus doesn't grow the block, so a focus-shown
+                    row would sit clipped below the pane; while hidden it is out of
+                    the tab order. */}
+                {controls && (
+                  <div className="hidden pt-1 pl-[22px] [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:flex">
+                    {controls}
+                  </div>
+                )}
+              </>
+            ) : tall ? (
+              <>
+                <div className="relative flex min-w-0 items-center gap-2">
+                  {checkbox}
+                  <span className={cn(titleClass, 'truncate')}>{item.title}</span>
+                  {effDuration > 0 && (
+                    <RollingMetaText
+                      value={effDuration}
+                      format={formatDuration}
+                      active={!!preview}
+                      className={cn('flex-shrink-0', done && 'opacity-60')}
+                    />
+                  )}
+                  {controls && (
+                    <span className={cn('absolute right-0 top-1/2 -translate-y-1/2', revealControls)}>{controls}</span>
+                  )}
+                </div>
+                <div className="flex min-w-0 items-center gap-2">
+                  <MetaText className={cn('min-w-0 flex-1 truncate', done && 'opacity-60')}>
+                    {formatClock(effStartMin, timeFormatStr, false)}–
+                    {formatClock(effStartMin + effDuration, timeFormatStr, false)}
+                  </MetaText>
+                  {task?.priority && <PriorityGlyph priority={task.priority} className={cn(done && 'opacity-60')} />}
+                </div>
+              </>
+            ) : (
               <div className="relative flex min-w-0 items-center gap-2">
                 {checkbox}
                 <span className={cn(titleClass, 'truncate')}>{item.title}</span>
-                {effDuration > 0 && (
-                  <RollingMetaText
-                    value={effDuration}
-                    format={formatDuration}
-                    active={!!preview}
-                    className={cn('flex-shrink-0', done && 'opacity-60')}
-                  />
-                )}
+                <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
+                  {task?.priority && <PriorityGlyph priority={task.priority} />}
+                  {effDuration > 0 && (
+                    <RollingMetaText value={effDuration} format={formatDuration} active={!!preview} />
+                  )}
+                </span>
                 {controls && (
                   <span className={cn('absolute right-0 top-1/2 -translate-y-1/2', revealControls)}>{controls}</span>
                 )}
               </div>
-              <div className="flex min-w-0 items-center gap-2">
-                <MetaText className={cn('min-w-0 flex-1 truncate', done && 'opacity-60')}>
-                  {formatClock(effStartMin, timeFormatStr, false)}–
-                  {formatClock(effStartMin + effDuration, timeFormatStr, false)}
-                </MetaText>
-                {task?.priority && <PriorityGlyph priority={task.priority} className={cn(done && 'opacity-60')} />}
-              </div>
-            </>
-          ) : (
-            <div className="relative flex min-w-0 items-center gap-2">
-              {checkbox}
-              <span className={cn(titleClass, 'truncate')}>{item.title}</span>
-              <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
-                {task?.priority && <PriorityGlyph priority={task.priority} />}
-                {effDuration > 0 && (
-                  <RollingMetaText value={effDuration} format={formatDuration} active={!!preview} />
-                )}
-              </span>
-              {controls && (
-                <span className={cn('absolute right-0 top-1/2 -translate-y-1/2', revealControls)}>{controls}</span>
-              )}
-            </div>
-          )}
+            )}
+          </div>
         </div>
-      </div>
+      </ItemContextMenu>
 
       {/* Registration corners — the block's hover/select chrome, in whichever
           style the user picked (Settings → Appearance → Schedule handles). Each
