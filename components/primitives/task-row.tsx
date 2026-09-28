@@ -11,6 +11,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
+import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -228,6 +229,12 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const nextDay = nextDayTarget(dateStr, todayStr);
   const canNextDay = !inBraindump && canMoveToNextDay(item, itemType, dateStr);
   const canBraindump = !inBraindump && canSendToBraindump(item, itemType, dateStr, milestoneIds);
+  // Reschedule is the next-day carry's gate with the day left open — and, unlike
+  // the carry, it is offered in the braindump too, where it reads "Schedule".
+  const canReschedule = canMoveToNextDay(item, itemType, dateStr);
+  // The calendar is open: pins the hover cluster visible, or the trigger would
+  // fade out from under the picker as the pointer crosses onto it.
+  const [picking, setPicking] = useState(false);
   // The desktop hover cluster renders on every non-braindump row (Delete is
   // always in it), so this is also "does the title need its fade".
   const hasHoverControls = !inBraindump && !isMobile;
@@ -373,7 +380,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   // otherwise the fade stays sized for the capsule as it was on entry.
   useLayoutEffect(() => {
     if (rowHovered.current) measureTitle();
-  }, [item.title, completed, canNextDay, canBraindump, skippable, multiTarget, habitEffectiveCount]);
+  }, [item.title, completed, canNextDay, canReschedule, canBraindump, skippable, multiTarget, habitEffectiveCount]);
   const tipAllowed = !isMobile && !isDragging && (titleHidden || suppressed);
 
   const handleRowClick = (e: ReactMouseEvent) => {
@@ -720,7 +727,13 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             of the columns so it reserves no space. pointer-events gate off until
             reveal so the invisible buttons aren't clickable while idle. */}
         {!inBraindump && !isMobile && (
-          <span ref={clusterRef} className="pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100">
+          <span
+            ref={clusterRef}
+            className={cn(
+              'pointer-events-none absolute inset-y-0 right-full mr-2 flex items-center opacity-0 transition-opacity group-hover:pointer-events-auto group-hover:opacity-100 group-has-[:focus-visible]:pointer-events-auto group-has-[:focus-visible]:opacity-100',
+              picking && 'pointer-events-auto opacity-100'
+            )}
+          >
             <RowControlGroup>
               {/* Multi-count stepper — leads the capsule, so the destructive
                   delete stays at the far end away from the one control here that
@@ -756,6 +769,17 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                   detail={formatTargetDay(nextDay)}
                   testId="item-tomorrow-button"
                   onClick={() => moveTaskToDate(item.id, nextDay)}
+                />
+              )}
+              {canReschedule && (
+                <RescheduleControl
+                  open={picking}
+                  onOpenChange={setPicking}
+                  todayStr={todayStr}
+                  value={task?.startDate}
+                  onPick={(day) => moveTaskToDate(item.id, day)}
+                  testId="item-reschedule-button"
+                  popoverTestId="item-reschedule-popover"
                 />
               )}
               {canBraindump && (
@@ -824,6 +848,26 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           </Button>
         )}
 
+        {/* Braindump (sidebar) schedule — the row's way onto a day without a
+            drag. Same reveal as the delete beside it, pinned while the calendar
+            is open; -my-1 neutralizes its 20px for the reason the delete's note gives. */}
+        {inBraindump && !isMobile && canReschedule && (
+          <span
+            className={cn(
+              '-my-1 flex opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
+              picking && 'opacity-100'
+            )}
+          >
+            <RescheduleControl
+              open={picking}
+              onOpenChange={setPicking}
+              todayStr={todayStr}
+              onPick={(day) => moveTaskToDate(item.id, day)}
+              testId="item-reschedule-button"
+              popoverTestId="item-reschedule-popover"
+            />
+          </span>
+        )}
         {/* Braindump (sidebar) delete — inline, since braindump rows carry no
             tag or pills to sit beside.
             -my-1.5 is a height neutralizer, not spacing: this 24px button was

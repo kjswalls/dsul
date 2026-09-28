@@ -140,13 +140,13 @@ beforeEach(async () => {
   });
 });
 
-function LiveRow({ id, date }: { id: string; date?: Date }) {
+function LiveRow({ id, date, context }: { id: string; date?: Date; context?: 'braindump' | 'bucket' }) {
   const item = usePlannerStore((s) => s.items.find((i) => i.id === id))!;
   const row: RowItem =
     item.type === 'habit'
       ? { itemType: 'habit', item: item as unknown as HabitItem }
       : { itemType: 'task', item: item as unknown as Task };
-  return <TaskRow row={row} date={date} />;
+  return <TaskRow row={row} date={date} context={context} />;
 }
 const renderRow = (id: string, date?: Date) => render(<LiveRow id={id} date={date} />);
 
@@ -212,6 +212,54 @@ describe('day row: where the item goes', () => {
   it('clicking a control does not open the editor', () => {
     renderRow('one-off');
     fireEvent.click(tomorrowBtn()!);
+    expect(openEditFor).not.toHaveBeenCalled();
+  });
+});
+
+describe('reschedule: pick any day', () => {
+  const rescheduleBtn = () => screen.queryByTestId('item-reschedule-button');
+  const pick = (name: RegExp) => {
+    fireEvent.click(rescheduleBtn()!);
+    const popover = screen.getByTestId('item-reschedule-popover');
+    fireEvent.click(within(popover).getByRole('button', { name }));
+  };
+
+  it('a one-off open task gets it; the carry gate refuses the rest', () => {
+    renderRow('one-off');
+    expect(rescheduleBtn()).not.toBeNull();
+    cleanup();
+    for (const id of ['daily', 'done', 'cancelled', 'in-block', 'habit']) {
+      renderRow(id);
+      expect(rescheduleBtn()).toBeNull();
+      cleanup();
+    }
+  });
+
+  it('moves a day row to the picked day, without opening the editor', () => {
+    renderRow('one-off');
+    pick(/July 20/);
+    expect(taskById('one-off').startDate).toBe('2026-07-20');
+    expect(taskById('one-off').timeBucket).toBe('anytime');
+    expect(openEditFor).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('item-reschedule-popover')).toBeNull();
+  });
+
+  it('schedules a braindump row onto a day, taking it out of the braindump', () => {
+    store().unscheduleTask('one-off');
+    render(<LiveRow id="one-off" context="braindump" />);
+    expect(rescheduleBtn()).toHaveAttribute('aria-label', 'Schedule');
+    pick(/July 22/);
+    const t = taskById('one-off');
+    expect(t.startDate).toBe('2026-07-22');
+    expect(t.timeBucket).toBe('anytime');
+  });
+
+  it('a timed block keeps its clock time', () => {
+    render(<LiveBlock id="timed" />);
+    pick(/July 21/);
+    const t = taskById('timed');
+    expect(t.startDate).toBe('2026-07-21');
+    expect(t.startTime).toBe('10:00');
     expect(openEditFor).not.toHaveBeenCalled();
   });
 });
