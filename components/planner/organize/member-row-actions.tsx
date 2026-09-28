@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useState, type ReactElement, type ReactNode } from 'react';
+import { useMemo, useState, type ReactElement } from 'react';
 import Link from 'next/link';
 import { toast } from 'sonner';
 import {
@@ -17,7 +17,6 @@ import {
   Unlink,
 } from 'lucide-react';
 import { Calendar } from '@/components/ui/calendar';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -29,6 +28,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
+import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useToday, parseDay } from '@/lib/collections';
@@ -246,21 +246,16 @@ function MemberCapsule({
           />
         )}
         {v.reschedule && (
-          <ReschedulePopover
+          <RescheduleControl
             open={picking}
             onOpenChange={setPicking}
+            todayStr={todayStr}
             value={(item as { startDate?: string }).startDate}
             onPick={v.reschedule}
-          >
-            <button
-              type="button"
-              aria-label="Reschedule"
-              data-testid="member-reschedule"
-              className="text-muted-foreground hover:bg-accent hover:text-foreground flex h-5 w-5 items-center justify-center rounded-[4px]"
-            >
-              <CalendarDays className="h-3 w-3" strokeWidth={2.25} />
-            </button>
-          </ReschedulePopover>
+            label="Reschedule"
+            testId="member-reschedule"
+            popoverTestId="member-reschedule-popover"
+          />
         )}
         {v.braindump && (
           <>
@@ -270,43 +265,6 @@ function MemberCapsule({
         )}
       </RowControlGroup>
     </span>
-  );
-}
-
-function ReschedulePopover({
-  open,
-  onOpenChange,
-  value,
-  onPick,
-  children,
-}: {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  value?: string;
-  onPick: (dateStr: string) => void;
-  children: ReactNode;
-}) {
-  const { todayStr } = useToday();
-  return (
-    <Popover open={open} onOpenChange={onOpenChange}>
-      <PopoverTrigger asChild>{children}</PopoverTrigger>
-      <PopoverContent className="w-auto p-0" align="end" data-testid="member-reschedule-popover">
-        <Calendar
-          mode="single"
-          selected={parseDay(value)}
-          defaultMonth={parseDay(value) ?? parseDay(todayStr)}
-          onSelect={(date) => {
-            if (!date) return;
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const d = String(date.getDate()).padStart(2, '0');
-            onPick(`${y}-${m}-${d}`);
-            onOpenChange(false);
-          }}
-          initialFocus
-        />
-      </PopoverContent>
-    </Popover>
   );
 }
 

@@ -37,6 +37,7 @@ import { getItemTypeConfig } from '@/lib/item-registry';
 import { milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlGroup } from '@/components/primitives/row-control';
+import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { openEditFor } from '@/lib/ui-store';
@@ -659,6 +660,11 @@ export function ScheduleBlock({
   const nextDay = nextDayTarget(dateStr, todayStr);
   const canNextDay = canMoveToNextDay(item, itemType, dateStr);
   const canBraindump = canSendToBraindump(item, itemType, dateStr, milestoneIds);
+  // Reschedule: the carry's gate with the day left open. A timed block keeps
+  // its clock time here too. `picking` pins the controls while the calendar is
+  // open, or they'd fade out from under it as the pointer leaves the block.
+  const canReschedule = canNextDay;
+  const [picking, setPicking] = useState(false);
   // Which edge is under an active resize — drives the one lime glyph the target/
   // trim mark styles light on the handle being dragged (see HandleGrip). A ref
   // alone won't do: the grip has to re-render to recolour.
@@ -1026,7 +1032,7 @@ export function ScheduleBlock({
    * phone, where a tap opens the editor instead. The capsule is opaque so it
    * reads cleanly over the duration it covers on a wide pane.
    */
-  const showControls = (canNextDay || canBraindump) && !preview && !isMobile;
+  const showControls = (canNextDay || canReschedule || canBraindump) && !preview && !isMobile;
   const controls = showControls ? (
     <RowControlGroup
       data-testid="block-controls"
@@ -1043,6 +1049,17 @@ export function ScheduleBlock({
           onClick={() => moveTaskToDate(item.id, nextDay)}
         />
       )}
+      {canReschedule && (
+        <RescheduleControl
+          open={picking}
+          onOpenChange={setPicking}
+          todayStr={todayStr}
+          value={task?.startDate}
+          onPick={(day) => moveTaskToDate(item.id, day)}
+          testId="item-reschedule-button"
+          popoverTestId="item-reschedule-popover"
+        />
+      )}
       {canBraindump && (
         <RowControl
           icon={ArrowLeftToLine}
@@ -1053,8 +1070,10 @@ export function ScheduleBlock({
       )}
     </RowControlGroup>
   ) : null;
-  const revealControls =
-    'pointer-events-none opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:pointer-events-auto [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:opacity-100 group-has-[:focus-visible]/blk:pointer-events-auto group-has-[:focus-visible]/blk:opacity-100';
+  const revealControls = cn(
+    'pointer-events-none opacity-0 transition-opacity [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:pointer-events-auto [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:opacity-100 group-has-[:focus-visible]/blk:pointer-events-auto group-has-[:focus-visible]/blk:opacity-100',
+    picking && 'pointer-events-auto opacity-100'
+  );
 
   const titleClass = cn(
     'min-w-0 flex-1 font-content text-content text-foreground',
@@ -1361,7 +1380,12 @@ export function ScheduleBlock({
                     row would sit clipped below the pane; while hidden it is out of
                     the tab order. */}
                 {controls && (
-                  <div className="hidden pt-1 pl-[22px] [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:flex">
+                  <div
+                    className={cn(
+                      'pt-1 pl-[22px]',
+                      picking ? 'flex' : 'hidden [@media(hover:hover)_and_(pointer:fine)]:group-hover/blk:flex'
+                    )}
+                  >
                     {controls}
                   </div>
                 )}
