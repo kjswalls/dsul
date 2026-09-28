@@ -226,6 +226,15 @@ describe('the risky branches', () => {
     expect(within(openMenu('Read')).getByTestId('member-menu-pause')).toBeTruthy();
   });
 
+  it('offers Pause on a one-off too — the registry allows it, as the palette always did', () => {
+    seed([task('t1', 'Fix sink', { startDate: TODAY })], {
+      routines: [{ id: 'r1', name: 'M', itemIds: ['t1'] }],
+    });
+    render(<OrganizeConsole open onOpenChange={() => {}} section="routines" focusId="r1" />);
+    fireEvent.click(within(openMenu('Fix sink')).getByTestId('member-menu-pause'));
+    expect(item('t1').pausedAt).toBeTruthy();
+  });
+
   it('keeps subtasks out of a project\'s list, and items filed elsewhere out of its picker', () => {
     seed(
       [
