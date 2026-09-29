@@ -277,8 +277,9 @@ interface BraindumpProps {
    * notice slot under it, are inset off the screen edge so they line up with
    * the dated tabs' header card and with the dock; and every control in the
    * header — the Display shelf's text and ✕s included — reaches 28px for a
-   * thumb (a setting's ✕ 25 × 28px). Everything below that already sits on
-   * the paper backdrop on both shells.
+   * thumb (a setting's ✕ 25 × 28px, or 25 × 23 right above another ✕, which
+   * takes the gap). Everything below that already sits on the paper backdrop
+   * on both shells.
    */
   variant?: 'sidebar' | 'mobile';
   /**

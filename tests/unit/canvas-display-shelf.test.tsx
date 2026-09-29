@@ -50,6 +50,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
+import { RailTooltip } from '@/components/primitives/pills';
 import { MobileHeader } from '@/components/mobile/mobile-header';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
@@ -448,12 +449,40 @@ describe('the desktop mount, under the view pill', () => {
     expect(tip.parentElement!.matches(PASS_THROUGH)).toBe(true);
   });
 
+  it('leaves every other rail tip as it was: one without passThrough takes the click', async () => {
+    render(
+      <RailTooltip label="Plain">
+        <button type="button">plain</button>
+      </RailTooltip>
+    );
+    const trigger = screen.getByRole('button', { name: 'plain' });
+    fireEvent.pointerEnter(trigger);
+    fireEvent.pointerMove(trigger);
+    const tip = (await screen.findByRole('tooltip')).closest('[data-slot="tooltip-content"]')!;
+
+    expect(tip).not.toHaveAttribute('data-pass-through');
+    expect(tip.parentElement!.matches(PASS_THROUGH)).toBe(false);
+  });
+
   it('has the rule that lets the click through, and nothing else in it', () => {
     const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
     const at = css.indexOf(`${PASS_THROUGH} {`);
     expect(at, 'the pass-through rule is gone from globals.css').toBeGreaterThan(-1);
     const open = css.indexOf('{', at);
     expect(css.slice(open + 1, css.indexOf('}', open)).trim()).toBe('pointer-events: none;');
+  });
+
+  it('has the rule at the top level, where nothing can scope it away or undo it', () => {
+    const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
+    const at = css.indexOf(`${PASS_THROUGH} {`);
+    expect(at).toBeGreaterThan(-1);
+    // Comments aside, every block opened before the rule closes before it: no
+    // @media, @supports or @layer around it.
+    const before = css.slice(0, at).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(before.split('{').length - before.split('}').length).toBe(0);
+    // And nothing after it gives a tip's content its own pointer-events back.
+    const after = css.slice(at + PASS_THROUGH.length).replace(/\/\*[\s\S]*?\*\//g, '');
+    expect(after).not.toMatch(/tooltip-content[^{]*\{[^}]*pointer-events/);
   });
 
   it('has nothing that can fade a lime glyph between it and the capsule', () => {

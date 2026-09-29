@@ -1314,8 +1314,10 @@ body {
    meant for it. Radix positions the content inside a wrapper of its own, of
    the same size, which would take the click just the same, so it is the
    wrapper that lets it through, and the content inherits that. The tip still
-   stays up while the pointer is over it: Radix tracks that by where the
-   pointer is, not by what it is over. */
+   stays up while the pointer is over it, since Radix tracks that by where the
+   pointer is, not by what it is over, until the pointer rests on a control
+   under it with a tip of its own (the ✕ below, the sidebar's resize sash),
+   whose tip then takes its place. */
 [data-radix-popper-content-wrapper]:has(> [data-pass-through]) {
   pointer-events: none;
 }

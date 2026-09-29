@@ -485,9 +485,9 @@ function ShelfBody({
       // opener underneath, and the ✕ has to take its own.
       //
       // The phone's reach runs 7px to the right but only 4px to the left, the
-      // gap to its own words, so a tap at the end of a name still opens the
-      // menu rather than taking the name away: 25 × 28px, less the 5px gap it
-      // shares with a ✕ right below it, which takes the gap.
+      // gap to its own words, so a tap on a name, short of its last pixel,
+      // still opens the menu rather than taking the name away: 25 × 28px, less
+      // the 5px gap it shares with a ✕ right below it, which takes the gap.
       className={cn('pointer-events-auto w-3.5', xClass('before:-left-1 before:-right-[7px]'))}
     >
       <X className="size-[10px]" aria-hidden />

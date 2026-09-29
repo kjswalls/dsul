@@ -1448,6 +1448,23 @@ describe('the two mounts', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
   });
 
+  // The sidebar's stack has the canvas's overlap too (a ×'s tip over the × on
+  // the line below), so its tips let a click through as well.
+  it.each([
+    { name: 'reset', x: () => resetX() },
+    { name: 'per-setting', x: () => removeXs()[0] },
+  ])('lets a click through its $name ×’s tip in the sidebar too', async ({ x }) => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+    renderBraindump();
+    fireEvent.pointerEnter(x());
+    fireEvent.pointerMove(x());
+    const tip = (await screen.findByRole('tooltip')).closest('[data-slot="tooltip-content"]')!;
+    expect(tip).toHaveAttribute('data-pass-through');
+    expect(
+      tip.parentElement!.matches('[data-radix-popper-content-wrapper]:has(> [data-pass-through])')
+    ).toBe(true);
+  });
+
   it.each([
     { name: 'reset', x: () => resetX() },
     { name: 'per-setting', x: () => removeXs()[0] },
