@@ -18,8 +18,8 @@ import type { LucideIcon } from 'lucide-react';
  * row below the grid inside the same scroller cannot be seen by it and makes a
  * compressed day scroll that previously fit. The header row has the opposite
  * property: its height is max(children), which the capsule already sets at 96
- * or more, so a line beside the date costs nothing at all. That is the same argument
- * SeasonNotice makes for the same address.
+ * or more, so a line beside the date costs nothing at all. That is the same
+ * argument SeasonNotice makes for the same address.
  */
 export type NoticeAnchor = 'braindump' | 'day-header';
 

@@ -161,10 +161,10 @@ function WeekStrip() {
 /**
  * Mobile header: on Today, one card carrying the date row and the week strip,
  * and under them the review notice and the Display shelf whenever either has
- * something to say. It replaces the two stacked pills (header + mini week nav) the phone used to
- * open with; two bordered, shadowed surfaces competing above the first row of
- * content is what made the shell read busy. The other two tabs bring their own
- * header and get no card at all (see the gate below).
+ * something to say. It replaces the two stacked pills (header + mini week nav)
+ * the phone used to open with; two bordered, shadowed surfaces competing above
+ * the first row of content is what made the shell read busy. The other two
+ * tabs bring their own header and get no card at all (see the gate below).
  *
  * pt-safe lives on the outer <header> and the card carries its own top margin,
  * so the notch inset and the card's gap add rather than collide.

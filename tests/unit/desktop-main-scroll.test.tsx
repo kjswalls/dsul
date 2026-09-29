@@ -200,7 +200,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     focusAndReveal(main, 'wide-control', 30);
     await frame();
     expect(main.scrollLeft).toBe(9);
-    act(() => screen.getByTestId('seen-control').focus());
+    act(() => screen.getByTestId('grid-heading').focus());
     await frame();
     act(() => screen.getByTestId('wide-control').focus());
     await frame();
@@ -235,14 +235,145 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     expect(main.scrollLeft).toBe(21);
   });
 
-  it('scrolls back once focus moves on to a control that shows at rest, even one that shows where it is', async () => {
+  it('scrolls back once focus moves on to a control in another row that shows at rest, even one that shows where it is', async () => {
     render(<DesktopShell />);
     const main = await layOut();
     focusAndReveal(main, 'clipped-control', 100);
     await frame();
-    act(() => screen.getByTestId('mid-control').focus());
+    // A heading in the schedule, whole at 51 as at rest.
+    place('grid-heading', 200, 32);
+    act(() => screen.getByTestId('grid-heading').focus());
     await frame();
     expect(main.scrollLeft).toBe(0);
+  });
+
+  describe('while keys move focus along the row it slid for', () => {
+    it('keeps its slide for a control that shows at rest if it shows whole there, so no scroll closes its tooltip', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // Shift+Tab onto a setting's ✕, say: whole at rest, and at 51.
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab', shiftKey: true });
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // A key that moves nothing, such as the Shift of the next Shift+Tab.
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Shift' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // And back again: the slide is the one it made for this control.
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
+      act(() => screen.getByTestId('clipped-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('scrolls back once one the slide cuts shows at rest', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // At 51 the left edge cuts it; at rest it shows.
+      act(() => screen.getByTestId('seen-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('lets go once the control it kept the slide for stops showing whole there', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // The shelf refits under it, 60px left: cut at 51, and whole at rest.
+      place('mid-control', 140, 32);
+      act(() => seenCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('lets go when <main> changes width', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // The item panel closing a frame at a time: whole at 51 still, and at rest.
+      size(main, 310);
+      act(() => resizeCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('never keeps a slide it did not make', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      act(() => screen.getByTestId('mid-control').focus());
+      // Find in page, say, in the same frame as the focus move.
+      main.scrollLeft = 70;
+      fireEvent.scroll(main);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('takes focus that comes from nothing as coming along no row', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      // Zen's switch lifts the planner away and drops focus, and is turned back.
+      const shell = main.parentElement!;
+      shell.setAttribute('inert', '');
+      act(() => screen.getByTestId('clipped-control').blur());
+      await frame();
+      shell.removeAttribute('inert');
+      expect(main.scrollLeft).toBe(51);
+      fireEvent.keyDown(document.body, { key: 'Tab' });
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('places afresh a button a click moves, even one it kept the slide for', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      const target = screen.getByTestId('mid-control');
+      act(() => target.focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // A click on it moves it 10px on, still whole at 51 and at rest.
+      fireEvent.pointerDown(target, { pointerId: 1 });
+      fireEvent.pointerUp(target, { pointerId: 1 });
+      place('mid-control', 210, 32);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('places a control a click moves focus to as before, at rest where it shows there', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      const target = screen.getByTestId('mid-control');
+      fireEvent.pointerDown(target, { pointerId: 1 });
+      act(() => target.focus());
+      fireEvent.pointerUp(target, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
   });
 
   it('scrolls back when Shift+Tab lands on a control the left edge cuts, if it shows at rest', async () => {
@@ -622,7 +753,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(61);
     });
 
-    it('holds its slide while keys move a slider thumb end to end, until focus moves on', async () => {
+    it('holds its slide while keys move a slider thumb end to end, and along the row, until focus leaves the row', async () => {
       render(<DesktopShell />);
       const main = await layOut();
       const thumb = screen.getByTestId('scale-thumb');
@@ -642,7 +773,11 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       fireEvent.keyDown(thumb, { key: 'End' });
       await frame();
       expect(main.scrollLeft).toBe(45);
+      // On along the row to a control that shows whole there, and then out of it.
       act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      act(() => screen.getByTestId('grid-heading').focus());
       await frame();
       expect(main.scrollLeft).toBe(0);
     });
@@ -949,12 +1084,14 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
   it('takes a control half a pixel or less past the edge at rest as showing there', async () => {
     render(<DesktopShell />);
     const main = await layOut();
-    focusAndReveal(main, 'clipped-control', 100);
-    await frame();
-    expect(main.scrollLeft).toBe(51);
     // Its end 0.4px past <main>'s inner right edge at rest.
     place('mid-control', 369.4, 32);
     act(() => screen.getByTestId('mid-control').focus());
+    await frame();
+    expect(main.scrollLeft).toBe(0);
+    // Find in page slides <main> on, and it goes back to rest, where this shows.
+    main.scrollLeft = 50;
+    fireEvent.scroll(main);
     await frame();
     expect(main.scrollLeft).toBe(0);
   });

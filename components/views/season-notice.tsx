@@ -36,8 +36,8 @@ import { cn } from '@/lib/utils';
  * belongs beside the date, in the canvas header row, and not on a dateless
  * surface at the other end of the screen. Moving it there also cost it nothing
  * and gained it a layout: the row's height is max(children) = the capsule's 96
- * or more, so an h-8 line beside it is free, and it now renders in `buckets` too, where
- * it never has.
+ * or more, so an h-8 line beside it is free, and it now renders in `buckets`
+ * too, where it never has.
  *
  * The PERMANENT half of the same fact — "Summer is off", true on every date —
  * is not here either. Turning a scope back on lives on the group-header switch

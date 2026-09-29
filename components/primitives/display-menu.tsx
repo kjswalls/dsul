@@ -511,10 +511,11 @@ export function DisplayMenu({
    * Radix keeps one trigger ref and one anchor per menu, so a second
    * DropdownMenuTrigger would take both over (and duplicate the trigger's test
    * id). Open state held by the braindump would re-render its whole list on
-   * every open and close (and held by the capsule, the header it sits in), and held in a store it would outlive the menu it
-   * describes — an armed slot that springs open later is the ui-store bug the
-   * Organize console already had to route around. Behind a handle, each shell
-   * keeps its open state where it already lives.
+   * every open and close (and held by the capsule, the header it sits in), and
+   * held in a store it would outlive the menu it describes — an armed slot that
+   * springs open later is the ui-store bug the Organize console already had to
+   * route around. Behind a handle, each shell keeps its open state where it
+   * already lives.
    */
   ref?: React.Ref<DisplayMenuHandle>;
 }) {

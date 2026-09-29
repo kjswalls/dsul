@@ -4,39 +4,51 @@ import { useEffect, type RefObject } from 'react';
 
 /**
  * Lets focus scroll a clipping box sideways to show what it focused, and puts
- * the box back at rest once focus moves to something that shows there, or out
- * to the rest of the shell, or to nothing.
+ * the box back at rest once focus moves to something that shows there, other
+ * than along the row the box slid for, or out to the rest of the shell, or to
+ * nothing.
  *
  * Written for DesktopShell's <main>. With the item panel docked, <main> can be
  * narrower than the canvas header's row, and the row's right end is clipped:
- * Zen and the Display shelf's ✕ up to about 1286px windows at the default
- * sidebar, WeekScale's controls up to about 1488px, the Display trigger up to
- * about 1245px, and with a wide sidebar the Display trigger even at 1440.
- * <main> is overflow-hidden, and a hidden box has no scrollbar but is still a
- * scroll container, so Tab onto a clipped control scrolls it into view, as it
- * must: a keyboard user has to see where focus is. What was missing is the way
- * back. Nothing else scrolls the box, so the canvas stayed slid left until the
- * panel closed, unless focus happened to reveal something at the other end.
- * `overflow-clip` was tried and is worse: a clip box never scrolls, so the
- * same Tab lands on a control nobody can see, one of them the ✕, which resets
- * every canvas Display setting.
+ * Zen and the Display shelf's reset ✕ up to about 1286px windows at the
+ * default sidebar, WeekScale's controls up to about 1488px, the Display
+ * trigger up to about 1245px, and with a wide sidebar the Display trigger even
+ * at 1440. <main> is overflow-hidden, and a hidden box has no scrollbar but is
+ * still a scroll container, so Tab onto a clipped control scrolls it into
+ * view, as it must: a keyboard user has to see where focus is. What was
+ * missing is the way back. Nothing else scrolls the box, so the canvas stayed
+ * slid left until the panel closed, unless focus happened to reveal something
+ * at the other end. `overflow-clip` was tried and is worse: a clip box never
+ * scrolls, so the same Tab lands on a control nobody can see, one of them the
+ * reset ✕, which clears every canvas Display setting.
  *
  * So a frame after focus moves anywhere, a key goes down in the box, the box
  * scrolls or resizes, or the focused control starts or stops showing entirely
  * or at all, the box is placed for whatever has focus: at rest if it shows
  * there, unless it holds (below), and otherwise moved only when it has to be,
  * because Radix closes a tooltip on any scroll around its trigger, and a
- * tooltip is the only name Zen and the ✕ show. One out of sight, or showing a
- * pixel or less, comes in to the least slide that shows it whole. So does
- * whatever has focus when the box's width changes (the item panel docks a frame
- * at a time), and a control the layout moves (the shelf refitting, a view
- * switched under it) once the move leaves it cut. Otherwise one that shows,
- * whole or cut part-way, keeps the slide the hook last made, as the browser
- * would leave it, so Tab from Zen to the ✕ moves nothing and the ✕'s tooltip
- * stays up (memory/plans/display-menu.md lists the few window widths where it
- * cannot). A slide the hook did not make comes back as far as that least one:
- * the browser centres what it reveals (Zen slid Week 212px at 1240, where 47
- * shows it).
+ * tooltip is the only name Zen and the shelf's ✕s show. One out of sight, or
+ * showing a pixel or less, comes in to the least slide that shows it whole. So
+ * does whatever has focus when the box's width changes (the item panel docks a
+ * frame at a time), and a control the layout moves (the shelf refitting, a
+ * view switched under it) once the move leaves it cut. Otherwise one that
+ * shows, whole or cut part-way, keeps the slide the hook last made, as the
+ * browser would leave it, and the tooltip focus opened stays up. A slide the
+ * hook did not make comes back as far as that least one: the browser centres
+ * what it reveals (Zen slid Week 212px at 1240, where 47 shows it).
+ *
+ * A key moving focus along the row the box slid for keeps the slide too, for a
+ * control that shows whole there, even where it would show at rest, for as
+ * long as it keeps focus and shows whole. A row is a child of the box, and the
+ * one that slides is the canvas header's. So Tab from Zen across the Display
+ * shelf moves nothing: its settings' ✕s show at rest, and going there would
+ * close each one's tooltip, and then bring the reset ✕, out of sight at rest,
+ * back in and close its tooltip too. Focus moving into another row, the
+ * schedule's, puts the box back at rest, and a pointer moving focus, or a menu
+ * handing it on, gets the rules above. Like the hold below, what it keeps can
+ * be more than the control needs: Shift+Tab back from the reset ✕ keeps the
+ * ✕'s slide across the header for as long as each control shows whole at it,
+ * even the date's controls, which show at rest.
  *
  * One the layout moves while it still shows whole at a slide the hook made
  * holds that slide for as long as it keeps focus and shows whole, even where
@@ -83,7 +95,15 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     // for as long as it keeps focus and keeps showing whole, and never holds a
     // slide something else made.
     let held = false;
-    // Whether a pointer came up since the last key went down in the box.
+    // Whether the element last placed for keeps a slide made for another
+    // control in its row (the child of the box it sits in, noted in `row`):
+    // focus came to it along that row by a key, not a pointer or a menu, and
+    // it showed whole at the slide. It keeps it for as long as it keeps focus
+    // and keeps showing whole there, and the slide is still the hook's.
+    let along = false;
+    let row: Element | null = null;
+    // Whether a pointer went down or came up since the last key went down in
+    // the box.
     let clicked = false;
     const down = new Set<number>();
     const settle = () => {
@@ -93,6 +113,8 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
         const focused = document.activeElement;
         const inside = focused && box.contains(focused) ? focused : null;
         watch(inside);
+        // Focus that comes back from a layer, or from nothing, comes along no row.
+        if (!inside) row = null;
         if (down.size > 0) return;
         // <main> itself goes inert under the overlaid item panel; an ancestor
         // only while Zen's switch lifts the planner away.
@@ -103,9 +125,11 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
         }
         let x = 0;
         let span: Span | null = null;
+        let at: Element | null = null;
         if (inside) {
           span = measure(box, inside);
           if (span) {
+            at = rowOf(box, inside);
             const widthChanged = box.clientWidth !== width;
             const shifted = last?.el === inside && !same(last, span);
             const moved = box.scrollLeft !== placed;
@@ -115,10 +139,17 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
             const pressed = clicked && inside instanceof HTMLButtonElement;
             // Focus moving on from a held slide finds a slide nothing asked for.
             const fromHeld = held && last !== null && last.el !== inside;
-            if (last?.el !== inside) held = false;
-            if (shifted) held = shown && !pressed;
+            if (last?.el !== inside) {
+              held = false;
+              along = !clicked && last !== null && at === row;
+            }
+            if (shifted) {
+              held = shown && !pressed;
+              along = false;
+            }
+            along = along && shown && !widthChanged && !moved;
             x =
-              held && shown && !widthChanged && !moved
+              (held && shown && !widthChanged && !moved) || along
                 ? box.scrollLeft
                 : place(
                     span,
@@ -134,6 +165,7 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
         placed = box.scrollLeft;
         width = box.clientWidth;
         last = span;
+        row = at;
       });
     };
     // Something can move the focused control with no event of its own: the
@@ -156,6 +188,7 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     };
     const press = (e: PointerEvent) => {
       down.add(e.pointerId);
+      clicked = true;
     };
     const release = (e: PointerEvent) => {
       down.delete(e.pointerId);
@@ -234,6 +267,13 @@ function measure(box: HTMLElement, el: Element): Span | null {
   if (right <= left) return null;
   const shift = box.scrollLeft - box.getBoundingClientRect().left - box.clientLeft;
   return { el, from: left + shift, to: right + shift };
+}
+
+/** The child of `box` that holds `el`: its row, such as the canvas header's. */
+function rowOf(box: Element, el: Element) {
+  let p: Element | null = el;
+  while (p && p.parentElement !== box) p = p.parentElement;
+  return p;
 }
 
 /** The same span to within half a pixel, past any rounding in the layout. */
