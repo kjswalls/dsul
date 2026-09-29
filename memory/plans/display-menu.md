@@ -1064,12 +1064,14 @@ of a name is a boundary, not a margin: in Chromium a tap on a name's last pixel 
 for about half the names, and from a pixel and a half in, every one opened the sheet.
 
 **Wrapped rows keep the reach's 5px on touch.** Review found worse where a line or a
-multi-select wraps: those rows had no gap between them, so a ✕'s reach lay over the next
-row's words, and a tap on a name took a different setting off (with every setting on at
-390×844, a tap on the bottom of "Home" took Wind-down off; 130px of "Home" and 104 of three
-other names went to a ✕). On touch those rows now keep the stack's 5px between them, 5px a
-wrapped row, and every tap on the top or bottom of a name opens the sheet. The fit measures
-widths only, so it is unchanged, and the braindump's phone tab shares the rule.
+multi-select wraps: those rows had no gap between them, so a ✕'s reach lay over the next row's
+words, and a tap on a name took a different setting off (with every setting on at 390×844, a tap
+low on "Home" took Wind-down off, on the Today card and the Braindump tab alike; of the names'
+own pixels, 130 of "Home" went to Wind-down's ✕, 104 of "Wind-down" to Work's, and 104 of a long
+goal's name to each of two other goals' ✕s). On touch those rows now keep the stack's 5px
+between them, 5px a wrapped row (that card grows from 284.5 to 294.5px), and every tap on the
+top or bottom of a name opens the sheet (32 of 32 on the card, 30 of 30 on the tab). The fit
+measures widths only, so it is unchanged, and the braindump's phone tab shares the rule.
 
 **A click passes through a ✕'s tip.** In the stack the lines are 23px apart, and a ✕'s tip
 (below it, about 60 × 31px, 6px off) covers the ✕ on the line below, so moving the pointer
@@ -1330,45 +1332,62 @@ filters only, so any grouping, ordering or type stays named.
   at 1265 (with its tooltip), the Display trigger 66% in Day at 1200. The hook's smaller slides
   add one: Shift+Tab from the schedule onto the reset ✕ brings it in at its least slide, 8px
   short of Zen's, and the row carries that slide across the settings' ✕s and the text, so Zen
-  shows 75 to 78% in every layout (default sidebar, 1200 to 1260), where Chromium alone, sliding
-  as far as it can or centring, showed it whole at most of those widths. The shelf text keeps
-  the slide of whatever stop came before it: Zen's on Tab, and on Shift+Tab the first setting's
-  ✕'s. When the text is wider than `<main>` (the 720px sidebar), Tab from Zen shows 67 to 69% of
-  it in Week × Schedule and Buckets and 75% in Week × List, cut at its start. On Shift+Tab the
-  settings' ✕s carry the slide the reset ✕ came with, a notice's or WeekScale's, only while they
-  show whole at it. Where it cuts one, that ✕ shows at rest and puts `<main>` back, and the text
-  then shows at rest, cut at its end: 60 to 62% in Week × Schedule and Buckets and 62 to 70% in
-  Day, past either notice or both, at 1440 with the 720px sidebar (Chromium alone keeps an 11px
-  slide there and shows 64 to 74%), 75 to 77% in Day × Schedule and Buckets at 1320 with 560,
-  and 86 to 99% past the review notice at 1200 to 1240 with the default sidebar. Where the ✕s
-  show whole at it, the text keeps it: 78% in Week × List at 1440 with 720, cut at its start,
-  and 81 to 94% past the season line at 1200 to 1240.
-- A reveal is itself a scroll, so Zen's tooltip closes on the Tab that reveals it, and the
-  reset ✕'s on the Shift+Tab that reveals it from the grid. The hook's own moves close fewer
-  since the row keeps its slide. Shift+Tab onto the reset ✕ from the stop after it, when that
-  stop needed a slide and the ✕ shows at rest, used to put `<main>` back: WeekScale's Narrower
-  in Week × Schedule (1190 with a 280px sidebar, or 1310 with the default one), and in Day the
-  season line or the review notice (at the default sidebar, Day × Schedule about 1268 to 1302,
-  Day × List 1236 to 1268, Day × Buckets 1260 to 1294). That closed "Reset display" in 10 of
-  the 12 cases tried (1190 and 1310 in Week × Schedule, 1270, 1285 and 1300 in Day × Schedule,
-  1240 and 1255 in Day × List, 1265 and 1280 in Day × Buckets); in the other two the scroll
-  landed before the tooltip opened. Along the row it keeps that stop's slide now, and the
-  tooltip stays up in all 12, as it does in Chromium alone. Zen's closes on the
-  Tab from the Display trigger at the 720px sidebar, where Chromium's centring slide for the
-  trigger already showed Zen and the hook's least slide does not. And the reset ✕'s closes
-  when a scope or layout switch leaves it cut and it is placed afresh. Tab from Zen across the
-  shelf keeps "Reset display" up at the QA widths, but not in a band of 8px of window just
-  below where the reset ✕ starts to show at rest (default sidebar: Day × Schedule 1245 to
-  1252, Week × Schedule 1256 to 1263, Week × Buckets 1248 to 1255, Day × List 1212 to 1219,
-  Week × List 1222 to 1229, Day × Buckets 1238 to 1245). There Zen shows part-way at rest, so
-  no slide was made, and the reset ✕'s own reveal closes its tooltip. Chromium alone closes it
-  a pixel lower in Day and Week × List (Day × Schedule 1244 to 1251, Day × List 1211 to 1218,
-  Day × Buckets 1237 to 1244, Week × List 1221 to 1228), and in Week × Schedule and Week ×
-  Buckets at every width below the band's top, where its centring slide for Zen cuts the
-  settings' ✕s. The hook adds the top pixel, where the reset ✕ shows a pixel or less at rest,
-  which Chromium leaves alone and the hook brings in whole, and in Day and Week × List saves
-  the bottom one, where Zen shows a pixel or less at rest: Chromium leaves it alone, and the
-  hook's slide for it carries along the row.
+  shows 75 to 78%. That is wherever the reset ✕ needs a slide and every ✕ shows whole at it:
+  with the default sidebar, every layout from 1200 up to where the reset ✕ shows at rest (1219
+  in Day × List to 1263 in Week × Schedule); with the 560px sidebar, Day × Schedule at 1300 and
+  1340 and Week × Schedule at 1340; with the 720px one, 1480; and the same with every setting on
+  (Week × Schedule at 1215 and 1250). Chromium alone, sliding as far as it can or centring,
+  showed it whole at most of those widths. Where the slide cuts a setting's ✕ (Week × Schedule
+  at 1300 with 560, and Day and Week × Schedule at 1440 with 720), that ✕ puts `<main>` back and
+  Zen comes in whole. The shelf text keeps the slide of whatever stop came before it: Zen's on
+  Tab, and on Shift+Tab the first setting's ✕'s. When the text is wider than `<main>` (the 720px
+  sidebar), Tab from Zen shows 67 to 69% of it in Week × Schedule and Buckets and 75% in Week ×
+  List, cut at its start. On Shift+Tab the settings' ✕s carry the slide the reset ✕ came with, a
+  notice's or WeekScale's, only while they show whole at it. Where it cuts one, that ✕ shows at
+  rest and puts `<main>` back, and the text then shows at rest, cut at its end: 60 to 62% in
+  Week × Schedule and Buckets and 62 to 70% in Day, past either notice or both, at 1440 with the
+  720px sidebar (Chromium alone keeps an 11px slide there and shows 64 to 74%), 75 to 77% in Day
+  × Schedule and Buckets at 1320 with 560, and 86 to 89% past the review notice with the default
+  sidebar (Day × Schedule at 1200 and 1210, Day × Buckets at 1200). Where the ✕s show whole at
+  it, the text keeps it: 78% in Week × List at 1440 with 720, cut at its start, 81 to 94% past
+  the season line at 1200 to 1240, and past the review notice 77 to 85%, cut at its start, in
+  Day × Schedule at 1220 to 1240, Day × Buckets at 1210 to 1230 and Day × List at 1200 and 1210
+  (Chromium alone showed 69 to 75% of it in four of those eight, cut at its start, and 91 to 96%
+  at rest in the other four); in wider windows it shows whole at rest and goes there. Shift+Tab
+  that starts on the notice's own button, whose slide is larger and cuts the ✕s, finds the text
+  at rest, 86 to 99% at 1200 to 1240.
+- A reveal is itself a scroll, so Zen's tooltip closes on the Tab that reveals it, and the reset
+  ✕'s on the Shift+Tab that reveals it from the grid. The hook's own moves close fewer since the
+  row keeps its slide. Shift+Tab onto the reset ✕ from the stop after it, when that stop needed
+  a slide and the ✕ shows at rest, used to put `<main>` back: WeekScale's Narrower in Week ×
+  Schedule (1190 with a 280px sidebar, or 1310 with the default one), and in Day the season line
+  or the review notice (at the default sidebar, Day × Schedule about 1268 to 1302, Day × List
+  1236 to 1268, Day × Buckets 1260 to 1294). That closed "Reset display" in 10 of the 12 cases
+  tried (1190 and 1310 in Week × Schedule, 1270, 1285 and 1300 in Day × Schedule, 1240 and 1255
+  in Day × List, 1265 and 1280 in Day × Buckets); in the other two the scroll landed before the
+  tooltip opened. Along the row it keeps that stop's slide now, and the tooltip stays up in all
+  12, as it does in Chromium alone. Zen's closes on the Tab from the Display trigger at the
+  720px sidebar, where Chromium's centring slide for the trigger already showed Zen and the
+  hook's least slide does not. And the reset ✕'s closes when a scope or layout switch leaves it
+  cut and it is placed afresh. Tab from Zen across the shelf keeps "Reset display" up at the QA
+  widths, but not in a band of 8px of window just below where the reset ✕ starts to show at rest
+  (default sidebar: Day × Schedule 1245 to 1252, Week × Schedule 1256 to 1263, Week × Buckets
+  1248 to 1255, Day × List 1212 to 1219, Week × List 1222 to 1229, Day × Buckets 1238 to 1245).
+  There Zen shows part-way at rest, so no slide was made, and the reset ✕'s own reveal closes
+  its tooltip. Chromium alone closes it a pixel lower in Day and Week × List (Day × Schedule
+  1244 to 1251, Day × List 1211 to 1218, Day × Buckets 1237 to 1244, Week × List 1221 to 1228),
+  and in Week × Schedule and Week × Buckets at every width below the band's top, where its
+  centring slide for Zen cuts the settings' ✕s. The hook adds the top pixel, where the reset ✕
+  shows a pixel or less at rest, which Chromium leaves alone and the hook brings in whole, and
+  in Day and Week × List saves the bottom one, where Zen shows a pixel or less at rest: Chromium
+  leaves it alone, and the hook's slide for it carries along the row. A wider sidebar moves the
+  band to wider windows (Week × List at 1380 with 560). And where `<main>` is 270px or narrower
+  (1280 and 1300 with the 560px sidebar, 1440 with the 720px one), Zen's slide cuts a setting's
+  ✕ at its start in Day and Week × Schedule and Buckets (all but Day × Buckets at 1300): that ✕
+  shows at rest and puts `<main>` back, closing its own tooltip, and the reset ✕ then comes back
+  in and closes "Reset display". Day and Week × List keep both, as every layout does at 290px
+  (1320 with 560, 1480 with 720). Chromium alone loses the same two in Day where the hook does,
+  and in Week wherever Zen needs a slide, since it centres Zen.
 - It also holds still, whatever has focus, in four cases. While a pointer is down, found in
   review: a press moves focus on mousedown, and the first version slid `<main>` back before the
   release, so the click was lost (Next, a block's Mark complete) and a drag ran offset by the
@@ -1437,23 +1456,23 @@ loop"); the item panel docked at 1280 and 1200px, and Tab and Shift+Tab through 
 sidebar each ✕'s tooltip stays up on Tab from Zen across the shelf; the canvas is back at rest
 once focus moves into the schedule, and a click on Next while it is slid moves the date); with
 three settings stacked, the pointer down the ✕s, clicking each once its tip shows (each click
-takes its own setting off); open an item while the reset ✕
-has focus (it stays whole as the panel docks); with the 720px sidebar in Day, page dates with
-Enter on Next (the canvas moves only when a wider date would cut Next, and does not come back
-while Next has focus: from Saturday, September 26, once in eight presses, onto Wednesday,
-September 30, at 1440 and at 1366), then Tab onto Go to today (it shows whole), and after a Tab
-slide onto Next, click it eight times at one spot (it pages eight days); at 1440 with the
-default sidebar, press the arrows on WeekScale's thumb in Week × Schedule (at most one 23px
-slide, on the Tab or on the first step that reaches 2 days, then none); with a season off and
-hiding items today, Tab onto the season line at 1240 (its Moon shows); with today's review
-waiting, Tab onto its notice at 1200 (its icon, "Start" and ✕ show); Enter on Zen while the
-canvas is slid (the planner does not jump sideways as the switch lifts it away); open from the
-shelf and Escape (focus back on the text); a setting's ✕ with the keyboard (focus moves to the
-next ✕), and the reset ✕ (focus lands on the Display trigger). A 390×844 phone: the same
-settings, the review notice owed and not, the sheet opened from the text, a tap on each ✕ and at
-the end of a setting's words (the ✕ takes that setting off, the words open the sheet), a filter
-whose names wrap onto a second row with a tap on the top and bottom of each name (each opens the
-sheet), and Reset display from the sheet (focus lands on the Display icon).
+takes its own setting off); open an item while the reset ✕ has focus (it stays whole as the
+panel docks); with the 720px sidebar in Day, page dates with Enter on Next (the canvas moves
+only when a wider date would cut Next, and does not come back while Next has focus: from
+Saturday, September 26, once in eight presses, onto Wednesday, September 30, at 1440 and at
+1366), then Tab onto Go to today (it shows whole), and after a Tab slide onto Next, click it
+eight times at one spot (it pages eight days); at 1440 with the default sidebar, press the
+arrows on WeekScale's thumb in Week × Schedule (at most one 23px slide, on the Tab or on the
+first step that reaches 2 days, then none); with a season off and hiding items today, Tab onto
+the season line at 1240 (its Moon shows); with today's review waiting, Tab onto its notice at
+1200 (its icon, "Start" and ✕ show); Enter on Zen while the canvas is slid (the planner does not
+jump sideways as the switch lifts it away); open from the shelf and Escape (focus back on the
+text); a setting's ✕ with the keyboard (focus moves to the next ✕), and the reset ✕ (focus lands
+on the Display trigger). A 390×844 phone: the same settings, the review notice owed and not, the
+sheet opened from the text, a tap on each ✕ and at the end of a setting's words (the ✕ takes
+that setting off, the words open the sheet), a filter whose names wrap onto a second row with a
+tap on the top and bottom of each name (each opens the sheet), and Reset display from the sheet
+(focus lands on the Display icon).
 
 ## Related
 
