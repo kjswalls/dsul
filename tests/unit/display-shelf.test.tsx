@@ -1375,6 +1375,12 @@ describe('the two mounts', () => {
     }
     // The lines box clips, so it carries the reach's 5px inside it.
     expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('-my-[5px]', 'py-[5px]');
+    // And the rows a line or a list wraps into keep that 5px between them, or
+    // one row's reach lies over the next row's words.
+    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass(
+      '[&_[data-clause]]:gap-y-[5px]',
+      '[&_[data-line]]:gap-y-[5px]'
+    );
     // The phone tab has no collapsing column to hold a fit through.
     expect(shelf().style.minWidth).toBe('');
     cleanup();
@@ -1383,6 +1389,9 @@ describe('the two mounts', () => {
     expect(opener()).not.toHaveClass('before:absolute');
     expect(resetX()).not.toHaveClass('before:absolute');
     for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
+    // No reach, so no gap to keep for one: the sidebar keeps its density.
+    expect(shelf().querySelector('[data-shelf-lines]')).not.toHaveClass('[&_[data-clause]]:gap-y-[5px]');
+    expect(shelf().querySelector('[data-shelf-lines]')).not.toHaveClass('[&_[data-line]]:gap-y-[5px]');
     // The narrowest column, less the capsule's 10px sides.
     expect(shelf().style.minWidth).toBe(`${SIDEBAR_MIN_WIDTH - 20}px`);
   });
@@ -1451,6 +1460,20 @@ describe('the two mounts', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(screen.queryByRole('tooltip')).toBeNull();
     expect(x()).not.toHaveAttribute('title');
+  });
+
+  it('resets on the phone from the sheet its text opens, and focus lands on the trigger', async () => {
+    touch.current = true;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump('mobile');
+
+    fireEvent.click(opener());
+    fireEvent.click(within(screen.getByTestId('display-menu')).getByTestId('display-reset'));
+
+    expect(queryShelf()).toBeNull();
+    expect(useViewStore.getState().braindumpGroupBy).toBe('none');
+    await finishExit();
+    await waitFor(() => expect(document.activeElement).toBe(trigger()));
   });
 });
 

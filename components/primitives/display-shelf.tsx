@@ -373,7 +373,7 @@ function ShelfBody({
   // the line changing size with its string unchanged: a late font, a
   // text-spacing or text-only-zoom override, a minimum font size, or the
   // browser's font-size setting, which leaves the 11px text alone and moves
-  // every rem-sized gap, priority dot and the ✕. That re-measures, in either
+  // every rem-sized gap, priority dot and ✕. That re-measures, in either
   // fit and whatever else the delivery holds: a change that lands mid-drag is
   // not taken for the drag. A drag never touches the sample, so it only ever
   // compares. The first delivery carries the sample too, so a shelf that
@@ -437,12 +437,14 @@ function ShelfBody({
   /**
    * The header's tooltip, which every icon-only control in it wears. None on
    * the phone, where no hover earns one and a tap would pop it over the thumb.
+   * A click passes through it: in the stack a ✕'s tip covers the ✕ on the line
+   * below, and moving down to press that one pressed the tip instead.
    */
   const tipped = (label: string, button: React.ReactElement) =>
     touch ? (
       button
     ) : (
-      <RailTooltip side="bottom" label={label}>
+      <RailTooltip side="bottom" label={label} passThrough>
         {button}
       </RailTooltip>
     );
@@ -484,7 +486,8 @@ function ShelfBody({
       //
       // The phone's reach runs 7px to the right but only 4px to the left, the
       // gap to its own words, so a tap at the end of a name still opens the
-      // menu rather than taking the name away: 25 × 28px.
+      // menu rather than taking the name away: 25 × 28px, less the 5px gap it
+      // shares with a ✕ right below it, which takes the gap.
       className={cn('pointer-events-auto w-3.5', xClass('before:-left-1 before:-right-[7px]'))}
     >
       <X className="size-[10px]" aria-hidden />
@@ -572,11 +575,18 @@ function ShelfBody({
         {/* The words, over the opener: `relative` so they paint above it, and
             pointer-events-none so a click on them still lands on it. The
             vertical padding, taken back by the margin, keeps the phone's
-            ✕ reach from being cut off by this box's clip. */}
+            ✕ reach from being cut off by this box's clip. On the phone the
+            rows a line or a multi-select wraps into keep the stack's 5px
+            between them, the reach a ✕ takes above and below itself: with
+            none, a ✕'s reach lay over the next row's words, and a tap on a
+            name took a different setting off. */}
         <span
           ref={linesRef}
           data-shelf-lines=""
-          className="pointer-events-none relative -my-[5px] flex min-w-0 flex-1 gap-x-4 overflow-hidden py-[5px] peer-hover/open:text-foreground group-data-[fit=stack]/shelf:flex-col group-data-[fit=stack]/shelf:gap-y-[5px]"
+          className={cn(
+            'pointer-events-none relative -my-[5px] flex min-w-0 flex-1 gap-x-4 overflow-hidden py-[5px] peer-hover/open:text-foreground group-data-[fit=stack]/shelf:flex-col group-data-[fit=stack]/shelf:gap-y-[5px]',
+            touch && '[&_[data-clause]]:gap-y-[5px] [&_[data-line]]:gap-y-[5px]'
+          )}
         >
           {lines.map((line) => (
             <span key={line.id} data-line={line.id} className={LINE}>

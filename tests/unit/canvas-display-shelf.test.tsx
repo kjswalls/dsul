@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testing-library/react';
 
@@ -229,6 +231,10 @@ describe('the desktop mount, under the view pill', () => {
     expect(resetX()).not.toHaveClass('before:absolute');
     expect(removeXs()).toHaveLength(2);
     for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
+    // A ✕ reaches nothing past itself here, so wrapped rows keep no gap for it.
+    const lines = shelf().querySelector('[data-shelf-lines]')!;
+    expect(lines).not.toHaveClass('[&_[data-clause]]:gap-y-[5px]');
+    expect(lines).not.toHaveClass('[&_[data-line]]:gap-y-[5px]');
   });
 
   it('goes when the last setting does, and the capsule is back to two rows', () => {
@@ -355,9 +361,45 @@ describe('the desktop mount, under the view pill', () => {
     expect(document.activeElement).toHaveAccessibleName('Remove Priority: Low');
   });
 
-  it('hands focus to the Display trigger when the last setting goes by its ✕', () => {
+  it('takes the type filter off with its own ✕, and nothing else', () => {
+    seed({ typeFilter: 'tasks', canvasGroupBy: 'project', braindumpGroupBy: 'project' });
+    renderCapsule();
+    const type = removeXs().find((x) => x.getAttribute('aria-label') === 'Remove Showing Tasks')!;
+
+    fireEvent.click(type);
+
+    const v = useViewStore.getState();
+    expect(v.typeFilter).toBe('all');
+    expect(v.canvasGroupBy).toBe('project');
+    expect(v.braindumpGroupBy).toBe('project');
+  });
+
+  it('draws the reset ✕ only while the line wears more than one ✕', () => {
     seed({ canvasGroupBy: 'project' });
     renderCapsule();
+    expect(removeXs()).toHaveLength(1);
+    expect(screen.queryByTestId('display-shelf-reset-canvas')).toBeNull();
+
+    // Still one setting, but two values, and so two ✕s.
+    act(() =>
+      useViewStore.setState({
+        canvasGroupBy: 'none',
+        canvasFilters: filters({ priorities: ['high', 'low'] }),
+      })
+    );
+    expect(removeXs()).toHaveLength(2);
+    expect(resetX()).toBeInTheDocument();
+  });
+
+  it('hands focus to the Display trigger before the last setting goes by its ✕', () => {
+    seed({ canvasGroupBy: 'project' });
+    renderCapsule();
+    // BEFORE, as the reset's: only what the trigger sees as focus lands can
+    // tell the order.
+    let setWhenFocused: string | null = null;
+    trigger().addEventListener('focus', () => {
+      setWhenFocused = useViewStore.getState().canvasGroupBy;
+    });
     const [only] = removeXs();
     only.focus();
 
@@ -366,6 +408,7 @@ describe('the desktop mount, under the view pill', () => {
     expect(queryShelf()).toBeNull();
     // Not <body>: the capsule handed the shelf the menu's ref.
     expect(document.activeElement).toBe(trigger());
+    expect(setWhenFocused).toBe('project');
   });
 
   it.each([
@@ -379,6 +422,38 @@ describe('the desktop mount, under the view pill', () => {
     fireEvent.pointerEnter(x());
     fireEvent.pointerMove(x());
     expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
+  });
+
+  /**
+   * In the stack a ✕'s tip covers the ✕ on the line below, and moving down to
+   * press that one pressed the tip instead. jsdom applies no stylesheet, so
+   * this pins the two halves the click depends on: the attribute on each ✕'s
+   * tip, and the rule in globals.css that lets the click through the wrapper
+   * Radix positions the tip in, matched against the wrapper actually drawn.
+   */
+  const PASS_THROUGH = '[data-radix-popper-content-wrapper]:has(> [data-pass-through])';
+
+  it.each([
+    { name: 'reset', x: () => resetX() },
+    { name: 'per-setting', x: () => removeXs()[0] },
+  ])('lets a click through its $name ✕’s tip to whatever the tip covers', async ({ x }) => {
+    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    renderCapsule();
+
+    fireEvent.pointerEnter(x());
+    fireEvent.pointerMove(x());
+    const tip = (await screen.findByRole('tooltip')).closest('[data-slot="tooltip-content"]')!;
+
+    expect(tip).toHaveAttribute('data-pass-through');
+    expect(tip.parentElement!.matches(PASS_THROUGH)).toBe(true);
+  });
+
+  it('has the rule that lets the click through, and nothing else in it', () => {
+    const css = readFileSync(join(process.cwd(), 'app', 'globals.css'), 'utf8');
+    const at = css.indexOf(`${PASS_THROUGH} {`);
+    expect(at, 'the pass-through rule is gone from globals.css').toBeGreaterThan(-1);
+    const open = css.indexOf('{', at);
+    expect(css.slice(open + 1, css.indexOf('}', open)).trim()).toBe('pointer-events: none;');
   });
 
   it('has nothing that can fade a lime glyph between it and the capsule', () => {
@@ -506,6 +581,53 @@ describe('the phone mount, at the foot of the Today card', () => {
     await finishExit();
     // Through the card's [&>button] wrapper, to the icon trigger itself.
     await waitFor(() => expect(document.activeElement).toBe(trigger()));
+  });
+
+  it.each([
+    { name: 'the last setting’s ✕', view: { canvasGroupBy: 'project' } as ViewSeed, x: () => removeXs()[0] },
+    {
+      name: 'the reset ✕',
+      view: { canvasGroupBy: 'project', canvasSortBy: 'title' } as ViewSeed,
+      x: () => resetX(),
+    },
+  ])('hands focus to the icon trigger when $name takes the shelf away', ({ view, x }) => {
+    touch.current = true;
+    seed(view);
+    renderPhoneHeader();
+    const pressed = x();
+    pressed.focus();
+
+    fireEvent.click(pressed);
+
+    expect(queryShelf()).toBeNull();
+    // Through the card's [&>button] wrapper, to the icon trigger itself, not <body>.
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  it('takes one canvas value off with its own ✕, hands focus on, and leaves the braindump alone', () => {
+    touch.current = true;
+    seed({
+      canvasFilters: filters({ priorities: ['high', 'low'] }),
+      braindumpFilters: filters({ priorities: ['high'] }),
+    });
+    renderPhoneHeader();
+    const high = removeXs().find((x) => x.getAttribute('aria-label') === 'Remove Priority: High')!;
+    high.focus();
+
+    fireEvent.click(high);
+
+    expect(useViewStore.getState().canvasFilters.priorities).toEqual(['low']);
+    expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['high']);
+    expect(document.activeElement).toHaveAccessibleName('Remove Priority: Low');
+  });
+
+  it('keeps 5px between the rows a line or a list wraps into, the reach each ✕ takes', () => {
+    // With none, a ✕'s reach lay over the next row's words, and a tap on a
+    // name took a different setting off.
+    seed({ canvasFilters: filters({ containers: ['project:Work', 'project:Home'] }) });
+    renderPhoneHeader();
+    const lines = shelf().querySelector('[data-shelf-lines]')!;
+    expect(lines).toHaveClass('[&_[data-clause]]:gap-y-[5px]', '[&_[data-line]]:gap-y-[5px]');
   });
 
   it('has nothing that can fade a lime glyph between it and the header', () => {

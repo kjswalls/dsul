@@ -42,6 +42,7 @@ export function RailTooltip({
   label,
   detail,
   side = 'top',
+  passThrough = false,
   children,
 }: {
   /** What this column IS — the muted eyebrow. */
@@ -49,6 +50,13 @@ export function RailTooltip({
   /** The value in words. Omit for a label-only tip. */
   detail?: React.ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
+  /**
+   * Let a click through the tip to whatever it covers, for triggers packed
+   * closer than a tip is tall: the Display shelf's stacked ✕s, where one
+   * line's tip sat over the next line's ✕ and took the click meant for it.
+   * The tip still stays up while the pointer is over it (app/globals.css).
+   */
+  passThrough?: boolean;
   /** The trigger. Cloned via asChild, so it must take a ref and spread props. */
   children: React.ReactNode;
 }) {
@@ -58,7 +66,7 @@ export function RailTooltip({
       <TooltipTrigger asChild {...tip.triggerProps}>
         {children}
       </TooltipTrigger>
-      <RailTipContent side={side} label={label} detail={detail} />
+      <RailTipContent side={side} label={label} detail={detail} passThrough={passThrough} />
     </Tooltip>
   );
 }
@@ -73,13 +81,16 @@ export function RailTipContent({
   label,
   detail,
   side = 'top',
+  passThrough = false,
 }: {
   label: string;
   detail?: React.ReactNode;
   side?: 'top' | 'right' | 'bottom' | 'left';
+  /** See RailTooltip's. */
+  passThrough?: boolean;
 }) {
   return (
-    <TooltipContent side={side} align="center">
+    <TooltipContent side={side} align="center" data-pass-through={passThrough ? '' : undefined}>
       <div className={cn('px-0.5 text-2xs font-medium text-muted-foreground', detail && 'mb-1')}>
         {label}
       </div>

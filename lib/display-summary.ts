@@ -447,8 +447,8 @@ export function useDisplaySummary(surface: DisplaySurface): DisplaySummary {
 
 /**
  * Reset clears everything the Display menu OWNS for this surface. The menu's
- * "Reset display" row and the shelf's ✕ are both this function, so the two
- * cannot come apart.
+ * "Reset display" row and the shelf's reset ✕ (the one at the end) are both
+ * this function, so the two cannot come apart.
  *
  * `showPausedOnGrid` is deliberately excluded, and the menu captions its row
  * "Everywhere" for the same reason — it is an app-wide setting that happens to
