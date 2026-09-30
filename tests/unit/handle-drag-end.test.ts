@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { resolveDrop, type DropContext } from '@/lib/dnd/handle-drag-end';
+import { listGroupMovers, placementOf, resolveDrop, type DropContext } from '@/lib/dnd/handle-drag-end';
 
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
   return {
@@ -192,6 +192,89 @@ describe('resolveDrop — droppable ID grammar (lib/dnd/CONTRACT.md)', () => {
         habitId: 'h1',
         bucket: 'evening',
       });
+    });
+  });
+
+  describe('list:{date}', () => {
+    it('puts a braindump task on that day, Anytime, no time', () => {
+      expect(resolveDrop('t1', 'list:2026-07-09', ctx({ draggedPlacement: { placed: false } }))).toEqual({
+        kind: 'schedule-task',
+        taskId: 't1',
+        bucket: 'anytime',
+        dateStr: '2026-07-09',
+      });
+    });
+
+    it('reads an omitted placement as the braindump', () => {
+      expect(resolveDrop('t1', 'list:2026-07-09', ctx())).toMatchObject({ kind: 'schedule-task' });
+    });
+
+    it('moves a canvas task to another day, keeping its bucket and time', () => {
+      expect(
+        resolveDrop('t1', 'list:2026-07-09', ctx({ draggedPlacement: { placed: true, dateStr: '2026-07-06' } }))
+      ).toEqual({ kind: 'move-task-to-date', taskId: 't1', dateStr: '2026-07-09' });
+    });
+
+    it('does nothing for a task dropped on the day it is already on', () => {
+      expect(
+        resolveDrop('t1', 'list:2026-07-09', ctx({ draggedPlacement: { placed: true, dateStr: '2026-07-09' } }))
+      ).toBeNull();
+    });
+
+    it('leaves habits alone: a canvas one recurs, a braindump one would land on no day', () => {
+      expect(
+        resolveDrop('h1', 'list:2026-07-09', ctx({ itemType: 'habit', draggedPlacement: { placed: false } }))
+      ).toBeNull();
+      expect(
+        resolveDrop('h1', 'list:2026-07-09', ctx({ itemType: 'habit', draggedPlacement: { placed: true } }))
+      ).toBeNull();
+    });
+
+    it('never moves a recurring canvas task: its date is the series anchor', () => {
+      expect(
+        resolveDrop(
+          't1',
+          'list:2026-07-09',
+          ctx({ draggedPlacement: { placed: true, dateStr: '2026-07-01', recurring: true } })
+        )
+      ).toBeNull();
+    });
+  });
+
+  describe('placementOf', () => {
+    it("mirrors the braindump's membership test", () => {
+      expect(placementOf({ type: 'task' }).placed).toBe(false);
+      expect(placementOf({ type: 'task', timeBucket: 'morning', startDate: '2026-07-09' })).toMatchObject({
+        placed: true,
+        dateStr: '2026-07-09',
+      });
+      expect(placementOf({ type: 'task', isScheduled: true }).placed).toBe(true);
+      expect(placementOf({ type: 'habit', repeatFrequency: 'none' }).placed).toBe(false);
+      // A recurring habit is on the canvas even with no bucket; the braindump
+      // never lists it.
+      expect(placementOf({ type: 'habit', repeatFrequency: 'daily' }).placed).toBe(true);
+    });
+
+    it('reads a legacy ISO startDate as its day', () => {
+      expect(placementOf({ timeBucket: 'anytime', startDate: '2026-07-09T00:00:00.000Z' }).dateStr).toBe(
+        '2026-07-09'
+      );
+    });
+  });
+
+  describe('listGroupMovers', () => {
+    const tasks = [
+      { id: 'inbox' },
+      { id: 'same', timeBucket: 'morning', startDate: '2026-07-09' },
+      { id: 'other', timeBucket: 'morning', startDate: '2026-07-08', startTime: '07:00' },
+      { id: 'series', timeBucket: 'morning', startDate: '2026-07-01', repeatFrequency: 'daily' },
+      { id: 'milestone', timeBucket: 'anytime', startDate: '2026-07-20' },
+      { id: 'unselected' },
+    ];
+    it('moves braindump and other-day tasks, never recurring, milestone or same-day ones', () => {
+      expect(
+        listGroupMovers(['inbox', 'same', 'other', 'series', 'milestone'], '2026-07-09', tasks, new Set(['milestone']))
+      ).toEqual(['inbox', 'other']);
     });
   });
 });

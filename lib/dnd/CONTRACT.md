@@ -20,6 +20,7 @@ the IDs:
 | `data-dnd-bucket="{bucket}"` | bucket section container | that bucket's region |
 | `data-dnd-id="{id}"` | every droppable | its ID from the table below |
 | `data-dnd-over="true\|false"` | every droppable | dnd-kit reports the pointer over it |
+| `data-dnd-acts="true\|false"` | `sidebar`, `list:*` | the pointer is over it AND a drop would write something (these two light only then) |
 | `data-testid="item-card"` + `data-item-id` + `data-item-kind` | every draggable row | identity |
 | `data-bucket` / `data-start-time` | every draggable row | the row's resolved slot |
 
@@ -47,6 +48,7 @@ the id. **Both tasks and habits are drag sources** (`components/primitives/task-
 | `week:{yyyy-MM-dd}:anytime` | Week-schedule per-day Anytime strip | schedule on that day, `anytime` bucket, no time |
 | `projectblock:{projectName}` | Project block in day view | `moveTaskToProjectBlock(id)` — only if `task.project === projectName`; habits ignored |
 | `sidebar` | Braindump | `unscheduleTask(id)`; **no-ops for habits** (they are not braindump-eligible) |
+| `list:{yyyy-MM-dd}` | Day × List body, or one Week × List day | Task from the braindump: `scheduleTask(id, 'anytime', undefined, date)`. Task from the canvas onto another day: `moveTaskToDate(id, date)`, keeping bucket and time. Nothing for: the day it is already on, a recurring canvas task (its date is the series anchor), any habit (`listDropCommand`). Group: `moveTasksToDate` over `listGroupMovers` |
 
 `{bucket}` ∈ `anytime | morning | afternoon | evening` (`TimeBucket`).
 
@@ -184,8 +186,9 @@ share one test user.
 
 - `NonTouchPointerSensor` — activationConstraint `{ distance: 5 }`
 - `TouchSensor` — activationConstraint `{ delay: 250, tolerance: 5 }`
-- `collisionDetection` — `plannerCollision` (`lib/dnd/collision.ts`): `closestCenter`, minus
-  Week × Schedule hour cells hidden under a pinned column head
+- `collisionDetection` — `plannerCollision` (`lib/dnd/collision.ts`): a `list:*` day the
+  pointer is inside wins outright (they are whole days, stacked and uneven); otherwise
+  `closestCenter`, minus Week × Schedule hour cells hidden under a pinned column head
 
 `NonTouchPointerSensor` is `PointerSensor` with one extra line in its activator:
 it returns `false` for `pointerType === 'touch'`. That line is the whole reason

@@ -14,14 +14,17 @@ import { groupRows, type RowGroup } from '@/lib/grouping';
 import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { SeasonNotice } from '@/components/views/season-notice';
+import { ListDropZone } from '@/components/views/list-drop-zone';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
 /**
  * Day × List (P5c): one flat, full-width list in slash-label groups (see
  * design/redesign/desktop_day_listView.png). Default grouping: HABITS /
- * TASKS / PROJECTS; canvasGroupBy overrides. Rows stay drag sources; there
- * are no in-canvas drop targets in list layout (drops go to the Braindump).
+ * TASKS / PROJECTS; canvasGroupBy overrides. Rows stay drag sources, and the
+ * whole list is ONE drop target for this day (`list:{date}`, see
+ * components/views/list-drop-zone.tsx) — no per-row zones, so a braindump item
+ * dropped anywhere on it lands on this day.
  */
 
 export type ListRow = { itemType: 'task' | 'habit'; item: Task | HabitItem };
@@ -63,8 +66,8 @@ export function DayList() {
    *
    * `orderRows` then sinks finished rows to the foot of each group. Safe on the
    * WHOLE list here, unlike Day × Buckets: this layout has no per-row drop zones
-   * at all (drops go to the Braindump), so nothing resolves a drop against a
-   * neighbour's time and there is no timed spine to contradict.
+   * at all (the one `list:{date}` target is the whole day), so nothing resolves
+   * a drop against a neighbour's time and there is no timed spine to contradict.
    *
    * The day is resolved in the USER's zone, the same conversion TaskRow makes
    * for its own `completed` — a recurring row's completion is per-date, so
@@ -94,21 +97,25 @@ export function DayList() {
             the day this line exists for. */}
         <SeasonNotice />
 
-        {day.totalCount === 0 ? (
-          <div className="py-16 text-center">
-            <p className="font-serif text-lg italic text-muted-foreground">
-              Nothing planned for {format(selectedDate, 'EEEE')} yet.
-            </p>
-          </div>
-        ) : (
-          groups.map((g) => (
-            <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-              {g.rows.map((row) => (
-                <TaskRow key={row.item.id} row={row as never} />
-              ))}
-            </GroupSection>
-          ))
-        )}
+        {/* The floor gives an empty or short day a target worth aiming at;
+            the negative margin lets the drop tint breathe past the rows. */}
+        <ListDropZone dateStr={dateStr} className="-mx-2 min-h-[50vh] space-y-5 px-2">
+          {day.totalCount === 0 ? (
+            <div className="py-16 text-center">
+              <p className="font-serif text-lg italic text-muted-foreground">
+                Nothing planned for {format(selectedDate, 'EEEE')} yet.
+              </p>
+            </div>
+          ) : (
+            groups.map((g) => (
+              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                {g.rows.map((row) => (
+                  <TaskRow key={row.item.id} row={row as never} />
+                ))}
+              </GroupSection>
+            ))
+          )}
+        </ListDropZone>
       </div>
     </ScrollArea>
   );
