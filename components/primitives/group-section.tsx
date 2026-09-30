@@ -32,6 +32,7 @@ export function GroupSection({
   children,
   className,
   variant = 'sidebar',
+  forceOpen = false,
 }: {
   label: string;
   /**
@@ -58,9 +59,16 @@ export function GroupSection({
   children: React.ReactNode;
   className?: string;
   variant?: 'canvas' | 'sidebar';
+  /**
+   * Show the rows while this is true, whatever the chevron says, without
+   * touching the user's collapse. The braindump sets it on the section a
+   * dragged item is about to land in, so the slot it lights is on screen.
+   */
+  forceOpen?: boolean;
 }) {
   const isCanvas = variant === 'canvas';
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsedByUser, setCollapsed] = useState(false);
+  const collapsed = collapsedByUser && !forceOpen;
   // Subscribe to the arrays (not the getter fns) so a glyph edit re-renders.
   const projects = usePlannerStore((s) => s.projects);
   const kind = groupKey ? containerKindOf(groupKey) : null;

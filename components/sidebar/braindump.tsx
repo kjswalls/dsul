@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useDroppable } from '@dnd-kit/core';
 import { FolderOpen, Moon, ChevronRight } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -33,6 +33,10 @@ import { useSinkHold } from '@/hooks/use-sink-hold';
 import { RELAY } from '@/lib/relay-config';
 import { inactiveItemIdsOn, suppressionReason, suppressionLabel } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
+import { useDragStore } from '@/lib/drag-store';
+import { useSelectionStore } from '@/lib/selection-store';
+import { placementOf } from '@/lib/dnd/handle-drag-end';
+import { milestoneItemIds } from '@/lib/goals';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -187,6 +191,76 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
  * is the whole affordance; it answers "did I leave anything set aside?" without
  * making the answer feel like a debt.
  */
+/**
+ * `base` is MEMBERSHIP — what belongs in the braindump at all — and `rows` is
+ * base narrowed by the Display menu. They are split so the header can say
+ * "8 of 23": both numbers come from one predicate, rather than the header
+ * re-deriving what the list already decided.
+ *
+ * A function rather than inline in the memo because the drop preview runs it a
+ * second time, over the tasks as a drop would leave them: one predicate for
+ * "what is here" and "where would this land" means the two cannot disagree.
+ */
+function braindumpRows(
+  tasks: readonly Task[],
+  habits: readonly HabitItem[],
+  suppressedIds: ReadonlySet<string>,
+  braindumpFilters: ReturnType<typeof useViewStore.getState>['braindumpFilters'],
+  goalMemberIds: ReturnType<typeof useGoalFilterIds>
+): { base: RowItem[]; rows: RowItem[] } {
+  const unscheduledTasks = tasks.filter((task) => {
+    if (suppressedIds.has(task.id)) return false;
+    if (task.isScheduled || task.timeBucket) return false;
+    return true;
+  });
+
+  const unscheduledHabits = habits.filter((habit) => {
+    if (suppressedIds.has(habit.id)) return false;
+    if (habit.timeBucket) return false;
+    if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
+    return true;
+  });
+
+  const base: RowItem[] = [
+    ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
+    ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
+  ];
+
+  const rows = base.filter((row) => {
+    if (row.itemType === 'task') {
+      if (braindumpFilters.hideFinished && row.item.status === 'completed') return false;
+      return passesFilters(row.item, braindumpFilters, undefined, goalMemberIds);
+    }
+    if (braindumpFilters.hideFinished && row.item.status === 'done') return false;
+    return passesFilters(row.item, braindumpFilters, 'habit', goalMemberIds);
+  });
+
+  return { base, rows };
+}
+
+/**
+ * Where a dragged item will land, drawn in the slot it will take. Not a TaskRow:
+ * the real row is still mounted wherever the drag started, and a second TaskRow
+ * would register the same draggable id twice.
+ */
+function LandingRow({ title, reveal }: { title: string; reveal: boolean }) {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (reveal) ref.current?.scrollIntoView({ block: 'nearest' });
+  }, [reveal]);
+  return (
+    <div
+      ref={ref}
+      data-testid="braindump-landing"
+      aria-hidden
+      className="flex w-full items-center gap-2 rounded-lg bg-primary/10 px-2 py-1.5 ring-1 ring-inset ring-primary/50"
+    >
+      <span className="h-3.5 w-3.5 flex-shrink-0 rounded-full border border-dashed border-primary/70" />
+      <span className="flex-1 truncate text-sm text-foreground/80">{title}</span>
+    </div>
+  );
+}
+
 type PausedGroup = { key: string; label: string; rows: RowItem[] };
 
 function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number }) {
@@ -346,57 +420,64 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    */
   const goalMemberIds = useGoalFilterIds(goals, braindumpFilters.goals);
 
+  // Membership and the Display-narrowed list; see braindumpRows.
+  const { base, rows } = useMemo(
+    () => braindumpRows(tasks, habits, suppressedIds, braindumpFilters, goalMemberIds),
+    [tasks, habits, braindumpFilters, suppressedIds, goalMemberIds]
+  );
+
   /**
-   * `base` is MEMBERSHIP — what belongs in the braindump at all — and `rows` is
-   * base narrowed by the Display menu. They are split so the header can say
-   * "8 of 23": both numbers come from one predicate, rather than the header
-   * re-deriving what the list already decided.
+   * What a drop here would bring in, while a drag is over the list: the ids that
+   * `unscheduleTask(s)` would actually move. Empty when the drop is a no-op (a
+   * braindump row dragged over its own list, a habit from the canvas), and then
+   * nothing lights.
+   *
+   * Read from the drag and selection stores at render time rather than
+   * subscribed: this component already re-renders when `isOver` flips, which is
+   * exactly when the answer can change, and a subscription would re-render the
+   * whole list at every drag start as well. So the work here is once on enter
+   * and once on leave, never per pointer move, and there are no per-row
+   * droppables for collision to test against on every move either.
    */
-  const { base, rows } = useMemo(() => {
-    const unscheduledTasks = tasks.filter((task) => {
-      if (suppressedIds.has(task.id)) return false;
-      if (task.isScheduled || task.timeBucket) return false;
-      return true;
-    });
+  const landingIds = useMemo(() => {
+    const none = new Set<string>();
+    if (!isOver) return none;
+    const activeId = useDragStore.getState().activeId;
+    if (!activeId) return none;
+    const moves = (id: string) => {
+      if (suppressedIds.has(id)) return false;
+      const task = tasks.find((t) => t.id === id);
+      return !!task && placementOf(task).placed;
+    };
+    // The group branch in app-shell.tsx's handleDragEnd: the whole selection,
+    // minus milestones (unscheduleTasks refuses them) — and when nothing in it
+    // is writable, the drop falls through to the dragged row alone.
+    const { selectedIds } = useSelectionStore.getState();
+    if (selectedIds.has(activeId) && selectedIds.size >= 2) {
+      const milestones = milestoneItemIds(goals);
+      const group = [...selectedIds].filter((id) => !milestones.has(id) && moves(id));
+      if (group.length) return new Set(group);
+    }
+    return moves(activeId) ? new Set([activeId]) : none;
+  }, [isOver, tasks, goals, suppressedIds]);
 
-    // Habits belong in the braindump when nothing places them on a day:
-    // no bucket and no recurrence.
-    //
-    // The wipe that used to sit here is gone — see lib/filters.ts. It was the
-    // same rule as the canvas's, and it was guarding a list that is empty in
-    // practice anyway: a habit cannot reach repeatFrequency 'none' through any
-    // UI path today. The branch stays because habit DRAFTS are meant to live
-    // here eventually (memory/plans/display-menu.md); it now narrows by the
-    // same rule as everything else instead of vanishing wholesale.
-    const unscheduledHabits = habits.filter((habit) => {
-      if (suppressedIds.has(habit.id)) return false;
-      if (habit.timeBucket) return false;
-      if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
-      return true;
-    });
-
-    // Concatenation is the DEFAULT order, not the only one. All tasks then all
-    // habits is an accidental type grouping baked into the sort — nobody chose
-    // it; it is what building the list in two passes produces. The ordering is
-    // applied in `grouped` below, per group, NOT here: see the note there.
-    const base: RowItem[] = [
-      ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
-      ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
-    ];
-
-    // No hideSkipped term: a skip is per-date and the braindump is dateless.
-    const rows = base.filter((row) => {
-      if (row.itemType === 'task') {
-        if (braindumpFilters.hideFinished && row.item.status === 'completed') return false;
-        return passesFilters(row.item, braindumpFilters, undefined, goalMemberIds);
-      }
-      if (braindumpFilters.hideFinished && row.item.status === 'done') return false;
-      // 'habit' explicitly — see the note in lib/day-items.ts.
-      return passesFilters(row.item, braindumpFilters, 'habit', goalMemberIds);
-    });
-
-    return { base, rows };
-  }, [tasks, habits, braindumpFilters, suppressedIds, goalMemberIds]);
+  /**
+   * The list as it will read after the drop: the same membership and filters,
+   * run over the tasks as `unscheduleTask` will leave them. Grouping and sorting
+   * below then put each incoming item exactly where it will appear, and that
+   * slot is what lights — there is no reorder in dsul (dnd-no-reorder.test.ts),
+   * so where the row lands is decided by the list, not by the pointer.
+   */
+  const shownRows = useMemo(() => {
+    if (landingIds.size === 0) return rows;
+    const landed = tasks.map((t) =>
+      landingIds.has(t.id)
+        ? { ...t, isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined }
+        : t
+    );
+    return braindumpRows(landed, habits, suppressedIds, braindumpFilters, goalMemberIds).rows;
+  }, [landingIds, rows, tasks, habits, suppressedIds, braindumpFilters, goalMemberIds]);
+  const landingShown = landingIds.size > 0 && shownRows.some((r) => landingIds.has(r.item.id));
 
   /**
    * The header's count: OPEN items, "23 undated", or "8 of 23" while a filter
@@ -537,15 +618,25 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     const groups: RowGroup<RowItem>[] =
       braindumpGroupBy === 'type'
         ? [
-            { key: 'Tasks', label: 'Tasks', rows: rows.filter((r) => r.itemType === 'task') },
-            { key: 'Habits', label: 'Habits', rows: rows.filter((r) => r.itemType === 'habit') },
+            { key: 'Tasks', label: 'Tasks', rows: shownRows.filter((r) => r.itemType === 'task') },
+            { key: 'Habits', label: 'Habits', rows: shownRows.filter((r) => r.itemType === 'habit') },
           ].filter((g) => g.rows.length > 0)
         : // routines/seasons feed the gate values ('routine', 'season') and
           // goals the aspire one; each is inert for the values it does not
           // answer, so passing all three always is harmless.
-          groupRows(rows, braindumpGroupBy, { routines, seasons, goals });
+          groupRows(shownRows, braindumpGroupBy, { routines, seasons, goals });
     return groups.map((g) => ({ ...g, rows: orderRows(g.rows, braindumpSortBy, null, completedAs) }));
-  }, [rows, braindumpGroupBy, braindumpSortBy, routines, seasons, goals, completedAs]);
+  }, [shownRows, braindumpGroupBy, braindumpSortBy, routines, seasons, goals, completedAs]);
+
+  // The first incoming row scrolls itself into view, so a slot below the fold
+  // still shows. Only one: several revealing at once would fight.
+  const firstLanding = grouped.flatMap((g) => g.rows).find((r) => landingIds.has(r.item.id))?.item.id;
+  const renderRow = (row: RowItem) =>
+    landingIds.has(row.item.id) ? (
+      <LandingRow key={row.item.id} title={row.item.title} reveal={row.item.id === firstLanding} />
+    ) : (
+      <TaskRow key={row.item.id} row={row} context="braindump" />
+    );
 
   const organizeButton = (
     <Button
@@ -578,6 +669,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       ref={sinkRootRef}
       data-dnd-id="sidebar"
       data-dnd-over={isOver ? 'true' : 'false'}
+      data-dnd-acts={landingIds.size > 0 ? 'true' : 'false'}
       // Separates the CONTENT scope from the DnD hook: data-dnd-id="sidebar"
       // currently does double duty as both, so a spec scoping assertions to the
       // braindump is really asserting against a drop target.
@@ -723,28 +815,33 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // Fill the column only when there is genuinely nothing here — a
           // paused-only sidebar still wants the poem's space collapsed so the
           // Paused strip sits under the header rather than adrift at the foot.
-          rows.length === 0 && pausedCount === 0 && 'flex-1',
-          isOver && 'ring-2 ring-ring/60'
+          shownRows.length === 0 && pausedCount === 0 && 'flex-1',
+          // The whole list lights only when what is landing will be hidden by
+          // the Display filters, so there is no row slot to show instead.
+          landingIds.size > 0 && !landingShown && 'ring-2 ring-ring/60'
         )}
       >
         <div className="px-[14px] py-2">
           {grouped.map((g) =>
             g.label ? (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} className="pt-5 first:pt-1">
-                {g.rows.map((row) => (
-                  <TaskRow key={row.item.id} row={row} context="braindump" />
-                ))}
+              <GroupSection
+                key={g.key}
+                groupKey={g.key}
+                label={g.label}
+                gate={g.gate}
+                className="pt-5 first:pt-1"
+                forceOpen={landingIds.size > 0 && g.rows.some((r) => landingIds.has(r.item.id))}
+              >
+                {g.rows.map(renderRow)}
               </GroupSection>
             ) : (
               <div key="all" className="space-y-0">
-                {g.rows.map((row) => (
-                  <TaskRow key={row.item.id} row={row} context="braindump" />
-                ))}
+                {g.rows.map(renderRow)}
               </div>
             )
           )}
 
-          {rows.length === 0 && pausedCount === 0 && (
+          {shownRows.length === 0 && pausedCount === 0 && (
             <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
                 // pitch matches the dock capsule (20) — tile size derives from it.

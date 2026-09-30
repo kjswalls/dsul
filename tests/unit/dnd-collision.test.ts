@@ -19,7 +19,11 @@ const rect = (top: number, height: number, left = 0, width = 140): ClientRect =>
   right: left + width,
 });
 
-function run(rects: Record<string, ClientRect>, pointer: ClientRect) {
+function run(
+  rects: Record<string, ClientRect>,
+  pointer: ClientRect,
+  pointerCoordinates: { x: number; y: number } | null = null
+) {
   const droppableRects = new Map<UniqueIdentifier, ClientRect>(Object.entries(rects));
   const droppableContainers = Object.keys(rects).map((id) => ({ id }) as unknown as DroppableContainer);
   return plannerCollision({
@@ -27,7 +31,7 @@ function run(rects: Record<string, ClientRect>, pointer: ClientRect) {
     collisionRect: pointer,
     droppableRects,
     droppableContainers,
-    pointerCoordinates: null,
+    pointerCoordinates,
   }).map((c) => c.id);
 }
 
@@ -64,5 +68,25 @@ describe('plannerCollision', () => {
     expect(ids).not.toContain('weekhour:2026-09-24:9');
     expect(ids).not.toContain('weekhour:2026-09-24:10');
     expect(ids).toContain('weekhour:2026-09-24:11');
+  });
+});
+
+describe('plannerCollision — list days', () => {
+  // Week × List: a short Sunday over a tall Monday. The pointer is in the top
+  // of Monday, which is nearer Sunday's centre than Monday's.
+  const rects = {
+    'list:2026-09-27': rect(0, 60),
+    'list:2026-09-28': rect(80, 600),
+    sidebar: rect(0, 800, -300, 280),
+  };
+  const ghost = rect(95, 30, 20, 100);
+
+  it('takes the list day the pointer is inside, not the nearest centre', () => {
+    expect(run(rects, ghost)[0]).toBe('list:2026-09-27');
+    expect(run(rects, ghost, { x: 60, y: 100 })).toEqual(['list:2026-09-28']);
+  });
+
+  it('falls through to closestCenter outside every list day', () => {
+    expect(run(rects, rect(300, 30, -250, 100), { x: -200, y: 310 })[0]).toBe('sidebar');
   });
 });

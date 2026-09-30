@@ -14,11 +14,16 @@ import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useViewStore } from '@/lib/view-store';
 import { useCanvasGroupBy } from '@/lib/extension-gates';
+import { ListDropZone } from '@/components/views/list-drop-zone';
 import { cn } from '@/lib/utils';
 
 /**
  * Week × List (P5c): the week as a stacked agenda — a date heading per day
  * with that day's rows beneath. Empty days collapse to a whisper.
+ *
+ * Each day is one drop target (`list:{date}`, components/views/list-drop-zone.tsx):
+ * a braindump item lands on that day, and a row dragged to another day moves
+ * there keeping its bucket and time.
  */
 
 function DaySection({ date }: { date: Date }) {
@@ -65,44 +70,46 @@ function DaySection({ date }: { date: Date }) {
 
   return (
     <section ref={rootRef}>
-      <button
-        onClick={() => setSelectedDate(date)}
-        className={cn(
-          'mb-1 flex items-baseline gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-accent',
-          selected && 'bg-primary/10'
-        )}
-        title={`Select ${format(date, 'EEEE, MMMM d')}`}
-      >
-        <span className="text-base font-medium text-foreground">{format(date, 'EEEE')}</span>
-        <span className="text-sm text-muted-foreground">{format(date, 'MMM d')}</span>
-        {isToday(date) && (
-          <span className="text-2xs font-medium uppercase tracking-wide text-success-text">today</span>
-        )}
-      </button>
-
-      {day.totalCount === 0 ? (
-        <p className="px-2 pb-2 font-serif text-sm italic text-muted-foreground/50">Nothing planned.</p>
-      ) : (
-        <div className="space-y-0 pl-2">
-          {groups.map((g) =>
-            // 'none' comes back as one section with an empty label, which is
-            // this view's own default look: a flat list under the date heading.
-            g.label ? (
-              <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                {g.rows.map((row) => (
-                  <TaskRow key={row.item.id} row={row as never} date={date} />
-                ))}
-              </GroupSection>
-            ) : (
-              <div key={g.key || 'all'} className="space-y-0">
-                {g.rows.map((row) => (
-                  <TaskRow key={row.item.id} row={row as never} date={date} />
-                ))}
-              </div>
-            )
+      <ListDropZone dateStr={dateStr} className="-mx-2 px-2 pb-1">
+        <button
+          onClick={() => setSelectedDate(date)}
+          className={cn(
+            'mb-1 flex items-baseline gap-2 rounded-lg px-2 py-1 transition-colors hover:bg-accent',
+            selected && 'bg-primary/10'
           )}
-        </div>
-      )}
+          title={`Select ${format(date, 'EEEE, MMMM d')}`}
+        >
+          <span className="text-base font-medium text-foreground">{format(date, 'EEEE')}</span>
+          <span className="text-sm text-muted-foreground">{format(date, 'MMM d')}</span>
+          {isToday(date) && (
+            <span className="text-2xs font-medium uppercase tracking-wide text-success-text">today</span>
+          )}
+        </button>
+
+        {day.totalCount === 0 ? (
+          <p className="px-2 pb-2 font-serif text-sm italic text-muted-foreground/50">Nothing planned.</p>
+        ) : (
+          <div className="space-y-0 pl-2">
+            {groups.map((g) =>
+              // 'none' comes back as one section with an empty label, which is
+              // this view's own default look: a flat list under the date heading.
+              g.label ? (
+                <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row as never} date={date} />
+                  ))}
+                </GroupSection>
+              ) : (
+                <div key={g.key || 'all'} className="space-y-0">
+                  {g.rows.map((row) => (
+                    <TaskRow key={row.item.id} row={row as never} date={date} />
+                  ))}
+                </div>
+              )
+            )}
+          </div>
+        )}
+      </ListDropZone>
     </section>
   );
 }

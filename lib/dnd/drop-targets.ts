@@ -82,7 +82,9 @@ export type DropTargetKind =
   /** `projectblock:{name}`. */
   | 'project-block'
   /** `sidebar` — the braindump. */
-  | 'braindump';
+  | 'braindump'
+  /** `list:{date}` — a list-layout day: the Day × List body, a Week × List section. */
+  | 'list-day';
 
 const EVERY_INPUT: readonly DragInput[] = ['pointer', 'touch'];
 /** Mouse and pen only — a target a fingertip cannot aim. */
@@ -114,6 +116,7 @@ export const OFFERED_TO: Record<DropTargetKind, readonly DragInput[]> = {
   'hour-slot': EVERY_INPUT,
   'project-block': EVERY_INPUT,
   braindump: EVERY_INPUT,
+  'list-day': EVERY_INPUT,
 };
 
 const BARE_BUCKETS = new Set(['anytime', 'morning', 'afternoon', 'evening']);
@@ -140,6 +143,7 @@ export function dropTargetKind(targetId: string): DropTargetKind | null {
   if (targetId.startsWith('week:')) return 'week-cell';
   if (targetId.startsWith('projectblock:')) return 'project-block';
   if (targetId === 'sidebar') return 'braindump';
+  if (targetId.startsWith('list:')) return 'list-day';
   return null;
 }
 

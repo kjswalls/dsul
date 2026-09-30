@@ -59,6 +59,7 @@ const COMMAND_INTENT: Record<DropCommand['kind'], 'move' | 'reorder'> = {
   'assign-habit-bucket': 'move',
   unschedule: 'move',
   'move-task-to-project-block': 'move',
+  'move-task-to-date': 'move',
 };
 
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
@@ -102,6 +103,7 @@ const EVERY_DROP_TARGET = [
   ['week:2026-07-06:anytime', 'touch'],
   ['projectblock:Work', 'touch'],
   ['sidebar', 'touch'],
+  ['list:2026-07-06', 'touch'],
 ] as const satisfies readonly (readonly [string, DropContext['input']])[];
 
 describe('no drop in the grammar reorders anything', () => {

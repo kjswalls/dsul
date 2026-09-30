@@ -55,7 +55,7 @@ import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
-import { resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { listGroupMovers, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
@@ -331,6 +331,7 @@ export function AppShell() {
       // targets and the gate that resolves the drop cannot disagree.
       input: dragInputOf(event.activatorEvent),
       draggedTaskProject: draggedTask?.project,
+      draggedPlacement: placementOf(draggedTask ?? draggedHabit ?? {}),
       selectedDate,
       userTimezone: userTz,
       getRefTime: (refType, refId) =>
@@ -384,6 +385,17 @@ export function AppShell() {
         const ids = groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj);
         if (ids.length) {
           planner.moveTasksToProjectBlock(ids);
+          acted = true;
+        }
+      } else if (overId.startsWith('list:')) {
+        // A list day: carry to that date, each keeping its own bucket (the
+        // bulk verb's rule; it clears clock times, see moveTasksToDate). Only
+        // the ones not already on that day move, so a selection dragged within
+        // its own day keeps its times; see listGroupMovers for who else stays.
+        const dateStr = overId.slice('list:'.length);
+        const ids = listGroupMovers(groupIds, dateStr, tasks, milestoneIds);
+        if (ids.length) {
+          planner.moveTasksToDate(ids, dateStr);
           acted = true;
         }
       } else if (overId.startsWith('week:') || overId.startsWith('weekhour:')) {
@@ -444,6 +456,9 @@ export function AppShell() {
         break;
       case 'move-task-to-project-block':
         planner.moveTaskToProjectBlock(command.taskId);
+        break;
+      case 'move-task-to-date':
+        planner.moveTaskToDate(command.taskId, command.dateStr);
         break;
     }
   };

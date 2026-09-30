@@ -20,7 +20,102 @@ export type DropCommand =
   | { kind: 'schedule-habit'; habitId: string; bucket: TimeBucket; time?: string }
   | { kind: 'assign-habit-bucket'; habitId: string; bucket: TimeBucket }
   | { kind: 'unschedule'; itemId: string }
-  | { kind: 'move-task-to-project-block'; taskId: string };
+  | { kind: 'move-task-to-project-block'; taskId: string }
+  | { kind: 'move-task-to-date'; taskId: string; dateStr: string };
+
+/**
+ * Where the dragged item sits right now, as far as a `list:{date}` drop cares.
+ *
+ * `placed` is the braindump's own membership test turned around
+ * (components/sidebar/braindump.tsx): a task is in the braindump exactly when it
+ * has no `isScheduled` and no `timeBucket`; a habit when it has no `timeBucket`
+ * and no recurrence. Anything else is on the canvas.
+ */
+export interface DragPlacement {
+  placed: boolean;
+  /**
+   * The task's `startDate` as a bare `yyyy-MM-dd` (legacy rows can hold a full
+   * ISO string; lib/day-items.ts cuts those at 'T' too). Habits carry no date.
+   */
+  dateStr?: string;
+  /**
+   * A recurring item's `startDate` is its SERIES anchor, not the day the row is
+   * showing on, so a drop can neither compare it to a list day nor move it: the
+   * carry verbs refuse recurring items for the same reason (lib/row-moves.ts).
+   */
+  recurring?: boolean;
+}
+
+export function placementOf(item: {
+  type?: string;
+  isScheduled?: boolean;
+  timeBucket?: string;
+  startDate?: string;
+  repeatFrequency?: string;
+}): DragPlacement {
+  const recurring = !!item.repeatFrequency && item.repeatFrequency !== 'none';
+  return {
+    placed: !!(item.isScheduled || item.timeBucket || (item.type === 'habit' && recurring)),
+    dateStr: item.startDate?.split('T')[0],
+    recurring,
+  };
+}
+
+/**
+ * `list:{yyyy-MM-dd}` — a Day × List body, or one day's section of Week × List.
+ *
+ * A list has no buckets and no hours to aim at, so the drop can only say WHICH
+ * DAY. What that means depends on where the item comes from:
+ *
+ * - From the braindump, it is the Week × Schedule Anytime strip's drop
+ *   (`week:{date}:anytime`): onto that day, Anytime, no time.
+ * - From the canvas, onto a DIFFERENT day, it is the row's Reschedule verb
+ *   (`moveTaskToDate`): the day changes and the bucket and clock time the user
+ *   already gave it are kept. Resetting them to Anytime would be the drop
+ *   deciding something the list never showed.
+ * - Onto the day it is already on, it is nothing. The list's own rows are drag
+ *   sources sitting inside this target, and a drag that goes nowhere must not
+ *   write (or arm an undo) on release.
+ * - A recurring task on the canvas: nothing. Its date is the series anchor,
+ *   so "move" would shift or truncate the whole series (lib/row-moves.ts
+ *   refuses it in the carry verbs for the same reason).
+ * - A habit: nothing. One on the canvas recurs and has no day to move to; one
+ *   in the braindump does not recur, and giving it a bucket with no recurrence
+ *   would take it off the braindump and put it on no day at all
+ *   (shouldShowOnDate is false for 'none').
+ */
+export function listDropCommand(
+  itemId: string,
+  itemType: 'task' | 'habit',
+  placement: DragPlacement,
+  dateStr: string
+): DropCommand | null {
+  if (itemType === 'habit') return null;
+  if (!placement.placed) return { kind: 'schedule-task', taskId: itemId, bucket: 'anytime', dateStr };
+  if (placement.recurring || placement.dateStr === dateStr) return null;
+  return { kind: 'move-task-to-date', taskId: itemId, dateStr };
+}
+
+/**
+ * The members of a multi-selection a `list:{date}` drop moves with
+ * `moveTasksToDate`: task-likes that are in the braindump or on another day,
+ * minus milestones (the bulk verb refuses them) and recurring canvas tasks (see
+ * listDropCommand). Shared by the shell's drop and the zone's highlight, so the
+ * target lights exactly when the drop will write.
+ */
+export function listGroupMovers<
+  T extends { id: string; isScheduled?: boolean; timeBucket?: string; startDate?: string; repeatFrequency?: string },
+>(ids: ReadonlySet<string> | readonly string[], dateStr: string, tasks: readonly T[], milestoneIds: ReadonlySet<string>): string[] {
+  const idSet = new Set(ids);
+  return tasks
+    .filter((t) => {
+      if (!idSet.has(t.id) || milestoneIds.has(t.id)) return false;
+      const at = placementOf(t);
+      if (!at.placed) return true;
+      return !at.recurring && at.dateStr !== dateStr;
+    })
+    .map((t) => t.id);
+}
 
 export interface DropContext {
   /** What kind of item is being dragged (null → drop is ignored). */
@@ -38,6 +133,11 @@ export interface DropContext {
   input: DragInput;
   /** Project of the dragged task, for the projectblock guard. */
   draggedTaskProject?: string;
+  /**
+   * Where the dragged item sits now, for the `list:{date}` guard. Omitted reads
+   * as "in the braindump", the one case where every list drop acts.
+   */
+  draggedPlacement?: DragPlacement;
   /**
    * The day the canvas is showing, and the user's timezone. The dropped day
    * string is resolved HERE via toDateStr(selectedDate, userTimezone) — the same
@@ -165,6 +265,12 @@ export function resolveDrop(
     return itemType === 'task'
       ? { kind: 'schedule-task', taskId: itemId, bucket, time, dateStr }
       : { kind: 'schedule-habit', habitId: itemId, bucket, time };
+  }
+
+  // list:{yyyy-MM-dd} — a list-layout day (see listDropCommand)
+  if (targetId.startsWith('list:')) {
+    const dateStr = targetId.slice('list:'.length);
+    return listDropCommand(itemId, itemType, ctx.draggedPlacement ?? { placed: false }, dateStr);
   }
 
   // week:{yyyy-MM-dd}:{bucket}
