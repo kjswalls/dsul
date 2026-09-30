@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, type ReactElement, type ReactNode } from 'react';
+import { Fragment, useState, type ReactElement, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -37,8 +37,10 @@ import {
   MENU_ROW,
   MIXED,
   OptionBody,
+  optionChecked,
   PANEL,
   RemindPane,
+  RowSummary,
   sharedSummary,
   useEditModel,
   type OptionSpec,
@@ -375,7 +377,7 @@ function EditSection({ edit }: { edit: ReturnType<typeof useEditModel> }) {
             <span className="flex-1 truncate">
               {r.label} <EligibleCount n={r.eligible} of={edit.count} />
             </span>
-            {r.summary && <span className="max-w-24 shrink-0 truncate text-muted-foreground">{r.summary}</span>}
+            <RowSummary summary={r.summary} />
           </ContextMenuSubTrigger>
           <ContextMenuSubContent
             className={PANEL}
@@ -404,20 +406,22 @@ function EditSection({ edit }: { edit: ReturnType<typeof useEditModel> }) {
             ) : (
               <div className="scrollbar-hide max-h-[min(20rem,60vh)] overflow-x-hidden overflow-y-auto">
                 {edit.optionsFor(r.key).map((o: OptionSpec) => (
-                  <ContextMenuItem
-                    key={o.key}
-                    role={o.role}
-                    aria-checked={o.checked === 'mixed' ? 'mixed' : o.checked}
-                    data-testid={o.testId}
-                    {...o.data}
-                    className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
-                    onSelect={(e) => {
-                      if (o.keepOpen) e.preventDefault();
-                      o.onSelect();
-                    }}
-                  >
-                    <OptionBody o={o} />
-                  </ContextMenuItem>
+                  <Fragment key={o.key}>
+                    {o.divider && <ContextMenuSeparator />}
+                    <ContextMenuItem
+                      role={o.role}
+                      aria-checked={optionChecked(o)}
+                      data-testid={o.testId}
+                      {...o.data}
+                      className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
+                      onSelect={(e) => {
+                        if (o.keepOpen) e.preventDefault();
+                        o.onSelect();
+                      }}
+                    >
+                      <OptionBody o={o} />
+                    </ContextMenuItem>
+                  </Fragment>
                 ))}
               </div>
             )}

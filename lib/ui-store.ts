@@ -27,6 +27,11 @@ export type ActiveDialog =
       kind: NewContainerKind;
       title?: string;
       notes?: string;
+      /**
+       * Items the new organizer starts with — "New routine…" in an item's
+       * right-click menu opens this with that item (or the selection) inside.
+       */
+      itemIds?: string[];
     }
   /**
    * The Organize console — one surface for every container and label. Replaced
@@ -164,8 +169,12 @@ export const openAddDialog = (
 ) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date, title });
 
 /** Open the "new" dialog on an organizer, carrying what was already typed. */
-export const openNewContainer = (kind: NewContainerKind, title?: string, notes?: string) =>
-  useUIStore.getState().openDialog({ type: 'new-container', kind, title, notes });
+export const openNewContainer = (
+  kind: NewContainerKind,
+  title?: string,
+  notes?: string,
+  itemIds?: string[]
+) => useUIStore.getState().openDialog({ type: 'new-container', kind, title, notes, itemIds });
 
 /** Open the bulk-add dialog, optionally seeded with pasted text and hand-off
  *  context (see the ActiveDialog variant for field meanings). */

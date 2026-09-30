@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import {
   Bell,
   CalendarRange,
@@ -11,8 +11,10 @@ import {
   Folder,
   Layers,
   Minus,
+  Plus,
   SlidersHorizontal,
   Target,
+  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -21,6 +23,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
@@ -29,8 +32,10 @@ import {
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ContainerSquare } from '@/components/primitives/display-menu';
 import { ColorSquare } from '@/components/planner/surface';
-import { usePlannerStore } from '@/lib/planner-store';
-import { useGoalsEnabled } from '@/lib/extension-gates';
+import { batchHistory, usePlannerStore } from '@/lib/planner-store';
+import { openNewContainer, useUIStore, type NewContainerKind } from '@/lib/ui-store';
+import { consoleHosted } from '@/lib/console-door';
+import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
 import { goalItemIds } from '@/lib/goals';
 import { membershipSummary } from '@/lib/item-bands';
 import { CONTAINER_KINDS, foldContainerName } from '@/lib/container-registry';
@@ -78,6 +83,8 @@ const PRIORITY_LABELS: Record<Priority | 'none', string> = {
 };
 
 export const MIXED = 'Mixed';
+/** A root row's value when nothing in the selection has one set. */
+export const NONE = 'None';
 
 /**
  * The root row's value: the one value every item shares, nothing when they
@@ -135,7 +142,7 @@ export function EligibleCount({ n, of }: { n: number; of: number }) {
 export type OptionSpec = {
   key: string;
   label: string;
-  role: 'menuitemradio' | 'menuitemcheckbox';
+  role: 'menuitemradio' | 'menuitemcheckbox' | 'menuitem';
   checked: boolean | 'mixed';
   testId: string;
   data?: Record<string, string>;
@@ -143,12 +150,43 @@ export type OptionSpec = {
   trailing?: ReactNode;
   muted?: boolean;
   keepOpen?: boolean;
+  /**
+   * Draw a rule above this option: the pane's footer — "New routine…",
+   * "Remove from project" — set apart from the values it acts beside.
+   */
+  divider?: boolean;
   onSelect: () => void;
 };
 
 /** The desktop row and panel: the sidebar Display menu's own. */
 export const MENU_ROW = 'h-8 gap-2 rounded-[5px] px-2 text-xs';
 export const PANEL = 'w-60 rounded-[10px] p-1 shadow-[var(--shadow-elev-md)]';
+
+/**
+ * A root row's value on the rail beside its chevron. "None" reads a step
+ * quieter than a value, so a glance down the column finds what IS set.
+ */
+export function RowSummary({ summary, className }: { summary: string; className?: string }) {
+  return (
+    <span
+      data-testid="edit-row-summary"
+      data-unset={summary === NONE ? 'true' : undefined}
+      className={cn(
+        'max-w-24 shrink-0 truncate text-muted-foreground',
+        summary === NONE && 'text-muted-foreground/60',
+        className
+      )}
+    >
+      {summary}
+    </span>
+  );
+}
+
+/** `aria-checked` for an option — absent on a plain action (menuitem). */
+export function optionChecked(o: OptionSpec): boolean | 'mixed' | undefined {
+  if (o.role === 'menuitem') return undefined;
+  return o.checked === 'mixed' ? 'mixed' : o.checked;
+}
 
 /** A trailing check for all, a dash for some — the house selection grammar. */
 export function OptionBody({ o }: { o: OptionSpec }) {
@@ -158,7 +196,7 @@ export function OptionBody({ o }: { o: OptionSpec }) {
       <span className="truncate">{o.label}</span>
       {o.trailing}
       <span className="ml-auto flex size-3.5 shrink-0 items-center justify-center">
-        {o.checked === true && <Check className="size-3.5" />}
+        {o.role !== 'menuitem' && o.checked === true && <Check className="size-3.5" />}
         {o.checked === 'mixed' && <Minus className="size-3.5 text-muted-foreground" />}
       </span>
     </>
@@ -228,6 +266,7 @@ export function RemindPane({
           {undated} have no date. Give them one and they will fire.
         </p>
       )}
+      {anySet && <div className="bg-border -mx-1 my-1 h-px" />}
       {anySet && (
         <button
           type="button"
@@ -235,7 +274,8 @@ export function RemindPane({
           className={cn(optionClass, 'text-muted-foreground')}
           onClick={onClear}
         >
-          No reminder
+          <X className="size-3.5" />
+          Remove reminder
         </button>
       )}
     </div>
@@ -262,8 +302,27 @@ export function useEditModel(selected: Item[]) {
   const setItemsCollected = usePlannerStore((s) => s.setItemsCollected);
   const setItemsGoal = usePlannerStore((s) => s.setItemsGoal);
   const goalsOn = useGoalsEnabled();
+  const organizeOn = useOrganizeEnabled();
+  const dialogType = useUIStore((s) => s.activeDialog?.type);
 
   const count = selected.length;
+
+  /**
+   * Whether a pane may offer "New <kind>…". It opens the "new" dialog, which
+   * AppShell mounts beside the Organize console — so "a console is hosted" is
+   * also "the dialog is here" (lib/console-door.ts). Off the planner the slot
+   * would wait, armed, for the next trip home, so the option is not offered.
+   * Nor over the open console: the single dialog slot would swap it away.
+   * Read at render, which for a menu is the moment it opens.
+   */
+  const canCreate = (kind: NewContainerKind) => {
+    if (!consoleHosted() || dialogType === 'organize') return false;
+    if (kind === 'goal') return goalsOn && goalsAvailable;
+    // The item dialog's own gate (visibleContainerBands): a gate kind shows
+    // with none of its kind only while Organize is on.
+    if (kind === 'routine' || kind === 'season') return collectionsAvailable && organizeOn;
+    return true;
+  };
 
   // ── eligible subsets, one per property, all from lib/bulk-edit.ts ──────────
   const prioritizable = useMemo(() => selected.filter(canBulkSetPriority), [selected]);
@@ -295,7 +354,8 @@ export function useEditModel(selected: Item[]) {
     label: string;
     icon: ReactNode;
     eligible: number;
-    summary: string | undefined;
+    /** The shared value, "Mixed", or "None" — always something to read. */
+    summary: string;
     visible: boolean;
   }[] = [
     {
@@ -303,7 +363,9 @@ export function useEditModel(selected: Item[]) {
       label: 'Priority',
       icon: <Flag className="size-3.5" />,
       eligible: prioritizable.length,
-      summary: sharedSummary(prioritizable, (i) => (i as { priority?: Priority }).priority, String, (p) => PRIORITY_LABELS[p]),
+      summary:
+        sharedSummary(prioritizable, (i) => (i as { priority?: Priority }).priority, String, (p) => PRIORITY_LABELS[p]) ??
+        NONE,
       visible: prioritizable.length > 0,
     },
     {
@@ -311,7 +373,7 @@ export function useEditModel(selected: Item[]) {
       label: 'Remind',
       icon: <Bell className="size-3.5" />,
       eligible: remindable.length,
-      summary: sharedSummary(remindable, (i) => i.reminderTime || undefined),
+      summary: sharedSummary(remindable, (i) => i.reminderTime || undefined) ?? NONE,
       visible: remindable.length > 0,
     },
     {
@@ -323,39 +385,43 @@ export function useEditModel(selected: Item[]) {
         fileable,
         (i) => i.project || undefined,
         (name) => foldContainerName('project', name),
-      ),
-      // No inline creation here, so a pane with no projects has only "No
-      // project" to offer — worth showing only if something can be unfiled.
+      ) ?? NONE,
+      // A pane needs something to offer: a project to pick, one to leave, or
+      // a new one to make.
       visible:
-        fileable.length > 0 && (projects.length > 0 || unfileable.some((i) => !!i.project)),
+        fileable.length > 0 &&
+        (projects.length > 0 || unfileable.some((i) => !!i.project) || canCreate('project')),
     },
     {
       key: 'routine',
       label: CONTAINER_KINDS.routine.label,
       icon: <Layers className="size-3.5" />,
       eligible: collectible.length,
-      summary: membershipRowSummary(routines, containerState),
+      summary: membershipRowSummary(routines, containerState) ?? NONE,
       // Hidden entirely when migration 024's tables are unreachable — a row
       // would promise a feature the writes cannot reach.
-      visible: collectionsAvailable && collectible.length > 0 && routines.length > 0,
+      visible:
+        collectionsAvailable && collectible.length > 0 && (routines.length > 0 || canCreate('routine')),
     },
     {
       key: 'season',
       label: CONTAINER_KINDS.season.label,
       icon: <CalendarRange className="size-3.5" />,
       eligible: collectible.length,
-      summary: membershipRowSummary(seasons, containerState),
-      visible: collectionsAvailable && collectible.length > 0 && seasons.length > 0,
+      summary: membershipRowSummary(seasons, containerState) ?? NONE,
+      visible:
+        collectionsAvailable && collectible.length > 0 && (seasons.length > 0 || canCreate('season')),
     },
     {
       key: 'goal',
       label: CONTAINER_KINDS.goal.label,
       icon: <Target className="size-3.5" />,
       eligible: collectible.length,
-      summary: membershipRowSummary(activeGoals, goalState),
+      summary: membershipRowSummary(activeGoals, goalState) ?? NONE,
       // The dialog's aspire-band gate (visibleContainerBands), plus somewhere
-      // to go: there is no inline goal creation here.
-      visible: collectible.length > 0 && goalsOn && goalsAvailable && activeGoals.length > 0,
+      // to go: a goal to join, or a new one to make.
+      visible:
+        collectible.length > 0 && goalsOn && goalsAvailable && (activeGoals.length > 0 || canCreate('goal')),
     },
   ];
   const visibleRows = rows.filter((r) => r.visible);
@@ -365,6 +431,23 @@ export function useEditModel(selected: Item[]) {
   // `keepOpen` is the multi-valued membership panes — several containers are
   // toggled in one visit — and a picked single value completes the choice.
   const optionsFor = (key: PaneKey): OptionSpec[] => {
+    // The footer: make a new one (seeded with the selection, through the app's
+    // own "new" dialog) and take the selection out. Only what applies is drawn,
+    // and the first of them carries the rule.
+    const footer = (rows: (OptionSpec | false)[]): OptionSpec[] =>
+      rows.filter((o): o is OptionSpec => !!o).map((o, i) => (i === 0 ? { ...o, divider: true } : o));
+    const newOption = (kind: NewContainerKind, ids: string[]): OptionSpec | false =>
+      canCreate(kind) && {
+        key: 'new',
+        label: `New ${CONTAINER_KINDS[kind].label.toLowerCase()}…`,
+        role: 'menuitem',
+        checked: false,
+        testId: 'bulk-new-option',
+        data: { 'data-kind': kind },
+        muted: true,
+        leading: <Plus className="size-3.5 shrink-0" />,
+        onSelect: () => openNewContainer(kind, undefined, undefined, ids),
+      };
     switch (key) {
       case 'priority': {
         const values = prioritizable.map((i) => (i as { priority?: Priority }).priority ?? 'none');
@@ -388,24 +471,7 @@ export function useEditModel(selected: Item[]) {
       case 'project': {
         const folded = fileable.map((i) => (i.project ? foldContainerName('project', i.project) : undefined));
         const allIn = (name: string) => folded.every((f) => f === foldContainerName('project', name));
-        const none: OptionSpec[] =
-          unfileable.length > 0
-            ? [
-                {
-                  key: '',
-                  label: `No ${CONTAINER_KINDS.project.label.toLowerCase()}`,
-                  role: 'menuitemradio',
-                  checked: unfileable.every((i) => !i.project),
-                  testId: 'bulk-project-option',
-                  data: { 'data-project-id': '' },
-                  muted: true,
-                  trailing: <EligibleCount n={unfileable.length} of={fileable.length} />,
-                  onSelect: () => setItemsProject(allIds(unfileable), undefined),
-                },
-              ]
-            : [];
         return [
-          ...none,
           ...projects.map(
             (p): OptionSpec => ({
               key: p.id,
@@ -418,6 +484,22 @@ export function useEditModel(selected: Item[]) {
               onSelect: () => setItemsProject(allIds(fileable), p.name),
             })
           ),
+          ...footer([
+            newOption('project', allIds(fileable)),
+            // Only the types that may go unfiled, and only once one is filed.
+            unfileable.some((i) => !!i.project) && {
+              key: '',
+              label: `Remove from ${CONTAINER_KINDS.project.label.toLowerCase()}`,
+              role: 'menuitem',
+              checked: false,
+              testId: 'bulk-project-option',
+              data: { 'data-project-id': '' },
+              muted: true,
+              leading: <X className="size-3.5 shrink-0" />,
+              trailing: <EligibleCount n={unfileable.length} of={fileable.length} />,
+              onSelect: () => setItemsProject(allIds(unfileable), undefined),
+            },
+          ]),
         ];
       }
       case 'routine':
@@ -429,7 +511,11 @@ export function useEditModel(selected: Item[]) {
             : key === 'season'
               ? seasons.map((c) => ({ c, state: containerState(c) }))
               : activeGoals.map((c) => ({ c, state: goalState(c) }));
-        return list.map(({ c, state }): OptionSpec => {
+        const noun = CONTAINER_KINDS[key].label.toLowerCase();
+        const held = list.filter(({ state }) => state !== 'none');
+        const leave = (id: string) =>
+          key === 'goal' ? setItemsGoal(collectibleIds, id, false) : setItemsCollected(collectibleIds, key, id, false);
+        const options = list.map(({ c, state }): OptionSpec => {
           return {
             key: c.id,
             label: c.name,
@@ -448,6 +534,25 @@ export function useEditModel(selected: Item[]) {
             },
           };
         });
+        return [
+          ...options,
+          ...footer([
+            newOption(key, collectibleIds),
+            held.length > 0 && {
+              key: 'remove',
+              label: held.length === 1 ? `Remove from ${held[0].c.name}` : `Remove from all ${held.length} ${noun}s`,
+              role: 'menuitem',
+              checked: false,
+              testId: 'bulk-remove-option',
+              data: { 'data-kind': key },
+              muted: true,
+              leading: <X className="size-3.5 shrink-0" />,
+              // One ⌘Z for the lot, however many it leaves.
+              onSelect: () =>
+                batchHistory(`Remove from ${noun}s`, held.length, () => held.forEach(({ c }) => leave(c.id))),
+            },
+          ]),
+        ];
       }
       default:
         return [];
@@ -580,9 +685,7 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
                 <span className="flex-1 truncate">
                   {r.label} <EligibleCount n={r.eligible} of={count} />
                 </span>
-                {r.summary && (
-                  <span className="max-w-24 shrink-0 truncate text-muted-foreground">{r.summary}</span>
-                )}
+                <RowSummary summary={r.summary} />
               </DropdownMenuSubTrigger>
               <DropdownMenuSubContent
                 className={PANEL}
@@ -607,20 +710,22 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
                 ) : (
                   <div className="scrollbar-hide max-h-[min(20rem,60vh)] overflow-x-hidden overflow-y-auto">
                     {optionsFor(r.key).map((o) => (
-                      <DropdownMenuItem
-                        key={o.key}
-                        role={o.role}
-                        aria-checked={o.checked === 'mixed' ? 'mixed' : o.checked}
-                        data-testid={o.testId}
-                        {...o.data}
-                        className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
-                        onSelect={(e) => {
-                          if (o.keepOpen) e.preventDefault();
-                          o.onSelect();
-                        }}
-                      >
-                        <OptionBody o={o} />
-                      </DropdownMenuItem>
+                      <Fragment key={o.key}>
+                        {o.divider && <DropdownMenuSeparator />}
+                        <DropdownMenuItem
+                          role={o.role}
+                          aria-checked={optionChecked(o)}
+                          data-testid={o.testId}
+                          {...o.data}
+                          className={cn(MENU_ROW, o.muted && 'text-muted-foreground')}
+                          onSelect={(e) => {
+                            if (o.keepOpen) e.preventDefault();
+                            o.onSelect();
+                          }}
+                        >
+                          <OptionBody o={o} />
+                        </DropdownMenuItem>
+                      </Fragment>
                     ))}
                   </div>
                 )}
@@ -668,23 +773,27 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
               ) : (
                 <div className="max-h-64 overflow-y-auto">
                   {optionsFor(pane!).map((o) => (
-                    <button
-                      key={o.key}
-                      type="button"
-                      role={o.role}
-                      aria-checked={o.checked === 'mixed' ? 'mixed' : o.checked}
-                      data-testid={o.testId}
-                      {...o.data}
-                      className={cn(optionClass, o.muted && 'text-muted-foreground')}
-                      onClick={() => {
-                        o.onSelect();
-                        // A single value completes the choice: back to the list,
-                        // so the next property is one tap away.
-                        if (!o.keepOpen) setPane(null);
-                      }}
-                    >
-                      <OptionBody o={o} />
-                    </button>
+                    <Fragment key={o.key}>
+                      {o.divider && <div role="separator" className="bg-border my-1 h-px" />}
+                      <button
+                        type="button"
+                        role={o.role}
+                        aria-checked={optionChecked(o)}
+                        data-testid={o.testId}
+                        {...o.data}
+                        className={cn(optionClass, o.muted && 'text-muted-foreground')}
+                        onClick={() => {
+                          o.onSelect();
+                          // A single value completes the choice: back to the list,
+                          // so the next property is one tap away. A footer
+                          // option that opens the "new" dialog closes it all.
+                          if (o.key === 'new') reset(false);
+                          else if (!o.keepOpen) setPane(null);
+                        }}
+                      >
+                        <OptionBody o={o} />
+                      </button>
+                    </Fragment>
                   ))}
                 </div>
               )}
@@ -705,7 +814,7 @@ export function BulkEditMenu({ selected }: { selected: Item[] }) {
                 <span>{r.label}</span>
                 <EligibleCount n={r.eligible} of={count} />
                 <span className="ml-auto flex min-w-0 items-center gap-1 text-muted-foreground">
-                  {r.summary && <span className="truncate">{r.summary}</span>}
+                  <RowSummary summary={r.summary} className="max-w-none shrink" />
                   <ChevronRight className="size-3.5 shrink-0" />
                 </span>
               </button>

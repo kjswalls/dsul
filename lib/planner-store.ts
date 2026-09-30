@@ -1428,6 +1428,33 @@ function afterContainerCreate<T>(id: string, write: () => Promise<T>): Promise<T
   return pending ? pending.then(write) : write();
 }
 
+/**
+ * Project creates still in flight, by id. A project made and filed into at
+ * once — the right-click menu's "New project…" — sends each item's UPDATE,
+ * carrying the new `project_id`, in the same tick as the project's INSERT, and
+ * items_project_id_fkey is not deferrable: an UPDATE that lands first fails,
+ * and the item looks filed until the next load. So a filing write waits behind
+ * its project's create. Settled promises only — a refused project is rolled
+ * back separately. Synchronous when nothing is pending.
+ */
+const pendingProjectCreates = new Map<string, Promise<void>>();
+
+function trackProjectCreate(id: string, create: Promise<unknown>) {
+  const settled = create.then(
+    () => undefined,
+    () => undefined
+  );
+  pendingProjectCreates.set(id, settled);
+  void settled.then(() => {
+    if (pendingProjectCreates.get(id) === settled) pendingProjectCreates.delete(id);
+  });
+}
+
+function afterProjectCreate<T>(id: string | undefined, write: () => Promise<T>): Promise<T> {
+  const pending = id ? pendingProjectCreates.get(id) : undefined;
+  return pending ? pending.then(write) : write();
+}
+
 // The store's only doors to these nine writes — each queued behind its
 // container's create when one is in flight (see above), immediate otherwise.
 const dbUpdateRoutine: typeof rawUpdateRoutine = (userId, id, ...rest) =>
@@ -3810,7 +3837,9 @@ export const usePlannerStore = create<PlannerStore>()(
           )
         );
         targets.forEach((item) =>
-          dbUpdateItem(item.id, dbTypeOf(item), patchById.get(item.id)!).catch(console.error)
+          afterProjectCreate(projectId, () =>
+            dbUpdateItem(item.id, dbTypeOf(item), patchById.get(item.id)!)
+          ).catch(console.error)
         );
       },
 
@@ -4303,7 +4332,9 @@ export const usePlannerStore = create<PlannerStore>()(
 
         const userId = get().userId;
         if (userId) {
-          dbCreateProject(userId, project).catch((error) => {
+          const created = dbCreateProject(userId, project);
+          trackProjectCreate(project.id, created);
+          created.catch((error) => {
             undoFailedCreate(error, entryId, project.id, name);
           });
         }
