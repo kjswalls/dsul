@@ -49,6 +49,12 @@ vi.mock('@/lib/db', () => ({
   deleteGoal: vi.fn(async () => {}),
   restoreGoal: vi.fn(async () => {}),
 }));
+/** Whether the planner's console (and so the "new" dialog) is mounted. */
+const hosted = vi.hoisted(() => ({ current: false }));
+vi.mock('@/lib/console-door', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/console-door')>()),
+  consoleHosted: () => hosted.current,
+}));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
@@ -58,7 +64,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { EXT_ORGANIZE } from '@/lib/extension-registry';
-import { enableExtensions } from './support/extensions';
+import { disableExtensions, enableExtensions } from './support/extensions';
 import * as db from '@/lib/db';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
 
@@ -220,6 +226,123 @@ describe('the item right-click menu', () => {
       .find((el) => el.getAttribute('data-value') === 'high')!;
     fireEvent.click(high);
     expect(itemById('once').priority).toBe('high');
+  });
+});
+
+describe('the item menu\'s property rows', () => {
+  beforeEach(() => {
+    hosted.current = false;
+    enableExtensions(EXT_ORGANIZE);
+    usePlannerStore.setState({ collectionsAvailable: true, projects: [{ id: 'p1', name: 'Work', emoji: '' }] as never });
+  });
+
+  /** Open one property's flyout from the menu, the way a keyboard does. */
+  function openPane(menu: HTMLElement, key: string) {
+    const trigger = within(menu).getByTestId(`item-menu-edit-${key}`);
+    fireEvent.pointerMove(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+  }
+  const summaryOf = (menu: HTMLElement, key: string) =>
+    within(within(menu).getByTestId(`item-menu-edit-${key}`)).getByTestId('edit-row-summary');
+
+  it('previews every property, "None" where nothing is set', () => {
+    usePlannerStore.setState({ routines: [{ id: 'r1', name: 'Mornings', itemIds: [] }] as never });
+    store().updateTask('once', { priority: 'high' } as never);
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(summaryOf(menu, 'priority')).toHaveTextContent('High');
+    expect(summaryOf(menu, 'remind')).toHaveTextContent('None');
+    expect(summaryOf(menu, 'remind')).toHaveAttribute('data-unset', 'true');
+    expect(summaryOf(menu, 'project')).toHaveTextContent('None');
+    expect(summaryOf(menu, 'routine')).toHaveTextContent('None');
+  });
+
+  it('offers New routine… on the planner, opening the "new" dialog with the item in it', () => {
+    render(<LiveRow id="once" />);
+    // Off the planner the dialog is not mounted, and with no routines the row
+    // has nothing else to offer.
+    expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-edit-routine')).toBeNull();
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    cleanup();
+
+    hosted.current = true;
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    openPane(menu, 'routine');
+    const create = screen.getByTestId('bulk-new-option');
+    expect(create).toHaveTextContent('New routine…');
+    fireEvent.click(create);
+    expect(useUIStore.getState().activeDialog).toEqual({
+      type: 'new-container',
+      kind: 'routine',
+      title: undefined,
+      notes: undefined,
+      itemIds: ['once'],
+    });
+  });
+
+  it('offers no New routine… with Organize off, as the item dialog shows no band', () => {
+    disableExtensions(EXT_ORGANIZE);
+    hosted.current = true;
+    render(<LiveRow id="once" />);
+    expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-edit-routine')).toBeNull();
+  });
+
+  it('files items into a just-made project only once its row exists', async () => {
+    let land!: () => void;
+    vi.mocked(db.createProject).mockImplementationOnce(() => new Promise<void>((r) => (land = r)) as never);
+    const id = store().addProject('Body', '')!;
+    store().setItemsProject(['once'], 'Body');
+    expect(itemById('once').projectId).toBe(id);
+    await Promise.resolve();
+    expect(db.updateItem).not.toHaveBeenCalled();
+    land();
+    await vi.waitFor(() => expect(db.updateItem).toHaveBeenCalledWith('once', 'task', expect.objectContaining({ projectId: id })));
+  });
+
+  it('holds New… back while the Organize console is open over the planner', () => {
+    hosted.current = true;
+    useUIStore.setState({ activeDialog: { type: 'organize' } });
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).queryByTestId('item-menu-edit-routine')).toBeNull();
+    openPane(menu, 'project');
+    expect(screen.queryByTestId('bulk-new-option')).toBeNull();
+  });
+
+  it('removes the item from the routines it is in, at the foot of the pane', () => {
+    usePlannerStore.setState({
+      routines: [
+        { id: 'r1', name: 'Mornings', itemIds: ['once'] },
+        { id: 'r2', name: 'Evenings', itemIds: [] },
+      ] as never,
+    });
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(summaryOf(menu, 'routine')).toHaveTextContent('Mornings');
+    openPane(menu, 'routine');
+    const remove = screen.getByTestId('bulk-remove-option');
+    expect(remove).toHaveTextContent('Remove from Mornings');
+    fireEvent.click(remove);
+    expect(store().routines.find((r) => r.id === 'r1')!.itemIds).not.toContain('once');
+  });
+
+  it('offers Remove from project only once the item is filed', () => {
+    render(<LiveRow id="once" />);
+    openPane(rightClick(cardOf('once')), 'project');
+    const unfile = () =>
+      screen.queryAllByTestId('bulk-project-option').find((el) => el.getAttribute('data-project-id') === '');
+    expect(unfile()).toBeUndefined();
+    cleanup();
+
+    store().updateTask('once', { project: 'Work' } as never);
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(summaryOf(menu, 'project')).toHaveTextContent('Work');
+    openPane(menu, 'project');
+    expect(unfile()).toHaveTextContent('Remove from project');
+    fireEvent.click(unfile()!);
+    expect(itemById('once').project).toBeUndefined();
   });
 });
 

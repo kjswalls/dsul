@@ -289,6 +289,47 @@ describe('ContainerDialog', () => {
     expect(addRoutine).toHaveBeenCalledWith(expect.objectContaining({ name: 'Evenings', itemIds: [] }));
   });
 
+  it('starts a routine or goal with the items it was opened with, eligible ones only', () => {
+    const addRoutine = vi.fn(() => 'r-new');
+    const addGoal = vi.fn(() => 'g-new');
+    seed({
+      items: [
+        { type: 'task', id: 't1', title: 'Stretch', status: 'pending', completedDates: [], skippedDates: [] },
+        { type: 'task', id: 'sub', title: 'Sub', parentItemId: 't1', status: 'pending', completedDates: [], skippedDates: [] },
+      ],
+      addRoutine,
+      addGoal,
+    });
+    render(
+      <ContainerDialog state={{ kind: 'routine', title: 'Mornings', itemIds: ['t1', 'sub', 'gone'] }} onOpenChange={() => {}} />
+    );
+    fireEvent.click(screen.getByTestId('routine-dialog-add'));
+    // A subtask is not collectible and a missing id is dropped.
+    expect(addRoutine).toHaveBeenCalledWith(expect.objectContaining({ name: 'Mornings', itemIds: ['t1'] }));
+    cleanup();
+
+    render(<ContainerDialog state={{ kind: 'goal', title: 'Limber', itemIds: ['t1'] }} onOpenChange={() => {}} />);
+    fireEvent.click(screen.getByTestId('goal-dialog-add'));
+    expect(addGoal).toHaveBeenCalledWith(expect.objectContaining({ memberIds: ['t1'] }));
+  });
+
+  it('files the items it was opened with into a new project', () => {
+    seed({
+      items: [{ type: 'task', id: 't1', title: 'Stretch', status: 'pending', completedDates: [], skippedDates: [] }],
+    });
+    render(<ContainerDialog state={{ kind: 'project', title: 'Body', itemIds: ['t1'] }} onOpenChange={() => {}} />);
+    expect(screen.getByTestId('project-dialog-seeded')).toHaveTextContent('Files “Stretch” into it.');
+    fireEvent.click(screen.getByTestId('project-dialog-add'));
+    const store = () => usePlannerStore.getState();
+    expect(store().projects.map((p) => p.name)).toEqual(['Body']);
+    expect(store().items.find((i) => i.id === 't1')?.project).toBe('Body');
+    // Two steps back: the filing, then the project.
+    store().undo();
+    expect(store().items.find((i) => i.id === 't1')?.project).toBeUndefined();
+    store().undo();
+    expect(store().projects).toEqual([]);
+  });
+
   it('"Add & open" goes straight to the console on the new object', () => {
     usePlannerStore.setState({ addSeason: vi.fn(() => 'p-new') });
     newContainer('season', { title: 'Winter block' });

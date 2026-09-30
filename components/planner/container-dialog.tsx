@@ -34,6 +34,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
+import { canBulkCollect, canBulkSetProject } from '@/lib/bulk-edit';
 import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { useOpenConsole } from '@/lib/console-door';
 import { CONTAINER_KINDS, sameContainerName } from '@/lib/container-registry';
@@ -64,6 +65,8 @@ export interface ContainerDialogState {
   kind: NewContainerKind;
   title?: string;
   notes?: string;
+  /** Items it starts with — the right-click menu's "New routine…". */
+  itemIds?: string[];
 }
 
 /** See ItemDialog's CLOSE_ANIMATION_GRACE_MS — the same exit, the same grace. */
@@ -159,6 +162,13 @@ export function ContainerDialog({
   );
 }
 
+/** "Files “Water the plants” into it." — or a count, for a selection. */
+function seededLine(ids: string[]): string {
+  if (ids.length > 1) return `Files ${ids.length} items into it.`;
+  const title = usePlannerStore.getState().items.find((i) => i.id === ids[0])?.title;
+  return title ? `Files “${title}” into it.` : 'Files 1 item into it.';
+}
+
 // Moved to the shared body; re-exported for the callers that import it here.
 export { seasonRunsCopy } from '@/components/planner/organize/container-fields';
 
@@ -183,6 +193,7 @@ function ContainerForm({
   const collectionsAvailable = usePlannerStore((s) => s.collectionsAvailable);
   const projects = usePlannerStore((s) => s.projects);
   const addProject = usePlannerStore((s) => s.addProject);
+  const setItemsProject = usePlannerStore((s) => s.setItemsProject);
   const organizeOn = useOrganizeEnabled();
   const { todayStr, tz } = useToday();
   // Only a project name can be held by the bin (projects_user_id_name_key is
@@ -196,9 +207,24 @@ function ContainerForm({
   // Every field the kind has, with its defaults: Active, a goal's window opening
   // today, a season on its (absent) dates. The shared body renders it; see
   // organize/container-fields.tsx.
-  const [draft, setDraft] = useState<ContainerDraft>(() =>
-    initialDraft(kind === 'project' ? 'goal' : kind, todayStr, payload.notes)
-  );
+  // The items it was opened with, as far as this kind can hold them: the same
+  // eligibility the menu that sent them filters by, re-asked here because a
+  // trip through the type menu carries a project's list to a routine.
+  const [seeded] = useState<string[]>(() => {
+    const byId = new Map(usePlannerStore.getState().items.map((i) => [i.id, i]));
+    const fits = kind === 'project' ? canBulkSetProject : canBulkCollect;
+    return (payload.itemIds ?? []).filter((id) => {
+      const item = byId.get(id);
+      return !!item && fits(item);
+    });
+  });
+  const [draft, setDraft] = useState<ContainerDraft>(() => {
+    const d = initialDraft(kind === 'project' ? 'goal' : kind, todayStr, payload.notes);
+    // A goal holds them as members; a routine or season as its items.
+    if (kind === 'goal') return { ...d, memberIds: seeded };
+    if (kind !== 'project') return { ...d, itemIds: seeded };
+    return d;
+  });
   const nameRef = useRef<HTMLInputElement>(null);
 
   const trimmed = name.trim();
@@ -236,7 +262,13 @@ function ContainerForm({
     if (kind === 'project') {
       const notes = draft.why.trim();
       const extra = { ...(color ? { color } : {}), ...(notes ? { notes } : {}) };
-      return addProject(trimmed, icon ?? '', Object.keys(extra).length ? extra : undefined);
+      const id = addProject(trimmed, icon ?? '', Object.keys(extra).length ? extra : undefined);
+      // Filed as its own step, not folded into the create's ⌘Z: addProject
+      // pins its history entry at set() time for a refused insert to rename,
+      // and inside a batch that entry would be the user's previous action.
+      // The store holds the items' writes until the project's row exists.
+      if (id && seeded.length > 0) setItemsProject(seeded, trimmed);
+      return id;
     }
     return createFromDraft(kind, trimmed, icon, draft, todayStr, tz);
   };
@@ -319,7 +351,9 @@ function ContainerForm({
                 onPickType={(type) => openAddDialog(type, undefined, undefined, trimmed || undefined)}
                 onPickOrganizer={(next) => {
                   const why = draft.why.trim();
-                  if (next !== kind) openNewContainer(next, trimmed || undefined, why || undefined);
+                  if (next !== kind) {
+                    openNewContainer(next, trimmed || undefined, why || undefined, payload.itemIds);
+                  }
                 }}
                 close={closeMenu}
               />
@@ -348,6 +382,13 @@ function ContainerForm({
           <div className="flex flex-wrap items-center gap-1.5">
             <ColorChip value={color} onChange={setColor} testId="project-dialog-color" />
           </div>
+          {/* A routine or goal shows what it starts with in its member list; a
+              project has none, so it says so in a line. */}
+          {seeded.length > 0 && (
+            <p className="text-muted-foreground text-xs" data-testid="project-dialog-seeded">
+              {seededLine(seeded)}
+            </p>
+          )}
           {/* Shown, not just carried: converting an item brings its notes. */}
           <NotesField
             value={draft.why}
