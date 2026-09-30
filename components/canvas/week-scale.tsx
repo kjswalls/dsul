@@ -21,7 +21,7 @@ import { cn } from '@/lib/utils';
  * The week scale — how wide a day column is, as a notched slider.
  *
  * Lives on the canvas header row beside the header capsule rather than inside
- * it: the capsule's pill answers "what am I looking at" (type · layout · scope)
+ * it: the capsule's pill answers "what am I looking at" (layout · scope)
  * and is already at its horizontal budget, while this answers "how big", which
  * is a different question and one that only exists in two of the six views.
  * Sitting at the far end of the same `canvas-container` row puts it on the

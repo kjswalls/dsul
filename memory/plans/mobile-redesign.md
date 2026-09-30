@@ -41,6 +41,10 @@ Nothing else floats. The header card and the dock card bookend every screen.
 - **Row 2 (Today screens)**: the week strip — seven evenly spaced columns, each a
   weekday initial (9px, muted) above the numeral (12px), and a **lime underline**
   (16×3, radius 2) under the selected day. No filled circle, no chevrons.
+- **Under the strip, only while they have something to say**: the day's review notice
+  (`notices-in-place.md`), then the canvas's Display shelf (`display-menu.md`, the
+  2026-09-26 addendum). Both grow the card downward, and the day under it re-fits its
+  hour rows.
 - **Dateless tabs (Braindump, Beacon)** use the *desktop braindump header* verbatim
   instead: a `surface-3` capsule (radius 10, `px-[10px] py-[6px]`,
   `shadow-[var(--shadow-elev-bar)]`) framing a 37px `surface-2` row-pill (radius 10,

@@ -131,10 +131,11 @@ export function NoticeSlot({
  * date"), and E generalises that precedent rather than inventing a second one.
  *
  * It costs the row nothing: the row's height is max(children) and the header
- * capsule already sets that at 96, so an h-8 line beside it is free. The foot of
- * the day column, which this replaced, was not free — lib/use-fit-hour-px.ts
- * reserves 24px below the schedule grid and counts only the chrome above it, so
- * a 34px row down there made a compressed day scroll.
+ * capsule already sets that at 96 or more (more while its Display shelf shows),
+ * so an h-8 line beside it is free. The foot of the day column, which this
+ * replaced, was not free — lib/use-fit-hour-px.ts reserves 24px below the
+ * schedule grid and counts only the chrome above it, so a 34px row down there
+ * made a compressed day scroll.
  *
  * `scope` overrides the view store, for the mobile shell: MobileViewRouter is
  * day-only and hardcodes it, while a stale `scope: 'week'` can persist in that

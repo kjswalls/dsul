@@ -510,6 +510,12 @@ describe('the ✕ is Reset display', () => {
   it('hands focus to the trigger before the reset takes the shelf away', () => {
     seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
     renderBraindump();
+    // BEFORE: React batches the reset's re-render past the handler either
+    // way, so only what the trigger sees as focus lands can tell the order.
+    let setWhenFocused: string | null = null;
+    trigger().addEventListener('focus', () => {
+      setWhenFocused = useViewStore.getState().braindumpGroupBy;
+    });
     resetX().focus();
 
     fireEvent.click(resetX());
@@ -517,6 +523,7 @@ describe('the ✕ is Reset display', () => {
     expect(queryShelf()).toBeNull();
     // Not <body>, where a focused button that unmounts leaves it.
     expect(document.activeElement).toBe(trigger());
+    expect(setWhenFocused).toBe('project');
   });
 
   it('shows only while there is more than one thing to take off', () => {
@@ -909,19 +916,21 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('line');
   });
 
-  it('stacks when the line will not fit, comes back when it will, and re-fits on a change of text', () => {
+  it('stacks when the line will not fit, comes back when it will, and re-fits on a change of text', async () => {
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
     renderBraindump();
 
-    // Two lines of 100 in a box of 150. The shelf measured 0 at mount, so this
-    // first resize is where it measures.
+    // Two lines of 100 in a box of 150. The shelf measured 0 at mount, so the
+    // frame after this first resize is where it measures.
     layOut();
     boxWidth = 150;
     resize();
+    await nextFrame();
     expect(fit()).toBe('stack');
 
     boxWidth = 250;
     resize();
+    await nextFrame();
     expect(fit()).toBe('line');
 
     // A third line, and no resize: the text changed, so the shelf re-fits itself.
@@ -931,10 +940,9 @@ describe('fit: one line, or the stack', () => {
     expect(fit()).toBe('stack');
   });
 
-  it('only compares on a resize — the width it measured is not re-read there, or after', async () => {
-    // Forcing the one-line layout to measure inside observer delivery is how a
-    // resize loop starts; a resize reuses the width the text last measured. And
-    // not a frame later either: the column resizes on every frame of a drag.
+  it('only compares on a resize — the width it measured is not re-read', async () => {
+    // A resize reuses the width the text last measured: the column resizes on
+    // every frame of a drag, and each measure forces the one-line layout.
     layOut();
     boxWidth = 250;
     seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
@@ -991,7 +999,7 @@ describe('fit: one line, or the stack', () => {
 
     lineWidthOf = () => 150;
     resample(80);
-    // Never inside the observer's own delivery, where it only compares.
+    // Never inside the observer's own delivery, which writes nothing.
     expect(fit()).toBe('line');
     await nextFrame();
     expect(fit()).toBe('stack');
@@ -1023,14 +1031,93 @@ describe('fit: one line, or the stack', () => {
     await firstDelivery();
     expect(fit()).toBe('line');
 
-    // One delivery: the column widens by 10 as the text widens by half.
+    // One delivery: the column widens by 10 as the text widens by half. Had
+    // the frame after it only compared, the old text's 200 would still fit.
     boxWidth = 260;
     lineWidthOf = () => 150;
     deliver([probe(), boxWidth], [sample(), 105]);
-    // The delivery only compares, and the width it has is the old text's...
-    expect(fit()).toBe('line');
-    // ...until the frame after, which measures the new one.
     await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('writes nothing inside the observer\'s delivery, and fits in the frame after it', async () => {
+    // A fit that changes changes the shelf's height, and under the canvas
+    // header's pill that resizes the view's scroll viewport, which useFitHourPx
+    // watches at the probe's own depth. Written mid-delivery, the engine skips
+    // that observation and raises a "ResizeObserver loop" error on the page.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(fit()).toBe('line');
+
+    boxWidth = 150;
+    resize();
+    expect(fit()).toBe('line');
+    await nextFrame();
+    expect(fit()).toBe('stack');
+
+    // And back: an unstack saved a frame by deciding it in the delivery brings
+    // the same error back on every widen.
+    boxWidth = 250;
+    resize();
+    expect(fit()).toBe('stack');
+    await nextFrame();
+    expect(fit()).toBe('line');
+  });
+
+  it('keeps a measure asked for by an earlier delivery in the same frame', async () => {
+    // The text grows, then the column moves, before the frame runs: the frame
+    // the first delivery asked for serves both, and still measures.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    await firstDelivery();
+    expect(fit()).toBe('line');
+
+    lineWidthOf = () => 150;
+    resample(80);
+    resize();
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('keeps a measure asked for by a later delivery in the same frame', async () => {
+    // The column moves, then the text grows, before the frame runs: a frame
+    // already asked for serves every delivery before it runs, the later ones
+    // too.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    await firstDelivery();
+    expect(fit()).toBe('line');
+
+    lineWidthOf = () => 150;
+    resize();
+    resample(80);
+    await nextFrame();
+    expect(fit()).toBe('stack');
+  });
+
+  it('measures nothing inside a delivery, the first one too, only in the frame after it', async () => {
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    layOut();
+    boxWidth = 150;
+    const laidOut = Element.prototype.getBoundingClientRect;
+    let lineReads = 0;
+    Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
+      if (this.hasAttribute('data-line')) lineReads += 1;
+      return laidOut.call(this);
+    } as Element['getBoundingClientRect'];
+
+    resize();
+    expect(lineReads).toBe(0);
+
+    await nextFrame();
+    expect(lineReads).toBeGreaterThan(0);
     expect(fit()).toBe('stack');
   });
 
@@ -1053,6 +1140,28 @@ describe('fit: one line, or the stack', () => {
     resample(80);
     await nextFrame();
     expect(fit()).toBe('stack');
+  });
+
+  it('fits nothing while hidden, so it comes back in the fit it left in', async () => {
+    // display:none takes the lines box to 0, where every line is too wide: a
+    // fit there would write the stack, and the shelf's return would paint it
+    // for a frame before the frame after put the line back.
+    layOut();
+    boxWidth = 250;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    await firstDelivery();
+    expect(fit()).toBe('line');
+
+    boxWidth = 0;
+    deliver([probe(), 0], [sample(), 0]);
+    await nextFrame();
+    expect(fit()).toBe('line');
+
+    boxWidth = 250;
+    deliver([probe(), 250], [sample(), 70]);
+    await nextFrame();
+    expect(fit()).toBe('line');
   });
 
   it('watches its probe and its sample, and nothing whose size the fit decides', () => {
@@ -1266,6 +1375,12 @@ describe('the two mounts', () => {
     }
     // The lines box clips, so it carries the reach's 5px inside it.
     expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('-my-[5px]', 'py-[5px]');
+    // And the rows a line or a list wraps into keep that 5px between them, or
+    // one row's reach lies over the next row's words.
+    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass(
+      '[&_[data-clause]]:gap-y-[5px]',
+      '[&_[data-line]]:gap-y-[5px]'
+    );
     // The phone tab has no collapsing column to hold a fit through.
     expect(shelf().style.minWidth).toBe('');
     cleanup();
@@ -1274,6 +1389,9 @@ describe('the two mounts', () => {
     expect(opener()).not.toHaveClass('before:absolute');
     expect(resetX()).not.toHaveClass('before:absolute');
     for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
+    // No reach, so no gap to keep for one: the sidebar keeps its density.
+    expect(shelf().querySelector('[data-shelf-lines]')).not.toHaveClass('[&_[data-clause]]:gap-y-[5px]');
+    expect(shelf().querySelector('[data-shelf-lines]')).not.toHaveClass('[&_[data-line]]:gap-y-[5px]');
     // The narrowest column, less the capsule's 10px sides.
     expect(shelf().style.minWidth).toBe(`${SIDEBAR_MIN_WIDTH - 20}px`);
   });
@@ -1330,6 +1448,23 @@ describe('the two mounts', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
   });
 
+  // The sidebar's stack has the canvas's overlap too (a ×'s tip over the × on
+  // the line below), so its tips let a click through as well.
+  it.each([
+    { name: 'reset', x: () => resetX() },
+    { name: 'per-setting', x: () => removeXs()[0] },
+  ])('lets a click through its $name ×’s tip in the sidebar too', async ({ x }) => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+    renderBraindump();
+    fireEvent.pointerEnter(x());
+    fireEvent.pointerMove(x());
+    const tip = (await screen.findByRole('tooltip')).closest('[data-slot="tooltip-content"]')!;
+    expect(tip).toHaveAttribute('data-pass-through');
+    expect(
+      tip.parentElement!.matches('[data-radix-popper-content-wrapper]:has(> [data-pass-through])')
+    ).toBe(true);
+  });
+
   it.each([
     { name: 'reset', x: () => resetX() },
     { name: 'per-setting', x: () => removeXs()[0] },
@@ -1342,6 +1477,20 @@ describe('the two mounts', () => {
     await new Promise((r) => setTimeout(r, 300));
     expect(screen.queryByRole('tooltip')).toBeNull();
     expect(x()).not.toHaveAttribute('title');
+  });
+
+  it('resets on the phone from the sheet its text opens, and focus lands on the trigger', async () => {
+    touch.current = true;
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump('mobile');
+
+    fireEvent.click(opener());
+    fireEvent.click(within(screen.getByTestId('display-menu')).getByTestId('display-reset'));
+
+    expect(queryShelf()).toBeNull();
+    expect(useViewStore.getState().braindumpGroupBy).toBe('none');
+    await finishExit();
+    await waitFor(() => expect(document.activeElement).toBe(trigger()));
   });
 });
 
