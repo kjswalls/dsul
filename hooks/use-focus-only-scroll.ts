@@ -35,9 +35,9 @@ import { useEffect, type RefObject } from 'react';
  * the move leaves it cut. Otherwise one that shows, whole or cut part-way,
  * keeps the slide the hook last made, as the browser would leave it, and the
  * tooltip focus opened stays up, unless the slide was made for a layout that is
- * gone and cuts it (below). A slide the hook did not make comes back as far as
- * that least one: the browser centres what it reveals (Zen slid Week 212px at
- * 1240, where 47 shows it).
+ * gone and cuts it by more than a pixel (below). A slide the hook did not make
+ * comes back as far as that least one: the browser centres what it reveals (Zen
+ * slid Week 212px at 1240, where 47 shows it).
  *
  * A key moving focus along the row the box slid for keeps the slide too, for a
  * control that shows whole there, even where it would show at rest, for as long
@@ -59,26 +59,35 @@ import { useEffect, type RefObject } from 'react';
  * holds that slide for as long as it keeps focus and shows whole, even where it
  * would show at rest, so a key that moves it (Next paging the date, an arrow on
  * WeekScale's thumb) moves the canvas only when it has to. By then the slide it
- * holds can be more than it needs. A click on a button holds nothing: a button
- * the click moves (Next) is placed afresh. Where the slide was made for it,
- * that keeps it at the box's edge, under the pointer for the next click; where
- * the row only kept the slide and it shows at rest, the box goes back to rest,
- * and the canvas moves under the pointer by that slide. WeekScale's thumb is
- * not a button, and still holds when a pointer moves it.
+ * holds can be more than it needs. One the layout moves while it shows whole at
+ * rest holds rest the same way. A width change, or a scroll something else
+ * makes, places it again by the rules above, and from there it holds wherever
+ * it shows whole. A click on a button holds nothing: a button the click moves
+ * (Next) is placed afresh. Where the slide was made for it, that keeps it at
+ * the box's edge, under the pointer for the next click; where the row only kept
+ * the slide and it shows at rest, the box goes back to rest, and the canvas
+ * moves under the pointer by that slide. WeekScale's thumb is not a button, and
+ * still holds when a pointer moves it.
  *
  * A slide made for a layout that is gone places afresh a control focus comes to
- * that it cuts. Focus moving on from a held slide finds one, held for the
- * control focus left, and so does focus moving on from a slide made for a
- * control wider than the box, which put that control's start at the edge
- * whatever it cut. So does focus coming to a control the layout has moved, or
- * mounted, since the hook made the slide: switching the view from its menu, or
- * by a key with focus on a pill the switch leaves in place, moves Zen, and the
- * slide the row kept for the pill would cut it; the shelf mounts its reset ✕
- * afresh as a second setting comes on. The hook notes where each control of the
- * row sat when it made its slide. One the slide cuts at an edge that sits where
- * it sat is cut as it was then, and keeps the slide, cut part-way, as the
- * browser would leave it: the shelf's text, cut at its start, keeps it while a
- * setting added or taken off moves its end.
+ * that it cuts by more than a pixel. Focus moving on from a control the layout
+ * moved while it showed whole, other than a button under a click, finds one,
+ * even at rest, and wherever a width change or a scroll something else made has
+ * placed the box since: after Next pages the date, Go to today comes in whole,
+ * and after `v` switches between Day and Week under the focused Display
+ * trigger, so does Zen, which closes the tooltip focus opens on it. So does
+ * focus moving on from a slide placed while a control wider than the box had
+ * focus, which puts that control's start at the edge, or keeps a slide
+ * something else made short of it, whatever it cuts. So does focus coming to a
+ * control the layout has moved, or mounted, since the hook made the slide:
+ * switching the view from its menu, or by a key with focus on a pill the switch
+ * leaves in place, moves Zen, and the slide the row kept for the pill would cut
+ * it; the shelf mounts its reset ✕ afresh as a second setting comes on. The
+ * hook notes where each control of the row sat when it made its slide. One
+ * whose every edge the slide cuts sits where it sat is cut as it was then, and
+ * keeps the slide, cut part-way, as the browser would leave it: the shelf's
+ * text, cut at its start alone, keeps it while a setting added or taken off
+ * moves its end within view.
  *
  * Four more holds, whatever has focus. While a pointer is down nothing moves: a
  * press moves focus, and sliding the box before the release moves what was
@@ -110,17 +119,19 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     let placed = box.scrollLeft;
     let width = box.clientWidth;
     let last: Span | null = null;
-    // The slide the hook last made, rather than kept: the row it was made in,
-    // where each control of that row sat at rest then, and whether it was made
-    // for a control wider than the box, which puts that control's start at the
-    // edge whatever it cuts of the rest. A control of that row the slide now
-    // cuts elsewhere than it did then, or one new to the row, was moved by a
-    // layout the slide was not made for.
+    // The slide the hook last placed, other than one it held or kept unchanged
+    // for a control that stayed put: the row it was placed in, where each
+    // control of that row sat at rest then, and whether a control wider than
+    // the box had focus, which puts that control's start at the edge, or keeps
+    // a slide something else made short of it, whatever it cuts of the rest. A
+    // control of that row the slide now cuts elsewhere than it did then, or one
+    // new to the row, was moved by a layout the slide was not made for.
     let made: { row: Element | null; sat: Map<Element, Span>; wide: boolean } | null = null;
-    // Whether the element last placed for holds its slide: the layout moved it,
-    // other than a button under a click, and it still showed whole. It holds
-    // for as long as it keeps focus and keeps showing whole, and never holds a
-    // slide something else made.
+    // Whether the layout last moved the element last placed for while it
+    // showed whole, other than a button under a click. While it keeps focus and
+    // shows whole where the hook last placed the box, at the width it placed it
+    // at, it holds that slide, or rest; focus moving on from it finds a slide
+    // made for a layout that is gone.
     let held = false;
     // Whether the element last placed for keeps a slide made for another
     // control in its row (the child of the box it sits in, noted in `row`):
@@ -173,10 +184,10 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
             // one, and holds).
             const pressed = clicked && inside instanceof HTMLButtonElement;
             // Focus moving on finds a slide made for a layout that is gone when
-            // it was held for the control focus left, or made for a control
-            // wider than the box, or when the layout has moved an edge of the
-            // control focus came to that the slide cuts, or added the control
-            // to the row, since the slide was made.
+            // it was held for the control focus left, or placed while a control
+            // wider than the box had focus, or when the layout has moved an
+            // edge of the control focus came to that the slide cuts, or added
+            // the control to the row, since the slide was made.
             const was = made?.sat.get(inside);
             const elsewhere = was
               ? !cutAlike(was, span, box.scrollLeft, box.clientWidth)
@@ -194,7 +205,12 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
             }
             along = along && shown && !widthChanged && !moved;
             const holds = held && shown && !widthChanged && !moved;
-            const how = widthChanged || shifted || (gone && !shown) ? 'fresh' : moved ? 'moved' : 'kept';
+            // A slide made for a layout that is gone stays for a control it cuts
+            // by a pixel or less, which the observer, its root a pixel wider on
+            // each side, counts as whole: placing it afresh would move the box
+            // at least a pixel and close the tooltip focus opens on it.
+            const near = whole(span, box.scrollLeft - 0.5, box.clientWidth + 1);
+            const how = widthChanged || shifted || (gone && !near) ? 'fresh' : moved ? 'moved' : 'kept';
             x = holds || along ? box.scrollLeft : place(span, box.scrollLeft, box.clientWidth, how);
             // A slide made here, for this control: note where its row sits.
             // (A slide kept along the row is `kept` at the same slide.)
@@ -225,7 +241,9 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     // whole, and a later cut is heard. A cut of a pixel or less is not, nor a
     // move from cut to cut, nor one out of sight that stays within a pixel of
     // the edge; those are placed at the next key, focus move, scroll or
-    // resize.
+    // resize. A move of half a pixel or less since the last pass is taken for
+    // rounding (same()), even one the observer hears: a control a slide kept
+    // cut by a pixel or less, moved on half a pixel, stays cut.
     const seen = new IntersectionObserver(settle, { root: box, rootMargin: '0px 1px', threshold: [0, 1] });
     let watched: Element | null = null;
     let parts: Element[] = [];
@@ -376,7 +394,7 @@ function whole({ from, to }: Span, x: number, width: number) {
  * than a pixel. `how` says what happened since the hook last placed the box:
  * nothing (`kept`), something else scrolled it (`moved`), or its width or the
  * element's place changed, or focus came to it at a slide made for a layout
- * that is gone and that cuts it (`fresh`).
+ * that is gone and that cuts it by more than a pixel (`fresh`).
  */
 function place({ from, to }: Span, x: number, width: number, how: 'kept' | 'moved' | 'fresh') {
   const over = to - width;

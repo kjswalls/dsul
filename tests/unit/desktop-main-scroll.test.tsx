@@ -148,6 +148,15 @@ function focusAndReveal(main: HTMLElement, id: string, by: number) {
   fireEvent.scroll(main);
 }
 
+/** A control the layout mounts in the header row after the fact. */
+function mount(id: string, left: number, width: number) {
+  const el = document.createElement('button');
+  el.dataset.testid = id;
+  screen.getByTestId('cut-control').parentElement!.appendChild(el);
+  place(id, left, width);
+  return el;
+}
+
 /** A Radix menu portals its content into <body>, outside the shell. */
 function openMenu() {
   const item = document.createElement('button');
@@ -478,15 +487,6 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       return main;
     }
 
-    /** A control the layout mounts in the header row after the fact. */
-    function mount(id: string, left: number, width: number) {
-      const el = document.createElement('button');
-      el.dataset.testid = id;
-      screen.getByTestId('cut-control').parentElement!.appendChild(el);
-      place(id, left, width);
-      return el;
-    }
-
     /** Enter on Scope, and a pick in its menu that switches Day to Week. */
     async function switchFromMenu(moves: () => void) {
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Enter' });
@@ -607,8 +607,9 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       render(<DesktopShell />);
       const main = await layOut();
       // The shelf's text, 40 to 320 from <main>'s inner edge: 20 shows its
-      // end, and 51 cuts its start.
+      // end, and 51 cuts its start. A setting's ✕ sits on it, 150 to 164.
       place('wide-control', 141, 280);
+      const x = mount('x-control', 251, 14);
       focusAndReveal(main, 'clipped-control', 100);
       await frame();
       fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab', shiftKey: true });
@@ -616,22 +617,32 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       await frame();
       expect(main.scrollLeft).toBe(51);
       // Week to Day from Scope's menu: its label narrows 10px, and what comes
-      // after it, the text's end with it, comes 10px back.
+      // after it, the text's end and its ✕ with it, comes 10px back.
       await switchFromMenu(() => {
         place('mid-control', 200, 22);
         place('cut-control', 380, 32);
         place('clipped-control', 410, 32);
         place('wide-control', 141, 270);
+        place('x-control', 241, 14);
       });
       expect(main.scrollLeft).toBe(51);
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
       act(() => screen.getByTestId('cut-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
-      // Cut at its start at 51 as it was when 51 was made: kept, and the
-      // reset ✕ two stops on keeps its tooltip.
+      // Cut at its start at 51 as it was when 51 was made: kept...
       fireEvent.keyDown(screen.getByTestId('cut-control'), { key: 'Tab' });
       act(() => screen.getByTestId('wide-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // ...and so is the ✕ on it, whole at 51, and the reset ✕ two stops on,
+      // whole there too, keeps its tooltip.
+      fireEvent.keyDown(screen.getByTestId('wide-control'), { key: 'Tab' });
+      act(() => x.focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      fireEvent.keyDown(x, { key: 'Tab' });
+      act(() => screen.getByTestId('clipped-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
     });
@@ -681,6 +692,25 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(59);
     });
 
+    it('places afresh a control it cuts at a start the layout has moved, though its end sits where it did', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // The text, 40 to 320: 51 cuts its start, and 20 shows it whole.
+      place('wide-control', 141, 280);
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab', shiftKey: true });
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // Its start comes 10px back, to 30, and its end stays at 320.
+      place('wide-control', 131, 290);
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
+      act(() => screen.getByTestId('wide-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(20);
+    });
+
     it('places afresh a control mounted in the row since the slide was made, where the slide cuts it', async () => {
       const main = await backToScope();
       // The reset ✕ mounted again as a second setting comes back: 324 to 356,
@@ -690,6 +720,16 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => mounted.focus());
       await frame();
       expect(main.scrollLeft).toBe(56);
+    });
+
+    it('keeps the slide for a control mounted in the row since it was made, where it cuts it by a pixel or less', async () => {
+      const main = await backToScope();
+      // 330 to 352, a pixel past the edge at 51, which the observer counts as whole.
+      const mounted = mount('mounted-control', 431, 22);
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
+      act(() => mounted.focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
     });
 
     it('keeps the slide, cut part-way, for a slider thumb that has not moved since it was made', async () => {
@@ -710,6 +750,44 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       const main = await backToScope();
       // The text, cut at both ends at 51, a third of a pixel on from where it sat.
       place('wide-control', 110.3, 370);
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
+      act(() => screen.getByTestId('wide-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('takes a cut edge that moved more than half a pixel since the slide as moved', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // 330 to 362: 51 cuts 11px of it at its end.
+      const far = mount('far-control', 431, 32);
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab', shiftKey: true });
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // Its end runs 0.7px on: placed afresh, at 63.
+      place('far-control', 431, 32.7);
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
+      act(() => far.focus({ preventScroll: true }));
+      await frame();
+      expect(main.scrollLeft).toBe(63);
+    });
+
+    it('takes an edge half a pixel or less past the edge as one the slide leaves whole, whatever moved it', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // The text, 40 to 339.7: 51 cuts its start and shows its end.
+      place('wide-control', 141, 299.7);
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab', shiftKey: true });
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // A setting runs its end on to 351.3, 0.3px past the right edge at 51.
+      place('wide-control', 141, 311.3);
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
       act(() => screen.getByTestId('wide-control').focus());
       await frame();
@@ -838,6 +916,48 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('mid-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(17);
+    });
+
+    // A cut of a pixel or less, which the observer counts as whole, keeps the
+    // slide, where 10 would close the ✕'s tooltip. A cut of more is placed
+    // afresh.
+    it.each([
+      ['0.55px, and keeps it', 0.55, 9],
+      ['a pixel, and keeps it', 1, 9],
+      ['1.01px, and places it afresh', 1.01, 11],
+    ])(
+      'judges a control the slide made for the shelf text, wider than <main>, cuts by %s',
+      async (_, cut, slide) => {
+        render(<DesktopShell />);
+        const main = await layOut();
+        // A setting's ✕, 14px wide, its end `cut` past the edge at 9.
+        place('mid-control', 101 + 245 + cut, 14);
+        act(() => screen.getByTestId('wide-control').focus());
+        await frame();
+        size(main, 250);
+        act(() => resizeCallbacks.forEach((notify) => notify()));
+        await frame();
+        expect(main.scrollLeft).toBe(9);
+        fireEvent.keyDown(screen.getByTestId('wide-control'), { key: 'Tab' });
+        act(() => screen.getByTestId('mid-control').focus());
+        await frame();
+        expect(main.scrollLeft).toBe(slide);
+      }
+    );
+
+    it('keeps the slide made for a control exactly as wide as <main>, which shows it whole, for the next control it cuts', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // 10 to 310, exactly 300 wide: 10 shows it whole.
+      place('wide-control', 111, 300);
+      focusAndReveal(main, 'wide-control', 30);
+      await frame();
+      expect(main.scrollLeft).toBe(10);
+      // Zen (289 to 321) shows 21px of 32 at 10, where it sat when 10 was made.
+      fireEvent.keyDown(screen.getByTestId('wide-control'), { key: 'Tab', shiftKey: true });
+      act(() => screen.getByTestId('cut-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(10);
     });
 
     it('forgets the slide it noted while the row fits at rest', async () => {
@@ -1316,6 +1436,54 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(31);
     });
 
+    it('places afresh a control focus moves on to that the slide cuts, though <main> changed width under the hold', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // 330 to 362: 62 shows it whole in 300px, and 52 in 310.
+      const far = mount('far-control', 431, 32);
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      size(main, 310);
+      act(() => resizeCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(31);
+      // 11px of it shows at 31: the control focus left still holds, so this
+      // one is placed afresh.
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab' });
+      act(() => far.focus({ preventScroll: true }));
+      await frame();
+      expect(main.scrollLeft).toBe(52);
+    });
+
+    it('places afresh a control focus moves on to that rest cuts, though a width change put the hold at rest', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      place('scale-thumb', 300, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      expect(main.scrollLeft).toBe(45);
+      // <main> widens 10px, and the thumb, which shows at rest, goes there.
+      size(main, 310);
+      act(() => resizeCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      // Zen (289 to 321), 21px of 32 showing at rest: 11 shows it whole.
+      fireEvent.keyDown(thumb, { key: 'Tab' });
+      act(() => screen.getByTestId('cut-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(11);
+    });
+
     it('lets go when focus leaves <main>, so a reveal on the way back comes back as far as the least slide', async () => {
       render(<DesktopShell />);
       const main = await layOut();
@@ -1346,7 +1514,8 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('sidebar-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(0);
-      // No slide is held any more, so nothing places this one afresh.
+      // Focus comes from outside <main>, not from the control that held, so
+      // nothing places this one afresh.
       act(() => screen.getByTestId('cut-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(0);
@@ -1370,6 +1539,64 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       fireEvent.scroll(main);
       await frame();
       expect(main.scrollLeft).toBe(0);
+    });
+
+    it('places afresh a control focus moves on to that rest cuts, though something else slid <main> under the hold', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const thumb = screen.getByTestId('scale-thumb');
+      act(() => thumb.focus());
+      await frame();
+      place('scale-thumb', 430, 16);
+      fireEvent.keyDown(thumb, { key: 'End' });
+      await frame();
+      place('scale-thumb', 300, 16);
+      fireEvent.keyDown(thumb, { key: 'Home' });
+      await frame();
+      main.scrollLeft = 80;
+      fireEvent.scroll(main);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      // Zen (289 to 321), 11px of 32 showing at rest: 21 shows it whole.
+      fireEvent.keyDown(thumb, { key: 'Tab' });
+      act(() => screen.getByTestId('cut-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(21);
+    });
+
+    it('leaves a held control where a scroll something else made cuts it, short of its least slide', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      place('clipped-control', 410, 32);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // Find in page: 20, where the control needs 41 and shows 11px of 32.
+      main.scrollLeft = 20;
+      fireEvent.scroll(main);
+      await frame();
+      expect(main.scrollLeft).toBe(20);
+    });
+
+    it('holds rest for a control a key moves at rest, and places afresh a control focus moves on to that rest cuts', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      // The Display trigger, as v switches Week to Day under it: 4px on,
+      // whole at rest.
+      const mid = screen.getByTestId('mid-control');
+      act(() => mid.focus());
+      await frame();
+      place('mid-control', 204, 32);
+      fireEvent.keyDown(mid, { key: 'v' });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      // Zen (289 to 321), 11px of 32 showing at rest: 21 shows it whole.
+      fireEvent.keyDown(mid, { key: 'Tab' });
+      act(() => screen.getByTestId('cut-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(21);
     });
 
     it('never holds a slide it did not make, when a menu closes on a control the layout moved', async () => {
@@ -1424,6 +1651,36 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       await frame();
       expect(main.scrollLeft).toBe(9);
     });
+
+    // A cut of a pixel or less, which the observer counts as whole, keeps the
+    // held slide; a cut of more places the control afresh. At its end, a
+    // control from 330 runs `cut` past 351; at its start, the text, to 331
+    // less `cut`, starts `cut` short of 51.
+    it.each([
+      ['end', 1, 51],
+      ['end', 1.01, 53],
+      ['start', 1, 51],
+      ['start', 1.01, 30],
+    ])(
+      'judges a control focus moves on to that the held slide cuts at its %s by %spx',
+      async (edge, cut, slide) => {
+        render(<DesktopShell />);
+        const main = await layOut();
+        let next = screen.getByTestId('wide-control');
+        if (edge === 'end') next = mount('next-control', 431, 21 + cut);
+        else place('wide-control', 101 + 51 - cut, 280);
+        focusAndReveal(main, 'clipped-control', 100);
+        await frame();
+        place('clipped-control', 410, 32);
+        fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Enter' });
+        await frame();
+        expect(main.scrollLeft).toBe(51);
+        fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab' });
+        act(() => next.focus({ preventScroll: true }));
+        await frame();
+        expect(main.scrollLeft).toBe(slide);
+      }
+    );
 
     it('drops its hold while the row fits at rest', async () => {
       render(<DesktopShell />);

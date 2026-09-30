@@ -1321,12 +1321,34 @@ filters only, so any grouping, ordering or type stays named.
   `<main>`, so Enter on Next still holds. A dragged thumb is not a button, and still holds: a
   variant that let go for every pointer move jumped the canvas on the release (62px to 0 at
   1400, 122 to 20 at 1340) and back on the next arrow.
-- Focus moving on from a held slide places the next control afresh if that slide cuts it,
-  because the slide was held for the control focus left. After paging with Enter on Next, Tab
-  onto Go to today showed as little as 3.6% of it under an earlier version, where Chromium
-  alone showed it whole; it now shows whole in all 32 cases tried (Day and Week, 1440 with the
-  720px sidebar and 1300 with 560, after one to eight presses). The same goes for Zen after
-  scope switches moved a focused Display trigger, and that reveal closes Zen's tooltip.
+- Focus moving on from a held slide places the next control afresh if that slide cuts it by more
+  than a pixel, because the slide was held for the control focus left. After paging with Enter on
+  Next, Tab onto Go to today showed as little as 3.6% of it under an earlier version, where
+  Chromium alone showed it whole; it now shows whole in all 32 cases tried (Day and Week, 1440
+  with the 720px sidebar and 1300 with 560, after one to eight presses). The same goes for Zen
+  after scope switches moved a focused Display trigger, and that reveal closes Zen's tooltip.
+  A hold can be at rest too: a control the layout moves while it shows whole at rest holds rest,
+  and focus moving on from it places afresh a control that rest cuts by more than a pixel. With
+  the default sidebar, Enter on Next in Day × Schedule at 1240 and 1260, paging from Tuesday,
+  September 29 to Wednesday, September 30, and then Tab brings Go to today in at 34 and 14px,
+  where Chromium alone leaves 42 and 76% of it showing, and `v` under a focused Display trigger
+  (Week × Schedule to Day at 1250 and 1260, Day to Week at 1270 and 1280) and then Tab brings Zen
+  in at 7 to 26px, which closes its tooltip, where Chromium alone leaves 19 to 81% of it showing
+  with the tooltip up. A width change, or a scroll something else makes, places a holding control
+  again, and it still counts as holding when focus moves on. Review found this closing a tooltip:
+  at 1230 with the default sidebar, Tab onto Zen, Shift+Tab back onto the Display trigger, `v`
+  (Week × Schedule to Day) and the window widened to 1250, which put the trigger's hold at rest,
+  and Tab onto Zen then slid 26px and closed "Enter zen", where forgetting the hold leaves Zen at
+  rest, 19% showing, with its tooltip up. Forgetting it was built and reverted, because a switch
+  to the narrower List with Zen focused pulls `<main>` back, which is a scroll something else
+  makes too, and there forgetting the hold closed more tooltips. With the shelf text wider than
+  `<main>`, the text then kept Zen's slide, cut at its start, as on a Tab from Zen with no switch,
+  and a setting's ✕ after it closed its tooltip as `<main>` moved to show it: the first one in
+  Day × List at 1307 to 1309 with the 720px sidebar, and the priority filter's "High" ✕ at 1273 to
+  1275 with 560 and every setting on. Counting the hold places the text at its start instead. With
+  the pixel rule below, that keeps the first ✕'s tooltip up at 1308 and 1309, and "High"'s at 1273
+  to 1275; a ✕ that slide cuts by more than a pixel still moves `<main>` 2px and closes its own
+  tooltip, the first one at 1307, and at 1273 the "Sorted by Priority" ✕ before "High".
 - So does focus coming to a control the layout has moved since the hook made the slide the row
   keeps, where the move shifts an edge the slide cuts. Review found a view switched from the
   Scope or Layout pill's menu by keys, after a slide made for Zen or the reset ✕: Enter hands
@@ -1335,8 +1357,8 @@ filters only, so any grouping, ordering or type stays named.
   cut at a slide made for where they had been, 21 to 71% and 37 to 92% showing, where the build
   before the along rule showed both whole. The hook now notes where each control of the row sat
   when it made its slide. A control focus comes to that the kept slide cuts at an edge that has
-  moved since, like one that follows a held control, is placed afresh; one the slide cuts at an
-  edge that sits where it sat is cut as it was, and keeps the slide, cut part-way, as Chromium
+  moved since, like one that follows a held control, is placed afresh; one whose every edge the
+  slide cuts sits where it sat is cut as it was, and keeps the slide, cut part-way, as Chromium
   would leave it. In the fourteen cases tried (Day × Schedule, Buckets and List at 1200 to 1240
   with the default sidebar, one with every setting on, Day × Schedule at 1300 with 560, Week ×
   List at 1200), Zen and the reset ✕ now show whole; the reveal closes Zen's tooltip, as any
@@ -1351,12 +1373,19 @@ filters only, so any grouping, ordering or type stays named.
   control that has appeared in the row since the slide was made has no place noted, and counts
   as moved: the shelf mounts its reset ✕ afresh when a second setting comes back, and after a
   switch that moved the header, the kept slide left it 87% showing with its tooltip up, where it
-  now comes in whole. And a slide made for a control wider than `<main>`, which puts that
-  control's start at the edge whatever it cuts, counts as gone for the next control focus comes
-  to: with the 720px sidebar at 1300, the shelf text placed at its start left the next setting's
-  ✕ 36% showing, its tooltip up, where Chromium alone showed it whole (after a layout switch
-  from the palette, which hands focus back to a held Zen; after the item panel docked under the
-  focused text; and after a switch that moved the text), and the ✕ now comes in whole.
+  now comes in whole. And a slide placed while a control wider than `<main>` has focus, which puts
+  that control's start at the edge, or keeps a slide something else made short of it, whatever it
+  cuts, counts as gone for any control focus comes to while it stands: with the 720px sidebar at
+  1300, the shelf text placed at its start left the next setting's ✕ 36% showing, its tooltip up,
+  where Chromium alone showed it whole (after a layout switch from the palette, which hands focus
+  back to a held Zen; after the item panel docked under the focused text; and after a switch that
+  moved the text), and the ✕ now comes in whole. Review then found that rule moving `<main>` a
+  pixel for a ✕ the slide cut by less than one, which closed its tooltip where the build before
+  the rule kept it up: the "Sorted by Priority" ✕, 96% showing, after a switch to Day × List at
+  1274 with the 560px sidebar and every setting on, and the "Grouped by Project" ✕, 93% showing,
+  after a switch to Day × List, or with the item panel docked under the focused text, at 1308 with
+  the 720px sidebar. A control a gone slide cuts by a pixel or less, which the observer counts as
+  whole, now keeps the slide.
 - Chromium scrolls only for a control that is wholly hidden, so one cut part-way keeps the part
   it shows, as it did before, unless that is a pixel or less: the reset ✕ 19% of itself in Week
   at 1265 (with its tooltip), the Display trigger 66% in Day at 1200. The hook's smaller slides
