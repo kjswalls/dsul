@@ -261,3 +261,40 @@ describe('orderRows — Ordering first, then the sink', () => {
     ]);
   });
 });
+
+describe('sinkCompleted — skipped occurrences sink below finished ones', () => {
+  it('moves a skipped habit to the foot of its group, under the done rows', () => {
+    const rows = [
+      habit('skipped', { skippedDates: [DAY], status: 'skipped' }),
+      habit('open'),
+      habit('done', { completedDates: [DAY], status: 'done' }),
+      habit('also open'),
+    ];
+
+    expect(titles(sinkCompleted(rows, DAY))).toEqual(['open', 'also open', 'done', 'skipped']);
+  });
+
+  it('reads the skip per date, so the same habit stays put on another day', () => {
+    const rows = [habit('skipped', { skippedDates: [DAY] }), habit('open')];
+
+    expect(titles(sinkCompleted(rows, OTHER_DAY))).toEqual(['skipped', 'open']);
+  });
+
+  it('leaves the braindump (no date) alone, where no skipped strip is drawn', () => {
+    const rows = [habit('skipped', { skippedDates: [DAY] }), habit('open')];
+
+    expect(titles(sinkCompleted(rows, null))).toEqual(['skipped', 'open']);
+  });
+
+  it('returns the same array when the skipped row is already last', () => {
+    const rows = [habit('open'), habit('skipped', { skippedDates: [DAY] })];
+
+    expect(sinkCompleted(rows, DAY)).toBe(rows);
+  });
+
+  it('keeps a just-skipped row in place while the hold says it is still open', () => {
+    const rows = [habit('skipped', { skippedDates: [DAY] }), habit('open')];
+
+    expect(titles(sinkCompleted(rows, DAY, () => false))).toEqual(['skipped', 'open']);
+  });
+});
