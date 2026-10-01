@@ -421,31 +421,49 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           // Selected == in the multi-select set; drives the persistent highlight.
           data-selected={isMultiSelected ? 'true' : 'false'}
           onClick={handleRowClick}
+          // The strip keeps the default row's grid — same gap, padding, radius
+          // and density — so its leading glyph sits in the checkbox column, its
+          // title starts where every other title starts, and Unskip ends on the
+          // rail's right edge instead of floating 10px inboard of it.
           className={cn(
-            'group relative flex w-full cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5',
+            'group relative flex w-full cursor-pointer items-center gap-3 rounded-[5px] px-2',
+            compact ? 'py-1' : 'py-1.5',
             // Selected keeps a latched wash, a notch above hover (its own indicator).
             isMultiSelected ? 'bg-[var(--row-selected)]' : 'bg-surface-3/60 hover-wash'
           )}
         >
-          <SkipForward className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/60" />
-          <span className="flex-1 truncate text-sm text-muted-foreground/70">{item.title}</span>
+          {/* A 16px slot, the checkbox's exact footprint, so the glyph centres on
+              the leading column the other rows' boxes form. */}
+          <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
+            <SkipForward className="h-3.5 w-3.5 text-muted-foreground/60" />
+          </span>
+          <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+            {item.title}
+          </span>
           <Button
             variant="ghost"
             size="sm"
             data-testid="item-unskip-button"
             className={cn(
-              'px-2 text-xs text-muted-foreground hover:text-foreground',
+              // Tight padding pulled back out with a matching negative margin:
+              // the label lands on the rail's right edge (the duration column's
+              // right-aligned figures), and the hover wash keeps a hairline of
+              // the row's own padding beside it. has-[>svg] is overridden too —
+              // the base size adds 10px there, which is what pushed it inboard.
+              'gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground has-[>svg]:px-1.5',
               // The only control on the strip, and on touch it sits inside a row
               // whose own tap opens the edit dialog — 24px is too fine a target
-              // to aim at with a thumb.
-              isMobile ? 'h-8 px-3' : 'h-6'
+              // to aim at with a thumb. On desktop the negative block margin lets
+              // the 24px target overhang the padding, so the strip is no taller
+              // than the rows around it.
+              isMobile ? 'h-8 px-3 has-[>svg]:px-3' : '-my-1 -mr-1.5 h-6'
             )}
             onClick={(e) => {
               e.stopPropagation();
               setSkipped(false);
             }}
           >
-            <Undo2 className="mr-1 h-3 w-3" />
+            <Undo2 className="h-3 w-3" />
             Unskip
           </Button>
         </div>
