@@ -564,6 +564,9 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             increments — handleHabitToggle counts up and lands on done at target. */}
         <button
           data-testid="item-complete-button"
+          // Read by the `rows: 'text'` layout slot, which draws the tick as
+          // [ ] / [~] / [x] (app/globals.css) — CSS cannot see `completed`.
+          data-checked={completed ? 'true' : multiPartial ? 'partial' : 'false'}
           onClick={(e) => {
             e.stopPropagation();
             if (isTask) handleTaskToggle();

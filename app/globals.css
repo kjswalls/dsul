@@ -2172,3 +2172,71 @@ body {
 [data-reduce-motion='true'] .drop-line::before {
   animation: none;
 }
+
+/* ── Layouts: the styled slots (lib/layout-themes.ts) ───────────────────────
+   A layout's STYLED slots are drawn here, off the `data-layout-<slot>` stamps
+   the desktop shell puts on its own root (layoutAttributes). Keyed on the slot
+   variant, never on a layout's name, so a second layout that wants heading
+   buckets gets them by naming the variant. Scoped under the shell's stamp,
+   never <html>: that is what keeps every layout off the phone, whose shell is
+   another tree. Each rule restyles; none hides a control a person acts with —
+   the tick stays the same button, only drawn as text. */
+
+/* relay: 'off' — the motion goes; the IntersectionObserver in relay-field.tsx
+   sees the element leave and stops its frame loop. */
+[data-layout-relay='off'] [data-relay-field] {
+  display: none;
+}
+
+/* buckets: 'headings' — the card under each bucket's rows goes, the caption
+   becomes a `## heading`. Only the resting card: the drop slot a drag opens
+   (--bkt-tray / --bkt-tray-armed) keeps its surface, because lib/dnd/CONTRACT
+   needs a visible hover state on the bare bucket droppable. The "now" rule
+   down the left wall is an inset shadow composed after these, so it stays. */
+[data-layout-buckets='headings'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='headings'] [data-bucket-label] {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  color: var(--foreground);
+  text-transform: lowercase;
+}
+[data-layout-buckets='headings'] [data-bucket-label]::before {
+  content: '## ';
+  color: var(--success-text);
+}
+
+/* rows: 'text' — the tick drawn as [ ] / [~] / [x]. Same button, same hit
+   area (the 16px height stays; it only widens to fit three characters). */
+[data-layout-rows='text'] [data-testid='item-complete-button'] {
+  width: auto;
+  min-width: 3ch;
+  border-color: transparent;
+  background: none;
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'] > * {
+  display: none;
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']::before {
+  content: '[ ]';
+  white-space: pre;
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'][data-checked='partial']::before {
+  content: '[~]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'][data-checked='true']::before {
+  content: '[x]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']:hover {
+  color: var(--foreground);
+}

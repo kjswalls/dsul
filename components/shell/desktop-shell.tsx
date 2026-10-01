@@ -14,6 +14,11 @@ import { subscribeClickAway } from '@/lib/click-away';
 import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
+import { useLayoutDef } from '@/lib/look-store';
+import { layoutAttributes } from '@/lib/layout-themes';
+import { SidebarDock } from '@/components/sidebar/sidebar-dock';
+import { BraindumpPane } from '@/components/shell/braindump-pane';
+import { StatusLine } from '@/components/shell/status-line';
 import { cn } from '@/lib/utils';
 
 /** Below this the panel stops compressing the canvas and overlays it instead. */
@@ -30,6 +35,13 @@ const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
  * `null` (Object.is bails), and edit opens always re-render because
  * openEditFor spreads a fresh item object into the slot per open — an
  * invariant its own comment now pins.
+ *
+ * LAYOUTS (lib/layout-themes.ts). The structural slots are read here: where the
+ * braindump sits (`sidebar`), where capture sits (`capture`), whether the
+ * canvas is a plate (`canvas`), and the `status-line` ornament. The styled
+ * slots are stamped on this root (layoutAttributes) for app/globals.css, which
+ * is what keeps every layout off the phone. Classic renders the exact tree it
+ * always has; a layout with a top or bottom band wraps the row in a column.
  */
 export const DesktopShell = memo(function DesktopShell() {
   // No sidebar state here any more: collapse, expand, resize and hover-peek all
@@ -39,6 +51,13 @@ export const DesktopShell = memo(function DesktopShell() {
   );
   const closeDialog = useUIStore((s) => s.closeDialog);
   const canvasWide = useCanvasWide();
+  const layout = useLayoutDef();
+  const { slots } = layout;
+  const plate = slots.canvas === 'plate';
+  const statusLine = layout.ornaments.includes('status-line');
+  const captureBottom = slots.capture === 'prompt-bottom';
+  // A top or bottom band spans the whole shell, so the row goes in a column.
+  const banded = statusLine || captureBottom;
 
   // Editing an item IS the selection here — the ui-store's single dialog slot
   // already gives us retargeting for free: clicking another row calls
@@ -89,13 +108,9 @@ export const DesktopShell = memo(function DesktopShell() {
   // subscribes separately, while open, so it can flush before it closes.
   useEffect(() => subscribeClickAway(() => useSelectionStore.getState().clear()), []);
 
-  return (
-    <div
-      // Clicks on empty space in here let go of the selection (lib/click-away).
-      data-click-away-scope=""
-      className="relative hidden h-[100dvh] gap-3 bg-surface-0 p-3 md:flex"
-    >
-      <Sidebar />
+  const row = (
+    <>
+      {slots.sidebar === 'left' && <Sidebar />}
 
       {/* Body panel: a big card floating over the backdrop/sidebar field. The
           hairline border does the close-range work (it survives on top of the
@@ -111,7 +126,10 @@ export const DesktopShell = memo(function DesktopShell() {
       <main
         ref={mainRef}
         inert={panelOverlays && !!panelState}
-        className="relative flex flex-1 flex-col overflow-hidden rounded-[30px] border border-border bg-canvas shadow-[var(--shadow-elev-panel)]"
+        className={cn(
+          'relative flex flex-1 flex-col overflow-hidden bg-canvas',
+          plate && 'rounded-[30px] border border-border shadow-[var(--shadow-elev-panel)]'
+        )}
       >
         {/* The hover-peek trigger used to be a 12px strip here, on this panel's
             left edge. <Sidebar/>'s expand zone now covers those same pixels and
@@ -141,7 +159,12 @@ export const DesktopShell = memo(function DesktopShell() {
             week scope it lands on the grid's right edge. */}
         <div
           data-wide={canvasWide ? 'true' : undefined}
-          className="canvas-container flex flex-shrink-0 items-start gap-3 pt-[31px] pb-2"
+          className={cn(
+            'canvas-container flex flex-shrink-0 items-start gap-3 pb-2',
+            // 31px lines the capsule up with the left column's braindump
+            // header; with the braindump elsewhere there is nothing to meet.
+            slots.sidebar === 'left' ? 'pt-[31px]' : 'pt-4'
+          )}
         >
           <HeaderCapsule />
           {/* "6 items are away with Summer" — the day's own suppression line,
@@ -193,6 +216,8 @@ export const DesktopShell = memo(function DesktopShell() {
 
       </main>
 
+      {slots.sidebar === 'pane-right' && <BraindumpPane />}
+
       {/* The item panel — a sibling surface on the backdrop, not a layer over
           the canvas. `flat` drops its card chrome so it reads as the paper
           plane BELOW <main>, mirroring the braindump column on the left.
@@ -212,12 +237,39 @@ export const DesktopShell = memo(function DesktopShell() {
       <div
         className={cn(
           'relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
-          panelState ? 'w-[420px]' : '-ml-3 w-0',
-          'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
+          panelState ? 'w-[420px]' : cn('w-0', plate && '-ml-3'),
+          // Flat: no gutter to eat, and a hairline seam where the plate's edge was.
+          !plate && panelState && 'border-l border-border bg-canvas',
+          plate
+            ? 'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
+            : 'max-[1180px]:absolute max-[1180px]:inset-y-0 max-[1180px]:right-0 max-[1180px]:z-30'
         )}
       >
         <ItemDialog presentation="panel" flat state={panelState} onOpenChange={handlePanelOpenChange} />
       </div>
+    </>
+  );
+
+  return (
+    <div
+      // Clicks on empty space in here let go of the selection (lib/click-away).
+      data-click-away-scope=""
+      {...layoutAttributes(layout)}
+      className={cn(
+        'relative hidden h-[100dvh] md:flex',
+        plate ? 'gap-3 bg-surface-0 p-3' : 'bg-canvas',
+        banded && 'flex-col'
+      )}
+    >
+      {banded ? (
+        <>
+          {statusLine && <StatusLine />}
+          <div className="relative flex min-h-0 flex-1">{row}</div>
+          {captureBottom && <SidebarDock placement="bottom" />}
+        </>
+      ) : (
+        row
+      )}
     </div>
   );
 });
