@@ -39,7 +39,7 @@ import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { HelpMenu } from '@/components/shell/help-menu';
 
-import { usePlannerStore } from '@/lib/planner-store';
+import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -57,6 +57,7 @@ import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
 import { listGroupMovers, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { useCommandContext } from '@/hooks/use-command-context';
@@ -390,9 +391,34 @@ export function AppShell() {
         // (their startDate is a goal's target date), so an all-milestone
         // selection dragged here would have cleared the selection and animated
         // a success over zero writes.
+        //
+        // Habits on the canvas pause instead (see sidebarDropPlan). A mixed
+        // selection is one history entry, so one Undo takes back both halves.
+        const plan = sidebarDropPlan(
+          groupIds,
+          tasks,
+          habits,
+          milestoneIds,
+          toDateStr(new Date(), userTz),
+          userTz
+        );
         const writable = taskLikeIds.filter((id) => !milestoneIds.has(id));
-        if (writable.length) {
+        const pauseAll = () => plan.pause.forEach((id) => planner.setItemPaused(id, true));
+        if (writable.length && plan.pause.length) {
+          const n = writable.length + plan.pause.length;
+          batchHistory(`Set aside: ${n} items`, n, () => {
+            planner.unscheduleTasks(groupIds);
+            pauseAll();
+          });
+          acted = true;
+        } else if (writable.length) {
           planner.unscheduleTasks(groupIds);
+          acted = true;
+        } else if (plan.pause.length > 1) {
+          batchHistory(`Pause habit: ${plan.pause.length} items`, plan.pause.length, pauseAll);
+          acted = true;
+        } else if (plan.pause.length) {
+          pauseAll();
           acted = true;
         }
       } else if (overId.startsWith('projectblock:')) {
@@ -474,6 +500,10 @@ export function AppShell() {
         break;
       case 'move-task-to-date':
         planner.moveTaskToDate(command.taskId, command.dateStr);
+        break;
+      case 'pause-item':
+        // setItemPaused refuses an item that cannot pause or already is.
+        planner.setItemPaused(command.itemId, true);
         break;
     }
   };

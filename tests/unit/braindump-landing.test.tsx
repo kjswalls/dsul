@@ -164,13 +164,37 @@ describe('braindump: where a dragged item will land', () => {
     expect(screen.getByTestId('braindump').dataset.dndActs).toBe('false');
   });
 
-  it('lights nothing for a habit, which a drop here does not move', () => {
+  it('draws a habit from the canvas landing in the Paused section, which a drop pauses', () => {
+    useDragStore.getState().startDrag('h', 'pointer');
+    over.add('sidebar');
+    renderBraindump();
+
+    const section = screen.getByTestId('braindump-paused-section');
+    expect(section.querySelector('[data-testid="braindump-landing"]')?.textContent).toBe('Stretch');
+    expect(screen.getByTestId('braindump-paused-toggle').getAttribute('aria-expanded')).toBe('true');
+    expect(screen.getByTestId('braindump').dataset.dndActs).toBe('true');
+  });
+
+  it('lights nothing for a habit that is already paused', () => {
+    const paused = { ...items[3], pausedAt: '2020-01-01T00:00:00Z' } as Item;
+    const next = [...items.slice(0, 3), paused];
+    usePlannerStore.setState({ items: next, habits: [paused] as never });
     useDragStore.getState().startDrag('h', 'pointer');
     over.add('sidebar');
     renderBraindump();
 
     expect(screen.queryByTestId('braindump-landing')).toBeNull();
     expect(screen.getByTestId('braindump').dataset.dndActs).toBe('false');
+  });
+
+  it('shows a selection of a task and a habit each where it will land', () => {
+    useSelectionStore.setState({ selectedIds: new Set(['m', 'h']) });
+    useDragStore.getState().startDrag('h', 'pointer');
+    over.add('sidebar');
+    renderBraindump();
+
+    const landings = screen.getAllByTestId('braindump-landing').map((el) => el.textContent);
+    expect(landings.sort()).toEqual(['Mango', 'Stretch']);
   });
 
   it('drops the empty-state poem while a row is landing in an empty list', () => {

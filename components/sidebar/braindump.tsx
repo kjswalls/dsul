@@ -38,6 +38,7 @@ import { toDateStr } from '@/lib/recurrence';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { placementOf } from '@/lib/dnd/handle-drag-end';
+import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { milestoneItemIds } from '@/lib/goals';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -265,9 +266,23 @@ function LandingRow({ title, reveal }: { title: string; reveal: boolean }) {
 
 type PausedGroup = { key: string; label: string; rows: RowItem[] };
 
-function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number }) {
+/**
+ * `landing` is the habits a drop on the sidebar would pause. While there are
+ * any, the section shows (even when nothing is paused yet) and opens, with a
+ * landing line for each at its top, so the drag says where the habit will go.
+ */
+function PausedSection({
+  groups,
+  count,
+  landing,
+}: {
+  groups: PausedGroup[];
+  count: number;
+  landing: readonly HabitItem[];
+}) {
   const [open, setOpen] = useState(false);
-  if (count === 0) return null;
+  if (count === 0 && landing.length === 0) return null;
+  const shown = open || landing.length > 0;
 
   return (
     <div
@@ -277,24 +292,27 @@ function PausedSection({ groups, count }: { groups: PausedGroup[]; count: number
       <button
         type="button"
         onClick={() => setOpen((v) => !v)}
-        aria-expanded={open}
+        aria-expanded={shown}
         data-testid="braindump-paused-toggle"
         className="flex w-full items-center gap-2 rounded-[10px] px-3 py-2 text-left hover-wash"
       >
         <Moon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
         <span className="font-content text-content text-muted-foreground">Paused</span>
-        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{count}</span>
+        <span className="ml-auto text-xs tabular-nums text-muted-foreground">{count > 0 && count}</span>
         <ChevronRight
           className={cn(
             'h-3.5 w-3.5 shrink-0 text-muted-foreground transition-transform',
-            open && 'rotate-90'
+            shown && 'rotate-90'
           )}
         />
       </button>
       {/* Plain overflow-y-auto, never <ScrollArea> — the Radix wrapper silently
           drops max-h and the list would grow without bound. */}
-      {open && (
+      {shown && (
         <div className="max-h-[40vh] overflow-y-auto px-[6px] pb-2">
+          {landing.map((h, i) => (
+            <LandingRow key={h.id} title={h.title} reveal={i === 0} />
+          ))}
           {groups.map((group) => (
             <div key={group.key}>
               {/* Suppressed only when there is nothing to disambiguate — one
@@ -462,6 +480,26 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
     }
     return moves(activeId) ? new Set([activeId]) : none;
   }, [isOver, tasks, goals, suppressedIds]);
+
+  /**
+   * The habits a drop here would PAUSE (see sidebarDropPlan): drawn as landing
+   * rows at the top of the Paused section, which is where they will show.
+   * Same read-at-render bargain as landingIds above.
+   */
+  const pausingRows = useMemo(() => {
+    if (!isOver) return [];
+    const activeId = useDragStore.getState().activeId;
+    if (!activeId) return [];
+    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+    const todayStr = toDateStr(new Date(), tz);
+    const { selectedIds } = useSelectionStore.getState();
+    const group = selectedIds.has(activeId) && selectedIds.size >= 2;
+    // The shell drops a group whole; when nothing in it writes, it falls
+    // through to the dragged row alone, whose plan is a subset of the group's.
+    const ids = group ? [...selectedIds] : [activeId];
+    const { pause } = sidebarDropPlan(ids, tasks, habits, milestoneItemIds(goals), todayStr, tz);
+    return habits.filter((h) => pause.includes(h.id));
+  }, [isOver, tasks, habits, goals, userTimezone]);
 
   /**
    * The list as it will read after the drop: the same membership and filters,
@@ -678,7 +716,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       ref={sinkRootRef}
       data-dnd-id="sidebar"
       data-dnd-over={isOver ? 'true' : 'false'}
-      data-dnd-acts={landingIds.size > 0 ? 'true' : 'false'}
+      data-dnd-acts={landingIds.size > 0 || pausingRows.length > 0 ? 'true' : 'false'}
       // Separates the CONTENT scope from the DnD hook: data-dnd-id="sidebar"
       // currently does double duty as both, so a spec scoping assertions to the
       // braindump is really asserting against a drop target.
@@ -887,7 +925,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         </div>
       </div>
 
-      <PausedSection groups={pausedGroups} count={pausedCount} />
+      <PausedSection groups={pausedGroups} count={pausedCount} landing={pausingRows} />
 
       {/* Quick-add — a floating card at the section foot, peer of the header. */}
       <QuickAddRow scrollRef={listRef} />
