@@ -40,10 +40,11 @@ jobs:
              || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
             echo ios=true >> "$GITHUB_OUTPUT"; exit 0
           fi
-          # ios/ (except Markdown), this workflow, and the TypeScript files the
-          # Swift port mirrors, so a web edit re-runs the Swift tests.
+          # ios/ (except Markdown), this workflow, the TypeScript files the
+          # Swift port mirrors, and the shared fixtures both sides read, so a
+          # web edit re-runs the Swift tests.
           if git diff --name-only "$BASE" "$GITHUB_SHA" \
-             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/recurrence\.ts$|lib/schedule-constants\.ts$)' \
+             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/recurrence\.ts$|lib/schedule-constants\.ts$|lib/day-items\.ts$|components/views/day-buckets\.tsx$|tests/fixtures/recurrence/)' \
              | grep -qvE '^ios/.*\.md$'; then
             echo ios=true >> "$GITHUB_OUTPUT"
           else

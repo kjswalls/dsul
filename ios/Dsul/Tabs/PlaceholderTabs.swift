@@ -13,13 +13,9 @@ struct AskView: View {
 struct OrganizeView: View {
     @Environment(SamplePlanner.self) private var planner
 
-    private var projects: [String] {
-        Array(Set(planner.scheduled.compactMap(\.project))).sorted()
-    }
-
     var body: some View {
         NavigationStack {
-            List(projects, id: \.self) { project in
+            List(planner.projects, id: \.self) { project in
                 Label(project, systemImage: "folder")
             }
             .navigationTitle("Organize")
@@ -32,7 +28,7 @@ struct SearchView: View {
     @State private var query = ""
 
     private var results: [SampleItem] {
-        let all = planner.scheduled + planner.braindump
+        let all = planner.items
         guard !query.isEmpty else { return all }
         return all.filter { $0.title.localizedStandardContains(query) }
     }

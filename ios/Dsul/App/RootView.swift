@@ -4,11 +4,14 @@ enum AppTab: Hashable {
     case today, ask, organize, search
 }
 
-/// Today, Ask and Organize, plus the system Search tab. The capture bar
-/// (tabViewBottomAccessory) and the layout switcher come in the next PR;
-/// this one is the shell around the drag spike.
+/// Today, Ask and Organize, plus the system Search tab, with the capture bar
+/// as the tab view's bottom accessory everywhere but Ask (whose composer
+/// takes its place).
 struct RootView: View {
+    @Environment(SamplePlanner.self) private var planner
     @State private var tab: AppTab = .today
+    @State private var showCapture = false
+    @AppStorage(TodayLayout.storageKey) private var layout: TodayLayout = .list
 
     var body: some View {
         TabView(selection: $tab) {
@@ -26,5 +29,19 @@ struct RootView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
+        .tabViewBottomAccessory(isEnabled: tab != .ask) {
+            CaptureBar(count: planner.braindump.count, onCapture: { showCapture = true }, onTray: openTray)
+        }
+        .sheet(isPresented: $showCapture) {
+            CaptureSheet()
+                .environment(planner)
+        }
+    }
+
+    /// The tray count: Today, on Schedule, with the braindump sheet over it.
+    private func openTray() {
+        tab = .today
+        layout = .schedule
+        planner.showBraindumpSheet = true
     }
 }

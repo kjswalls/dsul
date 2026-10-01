@@ -1,6 +1,10 @@
 # iPhone app (ios/)
 
 Status (2026-10-01): PR 1, the shell and the drag spike, on sample data.
+PR 2 builds Today on the G board: List, Buckets and Schedule layouts behind
+the up-down capsule beside the avatar, the title as a date picker, and the
+capture bar as the tab view's bottom accessory, still on sample data with
+local toggles.
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -25,7 +29,30 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
 - `ios/DsulCore`: Foundation-only Swift package, Linux-testable. Ports:
   `Recurrence.swift` ← `lib/recurrence.ts`; `ScheduleMath.swift` ←
   `lib/schedule-constants.ts` and the snap/autoscroll helpers in
-  `components/views/day-schedule.tsx`. Each cites what it mirrors.
+  `components/views/day-schedule.tsx`; `DayBuckets.swift` ← the bucket
+  placement in `lib/day-items.ts` and the in-bucket row order in
+  `components/views/day-buckets.tsx`; `HabitCompletion.swift` ← the
+  optimistic completion step of `setHabitStatus` in `lib/planner-store.ts`.
+  Each cites what it mirrors.
+
+## Today (PR 2)
+- **G over F, provisionally.** The capsule is a `ToolbarItem(.topBarTrailing)`
+  beside the avatar: a `Menu` whose `primaryAction` steps to the next layout,
+  long press for the full menu (Layout, and Show with Day only until Week
+  exists), a swipe in either axis steps with `.sensoryFeedback(.selection)`,
+  and VoiceOver adjusts it. `LayoutSwitcher` is self-contained so it can move
+  into the capture bar if Kirby picks F. The layout is `@AppStorage`.
+- **Buckets follow the stored bucket, not the hour.** An item shows in its
+  `timeBucket` and nowhere if it has none, as `deriveDayItems` does; a drop on
+  an hour files it under that hour's bucket. The phone draws Anytime last, as
+  the boards do, where the web draws it first.
+- **The title is the day.** "Today" on today, the date otherwise; a tap opens
+  a graphical date picker, and a Today button jumps back.
+- **Capture bar.** A button drawn as a field opens a small capture sheet that
+  stays open for rapid entry; the tray count switches Today to Schedule and
+  opens the braindump sheet, which only ever opens over Schedule. Hidden on
+  Ask; a compact rendering for the `.inline` placement. The drag probe moved
+  from Today's toolbar into the avatar menu.
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -71,7 +98,7 @@ autoscrolls it by hand; the top edge is the system's.
 
 Unverified until it runs on a phone: that a drop reaches the grid behind an
 undimmed sheet, that changing the detent mid-drag doesn't cancel the drag, and
-how often drop updates fire. The probe HUD (waveform button on Today) shows
+how often drop updates fire. The probe HUD (Drag probe, in the avatar menu on Today) shows
 the readings; ios/README.md lists the five pass/fail checks.
 
 **Fallback if checks 1 or 2 fail:** one `UILongPressGestureRecognizer`
@@ -81,8 +108,8 @@ and autoscroll. It works at any detent, at the cost of the system lift and drop
 animations.
 
 ## Not yet
-The capture bar (`tabViewBottomAccessory`), List and Buckets layouts, the
-layout switcher, item detail, sign-in (Apple, Google, email link via universal
+Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
+from the bar to the braindump sheet, item detail, sign-in (Apple, Google, email link via universal
 links), notifications, Focus as a Live Activity, and the web-side work the app
 needs (bearer auth, a native push channel, Sign in with Apple on the web).
 App Store review will also want in-app account deletion and consent before

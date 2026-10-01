@@ -1,0 +1,1485 @@
+{
+  "shouldShowOnDate": [
+    {
+      "name": "daily on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-12",
+      "expected": true
+    },
+    {
+      "name": "daily on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-13",
+      "expected": true
+    },
+    {
+      "name": "daily on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-14",
+      "expected": true
+    },
+    {
+      "name": "daily on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-15",
+      "expected": true
+    },
+    {
+      "name": "daily on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-16",
+      "expected": true
+    },
+    {
+      "name": "daily on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-17",
+      "expected": true
+    },
+    {
+      "name": "daily on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "day": "2025-01-18",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "weekdays on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-13",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-14",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-15",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-16",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-17",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-12",
+      "expected": true
+    },
+    {
+      "name": "weekends on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-01-18",
+      "expected": true
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-13",
+      "expected": true
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-15",
+      "expected": true
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-17",
+      "expected": true
+    },
+    {
+      "name": "custom Mon/Wed/Fri on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-12",
+      "expected": true
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "weekly (legacy) Sun/Sat on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          0,
+          6
+        ]
+      },
+      "day": "2025-01-18",
+      "expected": true
+    },
+    {
+      "name": "custom no days on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "custom no days on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "custom no days on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "custom no days on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "custom no days on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "custom no days on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "custom no days on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "custom days missing on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "custom"
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "custom out-of-range day 7 on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          7
+        ]
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "none on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-12",
+      "rule": {},
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-13",
+      "rule": {},
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-14",
+      "rule": {},
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-15",
+      "rule": {},
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-16",
+      "rule": {},
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-17",
+      "rule": {},
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "frequency missing on 2025-01-18",
+      "rule": {},
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-12",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-13",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-14",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-15",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-16",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-17",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "frequency null on 2025-01-18",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-12",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-13",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-14",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-15",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-16",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-17",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "frequency empty on 2025-01-18",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-12",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-12",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-13",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-13",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-14",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-15",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-16",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-17",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-17",
+      "expected": false
+    },
+    {
+      "name": "unknown frequency on 2025-01-18",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "weekdays on 2025-12-31",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2025-12-31",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2026-01-01",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2026-01-01",
+      "expected": true
+    },
+    {
+      "name": "weekdays on 2026-01-03",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "day": "2026-01-03",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2025-12-31",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2025-12-31",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2026-01-01",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2026-01-01",
+      "expected": false
+    },
+    {
+      "name": "weekends on 2026-01-03",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "day": "2026-01-03",
+      "expected": true
+    },
+    {
+      "name": "monthly 15th, day before",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 15
+      },
+      "day": "2025-01-14",
+      "expected": false
+    },
+    {
+      "name": "monthly 15th, on it",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 15
+      },
+      "day": "2025-01-15",
+      "expected": true
+    },
+    {
+      "name": "monthly 15th, day after",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 15
+      },
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "monthly 1st, new year",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 1
+      },
+      "day": "2026-01-01",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st in Jan",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2025-01-31",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st on Jan 30",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2025-01-30",
+      "expected": false
+    },
+    {
+      "name": "monthly 31st clamps to Feb 28 (2025)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2025-02-28",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st not Feb 27 (2025)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2025-02-27",
+      "expected": false
+    },
+    {
+      "name": "monthly 31st clamps to Feb 29 (2024 leap)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2024-02-29",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st not Feb 28 (2024 leap)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2024-02-28",
+      "expected": false
+    },
+    {
+      "name": "monthly 31st clamps to Apr 30",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2025-04-30",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st not Apr 29",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "day": "2025-04-29",
+      "expected": false
+    },
+    {
+      "name": "monthly 30th clamps to Feb 28 (2025)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 30
+      },
+      "day": "2025-02-28",
+      "expected": true
+    },
+    {
+      "name": "monthly 30th in Apr",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 30
+      },
+      "day": "2025-04-30",
+      "expected": true
+    },
+    {
+      "name": "monthly 30th clamps to Feb 29 (2000, leap century)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 30
+      },
+      "day": "2000-02-29",
+      "expected": true
+    },
+    {
+      "name": "monthly 29th clamps to Feb 28 (2025)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "day": "2025-02-28",
+      "expected": true
+    },
+    {
+      "name": "monthly 29th clamps to Feb 28 (2100, not leap)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "day": "2100-02-28",
+      "expected": true
+    },
+    {
+      "name": "monthly 29th on Feb 29 (2024 leap)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "day": "2024-02-29",
+      "expected": true
+    },
+    {
+      "name": "monthly 29th not Feb 28 (2024 leap)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "day": "2024-02-28",
+      "expected": false
+    },
+    {
+      "name": "monthly 29th in Mar",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "day": "2025-03-29",
+      "expected": true
+    },
+    {
+      "name": "monthly 29th not Mar 28",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "day": "2025-03-28",
+      "expected": false
+    },
+    {
+      "name": "monthly out-of-range 40 clamps to Jan 31",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 40
+      },
+      "day": "2025-01-31",
+      "expected": true
+    },
+    {
+      "name": "monthly zero never matches",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 0
+      },
+      "day": "2025-01-01",
+      "expected": false
+    },
+    {
+      "name": "monthly monthDay missing",
+      "rule": {
+        "repeatFrequency": "monthly"
+      },
+      "day": "2025-01-15",
+      "expected": false
+    }
+  ],
+  "anchoredSeriesOn": [
+    {
+      "name": "Thu series, day before start",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-16",
+      "expected": false
+    },
+    {
+      "name": "Thu series, its Friday start counts",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-17",
+      "expected": true
+    },
+    {
+      "name": "Thu series, Saturday after start",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "Thu series, next Thursday",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-23",
+      "expected": true
+    },
+    {
+      "name": "Thu series, Thursday before start",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-09",
+      "expected": false
+    },
+    {
+      "name": "timestamp start reads as its day",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "start": "2025-01-17T09:30:00.000Z",
+      "day": "2025-01-17",
+      "expected": true
+    },
+    {
+      "name": "none rule, on start",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-17",
+      "expected": true
+    },
+    {
+      "name": "none rule, after start",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "start": "2025-01-17",
+      "day": "2025-01-18",
+      "expected": false
+    },
+    {
+      "name": "daily, before start",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "start": "2025-03-01",
+      "day": "2025-02-28",
+      "expected": false
+    },
+    {
+      "name": "daily, after start",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "start": "2025-03-01",
+      "day": "2025-03-02",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st, clamped Feb after start",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "start": "2025-01-10",
+      "day": "2025-02-28",
+      "expected": true
+    },
+    {
+      "name": "monthly 31st, start across a year",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "start": "2024-12-31",
+      "day": "2025-01-31",
+      "expected": true
+    }
+  ],
+  "firstRepeatDayFrom": [
+    {
+      "name": "Thu series from a Friday",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "from": "2025-01-17",
+      "expected": "2025-01-23"
+    },
+    {
+      "name": "Thu series from a Thursday",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "from": "2025-01-16",
+      "expected": "2025-01-16"
+    },
+    {
+      "name": "timestamp from",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          4
+        ]
+      },
+      "from": "2025-01-17T23:00:00Z",
+      "expected": "2025-01-23"
+    },
+    {
+      "name": "weekdays from Saturday",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "from": "2025-01-18",
+      "expected": "2025-01-20"
+    },
+    {
+      "name": "weekends from Monday",
+      "rule": {
+        "repeatFrequency": "weekends"
+      },
+      "from": "2025-01-13",
+      "expected": "2025-01-18"
+    },
+    {
+      "name": "daily from itself",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "from": "2025-01-15",
+      "expected": "2025-01-15"
+    },
+    {
+      "name": "monthly 31st from Feb 1 (2025)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "from": "2025-02-01",
+      "expected": "2025-02-28"
+    },
+    {
+      "name": "monthly 29th from Feb 1 (2024 leap)",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 29
+      },
+      "from": "2024-02-01",
+      "expected": "2024-02-29"
+    },
+    {
+      "name": "monthly 15th across a year",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 15
+      },
+      "from": "2025-12-20",
+      "expected": "2026-01-15"
+    },
+    {
+      "name": "Sat series across a year",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          6
+        ]
+      },
+      "from": "2025-12-28",
+      "expected": "2026-01-03"
+    },
+    {
+      "name": "none falls back to from",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "from": "2025-01-15",
+      "expected": "2025-01-15"
+    },
+    {
+      "name": "none falls back to sliced from",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "from": "2025-01-15T10:00:00Z",
+      "expected": "2025-01-15"
+    },
+    {
+      "name": "custom no days falls back",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "from": "2025-01-15",
+      "expected": "2025-01-15"
+    },
+    {
+      "name": "unknown frequency falls back",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "from": "2025-01-15",
+      "expected": "2025-01-15"
+    },
+    {
+      "name": "monthly without a day falls back",
+      "rule": {
+        "repeatFrequency": "monthly"
+      },
+      "from": "2025-01-15",
+      "expected": "2025-01-15"
+    }
+  ],
+  "isCompletedOnDate": [
+    {
+      "name": "dates missing",
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "dates empty",
+      "dates": [],
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "on a listed day",
+      "dates": [
+        "2025-01-14",
+        "2025-01-15"
+      ],
+      "day": "2025-01-15",
+      "expected": true
+    },
+    {
+      "name": "on an unlisted day",
+      "dates": [
+        "2025-01-14",
+        "2025-01-16"
+      ],
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "a timestamp entry is not the day",
+      "dates": [
+        "2025-01-15T00:00:00Z"
+      ],
+      "day": "2025-01-15",
+      "expected": false
+    }
+  ],
+  "isSkippedOnDate": [
+    {
+      "name": "dates missing",
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "dates empty",
+      "dates": [],
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "on a listed day",
+      "dates": [
+        "2025-01-14",
+        "2025-01-15"
+      ],
+      "day": "2025-01-15",
+      "expected": true
+    },
+    {
+      "name": "on an unlisted day",
+      "dates": [
+        "2025-01-14",
+        "2025-01-16"
+      ],
+      "day": "2025-01-15",
+      "expected": false
+    },
+    {
+      "name": "a timestamp entry is not the day",
+      "dates": [
+        "2025-01-15T00:00:00Z"
+      ],
+      "day": "2025-01-15",
+      "expected": false
+    }
+  ],
+  "isRecurring": [
+    {
+      "name": "frequency missing",
+      "rule": {},
+      "expected": false
+    },
+    {
+      "name": "frequency null",
+      "rule": {
+        "repeatFrequency": null
+      },
+      "expected": false
+    },
+    {
+      "name": "frequency empty",
+      "rule": {
+        "repeatFrequency": ""
+      },
+      "expected": false
+    },
+    {
+      "name": "none",
+      "rule": {
+        "repeatFrequency": "none"
+      },
+      "expected": false
+    },
+    {
+      "name": "daily",
+      "rule": {
+        "repeatFrequency": "daily"
+      },
+      "expected": true
+    },
+    {
+      "name": "weekdays",
+      "rule": {
+        "repeatFrequency": "weekdays"
+      },
+      "expected": true
+    },
+    {
+      "name": "custom",
+      "rule": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1
+        ]
+      },
+      "expected": true
+    },
+    {
+      "name": "monthly",
+      "rule": {
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 1
+      },
+      "expected": true
+    },
+    {
+      "name": "unknown frequency still counts",
+      "rule": {
+        "repeatFrequency": "fortnightly"
+      },
+      "expected": true
+    }
+  ]
+}
