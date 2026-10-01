@@ -636,6 +636,11 @@ describe('nothing persists per-user state outside the registry', () => {
       // with it, a boolean per pane, and inert by the classification in
       // lib/local-state.ts — so it is not in the registry, deliberately.
       'components/settings/settings-shell.tsx',
+      // `dsul-settings-extensions-off-open`: whether the rail's list of
+      // extensions shows the ones that are off. One boolean, per device on
+      // purpose, and says nothing about anyone — which extensions are on is
+      // server state, not this.
+      'components/settings/extension-rail-list.tsx',
       // The palette mirror the pre-paint script reads. Presentation, explicitly
       // out of scope — see the theme/palette note in lib/local-state.ts.
       'components/providers/supabase-provider.tsx',

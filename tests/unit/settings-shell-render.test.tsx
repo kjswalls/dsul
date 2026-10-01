@@ -17,7 +17,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-libra
  *   1. A query crosses into sub-panes and the hits are DRAWN, not merely
  *      counted — the rail number and the row count are the same number.
  *   2. No credential's value can reach the screen.
- *   3. The extension index and the extension's own pane say the same word about
+ *   3. The extension list and the extension's own pane say the same word about
  *      whether it is live.
  */
 
@@ -150,7 +150,24 @@ describe('a credential never reaches the screen', () => {
   });
 });
 
-describe('the extension index and the extension pane agree', () => {
+describe('the extension list and the extension pane agree', () => {
+  // The list folds what is off, and Beeminder starts off here; unfold it so
+  // every row is drawn and each test reads the word, not the fold.
+  beforeEach(() => {
+    try {
+      localStorage.setItem('dsul-settings-extensions-off-open', '1');
+    } catch {
+      /* no storage */
+    }
+  });
+  afterEach(() => {
+    try {
+      localStorage.removeItem('dsul-settings-extensions-off-open');
+    } catch {
+      /* no storage */
+    }
+  });
+
   it('says Unavailable, not On, for an extension its master switch has off', async () => {
     // Beeminder switched on with "Settle the day" off is an extension that is
     // enabled and doing nothing. The index used to read the enabled flag alone
