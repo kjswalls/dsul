@@ -2382,6 +2382,12 @@ body {
   box-shadow: none;
   padding-inline: 0;
 }
+/* The braindump's Display shelf rides under that title (SurfaceHeader's `below`)
+   and keeps its own 15px inset, so it follows the title to the page's edge. Its
+   Reset and ✕ sit flush right, as the pill's controls now do. */
+[data-layout-header='masthead'] [data-book] [data-testid='display-shelf-braindump'] {
+  padding-inline: 0;
+}
 [data-layout-header='masthead'] [data-book] [data-surface-title] {
   font-family: var(--font-serif-display);
   font-size: 20px;

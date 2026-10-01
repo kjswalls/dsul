@@ -86,6 +86,13 @@ test.describe('Layouts: Notebook', () => {
     await expect(page.getByTestId('header-next')).toBeVisible();
     // Capture is the page's last line.
     await expect(page.locator('[data-dock-page] input')).toHaveAttribute('placeholder', 'write a line…');
+    // The title loses its inset, so the Display shelf under it must too, or its
+    // line starts 15px right of the title it sits under. It shows only while a
+    // display option is off its default.
+    const shelf = book.getByTestId('display-shelf-braindump');
+    if (await shelf.count()) {
+      await expect(shelf).toHaveCSS('padding-left', '0px');
+    }
   });
 
   test('the page tabs switch scope, and the ribbon marks today only', async ({ page }) => {
