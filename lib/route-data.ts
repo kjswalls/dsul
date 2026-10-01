@@ -36,6 +36,9 @@ export const LEAN_ROUTES = [
   '/settings',
   // Reads `userId` to scope its own stake_events query; owns no planner data.
   '/ledger',
+  // The extensions store. Reads `userId` for the hydration gate; every preview
+  // is inert sample data, never the user's items.
+  '/extensions',
   // Device-pairing flow — talks to /api/agent/connect, not to the store.
   '/connect',
   '/docs',

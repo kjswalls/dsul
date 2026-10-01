@@ -1,5 +1,27 @@
 # Plugins, Themes & the Store — extensibility across dsul (and future apps)
 
+> **Addendum (2026-10-01): the in-app extensions store is NOT Project C.**
+> `/extensions` (components/extensions/) is a storefront over the eleven
+> FIRST-PARTY entries in `OFFICIAL_EXTENSIONS`: a featured slot, four shelves
+> grouped by what an extension does for you (`shelf` on the manifest), a live
+> preview per extension (inert sample scenes, CSS-animated, still under either
+> motion veto), and a card per extension that links to its settings pane. The
+> pane gained a header (`components/settings/extension-hero.tsx`) with the
+> preview, what changes, needs/cost chips and a maker's note; the switch is still
+> the pane's own record. Nothing here registers, downloads or runs third-party
+> code — Project C's registry, review and payments questions are untouched.
+>
+> **Open question 9 (telemetry vs privacy) is answered for this store:**
+> migration 050 keeps an append-only, owner-readable history of extension
+> switches (`extension_toggle_events`, written by a trigger), and
+> `extension_adoption()` — service role only — returns per-slug COUNTS.
+> `/api/extensions/adoption` turns them into fractions rounded to 5% and withholds
+> any figure resting on fewer than 20 people or with fewer than 5 on either side
+> of the split (lib/extension-adoption.ts). "Kept on after 30 days" is never
+> computed for a default-on extension, and backfilled history is left out of it.
+> Before launch the store shows no figures at all, which is the intended state.
+> Reviews: no stars; the maker's note is the store's only "review" until then.
+
 **Status (2026-08-12): Projects A and B have v1 implementations in the working
 tree** (curated preset palettes + the official-extensions framework — see the
 build ledger at the end). Research complete (five-researcher sweep + adversarial
