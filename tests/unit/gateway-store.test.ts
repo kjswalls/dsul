@@ -8,9 +8,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * afterwards, since the gate is what picks the chat transport.
  */
 
-const refresh = vi.hoisted(() => vi.fn(async () => {}));
+// serverChanged, not refresh: a status read already out may predate the save,
+// and refresh would join it.
+const serverChanged = vi.hoisted(() => vi.fn(async () => {}));
 vi.mock('@/lib/ai-connection-store', () => ({
-  useAIConnectionStore: { getState: () => ({ refresh }) },
+  useAIConnectionStore: { getState: () => ({ serverChanged }) },
 }));
 
 import { useGatewayStore } from '@/lib/gateway-store';
@@ -32,7 +34,7 @@ const fetchMock = vi.fn();
 
 beforeEach(() => {
   fetchMock.mockReset();
-  refresh.mockClear();
+  serverChanged.mockClear();
   vi.stubGlobal('fetch', fetchMock);
   useGatewayStore.getState().reset();
 });
@@ -147,7 +149,7 @@ describe('gateway store save', () => {
   it('re-asks the AI gate after a save, so the next message takes the new transport', async () => {
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) } as Response);
     useGatewayStore.getState().setToken('tok-123');
-    await vi.waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    await vi.waitFor(() => expect(serverChanged).toHaveBeenCalledTimes(1));
     expect(useGatewayStore.getState()).toMatchObject({ hasToken: true, error: null });
   });
 
@@ -159,6 +161,6 @@ describe('gateway store save', () => {
     } as Response);
     useGatewayStore.getState().setGatewayUrl('https://gw.example');
     await vi.waitFor(() => expect(useGatewayStore.getState().error).toBe('Could not save.'));
-    expect(refresh).not.toHaveBeenCalled();
+    expect(serverChanged).not.toHaveBeenCalled();
   });
 });

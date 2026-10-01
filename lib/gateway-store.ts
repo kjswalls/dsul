@@ -143,8 +143,8 @@ async function saveToServer(
 
     // The gate picks the transport (and whether OpenClaw can answer at all)
     // from the server's answer, so ask again: the next message then goes the
-    // new way without a reload.
-    void useAIConnectionStore.getState().refresh();
+    // new way without a reload. A read already out may predate this save.
+    void useAIConnectionStore.getState().serverChanged();
   } catch (err) {
     set({ error: err instanceof Error ? err.message : 'Could not save.' });
   }

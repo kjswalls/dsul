@@ -19,7 +19,8 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { DisplayMenu, type DisplayMenuHandle } from '@/components/primitives/display-menu';
 import { DisplayShelf } from '@/components/primitives/display-shelf';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useMobileNavStore, shownMobileTab } from '@/lib/mobile-nav-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useViewStore, type ViewLayout } from '@/lib/view-store';
 import { goToDate } from '@/lib/nav-commands';
 import { DayHeaderNotice } from '@/components/notices/notice-slot';
@@ -172,7 +173,11 @@ function WeekStrip() {
 export function MobileHeader({ settingsHref, onOpenBugReport }: MobileHeaderProps) {
   const { selectedDate, setSelectedDate, weekStartDay } = usePlannerStore();
   const { layout, setLayout } = useViewStore();
-  const activeTab = useMobileNavStore((s) => s.activeTab);
+  // The tab on screen, not the stored one: while chat cannot answer the shell
+  // shows Today for a stored 'chat', and Today needs its dated card and user menu.
+  const storedTab = useMobileNavStore((s) => s.activeTab);
+  const { canChat } = useAICapabilities();
+  const activeTab = shownMobileTab(storedTab, canChat);
   const [mounted, setMounted] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   // The Display menu's handle, shared with the shelf at the foot of the card.

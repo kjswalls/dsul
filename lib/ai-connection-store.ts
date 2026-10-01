@@ -65,6 +65,12 @@ export interface AIConnectionStore extends AIConnectionState {
   hydrate(userId: string): Promise<void>;
   /** hydrate(currentUserId) with the dedupe window bypassed. No-op when nobody is signed in. */
   refresh(): Promise<void>;
+  /**
+   * refresh() after a write this store did not make (an OpenClaw gateway save,
+   * a plugin authorization): a status read begun before that write is stale,
+   * so it is neither joined nor applied, and a fresh one is asked for.
+   */
+  serverChanged(): Promise<void>;
   /** PUT; on ok applies connection + models and drops the legacy notice (as does any status read naming a model). */
   connect(req: ConnectRequest): Promise<ApiResult>;
   /** PATCH {provider, model} */
@@ -452,6 +458,11 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
       refresh: () => {
         if (currentUserId === null) return Promise.resolve();
         return load(currentUserId, true);
+      },
+
+      serverChanged: () => {
+        serverMoved();
+        return get().refresh();
       },
 
       connect: (req) =>

@@ -374,6 +374,24 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
     return { models, listed: true };
   }
 
+  /** A 1-token call that exercises the key on `model`, its failure classified for `phase`. */
+  async function pingModel(
+    creds: ProviderCredentials,
+    model: string,
+    signal: AbortSignal,
+    phase: 'verify' | 'call'
+  ): Promise<void> {
+    const client = makeClient(creds, META);
+    try {
+      await client.chat.completions.create(
+        { model, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 },
+        { signal }
+      );
+    } catch (err) {
+      throw fail(err, phase, signal);
+    }
+  }
+
   /** A host that cannot list its models answers one of these to `GET /models`. */
   const NO_LIST_STATUSES = new Set([404, 405, 501]);
 
@@ -470,20 +488,35 @@ export function createOpenAICompatibleAdapter(id: OpenAICompatibleProviderId): P
       }
 
       const listed = await listModels(creds, signal);
-      if (listed.listed || id !== 'custom') return listed;
+      if (id !== 'custom') return listed;
+
+      if (listed.listed) {
+        // Some hosts list their models without checking the key (OpenRouter's
+        // catalog is public, and so is llama-server's), so a list proves the
+        // host, not the key. With a model known (the one named, or the only
+        // one listed, which becomes the default), a 1-token call checks the
+        // key too. It is judged as a chat would be: only a 401 is a refused
+        // key, since a 403 there is the model's access, not the key's, and
+        // anything else says nothing the list did not.
+        const probe = isModelId(modelHint)
+          ? modelHint
+          : listed.models.length === 1
+            ? listed.models[0].id
+            : undefined;
+        if (probe) {
+          try {
+            await pingModel(creds, probe, signal, 'call');
+          } catch (err) {
+            if (err instanceof ProviderError && err.kind === 'auth') throw err;
+          }
+        }
+        return listed;
+      }
 
       // A custom host that cannot list: check the key with a 1-token call on
       // the model the user named, or ask for one.
       if (!isModelId(modelHint)) throw new ProviderError('model_required');
-      const client = makeClient(creds, META);
-      try {
-        await client.chat.completions.create(
-          { model: modelHint, messages: [{ role: 'user', content: 'ping' }], max_tokens: 1 },
-          { signal }
-        );
-      } catch (err) {
-        throw fail(err, 'verify', signal);
-      }
+      await pingModel(creds, modelHint, signal, 'verify');
       return { models: [], listed: false };
     },
 

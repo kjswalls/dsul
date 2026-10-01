@@ -68,7 +68,7 @@ function ConnectPageInner() {
         // The agent key now exists server-side, so "Give to OpenClaw" can
         // light up without a reload. The plugin usually registers its chat URL
         // later (on its gateway restart), which the next re-check picks up.
-        void useAIConnectionStore.getState().refresh();
+        void useAIConnectionStore.getState().serverChanged();
       }
     } catch (err) {
       setState({ kind: 'error', message: err instanceof Error ? err.message : 'Network error' });

@@ -44,6 +44,7 @@ import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown'
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useViewStore } from '@/lib/view-store';
+import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 
 /** jsdom implements neither PointerEvent nor pointer capture; Radix needs both. */
 beforeAll(() => {
@@ -172,10 +173,25 @@ describe('the view cycler', () => {
   });
 
   it('stays off the dateless tabs, which render no canvas for it to switch', () => {
+    // The chat tab is on screen only while something can answer.
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      renderHeader();
+
+      expect(screen.queryByTestId('mobile-view-cycle')).toBeNull();
+    } finally {
+      unseed();
+    }
+  });
+
+  it('follows the tab the shell shows: a stored chat tab with nothing to answer is Today, card and all', () => {
+    // The shell renders Today for it (shownMobileTab); a dateless header over
+    // Today would leave the phone with no date and no user menu.
     useMobileNavStore.setState({ activeTab: 'chat' });
     renderHeader();
 
-    expect(screen.queryByTestId('mobile-view-cycle')).toBeNull();
+    expect(screen.getByTestId('mobile-view-cycle')).toBeInTheDocument();
   });
 });
 

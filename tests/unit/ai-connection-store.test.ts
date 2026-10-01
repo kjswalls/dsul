@@ -716,6 +716,32 @@ describe('reads are ordered against writes', () => {
     expect(store().model?.status).toBe('failing');
   });
 
+  it('a write made elsewhere (an OpenClaw gateway save) is not answered by a read that began before it', async () => {
+    await hydrated(A, NOTHING);
+    void store().refresh(); // out before the gateway save landed
+    void store().serverChanged();
+    expect(gets()).toHaveLength(3);
+
+    // The fresh read answers first, then the older one: the older one is not
+    // applied over it, and is asked again instead.
+    const GATEWAY = { ...NOTHING, openclaw: { ...NOTHING.openclaw, gateway: true } };
+    const newest = pending.findLastIndex((d) => d.method === 'GET' && d.url === STATUS);
+    const [fresh] = pending.splice(newest, 1);
+    await act(async () => {
+      fresh.resolve(respond(GATEWAY, 200));
+      await new Promise((r) => setTimeout(r, 0));
+    });
+    expect(store().openclaw.gateway).toBe(true);
+
+    await answerGet(NOTHING); // the older read: no gateway yet
+    expect(store().openclaw.gateway).toBe(true);
+    expect(gets()).toHaveLength(4);
+
+    await answerGet(GATEWAY);
+    expect(store().phase).toBe('ready');
+    expect(store().openclaw.gateway).toBe(true);
+  });
+
   it('a failed read that began before a write does not fail the gate closed under it', async () => {
     const h = store().hydrate(A);
     const p = store().connect(REQ);

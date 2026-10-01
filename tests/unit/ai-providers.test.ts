@@ -784,6 +784,58 @@ describe('Other (custom) verify and list', () => {
     expect(list.models).toHaveLength(300);
   });
 
+  // A host may list its models without looking at the key (OpenRouter's catalog
+  // is public), so a list alone must not keep a refused key marked as working.
+  it('a host that lists, with a hint, also checks the key with a 1-token call', async () => {
+    route = (r) =>
+      r.url.endsWith('/models')
+        ? openaiModels(['a-model', 'b-model'])
+        : json({ id: 'x', object: 'chat.completion', created: 1, model: 'm', choices: [{ index: 0, message: { role: 'assistant', content: 'p' }, finish_reason: 'length' }] });
+    const result = await getAdapter('custom').verify(creds('custom', base), { signal: new AbortController().signal, modelHint: 'a-model' });
+    expect(result).toMatchObject({ listed: true });
+    expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual([
+      'GET https://llm.example.com/v1/models',
+      'POST https://llm.example.com/v1/chat/completions',
+    ]);
+    expect(lastBody()).toMatchObject({ model: 'a-model', max_tokens: 1 });
+  });
+
+  it('a host that lists without checking the key, whose 1-token call is refused → auth', async () => {
+    route = (r) => (r.url.endsWith('/models') ? openaiModels(['a-model']) : json({ error: 'bad key' }, 401));
+    const err = await rejection(getAdapter('custom').verify(creds('custom', base), { signal: new AbortController().signal, modelHint: 'a-model' }));
+    expect(err.kind).toBe('auth');
+  });
+
+  it('a host that lists: a 1-token call failing for any other reason still passes', async () => {
+    route = (r) => (r.url.endsWith('/models') ? openaiModels(['a-model']) : json({ error: 'busy' }, 429));
+    const result = await getAdapter('custom').verify(creds('custom', base), { signal: new AbortController().signal, modelHint: 'a-model' });
+    expect(result).toMatchObject({ listed: true, models: [{ id: 'a-model' }] });
+  });
+
+  it("a host that lists: a 403 on the 1-token call is the model's access, not the key's, and passes", async () => {
+    // A chat reads the same 403 as 'forbidden' and keeps the connection; a check must agree.
+    route = (r) => (r.url.endsWith('/models') ? openaiModels(['a-model', 'b-model']) : json({ error: 'gated' }, 403));
+    const result = await getAdapter('custom').verify(creds('custom', base), { signal: new AbortController().signal, modelHint: 'a-model' });
+    expect(result).toMatchObject({ listed: true });
+  });
+
+  it('a host that lists ONE model checks the key on it without a hint (it becomes the default)', async () => {
+    route = (r) => (r.url.endsWith('/models') ? openaiModels(['only-model']) : json({ error: 'bad key' }, 401));
+    const err = await rejection(getAdapter('custom').verify(creds('custom', base), { signal: new AbortController().signal }));
+    expect(err.kind).toBe('auth');
+    expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual([
+      'GET https://llm.example.com/v1/models',
+      'POST https://llm.example.com/v1/chat/completions',
+    ]);
+    expect(lastBody()).toMatchObject({ model: 'only-model', max_tokens: 1 });
+  });
+
+  it('a host that lists several models, without a hint, makes no call beyond the list', async () => {
+    route = () => openaiModels(['a-model', 'b-model']);
+    await getAdapter('custom').verify(creds('custom', base), { signal: new AbortController().signal });
+    expect(seen.map((s) => `${s.method} ${s.url}`)).toEqual(['GET https://llm.example.com/v1/models']);
+  });
+
   it('a 404 on /models with a hint does a 1-token check on that model', async () => {
     route = (r) =>
       r.url.endsWith('/models')
