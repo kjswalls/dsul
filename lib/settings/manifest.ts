@@ -48,6 +48,7 @@ import {
   useKeyboardShortcutsStore,
 } from '@/lib/keyboard-shortcuts-store';
 import { decodeKeys, encodeKeys, formatKeys, isApplePlatform } from '@/lib/commands/keys';
+import { getDesktopBridge } from '@/lib/desktop';
 import type { TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -1129,6 +1130,12 @@ export const SETTINGS: SettingRecord[] = [
     keywords: ['notify', 'alerts', 'phone', 'reminders', 'badge', 'notification'],
     unavailable: (ctx) => {
       if (!ctx.push) return null;
+      // Electron passes the feature check, then rejects subscribe(), so the
+      // switch would snap back off with nothing said. Point at the devices that
+      // can take push instead: reminders reach every subscribed device, and the
+      // desktop app is not one of them.
+      if (getDesktopBridge())
+        return 'not available in the desktop app yet — turn push on from your phone or browser';
       if (!ctx.push.isSupported) return 'not supported in this browser';
       if (ctx.push.permissionState === 'denied')
         return 'blocked in your browser settings — allow notifications, then reload';

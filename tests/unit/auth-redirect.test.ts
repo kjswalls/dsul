@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { loginRedirectTarget } from '@/lib/auth-redirect';
+import { loginErrorMessage, loginRedirectTarget } from '@/lib/auth-redirect';
 
 const ORIGIN = 'https://do.dsul.app';
 
@@ -28,5 +28,32 @@ describe('loginRedirectTarget', () => {
 
   it('does not mistake a lookalike path for the callback', () => {
     expect(loginRedirectTarget('/auth/callbackevil', ORIGIN)).toBe('/auth/callback?next=%2Fauth%2Fcallbackevil');
+  });
+
+  it('sends a desktop sign-in to the hand-off page, whatever redirect the page asked for', () => {
+    expect(loginRedirectTarget(null, ORIGIN, { desktop: true })).toBe('/auth/desktop');
+    expect(loginRedirectTarget('/goal/x', ORIGIN, { desktop: true })).toBe('/auth/desktop');
+    const fromConnect = `/auth/callback?next=${encodeURIComponent('/connect?code=x')}`;
+    expect(loginRedirectTarget(fromConnect, ORIGIN, { desktop: true })).toBe('/auth/desktop');
+  });
+
+  it('keeps the browser target when desktop is off', () => {
+    expect(loginRedirectTarget('/goal/x', ORIGIN, { desktop: false })).toBe('/auth/callback?next=%2Fgoal%2Fx');
+  });
+});
+
+describe('loginErrorMessage', () => {
+  it("has dsul's own words for each error a sign-in can come back with", () => {
+    expect(loginErrorMessage('expired')).toMatch(/expired/);
+    expect(loginErrorMessage('cancelled')).toMatch(/cancelled/);
+    expect(loginErrorMessage('auth')).toMatch(/didn’t go through/);
+  });
+
+  it('says nothing for anything else, so no URL text reaches the page', () => {
+    expect(loginErrorMessage(null)).toBeNull();
+    expect(loginErrorMessage('')).toBeNull();
+    expect(loginErrorMessage('Email link is invalid or has expired')).toBeNull();
+    expect(loginErrorMessage('toString')).toBeNull();
+    expect(loginErrorMessage('__proto__')).toBeNull();
   });
 });

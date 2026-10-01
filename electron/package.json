@@ -1,0 +1,19 @@
+{
+  "name": "dsul-desktop",
+  "productName": "dsul",
+  "version": "0.1.0",
+  "private": true,
+  "description": "dsul for macOS and Windows: an Electron shell over https://do.dsul.app",
+  "author": "Kirby Walls",
+  "license": "MIT",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --config electron-builder.config.cjs --mac --arm64 --publish never",
+    "dist:win": "electron-builder --config electron-builder.config.cjs --win --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "^44.5.1",
+    "electron-builder": "~26.15.7"
+  }
+}

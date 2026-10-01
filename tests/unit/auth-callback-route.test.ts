@@ -40,4 +40,18 @@ describe('/auth/callback', () => {
     const res = await at('?code=abc&next=%2Fgoal%2Fx');
     expect(res.headers.get('location')).toBe('https://do.dsul.app/login?error=auth');
   });
+
+  it('says a code that outlived its flow state expired', async () => {
+    exchange.mockResolvedValue({
+      error: { code: 'flow_state_expired', message: 'invalid flow state, flow state has expired' },
+    });
+    const res = await at('?code=abc');
+    expect(res.headers.get('location')).toBe('https://do.dsul.app/login?error=expired');
+  });
+
+  it('sends a callback with no code to the login page', async () => {
+    const res = await at('');
+    expect(exchange).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toBe('https://do.dsul.app/login?error=auth');
+  });
 });
