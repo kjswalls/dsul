@@ -38,7 +38,8 @@ describe('electron/lib/window-chrome.cjs', () => {
 
   it('makes the band the shell padding plus the wordmark row', () => {
     expect(TITLE_BAND_PX).toBe(SHELL_PAD + WORDMARK_ROW);
-    expect(read('components/shell/desktop-shell.tsx')).toMatch(/className="relative hidden h-\[100dvh\] gap-3 bg-surface-0 p-3 md:flex"/);
+    // The plate layouts (Classic) pad the shell; the flat ones put the status line in the band.
+    expect(read('components/shell/desktop-shell.tsx')).toContain("plate ? 'gap-3 bg-surface-0 p-3'");
     const sidebar = read('components/sidebar/sidebar.tsx');
     expect(sidebar).toContain(`pt-[${WORDMARK_ROW}px]`);
     expect(sidebar).toContain(`h-[${WORDMARK_ROW}px]`);
@@ -68,6 +69,12 @@ describe('electron/lib/window-chrome.cjs', () => {
     expect(read('components/sidebar/sidebar.tsx')).toContain(
       `pl-[max(25px,calc(env(titlebar-area-x,0px)_-_${inset}px))]`
     );
+    // A flat layout's status line is the window's top row (Console): it fills the band, puts
+    // its text on the lights' midline and starts 14px past them from x 0, its button a hole.
+    const line = read('components/shell/status-line.tsx');
+    expect(line).toContain(`h-[max(2rem,min(${TITLE_BAND_PX}px,env(titlebar-area-height,0px)))]`);
+    expect(line).toContain(`pl-[max(1rem,calc(env(titlebar-area-x,0px)_-_${MAC_LIGHTS.x - 14}px))]`);
+    expect(line).toContain('className="titlebar-hole rounded-[3px]');
   });
 
   it('lets the offline page be dragged, except by its link', () => {
