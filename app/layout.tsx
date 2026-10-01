@@ -4,6 +4,7 @@ import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
+import { DesktopBridge } from '@/components/providers/desktop-bridge'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -133,6 +134,9 @@ export default function RootLayout({
             {/* Route-level, not shell-level, because its whole job is to notice
                 that you have LEFT the shell. See the component. */}
             <ConsoleSlotGuard />
+            {/* Nothing in a browser; the desktop app's quick capture and
+                sign-in notice. See the component. */}
+            <DesktopBridge />
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement

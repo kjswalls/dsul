@@ -1,0 +1,194 @@
+# Builds the desktop shell (electron/) for macOS arm64 and Windows x64 and uploads both to a
+# DRAFT GitHub release named after electron/package.json's version. Nothing is published until
+# Kirby publishes the draft by hand. See memory/plans/desktop-app.md, "Release workflow".
+#
+# - Dispatch it from main only. Every job is skipped on any other ref, and the file itself has to
+#   reach main through a normal PR before it can be dispatched at all.
+# - The signing secrets live in the `desktop-release` Environment (deployment branch main, Kirby
+#   as required reviewer), so each build waits for his approval, and a dispatch from any other
+#   ref, a Claude session's branch included, gets no signing material.
+# - The build step reads exactly these five Environment secrets, by these names. Any other
+#   spelling (a bare CSC_LINK, say) reaches nothing, and the Mac build quietly goes out unsigned:
+#     DESKTOP_CSC_LINK           the Developer ID .p12, base64-encoded
+#     DESKTOP_CSC_KEY_PASSWORD   that .p12's password
+#     DESKTOP_APPLE_API_KEY_P8   the App Store Connect API key: the .p8 file's CONTENTS, not a path
+#     DESKTOP_APPLE_API_KEY_ID   that key's id
+#     DESKTOP_APPLE_API_ISSUER   its issuer id
+# - With the secrets absent the builds are unsigned: macOS is ad-hoc signed and not notarized,
+#   and Windows goes through SmartScreen until Windows signing exists.
+# - Never make this a required check. It runs only on dispatch, so a required check here would
+#   never report on a PR and every auto-merge would stall.
+#
+# Each release: bump the version in electron/package.json in a PR and merge it, dispatch this
+# from main, approve the Environment, check the draft, publish it.
+name: Desktop release
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+# Two dispatches at once would each find no draft and each create one, which is the race the
+# prepare job exists to close.
+concurrency:
+  group: desktop-release
+  cancel-in-progress: false
+
+jobs:
+  # Runs before the builds so that exactly one draft exists when they start. Left to
+  # electron-publish, two build legs finishing close together can each create a draft.
+  prepare:
+    name: Prepare draft release
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      - name: Check the version and create the draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          v=$(jq -r .version electron/package.json)
+          if ! [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::electron/package.json has no usable version ('$v')"
+            exit 1
+          fi
+          tag="v$v"
+
+          # The same lookup electron-publish makes: every release, drafts included, matched on
+          # either spelling of the tag.
+          matches=$(gh api --paginate "repos/$GITHUB_REPOSITORY/releases?per_page=100" \
+            | jq -c --arg tag "$tag" --arg v "$v" \
+                '.[] | select(.tag_name == $tag or .tag_name == $v) | {id, draft}')
+
+          # Against a published release electron-publish uploads nothing and still reports green,
+          # so a version that has shipped must stop the run here.
+          if jq -e 'select(.draft | not)' <<<"$matches" >/dev/null; then
+            echo "::error::$tag is already published. Bump the version in electron/package.json first."
+            exit 1
+          fi
+
+          drafts=$(jq -r 'select(.draft) | .id' <<<"$matches")
+          if [ -z "$drafts" ]; then
+            # A draft creates no tag. target_commitish is where GitHub creates it on publish.
+            gh api -X POST "repos/$GITHUB_REPOSITORY/releases" \
+              -f tag_name="$tag" -f name="dsul desktop $v" -F draft=true \
+              -f target_commitish="$GITHUB_SHA" >/dev/null
+            echo "Created draft release $tag at $GITHUB_SHA"
+          elif [ "$(wc -l <<<"$drafts")" -gt 1 ]; then
+            echo "::error::More than one draft release is tagged $tag. Delete the extras and dispatch again."
+            exit 1
+          else
+            # A re-run after a fix reuses the draft. Point it at this commit, so the tag lands on
+            # what was actually built; the legs overwrite assets with the same names.
+            gh api -X PATCH "repos/$GITHUB_REPOSITORY/releases/$drafts" \
+              -f target_commitish="$GITHUB_SHA" >/dev/null
+            echo "Reusing draft release $tag, now targeting $GITHUB_SHA"
+          fi
+
+  build:
+    name: Build (${{ matrix.name }})
+    needs: prepare
+    if: github.ref == 'refs/heads/main'
+    environment: desktop-release
+    permissions:
+      contents: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: macOS arm64
+            os: macos-latest
+            platform: mac
+            arch: arm64
+          - name: Windows x64
+            os: windows-latest
+            platform: win
+            arch: x64
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: electron
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+        with:
+          persist-credentials: false
+
+      # Node 24 here; the web CI stays on Node 20 (test.yml).
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: electron/package-lock.json
+
+      # No install scripts run. electron-builder never uses the electron package's own binary: it
+      # reads the version from node_modules/electron/package.json and downloads the Electron zip
+      # it packages (app-builder-lib out/electron/ElectronFramework.js, electronVersion.js).
+      - name: Install dependencies
+        run: npm ci --ignore-scripts
+
+      - name: Build and publish to the draft
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_PLATFORM: ${{ matrix.platform }}
+          BUILD_ARCH: ${{ matrix.arch }}
+          # The Apple material reaches the macOS leg only. With WIN_CSC_LINK unset, electron-builder
+          # falls back to CSC_LINK on Windows and would sign the installer with the Apple
+          # certificate (app-builder-lib out/codeSign/windowsSignToolManager.js:75).
+          DESKTOP_CSC_LINK: ${{ matrix.platform == 'mac' && secrets.DESKTOP_CSC_LINK || '' }}
+          DESKTOP_CSC_KEY_PASSWORD: ${{ matrix.platform == 'mac' && secrets.DESKTOP_CSC_KEY_PASSWORD || '' }}
+          DESKTOP_APPLE_API_KEY_P8: ${{ matrix.platform == 'mac' && secrets.DESKTOP_APPLE_API_KEY_P8 || '' }}
+          DESKTOP_APPLE_API_KEY_ID: ${{ matrix.platform == 'mac' && secrets.DESKTOP_APPLE_API_KEY_ID || '' }}
+          DESKTOP_APPLE_API_ISSUER: ${{ matrix.platform == 'mac' && secrets.DESKTOP_APPLE_API_ISSUER || '' }}
+        run: |
+          set -euo pipefail
+
+          # The secrets arrive under DESKTOP_ names and are exported only when non-empty, because
+          # electron-builder treats an empty CSC_LINK as set and throws
+          # (out/platformPackager.js:81-84). electron-builder.config.cjs keys the signing identity
+          # and hardened runtime off CSC_LINK as well.
+          if [ -n "$DESKTOP_CSC_LINK" ]; then
+            export CSC_LINK="$DESKTOP_CSC_LINK"
+            [ -z "$DESKTOP_CSC_KEY_PASSWORD" ] || export CSC_KEY_PASSWORD="$DESKTOP_CSC_KEY_PASSWORD"
+            # Notarizing needs all three APPLE_API_* values, and electron-builder fails the build
+            # on a partial set. They go out only alongside the certificate, because it would also
+            # try to notarize an ad-hoc build (out/macPackager.js:318) and Apple refuses those.
+            if [ -n "$DESKTOP_APPLE_API_KEY_P8" ]; then
+              (umask 077 && printf '%s\n' "$DESKTOP_APPLE_API_KEY_P8" > "$RUNNER_TEMP/AuthKey.p8")
+              export APPLE_API_KEY="$RUNNER_TEMP/AuthKey.p8"
+            fi
+            [ -z "$DESKTOP_APPLE_API_KEY_ID" ] || export APPLE_API_KEY_ID="$DESKTOP_APPLE_API_KEY_ID"
+            [ -z "$DESKTOP_APPLE_API_ISSUER" ] || export APPLE_API_ISSUER="$DESKTOP_APPLE_API_ISSUER"
+          elif [ "$BUILD_PLATFORM" = mac ]; then
+            # Notarizing material with no certificate is a half-done setup, most likely a
+            # certificate saved under another name. Publishing quietly would ship an ad-hoc build
+            # into a draft that looks like any other, so the leg stops instead.
+            if [ -n "$DESKTOP_APPLE_API_KEY_P8$DESKTOP_APPLE_API_KEY_ID$DESKTOP_APPLE_API_ISSUER" ]; then
+              echo "::error::DESKTOP_APPLE_API_* secrets are set but DESKTOP_CSC_LINK is not. Add the certificate under exactly that name (see this workflow's header), or remove the Apple secrets to ship an unsigned build."
+              exit 1
+            fi
+            echo "::notice::No DESKTOP_CSC_LINK secret, so this macOS build is ad-hoc signed and not notarized."
+          fi
+          # electron-builder reads only the unprefixed names, so the copies go.
+          unset DESKTOP_CSC_LINK DESKTOP_CSC_KEY_PASSWORD DESKTOP_APPLE_API_KEY_P8 \
+            DESKTOP_APPLE_API_KEY_ID DESKTOP_APPLE_API_ISSUER
+
+          npx electron-builder --config electron-builder.config.cjs \
+            "--$BUILD_PLATFORM" "--$BUILD_ARCH" --publish always
+
+          # A signed build should carry only com.apple.security.cs.allow-jit, plus the runtime
+          # flag and the Developer ID authority that --verbose=2 shows.
+          if [ -n "${CSC_LINK:-}" ]; then
+            for app in release/mac*/dsul.app; do
+              codesign -d --verbose=2 --entitlements - "$app"
+            done
+          fi

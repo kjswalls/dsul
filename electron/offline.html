@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- main.cjs loads this file, as a data: URL, when the app can't be reached (did-fail-load).
+     The script's hash is pinned below: change the script, change the hash. -->
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'sha256-SXaTQXL/z3BzY3/UC76Z65B37+1BZ1P171ZTU3M5NyU='; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'">
+<title>dsul</title>
+<style>
+  :root { color-scheme: light dark; --bg: #fbfaf9; --fg: #1d1f24; --muted: #6b6f78; --line: #d9d7d3; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #0e1014; --fg: #e8e9ec; --muted: #8b8f99; --line: #2a2e36; }
+  }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--fg);
+    font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid;
+    place-items: center;
+    text-align: center;
+  }
+  h1 { font-size: 18px; font-weight: 600; margin: 0 0 6px; }
+  p { color: var(--muted); margin: 0 0 20px; }
+  a {
+    color: var(--fg);
+    text-decoration: none;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 7px 14px;
+  }
+  a:hover { border-color: var(--muted); }
+</style>
+</head>
+<body>
+<main>
+  <h1>dsul can't connect</h1>
+  <p>It will come back on its own when this computer is online again.</p>
+  <!-- For when the network is up but the site isn't: the online event never fires then. -->
+  <a href="https://do.dsul.app/">Try again</a>
+</main>
+<script>addEventListener('online', () => location.replace('https://do.dsul.app/'));</script>
+</body>
+</html>

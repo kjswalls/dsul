@@ -9,6 +9,7 @@ export default defineConfig([
     'public/**',
     'packages/**/dist/**',
     'openclaw-plugin/**',
+    'electron/**',
     'playwright-report/**',
     'test-results/**',
     'push-test.js',
