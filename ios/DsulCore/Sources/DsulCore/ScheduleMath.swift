@@ -27,7 +27,7 @@ public func jsRound(_ x: Double) -> Double {
 public func snapMinutes(_ minutes: Double) -> Int {
     // Int() traps on NaN or infinity, where JavaScript would carry NaN along.
     guard minutes.isFinite else { return 0 }
-    Int(jsRound(minutes / Double(ScheduleMetrics.snapMin))) * ScheduleMetrics.snapMin
+    return Int(jsRound(minutes / Double(ScheduleMetrics.snapMin))) * ScheduleMetrics.snapMin
 }
 
 /// Where a block of `durationMin` starts when a finger at `contentY` (grid
