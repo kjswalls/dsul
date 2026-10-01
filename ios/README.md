@@ -1,8 +1,14 @@
 # dsul for iPhone
 
-A native SwiftUI app (iOS 27). This first version is a shell around the drag
-spike: the Today tab's Schedule grid with the braindump sheet over it, on
-sample data. It doesn't sign in or talk to the server yet.
+A native SwiftUI app (iOS 27), on sample data: it doesn't sign in or talk to
+the server yet, and ticks and drops last until the app quits.
+
+Today shows one day in three layouts: List (filter chips, then sections per
+routine and per project), Buckets (Morning, Afternoon, Evening, Anytime) and
+Schedule (the hour grid, with the braindump sheet over it). The capsule top
+right switches them: tap for the next, swipe along it to step, long-press for
+the menu. Tap the title to pick another day. The capture bar above the tab bar
+adds thoughts to the braindump; its count opens the braindump over Schedule.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
 - `DsulCore/` is a Swift package with the planner logic ported from the web
@@ -31,8 +37,9 @@ your team (once), choose your iPhone as the run destination, and press ⌘R.
 
 ## Trying the drag
 
-1. On Today, tap the tray button (top right) to open the braindump.
-2. Tap the waveform button (top left) to show the probe readings.
+1. On Today, tap the count at the right of the capture bar ("Get it out of
+   your head") to open the braindump over Schedule.
+2. Tap the avatar (KI, top right) → Drag probe to show the probe readings.
 3. Long-press a braindump row and drag it up onto an hour.
 
 The spike passes if:
@@ -42,7 +49,7 @@ The spike passes if:
    second or more).
 4. Holding a finger just above the sheet scrolls the grid down, and the ghost
    follows.
-5. With "Load 40 blocks", nothing stutters.
+5. With "Load 40 blocks" (in the probe, or the avatar menu), nothing stutters.
 
 If 1 or 2 fails, the next version swaps the system drag for a custom one (see
 memory/plans/ios-app.md).
