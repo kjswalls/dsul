@@ -118,11 +118,12 @@ describe('removeProject reassigns every spelling of the deleted container', () =
 
     store().removeProject('p-personal');
 
-    // REASSIGNED, not unfiled, because the habit type declares
-    // `containerRequired` — see `unfiled` in planner-store.
-    expect(containerOf('h1').project).toBe('Health');
-    expect(containerOf('h2').project).toBe('Health');
-    expect(containerOf('h3').project).toBe('Health');
+    // Every spelling caught. Unfiled since habits' project became optional
+    // (2026-10-01) — `unfiled` in planner-store reads `containerRequired`.
+    expect(containerOf('h1').project).toBeUndefined();
+    expect(containerOf('h2').project).toBeUndefined();
+    expect(containerOf('h3').project).toBeUndefined();
+    expect(containerOf('h4').project).toBe('Health');
   });
 
   it('leaves items in other containers alone', () => {
@@ -131,15 +132,14 @@ describe('removeProject reassigns every spelling of the deleted container', () =
     expect(containerOf('h3').project).toBe('Health');
   });
 
-  it('UNFILES a type whose container is optional, rather than reassigning it', () => {
-    // The half of the merge that had to stay different. `removeProject` unfiled
-    // its members and `removeHabitGroup` reassigned them; the merged action asks
-    // the registry (`containerRequired`) instead of asking whether the item is a
-    // habit, so a task and a habit under the same container part company here.
+  it('UNFILES a task and a habit alike, now that both containers are optional', () => {
+    // The merged action asks the registry (`containerRequired`) rather than
+    // whether the item is a habit. Habits answered "required" until 2026-10-01,
+    // when they were reassigned here instead; now no shipped type is.
     seed([task('t1', 'Personal'), habit('h1', 'Personal')]);
     store().removeProject('p-personal');
     expect(containerOf('t1').project).toBeUndefined();
-    expect(containerOf('h1').project).toBe('Health');
+    expect(containerOf('h1').project).toBeUndefined();
   });
 
   it('folds for a TASK too, now that one policy covers the axis', () => {
@@ -173,11 +173,10 @@ describe('cleanupOrphanedReferences asks the same question the rest of the app d
     expect(containerOf('t1').project).toBe('health');
   });
 
-  it('still repairs a habit whose container is genuinely gone', () => {
+  it('unfiles a habit whose container is genuinely gone, as it does a task', () => {
     seed([habit('h1', 'ghost')]);
     store().cleanupOrphanedReferences();
-    // The first live container, exactly as the delete path resolves it.
-    expect(containerOf('h1').project).toBe('Personal');
+    expect(containerOf('h1').project).toBeUndefined();
   });
 
   it('unfiles a task whose container is genuinely gone', () => {

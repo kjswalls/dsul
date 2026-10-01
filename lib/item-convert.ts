@@ -189,12 +189,13 @@ export function convertItem(item: Item, toType: string, opts: ConvertOptions): I
     const repeatFrequency: RepeatFrequency = recurring
       ? (item.repeatFrequency as RepeatFrequency)
       : (opts.repeat ?? (to.defaultFrequency as RepeatFrequency));
-    const project = item.project || to.orphanContainerFallback || '';
+    // A required container falls back; an optional one stays unset, as on a task.
+    const project = item.project || to.orphanContainerFallback || undefined;
     const habit: HabitItem = {
       ...shared,
       type: 'habit',
       project,
-      projectId: item.project ? item.projectId : opts.projectIdFor?.(project),
+      projectId: item.project ? item.projectId : project ? opts.projectIdFor?.(project) : undefined,
       streak: 0,
       status: switchedStatus(item, true) as HabitItem['status'],
       dailyCounts: {},

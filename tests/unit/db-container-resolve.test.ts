@@ -188,6 +188,14 @@ describe('an agent re-file moves the id with the name', () => {
     expect(itemsUpdate()).toMatchObject({ project: 'Wellness', project_id: 'gr-well' });
   });
 
+  it('unfiles a habit for real, frozen group column included', async () => {
+    // A habit's project is optional (2026-10-01). Cleared, both names go: the
+    // read falls back to `"group"` when `project` is NULL, so leaving the old
+    // habit-group name there would refile the habit on the next load.
+    await updateItem('h1', 'habit', { project: undefined, projectId: undefined });
+    expect(itemsUpdate()).toMatchObject({ project: null, group: null, project_id: null });
+  });
+
   it('folds case, as every other container lookup does', async () => {
     // projectIdFor, getProjectEmoji, getProjectColor and addProject's de-dupe
     // all normalise. Exact-only here does not merely fail to link — it writes

@@ -104,7 +104,6 @@ function payloadFor(kind: DraftKind, n: NewItemDraft, todayStr: string) {
     n.when,
     n.bucket,
     todayStr,
-    usePlannerStore.getState().projects[0]?.name,
   );
 }
 

@@ -110,8 +110,9 @@ discriminated-union narrowing keeps working, but the DB stores the bare slug in
 **One CLASSIFY kind.** [lib/container-registry.ts](lib/container-registry.ts) sorts the
 container tables into three ROLES — classify (project), gate (routine, season), aspire
 (goal) — and there is exactly ONE classify kind since migration 039 folded habit groups
-into projects. Every type answers with `items.project`; `containerRequired` is what still
-makes a habit different. The `habit_groups` TABLE is frozen ballast — never query it. The
+into projects. Every type answers with `items.project`, and since 2026-10-01 it is optional
+for every shipped type, habits included (`containerRequired` stays as a capability no type
+sets). The `habit_groups` TABLE is frozen ballast — never query it. The
 `items."group"` COLUMN is ballast too, but `itemFromRow` ([lib/db.ts](lib/db.ts)) still reads
 it in exactly one place, as a fallback (`row.project ?? row.group`), so a build landing ahead
 of the migration — a fresh clone, a rolled-back 039 — shows a habit's container instead of

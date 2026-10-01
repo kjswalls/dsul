@@ -295,10 +295,10 @@ describe('the CLASSIFY role survived the kind', () => {
     );
   });
 
-  it('keeps `containerRequired` as the thing that still distinguishes a habit', () => {
-    // The capability, not the kind. This is what `unfiled` reads to decide
-    // between unfiling a member and reassigning it.
-    expect(getItemTypeConfig('habit').containerRequired).toBe(true);
+  it('files a habit on the same optional axis as a task (Kirby, 2026-10-01)', () => {
+    // `containerRequired` is still the capability `unfiled` reads to decide
+    // between unfiling a member and reassigning it; no shipped type sets it.
+    expect(getItemTypeConfig('habit').containerRequired).toBe(false);
     expect(getItemTypeConfig('task').containerRequired).toBe(false);
     expect(getItemTypeConfig('habit').containerKind).toBe(
       getItemTypeConfig('task').containerKind

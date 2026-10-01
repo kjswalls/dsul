@@ -323,7 +323,9 @@ describe('type switch (edit pane type chip)', () => {
   it('a one-off task becomes a habit with the repeat it was given', () => {
     store().changeItemType('task-1', 'habit', { repeat: 'weekdays' });
     const item = store().items.find((i) => i.id === 'task-1')!;
-    expect(item).toMatchObject({ type: 'habit', repeatFrequency: 'weekdays', streak: 0, project: 'Personal' });
+    expect(item).toMatchObject({ type: 'habit', repeatFrequency: 'weekdays', streak: 0 });
+    // Unfiled stays unfiled: a habit's project is optional.
+    expect(item.project).toBeUndefined();
   });
 
   it('refuses a switch the item cannot take (a task with subtasks → habit)', async () => {

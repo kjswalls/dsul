@@ -271,23 +271,12 @@ describe('deleting a container', () => {
     }
   });
 
-  it('reassigns habits to the destination row, id included', () => {
-    // `containerRequired` is what makes this a reassignment rather than an
-    // unfile — the registry answers it, `unfiled` reads the answer.
+  it('unfiles habits too, clearing both halves — their project is optional', () => {
+    // `containerRequired` would make this a reassignment; since 2026-10-01 no
+    // shipped type declares it, so a habit leaves with nothing, like a task.
     store().removeProject('gr-well');
     const moved = find('habit-member') as { project?: string; projectId?: string };
-    expect(moved.project).toBe('Work');
-    expect(moved.projectId).toBe('pr-work');
-  });
-
-  it('falls back to a bare “Personal” name with no id when no row remains', () => {
-    // The account the migration found with 223 habits and ZERO habit_groups
-    // rows: the fallback names a container that does not exist, so claiming an
-    // id for it would be a lie the FK would reject.
-    store().removeProject('pr-work');
-    store().removeProject('gr-well');
-    const moved = find('habit-member') as { project?: string; projectId?: string };
-    expect(moved.project).toBe('Personal');
+    expect(moved.project).toBeUndefined();
     expect(moved.projectId).toBeUndefined();
   });
 

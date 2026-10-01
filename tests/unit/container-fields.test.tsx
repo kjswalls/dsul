@@ -432,7 +432,7 @@ describe('new items and seasons at birth', () => {
 });
 
 describe('a new item typed into a routine', () => {
-  it('is born a daily habit, filed under the first project', () => {
+  it('is born a daily habit, unfiled like a new task', () => {
     seed({ items: [], projects: [{ id: 'pr1', name: 'Health', emoji: '' }] });
     newContainer('routine');
     const field = id('routine-dialog-create-item-new-name');
@@ -442,7 +442,8 @@ describe('a new item typed into a routine', () => {
     click('routine-dialog-add');
     const s = usePlannerStore.getState();
     const made = s.items.find((i) => i.title === 'Floss')!;
-    expect(made).toMatchObject({ type: 'habit', repeatFrequency: 'daily', project: 'Health' });
+    expect(made).toMatchObject({ type: 'habit', repeatFrequency: 'daily' });
+    expect(made.project).toBeUndefined();
     expect(s.routines[0].itemIds).toEqual([made.id]);
   });
 

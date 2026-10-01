@@ -65,7 +65,6 @@ export function newItemPayload(
   when: NewItemWhen,
   bucket: TimeBucket,
   todayStr: string,
-  project: string | undefined,
 ): NewItemPayload {
   const base = { title, completedDates: [] as string[], skippedDates: [] as string[] };
   const rule =
@@ -78,11 +77,11 @@ export function newItemPayload(
       : undefined;
 
   if (ctx.container === 'routine') {
-    // A routine is a run of habits. Filed as the add dialog files a new habit
-    // (its container is REQUIRED): the caller passes the first project.
+    // A routine is a run of habits. Unfiled, like a new task: a habit's
+    // project is optional (Kirby, 2026-10-01).
     return {
       itemType: 'habit',
-      data: { ...base, project: project ?? 'personal', timeBucket: bucket, ...(rule ?? { repeatFrequency: 'daily' }) },
+      data: { ...base, timeBucket: bucket, ...(rule ?? { repeatFrequency: 'daily' }) },
     };
   }
   if (rule) {

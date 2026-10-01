@@ -237,67 +237,30 @@ test.describe('organize — projects, types and groups', () => {
 
   /* ── habit groups ───────────────────────────────────────────────────── */
 
-  test('deleting a habit group moves its habits to the group the copy names', async ({ page }) => {
-    // removeHabitGroup REASSIGNS rather than unassigns, and the old dialog's copy
-    // claimed the opposite. The console names the destination; this proves the
-    // sentence and the write agree.
-    // THE HABIT GOES IN THE DOOMED CONTAINER. An empty one exercises the "nothing
-    // moves" arm, where the destination clause never renders and the write
-    // rewrites no rows — the test would then stay green with the reassignment
-    // pointed anywhere, or removed.
-    //
-    // ONE CLASSIFY KIND since migration 039, so this drives the PROJECTS section
-    // and the habit is an ordinary member of a project. What still makes it a
-    // reassignment rather than an unfile is the registry's `containerRequired`.
+  test('deleting a project unfiles its habits, and the copy promises no move', async ({ page }) => {
+    // A habit's project is optional since 2026-10-01 (Kirby), so deleting the
+    // project unfiles its habits exactly as it does tasks. Until then the
+    // registry's `containerRequired` sent them to a sibling project, and the
+    // confirm named it ("The habit moves to …"); this pins that it no longer does.
     const title = testTitle('org-group');
     const doomed = scope.title('Doomed');
     const habitId = await createTestHabit(page, { title, timeBucket: 'morning', group: doomed });
     try {
       await reloadApp(page);
       await openConsole(page, 'Projects');
-      // A DESTINATION HAS TO EXIST, and on this account none may. `unfiled` sends
-      // a required-container member to `projects.find(p => p.id !== deleted)?.name
-      // ?? 'Personal'`, so with no sibling the fallback fires and names a
-      // container with no row — a real behaviour (covered in
-      // tests/unit/container-ids.test.ts) but not the one this test is about.
-      // Creating a sibling first makes the reassignment observable instead of
-      // depending on whatever the shared account happens to hold.
+      // A sibling exists, so a reassignment WOULD have somewhere to go — the
+      // copy staying silent about a destination is then the behaviour, not luck.
       await createLabel(page, 'project', scope.title('Haven'));
       await createLabel(page, 'project', doomed);
 
       await page.getByTestId('project-more').click();
       await page.getByTestId('project-delete').click();
-      // Asserted on the confirm itself rather than by walking up from the button
-      // with an xpath — the prompt is the surface the user actually reads, and
-      // `confirm-dialog` is a stable id the shell owns. The tail is asserted
-      // separately because labels.tsx appends it to BOTH arms, so on its own it
-      // cannot tell the two apart.
       const copy = (await page.getByTestId('confirm-dialog').textContent())!;
-      expect(copy).toContain('The habit moves to');
+      expect(copy).not.toContain('moves to');
       expect(copy).toContain('⌘Z brings it back');
-      const destination = /moves to “([^”]+)”/.exec(copy)?.[1];
-      expect(destination).toBeTruthy();
-
-      // The count the destination row shows, BEFORE the delete. Read in-session
-      // and asserted in-session: the reassignment is deliberately store-only —
-      // dbDeleteProject stamps deleted_at and `items.project` is free text with
-      // no FK or trigger, so a reload would re-read the dead name and this
-      // assertion would go red on correct code.
-      const destRow = page
-        .locator('[data-testid="project-row"]')
-        .filter({ hasText: destination! })
-        .first();
-      // Asserted before reading, so a missing destination fails in 10s naming
-      // the row it wanted, rather than hanging the whole test to its 120s
-      // timeout inside textContent().
-      await expect(destRow, `no row for the destination the copy named: ${destination}`)
-        .toBeVisible();
-      const before = Number(/(\d+)\s*$/.exec((await destRow.textContent())!)![1]);
 
       await page.getByTestId('category-delete-confirm').click();
-      await expect(destRow).toContainText(String(before + 1));
       await closeConsole(page);
-
       // And nothing was deleted — a container delete never deletes work.
       await expect(itemCard(page, habitId)).toHaveCount(1);
     } finally {

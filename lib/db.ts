@@ -266,7 +266,9 @@ function itemToRow(userId: string, item: Item): ItemRow {
       // `project`, not `"group"` — 039. The frozen column is left exactly as the
       // last pre-collapse build wrote it; dual-writing it would mean the
       // rollback ballast never stops drifting, and the migration header says so.
-      project: item.project,
+      // NULL, not omitted, when unfiled (optional since 2026-10-01): an upsert
+      // that leaves the key out keeps whatever name the row held before.
+      project: item.project || null,
       streak: item.streak,
       status: item.status,
       completed_dates: item.completedDates,
@@ -405,10 +407,15 @@ function taskUpdatesToRow(updates: Partial<Task>): Record<string, unknown> {
 function habitUpdatesToRow(updates: Partial<HabitItem>): Record<string, unknown> {
   const row: Record<string, unknown> = {};
   if ('title' in updates) row.title = updates.title;
-  // One CLASSIFY axis (039): the same columns the task allowlist writes. The
-  // null guard survives the rename — the habit container NAME kept the legacy
-  // NOT NULL semantics, so a PATCH {"project": null} must not corrupt it.
-  if ('project' in updates && updates.project != null) row.project = updates.project;
+  // One CLASSIFY axis (039): the same columns the task allowlist writes. A
+  // habit's project is optional since 2026-10-01, so clearing it is a real
+  // write — and it clears the frozen `"group"` column too, because itemFromRow
+  // falls back to that name when `project` is NULL: left alone, a migrated
+  // habit would come back filed under its old habit group on the next load.
+  if ('project' in updates) {
+    row.project = updates.project || null;
+    if (!updates.project) row.group = null;
+  }
   // Container id (027) — no null guard, unlike the name above: the id is
   // nullable by design and clearing it is a real operation.
   if ('projectId' in updates) row.project_id = updates.projectId ?? null;

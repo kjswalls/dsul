@@ -227,12 +227,12 @@ describe('setItemsProject', () => {
     expect(db.updateItem).toHaveBeenCalledWith('a', 'task', { project: 'Work', projectId: 'p-work' });
   });
 
-  it('clearing skips types whose container is required', () => {
+  it('clears a habit as well as a task — a habit\'s project is optional', () => {
     seed([task('a', { project: 'Work', projectId: 'p-work' }), habit('h')]);
     store().setItemsProject(['a', 'h'], undefined);
-    expect(getActionLog()[0].label).toBe('Clear project · 1 item');
-    expect(updateCalls().map((c) => c[0])).toEqual(['a']);
-    expect(byId('h').project).toBe('Health');
+    expect(getActionLog()[0].label).toBe('Clear project · 2 items');
+    expect(updateCalls().map((c) => c[0])).toEqual(['a', 'h']);
+    expect(byId('h').project).toBeUndefined();
     expect(byId('a').project).toBeUndefined();
     expect(byId('a').projectId).toBeUndefined();
   });
@@ -306,7 +306,7 @@ describe('setItemsProject', () => {
     seed([task('a', { project: 'Work', projectId: 'p-work' }), habit('h')]);
     const before = getActionLog().length;
     store().setItemsProject(['a'], 'Work');
-    store().setItemsProject(['h'], undefined);
+    store().setItemsProject(['h'], 'Health');
     expect(getActionLog().length).toBe(before);
     expect(db.updateItem).not.toHaveBeenCalled();
   });
