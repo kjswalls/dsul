@@ -277,6 +277,16 @@ export function ModelConnectionPanel({
     void useAIConnectionStore.getState().refresh();
   }, []);
 
+  // In the desktop app an OpenRouter sign-in happens in the browser
+  // (useInDesktopApp), so the connection it makes lands while this pane sits
+  // open behind it. Ask again when the window comes back to the front.
+  useEffect(() => {
+    if (!getDesktopBridge()) return;
+    const ask = () => void useAIConnectionStore.getState().refresh();
+    window.addEventListener('focus', ask);
+    return () => window.removeEventListener('focus', ask);
+  }, []);
+
   // …but no longer than the state it reports. The notice says how ONE
   // OpenRouter round trip ended; the next connect, check or disconnect gives a
   // newer answer, which the card below shows, so the notice goes the moment
@@ -759,6 +769,7 @@ function ReplaceKeyForm({
   const [apiKey, setApiKey] = useState('');
   const [error, setError] = useState<{ code: ApiErrorCode; field: string | null } | null>(null);
   const name = providerName(model.provider, model.baseUrl);
+  const keyHelpUrl = PROVIDER_META[model.provider].keyHelpUrl;
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -812,6 +823,17 @@ function ReplaceKeyForm({
           ? 'The new key replaces the old one. Your current one keeps working until this one passes.'
           : `Paste a new key from ${name}. It’s checked before it’s saved.`}
       </p>
+      {keyHelpUrl && (
+        <a
+          href={keyHelpUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={cn(QUIET_LINK, 'inline-flex items-center gap-1 self-start')}
+        >
+          Get a key from {PROVIDER_META[model.provider].label}
+          <ArrowUpRight className="size-3" aria-hidden />
+        </a>
+      )}
       {error && (
         <p role="alert" className="text-destructive text-xs" data-testid="mcp-error">
           {connectErrorCopy(error.code, name, { field: error.field })}
@@ -949,6 +971,12 @@ function ConnectedCard({
               ? 'dsul can’t read your saved key anymore. Connect it again.'
               : `This key stopped working. ${name} turned it down the last time dsul used it.`}
           </p>
+          {oauth && inDesktopApp && (
+            <p className="text-muted-foreground text-xs" data-testid="mcp-signin-browser">
+              Or sign in to OpenRouter again from dsul in your browser. The connection works here
+              too.
+            </p>
+          )}
           <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
             {replaceAction}
             {!unreadable && (

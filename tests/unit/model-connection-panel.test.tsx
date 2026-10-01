@@ -772,6 +772,19 @@ describe('failing', () => {
   }
 });
 
+describe('outside the desktop app', () => {
+  it('a window focus asks nothing: the sign-in finishes on this page', async () => {
+    given(NOTHING_CONNECTED);
+    renderPanel();
+    await waitFor(() => expect(statusGets()).toBe(1));
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await act(async () => {});
+    expect(statusGets()).toBe(1);
+  });
+});
+
 describe('in the desktop app', () => {
   // OpenRouter's sign-in can't finish inside the shell (its callback lands in
   // the system browser, away from the PKCE cookie), so the app never offers it.
@@ -805,7 +818,16 @@ describe('in the desktop app', () => {
     server.put = () => json({ connection: view({ provider: 'openrouter', model: 'openai/gpt-4o-mini' }) });
     renderPanel();
     expect(screen.queryByTestId('mcp-signin-again')).toBeNull();
+    // The way they connected in the first place still works, from the browser.
+    expect(screen.getByTestId('mcp-signin-browser')).toHaveTextContent(
+      'Or sign in to OpenRouter again from dsul in your browser. The connection works here too.'
+    );
     fireEvent.click(screen.getByRole('button', { name: 'Replace key' }));
+    // Someone who only ever signed in has no key yet: say where one comes from.
+    expect(screen.getByRole('link', { name: 'Get a key from OpenRouter' })).toHaveAttribute(
+      'href',
+      'https://openrouter.ai/settings/keys'
+    );
     const key = screen.getByTestId('mcp-replace-key') as HTMLInputElement;
     fireEvent.change(key, { target: { value: SENTINEL } });
     fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -815,6 +837,22 @@ describe('in the desktop app', () => {
       apiKey: SENTINEL,
       model: 'openai/gpt-4o-mini',
     });
+  });
+
+  it('asks again when the window comes back, so a browser sign-in shows up here', async () => {
+    given(NOTHING_CONNECTED);
+    renderPanel();
+    await waitFor(() => expect(statusGets()).toBe(1));
+    server.status = {
+      available: true,
+      model: view({ provider: 'openrouter', authMethod: 'oauth', model: 'openai/gpt-4o-mini' }),
+      openclaw: CLAW_OFF,
+    };
+    act(() => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    await waitFor(() => expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenRouter'));
+    expect(statusGets()).toBe(2);
   });
 
   it('Use a different provider: the key form, without the sign-in', () => {
