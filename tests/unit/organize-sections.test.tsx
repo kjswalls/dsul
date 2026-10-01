@@ -693,28 +693,9 @@ describe('the label sections', () => {
     expect(id('project-members')).toHaveTextContent('Items 3');
   });
 
-  it('names the container the habits will actually land in', () => {
-    // The old habit-group copy claimed deleting "unassigns it from all habits".
-    // It does not: a type whose container is REQUIRED is reassigned, and the
-    // user was never told where. One delete action since 039, so the project
-    // sentence has to carry both halves — most items are unfiled, habits move.
-    seed({
-      items: [habit('i1', 'Stretch', { project: 'Morning' })],
-      projects: [
-        { id: 'g1', name: 'Morning', emoji: 'icon:Sun' },
-        { id: 'g2', name: 'Evening', emoji: 'icon:Moon' },
-      ],
-    });
-    open('projects');
-    fireEvent.click(screen.getAllByTestId('project-row')[0]);
-    const sentence = deleteSentence('project');
-    expect(sentence).toContain('The habit moves to “Evening”');
-    expect(sentence).toContain('⌘Z brings it back');
-  });
-
   it('says nothing about a destination when no member needs one', () => {
-    // A task is unfiled, not reassigned, so the sentence must not promise it a
-    // new home. `containerRequired` is the whole difference.
+    // A task (and, since 2026-10-01, a habit) is unfiled, not reassigned, so
+    // the sentence must not promise it a new home.
     seed({
       items: [task('i1', 'Plan', { project: 'Morning' })],
       projects: [

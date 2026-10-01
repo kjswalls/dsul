@@ -193,13 +193,13 @@ describe('a goal\'s milestone', () => {
 });
 
 describe('a project\'s rows', () => {
-  it('cannot release a habit, whose project is required', () => {
+  it('releases a habit as it does a task — a habit\'s project is optional', () => {
     seed([habit('h1', 'Stretch', { project: 'Home' }), task('t1', 'Fix sink', { project: 'Home', startDate: TODAY })], {
       projects: [{ id: 'pr1', name: 'Home', emoji: '' }],
     });
     render(<OrganizeConsole open onOpenChange={() => {}} section="projects" focusId="pr1" />);
-    expect(within(rowOf('Stretch')).queryByTestId('project-member-remove')).toBeNull();
-    expect(within(openMenu('Stretch')).queryByTestId('member-menu-remove')).toBeNull();
+    fireEvent.click(within(rowOf('Stretch')).getByTestId('project-member-remove'));
+    expect(item('h1').project).toBeUndefined();
     fireEvent.click(within(rowOf('Fix sink')).getByTestId('project-member-remove'));
     expect(item('t1').project).toBeUndefined();
   });

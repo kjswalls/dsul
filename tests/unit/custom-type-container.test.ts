@@ -67,9 +67,9 @@ describe('custom item types and the container axis', () => {
 
   it('keeps the built-in types on the same one axis', () => {
     // The habit answered 'habitGroups' until migration 039 collapsed the two
-    // CLASSIFY kinds. `containerRequired` is what still distinguishes it.
+    // CLASSIFY kinds; its project became optional on 2026-10-01.
     expect(getItemTypeConfig('task').containerKind).toBe('projects');
     expect(getItemTypeConfig('habit').containerKind).toBe('projects');
-    expect(getItemTypeConfig('habit').containerRequired).toBe(true);
+    expect(getItemTypeConfig('habit').containerRequired).toBe(false);
   });
 });

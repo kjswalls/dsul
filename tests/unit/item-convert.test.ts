@@ -84,7 +84,7 @@ describe('convertItem', () => {
     expect(out).toMatchObject({ startDate: '2026-10-01', timeBucket: 'anytime' });
   });
 
-  it('task → habit resets the streak, takes the given repeat, and fills a missing project', () => {
+  it('task → habit resets the streak, takes the given repeat, and leaves a missing project unset', () => {
     const out = convertItem(task({ project: undefined }), 'habit', {
       ...opts,
       repeat: 'weekdays',
@@ -95,10 +95,10 @@ describe('convertItem', () => {
       streak: 0,
       dailyCounts: {},
       repeatFrequency: 'weekdays',
-      project: 'Personal',
-      projectId: 'p-personal',
       startTime: '10:00',
     });
+    expect(out.project).toBeUndefined();
+    expect(out.projectId).toBeUndefined();
     expect(out).not.toHaveProperty('startDate');
     expect(out).not.toHaveProperty('isScheduled');
   });

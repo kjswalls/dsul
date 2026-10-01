@@ -445,49 +445,25 @@ describe('the capture surface gets the field too', () => {
     expect(field().textContent).toContain('Sep 18');
   });
 
-  it('shows a habit what it already carries: its file, its cadence, its count', () => {
-    // The field is not a diet — a habit reaches capture with a required
-    // container already filled (makeAddDraft seeds the first one), a default
-    // frequency and a daily count, so all three show at rest. Only the
-    // properties a new habit genuinely has none of go to the seed.
+  it('shows a habit what it already carries: its cadence and its count', () => {
+    // The field is not a diet — a habit reaches capture with a default
+    // frequency and a daily count, so both show at rest. Its project is
+    // optional (2026-10-01) and starts unset, so it waits in the seed like a
+    // task's.
     capture('habit');
-    expect(screen.getByTestId('item-dialog-container-chip').textContent).toContain('Onboarding');
     expect(field().textContent).toContain('Daily');
     // The count chip is asserted BY VALUE, not just by the section it sits in:
     // `timesPerDay` is the one prop hardcoded `set: true` (it always carries a
     // value, defaulting to 1×), and flipping that to false silently drops it
     // into the seed on every surface with nothing else in the suite noticing.
     expect(field().textContent).toContain('1×');
-    // …and the chip keeps the registry noun in its accessible name, which is
-    // the only place the band label used to live.
-    expect(screen.getByTestId('item-dialog-container-chip').getAttribute('aria-label')).toBe(
-      `${CONTAINER_KINDS.project.label}: Onboarding`
-    );
+    expect(screen.queryByTestId('item-dialog-container-chip')).toBeNull();
   });
 
-  it("never offers a habit's own container in the seed — it cannot be un-set", () => {
-    /**
-     * Honest about WHY this passes, because the obvious reading is wrong: it is
-     * `set`, not `required`, that carries it. Neither draft builder can produce
-     * `container: 'none'` for a type that requires one — makeAddDraft seeds the
-     * first container (or legacy 'personal'), and draftFromItem falls back to
-     * `''` — and `set` is `d.container !== 'none'`, so it is true even for a
-     * habit filed nowhere. `required` is the backstop behind that, not the
-     * mechanism, and there is no state reachable from either builder that
-     * exercises it alone. What this pins is the USER-FACING guarantee: the one
-     * property a habit cannot do without is never folded out of reach.
-     */
+  it("offers a habit's project in the seed, as it does a task's", () => {
     capture('habit');
     fireEvent.click(screen.getByTestId('item-clearing-seed'));
-    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
-    cleanup();
-    // The same guarantee on the edit side, where the project really IS empty:
-    // draftFromItem gives a container-requiring type `''` rather than 'none'.
-    seed({ items: [habitItem()] });
-    panel(habitItem());
-    expect(screen.getByTestId('item-dialog-container-chip')).toBeTruthy();
-    fireEvent.click(screen.getByTestId('item-clearing-seed'));
-    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(false);
+    expect(seedOptions().some((t) => t.includes(CONTAINER_KINDS.project.label))).toBe(true);
   });
 
   it('picks the type when adding and switches it when editing', () => {
@@ -975,15 +951,13 @@ describe('every membership comes back off, from the pill or the picker', () => {
     expect(field().textContent).not.toContain('Onboarding');
   });
 
-  it('offers no remove on a habit’s project, and says why in the picker', () => {
+  it('clears a habit’s project from its pill, as it does a task’s', () => {
     const h = habitItem({ project: 'Onboarding' });
     seed({ items: [h] });
     panel(h);
-    expect(screen.queryByTestId('item-dialog-container-chip-clear')).toBeNull();
-    fireEvent.click(screen.getByTestId('item-dialog-container-chip'));
-    expect(screen.getByTestId('item-dialog-container-required').textContent).toContain(
-      'always belong to a'
-    );
+    fireEvent.click(screen.getByTestId('item-dialog-container-chip-clear'));
+    expect(field().textContent).not.toContain('Onboarding');
+    expect(screen.queryByTestId('item-dialog-container-required')).toBeNull();
   });
 
   it('clears priority and date from their pills', () => {

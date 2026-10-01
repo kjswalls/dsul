@@ -278,12 +278,11 @@ describe('classifyKindForItemType', () => {
 
   it('agrees with every shipped item type', () => {
     // Including the habit, which is the point of 039: a habit answers on the
-    // same axis as a task, and `containerRequired` is what still makes it
-    // different.
+    // same axis as a task — and since 2026-10-01 its project is optional too.
     for (const typeName of getAllItemTypeNames()) {
       expect(classifyKindForItemType(getItemTypeConfig(typeName).containerKind)).toBe('project');
     }
-    expect(getItemTypeConfig('habit').containerRequired).toBe(true);
+    expect(getItemTypeConfig('habit').containerRequired).toBe(false);
     expect(getItemTypeConfig('task').containerRequired).toBe(false);
   });
 });

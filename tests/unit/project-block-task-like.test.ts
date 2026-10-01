@@ -225,21 +225,15 @@ describe('removeProject clears the deleted name off every type that holds one', 
     expect(store().projects).toHaveLength(0);
   });
 
-  it('REASSIGNS a habit rather than unfiling it, because its container is required', () => {
-    // The inverse of what this asserted before migration 039. A habit used to
-    // answer with `group`, so `removeProject` skipped it outright; now there is
-    // one CLASSIFY axis and the habit is an ordinary member — but one whose type
-    // declares `containerRequired`, so it moves to the first surviving
-    // container instead of being left with nothing. `unfiled` in planner-store
-    // reads that capability rather than testing for a habit.
+  it('unfiles a habit like any other member', () => {
+    // Since 039 there is one CLASSIFY axis and the habit is an ordinary member.
+    // Until 2026-10-01 its type declared `containerRequired` and it was moved to
+    // a surviving container; its project is optional now, so it is unfiled.
     seed([{ ...item('h1'), type: 'habit' } as Item]);
 
     store().removeProject('p-work');
 
-    // No live container remains in this fixture, so the fallback name is the
-    // honest answer — a text-only reference with no id, exactly the state 027
-    // documents for most container references on the live database.
-    expect(byId('h1').project).toBe('Personal');
+    expect(byId('h1').project).toBeUndefined();
   });
 
   it('leaves an item in a different project alone', () => {

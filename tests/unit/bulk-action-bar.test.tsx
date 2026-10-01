@@ -291,7 +291,7 @@ describe('BulkActionBar — Edit menu (touch: drilled in place)', () => {
     expect(setItemsReminder).toHaveBeenLastCalledWith(['a', 'b'], '09:15');
   });
 
-  it('No project counts and clears only the types that may go unfiled', () => {
+  it('Remove from project clears every filed type, habits included', () => {
     seed({ items: [task('a', { project: 'Work' }), habit('h')] });
     render(<BulkActionBar />);
     openEdit();
@@ -299,10 +299,10 @@ describe('BulkActionBar — Edit menu (touch: drilled in place)', () => {
     const none = screen
       .getAllByTestId('bulk-project-option')
       .find((el) => el.getAttribute('data-project-id') === '')!;
-    // The habit's project is required, so "No project" reaches one of two.
-    expect(none).toHaveTextContent('· 1');
+    // A habit's project is optional (2026-10-01), so it reaches both.
+    expect(none).not.toHaveTextContent('· 1');
     fireEvent.click(none);
-    expect(setItemsProject).toHaveBeenCalledWith(['a'], undefined);
+    expect(setItemsProject).toHaveBeenCalledWith(['a', 'h'], undefined);
   });
 
   it('closing the popover resets it to the root list', () => {

@@ -40,7 +40,10 @@ types should appear there). Next: Phase 6.
    (`project`, `group`) are ONE kind, `project`. `habit_groups` and `items."group"` are
    frozen rollback ballast like `tasks`/`habits`; nothing reads them. The registry still
    declares `containerKind` per type — it is just that every type now answers
-   `'projects'`, and `containerRequired` is what still distinguishes a habit.
+   `'projects'`. `containerRequired` used to be what still distinguished a habit;
+   since 2026-10-01 (Kirby) a habit's project is optional too and no shipped type
+   sets it — the capability stays for a future type. The legacy `habits[].group`
+   still goes out as a required string: `''` when unfiled (`toLegacyHabit`).
 
    The three container ROLES are untouched: one classify kind, two gates (routine,
    program), one aspire (goal). Collapsing a kind is not collapsing a role, and

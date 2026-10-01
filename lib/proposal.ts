@@ -59,11 +59,11 @@ const KNOWN_BUILTINS = ['task', 'habit']
 /** Types the AI may CREATE: anything that doesn't require a container. */
 function canCreateType(typeName: string, ctx: ProposalContext): boolean {
   if (!KNOWN_BUILTINS.includes(typeName) && !ctx.customTypeNames.includes(typeName)) return false
-  // Habits require a group and a recurrence rule to be meaningful, and
-  // "the AI invented you a new daily commitment" is a product decision this
-  // version deliberately does not make. Registry-derived, not hardcoded: any
-  // future container-required type is excluded for the same real reason.
-  return getItemTypeConfig(typeName).containerRequired === false
+  // "The AI invented you a new daily commitment" is a product decision this
+  // version deliberately does not make. Registry-derived, not hardcoded: a
+  // streak-keeping type is that kind of commitment. (This used to ask
+  // `containerRequired`, which stopped being true of habits on 2026-10-01.)
+  return getItemTypeConfig(typeName).counters.streak === false
 }
 
 /**

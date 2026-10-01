@@ -386,11 +386,13 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
     milestoneEligible: false,
     orderable: false,
     // 'projects' since 039 — a habit answers on the same one CLASSIFY axis as
-    // everything else. `containerRequired` is what still makes a habit
-    // different, and it is a capability, not a kind.
+    // everything else. Optional since 2026-10-01 (Kirby): the requirement was
+    // the old habit_groups table's NOT NULL carried forward, not a product
+    // rule. The legacy agent projection still sends `group: ''` when unfiled
+    // (toLegacyHabit in lib/db.ts).
     containerKind: 'projects',
-    containerRequired: true,
-    orphanContainerFallback: 'Personal',
+    containerRequired: false,
+    orphanContainerFallback: null,
     counters: { streak: true, dailyCounts: true },
     // Habits recur; a habit "subtask" or agent handoff has no defined meaning.
     subtasks: false,
