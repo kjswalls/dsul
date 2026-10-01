@@ -40,7 +40,11 @@ import {
   LIGHT_LOOKS,
   isDarkLook,
   isLightLook,
+  darkLookDef,
+  lightLookDef,
 } from '@/lib/theme-looks';
+import { DEFAULT_LAYOUT, LAYOUTS, isLayoutTheme, layoutDef } from '@/lib/layout-themes';
+import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
   DEFAULT_SHORTCUTS,
@@ -807,6 +811,52 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) saveSettings(ctx.userId, { theme_dark: v });
     },
     defaultValue: DEFAULT_DARK_LOOK,
+  },
+  {
+    id: 'look.layout',
+    pane: 'look',
+    label: 'Layout',
+    description: 'How the desktop is put together. The same in light and dark.',
+    // The phone keeps its own shell; a layout only ever reaches the desktop one.
+    desktopOnly: true,
+    control: 'enum',
+    dbColumn: 'layout',
+    options: LAYOUTS.map((l) => ({ value: l.value, label: l.label })),
+    keywords: ['arrangement', 'structure', 'console', 'classic', 'terminal', 'rearrange', 'move sidebar'],
+    read: () => look().layout,
+    write: (v, ctx) => {
+      if (!isLayoutTheme(v)) return;
+      look().setLayout(v);
+      if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+      // Offer the colour theme the layout was designed with — offer, never
+      // impose: every look works with every layout. Dark first, since the only
+      // pairing that exists is dark (Console with Terminal).
+      const { light, dark } = layoutDef(v).pairsWith;
+      const offer =
+        dark && look().dark !== dark
+          ? { mode: 'dark' as const, label: darkLookDef(dark).label }
+          : light && look().light !== light
+            ? { mode: 'light' as const, label: lightLookDef(light).label }
+            : null;
+      if (!offer) return;
+      toast(`${layoutDef(v).label} looks best with ${offer.label}.`, {
+        action: {
+          label: `Use ${offer.label}`,
+          onClick: () => {
+            if (offer.mode === 'dark' && dark) {
+              look().setDark(dark, { eased: true });
+              if (ctx.userId) saveSettings(ctx.userId, { theme_dark: dark, theme: 'dark' });
+            } else if (light) {
+              look().setLight(light, { eased: true });
+              if (ctx.userId) saveSettings(ctx.userId, { theme_light: light, theme: 'light' });
+            }
+            // The tap asked to SEE the pairing, so show its mode too.
+            ctx.setTheme(offer.mode);
+          },
+        },
+      });
+    },
+    defaultValue: DEFAULT_LAYOUT,
   },
   {
     id: 'look.palette',

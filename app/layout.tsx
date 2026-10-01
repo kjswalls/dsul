@@ -121,11 +121,14 @@ export default function RootLayout({
             hydrateSettings consumes it and persists 'default' server-side,
             otherwise the server row would re-apply the broken palette one
             settings round-trip later. Unknown slugs stamp harmlessly (no CSS
-            block answers) and the provider effect re-syncs them after mount. */}
+            block answers) and the provider effect re-syncs them after mount.
+            The reset clears the layout too (lib/layout-themes.ts
+            LAYOUT_STORAGE_KEY) but stamps nothing for it: the desktop shell
+            stamps its own root, and it never renders before mount. */}
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{var r=document.documentElement,S=/^[a-z][a-z0-9-]{0,31}$/,K=[['dsul-look-light','data-look-light'],['dsul-look-dark','data-look-dark']],i,v;if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');for(i=0;i<K.length;i++)localStorage.removeItem(K[i][0]);sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&S.test(p)){r.dataset.theme=p}for(i=0;i<K.length;i++){v=localStorage.getItem(K[i][0]);if(v&&S.test(v))r.setAttribute(K[i][1],v)}}}catch(e){}",
+              "try{var r=document.documentElement,S=/^[a-z][a-z0-9-]{0,31}$/,K=[['dsul-look-light','data-look-light'],['dsul-look-dark','data-look-dark']],i,v;if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');localStorage.removeItem('dsul-layout');for(i=0;i<K.length;i++)localStorage.removeItem(K[i][0]);sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&S.test(p)){r.dataset.theme=p}for(i=0;i<K.length;i++){v=localStorage.getItem(K[i][0]);if(v&&S.test(v))r.setAttribute(K[i][1],v)}}}catch(e){}",
           }}
         />
         {/* No `disableTransitionOnChange`: it injected `transition: none` across
