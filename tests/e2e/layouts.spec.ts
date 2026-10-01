@@ -88,6 +88,23 @@ test.describe('Layouts: Notebook', () => {
     await expect(page.locator('[data-dock-page] input')).toHaveAttribute('placeholder', 'write a line…');
   });
 
+  test("the braindump's Display shelf lines up with its title", async ({ page }) => {
+    // The shelf shows only while a display option is off its default, so sort
+    // the braindump by title. An init script, not a one-off write: login's own
+    // init script re-seeds dsul-view on every load, and this one runs after it.
+    await page.addInitScript(() => {
+      const blob = JSON.parse(localStorage.getItem('dsul-view') ?? '{"state":{},"version":1}');
+      blob.state = { ...blob.state, braindumpSortBy: 'title' };
+      localStorage.setItem('dsul-view', JSON.stringify(blob));
+    });
+    await reloadApp(page);
+    // The title loses its inset, so the shelf under it must too, or its line
+    // starts 15px right of the title it sits under.
+    const shelf = page.locator('[data-book]').getByTestId('display-shelf-braindump');
+    await expect(shelf).toBeVisible();
+    await expect(shelf).toHaveCSS('padding-left', '0px');
+  });
+
   test('the page tabs switch scope, and the ribbon marks today only', async ({ page }) => {
     await expect(page.getByTestId('page-ribbon')).toBeVisible();
     const tabs = page.getByTestId('page-tabs');

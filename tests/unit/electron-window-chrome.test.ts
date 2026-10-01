@@ -39,7 +39,7 @@ describe('electron/lib/window-chrome.cjs', () => {
   it('makes the band the shell padding plus the wordmark row', () => {
     expect(TITLE_BAND_PX).toBe(SHELL_PAD + WORDMARK_ROW);
     // The plate layouts (Classic) pad the shell; the flat ones put the status line in the band.
-    expect(read('components/shell/desktop-shell.tsx')).toContain("plate ? 'gap-3 bg-surface-0 p-3'");
+    expect(read('components/shell/desktop-shell.tsx')).toMatch(/plate\s*\?\s*'gap-3 bg-surface-0 p-3'/);
     const sidebar = read('components/sidebar/sidebar.tsx');
     expect(sidebar).toContain(`pt-[${WORDMARK_ROW}px]`);
     expect(sidebar).toContain(`h-[${WORDMARK_ROW}px]`);
