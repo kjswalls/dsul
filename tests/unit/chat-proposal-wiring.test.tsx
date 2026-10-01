@@ -1,5 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { render, screen, fireEvent, cleanup } from '@testing-library/react';
+import {
+  seedAI,
+  CONNECTED_MODEL,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+  type SeedAI,
+} from './helpers/ai-fixtures';
 
 /**
  * The two affordances that turn chat from a place you talk into a place work
@@ -7,16 +14,29 @@ import { render, screen, fireEvent } from '@testing-library/react';
  * end in a card you tap rather than in changes you then go and make by hand.
  *
  * Worth pinning because both are easy to break invisibly — the plan button
- * silently attaching to the wrong message, or the openers surviving into a
- * tier that cannot actually propose, would both still render fine.
+ * silently attaching to the wrong message, or surviving onto a transport that
+ * cannot propose, would both still render fine.
+ *
+ * The AI gate is the REAL one (lib/ai-connection-store.ts + ai-settings-store),
+ * seeded per case through the shared fixture: the component asks
+ * `useAICapabilities()` and nothing else, so a mock of either store here would
+ * be testing the mock.
  */
+
+/** OpenClaw through the user's own gateway: chats AND proposes. */
+const OPENCLAW_GATEWAY: SeedAI = {
+  phase: 'ready',
+  available: true,
+  model: null,
+  openclaw: { gateway: true, agent: true, agentId: 'kirby-1' },
+  choice: 'openclaw',
+};
 
 const send = vi.fn();
 const stop = vi.fn();
 const requestProposal = vi.fn();
 
 let messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
-let provider = 'openai';
 let proposalStatus = 'idle';
 let proposalSurface = 'chat';
 let isLoading = false;
@@ -33,18 +53,11 @@ vi.mock('@/lib/chat-store', () => {
     send,
     stop,
     hydrate: vi.fn(),
-    syncOpenclawInfo: vi.fn(),
-    openclawAgentIdDisplay: null,
   });
   return {
     useChatStore: (sel?: (s: unknown) => unknown) => (sel ? sel(state()) : state()),
   };
 });
-
-vi.mock('@/lib/ai-settings-store', () => ({
-  useAISettingsStore: (sel: (s: unknown) => unknown) =>
-    sel({ provider, apiKey: 'sk-test', model: 'gpt-4o-mini' }),
-}));
 
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: (sel: (s: unknown) => unknown) =>
@@ -78,15 +91,27 @@ import { ChatConversation } from '@/components/ai/chat-conversation';
 
 const PLAN_BUTTON = 'chat-make-plan';
 
+let unseed: () => void = () => {};
+const seed = (o: SeedAI) => {
+  unseed();
+  unseed = seedAI(o);
+};
+
 beforeEach(() => {
   send.mockClear();
   stop.mockClear();
   requestProposal.mockClear();
   isLoading = false;
   messages = [];
-  provider = 'openai';
+  seed(CONNECTED_MODEL);
   proposalStatus = 'idle';
   proposalSurface = 'chat';
+});
+
+afterEach(() => {
+  cleanup();
+  unseed();
+  unseed = () => {};
 });
 
 const renderChat = () => render(<ChatConversation variant="desktop" />);
@@ -117,11 +142,35 @@ describe('conversation openers', () => {
     expect(screen.queryByTestId('chat-openers')).toBeNull();
   });
 
-  it('stays hidden on a tier that cannot propose', () => {
+  it('stays hidden when nothing can answer', () => {
     // An opener whose answer leads nowhere is worse than a blank box.
-    provider = 'none';
+    seed(NOTHING_CONNECTED);
     renderChat();
     expect(screen.queryByTestId('chat-openers')).toBeNull();
+  });
+
+  it('shows for OpenClaw plugin chat, which can answer but not propose', () => {
+    // An opener is a plain send(), so it needs chat, not a proposal transport.
+    // Gating it on proposing stripped the openers from plugin users.
+    seed(OPENCLAW_PLUGIN);
+    renderChat();
+    expect(screen.getByTestId('chat-openers').querySelectorAll('button').length).toBeGreaterThan(0);
+  });
+});
+
+describe('the empty state', () => {
+  it('invites a question when a model answers, and never asks for a key', () => {
+    renderChat();
+    expect(screen.getByText('Ask anything')).toBeInTheDocument();
+    expect(screen.queryByText(/API key/i)).toBeNull();
+    expect(screen.getByPlaceholderText('Ask anything…')).toBeInTheDocument();
+  });
+
+  it('names OpenClaw when OpenClaw answers', () => {
+    seed(OPENCLAW_PLUGIN);
+    renderChat();
+    expect(screen.getByText('OpenClaw is ready')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Message OpenClaw…')).toBeInTheDocument();
   });
 });
 
@@ -147,7 +196,7 @@ describe('turning a conversation into a plan', () => {
   });
 
   it('sends the exchange, not just the question', () => {
-    // What makes a plan worth proposing usually lives in Beacon's reply. A
+    // What makes a plan worth proposing usually lives in the reply. A
     // proposer handed only the question has to re-derive the answer and will
     // land somewhere else.
     messages = [
@@ -181,10 +230,22 @@ describe('turning a conversation into a plan', () => {
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
 
-  it('is absent on a tier that cannot propose', () => {
+  it('is absent when nothing can propose', () => {
     // resolveAICapabilities is the single question. A button that silently does
     // nothing is worse than no button (lib/ai-registry.ts).
-    provider = 'none';
+    seed(NOTHING_CONNECTED);
+    messages = [
+      { role: 'user', content: 'a' },
+      { role: 'assistant', content: 'b' },
+    ];
+    renderChat();
+    expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
+  });
+
+  it('is absent on OpenClaw plugin chat, which has no proposal transport', () => {
+    // The propose route never reroutes an OpenClaw user's planner to a model
+    // they did not pick, and the plugin path cannot carry a proposal.
+    seed(OPENCLAW_PLUGIN);
     messages = [
       { role: 'user', content: 'a' },
       { role: 'assistant', content: 'b' },
@@ -194,7 +255,7 @@ describe('turning a conversation into a plan', () => {
   });
 
   it('is offered on the agent tier, which proposes through the user own gateway', () => {
-    provider = 'openclaw';
+    seed(OPENCLAW_GATEWAY);
     messages = [
       { role: 'user', content: 'a' },
       { role: 'assistant', content: 'b' },

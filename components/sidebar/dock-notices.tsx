@@ -17,6 +17,7 @@ import {
   useSweepNotice,
   useSyncErrorNotice,
 } from '@/components/notices/notice-sources';
+import { useAINotice } from '@/components/notices/ai-notice';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { capNotices, placeNotices, type DockNotice } from '@/lib/dock-notices';
 import { useLiveNoticeAnchors } from '@/lib/notice-anchors';
@@ -89,6 +90,9 @@ function useDockNotices(): DockNotice[] {
   const eod = useEodNotice();
   const sweep = useSweepNotice();
   const syncError = useSyncErrorNotice();
+  // The AI's key stopped working, or it moved to the user's own model. No
+  // anchor: the surfaces it would sit on are the ones the AI gate has hidden.
+  const ai = useAINotice();
   const live = useLiveNoticeAnchors();
 
   // What is left after every notice with a mounted object has gone to it. The
@@ -96,7 +100,7 @@ function useDockNotices(): DockNotice[] {
   // question with nowhere else to live, plus anything `blocked` (pinned) and
   // anything carrying a tray (which only the dock can open).
   return placeNotices(
-    [waiting, eod, sweep, syncError].filter((n): n is DockNotice => n !== null),
+    [waiting, eod, sweep, syncError, ai].filter((n): n is DockNotice => n !== null),
     live
   ).dock;
 }

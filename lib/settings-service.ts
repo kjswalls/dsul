@@ -68,7 +68,11 @@ const DEFAULT_SETTINGS: UserSettingsRow = {
   compact_mode: false,
   chill_mode: false,
   show_time_indicator: true,
-  morning_check_enabled: true,
+  // Rituals are opt-in for a new account (migration 054 moved the column
+  // default the same way). This is the first-run seed AND the read-error
+  // fallback, so a failed read leaves the check off for that session: quiet is
+  // the right way for a ritual to fail.
+  morning_check_enabled: false,
   left_sidebar_hover: false,
   right_sidebar_hover: false,
   morning_check_time: '08:00',

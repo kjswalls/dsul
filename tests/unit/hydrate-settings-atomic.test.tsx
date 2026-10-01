@@ -56,7 +56,7 @@ const SERVER = {
   stakes_settle_time: '23:45',
 };
 
-const loadSettings = vi.fn(async () => SERVER);
+const loadSettings = vi.fn<(userId: string) => Promise<Record<string, unknown>>>(async () => SERVER);
 
 vi.mock('@/lib/settings-service', () => ({
   loadSettings: (userId: string) => loadSettings(userId),
@@ -87,19 +87,24 @@ import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 
-/** The three loads that are not under test, stubbed at the store boundary. */
+/** The four loads that are not under test, stubbed at the store boundary. */
 const original = {
   initializeStore: usePlannerStore.getState().initializeStore,
   extensions: useExtensionsStore.getState().hydrate,
   secrets: useChannelSecretsStore.getState().hydrate,
+  ai: useAIConnectionStore.getState().hydrate,
 };
 
 describe('hydrateSettings applies every store in one uninterrupted block', () => {
   beforeEach(() => {
+    loadSettings.mockClear();
+    loadSettings.mockImplementation(async () => SERVER);
     usePlannerStore.setState({ initializeStore: async () => {}, timeFormat: '12h' });
     useExtensionsStore.setState({ hydrate: async () => {} });
     useChannelSecretsStore.setState({ hydrate: async () => {} });
+    useAIConnectionStore.setState({ hydrate: async () => {} });
     useSidebarStore.setState({ leftSidebarHoverEnabled: false });
     useMorningStore.setState({ settingsHydratedUserId: null });
     // The previous account's values, as localStorage would have left them.
@@ -118,7 +123,42 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
     usePlannerStore.setState({ initializeStore: original.initializeStore });
     useExtensionsStore.setState({ hydrate: original.extensions });
     useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useAIConnectionStore.setState({ hydrate: original.ai });
     useMorningStore.setState({ settingsHydratedUserId: null });
+  });
+
+  /**
+   * Rituals are opt-in. A NULL `morning_check_enabled` — a row from before the
+   * column had a default, or a fresh account's first read — is a person who
+   * never turned the morning check on, so it hydrates OFF. The previous
+   * account's `true` is left in the store first, so a pass cannot be the
+   * store's own default showing through.
+   */
+  it('reads a NULL morning_check_enabled as off', async () => {
+    useMorningStore.setState({ morningCheckEnabled: true });
+    loadSettings.mockImplementation(async () => ({ ...SERVER, morning_check_enabled: null }));
+
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    await waitFor(() => expect(useMorningStore.getState().settingsHydratedUserId).toBe(USER));
+    expect(useMorningStore.getState().morningCheckEnabled).toBe(false);
+  });
+
+  it('keeps a stored true as true — existing accounts are untouched', async () => {
+    useMorningStore.setState({ morningCheckEnabled: false });
+
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    await waitFor(() => expect(useMorningStore.getState().settingsHydratedUserId).toBe(USER));
+    expect(useMorningStore.getState().morningCheckEnabled).toBe(true);
   });
 
   it('never lets the stamp be observed ahead of the values it vouches for', async () => {

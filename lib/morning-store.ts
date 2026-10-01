@@ -35,7 +35,8 @@ export interface MorningServerSettings {
  */
 const USER_SCOPED_DEFAULTS = {
   morningCheckDismissedDate: null as string | null,
-  morningCheckEnabled: true,
+  // Off until the account says otherwise: rituals are opt-in (migration 054).
+  morningCheckEnabled: false,
   morningCheckTime: '08:00',
   morningAutoAgeEnabled: false,
   morningAutoAgeDays: 30,
@@ -330,7 +331,7 @@ export const useMorningStore = create<MorningStore>()(
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {
           morningCheckDismissedDate: (state.morningCheckDismissedDate as string | null) ?? null,
-          morningCheckEnabled: (state.morningCheckEnabled as boolean) ?? true,
+          morningCheckEnabled: (state.morningCheckEnabled as boolean) ?? false,
           morningCheckTime: (state.morningCheckTime as string) ?? '08:00',
           morningAutoAgeEnabled: (state.morningAutoAgeEnabled as boolean) ?? false,
           morningAutoAgeDays: (state.morningAutoAgeDays as number) ?? 30,

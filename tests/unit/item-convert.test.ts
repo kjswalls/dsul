@@ -131,11 +131,24 @@ describe('conversionBlock', () => {
     expect(conversionBlock(parent, 'errand', ctx([parent, child]))).toBeNull();
   });
 
-  it('refuses milestones, project-block tasks and Beacon assignments for habits', () => {
+  it('refuses milestones, project-block tasks and agent assignments for habits', () => {
     expect(conversionBlock(task(), 'habit', ctx([], ['t1']))).toMatch(/milestone/);
     expect(conversionBlock(task({ inProjectBlock: true }), 'habit', ctx())).toMatch(/project block/);
-    expect(conversionBlock(task({ assignee: 'beacon' }), 'habit', ctx())).toMatch(/Beacon/);
+    expect(conversionBlock(task({ assignee: 'beacon' }), 'habit', ctx())).toMatch(
+      /assigned to (AI|OpenClaw)/
+    );
     expect(conversionBlock(task(), 'habit', ctx())).toBeNull();
+  });
+
+  it('names the assignee the way the item panel does', () => {
+    // A stored `beacon` predates the AI losing its name; it reads as "AI" and
+    // the value itself is never rewritten.
+    expect(conversionBlock(task({ assignee: 'beacon' }), 'habit', ctx())).toBe(
+      'It’s assigned to AI'
+    );
+    expect(conversionBlock(task({ assignee: 'openclaw' }), 'habit', ctx())).toBe(
+      'It’s assigned to OpenClaw'
+    );
   });
 
   it('lets any habit become a task', () => {

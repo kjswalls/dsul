@@ -5,6 +5,21 @@ scannable, low-overwhelm, guilt-free, but capability-rich. The AI is not a chatb
 to a planner — it is a **collaborator on the planner itself**. Some items are yours, some
 are Beacon's, and the grid tells you at a glance who is doing what and what needs you.
 
+*Note 2026-10-01 (AI vision step 1, "Honest setup"):* "Beacon" above is this vision's history,
+not the product's name. The AI has no name now: the user-facing noun is "AI", OpenClaw keeps
+its own name, and `beacon` survives only in ids, file names and stored values (see resolved
+decision 6, superseded).
+
+**Status (2026-10-01): step 1, "Honest setup", BUILT (not yet merged).** dsul ships no AI of
+its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
+model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any
+OpenAI-compatible base URL. The key is sealed server-side (AES-256-GCM under
+`MODEL_KEYS_ENCRYPTION_KEY`, table `model_connections`, migration 053), is write-only from
+the browser, and works on every device. Every AI surface hides until something that can
+answer is connected and working (`lib/ai-registry.ts` fails closed). Rituals are opt-in for
+new accounts (migration 054). Where this document says "an OpenAI key" or "BYOK", read "a
+connected model". Next steps (right-rail chat, saved history, tool calling) are not built.
+
 **Status (2026-08-25):** **Phases 1, 2a and 2b SHIPPED.** Phase 1 — the proposal primitive
 and the gateway transport (`da56e9b`, `4df4ca7`, `046adb4`, `01d254a`, `2b7dbd7`).
 Phase 2a — dsul as a remote MCP server (`142810c`, `1081f5c`, `eddc778`, `9385854`).
@@ -238,13 +253,27 @@ Folded here from ai-vision-decisions.md, which now carries only what is still op
    with the badge stuck on `queued`. `agentAssignable` is now false on the custom template.
    Flip it back when the agent API grows a type-agnostic item write path; that is the real
    fix, and it is a bigger change than this decision implied.
-6. **Beacon is the name on every tier.** The assistant should not appear to change identity
-   because a settings toggle moved; the gateway is plumbing, Beacon is the character.
+6. ~~**Beacon is the name on every tier.** The assistant should not appear to change identity
+   because a settings toggle moved; the gateway is plumbing, Beacon is the character.~~
+
+   *Superseded 2026-10-01 (AI vision step 1, decisions (d) and 10):* the AI has no name; the
+   user-facing noun is "AI" (the settings pane, "Ask AI"); OpenClaw keeps its own name, because
+   it is the agent's; `beacon` survives only in ids, files and stored values (the pane id and
+   `/settings/beacon`, the `beacon.*` record ids, the assignee value `'beacon'`, which renders
+   as "AI").
 7. **BYOK stays.** On a gateway-owning account it is nearly dead weight, but every Pillar 1
    feature that works over a bare completion also works for a user who will never
    self-host — and it is the rehearsal for the hosted tier.
-8. **Anthropic stays declared coming-soon** until there is a reason to wire it. The registry
-   now says so explicitly, so no surface offers an action it cannot perform.
+
+   *Amended 2026-10-01 (step 1, decisions (a) and (b)):* BYOK is now the ONLY way to a model.
+   The app's own server key is gone. Keys are no longer kept in the browser: they are sealed
+   server-side, never sent back (not even masked), and usable on every device.
+8. ~~**Anthropic stays declared coming-soon** until there is a reason to wire it. The registry
+   now says so explicitly, so no surface offers an action it cannot perform.~~
+
+   *Superseded 2026-10-01 (step 1, decision (a)):* OpenAI, Anthropic, Google Gemini,
+   OpenRouter (OAuth or key) and any OpenAI-compatible base URL are wired; the tier registry
+   that declared coming-soon is gone (`lib/ai-registry.ts` is now the capability gate).
 
 ## Schema note — where delegation state lives (corrected twice; read the whole note)
 

@@ -4,8 +4,7 @@ import type { ReactNode } from 'react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
-import { useChatStore } from '@/lib/chat-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { chatAssistantLabel } from '@/lib/chat-utils';
 
 interface MobileChatPanelProps {
@@ -15,25 +14,26 @@ interface MobileChatPanelProps {
 }
 
 /**
- * Mobile Beacon tab — the dateless header capsule over the shared
+ * Mobile chat tab — the dateless header capsule over the shared
  * ChatConversation (lib/chat-store.ts), both sitting on the paper backdrop.
  *
  * The composer is NOT here. Per design/mobile-redesign/ChatTab.dc.html the
- * dock's bar is Beacon's input, so this passes `hideComposer` and the dock
+ * dock's bar is the chat input, so this passes `hideComposer` and the dock
  * mounts a `<ChatComposer variant="dock">` in the row the omnibar vacates —
  * which is also what closes the empty well phase 2 left on this tab. The focus
  * signal went with it: the field it was aiming at is down there now.
  */
 export function MobileChatPanel({ onOpenSettings, headerAccessory }: MobileChatPanelProps) {
-  const provider = useAISettingsStore((s) => s.provider);
-  const agentId = useChatStore((s) => s.openclawAgentIdDisplay);
+  // Named after whoever EFFECTIVELY answers, not the device's stored choice:
+  // the gate falls back to whatever else is connected.
+  const { target, agentId } = useAICapabilities();
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
       {/* Which agent is answering was a bordered strip inside the conversation
           (ChatConversation's own header); it is the capsule's title now, so the
           tab opens with one header rather than a header under a header. */}
-      <SurfaceHeader title={chatAssistantLabel(provider, agentId)} className="mx-[10px]">
+      <SurfaceHeader title={chatAssistantLabel(target, agentId)} className="mx-[10px]">
         {headerAccessory}
       </SurfaceHeader>
 

@@ -10,7 +10,7 @@ import '@testing-library/jest-dom';
  * The Organize console needs it for its own reason too: deep-linking with
  * `focusId` scrolls the selected row into view with `{ block: 'nearest' }`.
  */
-if (!Element.prototype.scrollIntoView) {
+if (typeof Element !== 'undefined' && !Element.prototype.scrollIntoView) {
   Element.prototype.scrollIntoView = function scrollIntoView() {};
 }
 
@@ -25,7 +25,7 @@ if (!Element.prototype.scrollIntoView) {
  * Reporting `false` puts every gesture on the click path, which is the one a
  * test drives.
  */
-if (!Element.prototype.hasPointerCapture) {
+if (typeof Element !== 'undefined' && !Element.prototype.hasPointerCapture) {
   Element.prototype.hasPointerCapture = () => false;
   Element.prototype.setPointerCapture = () => {};
   Element.prototype.releasePointerCapture = () => {};
@@ -41,7 +41,7 @@ if (!Element.prototype.hasPointerCapture) {
  * desktop branch — consistent with jsdom's own 1024px innerWidth, so
  * `useIsMobile`'s width check and this agree instead of disagreeing.
  */
-if (!window.matchMedia) {
+if (typeof window !== 'undefined' && !window.matchMedia) {
   window.matchMedia = (query: string): MediaQueryList =>
     ({
       matches: false,

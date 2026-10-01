@@ -119,6 +119,7 @@ import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import * as db from '@/lib/db';
 
 const original = {
@@ -126,7 +127,11 @@ const original = {
   secrets: useChannelSecretsStore.getState().hydrate,
   gateway: useGatewayStore.getState().hydrate,
   nudges: useNudgeStore.getState().hydrate,
+  ai: useAIConnectionStore.getState().hydrate,
 };
+
+/** The AI gate's status read, counted at the store boundary. */
+const aiHydrate = vi.fn<(userId: string) => Promise<void>>(async () => {});
 
 const store = () => usePlannerStore.getState();
 const fetches = () => vi.mocked(db.fetchItems).mock.calls.length;
@@ -170,6 +175,8 @@ beforeEach(() => {
   useChannelSecretsStore.setState({ hydrate: async () => {} });
   useGatewayStore.setState({ hydrate: async () => {} });
   useNudgeStore.setState({ hydrate: async () => {} });
+  aiHydrate.mockClear();
+  useAIConnectionStore.setState({ hydrate: aiHydrate });
   useMorningStore.setState({ settingsHydratedUserId: null, morningAutoAgeReceiptByUser: {} });
   consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
 });
@@ -185,6 +192,7 @@ afterEach(() => {
   useChannelSecretsStore.setState({ hydrate: original.secrets });
   useGatewayStore.setState({ hydrate: original.gateway });
   useNudgeStore.setState({ hydrate: original.nudges });
+  useAIConnectionStore.setState({ hydrate: original.ai });
   expect(unexpected).toEqual([]);
 });
 
@@ -370,6 +378,51 @@ describe('the retry the provider makes by itself', () => {
     expect(store().items.map((i) => i.id)).toEqual(['a1', 'typed']);
     expect(store().canUndo).toBe(true);
     expect(ctl.seedReads).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The AI gate rides the adopt burst, beside the item load and never behind
+ * it: every AI surface is hidden until the gate answers, so a gate that
+ * waited for a seven-table fetch (or for a failed one to be retried) would
+ * hide them for exactly as long as the database is slow.
+ */
+describe('the AI gate, beside the load', () => {
+  it('is asked in the adopt burst, with the item fetch still held', async () => {
+    render(
+      <SupabaseProvider>
+        <DockNotices />
+      </SupabaseProvider>
+    );
+    await waitFor(() => expect(ctl.items).toHaveLength(1));
+    // Nothing has settled yet, and the gate has already been asked.
+    expect(aiHydrate).toHaveBeenCalledTimes(1);
+    expect(aiHydrate).toHaveBeenCalledWith(A);
+
+    await act(async () => ctl.items[0].reject(postgrestError()));
+    await flush();
+    // The failure is not a reason to ask again…
+    expect(aiHydrate).toHaveBeenCalledTimes(1);
+
+    // …the next SIGNED_IN is (the store's own window decides whether it fetches).
+    await signedIn();
+    await flush();
+    expect(aiHydrate).toHaveBeenCalledTimes(2);
+    expect(aiHydrate).toHaveBeenLastCalledWith(A);
+    await act(async () => itemFetch(1).resolve([task('a1')]));
+    await flush();
+  });
+
+  it('a Retry-button recovery does not ask it again', async () => {
+    await failFirstLoad();
+    expect(aiHydrate).toHaveBeenCalledTimes(1);
+
+    pressRetry();
+    await flush();
+    await act(async () => itemFetch(1).resolve([task('a1')]));
+    await flush();
+
+    expect(aiHydrate).toHaveBeenCalledTimes(1);
   });
 });
 

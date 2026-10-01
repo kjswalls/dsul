@@ -1,7 +1,7 @@
 'use client';
 
 import { create } from 'zustand';
-import { useChatStore } from './chat-store';
+import { useAIConnectionStore } from './ai-connection-store';
 
 /**
  * The OpenClaw gateway connection, as the settings surface sees it.
@@ -141,9 +141,10 @@ async function saveToServer(
     const gatewayUrl = body.gatewayUrl ?? get().gatewayUrl;
     set({ hasToken, configured: Boolean(gatewayUrl && hasToken), error: null });
 
-    // The transport is chosen from this; re-resolve so the next message goes
-    // the new way without a reload.
-    useChatStore.getState().syncOpenclawInfo();
+    // The gate picks the transport (and whether OpenClaw can answer at all)
+    // from the server's answer, so ask again: the next message then goes the
+    // new way without a reload.
+    void useAIConnectionStore.getState().refresh();
   } catch (err) {
     set({ error: err instanceof Error ? err.message : 'Could not save.' });
   }

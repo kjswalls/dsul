@@ -74,6 +74,8 @@ import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
 import { useChatStore } from '../chat-store';
 import { useProposalStore } from '../proposal-store';
+import { getAICapabilities } from '../ai-connection-store';
+import { revealChat } from '../open-chat';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig } from '../item-registry';
@@ -764,11 +766,13 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => view().toggleZen(),
   },
   /*
-   * Week column scale. ⌘+ / ⌘− / ⌘0 are the browser's page-zoom keys, and the
-   * dispatcher only preventDefaults a command it is actually going to RUN — so
-   * `availableWhen` is what hands them back to the browser everywhere except the
-   * two week views that have day columns to scale. Repeatable, because holding
-   * the key to sweep the ladder is the whole gesture.
+   * Week column scale. ⌘+ / ⌘− / ⌘0 are the browser's page-zoom keys. The
+   * dispatcher (hooks/use-command-shortcuts.ts) hands an unavailable binding
+   * back to the browser, unless it is chrome-level (`allowInInput`): those stay
+   * consumed even while unavailable. So these carry no `allowInInput`, and
+   * `availableWhen` is what hands them back everywhere except the two week
+   * views that have day columns to scale. Repeatable, because holding the key
+   * to sweep the ladder is the whole gesture.
    */
   {
     id: 'view.weekColumnsWider',
@@ -821,14 +825,21 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => view().setWeekDaysVisible(null),
   },
 
-  /* ── Rituals & Beacon ───────────────────────────────────────────────── */
+  /* ── Rituals ────────────────────────────────────────────────────────── */
   {
     id: 'rituals.chat',
-    label: 'Ask Beacon',
+    label: 'Ask AI',
     group: 'rituals',
     icon: Sparkles,
-    keywords: 'chat ai assistant beacon ask question',
+    keywords: 'chat ai assistant ask question',
+    // 'beacon' stays as an alias: it is how the row was reached before the AI
+    // lost its name, and only the first alias (`/chat`) is ever shown.
     aliases: ['chat', 'beacon'],
+    // The AI gate (lib/ai-registry.ts), read off the store rather than ctx so
+    // CommandContext stays the shape every caller already builds. A row that
+    // opens a chat nothing will answer is the thing the gate exists to stop.
+    hidden: () => !getAICapabilities().canChat,
+    availableWhen: () => getAICapabilities().canChat,
     run: (ctx) => ctx.openChat(),
   },
   {
@@ -836,26 +847,32 @@ export const STATIC_COMMANDS: Command[] = [
     label: 'Pick things back up',
     group: 'rituals',
     icon: Wand2,
-    keywords: 'catch up overdue behind reschedule plan proposal beacon',
+    keywords: 'catch up overdue behind reschedule plan proposal',
     aliases: ['catchup'],
     // Computed locally (lib/proposal.ts), so this works with no AI configured
     // at all — the feature that matters most on the worst day must not depend
-    // on a provider being reachable.
+    // on a provider being reachable. So it is never gated: with no chat to open,
+    // the card renders in the dock's catch-up host instead (SidebarDock on
+    // desktop, which lives in the sidebar, hence opening it; the phone's dock
+    // is always on screen).
     run: (ctx) => {
-      ctx.openChat();
+      if (!revealChat(ctx.isMobile) && !ctx.isMobile) {
+        useSidebarStore.getState().setLeftSidebarOpen(true);
+      }
       useProposalStore.getState().request('catch-up');
     },
   },
   {
     id: 'rituals.planDay',
     label: 'Plan my day',
-    description: 'Asks Beacon to build a plan from today’s tasks',
+    description: 'Asks your AI to build a plan from today’s tasks',
     group: 'rituals',
     icon: Wand2,
-    keywords: 'plan day schedule ai beacon organise organize',
+    keywords: 'plan day schedule ai organise organize',
     aliases: ['plan'],
+    hidden: () => !getAICapabilities().canChat,
     // send() no-ops while a response is streaming.
-    availableWhen: () => !useChatStore.getState().isLoading,
+    availableWhen: () => getAICapabilities().canChat && !useChatStore.getState().isLoading,
     run: (ctx) => {
       ctx.openChat();
       const chat = useChatStore.getState();
@@ -882,15 +899,18 @@ export const STATIC_COMMANDS: Command[] = [
     label: 'Toggle chat panel',
     group: 'workspace',
     icon: MessageSquare,
-    keywords: 'chat panel sidebar beacon hide show',
+    keywords: 'chat panel sidebar hide show',
     shortcut: {
       id: 'toggle_right_sidebar',
       keys: ['meta', ']'],
       allowInInput: true,
       context: 'Desktop only — nothing on mobile reads the sidebar.',
     },
-    // Nothing in the mobile tree consumes sidebar-store.
-    hidden: (ctx) => ctx.isMobile,
+    // Nothing in the mobile tree consumes sidebar-store. And with nothing to
+    // answer there is no panel to toggle: SidebarDock mounts chat only when the
+    // AI gate says it can (`availableWhen` is what the ⌘] runner checks).
+    hidden: (ctx) => ctx.isMobile || !getAICapabilities().canChat,
+    availableWhen: () => getAICapabilities().canChat,
     run: () => {
       const sidebar = useSidebarStore.getState();
       // Opening chat while the sidebar is collapsed would expand a panel

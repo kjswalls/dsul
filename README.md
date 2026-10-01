@@ -2,7 +2,7 @@
 
 **Do Stuff Unlimited** — a personal planning PWA. A day/week schedule grid, a
 braindump sidebar, recurring habits, an end-of-day review, reminders that reach
-out on their own, and an AI assistant ("Beacon").
+out on their own, and an optional AI assistant (bring your own model).
 
 Next.js App Router + Supabase, deployed on Vercel.
 

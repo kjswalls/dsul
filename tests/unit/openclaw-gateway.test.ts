@@ -1,11 +1,18 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 
 // The module reaches user_secrets through the service client, which throws
-// without server env vars. Only the pure wire-format helpers are under test
-// here, so the client is stubbed rather than configured.
+// without server env vars. It is stubbed rather than configured: the
+// wire-format helpers never touch it, and getGatewayConfig's cases below hand
+// it one canned answer per table.
+type Answer = { data: Record<string, unknown> | null; error: { code?: string; message?: string; details?: string } | null };
+const service = vi.hoisted(() => ({
+  impl: null as null | (() => unknown),
+  answers: {} as Record<string, Answer | Error>,
+}));
 vi.mock('@/lib/supabase-service', () => ({
   createServiceClient: vi.fn(() => {
-    throw new Error('not used in these tests');
+    if (!service.impl) throw new Error('not used in these tests');
+    return service.impl();
   }),
 }));
 
@@ -15,7 +22,9 @@ import {
   deltaFromChunk,
   extractJsonObject,
   gatewayCompletion,
+  GatewayConfigReadError,
   gatewayTurnMessages,
+  getGatewayConfig,
   itemSessionKey,
   proposeSessionKey,
   translateGatewayStream,
@@ -403,5 +412,95 @@ describe('gatewayCompletion', () => {
       vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, status: 200, json: async () => payload })));
       await expect(gatewayCompletion({ config, messages, sessionKey: 'k' })).resolves.toBe('');
     }
+  });
+});
+
+describe('getGatewayConfig', () => {
+  /** A service client whose two reads answer from `service.answers`, keyed by table. */
+  function serve(answers: Record<string, Answer | Error>) {
+    service.answers = answers;
+    service.impl = () => ({
+      from: (table: string) => ({
+        select: () => ({
+          eq: () => ({
+            maybeSingle: async () => {
+              const a = service.answers[table];
+              if (a instanceof Error) throw a;
+              return a ?? { data: null, error: null };
+            },
+          }),
+        }),
+      }),
+    });
+  }
+
+  const SETTINGS = { openclaw_gateway_url: 'https://gw.example.ts.net/', openclaw_agent_id: 'kirby-1' };
+  const SECRETS = { openclaw_gateway_token: 'tok-SENTINEL' };
+
+  afterEach(() => {
+    service.impl = null;
+    service.answers = {};
+  });
+
+  it('returns the config, trailing slash trimmed, when both halves are there', async () => {
+    serve({
+      user_settings: { data: SETTINGS, error: null },
+      user_secrets: { data: SECRETS, error: null },
+    });
+    await expect(getGatewayConfig('u1')).resolves.toEqual({
+      baseUrl: 'https://gw.example.ts.net',
+      token: 'tok-SENTINEL',
+      agentId: 'kirby-1',
+    });
+  });
+
+  it('is null when a row or a value is missing', async () => {
+    serve({ user_settings: { data: null, error: null }, user_secrets: { data: SECRETS, error: null } });
+    await expect(getGatewayConfig('u1')).resolves.toBeNull();
+    serve({ user_settings: { data: SETTINGS, error: null }, user_secrets: { data: null, error: null } });
+    await expect(getGatewayConfig('u1')).resolves.toBeNull();
+    serve({
+      user_settings: { data: { ...SETTINGS, openclaw_gateway_url: null }, error: null },
+      user_secrets: { data: SECRETS, error: null },
+    });
+    await expect(getGatewayConfig('u1')).resolves.toBeNull();
+  });
+
+  it.each(['42P01', 'PGRST205', '42703', 'PGRST204'])(
+    'is null when the schema is missing (%s): nothing is configured yet',
+    async (code) => {
+      serve({
+        user_settings: { data: null, error: { code, message: 'relation does not exist' } },
+        user_secrets: { data: SECRETS, error: null },
+      });
+      await expect(getGatewayConfig('u1')).resolves.toBeNull();
+    }
+  );
+
+  it.each(['user_settings', 'user_secrets'])(
+    'throws GatewayConfigReadError, carrying no database text, when %s cannot be read',
+    async (table) => {
+      serve({
+        user_settings: { data: SETTINGS, error: null },
+        user_secrets: { data: SECRETS, error: null },
+        [table]: { data: null, error: { code: 'PGRST301', message: 'JWT expired SENTINEL', details: 'SENTINEL' } },
+      });
+      const err = await getGatewayConfig('u1').catch((e: unknown) => e);
+      expect(err).toBeInstanceOf(GatewayConfigReadError);
+      expect(String((err as Error).message)).not.toContain('SENTINEL');
+      expect(JSON.stringify(err)).not.toContain('SENTINEL');
+    }
+  );
+
+  it('throws GatewayConfigReadError when a read rejects outright', async () => {
+    serve({ user_settings: new Error('fetch failed SENTINEL'), user_secrets: { data: SECRETS, error: null } });
+    const err = await getGatewayConfig('u1').catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(GatewayConfigReadError);
+    expect((err as Error).message).not.toContain('SENTINEL');
+  });
+
+  it('throws GatewayConfigReadError when the service client cannot be built', async () => {
+    service.impl = null; // createServiceClient throws, as it does without SUPABASE_SECRET_KEY
+    await expect(getGatewayConfig('u1')).rejects.toBeInstanceOf(GatewayConfigReadError);
   });
 });

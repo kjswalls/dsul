@@ -14,9 +14,9 @@ import {
   type ItemEvent,
 } from '@/lib/db';
 import { itemChatStore } from '@/lib/chat-store';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
-import { resolveAICapabilities } from '@/lib/ai-registry';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
@@ -58,7 +58,7 @@ function SubtasksSection({ item }: { item: Item }) {
   const { items, addTask, addTasksBulk, deleteTask, toggleTaskStatus } = usePlannerStore();
   const [title, setTitle] = useState('');
 
-  const provider = useAISettingsStore((s) => s.provider);
+  const { canPropose } = useAICapabilities();
   const requestProposal = useProposalStore((s) => s.request);
   // Scoped to THIS item — see the note in chat-conversation.tsx. A breakdown
   // loading for another item must not grey out this one's button with no
@@ -93,8 +93,7 @@ function SubtasksSection({ item }: { item: Item }) {
    * validator and lib/db.ts both refuse a grandchild anyway, so a button here
    * would only produce a rejected operation.
    */
-  const canBreakDown =
-    resolveAICapabilities(provider).canPropose && !('parentItemId' in item && item.parentItemId);
+  const canBreakDown = canPropose && !('parentItemId' in item && item.parentItemId);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -214,9 +213,8 @@ const BEACON_RELAY_DARK = [
 /** Honey is the agent's hue everywhere in dsul (--ai tokens). */
 function AgentSection({ item }: { item: Item }) {
   const { items, updateTask } = usePlannerStore();
-  const provider = useAISettingsStore((s) => s.provider);
+  const { canDelegate } = useAICapabilities();
   const live = (items.find((i) => i.id === item.id) ?? item) as TaskItem;
-  const agentName = provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
 
   /**
    * A ticking clock, because "has this run gone quiet" is a question about
@@ -245,22 +243,20 @@ function AgentSection({ item }: { item: Item }) {
   // second, hardcoded check in here is how the two drift apart.
 
   if (!live.assignee) {
-    // Can this tier actually DO background work? `ai-registry.ts` says the
-    // assistant tier cannot — it is a request/response completions API with no
-    // worker behind it — and nothing in the app, the agent API or any cron
-    // consumes a `beacon` assignment. Offering the button anyway queues work
-    // that sits untouched forever, and the registry's own header names this
-    // exact failure: "a delegate button that silently does nothing on the
-    // assistant tier is worse than no button".
-    if (!resolveAICapabilities(provider).canDelegate) return null;
+    // Only an agent can DO background work. A connected model is a
+    // request/response API with no worker behind it, and nothing in the app,
+    // the agent API or any cron consumes a `beacon` assignment — a delegate
+    // button that silently queues work nobody picks up is worse than no
+    // button. So this asks one question: is an OpenClaw agent paired
+    // (`canDelegate`, independent of who answers chat)? And it always writes
+    // `openclaw`, the only assignee anything consumes.
+    if (!canDelegate) return null;
 
     return (
       <button
         type="button"
         data-testid="assign-agent"
-        onClick={() =>
-          updateTask(item.id, { assignee: provider === 'openclaw' ? 'openclaw' : 'beacon', aiStatus: 'queued' })
-        }
+        onClick={() => updateTask(item.id, { assignee: 'openclaw', aiStatus: 'queued' })}
         className={cn(
           'inline-flex h-7 w-fit items-center gap-1.5 rounded-sm border border-dashed px-2.5',
           'border-input text-muted-foreground hover-wash text-xs transition-colors',
@@ -268,7 +264,7 @@ function AgentSection({ item }: { item: Item }) {
         )}
       >
         <Sparkles className="size-3" />
-        Assign to {agentName}
+        Assign to OpenClaw
       </button>
     );
   }
@@ -308,7 +304,12 @@ function AgentSection({ item }: { item: Item }) {
       <div className="relative z-10 flex flex-col gap-1">
         <div className="flex items-center gap-2">
           <Sparkles className="text-warning-text size-3.5 shrink-0" />
-          <span className="text-warning-text text-xs font-semibold capitalize">{live.assignee}</span>
+          {/* assigneeLabel, not CSS capitalize: a stored `beacon` (from before
+              the AI lost its name) has to read as "AI", and the stored value is
+              a contract that is never rewritten. */}
+          <span className="text-warning-text text-xs font-semibold">
+            {assigneeLabel(live.assignee)}
+          </span>
           {view && (
             <span
               className={cn(
@@ -581,7 +582,9 @@ function eventLabel(e: ItemEvent): string {
   // has never seen. Dropped from the LABEL only; the payload keeps them.
   const keys = Object.keys(payload).filter((k) => k !== 'projectId' && k !== 'groupId');
   if ('assignee' in payload) {
-    return payload.assignee ? `Assigned to ${payload.assignee}` : 'Unassigned';
+    return payload.assignee
+      ? `Assigned to ${assigneeLabel(String(payload.assignee))}`
+      : 'Unassigned';
   }
   if ('aiStatus' in payload && payload.aiStatus) return `Agent: ${payload.aiStatus}`;
   if ('status' in payload) {
@@ -798,16 +801,15 @@ export function ItemThread({ item, className }: { item: Item; className?: string
   // Store identity is cached per item id (itemChatStore), so the hook target
   // is stable across renders and hook ORDER never changes.
   const useThread = useMemo(() => itemChatStore(item.id), [item.id]);
-  const { messages, isLoading, isTyping, send, hydrate, syncOpenclawInfo } = useThread();
-  const provider = useAISettingsStore((s) => s.provider);
+  const { messages, isLoading, isTyping, send, hydrate } = useThread();
+  const { canChat, target } = useAICapabilities();
   const [draft, setDraft] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const prevCount = useRef(0);
 
   useEffect(() => {
     hydrate();
-    syncOpenclawInfo();
-  }, [hydrate, syncOpenclawInfo]);
+  }, [hydrate]);
 
   // Scroll ONLY the thread's own list, and only on new messages — never on
   // the initial hydrate. scrollIntoView would scroll every ancestor too,
@@ -827,7 +829,12 @@ export function ItemThread({ item, className }: { item: Item; className?: string
     void send(text);
   };
 
-  const agentName = provider === 'openclaw' ? 'OpenClaw' : 'Beacon';
+  // After every hook: a thread with nothing to answer it is a field that sends
+  // nowhere. Every mount (the panel's stack, /item/[id]) is gated by this.
+  if (!canChat) return null;
+
+  const placeholder =
+    target === 'openclaw' ? 'Ask OpenClaw about this item…' : 'Ask about this item…';
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
@@ -854,7 +861,7 @@ export function ItemThread({ item, className }: { item: Item; className?: string
         <input
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          placeholder={`Ask ${agentName} about this item…`}
+          placeholder={placeholder}
           data-sub-input
           data-testid="item-thread-input"
           className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"

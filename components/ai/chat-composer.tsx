@@ -4,9 +4,9 @@ import { useEffect, useRef, useState } from 'react';
 import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useChatStore } from '@/lib/chat-store';
-import { chatAssistantName } from '@/lib/chat-utils';
+import { chatAssistantName, chatPlaceholder } from '@/lib/chat-utils';
 import { cn } from '@/lib/utils';
 
 /** Auto-grow ceiling, past which the field scrolls instead of pushing further. */
@@ -16,7 +16,7 @@ interface ChatComposerProps {
   /**
    * 'panel' is the tray at the foot of a conversation — a rounded field over an
    * attach/voice rail. 'dock' is the phone's bottom bar wearing the omnibar's
-   * pill: on the Beacon tab the dock's one row IS the composer, so the phone
+   * pill: on the chat tab the dock's one row IS the composer, so the phone
    * keeps a single address for typing whichever surface you are on.
    */
   variant: 'panel' | 'dock';
@@ -27,7 +27,9 @@ interface ChatComposerProps {
 }
 
 /**
- * The Beacon/OpenClaw input, in the two shapes the app mounts it in.
+ * The chat input (a connected model, or OpenClaw), in the two shapes the app
+ * mounts it in. Named after whoever EFFECTIVELY answers (the AI gate's
+ * `target`), never after the device's stored choice, which may not be usable.
  *
  * One component rather than two because the behaviour — Enter sends, Shift+Enter
  * newlines, auto-grow to a ceiling, disabled mid-stream, cleared and refocused
@@ -39,12 +41,13 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
   const send = useChatStore((s) => s.send);
   const stop = useChatStore((s) => s.stop);
   const isLoading = useChatStore((s) => s.isLoading);
-  const provider = useAISettingsStore((s) => s.provider);
+  const { target } = useAICapabilities();
 
   const [input, setInput] = useState('');
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  const displayName = chatAssistantName(provider);
+  const displayName = chatAssistantName(target);
+  const placeholder = chatPlaceholder(target);
   const hasText = input.trim().length > 0;
 
   useEffect(() => {
@@ -71,7 +74,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
     // isComposing: Enter is how an IME COMMITS a candidate, so without this a
     // Japanese/Chinese/Korean user confirming 「こんにちは」 sends the half-built
     // string instead and loses the rest. This bar is the only field the phone's
-    // Beacon tab has, so there is no other way to compose a message there.
+    // chat tab has, so there is no other way to compose a message there.
     if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
       e.preventDefault();
       handleSend();
@@ -101,7 +104,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder={`Message ${displayName}…`}
+          placeholder={placeholder}
           rows={1}
           data-testid="chat-dock-input"
           aria-label={`Message ${displayName}`}
@@ -121,7 +124,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
              store can (`abortController.abort()`) — there was simply no way to
              ask. Send is disabled mid-stream anyway, so this occupies a slot
              that was dead, and on the phone this bar is the only control the
-             Beacon tab has. */
+             chat tab has. */
           <Button
             size="icon"
             className="-my-[5px] size-8 shrink-0 rounded-full"
@@ -158,7 +161,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
         value={input}
         onChange={(e) => setInput(e.target.value)}
         onKeyDown={onKeyDown}
-        placeholder={`Message ${displayName}...`}
+        placeholder={placeholder}
         rows={1}
         // dark:bg-transparent for the same reason as the dock's field above —
         // the tray is the surface here, so the base's dark:bg-input/30 shows as

@@ -3,6 +3,7 @@
 import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 
 type State =
   | { kind: 'loading' }
@@ -64,6 +65,10 @@ function ConnectPageInner() {
         setState({ kind: 'error', message: data.error ?? `Error ${res.status}` });
       } else {
         setState({ kind: 'authorized' });
+        // The agent key now exists server-side, so "Give to OpenClaw" can
+        // light up without a reload. The plugin usually registers its chat URL
+        // later (on its gateway restart), which the next re-check picks up.
+        void useAIConnectionStore.getState().refresh();
       }
     } catch (err) {
       setState({ kind: 'error', message: err instanceof Error ? err.message : 'Network error' });

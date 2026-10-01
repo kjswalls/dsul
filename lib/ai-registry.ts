@@ -1,144 +1,118 @@
 /**
- * ai-registry.ts — per-tier capability config for the AI assistant.
+ * ai-registry.ts — the AI gate: what can answer right now, and what it can do.
  *
  * The sibling of [item-registry.ts](item-registry.ts), and it exists for the
- * same reason: every place the app wants to ask "is this OpenClaw or Beacon?"
- * should instead ask what the current tier *can do*. Adding a tier (a hosted
- * dsul-operated agent, a local model, whatever comes next) means adding a
- * config here — not adding code paths through the UI.
+ * same reason: every place that wants to ask "is there a model? is OpenClaw
+ * paired? who answers?" asks this one pure function instead of re-deriving it.
  *
- * Tiers are deliberately NOT equivalent, and the UI must not pretend otherwise:
- * a delegate button that silently does nothing on the assistant tier is worse
- * than no button. See memory/plans/ai-vision.md.
+ * It FAILS CLOSED. Until the connection store has an answer from the server
+ * (`phase === 'ready'`), every capability is off and every surface that would
+ * talk to an AI hides. A surface offering chat that nothing will answer is the
+ * thing this replaces; a brief absence while the status loads is the price.
+ *
+ * Pure: no store reads, no imports beyond types. lib/ai-connection-store.ts
+ * feeds it both stores' state (`useAICapabilities` / `getAICapabilities`).
  */
 
-import type { AIProvider } from './ai-settings-store'
+import type { ChatTarget, ModelConnectionView, OpenClawView } from './ai-types';
+import type { ConnectionPhase } from './ai-connection-store';
 
-/**
- * - `agent` — the user's own OpenClaw gateway. Background work, delegation,
- *   durable server-side sessions.
- * - `assistant` — BYOK request/response completions. Planning help only.
- * - `none` — no AI configured. Every capability is off; surfaces hide rather
- *   than erroring.
- */
-export type AITier = 'agent' | 'assistant' | 'none'
-
-/** How sure we are that the tier's backend is actually reachable. */
-export type AIConnection = 'unknown' | 'connected' | 'disconnected'
-
-export interface AITierConfig {
-  tier: AITier
-  /** Fallback display name. The agent tier prefers its own agentId when known. */
-  label: string
-  /** Free-form conversation: the omnibar ask, item threads, ritual replies. */
-  canChat: boolean
-  /**
-   * Can return structured proposals (a diff the user accepts with one tap).
-   * Pillar 1 — the core value, and the reason the assistant tier is a real
-   * product rather than a degraded mode.
-   */
-  canPropose: boolean
-  /** Items can be assigned to the agent. Implies canRunBackground. */
-  canDelegate: boolean
-  /** Work continues while the app is closed. */
-  canRunBackground: boolean
-  /**
-   * Conversation state lives on the backend, keyed by session, so a thread
-   * survives a reload and follows the user across devices. False means the
-   * transcript is only as durable as dsul's own storage.
-   */
-  hasServerSessions: boolean
-  /**
-   * The agent can reach the user outside dsul (its own channels). Gates
-   * "notify me when it's done" affordances that would otherwise be a lie.
-   */
-  canNotifyOutOfApp: boolean
+export interface AIInputs {
+  phase: ConnectionPhase;
+  available: boolean;
+  model: ModelConnectionView | null;
+  openclaw: OpenClawView;
+  /** Who the user chose on this device (lib/ai-settings-store.ts). */
+  choice: ChatTarget;
 }
 
-export const AI_TIERS: Record<AITier, AITierConfig> = {
-  agent: {
-    tier: 'agent',
-    label: 'OpenClaw',
-    canChat: true,
-    canPropose: true,
-    canDelegate: true,
-    canRunBackground: true,
-    hasServerSessions: true,
-    canNotifyOutOfApp: true,
-  },
-  assistant: {
-    tier: 'assistant',
-    label: 'Beacon',
-    canChat: true,
-    canPropose: true,
-    // Rebuilding a tool loop, a task queue and background workers inside dsul
-    // to fake delegation on a bare completions API is the one thing this
-    // architecture is explicitly not doing.
-    canDelegate: false,
-    canRunBackground: false,
-    hasServerSessions: false,
-    canNotifyOutOfApp: false,
-  },
-  none: {
-    tier: 'none',
-    label: 'AI',
-    canChat: false,
-    canPropose: false,
-    canDelegate: false,
-    canRunBackground: false,
-    hasServerSessions: false,
-    canNotifyOutOfApp: false,
-  },
+export interface AICapabilities {
+  /** The server has answered for this account. False → everything below is off. */
+  known: boolean;
+  /** Who EFFECTIVELY answers: the choice if usable, else the other, else none. */
+  target: ChatTarget;
+  canChat: boolean;
+  canPropose: boolean;
+  /** "Give to OpenClaw": an agent key exists, independent of who answers chat. */
+  canDelegate: boolean;
+  proposeTarget: 'model' | 'openclaw' | null;
+  openclawTransport: 'gateway' | 'plugin' | null;
+  answererName: 'AI' | 'OpenClaw' | null;
+  agentId: string | null;
+  modelUsable: boolean;
+  openclawUsable: boolean;
+  /** known && model?.status === 'failing' */
+  modelFailing: boolean;
+  /** known && !!model && (failing || !model.model) */
+  modelNeedsAttention: boolean;
 }
 
-/**
- * Providers with no working transport yet.
- *
- * They belong to a tier conceptually but cannot do anything, and the registry
- * has to say so — otherwise a surface asks `canPropose`, gets true, offers the
- * action, and the route answers with an error string. One question, one answer,
- * in one place.
- */
-const NOT_IMPLEMENTED: readonly AIProvider[] = ['anthropic']
+export const NO_AI: AICapabilities = Object.freeze({
+  known: false,
+  target: 'none',
+  canChat: false,
+  canPropose: false,
+  canDelegate: false,
+  proposeTarget: null,
+  openclawTransport: null,
+  answererName: null,
+  agentId: null,
+  modelUsable: false,
+  openclawUsable: false,
+  modelFailing: false,
+  modelNeedsAttention: false,
+}) as AICapabilities;
 
-/** Which tier a stored provider belongs to, ignoring reachability. */
-export function tierForProvider(provider: AIProvider): AITier {
-  if (NOT_IMPLEMENTED.includes(provider)) return 'none'
-  switch (provider) {
+/**
+ * The gate truth table (design 1.12). `known = phase === 'ready'`; anything
+ * else is `NO_AI`, including `error` — a failed status read is not permission.
+ */
+export function resolveAICapabilities(i: AIInputs): AICapabilities {
+  if (i.phase !== 'ready') return NO_AI;
+
+  const model = i.model;
+  const modelUsable = i.available && model?.status === 'ok' && !!model.model;
+  const openclawTransport: AICapabilities['openclawTransport'] = i.openclaw.gateway
+    ? 'gateway'
+    : i.openclaw.pluginChat
+      ? 'plugin'
+      : null;
+  const openclawUsable = openclawTransport !== null;
+
+  let target: ChatTarget;
+  switch (i.choice) {
+    case 'model':
+      target = modelUsable ? 'model' : openclawUsable ? 'openclaw' : 'none';
+      break;
     case 'openclaw':
-      return 'agent'
-    case 'openai':
-      return 'assistant'
+      target = openclawUsable ? 'openclaw' : modelUsable ? 'model' : 'none';
+      break;
     case 'none':
     default:
-      return 'none'
+      target = 'none';
   }
-}
 
-/** True when the provider is selectable but not yet wired to anything. */
-export function isProviderComingSoon(provider: AIProvider): boolean {
-  return NOT_IMPLEMENTED.includes(provider)
-}
+  // OpenClaw proposes only through its gateway. On the plugin path there is
+  // no structured-proposal transport, and the propose route promises never to
+  // reroute an OpenClaw user's planner to a model they did not pick (D14).
+  const proposeTarget: AICapabilities['proposeTarget'] =
+    target === 'model' ? 'model' : target === 'openclaw' && i.openclaw.gateway ? 'openclaw' : null;
 
-/**
- * The capabilities actually available right now.
- *
- * A configured-but-unreachable gateway degrades to the assistant tier's
- * capability set rather than the agent's: the user can still be told chat is
- * offline, but nothing may offer to delegate work to a gateway that will never
- * pick it up. `unknown` (still checking) is treated optimistically so the UI
- * does not flicker capabilities off and back on during hydration.
- */
-export function resolveAICapabilities(
-  provider: AIProvider,
-  connection: AIConnection = 'unknown'
-): AITierConfig {
-  const tier = tierForProvider(provider)
-  if (tier === 'agent' && connection === 'disconnected') {
-    return { ...AI_TIERS.assistant, label: AI_TIERS.agent.label }
-  }
-  if (isProviderComingSoon(provider)) {
-    return { ...AI_TIERS.none, label: 'Claude' }
-  }
-  return AI_TIERS[tier]
+  const modelFailing = model?.status === 'failing';
+
+  return {
+    known: true,
+    target,
+    canChat: target !== 'none',
+    canPropose: proposeTarget !== null,
+    canDelegate: i.openclaw.agent,
+    proposeTarget,
+    openclawTransport,
+    answererName: target === 'model' ? 'AI' : target === 'openclaw' ? 'OpenClaw' : null,
+    agentId: i.openclaw.agentId,
+    modelUsable,
+    openclawUsable,
+    modelFailing,
+    modelNeedsAttention: !!model && (modelFailing || !model.model),
+  };
 }

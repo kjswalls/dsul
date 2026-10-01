@@ -113,23 +113,16 @@ interface UIStore {
   resolveConfirm: (confirmed: boolean) => void;
 
   /**
-   * Beacon's first-run Q&A (components/ai/onboarding-chat.tsx) is on screen.
-   *
-   * It lives here rather than in ChatConversation's own state because the
-   * phone's chat input is no longer inside the conversation — it is the dock's
-   * bar (components/mobile/mobile-bottom-dock.tsx) — while the onboarding chat
-   * brings a field of its own. Two components that must agree on which field is
-   * the real one cannot each hold their own answer. AppShell seeds it from the
-   * completion check it already runs for the tour, so it is settled before the
-   * tour's step 4 (or a swipe) can reach the Beacon tab.
+   * INERT. The flag for the retired scripted first-run chat Q&A (its component,
+   * components/ai/onboarding-chat.tsx, is gone, and AppShell no longer raises
+   * this). The plumbing stays so the sign-out reset and the onboarding-watch
+   * contract keep compiling and keep their tests; nothing reads it to decide
+   * what renders. Raise it again only with a surface that honours it.
    */
   chatOnboardingActive: boolean;
   /**
-   * The account the flag was raised FOR, or null. A "done" answer from
-   * AppShell's watcher may only lower another account's flag: the tour marks
-   * onboarding complete before Beacon's Q&A has been answered, so after /  →
-   * /settings → / a remounted AppShell reads "done" for the SAME account that
-   * is still mid-Q&A — and lowering it there would throw the Q&A away.
+   * The account the (inert) flag was raised FOR, or null. A "done" answer may
+   * only lower another account's flag; see applyChatOnboardingAnswer.
    */
   chatOnboardingUserId: string | null;
   /** Raising takes the owner; lowering always clears it. */

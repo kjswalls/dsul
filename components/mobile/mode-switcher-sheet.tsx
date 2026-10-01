@@ -11,9 +11,14 @@ import {
   DrawerTitle,
   DrawerTrigger,
 } from '@/components/ui/drawer';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
-import { MOBILE_TAB_ORDER, useMobileNavStore, type MobileTab } from '@/lib/mobile-nav-store';
-import { useUIStore } from '@/lib/ui-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { chatAssistantName } from '@/lib/chat-utils';
+import {
+  mobileTabOrder,
+  shownMobileTab,
+  useMobileNavStore,
+  type MobileTab,
+} from '@/lib/mobile-nav-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -37,13 +42,6 @@ const GLYPHS: Record<MobileTab, typeof Sun> = {
  * surfaces, and the artboard draws them at 2.25.
  */
 const GLYPH_STROKE = 2.25;
-
-/** The chat surface is named after whoever is answering. */
-function aiSurfaceLabel(provider: string): string {
-  if (provider === 'openclaw') return 'OpenClaw';
-  if (provider === 'none') return 'AI Magic';
-  return 'Beacon';
-}
 
 /**
  * The dock's mode card and the sheet it opens — the replacement for the
@@ -72,10 +70,12 @@ function aiSurfaceLabel(provider: string): string {
  * the spec ranks it first for its own reasons.
  */
 export function ModeSwitcherSheet() {
-  const activeTab = useMobileNavStore((s) => s.activeTab);
+  const storedTab = useMobileNavStore((s) => s.activeTab);
   const setActiveTab = useMobileNavStore((s) => s.setActiveTab);
-  const provider = useAISettingsStore((s) => s.provider);
-  const chatOnboarding = useUIStore((s) => s.chatOnboardingActive);
+  const { canChat, target } = useAICapabilities();
+  // What the shell is SHOWING: a chat tab that can no longer answer renders as
+  // Today (components/shell/mobile-shell.tsx), and the card has to say so too.
+  const activeTab = shownMobileTab(storedTab, canChat);
   const [open, setOpen] = useState(false);
   /**
    * The surface the last tap sent us to, remembered only long enough for the
@@ -84,10 +84,12 @@ export function ModeSwitcherSheet() {
    */
   const [pendingTab, setPendingTab] = useState<MobileTab | null>(null);
 
+  // The chat surface is named after whoever is answering. It is only listed
+  // while something can (mobileTabOrder), so the name is never a promise.
   const labels: Record<MobileTab, string> = {
     braindump: 'Braindump',
     today: 'Today',
-    chat: aiSurfaceLabel(provider),
+    chat: chatAssistantName(target),
   };
   const ActiveGlyph = GLYPHS[activeTab];
 
@@ -116,7 +118,7 @@ export function ModeSwitcherSheet() {
           data-testid="mobile-mode-card"
           // The surface as a machine-readable value, so a test can assert where
           // it landed without reading a label that is user-configurable on one
-          // of the three (the chat tab is named after the provider).
+          // of the three (the chat tab is named after whoever answers).
           data-surface={activeTab}
           // The glyph is the entire visible name of this control, so the
           // accessible name has to carry both halves of what it says: which
@@ -130,28 +132,28 @@ export function ModeSwitcherSheet() {
 
       <DrawerContent
         data-testid="mode-switcher-sheet"
-        // Beacon focuses its own field on arrival (see the focus signal in
+        // The chat composer focuses itself on arrival (see the focus signal in
         // mobile-bottom-dock.tsx), and that lands at ~100ms while this drawer is
         // still playing its 500ms slide-out. Radix keeps the content mounted for
         // the whole animation and then restores focus to the trigger, so the
         // caret appeared in the composer and was yanked back to the mode card
         // half a second later — and only with motion ON, since a reduced-motion
         // unmount beats the composer to it. Stand down for that one destination.
-        // Not while the first-run Q&A is up: the dock keeps the omnibar there,
-        // so nothing would claim focus and it would fall to the body.
         onCloseAutoFocus={(event) => {
-          if (pendingTab === 'chat' && !chatOnboarding) event.preventDefault();
+          if (pendingTab === 'chat') event.preventDefault();
         }}
       >
         <DrawerHeader className="pb-2">
           <DrawerTitle className="text-left text-base">Go to</DrawerTitle>
           <DrawerDescription className="sr-only">
-            Switch between the Braindump, Today and {labels.chat} surfaces.
+            {canChat
+              ? `Switch between the Braindump, Today and ${labels.chat} surfaces.`
+              : 'Switch between the Braindump and Today surfaces.'}
           </DrawerDescription>
         </DrawerHeader>
 
         <div className="flex flex-col gap-1 px-4 pb-4">
-          {MOBILE_TAB_ORDER.map((id) => {
+          {mobileTabOrder(canChat).map((id) => {
             const Glyph = GLYPHS[id];
             const current = id === activeTab;
             return (

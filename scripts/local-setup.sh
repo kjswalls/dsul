@@ -25,11 +25,15 @@
 #   ./scripts/local-setup.sh e2e --smoke    # …and run the smoke spec
 #   ./scripts/local-setup.sh both           # one stack, both files
 #
-# .env.local IS MERGED, NOT OVERWRITTEN. It also carries OPENAI_API_KEY, the
-# VAPID pair, CRON_SECRET and KIRBY_USER_ID — clobbering it would break the app
+# .env.local IS MERGED, NOT OVERWRITTEN. It also carries MODEL_KEYS_ENCRYPTION_KEY,
+# the VAPID pair, CRON_SECRET and KIRBY_USER_ID — clobbering it would break the app
 # in ways that look nothing like "wrong database". Only the three Supabase keys
 # are swapped; every other line is carried through untouched, and the original
-# is backed up first.
+# is backed up first. The one line it may ADD is MODEL_KEYS_ENCRYPTION_KEY, and
+# only when the file has no usable one: a valid key is never replaced, because a
+# rotated key leaves every sealed model key unreadable. A blank or malformed one
+# (which the app refuses, so it has sealed nothing) is swapped for a fresh key.
+# .env.test gets a fresh one on every run (its database is reset on every run too).
 #
 # TO GO BACK TO PRODUCTION:  vercel env pull .env.local
 #
@@ -82,6 +86,14 @@ command -v supabase >/dev/null || {
 }
 docker info >/dev/null 2>&1 || {
   echo "❌ Docker isn't running. Start Docker Desktop and re-run."; exit 1;
+}
+
+# The key that seals AI model keys at rest (lib/ai-server/secret-box.ts):
+# 32 random bytes as base64, so 44 characters. Generated up front so a missing
+# `node` fails before the slow stack start, not after it.
+KEY="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")"
+[ "${#KEY}" -eq 44 ] || {
+  echo "❌ Could not generate MODEL_KEYS_ENCRYPTION_KEY (is node on PATH?)"; exit 1;
 }
 
 # supabase/config.toml is not in the repo (only migrations/ and schema.sql are),
@@ -141,6 +153,39 @@ if [ "$TARGET" = "dev" ] || [ "$TARGET" = "both" ]; then
     echo "  backed up existing .env.local → .env.local.bak"
     CARRIED="$(strip_supabase_keys .env.local)"
   fi
+  # Keep a USABLE MODEL_KEYS_ENCRYPTION_KEY: rotating it would make every
+  # sealed model key unreadable. "Usable" mirrors loadEncryptionKey in
+  # lib/ai-server/secret-box.ts: 32 bytes as canonical base64, so 42
+  # characters, one from [AEIMQUYcgkosw048] (the last 2 bits are padding),
+  # then "=", optionally quoted. Any other value is one the app refuses, so it
+  # has sealed nothing: the blank line in the example files, the "" that
+  # `vercel env pull` writes for a Sensitive variable, a placeholder left in
+  # by hand. Such a line is dropped, because it would otherwise shadow the
+  # fresh key, and a fresh key is added. The original stays in .env.local.bak.
+  ANY_MODEL_KEY_LINE='^[[:space:]]*(export[[:space:]]+)?MODEL_KEYS_ENCRYPTION_KEY[[:space:]]*='
+  USABLE_MODEL_KEY_LINE="${ANY_MODEL_KEY_LINE}[[:space:]]*[\"']?[[:space:]]*[A-Za-z0-9+/]{42}[AEIMQUYcgkosw048]=[[:space:]]*[\"']?[[:space:]]*(#.*)?\$"
+  ADD_MODEL_KEY=1
+  DROPPED_MODEL_KEY=""
+  KEPT=""
+  if [ -n "$CARRIED" ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+      if [[ $line =~ $ANY_MODEL_KEY_LINE ]]; then
+        if [[ $line =~ $USABLE_MODEL_KEY_LINE ]]; then
+          ADD_MODEL_KEY=""
+        else
+          DROPPED_MODEL_KEY=1
+          continue
+        fi
+      fi
+      KEPT+="${line}"$'\n'
+    done <<<"$CARRIED"
+  fi
+  CARRIED="${KEPT%$'\n'}"
+  if [ -z "$ADD_MODEL_KEY" ]; then
+    echo "  keeping the existing MODEL_KEYS_ENCRYPTION_KEY"
+  elif [ -n "$DROPPED_MODEL_KEY" ]; then
+    echo "  replacing a MODEL_KEYS_ENCRYPTION_KEY the app cannot use (blank or not a 32-byte base64 key)"
+  fi
   {
     echo "# Supabase keys below point at your LOCAL stack, written by"
     echo "# scripts/local-setup.sh. Everything else is carried over from the"
@@ -148,6 +193,10 @@ if [ "$TARGET" = "dev" ] || [ "$TARGET" = "both" ]; then
     echo "NEXT_PUBLIC_SUPABASE_URL=${API_URL}"
     echo "NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}"
     echo "SUPABASE_SECRET_KEY=${SERVICE_ROLE_KEY}"
+    if [ -n "$ADD_MODEL_KEY" ]; then
+      echo "# Seals AI model keys at rest. Generated once; never rotate it in place."
+      echo "MODEL_KEYS_ENCRYPTION_KEY=${KEY}"
+    fi
     if [ -n "$CARRIED" ]; then
       echo
       echo "# ── carried over from the previous .env.local ──"
@@ -171,6 +220,7 @@ if [ "$TARGET" = "e2e" ] || [ "$TARGET" = "both" ]; then
 NEXT_PUBLIC_SUPABASE_URL=${API_URL}
 NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
 SUPABASE_SECRET_KEY=${SERVICE_ROLE_KEY}
+MODEL_KEYS_ENCRYPTION_KEY=${KEY}
 TEST_USER_EMAIL=${TEST_USER_EMAIL}
 TEST_USER_PASSWORD=${TEST_USER_PASSWORD}
 EOF

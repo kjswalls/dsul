@@ -11,9 +11,13 @@ import { render, screen, cleanup, fireEvent } from '@testing-library/react';
  * thing a later edit "tidies" without noticing it collapsed the two shells into
  * one voice.
  *
- * Three things are pinned here:
+ * Four things are pinned here:
  *   • the dock advertises more than adding (its old line named only the add),
- *   • the launcher still leads with search and still spells out commands,
+ *   • the dock's line is CONSTANT across the AI gate: it is on screen from the
+ *     first paint, so it never names chat (that would be a promise made before
+ *     the status has loaded, or words that change a second after load),
+ *   • the launcher still leads with search and still spells out commands, and
+ *     offers to ask only when something will answer,
  *   • the two are not the same string — the split between a resting capture bar
  *     and a summoned command surface is deliberate.
  *
@@ -47,6 +51,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { Omnibar } from '@/components/sidebar/omnibar';
+import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
@@ -65,7 +70,12 @@ beforeAll(() => {
   }
 });
 
-afterEach(cleanup);
+let unseed: (() => void) | null = null;
+afterEach(() => {
+  cleanup();
+  unseed?.();
+  unseed = null;
+});
 
 /** Scoped by variant, not by testid: both shells mount `omnibar-input`. */
 const placeholderOf = (variant: 'dock' | 'launcher') =>
@@ -78,32 +88,61 @@ describe('the resting omnibar placeholder', () => {
     render(<Omnibar variant="dock" />);
 
     const placeholder = placeholderOf('dock');
-    expect(placeholder).toBe('Add a task, search, or chat…');
+    expect(placeholder).toBe('Add a task or search…');
 
     // Capture still leads — the dock is the resting capture bar, and the phone
     // strikes its relay on exactly this verb.
     expect(placeholder.toLowerCase().indexOf('add')).toBe(0);
-    // …but it is no longer the only thing named. This is the regression the
-    // ticket was: three of four modes invisible until focus.
+    // …but it is not the only thing named. This is the regression the ticket
+    // was: every mode but one invisible until focus.
     expect(placeholder).toMatch(/search/i);
-    expect(placeholder).toMatch(/chat/i);
+    // And it never promises chat: the dock rests on screen before the AI
+    // status has loaded, and for every account with nothing connected.
+    expect(placeholder).not.toMatch(/\b(chat|ask|ai)\b/i);
 
     // A crude proxy for a width jsdom cannot measure. Note this cannot fail
     // independently — the exact match above already pins the string — so it is
     // documentation of the budget, not a second guard. The budget itself: 184px
-    // of text column at 320pt (the tightest phone), and ~162px for this string
-    // at the app's 12px --text-sm. 32 chars is about where that runs out.
+    // of text column at 320pt (the tightest phone), at the app's 12px
+    // --text-sm. 32 chars is about where that runs out.
+    expect(placeholder.length).toBeLessThanOrEqual(32);
   });
 
-  it('keeps the launcher a command surface, and the two shells distinct', () => {
+  it('keeps the dock line identical whatever the AI gate says', () => {
+    const seen = new Set<string>();
+    for (const seed of [undefined, { phase: 'error' as const }, NOTHING_CONNECTED, CONNECTED_MODEL, OPENCLAW_PLUGIN]) {
+      unseed = seedAI(seed);
+      const { unmount } = render(<Omnibar variant="dock" />);
+      seen.add(placeholderOf('dock'));
+      unmount();
+      unseed();
+      unseed = null;
+    }
+    expect([...seen]).toEqual(['Add a task or search…']);
+  });
+
+  it('keeps the launcher a command surface, and offers to ask only when something answers', () => {
+    unseed = seedAI(CONNECTED_MODEL);
     render(<Omnibar variant="launcher" />);
 
     const launcher = placeholderOf('launcher');
-    expect(launcher).toBe('Search, add a task, run a command, or ask Beacon…');
+    expect(launcher).toBe('Search, add a task, run a command, or ask AI…');
 
     // The launcher is summoned to run things, so it leads with search and is the
     // shell that names commands at rest.
     expect(launcher).toMatch(/command/i);
+  });
+
+  it('names OpenClaw in the launcher when OpenClaw is who answers', () => {
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    render(<Omnibar variant="launcher" />);
+    expect(placeholderOf('launcher')).toBe('Search, add a task, run a command, or ask OpenClaw…');
+  });
+
+  it('drops the offer to ask from the launcher when nothing can answer', () => {
+    unseed = seedAI(NOTHING_CONNECTED);
+    render(<Omnibar variant="launcher" />);
+    expect(placeholderOf('launcher')).toBe('Search, add a task, or run a command…');
   });
 
   it('never lets the two shells collapse onto one string', () => {
@@ -126,14 +165,16 @@ describe('the resting omnibar placeholder', () => {
 
   it('survives focus, where the hint row takes over the advertising', () => {
     // Focus opens the panel and its + / commands / ? hint row, which is the more
-    // specific advertisement. The placeholder does not step aside for it: the
+    // specific advertisement — and, with something to answer, the one place
+    // the dock names chat. The placeholder does not step aside for it: the
     // caret is in an empty field at that moment and a field that blanks itself
     // on focus is a field you have to remember the syntax for.
+    unseed = seedAI(CONNECTED_MODEL);
     render(<Omnibar variant="dock" />);
     const input = screen.getByTestId('omnibar-input');
 
     fireEvent.focus(input);
     expect(screen.getByText(/\? chat/)).toBeInTheDocument();
-    expect(input).toHaveAttribute('placeholder', 'Add a task, search, or chat…');
+    expect(input).toHaveAttribute('placeholder', 'Add a task or search…');
   });
 });
