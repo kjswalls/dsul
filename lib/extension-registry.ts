@@ -38,7 +38,27 @@ export interface ExtensionManifest {
   category: 'habits' | 'views' | 'integrations' | 'fun' | 'planning';
   /** What a user who never touched the toggle gets. Extensions are opt-in. */
   defaultEnabled: boolean;
+
+  /* ── The store's copy (/extensions, and the header of each extension pane) ──
+     Required, so an extension cannot reach the store half-described. */
+
+  /** A few words for the store card, under the name. */
+  tagline: string;
+  /** Which store shelf it sits on — what it does FOR you, not how it's built
+   *  (`category` above is the build-side grouping; the two differ on purpose). */
+  shelf: ExtensionShelf;
+  /** Outside things it can't work without, as chips ("Twilio account"). */
+  needs?: string[];
+  /** Why it can cost real money: a stake you can lose, or a provider's per-use bill. */
+  costs?: 'stake' | 'usage';
+  /** One to three plain lines on what turning it on changes. */
+  whatChanges: string[];
+  /** The maker's note: why it exists, in two sentences. The store's only
+   *  "review" until there are enough people for a kept-on rate to mean anything. */
+  makerNote: string;
 }
+
+export type ExtensionShelf = 'plan' | 'habits' | 'reach' | 'stakes';
 
 /**
  * Ideas, not peripherals (Tier 0) — the first two entries that gate what dsul
@@ -133,6 +153,15 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: Target,
     category: 'planning',
     defaultEnabled: false,
+    tagline: 'Say why the work matters',
+    shelf: 'plan',
+    whatChanges: [
+      'Goals join Organize, with milestones and check-ins as ordinary items.',
+      'An item can say which goal it serves.',
+      'The display menu gains a Goal filter and grouping.',
+    ],
+    makerNote:
+      'A goal is a third kind of container on top of projects and routines, so it stays off until you want one. It hides nothing; it only says why the work matters.',
   },
   {
     slug: EXT_ORGANIZE,
@@ -149,6 +178,14 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     // account with no saved toggle — existing and new alike. Goals below stays
     // OFF: it is the larger concept, and the audit named it safest to keep opt-in.
     defaultEnabled: true,
+    tagline: 'Every container in one place',
+    shelf: 'plan',
+    whatChanges: [
+      'Routines, seasons, projects, item types and the trash in one console, plus goals when Goals is on.',
+      'Opens from ⌘K and the sidebar.',
+    ],
+    makerNote:
+      'It started life as twelve sections of weight, which is why it used to be off. Once every section learned to welcome you, it became the obvious home for the structure you already have.',
   },
   {
     slug: EXT_STREAKS,
@@ -161,6 +198,14 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: Flame,
     category: 'habits',
     defaultEnabled: true,
+    tagline: 'Keep the chain visible',
+    shelf: 'habits',
+    whatChanges: [
+      'A flame and a count on every habit with a streak.',
+      'Turning it off hides them everywhere. Your streaks keep counting for reminders and stakes.',
+    ],
+    makerNote:
+      'The off switch is here to quiet the guilt of a broken chain. Hiding the flame never stops the reminders or stakes that count on it.',
   },
   {
     slug: EXT_HABIT_HEATMAP,
@@ -169,6 +214,14 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: CalendarRange,
     category: 'habits',
     defaultEnabled: false,
+    tagline: 'Six months at a glance',
+    shelf: 'habits',
+    whatChanges: [
+      'A six-month grid in the item panel for anything with a streak.',
+      'Each filled square is a day you did it.',
+    ],
+    makerNote:
+      'A streak tells you about today. The grid tells you about the season, which is usually the more honest story.',
   },
   {
     slug: EXT_COMPLETION_CONFETTI,
@@ -177,6 +230,13 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: PartyPopper,
     category: 'fun',
     defaultEnabled: false,
+    tagline: 'A small burst when you finish',
+    shelf: 'habits',
+    whatChanges: [
+      'A small burst when you tick something off.',
+      'Nothing else changes, and it stays still when animations are off.',
+    ],
+    makerNote: 'Purely celebratory. Some days a tiny party is the whole reason to tick the box.',
   },
   {
     slug: EXT_VOICE_ANNOUNCEMENTS,
@@ -187,6 +247,15 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: Speaker,
     category: 'integrations',
     defaultEnabled: false,
+    tagline: 'Hear it from the kitchen',
+    shelf: 'reach',
+    needs: ['Home Assistant'],
+    whatChanges: [
+      'Reminders are read aloud on the Home Assistant speakers you pick.',
+      'Each is one short spoken line: the habit, and how many days you have kept it up.',
+    ],
+    makerNote:
+      'A reminder you hear from across the room is harder to swipe away than one on a lock screen. Your Home Assistant has to be reachable from the internet, because dsul calls it from its own server.',
   },
   {
     slug: EXT_SMS_NUDGE,
@@ -195,6 +264,16 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: MessageSquare,
     category: 'integrations',
     defaultEnabled: false,
+    tagline: 'Reminders by text',
+    shelf: 'reach',
+    needs: ['Twilio account'],
+    costs: 'usage',
+    whatChanges: [
+      'Reminders arrive as a text message, sent from your own Twilio number.',
+      'Twilio bills you for each message.',
+    ],
+    makerNote:
+      'For the reminders that need to cut through a muted phone. It sends through your own Twilio account, so the cost is yours to see.',
   },
   {
     slug: EXT_PHONE_CALL,
@@ -205,6 +284,16 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: PhoneCall,
     category: 'integrations',
     defaultEnabled: false,
+    tagline: 'A last call that rings',
+    shelf: 'reach',
+    needs: ['Twilio account'],
+    costs: 'usage',
+    whatChanges: [
+      'Your phone rings for the streak-at-risk last call.',
+      'A call for every reminder is possible, but off unless you change it.',
+    ],
+    makerNote:
+      'A call for every reminder is a lot, so it rings for the last call only unless you change it. That is the moment a ringing phone earns its place.',
   },
   {
     slug: EXT_BEEMINDER,
@@ -213,6 +302,17 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: LineChart,
     category: 'habits',
     defaultEnabled: false,
+    tagline: 'Put money on the habit',
+    shelf: 'stakes',
+    needs: ['Beeminder account'],
+    costs: 'stake',
+    whatChanges: [
+      'Ticking a habit posts a datapoint to its Beeminder goal right away.',
+      'A nightly settlement catches anything ticked away from a browser.',
+      'Every post lands in your ledger.',
+    ],
+    makerNote:
+      'A datapoint that arrives after midnight arrives after the money is gone, so this posts the moment you tick. The nightly settlement is only the backstop.',
   },
   {
     slug: EXT_PLEDGE,
@@ -225,6 +325,14 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: HandCoins,
     category: 'habits',
     defaultEnabled: false,
+    tagline: 'Keep a ledger of misses',
+    shelf: 'stakes',
+    whatChanges: [
+      'Each missed day records what it costs, payable to a cause you can’t stand.',
+      'dsul keeps the ledger. It cannot take payment.',
+    ],
+    makerNote:
+      'A commitment device that seems to collect and doesn’t is worse than none, because you keep trusting it. So it says so up front, and what it gives you is an honest ledger.',
   },
   {
     slug: EXT_ACCOUNTABILITY_PARTNER,
@@ -233,6 +341,14 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     icon: Users,
     category: 'habits',
     defaultEnabled: false,
+    tagline: 'Someone reads your day',
+    shelf: 'stakes',
+    needs: ['Slack or Discord webhook'],
+    whatChanges: [
+      'A short digest of your day posts to a Slack or Discord channel once the day settles.',
+      'It names you however you choose, since someone else is reading it.',
+    ],
+    makerNote: 'The digest is short on purpose. Knowing someone expects it is what does the work.',
   },
 ];
 

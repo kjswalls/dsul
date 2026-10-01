@@ -29,6 +29,7 @@ import {
   Rows3,
   Search,
   Settings,
+  Store,
   SlashSquare,
   Sparkles,
   Sun,
@@ -1197,6 +1198,19 @@ export const STATIC_COMMANDS: Command[] = [
       // second navigation (the page replace()s itself to /settings/day).
       if (ctx.navigate) ctx.navigate('/settings/day');
       else if (typeof window !== 'undefined') window.location.assign('/settings/day');
+    },
+  },
+  {
+    id: 'app.extensions',
+    label: 'Extensions store',
+    group: 'app',
+    icon: Store,
+    keywords: 'extensions store plugins add-ons browse heatmap confetti beeminder',
+    // No shortcut on purpose: a binding would join the frozen id list in
+    // commands.test.ts for a page most people open a handful of times.
+    run: (ctx) => {
+      if (ctx.navigate) ctx.navigate('/extensions');
+      else if (typeof window !== 'undefined') window.location.assign('/extensions');
     },
   },
   {

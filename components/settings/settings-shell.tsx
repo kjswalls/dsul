@@ -15,6 +15,7 @@ import {
   paneById,
   railPaneFor,
   settingById,
+  extensionSlugFromPane,
   displayValue,
   type PaneId,
   type SettingCtx,
@@ -30,6 +31,7 @@ import {
   type PaneGroup,
 } from '@/lib/settings/groups';
 import { ExtensionIndex } from './extension-index';
+import { ExtensionHero, ExtensionStoreDoor } from './extension-hero';
 import { ShortcutsPanel } from './shortcuts-panel';
 
 /**
@@ -696,6 +698,12 @@ export function SettingsShell({
                   no records of its own by design — every extension switch moved
                   into the extension's own pane, so a row here would be a second
                   copy of a control that already has a permanent home. */}
+              {/* An extension's pane opens with what the store shows about it —
+                  preview, what changes, the maker's note — above its own rows,
+                  which are unchanged and still hold the one switch. */}
+              {activePane.parent === 'extensions' && <ExtensionHero slug={extensionSlugFromPane(pane)!} />}
+
+              {pane === 'extensions' && <ExtensionStoreDoor />}
               {pane === 'extensions' && <ExtensionIndex ctx={ctx} />}
 
               {/* The Keyboard pane's rows ARE the shortcut records, and they
