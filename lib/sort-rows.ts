@@ -1,7 +1,7 @@
 import type { HabitItem, Priority, Task } from './planner-types';
 import { fieldApplies, typeNameOf } from './filters';
 import { getItemTypeConfig } from './item-registry';
-import { isCompletedOnDate, isRecurring } from './recurrence';
+import { isCompletedOnDate, isRecurring, isSkippedOnDate } from './recurrence';
 
 /**
  * Row ordering applied POST-DERIVATION, for the surfaces that can take it.
@@ -160,7 +160,37 @@ export function isRowCompletedOn(row: SortableRow, dateStr: string | null): bool
 }
 
 /**
- * Which side of the sink a row sorts on. {@link isRowCompletedOn} by default;
+ * Is this row's occurrence SKIPPED on the day it is being drawn for?
+ *
+ * The same predicate TaskRow uses to collapse a row to its skipped strip: the
+ * registry's `skippable` on a recurring item, read per date off
+ * `skippedDates`. Null `dateStr` answers false for the reason it does in
+ * {@link isRowCompletedOn} — the braindump draws no skipped strip, so a row
+ * there must not move as if it had one.
+ *
+ * Kept apart from {@link isRowCompletedOn} on purpose: a skip is not a
+ * completion (that function's note says why), it only SINKS like one.
+ */
+export function isRowSkippedOn(row: SortableRow, dateStr: string | null): boolean {
+  if (dateStr === null) return false;
+  const item = row.item as { repeatFrequency?: string; skippedDates?: string[] };
+  if (!isRecurring(item)) return false;
+  const typeName = row.itemType === 'habit' ? 'habit' : typeNameOf(row.item);
+  return getItemTypeConfig(typeName).skippable && isSkippedOnDate(item, dateStr);
+}
+
+/**
+ * Is this row out of the way on its day — finished OR skipped? This is what
+ * the sink partitions on: both are rows the day no longer asks anything of,
+ * and a skipped strip left in the middle of the list splits the open work
+ * around it.
+ */
+export function isRowSettledOn(row: SortableRow, dateStr: string | null): boolean {
+  return isRowCompletedOn(row, dateStr) || isRowSkippedOn(row, dateStr);
+}
+
+/**
+ * Which side of the sink a row sorts on. {@link isRowSettledOn} by default;
  * a surface passes `useSinkHold`'s `completedAs` (hooks/use-sink-hold.ts) so a
  * row just ticked keeps its place for a moment and then slides down, rather
  * than vanishing to the foot of the group in the frame its checkbox fills.
@@ -168,7 +198,8 @@ export function isRowCompletedOn(row: SortableRow, dateStr: string | null): bool
 export type CompletedAs = (row: SortableRow, dateStr: string | null) => boolean;
 
 /**
- * Finished work sinks to the foot of its own group.
+ * Finished work sinks to the foot of its own group, and skipped occurrences
+ * sink below it.
  *
  * ALWAYS ON, and not a fourth setting. The app already has two controls for
  * completed rows and both are about whether they are there at all — the global
@@ -208,13 +239,22 @@ export type CompletedAs = (row: SortableRow, dateStr: string | null) => boolean;
 export function sinkCompleted<T extends SortableRow>(
   rows: T[],
   dateStr: string | null,
-  completedAs: CompletedAs = isRowCompletedOn,
+  completedAs: CompletedAs = isRowSettledOn,
 ): T[] {
   const open: T[] = [];
   const done: T[] = [];
-  for (const row of rows) (completedAs(row, dateStr) ? done : open).push(row);
-  if (done.length === 0 || open.length === 0) return rows;
-  return [...open, ...done];
+  const skipped: T[] = [];
+  for (const row of rows) {
+    // `completedAs` decides open vs sunk, so a held row (useSinkHold) keeps
+    // its place; WITHIN the sunk half, skips go last, read live — a row can't
+    // move between done and skipped without passing back through open.
+    if (!completedAs(row, dateStr)) open.push(row);
+    else (isRowSkippedOn(row, dateStr) ? skipped : done).push(row);
+  }
+  const sunk = [...done, ...skipped];
+  if (sunk.length === 0) return rows;
+  const out = [...open, ...sunk];
+  return out.every((r, i) => r === rows[i]) ? rows : out;
 }
 
 /**
