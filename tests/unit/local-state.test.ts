@@ -642,6 +642,11 @@ describe('nothing persists per-user state outside the registry', () => {
       // `dsul.wordmark.nextFlavor`: which hover flavor the logo shows next.
       // One small integer, per device on purpose, and says nothing about anyone.
       'lib/wordmark-flavors.ts',
+      // `dsul-no-session-bounce`, sessionStorage: when this tab last left a
+      // page with no session for /login, and a random id for the page load
+      // that did it. The loop guard's whole state; it dies with the tab and is
+      // written only when nobody is signed in, so there is no one to clear it for.
+      'lib/signed-out-redirect.ts',
     ].sort());
   });
 });

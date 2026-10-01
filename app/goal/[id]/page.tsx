@@ -28,8 +28,9 @@ import { accentColorForName } from '@/lib/accent-colors';
  *
  * Follows /item/[id]'s model exactly: a client route, deep-linkable so Beacon
  * can answer with a URL, with the same client-side auth posture (the root
- * layout hydrates the store when a session exists; without one this page has no
- * goals and shows the not-found state). Its fields — name, why, status, window,
+ * layout hydrates the store when a session exists and sends the page to /login
+ * when none is stored; a stored one it cannot use leaves this page with no
+ * goals, on the not-found state). Its fields — name, why, status, window,
  * colour — edit in place with the console pane's own controls (Kirby,
  * 2026-09-27); membership still lives in the Organize console.
  *
@@ -143,7 +144,7 @@ export default function GoalPage() {
   const checkin = checkinStanding(goal, itemsById, todayStr, tz);
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8">
+    <main className="mx-auto flex max-w-4xl flex-col gap-8 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
       <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Link
           href="/"

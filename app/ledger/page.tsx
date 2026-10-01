@@ -87,7 +87,7 @@ export default function LedgerPage() {
   const owedTo = useMemo(() => payees(entries ?? []), [entries]);
 
   return (
-    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-8">
+    <main className="mx-auto flex max-w-3xl flex-col gap-8 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
       <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Link href="/" className="hover:text-foreground inline-flex items-center gap-1 transition-colors">
           <ChevronLeft className="size-3.5" />

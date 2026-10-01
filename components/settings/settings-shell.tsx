@@ -538,7 +538,7 @@ export function SettingsShell({
   const { rows, advanced } = paneRows(pane, { isMobile });
   return (
     <main
-      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8"
+      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]"
       data-extensions-view={pane === 'extensions' ? extensionsView : undefined}
     >
       {/* Three crumbs inside an extension, two everywhere else. The rail's
@@ -581,7 +581,8 @@ export function SettingsShell({
             // DOCUMENT (no inner overflow box, which is what closed #92), so
             // this sticks against the viewport with nothing else to configure.
             'md:mx-0 md:w-[184px] md:flex-col md:self-start md:overflow-visible md:px-0',
-            'md:sticky md:top-8'
+            // Below the desktop app's top band when it has one.
+            'md:sticky md:top-[max(2rem,env(titlebar-area-height,0px))]'
           )}
         >
           {PANES.map((p) => {

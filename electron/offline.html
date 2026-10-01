@@ -31,6 +31,9 @@
     padding: 7px 14px;
   }
   a:hover { border-color: var(--muted); }
+  /* The macOS window has no title bar, so the page is what it is dragged by. */
+  body { -webkit-app-region: drag; app-region: drag; }
+  a { -webkit-app-region: no-drag; app-region: no-drag; }
 </style>
 </head>
 <body>

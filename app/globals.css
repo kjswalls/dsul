@@ -1699,7 +1699,10 @@ body {
 }
 
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  /* The desktop app's top band too (.titlebar-drag below): page zoom can put the mobile
+     shell in a narrow desktop window. Browsers define no titlebar-area, so this is the
+     safe-area inset alone everywhere else. */
+  padding-top: max(env(safe-area-inset-top, 0px), env(titlebar-area-height, 0px));
 }
 
 /* Touch target minimum size for accessibility */
@@ -2171,4 +2174,40 @@ body {
 [data-reduce-motion='true'] .drop-armed,
 [data-reduce-motion='true'] .drop-line::before {
   animation: none;
+}
+
+/* ── Desktop app: the window's top band ─────────────────────────────────────
+   The macOS desktop app has no title bar (electron/lib/window-chrome.cjs): its traffic
+   lights sit in the 43px every desktop page leaves at the top. titleBarOverlay is the only
+   thing that defines env(titlebar-area-*). No browser, no installed PWA (the manifest has
+   no display_override), no framed window and no macOS full screen does, so every rule
+   that reads it falls back to exactly today's value there. Each env() keeps its 0px
+   fallback, never a bare 0 (0 inside calc() or min() is invalid). Never test
+   (display-mode: window-controls-overlay): Electron never matches it.
+
+   .titlebar-drag is what the window is dragged by. It stays the FIRST element in <body>
+   (app/layout.tsx): where drag regions overlap, the later one in the document wins,
+   z-index is ignored, and pointer-events:none exempts nothing. min() holds it to 43px
+   when the page is zoomed out, because env() is in CSS px and grows as zoom shrinks.
+
+   A drag region swallows clicks AND pointer enter/leave, so anything interactive or
+   hover-driven that reaches into the top 43px takes .titlebar-hole, or moves down. Even a
+   clipped, invisible box punches a hole, which is why the sidebar's word only does while
+   the column shows (.titlebar-hole-word). Menus, tooltips and dialogs are portalled after
+   the band, so the attribute rules below cover every one of them. */
+.titlebar-drag {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: min(43px, env(titlebar-area-height, 0px));
+  pointer-events: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.titlebar-hole,
+.titlebar-hole-word .wordmark,
+[data-radix-popper-content-wrapper],
+[role='dialog'],
+[role='alertdialog'] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
 }

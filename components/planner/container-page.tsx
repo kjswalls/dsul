@@ -334,7 +334,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   const totals = week.weekTotals(memberIds);
 
   return (
-    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-8" data-testid={`${kind}-page`}>
+    <main className="mx-auto flex max-w-5xl flex-col gap-8 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]" data-testid={`${kind}-page`}>
       <div className="flex items-center justify-between gap-4">
         <nav className="text-muted-foreground flex min-w-0 items-center gap-1.5 text-xs">
           <Link href="/" className="hover:text-foreground inline-flex items-center gap-1 transition-colors">

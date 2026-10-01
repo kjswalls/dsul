@@ -211,7 +211,9 @@ export const DesktopShell = memo(function DesktopShell() {
           closed, the same 12px the collapsed sidebar deliberately keeps. */}
       <div
         className={cn(
-          'relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
+          // titlebar-hole: the panel scrolls (surface.tsx), so its content passes under
+          // the desktop app's drag band, where it could not be clicked.
+          'titlebar-hole relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
           panelState ? 'w-[420px]' : '-ml-3 w-0',
           'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
         )}
