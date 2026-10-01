@@ -1,0 +1,109 @@
+name: iOS
+
+# Builds and tests the iPhone app (ios/) on GitHub's macOS runners, and its
+# Swift logic package on Linux. No path filter at the workflow level: a
+# filtered workflow never reports, which would stall a PR if these checks are
+# ever made required. Instead a `changes` job decides, and a job skipped by its
+# `if:` reports as passed.
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: ios-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  changes:
+    name: iOS changes
+    runs-on: ubuntu-24.04
+    outputs:
+      ios: ${{ steps.diff.outputs.ios }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        env:
+          BASE: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+        run: |
+          # Any doubt (a manual run, a new branch, an unknown base) means build.
+          if [ "$GITHUB_EVENT_NAME" = workflow_dispatch ] || [ -z "$BASE" ] \
+             || [ "$BASE" = 0000000000000000000000000000000000000000 ] \
+             || ! git cat-file -e "$BASE^{commit}" 2>/dev/null; then
+            echo ios=true >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          # ios/ (except Markdown), this workflow, and the TypeScript files the
+          # Swift port mirrors, so a web edit re-runs the Swift tests.
+          if git diff --name-only "$BASE" "$GITHUB_SHA" \
+             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/recurrence\.ts$|lib/schedule-constants\.ts$)' \
+             | grep -qvE '^ios/.*\.md$'; then
+            echo ios=true >> "$GITHUB_OUTPUT"
+          else
+            echo ios=false >> "$GITHUB_OUTPUT"
+          fi
+
+  core-linux:
+    name: DsulCore (Linux)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
+    runs-on: ubuntu-24.04
+    container: swift:6.4-bookworm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test --package-path ios/DsulCore
+
+  app:
+    name: iOS app (Xcode 27)
+    needs: changes
+    if: ${{ !cancelled() && (needs.changes.result != 'success' || needs.changes.outputs.ios == 'true') }}
+    # The standard (free on public repos) Xcode 27 image. Never -xlarge, which is billed.
+    runs-on: xcode-27
+    timeout-minutes: 45
+    env:
+      XCODEGEN_VERSION: 2.46.0
+    steps:
+      - uses: actions/checkout@v4
+      # The Xcode_27.0 symlink follows the image from beta to release.
+      - run: sudo xcode-select -s /Applications/Xcode_27.0.app
+      - name: Versions and simulators
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+          xcrun simctl list runtimes
+          xcrun simctl list devices available | head -40
+      - name: Install XcodeGen (pinned)
+        run: |
+          curl -fsSL -o /tmp/xg.zip "https://github.com/yonaskolb/XcodeGen/releases/download/$XCODEGEN_VERSION/xcodegen.zip"
+          echo "4d9e34b62172d645eed6457cac13fc222569974098ef4ee9c3368bedf0196806  /tmp/xg.zip" | shasum -a 256 -c
+          unzip -q /tmp/xg.zip -d /tmp/xg
+          echo "/tmp/xg/xcodegen/bin" >> "$GITHUB_PATH"
+      - name: DsulCore tests (macOS)
+        run: swift test --package-path ios/DsulCore
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: xcodegen generate
+      - name: Build and test the app
+        working-directory: ios
+        run: |
+          set -o pipefail
+          xcodebuild test \
+            -project Dsul.xcodeproj -scheme Dsul \
+            -destination 'platform=iOS Simulator,name=iPhone 17,OS=latest' \
+            -derivedDataPath build -resultBundlePath build/Tests.xcresult \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO \
+            | xcbeautify
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: Tests.xcresult
+          path: ios/build/Tests.xcresult
+          retention-days: 7
