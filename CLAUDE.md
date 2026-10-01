@@ -216,6 +216,14 @@ layout.** The shell is a standalone npm project outside the pnpm workspace (neve
 it), and it loads the live do.dsul.app. Read [desktop-app.md](memory/plans/desktop-app.md)
 before touching it, `app/auth/desktop/`, or anything that reads `window.dsulDesktop`.
 
+**`ios/` is the native iPhone app (SwiftUI, iOS 27); `ios/DsulCore` is its Linux-testable
+Swift port of the pure planner logic.** XcodeGen generates the Xcode project from
+`ios/project.yml` (never commit `*.xcodeproj`), and only GitHub's `xcode-27` runner compiles it
+(`.github/workflows/ios.yml`), since cloud sessions can't. A Swift port cites the TS it mirrors:
+changing that TS without the Swift is drift. The iOS checks aren't required, so merge a PR
+touching `ios/` only once they're green. Read [ios-app.md](memory/plans/ios-app.md) before
+touching `ios/`.
+
 ## Database
 
 **Migrations in `supabase/migrations/` are the single source of truth.**

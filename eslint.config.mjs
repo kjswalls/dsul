@@ -10,6 +10,7 @@ export default defineConfig([
     'packages/**/dist/**',
     'openclaw-plugin/**',
     'electron/**',
+    'ios/**',
     'playwright-report/**',
     'test-results/**',
     'push-test.js',
