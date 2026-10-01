@@ -1,12 +1,13 @@
 'use client';
 
-import { useLayoutEffect, useRef, useState } from 'react';
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { Suspense } from 'react';
-import { MailCheck } from 'lucide-react';
+import { ExternalLink, MailCheck } from 'lucide-react';
 import { Wordmark } from '@/components/primitives/wordmark';
 import { createClient } from '@/lib/supabase';
-import { loginRedirectTarget } from '@/lib/auth-redirect';
+import { loginErrorMessage, loginRedirectTarget } from '@/lib/auth-redirect';
+import { getDesktopBridge, type DsulDesktop } from '@/lib/desktop';
 // Restored after the parallax-hero pass dropped it: lib/relay-config.ts still
 // declares an `auth` flag, so ungating this surface left that entry dead while
 // reading as live. Every other relay placement is switchable from there; this
@@ -17,6 +18,11 @@ import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 
 export const dynamic = 'force-dynamic';
+
+const BROWSER_UNOPENED = 'Couldn’t open your browser to sign in. Try again.';
+
+const noopSubscribe = () => () => {};
+const isDesktopApp = () => getDesktopBridge() !== null;
 
 /**
  * How far the frost reaches from the focal point before it dissolves, as a
@@ -79,11 +85,31 @@ function LoginPageInner() {
   const redirectParam = searchParams.get('redirect');
   const postAuthUrl = () =>
     `${window.location.origin}${loginRedirectTarget(redirectParam, window.location.origin)}`;
+  // In the desktop app the sign-in finishes in the system browser and is handed
+  // back through /auth/desktop, and the page's own redirect is dropped.
+  const desktopAuthUrl = () =>
+    `${window.location.origin}${loginRedirectTarget(null, window.location.origin, { desktop: true })}`;
 
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  // Desktop only: a sign-in the app handed back as /login?error=… opens on
+  // dsul's own words for it. Only known values are read, never text from the
+  // URL, and a browser keeps the bare form it has always had there. The server
+  // has no bridge, so it is read through a snapshot that is false there (as in
+  // components/providers/desktop-bridge.tsx) and hydration agrees.
+  const inDesktopApp = useSyncExternalStore(noopSubscribe, isDesktopApp, () => false);
+  const returnedError = inDesktopApp ? loginErrorMessage(searchParams.get('error')) : null;
+  // Undefined until a sign-in starts on this page, which always sets it, so the
+  // returned error shows only until then.
+  const [error, setError] = useState<string | null | undefined>(undefined);
+  const shownError = error === undefined ? returnedError : error;
+  // Desktop only. The Google URL the system browser was sent to, kept so
+  // "Open again" can send it there a second time with the same verifier.
+  const [handoffUrl, setHandoffUrl] = useState<string | null>(null);
+  // Desktop only. The link has to be opened on this computer, where the app
+  // is waiting for it, so the sent copy says so.
+  const [sentToDesktop, setSentToDesktop] = useState(false);
   // A token, not a counter of anything meaningful: every change re-strikes the
   // field's ripple from the focal point. See RelayField's `burst` docs.
   const [burst, setBurst] = useState(0);
@@ -97,6 +123,8 @@ function LoginPageInner() {
 
   async function handleMagicLink(e: React.FormEvent) {
     e.preventDefault();
+    const desktop = getDesktopBridge();
+    if (desktop) return sendDesktopLink(desktop);
     setLoading(true);
     setError(null);
 
@@ -121,6 +149,8 @@ function LoginPageInner() {
   }
 
   async function handleGoogle() {
+    const desktop = getDesktopBridge();
+    if (desktop) return startDesktopGoogle(desktop);
     setLoading(true);
     setError(null);
 
@@ -136,6 +166,92 @@ function LoginPageInner() {
       setError(error.message);
       setLoading(false);
     }
+  }
+
+  // The desktop app's email sign-in. Main only accepts the dsul:// link the
+  // email ends on while it is expecting one, so it is told once the email is
+  // on its way. Not before: the PKCE verifier is written inside signInWithOtp,
+  // and arming flushes the cookie store to disk.
+  async function sendDesktopLink(desktop: DsulDesktop) {
+    setLoading(true);
+    setError(null);
+
+    const supabase = createClient();
+    const { error } = await supabase.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: desktopAuthUrl(),
+      },
+    });
+    if (error) {
+      setError(error.message);
+      setLoading(false);
+      return;
+    }
+
+    try {
+      await desktop.armEmailSignIn();
+    } catch {
+      // The email is out, but the app would drop the link it ends on.
+      setError('dsul couldn’t get ready for the link. Try again.');
+      setLoading(false);
+      return;
+    }
+    setSentToDesktop(true);
+    setSent(true);
+    setBurst((b) => b + 1);
+    setLoading(false);
+  }
+
+  // The desktop app's Google sign-in. Google refuses to sign in inside an
+  // embedded window, so the URL goes to the system browser instead of this
+  // window navigating to it. The verifier is stored before signInWithOAuth
+  // resolves, so the app can exchange the code when it comes back.
+  async function startDesktopGoogle(desktop: DsulDesktop) {
+    setLoading(true);
+    setError(null);
+
+    const supabase = createClient();
+    const { data, error } = await supabase.auth.signInWithOAuth({
+      provider: 'google',
+      options: {
+        redirectTo: desktopAuthUrl(),
+        skipBrowserRedirect: true,
+      },
+    });
+    if (error || !data.url) {
+      setError(error?.message ?? BROWSER_UNOPENED);
+      setLoading(false);
+      return;
+    }
+
+    const opened = await openInBrowser(desktop, data.url);
+    // Nothing on this page finishes the sign-in, so the buttons come back now
+    // rather than spinning until the app is handed the code.
+    setLoading(false);
+    if (opened) setHandoffUrl(data.url);
+  }
+
+  async function handleOpenAgain() {
+    const desktop = getDesktopBridge();
+    if (!desktop || !handoffUrl) return;
+    setLoading(true);
+    setError(null);
+    await openInBrowser(desktop, handoffUrl);
+    setLoading(false);
+  }
+
+  // Main checks the URL before opening it and answers false when it refuses,
+  // so a false is shown rather than left as a page that never moves.
+  async function openInBrowser(desktop: DsulDesktop, url: string) {
+    let opened = false;
+    try {
+      opened = await desktop.openAuthUrl(url);
+    } catch {
+      opened = false;
+    }
+    if (!opened) setError(BROWSER_UNOPENED);
+    return opened;
   }
 
   return (
@@ -219,7 +335,50 @@ function LoginPageInner() {
               height keeps the form still while a larger hover flavor is up. */}
           <Wordmark className="h-[13px]" />
 
-          {sent ? (
+          {handoffUrl ? (
+            <div className="space-y-3 duration-500 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none">
+              <ExternalLink
+                className="size-6 text-muted-foreground"
+                strokeWidth={1.6}
+                aria-hidden
+              />
+              <h1 className="text-[22px] font-semibold leading-[1.15] tracking-[-0.028em]">
+                Finish signing in in your browser.
+              </h1>
+              <p className="text-[13.5px] leading-relaxed text-muted-foreground">
+                Google is open in your browser. Once you&rsquo;re through,
+                dsul picks up here.
+              </p>
+              <div className="space-y-3 pt-2">
+                <Button
+                  variant="outline"
+                  className="h-10 w-full rounded-[10px] bg-card/55 text-[13.5px]"
+                  onClick={handleOpenAgain}
+                  disabled={loading}
+                >
+                  Open again
+                </Button>
+                {/* The app has no address bar, so without a way back a closed
+                    browser tab would leave the email sign-in out of reach. */}
+                <Button
+                  variant="ghost"
+                  className="h-9 w-full rounded-[10px] text-[12.5px] text-muted-foreground"
+                  onClick={() => {
+                    setHandoffUrl(null);
+                    setError(null);
+                  }}
+                  disabled={loading}
+                >
+                  Sign in another way
+                </Button>
+                {shownError && (
+                  <p className="text-[12.5px] leading-relaxed text-destructive">
+                    {shownError}
+                  </p>
+                )}
+              </div>
+            </div>
+          ) : sent ? (
             <div className="space-y-3 duration-500 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none">
               <MailCheck
                 className="size-6 text-success-text"
@@ -231,8 +390,12 @@ function LoginPageInner() {
               </h1>
               <p className="text-[13.5px] leading-relaxed text-muted-foreground">
                 We sent a sign-in link to{' '}
-                <span className="text-foreground">{email}</span>. Open it on this
-                device and you&rsquo;re in.
+                <span className="text-foreground">{email}</span>.{' '}
+                {sentToDesktop ? (
+                  <>Open the link on this computer and you&rsquo;re in.</>
+                ) : (
+                  <>Open it on this device and you&rsquo;re in.</>
+                )}
               </p>
             </div>
           ) : (
@@ -317,9 +480,9 @@ function LoginPageInner() {
                   </Button>
                 </form>
 
-                {error && (
+                {shownError && (
                   <p className="text-[12.5px] leading-relaxed text-destructive">
-                    {error}
+                    {shownError}
                   </p>
                 )}
               </div>

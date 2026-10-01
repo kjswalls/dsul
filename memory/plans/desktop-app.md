@@ -1,6 +1,6 @@
 # Desktop app: an Electron shell over do.dsul.app
 
-> Status (2026-10-01): this is a plan only and nothing is built. The research was done on branch `claude/desktop-app-s3lj7v`, and the plan was revised after two reviews (see "Review notes"). Read it before touching `electron/`, `app/auth/desktop/`, the login page's desktop branch, or anything that reads `window.dsulDesktop`. Every item marked **[unverified]** appears again under "Open assumptions". Library line numbers refer to the package versions named next to them, unpacked with `npm pack`.
+> Status (2026-10-01): v1 is built. The web fix (`safeNext`, `auth-redirect`) merged as #352; the shell, the sign-in handoff, quick capture, the tray, the release workflow and the update notice landed together after it. Nothing has run on a real Mac or Windows machine yet, and no release has been cut: see "Kirby's checklist". The plan was revised after two reviews before the build (see "Review notes"), and the build itself after a third. Read it before touching `electron/`, `app/auth/desktop/`, the login page's desktop branch, or anything that reads `window.dsulDesktop`. Every item marked **[unverified]** appears again under "Open assumptions". Library line numbers refer to the package versions named next to them, unpacked with `npm pack`.
 
 ## Decision
 
@@ -79,7 +79,9 @@ electron/
   `runAsNode: false, enableCookieEncryption: true, enableNodeOptionsEnvironmentVariable: false, enableNodeCliInspectArguments: false, enableEmbeddedAsarIntegrityValidation: true, onlyLoadAppFromAsar: true, grantFileProtocolExtraPrivileges: false`.
   - Without cookie encryption, cookies are stored in plaintext on disk (:481), including Supabase's session and the verifier.
   - Cookie encryption is one-way. Never turn it off once it has shipped.
-- **Command-line switches.** In a packaged build, quit at startup if `app.commandLine.hasSwitch` reports any of `remote-debugging-port`, `remote-debugging-pipe`, `inspect`, `inspect-brk`, `host-resolver-rules`, `ignore-certificate-errors`, `proxy-server` or `disable-web-security`. **[unverified: whether Chromium acts on any of these before main runs]**
+- **Command-line switches.** In a packaged build, quit at startup if `app.commandLine.hasSwitch` reports any of `remote-debugging-port`, `remote-debugging-pipe`, `inspect`, `inspect-brk`, `host-resolver-rules`, `ignore-certificate-errors`, `ignore-certificate-errors-spki-list`, `proxy-server`, `proxy-pac-url`, `disable-web-security`, `log-net-log`, `net-log-capture-mode` or `ssl-key-log-file`, or if the `SSLKEYLOGFILE` environment variable is set. The list and the check are `BLOCKED_SWITCHES` / `blockedLaunch` in lib/policy.cjs, so the policy test locks them. **[unverified: whether Chromium acts on any of these before main runs]**
+  - A review ran the later five against Electron 44.5.1: a net log in `Everything` mode writes the sb-* cookie values in plaintext, a key log (switch or env) decrypts any packet capture, an SPKI allow-list turns certificate checks off for that key, and a PAC URL routes the window through any proxy. The DevTools port opens only after main's synchronous code, so the exit at module load does beat it.
+  - No switch list is complete. This is defense in depth for the macOS keychain-bound cookie key, not a boundary: a same-user process has other routes (an unhardened ad-hoc build, the unverified HTTP and service-worker caches in userData).
 - **Menu.** Install a custom, minimal menu.
   - macOS must have the Edit roles, or ⌘C/V/X/A stop working in text fields.
   - Keep the View zoom roles. The app hands Ctrl+=/−/0 back to the browser outside the week views (lib/commands/registry.ts:766-771).
@@ -95,11 +97,13 @@ electron/
 - **Permissions.** The request and check handlers allow `clipboard-sanitized-write` and `notifications` for app URLs only, and deny everything else.
 - **Offline.**
   - On a main-frame `did-fail-load` (ignore `-3`, ABORTED), call `loadFile('offline.html')`. Its only script is `location.replace('https://do.dsul.app/')` when the `online` event fires.
+  - Main retries too, because `online` never fires if `navigator.onLine` was already true when the load failed (a wake from sleep while DNS or Wi-Fi settles, or the site briefly down). While the window shows the offline page it reloads the start URL after 5s, 15s, 30s, then every 60s, and stops once an app URL commits. A reveal (the shortcut, a relaunch, the tray, the Dock) retries at once, and `powerMonitor` `resume` restarts the backoff. offline.html and its pinned CSP hash are unchanged.
   - Without this, an offline launch shows a blank window: Serwist has no navigation fallback (app/sw.ts:13-18).
   - The preload runs on the offline page too, but the bridge does nothing there. Every `ipcMain` handler requires `event.senderFrame === event.sender.mainFrame` and `isAppUrl(senderFrame.url)`.
   - On `render-process-gone`, reload.
 - **Closing.**
   - Closing the window hides it to the tray, unless `isQuitting` is set. `before-quit` sets it and also calls `cookies.flushStore()`.
+  - On macOS a fullscreen window leaves fullscreen first and hides on `leave-full-screen`. Hiding it in place leaves its Space behind, black and empty (electron/electron#20263).
   - On macOS, `app.on('activate')` shows the window again.
   - Quit comes from the tray menu or ⌘Q.
 
@@ -176,6 +180,7 @@ Three things below narrow that gap: the short pending windows, the code-navigati
   - Change the sent-email copy to "open the link on this computer". Today it says "Open it on this device" (:232-234).
   - Read `?error=expired|cancelled|auth` and show dsul's own copy. Today nothing reads `error` (:75-80).
   - In v1, drop the `redirect` param: a desktop sign-in always lands on `/`.
+- **`app/auth/callback/route.ts`** sends a code whose PKCE flow state expired (`error.code === 'flow_state_expired'`) to `/login?error=expired`, and every other failure to `?error=auth` as before. It isn't gated, but a browser's login page shows nothing for either value, so only its address bar differs.
 - **`lib/desktop.ts`** exports `getDesktopBridge()`. **`types/dsul-desktop.d.ts`** types `window.dsulDesktop?`.
 
 **Main-process gate: `handleDeepLink`, using `parseDeepLink`**
@@ -258,7 +263,9 @@ Three things below narrow that gap: the short pending windows, the code-navigati
 - **`openQuickCapture()`**, in lib/ui-store.ts next to `openAddDialog` (:188).
   - **Slot empty:** call `openDialog({ type: 'launcher', query:'+' })`. This follows the `/` seeding precedent (lib/commands/registry.ts:990).
   - **Launcher already open:** call `closeDialog()`, then re-open on `setTimeout(0)`. Done in one tick, the two updates batch, the Omnibar never remounts, and it reads its seed only once (components/shell/omni-launcher.tsx:25-29, :60; components/sidebar/omnibar.tsx:166).
+  - **The docked item panel open** (`edit-item`, the resting state after a row click): treat it as an empty slot, as ⌘K does. The panel flushes a queued autosave as it unmounts.
   - **Any other dialog open:** leave it alone; there is only one slot (lib/ui-store.ts:157). The window is already focused.
+  - **A confirm open** (`confirmRequest`, its own slot): leave it alone too, and check again before the re-open above. The launcher would otherwise stack over a destructive prompt the user may not have seen.
   - Never use a URL param instead: a hard load tears down the store and the undo stack (lib/commands/registry.ts:1430-1435).
 
 ## Single instance and `dsul://`
@@ -320,7 +327,7 @@ Use electron-builder 26.15.x: not the 27 alpha, and not Forge, which has no NSIS
   - setup-node 24 with `cache: npm` on `electron/package-lock.json`. The web CI stays on Node 20 (test.yml:29).
   - Then `npm ci --ignore-scripts`.
   - One `shell: bash` step runs `npx electron-builder --config electron-builder.config.cjs --mac --arm64` (or `--win --x64`) `--publish always`.
-    - Only that step gets `GH_TOKEN` and the secrets, under prefixed names.
+    - Only that step gets `GH_TOKEN` and the secrets, under `DESKTOP_`-prefixed names (listed in Kirby's checklist and the workflow's header).
     - It exports `CSC_LINK` and the related variables only when they are non-empty. An empty `CSC_LINK` counts as set and throws (out/platformPackager.js:80-84).
     - It writes the .p8 file to `$RUNNER_TEMP`.
   - Signed macOS runs then print `codesign -d --entitlements - dsul.app`.
@@ -375,7 +382,9 @@ The Wave mark (Kirby's pick, 2026-10-01; the web icons switched in #349). `scrip
   - from `/settings`, a press causes exactly one push home and one launcher open, once the planner has settled;
   - the rendered input reads `+` (assert the DOM, not just the store);
   - a second press with the launcher open re-seeds it;
-  - an open Add dialog is left alone.
+  - an open Add dialog is left alone;
+  - an open docked item panel (`edit-item`) gives way to the launcher;
+  - an open confirm is left alone, including one raised between the close and the re-open.
 - **Push row:** `unavailable()` returns the desktop copy only when a bridge is present.
 - **`electron-policy.test.ts`**, which imports `electron/lib/policy.cjs` (it has zero imports):
   - `isAppUrl` rejects `blob:https://do.dsul.app/x`, `https://do.dsul.app.evil.com`, `https://do.dsul.app@evil.com`, `file:///C:/x.html` and `javascript:`, and accepts `HTTPS://DO.DSUL.APP:443/`;
@@ -418,9 +427,14 @@ Real builds come only from the GitHub runners. This container can't build a dmg.
 - **Apple, when you're ready to sign.**
   - A *Developer ID Application* certificate can only be created by the team's Account Holder.
   - From Windows: create a key and CSR with `openssl` → upload the CSR at developer.apple.com → download the .cer → `openssl pkcs12 -export` into a .p12 **[unverified: may need `-legacy` for macOS keychains]**.
-  - Base64 the .p12 into `CSC_LINK`, and put its password in `CSC_KEY_PASSWORD`.
   - Create an App Store Connect API key: you need the .p8 contents, the key id and the issuer id.
-  - Add all of these as Environment secrets.
+  - Add these five Environment secrets, spelled exactly so. The workflow reads no other names, and a misnamed certificate ships an unsigned Mac build:
+    - `DESKTOP_CSC_LINK`: the .p12, base64-encoded;
+    - `DESKTOP_CSC_KEY_PASSWORD`: its password;
+    - `DESKTOP_APPLE_API_KEY_P8`: the .p8 file's contents, not a path;
+    - `DESKTOP_APPLE_API_KEY_ID`;
+    - `DESKTOP_APPLE_API_ISSUER`.
+  - The Mac leg fails if the Apple secrets are set without `DESKTOP_CSC_LINK`, so a half-done setup can't publish quietly.
 - **Mac checks:** name the person who will run them on an Apple Silicon Mac before v1 ships.
 - **Each release:**
   1. bump the version in `electron/package.json` in a PR, and merge it;

@@ -185,6 +185,48 @@ export const openAddDialog = (
   title?: string
 ) => useUIStore.getState().openDialog({ type: 'add', tab, bucket, date, title });
 
+/**
+ * The desktop app's quick capture (its global shortcut and the tray's New
+ * task): the launcher, already in add mode. `+` is the add prefix, seeded the
+ * way the `/` binding seeds command mode.
+ *
+ * A launcher that is already open is closed and opened again on the next task
+ * rather than re-seeded in place. Done in one tick, the close and the open batch
+ * into a single render in which the launcher never stops being open, so
+ * OmniLauncher keeps the same <Omnibar> mounted, and the omnibar reads its seed
+ * only once, into useState. The second press would then leave whatever was
+ * typed on screen. A timeout lets the close commit first, which unmounts the
+ * omnibar, so the reopen mounts a fresh one that reads `+`.
+ *
+ * The docked item panel counts as an empty slot. It is `edit-item` in the same
+ * slot, open whenever a row was last clicked, so it is where a press usually
+ * finds the planner; ⌘K replaces it too, and the panel flushes a queued
+ * autosave as it unmounts (components/planner/item-dialog.tsx).
+ *
+ * Any other dialog is left alone: there is one slot, and taking it would throw
+ * away whatever that dialog was holding. So is an open confirm, which has its
+ * own slot: the launcher would stack over a destructive prompt the user may not
+ * have seen from the other app, and hand focus back into it on close. The
+ * window is already in front, so the press still shows the user where they are.
+ */
+export const openQuickCapture = () => {
+  const { activeDialog, confirmRequest, openDialog, closeDialog } = useUIStore.getState();
+  if (confirmRequest) return;
+  const seed: ActiveDialog = { type: 'launcher', query: '+' };
+  if (activeDialog === null || activeDialog.type === 'edit-item') {
+    openDialog(seed);
+    return;
+  }
+  if (activeDialog.type !== 'launcher') return;
+  closeDialog();
+  setTimeout(() => {
+    // Only into an empty slot, with no confirm up: if something claimed either
+    // in between, it wins, for the same reasons as above.
+    const now = useUIStore.getState();
+    if (now.activeDialog === null && !now.confirmRequest) now.openDialog(seed);
+  }, 0);
+};
+
 /** Open the "new" dialog on an organizer, carrying what was already typed. */
 export const openNewContainer = (
   kind: NewContainerKind,

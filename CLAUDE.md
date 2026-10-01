@@ -172,6 +172,11 @@ with `tasks`/`habits` projections derived off it.
 `components/` (`views/`, `shell/`, `planner/`, `sidebar/`, `canvas/`, `mobile/`, `ai/`,
 `primitives/`, `ui/` for shadcn).
 
+**`electron/` is the desktop app's shell; `components/shell/desktop-shell.tsx` is the web
+layout.** The shell is a standalone npm project outside the pnpm workspace (never run pnpm in
+it), and it loads the live do.dsul.app. Read [desktop-app.md](memory/plans/desktop-app.md)
+before touching it, `app/auth/desktop/`, or anything that reads `window.dsulDesktop`.
+
 ## Database
 
 **Migrations in `supabase/migrations/` are the single source of truth.**

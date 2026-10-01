@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { afterEach, describe, it, expect, vi } from 'vitest';
 
 // The manifest imports the stores, which import the Supabase client. Nothing
 // here exercises a write path — these are structural assertions over data.
@@ -853,5 +853,52 @@ describe('value display', () => {
 
   it('exposes every value label to the index', () => {
     expect(valueLabels(settingById('day.timeFormat')!)).toEqual(['12-hour', '24-hour']);
+  });
+});
+
+describe('the push row in the desktop app', () => {
+  // A browser's push state, supported and not yet asked: the row is live.
+  const push: NonNullable<SettingCtx['push']> = {
+    isSupported: true,
+    isSubscribed: false,
+    permissionState: 'default',
+    subscribe: async () => {},
+    unsubscribe: async () => {},
+  };
+  const record = settingById('rituals.push')!;
+  const DESKTOP_COPY =
+    'not available in the desktop app yet — turn push on from your phone or browser';
+
+  afterEach(() => {
+    delete window.dsulDesktop;
+  });
+
+  const installBridge = () => {
+    window.dsulDesktop = {
+      version: 1,
+      shellVersion: '0.1.0',
+      electronVersion: '44.5.1',
+      platform: 'win32',
+      onQuickCapture: () => () => {},
+      openAuthUrl: async () => true,
+      armEmailSignIn: async () => {},
+      takeSignInNotice: async () => false,
+    };
+  };
+
+  it('is available in a browser that supports push', () => {
+    expect(record.unavailable?.({ ...ctx, push })).toBeNull();
+  });
+
+  it('says so in the desktop app, where subscribe() would only fail', () => {
+    installBridge();
+    expect(record.unavailable?.({ ...ctx, push })).toBe(DESKTOP_COPY);
+  });
+
+  it('keeps its no-push-state answer ahead of the desktop one', () => {
+    // The desktop line sits right after the `!ctx.push` check, so a caller
+    // with no push state to give still gets the answer it always got.
+    installBridge();
+    expect(record.unavailable?.(ctx)).toBeNull();
   });
 });
