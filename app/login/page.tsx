@@ -6,6 +6,7 @@ import { Suspense } from 'react';
 import { MailCheck } from 'lucide-react';
 import { Wordmark } from '@/components/primitives/wordmark';
 import { createClient } from '@/lib/supabase';
+import { loginRedirectTarget } from '@/lib/auth-redirect';
 // Restored after the parallax-hero pass dropped it: lib/relay-config.ts still
 // declares an `auth` flag, so ungating this surface left that entry dead while
 // reading as live. Every other relay placement is switchable from there; this
@@ -73,11 +74,11 @@ function useContentFocal() {
 
 function LoginPageInner() {
   const searchParams = useSearchParams();
-  // After auth, redirect back to the requested page (e.g. /connect?code=...) or default to /auth/callback
+  // After auth, come back through /auth/callback and on to the requested page
+  // (e.g. /connect?code=...). lib/auth-redirect.ts says why it is always the callback.
   const redirectParam = searchParams.get('redirect');
-  const postAuthUrl = redirectParam
-    ? decodeURIComponent(redirectParam)
-    : '/auth/callback';
+  const postAuthUrl = () =>
+    `${window.location.origin}${loginRedirectTarget(redirectParam, window.location.origin)}`;
 
   const [email, setEmail] = useState('');
   const [sent, setSent] = useState(false);
@@ -103,7 +104,7 @@ function LoginPageInner() {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: `${window.location.origin}${postAuthUrl}`,
+        emailRedirectTo: postAuthUrl(),
       },
     });
 
@@ -127,7 +128,7 @@ function LoginPageInner() {
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: `${window.location.origin}${postAuthUrl}`,
+        redirectTo: postAuthUrl(),
       },
     });
 
