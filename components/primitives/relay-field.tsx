@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import {
   DEFAULT_LIGHT_PALETTE,
+  QUIET_LIGHT_PALETTE,
   relayLightColors,
   type RelayLightPaletteKey,
 } from '@/lib/relay-palettes';
@@ -14,11 +15,12 @@ import {
  * Ported from the Sunday Softworks site (a full-bleed canvas hero) and tuned
  * for dsul. Dark mode reads the live theme tokens and blends additively
  * (`lighter`) so the tiles bloom as glowing nodes on the navy ground. Light
- * mode can't add light to near-white paper, so it inverts the trick: a
- * monochrome GRAYSCALE ramp (near-neutral, only a whisper of the cool ink hue),
- * painted `source-over`, whose pulse deepens the tiles DOWNWARD instead of
- * brightening them — a "sonar" that reads as intentional tonal texture, where a
- * full-spectrum palette would scatter into confetti on the warm gray.
+ * mode can't add light to near-white paper, so it inverts the trick: the same
+ * relay hues a shade deeper (the light logo colours), painted `source-over`,
+ * whose pulse deepens the tiles DOWNWARD instead of brightening them — a
+ * "sonar" rather than a bloom. On the gray dock the full mix reads as
+ * confetti, so those fields take `tone="quiet"`: mostly gray, colour in sparks.
+ * A theme (lib/theme-looks.ts) can supply its own colours for either mode.
  *
  * Each tile is a pre-baked 64px sprite: a radial glow halo plus two nested
  * rounded squares (dim outer, bright core). The pulse envelope is a quick
@@ -134,12 +136,20 @@ export interface RelayFieldProps {
    */
   pointerParallax?: number;
   /**
-   * Which light-mode palette to paint (see lib/relay-palettes.ts). Only affects
-   * light contexts; dark contexts read the live theme tokens unless `darkPalette`
-   * is set. Defaults to the catalog default ('gray'); this is the seam for future
-   * user theming.
+   * Pins a light-mode palette from the catalog (see lib/relay-palettes.ts),
+   * ignoring the theme — for a field keyed to a meaning rather than to the
+   * look, like the honey relay behind Beacon. Leave it unset and the field
+   * paints the theme's light colours (`--relay-light`), or the catalog default
+   * ('relay', the light logo colours) under Paper. Only affects light contexts.
    */
   lightPalette?: RelayLightPaletteKey;
+  /**
+   * 'quiet' paints the theme's quieter light mix (`--relay-light-quiet`; under
+   * Paper the catalog's 'quiet': mostly gray with sparks of colour) — for a
+   * field on the gray dock, where the full mix reads as confetti. Light
+   * contexts only; dark has one mix. Ignored when `lightPalette` pins one.
+   */
+  tone?: 'quiet';
   /**
    * An explicit DARK-mode palette (oklch/color strings) that overrides the live
    * lime-dominant tokens dark normally reads — for a field that must key to a
@@ -228,23 +238,48 @@ export function buildSprite(color: string, dark: boolean): HTMLCanvasElement {
 }
 
 /**
- * Per-theme palette. Dark reads the live lime-dominant tokens — under additive
- * blending on navy they pop as-is. Light can't reuse those tokens and instead
- * pulls from the RELAY_LIGHT_PALETTES catalog (see lib/relay-palettes.ts);
- * `lightKey` selects one (default 'gray'). Those are painted source-over so the
- * alpha envelope deepens tiles toward the color at the ripple crest — the
- * light-mode, subtractive mirror of the dark additive bloom.
+ * A theme's relay colours, read from the CSS custom property the theme block
+ * declares (app/globals.css, "Themes"): `--relay-dark`, `--relay-light`, or
+ * `--relay-light-quiet` — named by mode so a locally dark island inside a light
+ * theme never picks up the light list. Null when the theme declares none
+ * (Paper, Night), so the caller falls back to the shipped colours.
+ */
+export function readThemeRelay(el: Element, dark: boolean, tone?: 'quiet'): string[] | null {
+  const cs = getComputedStyle(el);
+  const name = dark ? '--relay-dark' : tone === 'quiet' ? '--relay-light-quiet' : '--relay-light';
+  let raw = cs.getPropertyValue(name).trim();
+  // A theme that declares no quiet mix still has a full one to fall back to.
+  if (!raw && !dark && tone === 'quiet') raw = cs.getPropertyValue('--relay-light').trim();
+  if (!raw) return null;
+  // Matched rather than split: a colour function never contains a comma in
+  // the oklch form the theme blocks use, but matching keeps a stray rgb() or
+  // hex from being cut in half if one ever lands there.
+  const colors = raw.match(/[a-z]+\([^)]*\)|#[0-9a-f]{3,8}/gi);
+  return colors && colors.length > 0 ? colors : null;
+}
+
+/**
+ * Per-theme palette. Dark reads the theme's `--relay-dark` when it declares
+ * one, else the live lime-dominant tokens — under additive blending on navy
+ * they pop as-is. Light paints a pinned catalog palette when `lightKey` is
+ * given, else the theme's `--relay-light`, else the catalog default (see
+ * lib/relay-palettes.ts). Light is painted source-over so the alpha envelope
+ * deepens tiles toward the color at the ripple crest — the light-mode,
+ * subtractive mirror of the dark additive bloom.
  */
 export function readPalette(
   dark: boolean,
   el: Element,
-  lightKey: RelayLightPaletteKey,
-  darkOverride?: readonly string[]
+  lightKey?: RelayLightPaletteKey,
+  darkOverride?: readonly string[],
+  tone?: 'quiet'
 ): string[] {
   if (dark) {
     // An explicit dark palette (e.g. the honey field behind Beacon) wins over
-    // the live lime-dominant tokens; light contexts still read the catalog.
+    // the theme and the live tokens; light contexts still read the catalog.
     if (darkOverride && darkOverride.length > 0) return [...darkOverride];
+    const themed = readThemeRelay(el, true);
+    if (themed) return themed;
     const cs = getComputedStyle(el);
     const read = (name: string, fallback: string) => cs.getPropertyValue(name).trim() || fallback;
     const primary = read('--primary', 'oklch(0.84 0.15 125)');
@@ -260,7 +295,11 @@ export function readPalette(
       read('--accent-1', 'oklch(0.66 0.1 140)'), // moss
     ];
   }
-  return relayLightColors(lightKey);
+  if (lightKey) return relayLightColors(lightKey);
+  return (
+    readThemeRelay(el, false, tone) ??
+    relayLightColors(tone === 'quiet' ? QUIET_LIGHT_PALETTE : DEFAULT_LIGHT_PALETTE)
+  );
 }
 
 /**
@@ -319,7 +358,8 @@ export function RelayField({
   pointerBurst = false,
   pointerEase = 0.12,
   pointerParallax = 1,
-  lightPalette = DEFAULT_LIGHT_PALETTE,
+  lightPalette,
+  tone,
   darkPalette,
 }: RelayFieldProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -368,7 +408,7 @@ export function RelayField({
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
     let dark = isDarkContext(container);
-    let palette = readPalette(dark, container, lightPalette, darkPalette);
+    let palette = readPalette(dark, container, lightPalette, darkPalette, tone);
     let sprites = palette.map((c) => buildSprite(c, dark));
     let cells: Cell[] = [];
     let gridPitch = pitch;
@@ -553,11 +593,14 @@ export function RelayField({
       if (reduced) draw(0);
     };
 
+    // A theme switch can keep the mode and change only the colours, so the
+    // test is the palette itself, not just the dark flag.
     const rebuildForTheme = () => {
       const nowDark = isDarkContext(container);
-      if (nowDark === dark) return;
+      const next = readPalette(nowDark, container, lightPalette, darkPalette, tone);
+      if (nowDark === dark && next.join('|') === palette.join('|')) return;
       dark = nowDark;
-      palette = readPalette(dark, container, lightPalette, darkPalette);
+      palette = next;
       sprites = palette.map((c) => buildSprite(c, dark));
       if (reduced) draw(0);
     };
@@ -613,7 +656,7 @@ export function RelayField({
     const themeObserver = new MutationObserver(rebuildForTheme);
     themeObserver.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ['class', 'style', 'data-theme'],
+      attributeFilter: ['class', 'style', 'data-theme', 'data-look-light', 'data-look-dark'],
     });
 
     return () => {
@@ -625,7 +668,7 @@ export function RelayField({
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerdown', onPointerDown);
     };
-  }, [focalY, focalX, pitch, lightPalette, darkPalette, pointerFocus, pointerBurst]);
+  }, [focalY, focalX, pitch, lightPalette, tone, darkPalette, pointerFocus, pointerBurst]);
 
   return (
     <div

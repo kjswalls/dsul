@@ -98,6 +98,7 @@ export function SidebarDock() {
         {RELAY.dock && (
           <RelayField
             className="absolute inset-0 z-0 rounded-[10px]"
+            tone="quiet"
             focalY={0.7}
             pitch={20}
             idleIntensity={0.2}

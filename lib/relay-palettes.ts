@@ -5,7 +5,9 @@
  * key here and passes it to <RelayField lightPalette="…" />.
  *
  * These are light-mode only. Dark mode reads the live theme tokens directly (a
- * glowing lime bloom) and isn't a fixed catalog. Light mode can't add light to
+ * glowing lime bloom) and isn't a fixed catalog. A theme other than Paper
+ * paints its own colours (`--relay-light` in app/globals.css) instead; a key
+ * passed to <RelayField lightPalette> pins one of these regardless. Light mode can't add light to
  * near-white paper, so every palette below is painted `source-over` and the
  * pulse deepens tiles DOWNWARD toward the color at the ripple crest — a
  * subtractive "sonar" (see the primitive's docs). Colors are oklch strings so
@@ -20,6 +22,8 @@
  */
 
 export type RelayLightPaletteKey =
+  | 'relay'
+  | 'quiet'
   | 'gray'
   | 'ink'
   | 'slate'
@@ -41,6 +45,43 @@ export interface RelayLightPalette {
 }
 
 export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalette> = {
+  relay: {
+    label: 'Relay',
+    kind: 'multi',
+    description:
+      'The light logo colours: the dark field’s relay hues a shade deeper, in its mix — mostly lime, with orange, honey, teal, indigo and moss.',
+    // Same order and weights as the dark field (readPalette: primary ×3,
+    // accent-8, afternoon, accent-6, accent-2, accent-3, accent-1), and the
+    // same values the light app mark is drawn in — keep the two together.
+    colors: [
+      'oklch(0.8 0.2 128)',
+      'oklch(0.8 0.2 128)',
+      'oklch(0.8 0.2 128)',
+      'oklch(0.72 0.17 128)',
+      'oklch(0.7 0.13 50)',
+      'oklch(0.76 0.13 85)',
+      'oklch(0.64 0.1 195)',
+      'oklch(0.58 0.13 268)',
+      'oklch(0.62 0.12 145)',
+    ],
+  },
+  quiet: {
+    label: 'Quiet',
+    kind: 'multi',
+    description:
+      'Gray texture with the relay colours as sparks — about half the tiles stay gray. For fields on the gray dock.',
+    colors: [
+      'oklch(0.42 0.012 272)',
+      'oklch(0.5 0.012 272)',
+      'oklch(0.58 0.012 272)',
+      'oklch(0.46 0.012 272)',
+      'oklch(0.54 0.012 272)',
+      'oklch(0.8 0.2 128)',
+      'oklch(0.8 0.2 128)',
+      'oklch(0.64 0.1 195)',
+      'oklch(0.7 0.13 50)',
+    ],
+  },
   gray: {
     label: 'Gray',
     kind: 'mono',
@@ -165,8 +206,11 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   },
 };
 
-/** The shipped default — a calm, colorless tonal texture. */
-export const DEFAULT_LIGHT_PALETTE: RelayLightPaletteKey = 'gray';
+/** The shipped default — the light logo colours, so field and mark agree. */
+export const DEFAULT_LIGHT_PALETTE: RelayLightPaletteKey = 'relay';
+
+/** What `tone="quiet"` paints under Paper — the dock's gray capsule. */
+export const QUIET_LIGHT_PALETTE: RelayLightPaletteKey = 'quiet';
 
 /** Resolve a key to its colors, falling back to the default if unknown. */
 export function relayLightColors(key: RelayLightPaletteKey = DEFAULT_LIGHT_PALETTE): string[] {

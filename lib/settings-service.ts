@@ -48,6 +48,13 @@ export interface UserSettingsRow {
    * by a synthetic 'default'.
    */
   theme_palette?: string | null;
+  /**
+   * The theme picked for each mode (lib/theme-looks.ts, migration 052). Absent
+   * from DEFAULT_SETTINGS for the same reason as theme_palette: undefined means
+   * "never chosen on any device", so a device-local pick is not clobbered.
+   */
+  theme_light?: string | null;
+  theme_dark?: string | null;
 }
 
 const DEFAULT_SETTINGS: UserSettingsRow = {
@@ -119,8 +126,8 @@ const STABLE_SETTINGS_COLUMNS = [
  * round-trip on databases that predate it and nothing else; a column moved up
  * too early wipes everyone's settings, so err towards leaving it here.
  *
- * Currently: migration 022 (morning auto-age), 029 (habit reminders) and 031
- * (stakes). Migration 025 (theme_palette) graduated to stable on 2026-08-12
+ * Currently: migration 022 (morning auto-age), 029 (habit reminders), 031
+ * (stakes) and 052 (theme per mode). Migration 025 (theme_palette) graduated to stable on 2026-08-12
  * once it was applied to prod.
  */
 const PENDING_SCHEMA_COLUMNS = [
@@ -135,6 +142,9 @@ const PENDING_SCHEMA_COLUMNS = [
   // behind, and without it a pre-031 database would reject the whole batched
   // upsert. It rides along in the select too, where nothing reads it.
   'stakes_settled_date',
+  // Migration 052: the theme picked for each mode.
+  'theme_light',
+  'theme_dark',
 ] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');

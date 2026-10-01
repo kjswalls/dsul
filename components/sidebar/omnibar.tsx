@@ -1139,6 +1139,7 @@ export function Omnibar({
           {RELAY.omnibar && !inPillRelay && !isLauncher && (
             <RelayField
               className="absolute -inset-3 z-0"
+              tone="quiet"
               focalY={0.5}
               pitch={30}
               period={3.2}

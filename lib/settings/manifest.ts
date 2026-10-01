@@ -32,6 +32,15 @@ import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
 import { STAKE_SETTINGS } from '@/lib/stakes/stake-config';
 import { usePaletteStore } from '@/lib/palette-store';
 import { THEME_PALETTES, isThemePalette } from '@/lib/theme-palettes';
+import { useLookStore } from '@/lib/look-store';
+import {
+  DARK_LOOKS,
+  DEFAULT_DARK_LOOK,
+  DEFAULT_LIGHT_LOOK,
+  LIGHT_LOOKS,
+  isDarkLook,
+  isLightLook,
+} from '@/lib/theme-looks';
 import { saveSettings } from '@/lib/settings-service';
 import {
   DEFAULT_SHORTCUTS,
@@ -369,6 +378,7 @@ const ext = () => useExtensionsStore.getState();
 const channelSecrets = () => useChannelSecretsStore.getState();
 const gateway = () => useGatewayStore.getState();
 const palette = () => usePaletteStore.getState();
+const look = () => useLookStore.getState();
 
 /** Shared by every extension toggle: rows stay visible, with the reason inline. */
 const extUnavailable = () =>
@@ -743,7 +753,8 @@ export const SETTINGS: SettingRecord[] = [
   {
     id: 'look.theme',
     pane: 'look',
-    label: 'Theme',
+    label: 'Mode',
+    description: 'Light, dark, or whichever your device is using.',
     control: 'enum',
     dbColumn: 'theme',
     options: [
@@ -751,7 +762,7 @@ export const SETTINGS: SettingRecord[] = [
       { value: 'dark', label: 'Dark' },
       { value: 'system', label: 'System' },
     ],
-    keywords: ['appearance', 'night', 'colour scheme', 'color scheme', 'contrast'],
+    keywords: ['theme', 'appearance', 'night', 'colour scheme', 'color scheme', 'contrast'],
     read: (ctx) => ctx.theme ?? 'system',
     // The one setter in the app that does NOT persist itself.
     write: (v, ctx) => {
@@ -761,14 +772,57 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: 'system',
   },
   {
+    id: 'look.lightTheme',
+    pane: 'look',
+    label: 'Light theme',
+    description: 'Used whenever the app is light.',
+    control: 'enum',
+    dbColumn: 'theme_light',
+    options: LIGHT_LOOKS.map((l) => ({ value: l.value, label: l.label })),
+    keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'paper', 'studio', 'sorbet'],
+    read: () => look().light,
+    // Paired write, same rule as look.theme and look.palette: the store setter
+    // is localStorage + DOM only (supabase-provider's sync effect).
+    write: (v, ctx) => {
+      if (!isLightLook(v)) return;
+      look().setLight(v, { eased: true });
+      if (ctx.userId) saveSettings(ctx.userId, { theme_light: v });
+    },
+    defaultValue: DEFAULT_LIGHT_LOOK,
+  },
+  {
+    id: 'look.darkTheme',
+    pane: 'look',
+    label: 'Dark theme',
+    description: 'Used whenever the app is dark.',
+    control: 'enum',
+    dbColumn: 'theme_dark',
+    options: DARK_LOOKS.map((l) => ({ value: l.value, label: l.label })),
+    keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'night', 'terminal', 'dusk'],
+    read: () => look().dark,
+    write: (v, ctx) => {
+      if (!isDarkLook(v)) return;
+      look().setDark(v, { eased: true });
+      if (ctx.userId) saveSettings(ctx.userId, { theme_dark: v });
+    },
+    defaultValue: DEFAULT_DARK_LOOK,
+  },
+  {
     id: 'look.palette',
     pane: 'look',
-    label: 'Palette',
-    description: 'The ground the app sits on. The lime accent stays.',
+    label: 'Tint',
+    description: 'The ground under Paper and Night.',
+    // The other themes design their ground with their accent, so a tint has
+    // nothing to act on there. Stated, not hidden: the stored value stands and
+    // comes back the moment either default theme is picked again.
+    unavailable: () =>
+      look().light === DEFAULT_LIGHT_LOOK || look().dark === DEFAULT_DARK_LOOK
+        ? null
+        : 'Only Paper and Night take a tint.',
     control: 'enum',
     dbColumn: 'theme_palette',
     options: THEME_PALETTES.map((p) => ({ value: p.value, label: p.label })),
-    keywords: ['color', 'colour', 'ground', 'background', 'tint', 'paper', 'slate', 'dune', 'iris'],
+    keywords: ['palette', 'color', 'colour', 'ground', 'background', 'slate', 'dune', 'iris'],
     read: () => palette().palette,
     // Palette pairs with theme, not the planner stores: the store setter is
     // localStorage + DOM only (via supabase-provider's sync effect), so the
@@ -784,7 +838,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'look.typeface',
     pane: 'look',
     label: 'Typeface',
-    description: 'Item titles only — the chrome stays Inter.',
+    description: 'Item titles only — the chrome follows the theme.',
     control: 'enum',
     options: [
       { value: 'sans', label: 'Sans' },

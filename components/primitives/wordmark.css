@@ -23,7 +23,7 @@
   --wm-tape: oklch(0.22 0.01 272);
   --wm-tape-edge: oklch(1 0 0 / 6%);
   --wm-highlight: var(--primary);
-  --wm-highlight-ink: var(--lime-ink);
+  --wm-highlight-ink: var(--primary-foreground);
   --wm-highlight-top: 0.42em;
   --wm-stagger: 16ms;
   --wm-reveal: 220ms;
