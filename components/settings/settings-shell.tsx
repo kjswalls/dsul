@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -31,7 +31,8 @@ import {
   type PaneGroup,
 } from '@/lib/settings/groups';
 import { ExtensionIndex } from './extension-index';
-import { ExtensionHero, ExtensionStoreDoor } from './extension-hero';
+import { ExtensionHero } from './extension-hero';
+import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { ShortcutsPanel } from './shortcuts-panel';
 
 /**
@@ -52,6 +53,10 @@ import { ShortcutsPanel } from './shortcuts-panel';
  */
 
 const ADV_KEY = 'dsul-settings-advanced';
+
+type ExtensionsView = 'list' | 'browse';
+const EXTENSIONS_VIEW_KEY = 'dsul-settings-extensions-view';
+
 /** How long a deep link waits out a loading ancestor before settling on the
  *  nearest drawn row — a load that never finishes must not strand it. */
 const PENDING_WAIT_MS = 3000;
@@ -64,20 +69,67 @@ function Eyebrow({
   // nothing between <h1>Settings</h1> and the end of the page.
   as: Tag = 'p',
   id,
+  // Drops the eyebrow's own margins when a row around it sets the spacing.
+  flush = false,
 }: {
   children: React.ReactNode;
   icon?: React.ElementType;
   as?: 'p' | 'h2';
   id?: string;
+  flush?: boolean;
 }) {
   return (
     <Tag
       id={id}
-      className="text-muted-foreground mt-6 mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase"
+      className={cn(
+        'text-muted-foreground flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase',
+        !flush && 'mt-6 mb-1'
+      )}
     >
       {Icon && <Icon className="size-3" aria-hidden />}
       {children}
     </Tag>
+  );
+}
+
+/** List or Browse, for the Extensions pane. A segmented pair, not a nav: both
+ *  views are the same pane, so they are pressed buttons over one region. */
+function ExtensionsViewTabs({
+  view,
+  onChange,
+}: {
+  view: ExtensionsView;
+  onChange: (view: ExtensionsView) => void;
+}) {
+  const options: { id: ExtensionsView; label: string }[] = [
+    { id: 'list', label: 'List' },
+    { id: 'browse', label: 'Browse' },
+  ];
+  return (
+    <div
+      role="group"
+      aria-label="Show extensions as"
+      className="bg-secondary ml-auto inline-flex gap-0.5 rounded-[7px] p-0.5"
+      data-testid="extensions-view-tabs"
+    >
+      {options.map((option) => (
+        <button
+          key={option.id}
+          type="button"
+          aria-pressed={view === option.id}
+          onClick={() => onChange(option.id)}
+          className={cn(
+            'rounded-[5px] px-2.5 py-0.5 text-xs font-medium transition-colors',
+            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+            view === option.id
+              ? 'bg-card text-foreground shadow-xs'
+              : 'text-muted-foreground hover:text-foreground'
+          )}
+        >
+          {option.label}
+        </button>
+      ))}
+    </div>
   );
 }
 
@@ -165,6 +217,47 @@ export function SettingsShell({
   const parentPane = activePane.parent ? paneById(activePane.parent) : undefined;
   // The rail row this pane belongs to — itself, or its parent inside a sub-pane.
   const railPane = railPaneFor(pane);
+
+  /* ── Extensions: List or Browse ────────────────────────────────────────────
+     The store is the Browse tab of the Extensions pane, not a page of its own,
+     so the plain list and the store are one place. `?view=browse` names the tab
+     (it is what /extensions and ⌘K open); with no param the pane shows the tab
+     you used last, so the crumb back from an extension lands where you were.
+     A view, not a setting: it never syncs and has no record. */
+  const searchParams = useSearchParams();
+  const viewParam = searchParams?.get('view');
+  // Lazy, not an effect: the shell only mounts on the client, behind the
+  // page's hydration gate, so storage is readable here — and reading it after
+  // paint drew List for a frame before Browse.
+  const [rememberedView, setRememberedView] = useState<ExtensionsView>(() => {
+    try {
+      return localStorage.getItem(EXTENSIONS_VIEW_KEY) === 'browse' ? 'browse' : 'list';
+    } catch {
+      return 'list'; // private mode — default to the list
+    }
+  });
+  // Arriving with ?view= (from /extensions, ⌘K or a Browse link) counts as
+  // choosing that tab, so the crumb and the rail come back to it too.
+  useEffect(() => {
+    if (pane !== 'extensions' || (viewParam !== 'browse' && viewParam !== 'list')) return;
+    setRememberedView((current) => (current === viewParam ? current : viewParam));
+    try {
+      localStorage.setItem(EXTENSIONS_VIEW_KEY, viewParam);
+    } catch {
+      /* private mode — the tab just isn't remembered */
+    }
+  }, [pane, viewParam]);
+  const extensionsView: ExtensionsView =
+    viewParam === 'browse' || viewParam === 'list' ? viewParam : rememberedView;
+  const showExtensionsView = (view: ExtensionsView) => {
+    setRememberedView(view);
+    try {
+      localStorage.setItem(EXTENSIONS_VIEW_KEY, view);
+    } catch {
+      /* private mode — the tab just isn't remembered */
+    }
+    router.replace(view === 'browse' ? '/settings/extensions?view=browse' : '/settings/extensions', { scroll: false });
+  };
 
   /* ── Advanced disclosure state is per-pane and deliberately NOT a setting ──
      An effect, not a lazy initialiser: this is a client component but it still
@@ -443,9 +536,11 @@ export function SettingsShell({
   };
 
   const { rows, advanced } = paneRows(pane, { isMobile });
-
   return (
-    <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8">
+    <main
+      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8"
+      data-extensions-view={pane === 'extensions' ? extensionsView : undefined}
+    >
       {/* Three crumbs inside an extension, two everywhere else. The rail's
           Extensions row does navigate back up, but from inside a sub-pane it
           renders as the CURRENT row — a lit row does not read as a way out. So
@@ -685,7 +780,16 @@ export function SettingsShell({
             <>
               {pane === 'look' && <LookPreview />}
 
-              <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
+              {pane === 'extensions' ? (
+                <div className="mt-6 mb-1 flex items-center gap-3">
+                  <Eyebrow icon={activePane.icon} flush>
+                    {activePane.name}
+                  </Eyebrow>
+                  <ExtensionsViewTabs view={extensionsView} onChange={showExtensionsView} />
+                </div>
+              ) : (
+                <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
+              )}
               {/* An extension pane's blurb IS its catalog description, and the
                   toggle directly below carries that same sentence as its own
                   description — printing it twice, one line apart, reads as a
@@ -703,8 +807,21 @@ export function SettingsShell({
                   which are unchanged and still hold the one switch. */}
               {activePane.parent === 'extensions' && <ExtensionHero slug={extensionSlugFromPane(pane)!} />}
 
-              {pane === 'extensions' && <ExtensionStoreDoor />}
-              {pane === 'extensions' && <ExtensionIndex ctx={ctx} />}
+              {pane === 'extensions' &&
+                (extensionsView === 'browse' ? (
+                  // Browse is the one pane body wider than a column of rows. It
+                  // grows to the RIGHT only, into the page margin, so the rail,
+                  // the search box and the tabs stay exactly where every other
+                  // pane has them (re-centering a wider page moved the rail
+                  // 190px on every tab switch). The negative margin is the
+                  // page margin less the gutter, and zero once the window is no
+                  // wider than the page.
+                  <div className="md:mr-[min(0px,calc((880px-100vw)/2+24px))] md:max-w-[960px]">
+                    <ExtensionBrowse ctx={ctx} />
+                  </div>
+                ) : (
+                  <ExtensionIndex ctx={ctx} />
+                ))}
 
               {/* The Keyboard pane's rows ARE the shortcut records, and they
                   are grouped rather than flat — nineteen bindings in one

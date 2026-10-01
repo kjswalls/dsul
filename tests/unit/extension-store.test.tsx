@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The extensions store (/extensions) and the copy, previews and adoption
- * figures behind it.
+ * The extensions store (the Browse tab of Settings → Extensions) and the copy,
+ * previews and adoption figures behind it.
  *
  * Four claims, each one a way the store could quietly lie:
  *   1. Every catalog extension reaches the store whole — copy, shelf, preview.
@@ -15,10 +15,12 @@ import { cleanup, fireEvent, render, screen, within } from '@testing-library/rea
  *   4. Previews do not move unless they may.
  */
 
+const replace = vi.fn();
+let params = new URLSearchParams();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
-  usePathname: () => '/extensions',
-  useSearchParams: () => new URLSearchParams(),
+  useRouter: () => ({ push: vi.fn(), replace, refresh: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => '/settings/extensions',
+  useSearchParams: () => params,
 }));
 vi.mock('next-themes', () => ({ useTheme: () => ({ theme: 'system', setTheme: () => {} }) }));
 
@@ -29,14 +31,14 @@ import {
   EXT_PHONE_CALL,
   EXT_SMS_NUDGE,
   EXT_STREAKS,
-  EXT_VOICE_ANNOUNCEMENTS,
   OFFICIAL_EXTENSIONS,
 } from '@/lib/extension-registry';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
-import { FEATURED_SLUG, STORE_SHELVES, catalogByShelf, costLabel, searchCatalog } from '@/lib/extension-catalog';
+import { FEATURED_SLUG, STORE_SHELVES, catalogByShelf, costLabel } from '@/lib/extension-catalog';
 import { MIN_PEOPLE, adoptionLine, computeAdoption, type AdoptionCounts } from '@/lib/extension-adoption';
 import { EXTENSION_PREVIEWS, ExtensionPreview } from '@/components/extensions/previews/extension-preview';
-import { ExtensionsStorePage } from '@/components/extensions/extensions-store-page';
+import { ExtensionBrowse } from '@/components/extensions/extension-browse';
+import { StoreCard } from '@/components/extensions/store-card';
 import { extensionStateForSlug } from '@/lib/settings/extension-state';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useMorningStore } from '@/lib/morning-store';
@@ -90,18 +92,6 @@ describe('every extension reaches the store whole', () => {
   });
 });
 
-describe('store search', () => {
-  it('returns everything for an empty query', () => {
-    expect(searchCatalog('  ')).toHaveLength(OFFICIAL_EXTENSIONS.length);
-  });
-
-  it('finds what settings search finds, through the records’ own keywords', () => {
-    // "sonos" is only a keyword on the Speak aloud records, never in its copy.
-    expect(searchCatalog('sonos').map((e) => e.slug)).toEqual([EXT_VOICE_ANNOUNCEMENTS]);
-    expect(searchCatalog('twilio').map((e) => e.slug).sort()).toEqual([EXT_PHONE_CALL, EXT_SMS_NUDGE].sort());
-  });
-});
-
 describe('adoption figures', () => {
   const row = (slug: string, partial: Partial<AdoptionCounts>): AdoptionCounts => ({
     slug,
@@ -145,7 +135,7 @@ describe('adoption figures', () => {
   });
 });
 
-describe('the store page', () => {
+describe('the Browse tab', () => {
   beforeEach(() => {
     usePlannerStore.setState({ userId: 'test-user' });
     useMorningStore.setState({ settingsHydratedUserId: 'test-user' });
@@ -160,19 +150,21 @@ describe('the store page', () => {
     useExtensionsStore.getState().reset();
   });
 
+  const ctx = { theme: 'system', setTheme: () => {}, userId: 'test-user' };
+
   it('draws one card per extension, each linking to its own settings pane', () => {
-    render(<ExtensionsStorePage />);
+    render(<ExtensionBrowse ctx={ctx} />);
     for (const slug of slugs) {
       const card = document.querySelector(`[data-store-card="${slug}"]`);
       expect(card, slug).toBeTruthy();
-      expect(card!.getAttribute('href')).toBe(`/settings/extensions/${slug}`);
+      // ?from=browse is what puts "Back to Browse" at the top of the pane.
+      expect(card!.getAttribute('href')).toBe(`/settings/extensions/${slug}?from=browse`);
     }
   });
 
   it('says the same state word as the shared rule, and holds no switch', () => {
     useExtensionsStore.setState({ enabled: { [EXT_BEEMINDER]: true } });
-    render(<ExtensionsStorePage />);
-    const ctx = { theme: 'system', setTheme: () => {}, userId: 'test-user' };
+    render(<ExtensionBrowse ctx={ctx} />);
     for (const slug of slugs) {
       const card = document.querySelector<HTMLElement>(`[data-store-card="${slug}"]`)!;
       expect(card.dataset.extensionState, slug).toBe(extensionStateForSlug(slug, ctx).label);
@@ -184,25 +176,38 @@ describe('the store page', () => {
     expect(beeminder.textContent).toContain('Settle the day');
   });
 
-  it('waits for this account’s settings before saying anything', () => {
-    useMorningStore.setState({ settingsHydratedUserId: 'someone-else' });
-    render(<ExtensionsStorePage />);
-    expect(screen.getByTestId('extensions-store').dataset.storeState).toBe('loading');
-    expect(document.querySelector('[data-store-card]')).toBeNull();
-  });
-
-  it('filters by search and by shelf', () => {
-    render(<ExtensionsStorePage />);
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search extensions' }), { target: { value: 'twilio' } });
-    expect(
-      Array.from(document.querySelectorAll<HTMLElement>('[data-store-card]')).map((c) => c.dataset.storeCard).sort()
-    ).toEqual([EXT_PHONE_CALL, EXT_SMS_NUDGE].sort());
-    expect(document.querySelector('[data-store-featured]')).toBeNull();
-
-    fireEvent.change(screen.getByRole('searchbox', { name: 'Search extensions' }), { target: { value: '' } });
+  it('filters by shelf through the URL, and the featured slot shows only under All', () => {
+    params = new URLSearchParams('view=browse');
+    const { rerender } = render(<ExtensionBrowse ctx={ctx} />);
+    expect(document.querySelector(`[data-store-featured="${FEATURED_SLUG}"]`)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Put something on the line' }));
+    expect(replace).toHaveBeenCalledWith('/settings/extensions?view=browse&shelf=stakes', { scroll: false });
+
+    params = new URLSearchParams('view=browse&shelf=stakes');
+    rerender(<ExtensionBrowse ctx={ctx} />);
     expect(document.querySelectorAll('[data-store-shelf]')).toHaveLength(1);
     expect(document.querySelector('[data-store-shelf="stakes"]')).toBeTruthy();
+    expect(document.querySelector('[data-store-featured]')).toBeNull();
+    // The shelf rides along to the pane, so "Back to Browse" can return to it.
+    const card = document.querySelector(`[data-store-card="${EXT_BEEMINDER}"]`)!;
+    expect(card.getAttribute('href')).toBe(`/settings/extensions/${EXT_BEEMINDER}?from=browse&shelf=stakes`);
+    params = new URLSearchParams();
+  });
+
+  it('says so when nothing is switched on', () => {
+    useExtensionsStore.setState({
+      available: true,
+      configsLoaded: true,
+      configs: {},
+      // Explicitly off, default-on extensions included.
+      enabled: Object.fromEntries(slugs.map((slug) => [slug, false])),
+    });
+    params = new URLSearchParams('view=browse&shelf=on');
+    render(<ExtensionBrowse ctx={ctx} />);
+    expect(screen.getByRole('button', { name: 'On · 0' })).toBeTruthy();
+    expect(screen.getByText('Nothing is switched on yet.')).toBeTruthy();
+    expect(document.querySelector('[data-store-card]')).toBeNull();
+    params = new URLSearchParams();
   });
 });
 
@@ -244,14 +249,112 @@ describe('previews', () => {
   });
 });
 
+describe('store cards play only when engaged', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('rest until the card is hovered or focused, and stop when it is left', () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        cb: (entries: { isIntersecting: boolean }[]) => void;
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+          this.cb = cb;
+        }
+        observe() {
+          this.cb([{ isIntersecting: true }]);
+        }
+        disconnect() {}
+      }
+    );
+    const extension = OFFICIAL_EXTENSIONS.find((e) => e.slug === EXT_STREAKS)!;
+    render(<StoreCard extension={extension} state={{ label: 'Off', on: false }} adoption={null} />);
+    const card = document.querySelector<HTMLElement>(`[data-store-card="${EXT_STREAKS}"]`)!;
+    const preview = card.querySelector<HTMLElement>('[data-extension-preview]')!;
+    expect(preview.dataset.playing).toBe('false');
+
+    fireEvent.pointerEnter(card);
+    expect(preview.dataset.playing).toBe('true');
+    fireEvent.pointerLeave(card);
+    expect(preview.dataset.playing).toBe('false');
+
+    // Keyboard focus plays it. jsdom never matches :focus-visible, so a real
+    // focus stands in for a keyboard one here.
+    const matches = Element.prototype.matches;
+    const spy = vi
+      .spyOn(Element.prototype, 'matches')
+      .mockImplementation(function (this: Element, selector: string) {
+        return matches.call(this, selector === ':focus-visible' ? ':focus' : selector);
+      });
+    try {
+      act(() => card.focus());
+      expect(preview.dataset.playing).toBe('true');
+      act(() => card.blur());
+      expect(preview.dataset.playing).toBe('false');
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it('do not count a mouse focus as engagement once the pointer leaves', () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        cb: (entries: { isIntersecting: boolean }[]) => void;
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+          this.cb = cb;
+        }
+        observe() {
+          this.cb([{ isIntersecting: true }]);
+        }
+        disconnect() {}
+      }
+    );
+    const extension = OFFICIAL_EXTENSIONS.find((e) => e.slug === EXT_STREAKS)!;
+    render(<StoreCard extension={extension} state={{ label: 'Off', on: false }} adoption={null} />);
+    const card = document.querySelector<HTMLElement>(`[data-store-card="${EXT_STREAKS}"]`)!;
+    const preview = card.querySelector<HTMLElement>('[data-extension-preview]')!;
+    // A ⌘-click: the pointer enters, the link takes (non-visible) focus, the
+    // pointer leaves. The preview must stop.
+    fireEvent.pointerEnter(card);
+    act(() => card.focus());
+    fireEvent.pointerLeave(card);
+    expect(preview.dataset.playing).toBe('false');
+  });
+
+  it('play on their own on an extension’s own page', () => {
+    vi.stubGlobal(
+      'IntersectionObserver',
+      class {
+        cb: (entries: { isIntersecting: boolean }[]) => void;
+        constructor(cb: (entries: { isIntersecting: boolean }[]) => void) {
+          this.cb = cb;
+        }
+        observe() {
+          this.cb([{ isIntersecting: true }]);
+        }
+        disconnect() {}
+      }
+    );
+    render(<ExtensionPreview slug={EXT_STREAKS} />);
+    const preview = document.querySelector<HTMLElement>(`[data-extension-preview="${EXT_STREAKS}"]`)!;
+    expect(preview.dataset.playing).toBe('true');
+  });
+});
+
 describe('doors into the store', () => {
-  it('is a lean route', () => {
+  it('keeps the old address lean: it only redirects', () => {
     expect(routeNeedsItems('/extensions')).toBe(false);
   });
 
-  it('has a ⌘K command with no shortcut', () => {
+  it('has a ⌘K command with no shortcut, opening Settings on Browse', () => {
     const command = STATIC_COMMANDS.find((c) => c.id === 'app.extensions');
     expect(command).toBeTruthy();
     expect(command!.shortcut).toBeUndefined();
+    const navigate = vi.fn();
+    command!.run({ navigate } as never);
+    expect(navigate).toHaveBeenCalledWith('/settings/extensions?view=browse');
   });
 });

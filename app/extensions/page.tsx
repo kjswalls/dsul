@@ -1,6 +1,10 @@
-import { ExtensionsStorePage } from '@/components/extensions/extensions-store-page';
+import { redirect } from 'next/navigation';
 
-/** /extensions — the extensions store. The page itself lives in components/. */
+/**
+ * /extensions — the store's old address. The store is now the Browse tab of
+ * Settings → Extensions, so this only forwards there, keeping the link anyone
+ * saved working.
+ */
 export default function ExtensionsPage() {
-  return <ExtensionsStorePage />;
+  redirect('/settings/extensions?view=browse');
 }

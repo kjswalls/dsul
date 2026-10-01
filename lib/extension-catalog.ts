@@ -1,5 +1,7 @@
 /**
- * The extensions store's catalog — shelves, the featured slot, and search.
+ * The extensions store's catalog — shelves and the featured slot. Searching
+ * is the settings search box's job: it already finds extensions by name and by
+ * their settings' keywords.
  *
  * Pure data over OFFICIAL_EXTENSIONS: the copy lives on each manifest entry
  * (tagline, shelf, needs, costs, whatChanges, makerNote), so adding an
@@ -17,7 +19,6 @@ import {
   type ExtensionManifest,
   type ExtensionShelf,
 } from './extension-registry';
-import { extensionPaneId, settingsForPane } from './settings/manifest';
 
 export interface StoreShelf {
   id: ExtensionShelf;
@@ -51,38 +52,4 @@ export function costLabel(extension: ExtensionManifest): string | null {
   if (extension.costs === 'stake') return 'Can cost money';
   if (extension.costs === 'usage') return 'Twilio charges apply';
   return null;
-}
-
-/**
- * Everything a store search may match for one extension.
- *
- * Includes the KEYWORDS of the extension's own settings records, which are
- * hand-authored on purpose ("sonos", "anti-charity"): typing "sonos" finds
- * Speak reminders aloud in settings search, and the store must not be the
- * place where it stops working.
- */
-function haystack(extension: ExtensionManifest): string {
-  const records = settingsForPane(extensionPaneId(extension.slug));
-  return [
-    extension.name,
-    extension.tagline,
-    extension.description,
-    ...(extension.needs ?? []),
-    ...records.flatMap((record) => [record.label, ...record.keywords]),
-  ]
-    .join(' ')
-    .toLowerCase();
-}
-
-/** Every extension whose text contains each word of the query, catalog order. */
-export function searchCatalog(
-  query: string,
-  extensions: ExtensionManifest[] = OFFICIAL_EXTENSIONS
-): ExtensionManifest[] {
-  const words = query.toLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return extensions;
-  return extensions.filter((extension) => {
-    const text = haystack(extension);
-    return words.every((word) => text.includes(word));
-  });
 }

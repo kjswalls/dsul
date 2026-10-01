@@ -1,14 +1,20 @@
 # Plugins, Themes & the Store — extensibility across dsul (and future apps)
 
 > **Addendum (2026-10-01): the in-app extensions store is NOT Project C.**
-> `/extensions` (components/extensions/) is a storefront over the eleven
-> FIRST-PARTY entries in `OFFICIAL_EXTENSIONS`: a featured slot, four shelves
-> grouped by what an extension does for you (`shelf` on the manifest), a live
-> preview per extension (inert sample scenes, CSS-animated, still under either
-> motion veto), and a card per extension that links to its settings pane. The
-> pane gained a header (`components/settings/extension-hero.tsx`) with the
-> preview, what changes, needs/cost chips and a maker's note; the switch is still
-> the pane's own record. Nothing here registers, downloads or runs third-party
+> The store is the **Browse** tab of Settings → Extensions, beside the plain
+> **List** tab (components/extensions/extension-browse.tsx; `?view=browse`, the
+> tab you used last is remembered; `/extensions` and ⌘K only open it). It is a
+> storefront over the eleven FIRST-PARTY entries in `OFFICIAL_EXTENSIONS`: a
+> featured slot, four shelves grouped by what an extension does for you (`shelf`
+> on the manifest, chip in `?shelf=`), a live preview per extension (inert sample
+> scenes, CSS-animated, still under either motion veto, and in Browse playing
+> only while its card is hovered or keyboard-focused), and a card per extension
+> that links to its settings pane with `?from=browse`. Browse widens rightward
+> into the page margin so the rail never moves. The pane gained a header
+> (`components/settings/extension-hero.tsx`): a preview thumbnail beside what
+> changes, needs/cost chips, a maker's note, and "Back to Browse" when you came
+> from the store; the switch is still the pane's own record. (It shipped first as
+> its own /extensions page; Kirby asked on 2026-10-01 for it to live in Settings.) Nothing here registers, downloads or runs third-party
 > code — Project C's registry, review and payments questions are untouched.
 >
 > **Open question 9 (telemetry vs privacy) is answered for this store:**
