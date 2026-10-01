@@ -133,7 +133,9 @@ describe('a credential never reaches the screen', () => {
 
     renderShell();
     // Every generated credential carries 'credential' as a keyword — the one
-    // query that surfaces all of them at once.
+    // query that surfaces all of them at once. The toggles are all OFF here, so
+    // this also pins that SEARCH still draws a dependent its pane would hide
+    // (settings-shell rowFor): a hit the rail counts is a hit on screen.
     await search('credential');
 
     for (const record of secrets) {
