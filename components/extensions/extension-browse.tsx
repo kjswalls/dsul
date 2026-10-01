@@ -23,22 +23,20 @@ function isFilter(value: string | null | undefined): value is Filter {
   return value === 'all' || value === 'on' || STORE_SHELVES.some((shelf) => shelf.id === value);
 }
 
-/** Browse, on a given chip. 'all' is the bare tab. */
+/** Browse, on a given chip. 'all' is the bare pane. */
 export function browseHref(filter: string | null | undefined): string {
-  return isFilter(filter) && filter !== 'all'
-    ? `/settings/extensions?view=browse&shelf=${filter}`
-    : '/settings/extensions?view=browse';
+  return isFilter(filter) && filter !== 'all' ? `/settings/extensions?shelf=${filter}` : '/settings/extensions';
 }
 
 /**
- * The store, as the Browse tab of Settings → Extensions.
+ * The store: the body of Settings → Extensions.
  *
- * It lives in the Extensions pane rather than on a page of its own so the list
- * and the store are one place: List is the plain rows, Browse is this. The
- * settings shell owns everything around it — the hydration gate, the type-mode
- * stamp, the search box (which already finds extensions by name and by their
- * settings) — and widens its column while this tab is showing, because a shelf
- * of cards needs more than the 600px a column of rows does.
+ * It lives in the Extensions pane rather than on a page of its own, and your
+ * own extensions sit beside it in the rail (extension-rail-list.tsx), so the
+ * list and the store are one place. The settings shell owns everything around
+ * it — the hydration gate, the type-mode stamp, the search box (which already
+ * finds extensions by name and by their settings) — and widens its column for
+ * it, because a shelf of cards needs more than the 600px a column of rows does.
  *
  * Every card links to the extension's own pane with `?from=browse`, which is
  * what puts a "Back to Browse" link at the top of that pane. No card holds a
@@ -155,7 +153,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
               </h2>
               <span className="text-muted-foreground text-xs">{shelf.blurb}</span>
             </header>
-            <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5">
               {extensions.map((extension) => (
                 <StoreCard
                   key={extension.slug}
