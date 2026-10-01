@@ -5,9 +5,9 @@
  * placement that reads as too busy can be switched off here without touching
  * the component. Flip a value to `false` to remove that instance.
  *
- * Light-mode color options live alongside in lib/relay-palettes.ts — a named
- * catalog (Gray/Ink/Slate/Lime/…) that a future user-theming control can read
- * from via <RelayField lightPalette="…" />. The shipped default is 'gray'.
+ * Light-mode color options live alongside in lib/relay-palettes.ts. The
+ * shipped default is 'relay' (the light logo colours); fields on the gray dock
+ * take `tone="quiet"`; a theme can replace both (lib/theme-looks.ts).
  */
 export const RELAY = {
   /** Behind the sidebar dock capsule (identity + omnibar); brightens on focus. */

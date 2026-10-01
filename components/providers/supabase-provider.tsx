@@ -11,6 +11,17 @@ import { useReminderStore, REMINDER_DEFAULTS } from '@/lib/reminder-store';
 import { loadSettings, saveSettings } from '@/lib/settings-service';
 import { usePaletteStore } from '@/lib/palette-store';
 import { PALETTE_STORAGE_KEY, isThemePalette, paletteDef } from '@/lib/theme-palettes';
+import { useLookStore } from '@/lib/look-store';
+import {
+  DEFAULT_DARK_LOOK,
+  DEFAULT_LIGHT_LOOK,
+  LOOK_ATTRIBUTES,
+  LOOK_STORAGE_KEYS,
+  darkLookDef,
+  isDarkLook,
+  isLightLook,
+  lightLookDef,
+} from '@/lib/theme-looks';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
@@ -104,6 +115,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   // media-keyed metas (rather than appending one) keeps light/dark switching
   // with the OS the way the static viewport export always has.
   const palette = usePaletteStore((s) => s.palette);
+  const lightLook = useLookStore((s) => s.light);
+  const darkLook = useLookStore((s) => s.dark);
   useEffect(() => {
     const html = document.documentElement;
     if (palette === 'default') {
@@ -120,12 +133,38 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Private mode — the stamp still applies for this session.
     }
+    // A theme with its own ground names its own chrome colour; the defaults
+    // (Paper, Night) defer to the palette, which is the only thing tinting them.
     const colors = paletteDef(palette).themeColor;
+    const light = lightLookDef(lightLook).themeColor ?? colors.light;
+    const dark = darkLookDef(darkLook).themeColor ?? colors.dark;
     document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
       const media = meta.getAttribute('media') ?? '';
-      meta.setAttribute('content', media.includes('dark') ? colors.dark : colors.light);
+      meta.setAttribute('content', media.includes('dark') ? dark : light);
     });
-  }, [palette]);
+  }, [palette, lightLook, darkLook]);
+
+  // The themes' single DOM writer, same pattern as the palette above. BOTH
+  // picks are stamped at all times — the CSS blocks are mode-scoped, so a mode
+  // switch needs no JS and no flash. A default pick is the absence of its
+  // attribute, which is also what the pre-hydration script leaves behind.
+  useEffect(() => {
+    const html = document.documentElement;
+    const picks = [
+      ['light', lightLook, DEFAULT_LIGHT_LOOK],
+      ['dark', darkLook, DEFAULT_DARK_LOOK],
+    ] as const;
+    for (const [mode, pick, fallback] of picks) {
+      if (pick === fallback) html.removeAttribute(LOOK_ATTRIBUTES[mode]);
+      else html.setAttribute(LOOK_ATTRIBUTES[mode], pick);
+      try {
+        if (pick === fallback) window.localStorage.removeItem(LOOK_STORAGE_KEYS[mode]);
+        else window.localStorage.setItem(LOOK_STORAGE_KEYS[mode], pick);
+      } catch {
+        // Private mode — the stamp still applies for this session.
+      }
+    }
+  }, [lightLook, darkLook]);
 
   useEffect(() => {
     const supabase = createClient();
@@ -238,9 +277,27 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // Private mode — no flag to consume.
       }
       if (paletteReset) {
-        saveSettings(userId, { theme_palette: 'default' });
-      } else if (isThemePalette(settings.theme_palette)) {
-        usePaletteStore.getState().setPalette(settings.theme_palette);
+        // The escape hatch resets the themes too: a theme bad enough to hide
+        // the UI is exactly what ?reset-theme exists for.
+        saveSettings(userId, {
+          theme_palette: 'default',
+          theme_light: DEFAULT_LIGHT_LOOK,
+          theme_dark: DEFAULT_DARK_LOOK,
+        });
+        useLookStore.getState().setLight(DEFAULT_LIGHT_LOOK);
+        useLookStore.getState().setDark(DEFAULT_DARK_LOOK);
+      } else {
+        if (isThemePalette(settings.theme_palette)) {
+          usePaletteStore.getState().setPalette(settings.theme_palette);
+        }
+        // Same null rule as the palette: never chosen on any device leaves
+        // this device's pick standing.
+        if (isLightLook(settings.theme_light)) {
+          useLookStore.getState().setLight(settings.theme_light);
+        }
+        if (isDarkLook(settings.theme_dark)) {
+          useLookStore.getState().setDark(settings.theme_dark);
+        }
       }
     };
 

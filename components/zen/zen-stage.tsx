@@ -9,7 +9,12 @@ import {
   type RefObject,
 } from 'react';
 import { ZenSurface } from '@/components/zen/zen-room';
-import { buildSprite, isDarkContext, readPalette } from '@/components/primitives/relay-field';
+import {
+  buildSprite,
+  isDarkContext,
+  readPalette,
+  readThemeRelay,
+} from '@/components/primitives/relay-field';
 import { RELAY_LIGHT_PALETTES } from '@/lib/relay-palettes';
 import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -173,12 +178,14 @@ function findSourceTitle(planner: HTMLElement, id: string, title: string): HTMLE
 }
 
 /** Dark reads RelayField's full live palette (additive on navy); light takes
- *  Meadow, the lime → teal arc — lime alone deepens toward olive on paper. */
+ *  Meadow, the lime → teal arc — lime alone deepens toward olive on paper —
+ *  unless the theme brings its own light colours. */
 function tileColors(dark: boolean): string[] {
-  if (!dark) return RELAY_LIGHT_PALETTES.meadow.colors;
+  const root = document.documentElement;
+  if (!dark) return readThemeRelay(root, false) ?? RELAY_LIGHT_PALETTES.meadow.colors;
   // Lime-dominant, with its orange, honey, teal, indigo and moss, so the wave
   // reads as the same field the login page and the streak badge run.
-  return readPalette(true, document.documentElement, 'gray');
+  return readPalette(true, root);
 }
 
 function RelayLift({

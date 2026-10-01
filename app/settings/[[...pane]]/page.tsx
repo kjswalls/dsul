@@ -18,6 +18,7 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useLookStore } from '@/lib/look-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
@@ -318,6 +319,7 @@ export default function SettingsPage() {
     JSON.stringify([s.provider, s.model, s.systemPrompt, s.apiKey])
   );
   const paletteTick = usePaletteStore((s) => s.palette);
+  const lookTick = useLookStore((s) => `${s.light}|${s.dark}`);
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(
@@ -408,6 +410,7 @@ export default function SettingsPage() {
       reminderTick,
       aiTick,
       paletteTick,
+      lookTick,
       extensionsTick,
       channelSecretsTick,
       gatewayTick,

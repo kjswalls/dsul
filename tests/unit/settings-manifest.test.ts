@@ -423,8 +423,13 @@ describe('settings search', () => {
   });
 
   it('a label hit outranks a description-only hit', () => {
-    const { settings } = searchSettings('theme', ctx);
+    const { settings } = searchSettings('mode', ctx);
     expect(settings[0]?.record.id).toBe('look.theme');
+  });
+
+  it('"theme" finds the mode and both per-mode theme pickers', () => {
+    const hits = searchSettings('theme', ctx).settings.map((h) => h.record.id);
+    expect(hits).toEqual(expect.arrayContaining(['look.theme', 'look.lightTheme', 'look.darkTheme']));
   });
 
   it('excludes advanced rows unless asked', () => {
@@ -511,9 +516,10 @@ describe('settings search', () => {
   });
 
   it('tolerates a transposition, which is the most common typo there is', () => {
+    // Typos match labels: "Light theme" is the label one edit away.
     const result = searchSettings('thmee', ctx);
     expect(result.didYouMean).toBe(true);
-    expect(result.settings.map((h) => h.record.id)).toContain('look.theme');
+    expect(result.settings.map((h) => h.record.id)).toContain('look.lightTheme');
   });
 
   it('returns nothing for a query that means nothing here', () => {
@@ -525,7 +531,7 @@ describe('settings search', () => {
   it('falls back to one-edit matches ONLY when the strict pass is empty', () => {
     const typo = searchSettings('thene', ctx);
     expect(typo.didYouMean).toBe(true);
-    expect(typo.settings.map((h) => h.record.id)).toContain('look.theme');
+    expect(typo.settings.map((h) => h.record.id)).toContain('look.lightTheme');
 
     // …and never interleaves them into a list that already has strict hits.
     expect(searchSettings('theme', ctx).didYouMean).toBe(false);

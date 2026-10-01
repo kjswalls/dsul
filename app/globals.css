@@ -492,7 +492,9 @@
 
 @theme inline {
   /* Fonts — loaded via next/font in app/layout.tsx */
-  --font-sans: var(--font-inter), 'Inter', system-ui, sans-serif;
+  /* --font-ui is set on body (the next/font variables only exist from body
+     down) and re-pointed per theme; the fallback covers <html> itself. */
+  --font-sans: var(--font-ui, var(--font-inter)), 'Inter', system-ui, sans-serif;
   --font-serif: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
   /* Metadata/numeral face. ui-monospace resolves to Cascadia Mono on Windows
      and SF Mono on macOS; the explicit names cover browsers that don't map the
@@ -1102,6 +1104,173 @@
   --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
 }
 
+/* ── Themes ───────────────────────────────────────────────────────────────────
+   A theme sits UNDER a mode: one light pick and one dark pick, both stamped on
+   <html> at all times (data-look-light / data-look-dark, written by
+   supabase-provider and pre-applied by the script in app/layout.tsx; catalog in
+   lib/theme-looks.ts, kept in sync by tests/unit/theme-looks.test.ts). Each
+   block is mode-scoped like the palettes, so the CSS alone answers a mode
+   switch: :not(.dark) for light themes, .dark for dark ones.
+
+   Unlike a palette, a theme owns the whole look — ground, ink, the accent, the
+   type, the corners, the shadows and the RelayField's colours. Paper and Night
+   are the shipped look and have no block.
+
+   Order and weight are load-bearing. These blocks sit after the palettes and
+   after the shadow tokens and re-declare everything a palette touches, so a
+   tint left set from Paper or Night (same (0,3,0) weight, earlier in the file)
+   never bleeds into a theme that designed its own ground.
+
+   The accent: themes re-point the --lime-* triad, so every surface that reads
+   lime follows without a second token. The never-dim contract comes with it —
+   a theme's accent is held to everything lime is. Where the accent is dark
+   enough to need white type on it (or, for a pastel one, dark type), the four
+   on-fill foregrounds move and --lime-ink stays the accent-as-text colour.
+
+   The relay: --relay-light / --relay-light-quiet / --relay-dark are read by
+   components/primitives/relay-field.tsx as comma-separated colour lists. Each
+   is named by mode, so a locally dark island inside a light theme never picks
+   up the light list. Unset means the shipped colours. */
+
+/* Studio — crisp white, black ink, hairlines instead of soft shadows, cobalt. */
+:root[data-look-light='studio']:not(.dark) {
+  --paper-0: oklch(0.975 0 0);
+  --paper-1: oklch(0.98 0 0);
+  --paper-2: oklch(1 0 0);
+  --paper-3: oklch(1 0 0);
+  --paper-well: oklch(0.955 0 0);
+  --ink-0: oklch(0.17 0 0);
+  --ink-1: oklch(0.43 0 0);
+  --ink-2: oklch(0.6 0 0);
+  --lime-solid: oklch(0.55 0.2 262);
+  --lime-ink: oklch(0.46 0.19 262);
+  --lime-tint: oklch(0.95 0.03 262);
+  --primary-foreground: oklch(0.99 0 0);
+  --success-foreground: oklch(0.99 0 0);
+  --priority-low-foreground: oklch(0.99 0 0);
+  --sidebar-primary-foreground: oklch(0.99 0 0);
+  --accent: oklch(0.17 0 0 / 4%);
+  --border: oklch(0.9 0 0);
+  --input: oklch(0.85 0 0);
+  --row-selected: oklch(0.55 0.2 262 / 9%);
+  --scrim: oklch(0.17 0 0 / 12%);
+  --sidebar-border: oklch(0.91 0 0);
+  --radius: 0.5rem;
+  --shadow-elev-sm: 0 0 0 1px oklch(0 0 0 / 8%);
+  --shadow-elev-md: 0 0 0 1px oklch(0 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 5%);
+  --shadow-elev-lg: 0 0 0 1px oklch(0 0 0 / 8%), 0 8px 24px oklch(0 0 0 / 8%);
+  --shadow-elev-bar: 0 0 0 1px oklch(0 0 0 / 7%);
+  --relay-light: oklch(0.55 0.2 262), oklch(0.55 0.2 262), oklch(0.62 0.16 250), oklch(0.48 0.18 270),
+    oklch(0.4 0 0), oklch(0.55 0 0), oklch(0.65 0.13 225), oklch(0.5 0 0), oklch(0.58 0.18 262);
+  --relay-light-quiet: oklch(0.42 0 0), oklch(0.5 0 0), oklch(0.58 0 0), oklch(0.46 0 0), oklch(0.54 0 0),
+    oklch(0.55 0.2 262), oklch(0.55 0.2 262), oklch(0.65 0.13 225), oklch(0.48 0.18 270);
+}
+:root[data-look-light='studio']:not(.dark) body {
+  --font-ui: var(--font-geist), 'Geist', system-ui, sans-serif;
+}
+
+/* Sorbet — pastel peach, big round corners, pillowy warm shadows, pink. */
+:root[data-look-light='sorbet']:not(.dark) {
+  --paper-0: oklch(0.965 0.018 50);
+  --paper-1: oklch(0.972 0.016 50);
+  --paper-2: oklch(0.985 0.01 55);
+  --paper-3: oklch(0.997 0.004 55);
+  --paper-well: oklch(0.935 0.026 45);
+  --ink-0: oklch(0.3 0.04 20);
+  --ink-1: oklch(0.5 0.05 25);
+  --ink-2: oklch(0.64 0.05 30);
+  --lime-solid: oklch(0.72 0.15 0);
+  --lime-ink: oklch(0.5 0.16 0);
+  --lime-tint: oklch(0.94 0.04 0);
+  /* Dark ink on the pastel fill, the way Paper does lime: white on this pink
+     is about 2.5:1. */
+  --primary-foreground: oklch(0.28 0.08 0);
+  --success-foreground: oklch(0.28 0.08 0);
+  --priority-low-foreground: oklch(0.28 0.08 0);
+  --sidebar-primary-foreground: oklch(0.28 0.08 0);
+  --accent: oklch(0.4 0.08 20 / 5%);
+  --border: oklch(0.9 0.025 40);
+  --input: oklch(0.86 0.03 35);
+  --row-selected: oklch(0.72 0.15 0 / 12%);
+  --scrim: oklch(0.35 0.05 20 / 14%);
+  --sidebar-border: oklch(0.91 0.02 40);
+  --radius: 1.25rem;
+  --shadow-elev-sm: 0 2px 6px oklch(0.55 0.1 30 / 12%), 0 1px 2px oklch(0.55 0.1 30 / 8%);
+  --shadow-elev-md: 0 4px 14px oklch(0.55 0.1 30 / 14%), 0 2px 4px oklch(0.55 0.1 30 / 8%);
+  --shadow-elev-lg: 0 10px 30px oklch(0.55 0.1 30 / 18%), 0 4px 8px oklch(0.55 0.1 30 / 10%);
+  --shadow-elev-bar: 0 3px 12px oklch(0.55 0.1 30 / 12%);
+  --relay-light: oklch(0.72 0.15 0), oklch(0.72 0.15 0), oklch(0.78 0.12 50), oklch(0.8 0.12 85),
+    oklch(0.72 0.1 170), oklch(0.7 0.11 300), oklch(0.76 0.12 340), oklch(0.78 0.1 140), oklch(0.74 0.13 30);
+  --relay-light-quiet: oklch(0.8 0.04 40), oklch(0.74 0.05 35), oklch(0.84 0.03 45), oklch(0.78 0.04 30),
+    oklch(0.72 0.15 0), oklch(0.72 0.15 0), oklch(0.78 0.12 50), oklch(0.72 0.1 170), oklch(0.7 0.11 300);
+}
+:root[data-look-light='sorbet']:not(.dark) body {
+  --font-ui: var(--font-nunito), 'Nunito', system-ui, sans-serif;
+}
+
+/* Terminal — true black, monospace everything, square corners, amber. */
+:root[data-look-dark='terminal'].dark {
+  --paper-0: oklch(0 0 0);
+  --paper-1: oklch(0.04 0 0);
+  --paper-2: oklch(0.11 0 0);
+  --paper-well: oklch(0.15 0 0);
+  --paper-3: oklch(0.18 0 0);
+  --ink-0: oklch(0.9 0.07 75);
+  --ink-1: oklch(0.77 0.08 72);
+  --ink-2: oklch(0.63 0.07 70);
+  --lime-solid: oklch(0.8 0.15 70);
+  --lime-ink: oklch(0.2 0.04 70);
+  --lime-tint: oklch(0.27 0.05 70);
+  --accent: oklch(0.8 0.15 70 / 8%);
+  --border: oklch(0.8 0.15 70 / 22%);
+  --input: oklch(0.8 0.15 70 / 18%);
+  --row-selected: oklch(0.8 0.15 70 / 14%);
+  --sidebar-border: oklch(0.8 0.15 70 / 18%);
+  --radius: 0.25rem;
+  --shadow-elev-sm: 0 0 0 1px oklch(0.8 0.15 70 / 16%);
+  --shadow-elev-md: 0 0 0 1px oklch(0.8 0.15 70 / 16%);
+  --shadow-elev-lg: 0 0 0 1px oklch(0.8 0.15 70 / 22%), 0 8px 24px oklch(0 0 0 / 60%);
+  --shadow-elev-bar: 0 0 0 1px oklch(0.8 0.15 70 / 16%);
+  --relay-dark: oklch(0.8 0.15 70), oklch(0.8 0.15 70), oklch(0.8 0.15 70), oklch(0.72 0.14 60),
+    oklch(0.68 0.15 45), oklch(0.86 0.12 90), oklch(0.62 0.12 55), oklch(0.75 0.13 80), oklch(0.7 0.14 65);
+}
+:root[data-look-dark='terminal'].dark body {
+  --font-ui: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
+  --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
+}
+/* @theme inline bakes the system mono stack straight into .font-mono, and the
+   preflight gives code/pre their own; point both at the theme's one face. */
+:root[data-look-dark='terminal'].dark :is(.font-mono, code, pre, kbd, samp) {
+  font-family: var(--font-mono);
+}
+
+/* Dusk — deep indigo-violet ground, soft round corners, apricot. */
+:root[data-look-dark='dusk'].dark {
+  --paper-0: oklch(0.17 0.04 285);
+  --paper-1: oklch(0.18 0.042 285);
+  --paper-2: oklch(0.215 0.045 285);
+  --paper-well: oklch(0.255 0.045 286);
+  --paper-3: oklch(0.29 0.045 288);
+  --ink-0: oklch(0.95 0.015 300);
+  --ink-1: oklch(0.82 0.03 295);
+  --ink-2: oklch(0.7 0.04 290);
+  --lime-solid: oklch(0.8 0.12 55);
+  --lime-ink: oklch(0.25 0.05 40);
+  --lime-tint: oklch(0.33 0.06 50);
+  --accent: oklch(1 0 0 / 6%);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 9%);
+  --row-selected: oklch(0.8 0.12 55 / 14%);
+  --sidebar-border: oklch(1 0 0 / 8%);
+  --radius: 1.125rem;
+  --shadow-elev-sm: inset 0 1px 0 oklch(1 0 0 / 8%), 0 2px 6px oklch(0.08 0.05 285 / 50%);
+  --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 14px oklch(0.08 0.05 285 / 55%);
+  --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 12px 36px oklch(0.08 0.05 285 / 65%);
+  --shadow-elev-bar: inset 0 1px 0 oklch(1 0 0 / 7%), 0 4px 14px oklch(0.08 0.05 285 / 45%);
+  --relay-dark: oklch(0.8 0.12 55), oklch(0.8 0.12 55), oklch(0.76 0.13 30), oklch(0.75 0.12 350),
+    oklch(0.7 0.13 310), oklch(0.68 0.12 280), oklch(0.82 0.1 80), oklch(0.72 0.1 220), oklch(0.8 0.12 55);
+}
+
 /* Content typeface toggle (settings → Appearance → Typeface). Flips the
    look of item/content titles only — density, labels, and chrome stay
    identical in both modes. `data-type-mode` is stamped on <html> by
@@ -1111,7 +1280,10 @@
    var() chain only resolves at body or below — defined on :root it
    computes to guaranteed-invalid and font-family silently falls back. */
 body {
-  --font-content: var(--font-inter), 'Inter', system-ui, sans-serif;
+  /* The chrome face. A theme re-points it (see Themes above); item titles
+     follow it unless the Typeface setting asks for serif. */
+  --font-ui: var(--font-inter), 'Inter', system-ui, sans-serif;
+  --font-content: var(--font-ui);
   /* Regular, not Medium. Medium made every title assert itself; at 400 a dense
      list settles and the mono metadata rail has somewhere to sit. Inter is
      loaded as a variable face (100–900), so 450 is a real option if 400 ever

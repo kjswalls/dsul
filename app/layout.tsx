@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Inter, Source_Serif_4 } from 'next/font/google'
+import { Geist, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
@@ -17,6 +17,17 @@ const sourceSerif = Source_Serif_4({
   subsets: ['latin'],
   style: ['normal', 'italic'],
   variable: '--font-source-serif',
+})
+
+// Theme faces (lib/theme-looks.ts). Not preloaded: each is only used under
+// its own theme, and a font-face nobody's styles reach is never downloaded, so
+// Paper and Night pay nothing for them.
+const geist = Geist({ subsets: ['latin'], variable: '--font-geist', preload: false })
+const nunito = Nunito({ subsets: ['latin'], variable: '--font-nunito', preload: false })
+const jetbrainsMono = JetBrains_Mono({
+  subsets: ['latin'],
+  variable: '--font-jetbrains-mono',
+  preload: false,
 })
 
 export const metadata: Metadata = {
@@ -78,7 +89,9 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className={`${inter.variable} ${sourceSerif.variable} font-sans antialiased`}>
+      <body
+        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} font-sans antialiased`}
+      >
         {/* One-time key migration — anchor-* → dsul-* (the Anchor→dsul rename).
             MUST stay above the palette script and ahead of all hydration: an
             unstamped browser is an ORPHANED browser to lib/local-state.ts, so
@@ -104,7 +117,9 @@ export default function RootLayout({
               "try{var P='anchor-',Q='dsul-',O=P+'local-state-owner',M=function(s){var k=[],i,n,v;for(i=0;i<s.length;i++){n=s.key(i);if(n&&n.lastIndexOf(P,0)===0)k.push(n)}k.sort(function(a,b){return a===O?-1:b===O?1:0});for(i=0;i<k.length;i++){try{v=s.getItem(k[i]);n=Q+k[i].slice(P.length);if(v!==null&&s.getItem(n)===null)s.setItem(n,v);s.removeItem(k[i])}catch(e){}}};try{M(localStorage)}catch(e){}try{M(sessionStorage)}catch(e){}}catch(e){}",
           }}
         />
-        {/* Palette pre-hydration: stamp <html data-theme> from the raw
+        {/* Palette and theme pre-hydration: stamp <html data-theme> (the
+            palette) and data-look-light / data-look-dark (the theme picked for
+            each mode, lib/theme-looks.ts LOOK_STORAGE_KEYS) from the raw
             localStorage key before first paint, the way next-themes pre-applies
             the .dark class — without this a non-default palette flashes the
             stock ground on every hard load. The key literal and slug grammar
@@ -118,7 +133,7 @@ export default function RootLayout({
         <script
           dangerouslySetInnerHTML={{
             __html:
-              "try{if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&/^[a-z][a-z0-9-]{0,31}$/.test(p)){document.documentElement.dataset.theme=p}}}catch(e){}",
+              "try{var r=document.documentElement,S=/^[a-z][a-z0-9-]{0,31}$/,K=[['dsul-look-light','data-look-light'],['dsul-look-dark','data-look-dark']],i,v;if(/[?&]reset-theme\\b/.test(location.search)){localStorage.removeItem('dsul-palette');for(i=0;i<K.length;i++)localStorage.removeItem(K[i][0]);sessionStorage.setItem('dsul-palette-reset','1')}else{var p=localStorage.getItem('dsul-palette');if(p&&p!=='default'&&S.test(p)){r.dataset.theme=p}for(i=0;i<K.length;i++){v=localStorage.getItem(K[i][0]);if(v&&S.test(v))r.setAttribute(K[i][1],v)}}}catch(e){}",
           }}
         />
         {/* No `disableTransitionOnChange`: it injected `transition: none` across
