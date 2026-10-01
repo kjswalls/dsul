@@ -22,6 +22,11 @@ public struct DayString: Hashable, Comparable, Sendable, CustomStringConvertible
     /// real calendar day.
     public init?(_ string: String) {
         let head = string.prefix(10)
+        // Digits and two dashes only: Int() alone would accept a sign ("+1").
+        let shapeOK = head.utf8.count == 10 && head.utf8.enumerated().allSatisfy { i, byte in
+            i == 4 || i == 7 ? byte == UInt8(ascii: "-") : (UInt8(ascii: "0")...UInt8(ascii: "9")).contains(byte)
+        }
+        guard shapeOK else { return nil }
         let parts = head.split(separator: "-", omittingEmptySubsequences: false)
         guard head.count == 10, parts.count == 3,
               parts[0].count == 4, parts[1].count == 2, parts[2].count == 2,

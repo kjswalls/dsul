@@ -7,7 +7,7 @@ import DsulCore
 
 private func day(_ s: String) -> DayString { DayString(s)! }
 
-// Mon 2025-01-13 … Sun 2025-01-19
+// Sun 2025-01-12 … Sun 2025-01-19
 private let week = ["2025-01-12", "2025-01-13", "2025-01-14", "2025-01-15",
                     "2025-01-16", "2025-01-17", "2025-01-18", "2025-01-19"]
 

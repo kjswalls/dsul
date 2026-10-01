@@ -11,6 +11,8 @@ struct BraindumpSheet: View {
 
     @Environment(SamplePlanner.self) private var planner
     @Environment(ScheduleDrag.self) private var drag
+    /// The list's top inside the sheet, below the inline navigation bar.
+    @State private var listTop: CGFloat = 0
 
     var body: some View {
         NavigationStack {
@@ -22,6 +24,11 @@ struct BraindumpSheet: View {
                     }
             }
             .listStyle(.plain)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.frame(in: .named(braindumpSheetSpace)).minY
+            } action: { top in
+                listTop = top
+            }
             .dragContainer(for: ItemRef.self) { ids in
                 ids.map { ItemRef(id: $0) }
             }
@@ -34,17 +41,26 @@ struct BraindumpSheet: View {
                         withAnimation(.snappy) { detent = .medium }
                     }
                 case .active:
-                    // Above the list's top edge means the finger has left the sheet.
-                    if session.location.y < 0, detent != .peek {
+                    // The location is in the list's space; above the sheet's own
+                    // top (not just the list's, which sits under the nav bar)
+                    // means the finger has left the sheet.
+                    if session.location.y + listTop < 0, detent != .peek {
                         drag.note("left sheet")
                         withAnimation(.snappy) { detent = .peek }
                     }
                 case .ended(let operation):
                     drag.note("ended \(operation)")
                     // A drop that landed leaves the sheet small, so the new
-                    // block shows; anything else puts the sheet back.
-                    if !planner.isScheduled(drag.itemID), let before = drag.detentBeforeDrag {
-                        withAnimation(.snappy) { detent = before }
+                    // block shows; a cancelled or refused one puts it back.
+                    // Decided from the operation, not from the planner: the
+                    // grid's drop handler can run after this callback.
+                    switch operation {
+                    case .cancel, .forbidden:
+                        if let before = drag.detentBeforeDrag {
+                            withAnimation(.snappy) { detent = before }
+                        }
+                    default:
+                        break
                     }
                     drag.reset()
                 default:
@@ -61,6 +77,7 @@ struct BraindumpSheet: View {
                 }
             }
         }
+        .coordinateSpace(.named(braindumpSheetSpace))
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.frame(in: .global).minY
         } action: { top in
@@ -72,6 +89,10 @@ struct BraindumpSheet: View {
         .interactiveDismissDisabled()
     }
 }
+
+/// A file-level constant, not a static on the view: the geometry closures are
+/// @Sendable and can't read a main-actor static.
+private let braindumpSheetSpace = "braindump-sheet"
 
 private struct BraindumpRow: View {
     var item: SampleItem

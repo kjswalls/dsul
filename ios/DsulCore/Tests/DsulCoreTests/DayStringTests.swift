@@ -3,7 +3,7 @@ import Testing
 import DsulCore
 
 @Suite struct DayStringTests {
-    @Test(arguments: ["", "2026", "2026-1-01", "2026-13-01", "2026-02-30", "2026-00-10", "abcd-ef-gh", "2026/10/01"])
+    @Test(arguments: ["", "2026", "2026-1-01", "2026-13-01", "2026-02-30", "2026-00-10", "abcd-ef-gh", "2026/10/01", "2026-+1-01", "+202-10-01", "2026-10-1x"])
     func rejectsJunk(_ s: String) {
         #expect(DayString(s) == nil)
     }

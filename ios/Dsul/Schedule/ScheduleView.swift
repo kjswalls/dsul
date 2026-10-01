@@ -19,7 +19,7 @@ struct ScheduleView: View {
             .environment(drag)
             .overlay(alignment: .top) {
                 if showProbe {
-                    DragProbeHUD(detent: detent, onStress: planner.stress)
+                    DragProbeHUD(detent: detent, onStress: { planner.stress() })
                         .environment(drag)
                         .padding(.horizontal, 12)
                 }

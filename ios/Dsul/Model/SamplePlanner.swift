@@ -21,7 +21,7 @@ final class SamplePlanner {
         var n = 0
         func make(_ title: String, _ duration: Int, _ start: Int? = nil, _ project: String? = nil) -> SampleItem {
             n += 1
-            return SampleItem(id: Self.uuid(n), title: title, durationMin: duration, startMin: start, project: project)
+            return SampleItem(id: SamplePlanner.uuid(n), title: title, durationMin: duration, startMin: start, project: project)
         }
         scheduled = [
             make("Morning pages", 30, 7 * 60, "Writing"),

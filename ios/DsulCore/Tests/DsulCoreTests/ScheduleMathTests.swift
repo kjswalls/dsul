@@ -29,6 +29,13 @@ import DsulCore
         #expect(snappedStart(contentY: 24 * px, hourPx: px, durationMin: 5) == 1425)
     }
 
+    @Test func degenerateInputsDoNotTrap() {
+        #expect(snapMinutes(.nan) == 0)
+        #expect(snapMinutes(.infinity) == 0)
+        #expect(snappedStart(contentY: 500, hourPx: 0, durationMin: 30) == 0)
+        #expect(snappedStart(contentY: .nan, hourPx: 75, durationMin: 30) == 0)
+    }
+
     @Test func formatsTimes() {
         #expect(minutesToTime(0) == "00:00")
         #expect(minutesToTime(615) == "10:15")

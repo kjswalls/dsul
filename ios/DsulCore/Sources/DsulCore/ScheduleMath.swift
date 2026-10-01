@@ -25,6 +25,8 @@ public func jsRound(_ x: Double) -> Double {
 
 /// day-schedule.tsx `snap`: the nearest 15 minutes.
 public func snapMinutes(_ minutes: Double) -> Int {
+    // Int() traps on NaN or infinity, where JavaScript would carry NaN along.
+    guard minutes.isFinite else { return 0 }
     Int(jsRound(minutes / Double(ScheduleMetrics.snapMin))) * ScheduleMetrics.snapMin
 }
 
@@ -32,6 +34,8 @@ public func snapMinutes(_ minutes: Double) -> Int {
 /// content space) holds it at `anchor` of its height (0.5 = centred), snapped
 /// to 15 minutes and kept inside the day.
 public func snappedStart(contentY: Double, hourPx: Double, durationMin: Int, anchor: Double = 0.5) -> Int {
+    // Before layout settles the hour height can be 0.
+    guard hourPx > 0, contentY.isFinite else { return 0 }
     let pxPerMin = hourPx / 60
     let ghostH = Double(durationMin) * pxPerMin
     let rawMin = (contentY - anchor * ghostH) / pxPerMin
