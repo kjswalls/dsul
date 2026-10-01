@@ -7,14 +7,18 @@ import { render, screen, cleanup, fireEvent, waitFor, act, within } from '@testi
  * The Display shelf on the canvas: under the view pill in the desktop header
  * capsule, and at the foot of the phone's Today card.
  *
- * The shelf itself — what it says, how it fits, how its opener hands focus
+ * The shelf itself — what it says, how it wraps, how its opener hands focus
  * around — is pinned through the braindump in display-shelf.test.tsx, and the
  * words through display-summary.test.ts. What can go wrong HERE is the mount:
  * a capsule that forgets the menu's ref (the text then opens nothing, and the ✕
  * drops focus on <body>), a shelf that is not contained (the capsule grows to
- * the whole line and the shelf never stacks), a phone mount whose hook sits
- * below the Today-only early return, or a shelf reading the braindump's
- * settings. Each case below goes through the real HeaderCapsule or MobileHeader.
+ * the paragraph's whole line and the paragraph never wraps), a mount with the
+ * other device's targets (✕s drawn at rest under the pill, or a phone's ✕s
+ * waiting on a hover it can never do), a phone mount whose hook sits below the
+ * Today-only early return, or a shelf reading the braindump's settings. So can
+ * the type filter, the one setting only the canvas has, which the braindump's
+ * suite never meets. Each case below goes through the real HeaderCapsule or
+ * MobileHeader.
  *
  * jsdom lays nothing out, so the containment is pinned as the class that
  * provides it; what it does to the capsule's width was measured in Chromium
@@ -55,13 +59,13 @@ import { MobileHeader } from '@/components/mobile/mobile-header';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { EMPTY_VIEW_FILTERS, type ViewFilters } from '@/lib/filters';
+import { EMPTY_VIEW_FILTERS, NO_PRIORITY, type ViewFilters } from '@/lib/filters';
 import type { Goal } from '@/lib/planner-types';
 import { useEODStore } from '@/lib/eod-store';
 import { resetNoticeAnchors } from '@/lib/notice-anchors';
 import { enableGoalsAndOrganize } from './support/extensions';
 
-/** jsdom has no pointer capture or ResizeObserver; Radix needs the one, the shelf guards the other. */
+/** jsdom has no pointer capture, which Radix's menus ask for on the way open. */
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
     (globalThis as unknown as { PointerEvent: unknown }).PointerEvent = MouseEvent;
@@ -127,20 +131,101 @@ const renderPhoneHeader = () =>
 const shelf = () => screen.getByTestId('display-shelf-canvas');
 const queryShelf = () => screen.queryByTestId('display-shelf-canvas');
 const opener = () => screen.getByTestId('display-shelf-open-canvas');
-const resetX = () => screen.getByTestId('display-shelf-reset-canvas');
+/** Reset display: the menu row's own glyph at the end of the paragraph, not one more ✕. */
+const resetButton = () => screen.getByTestId('display-shelf-reset-canvas');
+const queryReset = () => screen.queryByTestId('display-shelf-reset-canvas');
+/** Every setting's ✕, one per phrase and one per value, in reading order; Reset is not one. */
 const removeXs = () => screen.queryAllByTestId('display-shelf-remove-canvas');
 const trigger = () => screen.getByTestId('display-trigger-canvas');
+
+/**
+ * Four ✕s between the settings, the fewest Reset shows for, ending the
+ * paragraph in each of the two ways it can: with a filter's run of values,
+ * which Reset joins as the run's last item, and with a phrase, which Reset is
+ * held to. The phrase ending has the type filter in it, which only the canvas
+ * has.
+ */
+const FOUR_ENDING_IN_A_FILTER: ViewSeed = {
+  canvasGroupBy: 'project',
+  canvasSortBy: 'title',
+  canvasFilters: filters({ priorities: ['high', 'low'] }),
+};
+const FOUR_ENDING_IN_A_PHRASE: ViewSeed = {
+  canvasGroupBy: 'project',
+  canvasSortBy: 'title',
+  typeFilter: 'tasks',
+  canvasFilters: filters({ hideFinished: true }),
+};
+
+/**
+ * Reset ends the paragraph, the last thing in the last setting, wearing the
+ * menu row's glyph. After a filter it is the run's own last item, so it wraps
+ * alone rather than take the last value with it; after a phrase it is held to
+ * that phrase, one unbreakable pair, so it never takes a line alone. Either
+ * way it sits outside every setting's own target, so hovering it neither
+ * lights a setting's words nor draws their ✕.
+ */
+function expectResetLast(ending: 'filter' | 'phrase') {
+  const settings = shelf().querySelectorAll('[data-clause]');
+  const last = settings[settings.length - 1];
+  /** Every phrase and value as the pointer meets it: the span around its words and its ✕. */
+  const units = Array.from(shelf().querySelectorAll('[data-chip-label]'), (words) => words.parentElement!);
+  const slot = resetButton().parentElement!;
+  if (ending === 'filter') {
+    expect(slot.parentElement).toBe(last);
+    expect(last.lastElementChild).toBe(slot);
+  } else {
+    const pair = slot.parentElement!;
+    expect(pair.parentElement).toBe(last);
+    expect(pair.children).toHaveLength(2);
+    expect(pair.firstElementChild).toBe(units.at(-1));
+    expect(pair.lastElementChild).toBe(slot);
+  }
+  expect(units.some((unit) => unit.contains(resetButton()))).toBe(false);
+  const buttons = shelf().querySelectorAll('button');
+  expect(buttons[buttons.length - 1]).toBe(resetButton());
+  expect(resetButton().querySelector('svg')).toHaveClass('lucide-rotate-ccw');
+}
+
+/** A phrase and two filters, so the paragraph and two runs of values can each wrap. */
+const TWO_RUNS: ViewSeed = {
+  canvasGroupBy: 'project',
+  canvasFilters: filters({ priorities: ['high', 'low'], containers: ['project:Work', 'project:Home'] }),
+};
+
+/**
+ * 5px between the rows the paragraph wraps into, and between the rows a
+ * filter's values wrap into: the reach a ✕ takes above and below itself
+ * wherever one is in flow. With none, a ✕'s reach lay over the next row's
+ * words, and a tap on a name took a different setting off.
+ */
+function expectFiveBetweenRows() {
+  expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('flex-wrap', 'gap-y-[5px]');
+  const runs = shelf().querySelectorAll('[data-clause="priority"], [data-clause="project"]');
+  expect(runs).toHaveLength(2);
+  for (const run of runs) expect(run).toHaveClass('flex-wrap', 'gap-y-[5px]');
+}
 
 /**
  * The Low dot is --priority-low and this project's square --accent-8, both
  * lime, drawn at rest as data glyphs — which is only allowed while nothing
  * between them and the surface can fade them. The braindump's mount is walked
- * the same way in display-shelf.test.tsx; each mount has its own ancestors.
+ * the same way in display-shelf.test.tsx; each mount has its own ancestors,
+ * and each canvas mount merges a className of its own onto the shelf's root,
+ * which the braindump's does not.
  */
 const LIME_SEED: [ViewSeed, PlannerSeed] = [
   { canvasFilters: filters({ priorities: ['low'], containers: ['project:Wind-down'] }) },
   { projects: [{ id: 'p9', name: 'Wind-down', emoji: '🌙', color: 'var(--accent-8)' }] },
 ];
+
+/**
+ * A class that can take a glyph below full strength, at rest or during a
+ * change: any opacity (behind a variant too), a transition that carries one
+ * (the bare utility and -all do; -colors and -transform do not), or any
+ * animation (tw-animate-css's fade-in starts from 0).
+ */
+const CAN_FADE = /opacity|(^|[\s:])(transition(-all)?(\s|$)|animate-|fade-)/;
 
 function expectNothingFadesLime(surface: Element) {
   const lime = [...shelf().querySelectorAll<HTMLElement>('[style]')].filter((el) =>
@@ -150,13 +235,61 @@ function expectNothingFadesLime(surface: Element) {
   for (const glyph of lime) {
     let node: HTMLElement | null = glyph;
     while (node) {
-      expect(node.getAttribute('class') ?? '').not.toMatch(/(^|[\s:])(opacity-|transition-opacity)/);
+      expect(node.getAttribute('class') ?? '').not.toMatch(CAN_FADE);
       expect(node.style.opacity).toBe('');
       if (node === surface) break;
       node = node.parentElement;
     }
     expect(node).toBe(surface);
   }
+  // Nor does anything in the shelf fade or animate at all, its root included:
+  // the root is where the mount's own classes land.
+  for (const el of [shelf(), ...shelf().querySelectorAll('*')]) {
+    expect(el.getAttribute('class') ?? '').not.toMatch(/opacity|transition|animate-|fade-/);
+  }
+}
+
+/**
+ * Every layout read made from here until `stop`, for a case to ask which of
+ * them landed on the shelf: a box's size or place on either axis, its rects,
+ * or its computed style. jsdom answers each one with 0 or an empty value, so a
+ * shelf that measured would still render; the reads themselves are the
+ * evidence. The braindump's suite watches the same reads.
+ */
+function watchLayoutReads() {
+  const getters = [
+    vi.spyOn(Element.prototype, 'getBoundingClientRect'),
+    vi.spyOn(Element.prototype, 'getClientRects'),
+    vi.spyOn(Element.prototype, 'clientWidth', 'get'),
+    vi.spyOn(Element.prototype, 'clientHeight', 'get'),
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get'),
+    vi.spyOn(Element.prototype, 'scrollHeight', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get'),
+  ];
+  // Called with the element rather than on it, so it is the argument that says where.
+  const styles = vi.spyOn(window, 'getComputedStyle');
+  return {
+    readsIn: (root: Element) =>
+      [...getters.flatMap((s) => s.mock.contexts as unknown[]), ...styles.mock.calls.map(([el]) => el)].filter(
+        (el) => el instanceof Element && root.contains(el)
+      ),
+    stop: () => [...getters, styles].forEach((s) => s.mockRestore()),
+  };
+}
+
+/**
+ * Past anything a measure could be put off to: two frames, then a task. The
+ * measured shelf compared its widths a frame after a resize, and measured
+ * again once the fonts were in.
+ */
+async function settle() {
+  await act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 /** Let a closing sheet go: jsdom plays no animation, and vaul's Presence waits for one. */
@@ -207,8 +340,8 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   it('is the capsule’s third row, contained, with no floor and pointer-sized targets', () => {
-    // Two settings, so the reset ✕ is drawn beside the two settings' own.
-    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    // Four ✕s, so Reset is drawn after the settings' own.
+    seed(FOUR_ENDING_IN_A_FILTER);
     const { container } = renderCapsule();
     const capsule = container.firstElementChild!;
 
@@ -219,7 +352,7 @@ describe('the desktop mount, under the view pill', () => {
     expect(capsule.children[1]).toContainElement(trigger());
 
     // The capsule is sized by its content; without containment it would grow to
-    // the shelf's whole line and the shelf would never stack.
+    // the paragraph's whole line and the paragraph would never wrap.
     expect(shelf()).toHaveClass('contain-inline-size', 'px-4', 'pr-3.5', 'pt-1', 'pb-px');
     // One class to an assertion: a negated toHaveClass with several passes as
     // soon as any one of them is gone.
@@ -228,15 +361,162 @@ describe('the desktop mount, under the view pill', () => {
     expect(shelf()).not.toHaveClass('pb-[3px]');
     // The width floor is the sidebar's, for its fold; the capsule has none.
     expect(shelf().style.minWidth).toBe('');
+    // A pointer's targets: no reach past the text, Reset or any ✕…
     expect(opener()).not.toHaveClass('before:absolute');
-    expect(resetX()).not.toHaveClass('before:absolute');
-    expect(removeXs()).toHaveLength(2);
+    expect(resetButton()).not.toHaveClass('before:absolute');
+    expect(removeXs()).toHaveLength(4);
     for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
-    // A ✕ reaches nothing past itself here, so wrapped rows keep no gap for it.
-    const lines = shelf().querySelector('[data-shelf-lines]')!;
-    expect(lines).not.toHaveClass('[&_[data-clause]]:gap-y-[5px]');
-    expect(lines).not.toHaveClass('[&_[data-line]]:gap-y-[5px]');
+    // …until the pointer is coarse (a tablet on this shell), which never
+    // hovers: the stylesheet gives it the phone's 28px, with no render to wait
+    // for, so it never paints a frame of the pointer's targets first.
+    expect(opener()).toHaveClass('pointer-coarse:before:absolute', 'pointer-coarse:before:-inset-y-[5px]');
+    expect(resetButton()).toHaveClass(
+      'pointer-coarse:relative',
+      'pointer-coarse:before:absolute',
+      'pointer-coarse:before:-inset-x-[6px]',
+      'pointer-coarse:before:-inset-y-[5px]'
+    );
   });
+
+  it.each([
+    { name: 'two phrases and a filter’s two values', view: FOUR_ENDING_IN_A_FILTER },
+    { name: 'four phrases, the type filter among them', view: FOUR_ENDING_IN_A_PHRASE },
+  ])('draws a ✕ only under the pointer or with keyboard focus, and takes no click till then: $name', ({ view }) => {
+    seed(view);
+    renderCapsule();
+    expect(removeXs()).toHaveLength(4);
+
+    for (const x of removeXs()) {
+      // Beside its words, in its own setting's target: the hover that draws it
+      // is its own setting's, and no other's. The target takes the pointer
+      // itself, as the paragraph around it does not, or nothing ever hovers
+      // it; and it is the box the ✕ is placed against, or every ✕ is placed
+      // against the paragraph instead of beside its own words.
+      expect(x.parentElement).toHaveClass('group/unit', 'relative', 'pointer-events-auto');
+      expect(x.previousElementSibling).toHaveAttribute('data-chip-label');
+      // At rest the paragraph is words alone. The ✕ is in the gap after its
+      // words, out of flow, in clear ink and not there to hit: the gap is the
+      // text's ground, so a click aimed between two settings opens the menu,
+      // and can never land on a ✕ that was not drawn when the pointer got there.
+      expect(x).toHaveClass('absolute', 'left-full', 'top-0', 'text-transparent', 'pointer-events-none');
+      expect(x).not.toHaveClass('text-muted-foreground');
+      expect(x).not.toHaveClass('pointer-events-auto');
+      expect(x).not.toHaveClass('relative');
+      // Its setting under the pointer, or keyboard focus on the ✕ itself,
+      // draws it and lets it take the click.
+      expect(x).toHaveClass(
+        'group-hover/unit:text-muted-foreground',
+        'group-hover/unit:pointer-events-auto',
+        'focus-visible:text-muted-foreground',
+        'focus-visible:pointer-events-auto'
+      );
+      // A coarse pointer never hovers, so there the ✕ is the phone's: drawn,
+      // in flow 4px after its words, with the phone's 25 × 28px reach.
+      expect(x).toHaveClass(
+        'pointer-coarse:relative',
+        'pointer-coarse:left-auto',
+        'pointer-coarse:top-auto',
+        'pointer-coarse:ml-[4px]',
+        'pointer-coarse:text-muted-foreground',
+        'pointer-coarse:pointer-events-auto',
+        'pointer-coarse:before:absolute',
+        'pointer-coarse:before:-left-[4px]',
+        'pointer-coarse:before:-right-[7px]',
+        'pointer-coarse:before:-inset-y-[5px]'
+      );
+    }
+  });
+
+  it("measures nothing: no observer, no layout read, no font wait, no fit written behind React's back", async () => {
+    // jsdom has no ResizeObserver, and a shelf that guarded its own would make
+    // none here whatever it made in a browser, so one is put in that records
+    // every observer made and what each was asked to watch. Nor has it
+    // document.fonts, which the measured shelf waited on before measuring
+    // again, so one is put in that counts its reads.
+    const made: Element[][] = [];
+    class RecordingResizeObserver {
+      private readonly watched: Element[] = [];
+      constructor() {
+        made.push(this.watched);
+      }
+      observe(el: Element) {
+        this.watched.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    }
+    const real = globalThis.ResizeObserver;
+    globalThis.ResizeObserver = RecordingResizeObserver as unknown as typeof ResizeObserver;
+    let fontReads = 0;
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      get: () => {
+        fontReads += 1;
+        return { ready: Promise.resolve() };
+      },
+    });
+    try {
+      // Nothing set at first, so the shelf arrives in a capsule that has
+      // already made whatever it makes of its own, and its share is whatever
+      // is made beyond that.
+      renderCapsule();
+      expect(queryShelf()).toBeNull();
+      const atRest = { observers: made.length, fontReads };
+      const reads = watchLayoutReads();
+      try {
+        act(() => useViewStore.setState(FOUR_ENDING_IN_A_FILTER));
+        expect(shelf()).toBeInTheDocument();
+        // And a change of text, on which a fit would measure again.
+        act(() =>
+          useViewStore.setState({ canvasFilters: filters({ priorities: ['high', 'medium', 'low'] }) })
+        );
+        expect(removeXs()).toHaveLength(5);
+        // Nor a frame or a task later, where a measure put off would land.
+        await settle();
+
+        // No observer past the capsule's own, none watching the shelf, no
+        // layout read off anything in it, and no wait on a font.
+        expect(made).toHaveLength(atRest.observers);
+        for (const watched of made) for (const el of watched) expect(shelf().contains(el)).toBe(false);
+        expect(reads.readsIn(shelf())).toEqual([]);
+        expect(fontReads).toBe(atRest.fontReads);
+      } finally {
+        reads.stop();
+      }
+      // Plain CSS wrapping: no fit written on any node behind React's back,
+      // and nothing drawn only to be measured.
+      expect(document.querySelector('[data-fit]')).toBeNull();
+      expect(shelf().querySelector('[data-line], [data-shelf-probe], [data-shelf-sample]')).toBeNull();
+    } finally {
+      if (real) globalThis.ResizeObserver = real;
+      else delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+      delete (document as { fonts?: unknown }).fonts;
+    }
+  });
+
+  // The type filter is the canvas's alone, so the braindump's seam cases in
+  // display-shelf.test.tsx never meet it. It is a phrase: a seam sets it apart
+  // from a filter after it, as it does any setting, and only the plain gap
+  // from a phrase on either side.
+  it.each([
+    { name: 'between two phrases', view: FOUR_ENDING_IN_A_PHRASE, seams: [] },
+    {
+      name: 'before a filter',
+      view: { canvasSortBy: 'title', typeFilter: 'tasks', canvasFilters: filters({ priorities: ['high'] }) },
+      seams: ['type'],
+    },
+  ] satisfies { name: string; view: ViewSeed; seams: string[] }[])(
+    'reads the type filter as a phrase, with a seam only where it meets a filter: $name',
+    ({ view, seams }) => {
+      seed(view);
+      renderCapsule();
+      const settings = Array.from(shelf().querySelectorAll('[data-clause]'));
+      expect(settings.map((c) => c.getAttribute('data-clause'))).toContain('type');
+      const seamed = settings.filter((c) => c.classList.contains('mr-[8px]'));
+      expect(seamed.map((c) => c.getAttribute('data-clause'))).toEqual(seams);
+      for (const c of seamed) expect(c).toHaveClass('shrink-0');
+    }
+  );
 
   it('goes when the last setting does, and the capsule is back to two rows', () => {
     seed({ canvasGroupBy: 'project' });
@@ -281,7 +561,42 @@ describe('the desktop mount, under the view pill', () => {
     await waitFor(() => expect(document.activeElement).toBe(opener()));
   });
 
-  it('its ✕ leaves the stores exactly as the menu’s Reset row does, and the braindump alone', async () => {
+  it.each([
+    { name: 'a phrase', words: () => shelf().querySelector('[data-clause="group"] [data-chip-label]')! },
+    { name: 'a value', words: () => shelf().querySelector('[data-value="high"] [data-chip-label]')! },
+  ])('opens the canvas menu from the words of $name, and Escape brings focus back to the text', async ({ words }) => {
+    // Each setting takes the pointer for its ✕, so a click on its words lands
+    // on it rather than on the text underneath, and must open what the text does.
+    seed({ canvasGroupBy: 'project', canvasFilters: filters({ priorities: ['high', 'low'] }) });
+    renderCapsule();
+
+    fireEvent.click(words());
+
+    // The label trigger's own dropdown, through the same handle as the text.
+    const menu = await screen.findByTestId('display-menu');
+    expect(menu).toHaveAttribute('data-display-variant', 'menu');
+    expect(screen.getAllByTestId('display-trigger-canvas')).toHaveLength(1);
+
+    // Handed the text to come back to, which is on screen to take it.
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(opener()));
+  });
+
+  it('keeps a ✕’s click for the ✕: its value goes, and the words around it open nothing', () => {
+    seed({ canvasGroupBy: 'project', canvasFilters: filters({ priorities: ['high', 'low'] }) });
+    renderCapsule();
+    const low = removeXs().find((x) => x.getAttribute('aria-label') === 'Remove Priority: Low')!;
+
+    fireEvent.click(low);
+
+    expect(useViewStore.getState().canvasFilters.priorities).toEqual(['high']);
+    // The ✕ sits inside its value's target, whose click opens the menu, and the
+    // menu opens within the click that asks for it.
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+  });
+
+  it('Reset leaves the stores exactly as the menu’s Reset row does, and the braindump alone', async () => {
     const view: ViewSeed = {
       canvasGroupBy: 'project',
       canvasSortBy: 'title',
@@ -314,7 +629,7 @@ describe('the desktop mount, under the view pill', () => {
 
     seed(view);
     renderCapsule();
-    fireEvent.click(resetX());
+    fireEvent.click(resetButton());
 
     expect(snapshot()).toEqual(byMenu);
     expect(snapshot().braindumpGroupBy).toBe('project');
@@ -322,7 +637,7 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   it('hands focus to the Display trigger before the reset takes the shelf away', () => {
-    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    seed(FOUR_ENDING_IN_A_FILTER);
     renderCapsule();
     // BEFORE: React batches the reset's re-render past the handler either
     // way, so only what the trigger sees as focus lands can tell the order.
@@ -330,15 +645,17 @@ describe('the desktop mount, under the view pill', () => {
     trigger().addEventListener('focus', () => {
       setWhenFocused = useViewStore.getState().canvasGroupBy;
     });
-    resetX().focus();
+    resetButton().focus();
 
-    fireEvent.click(resetX());
+    fireEvent.click(resetButton());
 
     expect(queryShelf()).toBeNull();
     // Not <body>, where a focused button that unmounts leaves it — which is
     // where it would go if the capsule forgot to hand the shelf the menu's ref.
     expect(document.activeElement).toBe(trigger());
     expect(setWhenFocused).toBe('project');
+    // And the press was Reset's alone: no menu came up behind it.
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
   });
 
   it('takes one canvas setting off with its own ✕, and leaves the braindump alone', () => {
@@ -375,11 +692,14 @@ describe('the desktop mount, under the view pill', () => {
     expect(v.braindumpGroupBy).toBe('project');
   });
 
-  it('draws the reset ✕ only while the line wears more than one ✕', () => {
+  it('draws Reset only while the settings wear more than three ✕s between them', () => {
+    // Up to three, the ✕s and the menu's row already clear the lot in as many
+    // clicks, and the glyph would only cost the line its room. It counts ✕s,
+    // not settings.
     seed({ canvasGroupBy: 'project' });
     renderCapsule();
     expect(removeXs()).toHaveLength(1);
-    expect(screen.queryByTestId('display-shelf-reset-canvas')).toBeNull();
+    expect(queryReset()).toBeNull();
 
     // Still one setting, but two values, and so two ✕s.
     act(() =>
@@ -389,7 +709,42 @@ describe('the desktop mount, under the view pill', () => {
       })
     );
     expect(removeXs()).toHaveLength(2);
-    expect(resetX()).toBeInTheDocument();
+    expect(queryReset()).toBeNull();
+
+    // Three settings, three ✕s.
+    act(() =>
+      useViewStore.setState({
+        canvasGroupBy: 'project',
+        canvasSortBy: 'title',
+        typeFilter: 'tasks',
+        canvasFilters: EMPTY_VIEW_FILTERS,
+      })
+    );
+    expect(removeXs()).toHaveLength(3);
+    expect(queryReset()).toBeNull();
+
+    // One setting again, with four values: four ✕s, and Reset is the last of
+    // the run.
+    act(() =>
+      useViewStore.setState({
+        canvasGroupBy: 'none',
+        canvasSortBy: 'default',
+        typeFilter: 'all',
+        canvasFilters: filters({ priorities: ['high', 'medium', 'low', NO_PRIORITY] }),
+      })
+    );
+    expect(removeXs()).toHaveLength(4);
+    expectResetLast('filter');
+
+    // Four phrases, and Reset is held to the last of them.
+    act(() => useViewStore.setState(FOUR_ENDING_IN_A_PHRASE));
+    expect(removeXs()).toHaveLength(4);
+    expectResetLast('phrase');
+
+    // And it goes with the fourth ✕.
+    fireEvent.click(removeXs()[0]);
+    expect(removeXs()).toHaveLength(3);
+    expect(queryReset()).toBeNull();
   });
 
   it('hands focus to the Display trigger before the last setting goes by its ✕', () => {
@@ -413,10 +768,10 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   it.each([
-    { name: 'reset', x: () => resetX(), tip: 'Reset display' },
-    { name: 'per-setting', x: () => removeXs()[0], tip: 'Remove' },
-  ])('names its $name ✕ in a tooltip on a pointer, and never with a native title', async ({ x, tip }) => {
-    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    { name: 'Reset', x: () => resetButton(), tip: 'Reset display' },
+    { name: 'a setting’s ✕', x: () => removeXs()[0], tip: 'Remove' },
+  ])('names $name in a tooltip on a pointer, and never with a native title', async ({ x, tip }) => {
+    seed(FOUR_ENDING_IN_A_FILTER);
     renderCapsule();
     expect(x()).not.toHaveAttribute('title');
 
@@ -426,19 +781,20 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   /**
-   * In the stack a ✕'s tip covers the ✕ on the line below, and moving down to
-   * press that one pressed the tip instead. jsdom applies no stylesheet, so
-   * this pins the two halves the click depends on: the attribute on each ✕'s
-   * tip, and the rule in globals.css that lets the click through the wrapper
-   * Radix positions the tip in, matched against the wrapper actually drawn.
+   * Where the paragraph wraps, a tip hangs over the line below, and moving
+   * down to press something there pressed the tip instead. jsdom applies no
+   * stylesheet, so this pins the two halves the click depends on: the
+   * attribute on each tip, and the rule in globals.css that lets the click
+   * through the wrapper Radix positions the tip in, matched against the
+   * wrapper actually drawn.
    */
   const PASS_THROUGH = '[data-radix-popper-content-wrapper]:has(> [data-pass-through])';
 
   it.each([
-    { name: 'reset', x: () => resetX() },
-    { name: 'per-setting', x: () => removeXs()[0] },
-  ])('lets a click through its $name ✕’s tip to whatever the tip covers', async ({ x }) => {
-    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    { name: 'Reset', x: () => resetButton() },
+    { name: 'a setting’s ✕', x: () => removeXs()[0] },
+  ])('lets a click through the tip of $name to whatever the tip covers', async ({ x }) => {
+    seed(FOUR_ENDING_IN_A_FILTER);
     renderCapsule();
 
     fireEvent.pointerEnter(x());
@@ -485,6 +841,16 @@ describe('the desktop mount, under the view pill', () => {
     expect(after).not.toMatch(/tooltip-content[^{]*\{[^}]*pointer-events/);
   });
 
+  it('keeps the phone’s 5px between the rows its paragraph or a filter wraps into', () => {
+    // Lines are 5px apart whatever the pointer. A coarse one on this shell
+    // puts every ✕ in flow with the phone's reach, and the stylesheet decides
+    // that with no render to add a class, so the room for the reach has to be
+    // there already.
+    seed(TWO_RUNS);
+    renderCapsule();
+    expectFiveBetweenRows();
+  });
+
   it('has nothing that can fade a lime glyph between it and the capsule', () => {
     seed(...LIME_SEED);
     const { container } = renderCapsule();
@@ -502,7 +868,8 @@ describe('the phone mount, at the foot of the Today card', () => {
   });
 
   it('sits last in the card, under the week strip, with touch targets and no floor', () => {
-    seed({ canvasGroupBy: 'project', canvasSortBy: 'title' });
+    // Four ✕s, so Reset is drawn after the settings' own.
+    seed(FOUR_ENDING_IN_A_PHRASE);
     renderPhoneHeader();
 
     // Last, so the date row, its week and the review notice about that date
@@ -520,13 +887,36 @@ describe('the phone mount, at the foot of the Today card', () => {
     expect(shelf()).not.toHaveClass('contain-inline-size');
     expect(shelf().style.minWidth).toBe('');
     // 28px targets on a thumb's surface, as the Braindump tab's: the text and
-    // the reset ✕ reach 5px above and below, and each setting's ✕ is 25 × 28px,
+    // Reset reach 5px above and below, and each setting's ✕ is 25 × 28px,
     // reaching only the 4px gap toward its words.
     expect(opener()).toHaveClass('before:absolute', 'before:-inset-y-[5px]');
-    expect(resetX()).toHaveClass('before:absolute', 'before:-inset-x-[6px]', 'before:-inset-y-[5px]');
-    expect(removeXs()).toHaveLength(2);
+    expect(resetButton()).toHaveClass(
+      'relative',
+      'before:absolute',
+      'before:-inset-x-[6px]',
+      'before:-inset-y-[5px]'
+    );
+    expect(removeXs()).toHaveLength(4);
     for (const x of removeXs()) {
-      expect(x).toHaveClass('w-3.5', 'before:absolute', 'before:-left-1', 'before:-right-[7px]', 'before:-inset-y-[5px]');
+      expect(x).toHaveClass(
+        'w-[14px]',
+        'before:absolute',
+        'before:-left-[4px]',
+        'before:-right-[7px]',
+        'before:-inset-y-[5px]'
+      );
+      // Nothing hovers on a phone, so no ✕ waits for it: each is drawn at
+      // rest, in flow 4px after its words, and takes the tap.
+      expect(x).toHaveClass('relative', 'ml-[4px]', 'text-muted-foreground', 'pointer-events-auto');
+      expect(x).not.toHaveClass('absolute');
+      expect(x).not.toHaveClass('text-transparent');
+      expect(x).not.toHaveClass('pointer-events-none');
+    }
+    // Nor do the words take ink from a hover or from their ✕'s focus. Under a
+    // pointer that ink says which setting a ✕ that shows only on hover will
+    // take off; here every ✕ is drawn beside its words already.
+    for (const el of shelf().querySelectorAll('*')) {
+      expect(el.getAttribute('class') ?? '').not.toMatch(/(^|\s)group-(hover|has-\[:focus-visible\])\//);
     }
   });
 
@@ -614,11 +1004,7 @@ describe('the phone mount, at the foot of the Today card', () => {
 
   it.each([
     { name: 'the last setting’s ✕', view: { canvasGroupBy: 'project' } as ViewSeed, x: () => removeXs()[0] },
-    {
-      name: 'the reset ✕',
-      view: { canvasGroupBy: 'project', canvasSortBy: 'title' } as ViewSeed,
-      x: () => resetX(),
-    },
+    { name: 'Reset', view: FOUR_ENDING_IN_A_PHRASE, x: () => resetButton() },
   ])('hands focus to the icon trigger when $name takes the shelf away', ({ view, x }) => {
     touch.current = true;
     seed(view);
@@ -650,13 +1036,10 @@ describe('the phone mount, at the foot of the Today card', () => {
     expect(document.activeElement).toHaveAccessibleName('Remove Priority: Low');
   });
 
-  it('keeps 5px between the rows a line or a list wraps into, the reach each ✕ takes', () => {
-    // With none, a ✕'s reach lay over the next row's words, and a tap on a
-    // name took a different setting off.
-    seed({ canvasFilters: filters({ containers: ['project:Work', 'project:Home'] }) });
+  it('keeps 5px between the rows its paragraph or a filter wraps into, the reach each ✕ takes', () => {
+    seed(TWO_RUNS);
     renderPhoneHeader();
-    const lines = shelf().querySelector('[data-shelf-lines]')!;
-    expect(lines).toHaveClass('[&_[data-clause]]:gap-y-[5px]', '[&_[data-line]]:gap-y-[5px]');
+    expectFiveBetweenRows();
   });
 
   it('has nothing that can fade a lime glyph between it and the header', () => {

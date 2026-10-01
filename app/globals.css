@@ -1481,9 +1481,9 @@ body {
 }
 
 /* ── Tooltips a click passes through (RailTooltip's `passThrough`) ────────
-   For triggers packed closer than a tip is tall: the Display shelf's stacked
-   ✕s, where one line's tip sat over the next line's ✕ and took the click
-   meant for it. Radix positions the content inside a wrapper of its own, of
+   For triggers packed closer than a tip is tall: the Display shelf's ✕s,
+   where one line's tip sat over the next line's ✕ and took the click meant
+   for it. Radix positions the content inside a wrapper of its own, of
    the same size, which would take the click just the same, so it is the
    wrapper that lets it through, and the content inherits that. The tip still
    stays up while the pointer is over it, since Radix tracks that by where the

@@ -10,7 +10,7 @@ import { useEffect, type RefObject } from 'react';
  *
  * Written for DesktopShell's <main>. With the item panel docked, <main> can be
  * narrower than the canvas header's row, and the row's right end is clipped:
- * Zen and the Display shelf's reset ✕ up to about 1286px windows at the
+ * Zen and the Display shelf's Reset up to about 1286px windows at the
  * default sidebar, WeekScale's controls up to about 1488px, the Display
  * trigger up to about 1245px, and with a wide sidebar the Display trigger even
  * at 1440. <main> is overflow-hidden, and a hidden box has no scrollbar but is
@@ -20,7 +20,7 @@ import { useEffect, type RefObject } from 'react';
  * slid left until the panel closed, unless focus happened to reveal something
  * at the other end. `overflow-clip` was tried and is worse: a clip box never
  * scrolls, so the same Tab lands on a control nobody can see, one of them the
- * reset ✕, which clears every canvas Display setting.
+ * shelf's Reset, which clears every canvas Display setting.
  *
  * So a frame after focus moves anywhere, a key goes down in the box, the box
  * scrolls or resizes, or what the focused control paints starts or stops
@@ -45,14 +45,14 @@ import { useEffect, type RefObject } from 'react';
  * that slides is the canvas header's. So Tab from Zen across the Display shelf
  * moves nothing while each of its ✕s shows whole at Zen's slide: they show at
  * rest, and going there would close each one's tooltip, and then bring the
- * reset ✕, out of sight at rest, back in and close its tooltip too. Focus
+ * shelf's Reset, out of sight at rest, back in and close its tooltip too. Focus
  * moving into another row, the schedule's, puts the box back at rest, and focus
  * a pointer moves, or a menu hands on, gets the rules above; focus a menu hands
  * back to the control it opened from finds what that control had, as a hold
  * does, unless a frame falls in the gap Radix leaves between the two, with
  * focus on nothing, and goes to rest (about one pick in twenty). Like the hold
  * below, what the row keeps can be more than the control needs: Shift+Tab back
- * from the reset ✕ keeps the ✕'s slide across the header for as long as each
+ * from the shelf's Reset keeps its slide across the header for as long as each
  * control shows whole at it, even the date's controls, which show at rest.
  *
  * One the layout moves while it still shows whole at a slide the hook made
@@ -82,7 +82,7 @@ import { useEffect, type RefObject } from 'react';
  * control the layout has moved, or mounted, since the hook made the slide:
  * switching the view from its menu, or by a key with focus on a pill the switch
  * leaves in place, moves Zen, and the slide the row kept for the pill would cut
- * it; the shelf mounts its reset ✕ afresh as a second setting comes on. The
+ * it; the shelf mounts its Reset afresh as a fourth ✕ comes on. The
  * hook notes where each control of the row sat when it made its slide. One
  * whose every edge the slide cuts sits where it sat is cut as it was then, and
  * keeps the slide, cut part-way, as the browser would leave it: the shelf's

@@ -19,10 +19,15 @@ import { DndContext } from '@dnd-kit/core';
  * shelf is wiring, not arithmetic — the arithmetic has its own pure suite
  * (display-summary.test.ts). The shelf has to appear exactly when the trigger's
  * dot is lit; open the one menu that trigger opens, through the same doors, on
- * both shells; leave focus somewhere deliberate when it takes itself away; and
- * decide its own fit with React out of the loop. A test of the shelf on its own
+ * both shells, from its words as from its opener; leave focus somewhere
+ * deliberate when it takes itself away; and lay itself out as one paragraph
+ * from the stylesheet alone, measuring nothing. A test of the shelf on its own
  * could pass all of that while the braindump mounted it wrong, which is the
  * lesson memory/plans/display-menu.md records about testing this menu.
+ *
+ * jsdom lays nothing out, so how the paragraph wraps, where a ✕ hangs and when
+ * it is drawn are pinned as the classes that do it — the load-bearing ones, not
+ * every class the shelf wears.
  */
 
 vi.mock('@/lib/db', () => ({
@@ -95,9 +100,10 @@ import type { Goal } from '@/lib/planner-types';
 import { disableExtensions, enableGoalsAndOrganize } from './support/extensions';
 
 /**
- * A ResizeObserver that records what each instance was handed, so a test can
- * deliver the shelf's observation by hand. dnd-kit builds observers of its own
- * around the braindump, so the shelf's is picked out by the element it watches.
+ * A ResizeObserver that records what each instance was handed. The shelf
+ * measures nothing, so it builds none — but dnd-kit builds observers of its own
+ * around the braindump, so the case that says so counts them before the shelf
+ * mounts and after, and looks at what every one of them watches.
  */
 type Observation = { cb: ResizeObserverCallback; els: Element[] };
 const observations: Observation[] = [];
@@ -119,7 +125,6 @@ class RecordingResizeObserver {
 }
 
 const realResizeObserver = globalThis.ResizeObserver;
-const realRect = Element.prototype.getBoundingClientRect;
 
 /**
  * Radix's menus open on pointerdown and ask for pointer capture on the way.
@@ -197,6 +202,30 @@ function seed(view: ViewSeed = {}, planner: PlannerSeed = {}) {
 /** A filter set: empty, plus the fields named. A fresh object, never the shared constant. */
 const filters = (f: Partial<ViewFilters>): ViewFilters => ({ ...EMPTY_VIEW_FILTERS, ...f });
 
+/**
+ * The fewest things to take off that Reset shows for: two phrases and a
+ * filter's two values, the filter last.
+ */
+const fourToTakeOff = (): ViewSeed => ({
+  braindumpGroupBy: 'project',
+  braindumpSortBy: 'title',
+  braindumpFilters: filters({ priorities: ['high', 'low'] }),
+});
+
+/** Every setting the braindump has: eight ✕s between them, Hide finished last. */
+const everything = () =>
+  seed({
+    braindumpGroupBy: 'project',
+    braindumpSortBy: 'title',
+    braindumpFilters: filters({
+      priorities: ['high', 'low'],
+      // Two spellings of Work: one value, one ✕, and both go with it.
+      containers: ['project:Work', 'project:work', NO_CONTAINER],
+      goals: ['g1'],
+      hideFinished: true,
+    }),
+  });
+
 const renderBraindump = (variant: 'sidebar' | 'mobile' = 'sidebar') =>
   render(
     <DndContext>
@@ -208,15 +237,68 @@ const shelf = () => screen.getByTestId('display-shelf-braindump');
 const queryShelf = () => screen.queryByTestId('display-shelf-braindump');
 const opener = () => screen.getByTestId('display-shelf-open-braindump');
 const resetX = () => screen.getByTestId('display-shelf-reset-braindump');
+const queryReset = () => screen.queryByTestId('display-shelf-reset-braindump');
 const trigger = () => screen.getByTestId('display-trigger-braindump');
+/** The paragraph: one wrapping box, with every setting an item of it. */
+const lines = () => shelf().querySelector<HTMLElement>('[data-shelf-lines]')!;
 /** By attribute rather than getByText: 'Priority' is a group-by label AND a sort label. */
 const clause = (id: string) => shelf().querySelector<HTMLElement>(`[data-clause="${id}"]`);
+/** Every setting, in the order the paragraph runs. */
+const clauses = () => Array.from(shelf().querySelectorAll<HTMLElement>('[data-clause]'));
 /** A multi-select's values as the eye reads them, one per value. */
 const valueLabels = (id: string) =>
   Array.from(clause(id)?.querySelectorAll('[data-value]') ?? [], (v) => v.textContent);
-/** Every per-setting ✕, in reading order; the reset ✕ is not one of them. */
+/** The words of the first phrase or value in `el`. */
+const wordsIn = (el: Element) => el.querySelector<HTMLElement>('[data-chip-label]')!;
+/**
+ * Every phrase and every value as the pointer meets it: the span around its
+ * words and its ✕. A phrase's carries no data-value, so each is found by its
+ * words.
+ */
+const units = () =>
+  Array.from(shelf().querySelectorAll('[data-chip-label]'), (words) => words.parentElement!);
+/** Every per-setting ✕, in reading order; Reset is not one of them. */
 const removeXs = () => screen.queryAllByTestId('display-shelf-remove-braindump');
 const removeX = (name: string) => screen.getByRole('button', { name });
+
+/**
+ * Whether the pointer stops at `el` at rest or passes through it to what is
+ * underneath. pointer-events is inherited, so the nearest plain class at or
+ * above `el` decides; a variant's (group-hover/unit:, focus-visible:,
+ * pointer-coarse:) does not hold at rest.
+ */
+function pointerAtRest(el: Element): 'auto' | 'none' {
+  for (let n: Element | null = el; n; n = n.parentElement) {
+    if (n.classList.contains('pointer-events-none')) return 'none';
+    if (n.classList.contains('pointer-events-auto')) return 'auto';
+  }
+  return 'auto';
+}
+
+/**
+ * A flex box, either way round. Every box the shelf pins as one is itself an
+ * item of a flex box, where inline-flex lays out as flex, so either class does.
+ */
+const FLEX_BOX = /(^|\s)(inline-)?flex(\s|$)/;
+
+/**
+ * A class that cuts off what hangs past its box, as a fine pointer's ✕ hangs
+ * past its words and a reach past its button: any overflow but visible, on
+ * either axis and under any variant, an ellipsis, a line clamp, or paint
+ * containment.
+ */
+const CLIPS =
+  /(^|[\s:])(overflow-(x-|y-)?(hidden|clip|auto|scroll)|truncate|line-clamp-(\d+|\[[^\]]+\])|contain-(paint|content|strict))(\s|$)/;
+
+/** The classes of every box from `el`'s parent up to the shelf's own that would clip it. */
+const clippersAbove = (el: Element) => {
+  const found: string[] = [];
+  for (let n = el.parentElement; n && n !== shelf().parentElement; n = n.parentElement) {
+    const cls = n.getAttribute('class') ?? '';
+    if (CLIPS.test(cls)) found.push(cls);
+  }
+  return found;
+};
 
 /**
  * Let a closing menu go. jsdom plays no animation, so where a stylesheet gives
@@ -235,38 +317,47 @@ async function finishExit() {
   await waitFor(() => expect(screen.queryByTestId('display-menu')).toBeNull());
 }
 
-/* ── a hand-drawn layout, for the fit cases ─────────────────────────────── */
-
-/** The lines box's width, and each line's own. */
-let boxWidth = 0;
-let lineWidthOf: (line: Element) => number = () => 100;
-
-const rect = (left: number, width: number) =>
-  ({ left, right: left + width, width, top: 0, bottom: 18, height: 18, x: left, y: 0 }) as DOMRect;
+/**
+ * Every layout read made from here until `stop`, for a case to ask which of
+ * them landed on the shelf: a box's size or place on either axis, its rects,
+ * or its computed style. jsdom answers each one with 0 or an empty value, so a
+ * shelf that measured would still render; the reads themselves are the
+ * evidence.
+ */
+function watchLayoutReads() {
+  const getters = [
+    vi.spyOn(Element.prototype, 'getBoundingClientRect'),
+    vi.spyOn(Element.prototype, 'getClientRects'),
+    vi.spyOn(Element.prototype, 'clientWidth', 'get'),
+    vi.spyOn(Element.prototype, 'clientHeight', 'get'),
+    vi.spyOn(Element.prototype, 'scrollWidth', 'get'),
+    vi.spyOn(Element.prototype, 'scrollHeight', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get'),
+    vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get'),
+  ];
+  // Called with the element rather than on it, so it is the argument that says where.
+  const styles = vi.spyOn(window, 'getComputedStyle');
+  return {
+    readsIn: (root: Element) =>
+      [...getters.flatMap((s) => s.mock.contexts as unknown[]), ...styles.mock.calls.map(([el]) => el)].filter(
+        (el) => el instanceof Element && root.contains(el)
+      ),
+    stop: () => [...getters, styles].forEach((s) => s.mockRestore()),
+  };
+}
 
 /**
- * jsdom lays nothing out, so the shelf's two measurements are drawn here, in
- * whichever fit its root holds as they are read. On one line the lines lie end
- * to end from 0. Stacked, each stretches across the box, as a column's children
- * do, so a measure that did not force the one line first would read the stack's
- * width instead, and a stacked line's size says nothing about its text's.
+ * Past anything a measure could be put off to: two frames, then a task. The
+ * old shelf compared its widths a frame after a resize, and measured again
+ * once the fonts were in.
  */
-function layOut() {
-  Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
-    if (this.hasAttribute('data-shelf-lines')) return rect(0, boxWidth);
-    if (this.hasAttribute('data-line') && this.closest('[data-fit="stack"]')) {
-      return rect(0, boxWidth);
-    }
-    if (this.hasAttribute('data-line') && this.parentElement) {
-      let left = 0;
-      for (const line of Array.from(this.parentElement.children)) {
-        if (!line.hasAttribute('data-line')) continue;
-        if (line === this) return rect(left, lineWidthOf(line));
-        left += lineWidthOf(line);
-      }
-    }
-    return realRect.call(this);
-  } as Element['getBoundingClientRect'];
+async function settle() {
+  await act(async () => {
+    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
 }
 
 beforeEach(() => seed());
@@ -274,9 +365,6 @@ afterEach(() => {
   cleanup();
   touch.current = false;
   observations.length = 0;
-  Element.prototype.getBoundingClientRect = realRect;
-  boxWidth = 0;
-  lineWidthOf = () => 100;
   delete (document as { fonts?: unknown }).fonts;
 });
 
@@ -361,8 +449,10 @@ describe('what it says', () => {
     });
     renderBraindump();
 
-    expect([...shelf().querySelectorAll('[data-line]')].map((l) => l.getAttribute('data-line'))).toEqual([
-      'arrange',
+    // One item of the paragraph per setting, in the menu's section order.
+    expect(Array.from(lines().children, (c) => c.getAttribute('data-clause'))).toEqual([
+      'group',
+      'sort',
       'priority',
       'project',
       'goal',
@@ -375,15 +465,13 @@ describe('what it says', () => {
     // The store's spelling, not the stored one.
     expect(valueLabels('project')).toEqual(['Work', 'Home', 'No project']);
     expect(valueLabels('goal')).toEqual(['Learn Chinese', 'Marathon']);
+    // Reset sits in this last setting too, and adds no words to it.
+    expect(clause('hide-finished')).toContainElement(resetX());
     expect(clause('hide-finished')).toHaveTextContent(/^Hide finished$/);
 
-    // Grouping and ordering share the first line, as the list's arrangement.
-    const arrange = shelf().querySelector<HTMLElement>('[data-line="arrange"]');
-    expect(arrange).toContainElement(clause('group'));
-    expect(arrange).toContainElement(clause('sort'));
-
-    // clauseText is the oracle — the text the fit is keyed on is the text on
-    // screen, clause for clause (a multi-select's values joined as it joins them).
+    // clauseText is the oracle — the opener is named by it, so the text on
+    // screen has to be it, clause for clause (a multi-select's values joined as
+    // it joins them).
     const { result } = renderHook(() => useDisplaySummary('braindump'));
     expect(result.current.clauses).toHaveLength(6);
     for (const c of result.current.clauses) {
@@ -421,7 +509,7 @@ describe('what it says', () => {
   });
 });
 
-describe('the ✕ is Reset display', () => {
+describe('Reset display, at the end of the paragraph', () => {
   /** Everything a reset could touch, on both surfaces and app-wide. */
   const snapshot = () => {
     const v = useViewStore.getState();
@@ -436,6 +524,9 @@ describe('the ✕ is Reset display', () => {
       showPausedOnGrid: usePlannerStore.getState().showPausedOnGrid,
     };
   };
+
+  /** Reset's slot: the span that pushes it to the end of its line. */
+  const slot = () => resetX().parentElement!;
 
   const cases: { name: string; goalsOff: boolean; view: ViewSeed }[] = [
     {
@@ -463,7 +554,13 @@ describe('the ✕ is Reset display', () => {
       view: {
         braindumpGroupBy: 'goal',
         braindumpSortBy: 'title',
-        braindumpFilters: filters({ goals: ['g1'], hideFinished: true }),
+        // Four to take off besides what the switch keeps, so Reset shows.
+        braindumpFilters: filters({
+          goals: ['g1'],
+          priorities: ['low'],
+          containers: [NO_CONTAINER],
+          hideFinished: true,
+        }),
       },
     },
   ];
@@ -492,7 +589,7 @@ describe('the ✕ is Reset display', () => {
     seed({
       braindumpGroupBy: 'goal',
       braindumpSortBy: 'title',
-      braindumpFilters: filters({ goals: ['g1'], hideFinished: true }),
+      braindumpFilters: filters({ goals: ['g1'], priorities: ['high', 'low'], hideFinished: true }),
     });
     disableExtensions(EXT_GOALS);
     renderBraindump();
@@ -507,8 +604,8 @@ describe('the ✕ is Reset display', () => {
     expect(queryShelf()).toBeNull();
   });
 
-  it('hands focus to the trigger before the reset takes the shelf away', () => {
-    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+  it('hands focus to the trigger before the reset takes the shelf away, and opens nothing', () => {
+    seed(fourToTakeOff());
     renderBraindump();
     // BEFORE: React batches the reset's re-render past the handler either
     // way, so only what the trigger sees as focus lands can tell the order.
@@ -524,35 +621,163 @@ describe('the ✕ is Reset display', () => {
     // Not <body>, where a focused button that unmounts leaves it.
     expect(document.activeElement).toBe(trigger());
     expect(setWhenFocused).toBe('project');
+    // And opens nothing. That holds by where Reset sits, outside every unit
+    // (the placement cases pin it), so its click has no words' handler to
+    // bubble into; its own stopPropagation is not what this observes.
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
   });
 
-  it('shows only while there is more than one thing to take off', () => {
-    seed({ braindumpGroupBy: 'project' });
-    renderBraindump();
-    // With one, it would be that one's ✕ twice.
-    expect(screen.queryByTestId('display-shelf-reset-braindump')).toBeNull();
-    expect(removeXs()).toHaveLength(1);
+  // With two or three, the ✕s and the menu's row already reset in as many
+  // clicks, and Reset would push three settings onto a second line in the
+  // List/Day capsule. A value is one thing to take off, as its ✕ is one ✕.
+  it.each([
+    { name: 'one phrase', xs: 1, shows: false, view: { braindumpGroupBy: 'project' } },
+    {
+      name: 'two phrases',
+      xs: 2,
+      shows: false,
+      view: { braindumpGroupBy: 'project', braindumpSortBy: 'title' },
+    },
+    {
+      name: 'three phrases',
+      xs: 3,
+      shows: false,
+      view: {
+        braindumpGroupBy: 'project',
+        braindumpSortBy: 'title',
+        braindumpFilters: filters({ hideFinished: true }),
+      },
+    },
+    {
+      name: 'one filter of three values',
+      xs: 3,
+      shows: false,
+      view: { braindumpFilters: filters({ priorities: ['high', 'medium', 'low'] }) },
+    },
+    { name: 'two phrases and two values', xs: 4, shows: true, view: fourToTakeOff() },
+    {
+      name: 'one filter of four values',
+      xs: 4,
+      shows: true,
+      view: { braindumpFilters: filters({ priorities: ['high', 'medium', 'low', 'none'] }) },
+    },
+    {
+      name: 'a phrase and three values',
+      xs: 4,
+      shows: true,
+      view: {
+        braindumpGroupBy: 'project',
+        braindumpFilters: filters({ containers: ['project:Work', 'project:Home', NO_CONTAINER] }),
+      },
+    },
+  ] satisfies { name: string; xs: number; shows: boolean; view: ViewSeed }[])(
+    'shows only from four things to take off up: $name',
+    ({ xs, shows, view }) => {
+      seed(view);
+      renderBraindump();
+      expect(removeXs()).toHaveLength(xs);
+      expect(queryReset() !== null).toBe(shows);
+    }
+  );
 
-    act(() => useViewStore.setState({ braindumpFilters: filters({ priorities: ['high'] }) }));
+  it('goes when a ✕ leaves fewer than four, and comes back with a fourth', () => {
+    seed(fourToTakeOff());
+    renderBraindump();
     expect(resetX()).toBeInTheDocument();
-    expect(removeXs()).toHaveLength(2);
+
+    fireEvent.click(removeX('Remove Priority: High'));
+    expect(removeXs()).toHaveLength(3);
+    expect(queryReset()).toBeNull();
+
+    act(() =>
+      useViewStore.setState({ braindumpFilters: filters({ priorities: ['low'], hideFinished: true }) })
+    );
+    expect(removeXs()).toHaveLength(4);
+    expect(resetX()).toBeInTheDocument();
+  });
+
+  it.each([
+    { variant: 'sidebar' as const, pad: ['pl-[23px]', 'pointer-coarse:pl-[16px]'], notPad: ['pl-[16px]'] },
+    { variant: 'mobile' as const, pad: ['pl-[16px]'], notPad: ['pl-[23px]'] },
+  ])(
+    'ends the last setting in the $variant mount when that is a phrase, held to it and pushed to the end of its line',
+    ({ variant, pad, notPad }) => {
+      seed({ ...fourToTakeOff(), braindumpFilters: filters({ priorities: ['high', 'low'], hideFinished: true }) });
+      renderBraindump(variant);
+      const last = clause('hide-finished')!;
+      expect(clauses().at(-1)).toBe(last);
+
+      // In the last setting, and in no other.
+      for (const c of clauses()) expect(c.contains(resetX())).toBe(c === last);
+      // Pushed to the end of its line and never shrunk, with room before it
+      // that clears the ✕ ahead of it: 24px from the words on a pointer, where
+      // that ✕ hangs in the room, and 16 past an in-flow ✕.
+      expect(slot()).toHaveClass('ml-auto', 'flex', 'shrink-0', ...pad);
+      for (const p of notPad) expect(slot()).not.toHaveClass(p);
+      // Nothing above it in the paragraph takes the pointer, so its own class
+      // takes its click; and it is drawn at rest, unlike a ✕.
+      expect(resetX()).toHaveClass('pointer-events-auto', 'text-muted-foreground');
+      // One unbreakable pair with the phrase, so Reset never takes a line
+      // alone, growing to the end of whatever line it lands on.
+      const tail = slot().parentElement!;
+      expect(tail.children).toHaveLength(2);
+      expect(tail.firstElementChild).toBe(units().at(-1));
+      expect(tail.lastElementChild).toBe(slot());
+      expect(tail.className).toMatch(FLEX_BOX);
+      expect(tail).toHaveClass('min-w-0', 'max-w-full', 'grow');
+      expect(tail).not.toHaveClass('flex-wrap');
+      expect(tail.parentElement).toBe(last);
+      expect(last).toHaveClass('grow');
+      // Not part of the phrase's unit: hovering Reset neither lights those
+      // words nor draws their ✕.
+      expect(units().some((u) => u.contains(resetX()))).toBe(false);
+    }
+  );
+
+  it.each([
+    { variant: 'sidebar' as const, pad: ['pl-[8px]', 'pointer-coarse:pl-[6px]'], notPad: ['pl-[6px]'] },
+    { variant: 'mobile' as const, pad: ['pl-[6px]'], notPad: ['pl-[8px]'] },
+  ])(
+    'ends the last setting in the $variant mount when that is a filter, as the last item of its run',
+    ({ variant, pad, notPad }) => {
+      seed(fourToTakeOff());
+      renderBraindump(variant);
+      const run = clause('priority')!;
+      expect(clauses().at(-1)).toBe(run);
+
+      for (const c of clauses()) expect(c.contains(resetX())).toBe(c === run);
+      // The run's own last item, after its values: it wraps on its own rather
+      // than take the last value with it, and the run's gap is part of its room.
+      expect(slot().parentElement).toBe(run);
+      expect(run.lastElementChild).toBe(slot());
+      expect(Array.from(run.children).slice(0, -1).map((v) => v.getAttribute('data-value'))).toEqual([
+        'high',
+        'low',
+      ]);
+      expect(slot()).toHaveClass('ml-auto', 'flex', 'shrink-0', ...pad);
+      for (const p of notPad) expect(slot()).not.toHaveClass(p);
+      expect(resetX()).toHaveClass('pointer-events-auto', 'text-muted-foreground');
+      expect(run).toHaveClass('grow');
+      expect(units().some((u) => u.contains(resetX()))).toBe(false);
+    }
+  );
+
+  it("wears the menu row's own glyph, never a ✕", async () => {
+    seed(fourToTakeOff());
+    renderBraindump();
+    // An action wherever the line leaves it, never one more setting's ✕.
+    expect(resetX().querySelectorAll('svg')).toHaveLength(1);
+    expect(resetX().querySelector('svg')).toHaveClass('lucide-rotate-ccw');
+    expect(resetX().querySelector('svg')).not.toHaveClass('lucide-x');
+
+    fireEvent.pointerDown(trigger(), { button: 0, ctrlKey: false });
+    const row = await screen.findByTestId('display-reset');
+    expect(row.querySelector('svg')).toHaveClass('lucide-rotate-ccw');
   });
 });
 
 describe('a ✕ for each setting', () => {
-  const everything = () =>
-    seed({
-      braindumpGroupBy: 'project',
-      braindumpSortBy: 'title',
-      braindumpFilters: filters({
-        priorities: ['high', 'low'],
-        // Two spellings of Work: one value, one ✕, and both go with it.
-        containers: ['project:Work', 'project:work', NO_CONTAINER],
-        goals: ['g1'],
-        hideFinished: true,
-      }),
-    });
-
   it('wears one per phrase and one per value, each named for what it takes off', () => {
     everything();
     renderBraindump();
@@ -601,6 +826,41 @@ describe('a ✕ for each setting', () => {
     expect(trigger()).toHaveAttribute('data-active', 'true');
   });
 
+  // Each ✕ sits inside the unit whose click opens the menu — the unit's hover
+  // is what draws it — so its own click has to stop there.
+  it.each([
+    {
+      name: 'Remove Grouped by Project',
+      unit: () => wordsIn(clause('group')!).parentElement!,
+      setting: () => useViewStore.getState().braindumpGroupBy,
+      left: 'none',
+    },
+    {
+      name: 'Remove Priority: High',
+      unit: () => clause('priority')!.querySelector('[data-value="high"]')!,
+      setting: () => useViewStore.getState().braindumpFilters.priorities,
+      left: ['low'],
+    },
+  ])('takes its setting off and opens nothing, from inside words that open the menu: $name', async ({
+    name,
+    unit,
+    setting,
+    left,
+  }) => {
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ priorities: ['high', 'low'] }) });
+    renderBraindump();
+    expect(unit()).toContainElement(removeX(name));
+
+    fireEvent.click(removeX(name));
+
+    expect(setting()).toEqual(left);
+    // A click on the words opens the menu within the click, so a tick is
+    // more than it would need.
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+    expect(trigger()).toHaveAttribute('aria-expanded', 'false');
+  });
+
   it('leaves the canvas alone', () => {
     everything();
     useViewStore.setState({ canvasFilters: filters({ priorities: ['high'] }), canvasGroupBy: 'project' });
@@ -614,7 +874,7 @@ describe('a ✕ for each setting', () => {
   });
 
   it('hands focus on to the next ✕, or the one before when it was the last', () => {
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ priorities: ['high', 'low'] }) });
+    seed(fourToTakeOff());
     renderBraindump();
 
     removeX('Remove Priority: High').focus();
@@ -622,8 +882,41 @@ describe('a ✕ for each setting', () => {
     expect(document.activeElement).toBe(removeX('Remove Priority: Low'));
 
     fireEvent.click(removeX('Remove Priority: Low'));
-    // Not the reset ✕, which left with the second-to-last setting.
-    expect(document.activeElement).toBe(removeX('Remove Grouped by Project'));
+    // Not Reset, which went with the fourth thing to take off.
+    expect(document.activeElement).toBe(removeX('Remove Sorted by Title A–Z'));
+  });
+
+  it('hands focus across a setting that goes from the middle, to the ✕ after it', () => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title', braindumpFilters: filters({ priorities: ['high'] }) });
+    renderBraindump();
+    const next = removeX('Remove Priority: High');
+    removeX('Remove Sorted by Title A–Z').focus();
+
+    fireEvent.click(removeX('Remove Sorted by Title A–Z'));
+
+    expect(clause('sort')).toBeNull();
+    // The very button focus was handed to, still mounted: each setting is kept
+    // by what it names, so the ones after the gap do not take over the DOM of
+    // the ones before it, and the ✕ just focused is not torn down under it.
+    expect(next).toBeInTheDocument();
+    expect(document.activeElement).toBe(next);
+    expect(removeX('Remove Priority: High')).toBe(next);
+  });
+
+  it('never hands focus to Reset, even from the last ✕, which Reset follows and outlives', () => {
+    // Five to take off, so four are left after the press and Reset stays.
+    seed({ ...fourToTakeOff(), braindumpFilters: filters({ priorities: ['high', 'low'], hideFinished: true }) });
+    renderBraindump();
+    const last = removeX('Remove Hide finished');
+    expect(removeXs().at(-1)).toBe(last);
+    // Next after it in the tab order.
+    expect(last.compareDocumentPosition(resetX()) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    last.focus();
+
+    fireEvent.click(last);
+
+    expect(resetX()).toBeInTheDocument();
+    expect(document.activeElement).toBe(removeX('Remove Priority: Low'));
   });
 
   it('hands focus to the trigger when the last setting goes, and the shelf with it', () => {
@@ -650,20 +943,21 @@ describe('a ✕ for each setting', () => {
   it('keeps the words out of the accessibility tree and the ✕s in it', () => {
     everything();
     renderBraindump();
+    expect(shelf().querySelectorAll('[data-chip-label]')).toHaveLength(8);
+    expect(removeXs()).toHaveLength(8);
     for (const label of shelf().querySelectorAll('[data-chip-label]')) {
       expect(label).toHaveAttribute('aria-hidden', 'true');
       expect(label.querySelector('button')).toBeNull();
     }
-    for (const x of removeXs()) {
+    for (const x of [...removeXs(), resetX()]) {
       expect(x.closest('[aria-hidden]')).toBeNull();
-      // The words let clicks fall through to the opener; the ✕ takes its own.
-      expect(x).toHaveClass('pointer-events-auto');
     }
-    // The opener comes first, as the peer the words' hover reads.
-    const lines = shelf().querySelector('[data-shelf-lines]')!;
-    expect(opener().nextElementSibling).toBe(lines);
-    expect(opener()).toHaveClass('peer/open');
-    expect(lines).toHaveClass('peer-hover/open:text-foreground');
+    // Each ✕ beside its words, never inside them.
+    for (const x of removeXs()) expect(x.parentElement!.querySelector(':scope > [data-chip-label]')).not.toBeNull();
+    // The opener comes first, so the paragraph, positioned after it, paints over it.
+    expect(opener().nextElementSibling).toBe(lines());
+    expect(lines()).toHaveClass('relative');
+    expect(opener()).toHaveClass('absolute');
   });
 
   it('ignores a held Enter, so autorepeat cannot walk the shelf clear', () => {
@@ -692,6 +986,71 @@ describe('opening the menu from the shelf', () => {
     fireEvent.keyDown(menu, { key: 'Escape' });
     // Radix returns focus a tick after the content unmounts.
     await waitFor(() => expect(document.activeElement).toBe(opener()));
+  });
+
+  // The words take the pointer for their ✕s, so they open the menu themselves,
+  // through the opener's own handle: focus comes back to the opener.
+  it.each([
+    { name: 'a phrase', words: () => wordsIn(clause('group')!) },
+    { name: 'a value', words: () => wordsIn(clause('priority')!) },
+    {
+      name: 'the name inside a value',
+      words: () => wordsIn(clause('priority')!).querySelector<HTMLElement>('.truncate')!,
+    },
+  ])('opens the pointer dropdown from the words of $name, and Escape brings focus back to the text', async ({
+    words,
+  }) => {
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ priorities: ['high'] }) });
+    renderBraindump();
+
+    fireEvent.click(words());
+
+    const menu = await screen.findByTestId('display-menu');
+    expect(menu).toHaveAttribute('data-display-variant', 'menu');
+    expect(screen.getAllByTestId('display-trigger-braindump')).toHaveLength(1);
+    // Opened, and nothing taken off on the way.
+    expect(useViewStore.getState().braindumpGroupBy).toBe('project');
+    expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['high']);
+
+    fireEvent.keyDown(menu, { key: 'Escape' });
+    await waitFor(() => expect(document.activeElement).toBe(opener()));
+  });
+
+  it('takes the pointer on every phrase and value as the opener under it would (the arrow, and no selection), on Reset, and nowhere between', () => {
+    everything();
+    renderBraindump();
+    // One target per ✕: each phrase, and each value.
+    expect(removeXs()).toHaveLength(8);
+    expect(units()).toHaveLength(8);
+    for (const unit of units()) {
+      // A target of its own, over a paragraph that lets the gaps between the
+      // settings through to the opener…
+      expect(unit).toHaveClass('pointer-events-auto');
+      // …that says what the opener would: the arrow, not a text cursor, and no
+      // selection from a drag, a double-click or a long press.
+      expect(unit).toHaveClass('cursor-default', 'select-none');
+    }
+    expect(lines()).toHaveClass('pointer-events-none');
+
+    // Reset sits in the paragraph too, outside every unit, so its own class is
+    // all that takes its click: without it the click falls through to the
+    // opener and opens the menu instead of resetting. And it is drawn at rest,
+    // unlike a ✕.
+    expect(lines()).toContainElement(resetX());
+    expect(resetX()).toHaveClass('pointer-events-auto', 'text-muted-foreground');
+    expect(resetX()).not.toHaveClass('pointer-events-none');
+    expect(resetX()).not.toHaveClass('text-transparent');
+
+    // Nothing else in the paragraph takes the pointer — a setting around its
+    // words, a run between its values, the last phrase grown to its line's
+    // end, the room Reset's slot keeps — so a click between two things on
+    // screen only ever opens the menu.
+    const targets = [...units(), resetX()];
+    const between = Array.from(lines().querySelectorAll('*')).filter(
+      (el) => !targets.some((t) => t.contains(el))
+    );
+    expect(between).toEqual(expect.arrayContaining([...clauses(), resetX().parentElement]));
+    expect(between.filter((el) => pointerAtRest(el) !== 'none').map((el) => el.className)).toEqual([]);
   });
 
   it('sends focus to the trigger when the pick made from it takes the shelf away', async () => {
@@ -813,6 +1172,18 @@ describe('opening the menu from the shelf', () => {
       await waitFor(() => expect(document.activeElement).toBe(opener()));
     });
 
+    it("brings focus back to the text when a setting's words opened it", async () => {
+      seed({ braindumpGroupBy: 'project' });
+      renderBraindump('mobile');
+
+      fireEvent.click(wordsIn(clause('group')!));
+      expect(sheet()).toHaveAttribute('data-state', 'open');
+      fireEvent.keyDown(sheet(), { key: 'Escape' });
+      await finishExit();
+
+      await waitFor(() => expect(document.activeElement).toBe(opener()));
+    });
+
     it('sends focus to the trigger when the trigger opened it', async () => {
       seed({ braindumpGroupBy: 'project' });
       renderBraindump('mobile');
@@ -862,464 +1233,201 @@ describe('opening the menu from the shelf', () => {
   });
 });
 
-describe('fit: one line, or the stack', () => {
-  const fit = () => shelf().getAttribute('data-fit');
-  const lineEls = () => [...shelf().querySelectorAll('[data-line]')];
+describe('the paragraph', () => {
+  const FILTERS = ['priority', 'project', 'goal'];
+  const PHRASES = ['group', 'sort', 'hide-finished'];
 
-  const probe = () => shelf().querySelector('[data-shelf-probe]')!;
-  const sample = () => shelf().querySelector('[data-shelf-sample]')!;
-
-  /** The shelf's own ResizeObserver: the one watching its probe. */
-  function shelfObserver() {
-    const mine = observations.filter((o) => o.els.includes(probe()));
-    expect(mine).toHaveLength(1);
-    return mine[0];
-  }
-
-  /**
-   * Deliver the shelf's observation by hand, one [target, width] per entry. The
-   * shelf reads an entry's width only off the sample, which is as wide as its
-   * phrase whenever the shelf is laid out at all, and 0 when it is hidden.
-   */
-  function deliver(...entries: [Element, number][]) {
-    const observer = shelfObserver();
-    act(() =>
-      observer.cb(
-        entries.map(([target, width]) => ({ target, contentRect: { width } }) as unknown as ResizeObserverEntry),
-        {} as ResizeObserver
-      )
-    );
-  }
-  /** The column moved. */
-  const resize = () => deliver([probe(), boxWidth]);
-  /** The text changed size with its string unchanged. */
-  const resample = (width: number) => deliver([sample(), width]);
-
-  /**
-   * What a real observer delivers the moment it starts watching: the probe at
-   * the column's width and the sample at its phrase's, which asks for a frame
-   * to measure in. A case that resizes the sample starts here, so a shelf that
-   * could only ever ask for one frame has spent it before the case begins.
-   */
-  async function firstDelivery() {
-    deliver([probe(), boxWidth], [sample(), 70]);
-    await nextFrame();
-  }
-
-  /** Let one animation frame run, and whatever the shelf asked of it first. */
-  const nextFrame = () =>
-    act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
-
-  it('is one line in jsdom, where every width is 0', () => {
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+  it('is one wrapping run, each setting one item of it, in the menu order', () => {
+    everything();
     renderBraindump();
-    expect(fit()).toBe('line');
+    // The settings wrap BETWEEN one another, like the words of a sentence:
+    // one flex-wrap box, every setting a direct item of it, and nothing
+    // gathering some of them into a line of their own.
+    expect(lines().className).toMatch(FLEX_BOX);
+    expect(lines()).toHaveClass('flex-wrap', 'min-w-0', 'flex-1');
+    expect(Array.from(lines().children, (c) => c.getAttribute('data-clause'))).toEqual([
+      'group',
+      'sort',
+      'priority',
+      'project',
+      'goal',
+      'hide-finished',
+    ]);
   });
 
-  it('stacks when the line will not fit, comes back when it will, and re-fits on a change of text', async () => {
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
+  it("measures nothing: no observer, no layout read, no font wait, no fit written behind React's back", async () => {
+    let fontReads = 0;
+    Object.defineProperty(document, 'fonts', {
+      configurable: true,
+      get: () => {
+        fontReads += 1;
+        return { ready: Promise.resolve() };
+      },
+    });
+    // Nothing set at first, so the shelf arrives in a braindump dnd-kit has
+    // already built its own observers around.
     renderBraindump();
+    expect(queryShelf()).toBeNull();
+    const built = observations.length;
+    const reads = watchLayoutReads();
+    try {
+      act(() =>
+        useViewStore.setState({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) })
+      );
+      // And a change of text, which the measured shelf re-fit on.
+      act(() =>
+        useViewStore.setState({
+          braindumpFilters: filters({ hideFinished: true, priorities: ['high', 'low'] }),
+        })
+      );
+      expect(valueLabels('priority')).toEqual(['High', 'Low']);
+      // Nor a frame or a task later, where a measure put off would land.
+      await settle();
 
-    // Two lines of 100 in a box of 150. The shelf measured 0 at mount, so the
-    // frame after this first resize is where it measures.
-    layOut();
-    boxWidth = 150;
-    resize();
-    await nextFrame();
-    expect(fit()).toBe('stack');
-
-    boxWidth = 250;
-    resize();
-    await nextFrame();
-    expect(fit()).toBe('line');
-
-    // A third line, and no resize: the text changed, so the shelf re-fits itself.
-    act(() =>
-      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
-    );
-    expect(fit()).toBe('stack');
+      expect(observations).toHaveLength(built);
+      expect(observations.flatMap((o) => o.els).filter((el) => shelf().contains(el))).toEqual([]);
+      expect(reads.readsIn(shelf())).toEqual([]);
+      expect(fontReads).toBe(0);
+    } finally {
+      reads.stop();
+    }
+    // No fit on any node, and none of what the measured shelf kept to find one.
+    expect(document.querySelector('[data-fit]')).toBeNull();
+    expect(shelf().querySelector('[data-line], [data-shelf-probe], [data-shelf-sample]')).toBeNull();
   });
 
-  it('only compares on a resize — the width it measured is not re-read', async () => {
-    // A resize reuses the width the text last measured: the column resizes on
-    // every frame of a drag, and each measure forces the one-line layout.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    expect(fit()).toBe('line');
-
-    lineWidthOf = () => 150;
-    resize();
-    expect(fit()).toBe('line');
-    await nextFrame();
-    expect(fit()).toBe('line');
-  });
-
-  it('measures the one line even while it stands stacked', () => {
-    // Read in the stack, every line is the box's width, and a new text measured
-    // that way would fold the shelf onto one clipped line.
-    layOut();
-    boxWidth = 150;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    expect(fit()).toBe('stack');
-
-    act(() =>
-      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
-    );
-    expect(fit()).toBe('stack');
-  });
-
-  // Nothing truncates on the one line, so any overflow there is a glyph cut off
-  // with no ellipsis to say so. The one allowance is the engine's own grain.
+  // A seam sets a filter apart from what is on either side of it, so the sort
+  // never reads on into "● High ● Medium" and one filter's values never run on
+  // into the next's. Two phrases read apart already, by their lead words.
   it.each([
-    { over: 0, expected: 'line' },
-    { over: 1 / 64, expected: 'line' },
-    { over: 1 / 32, expected: 'stack' },
-    { over: 1 / 4, expected: 'stack' },
-    { over: 1, expected: 'stack' },
-  ])('is $expected when the line is $over px wider than its box', ({ over, expected }) => {
-    layOut();
-    boxWidth = 200 - over;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    expect(fit()).toBe(expected);
-  });
+    {
+      name: 'three phrases',
+      view: {
+        braindumpGroupBy: 'project',
+        braindumpSortBy: 'title',
+        braindumpFilters: filters({ hideFinished: true }),
+      },
+      seams: [],
+    },
+    {
+      name: 'a filter between two phrases',
+      view: { braindumpGroupBy: 'project', braindumpFilters: filters({ priorities: ['high'], hideFinished: true }) },
+      seams: ['group', 'priority'],
+    },
+    {
+      name: 'a filter last, after two phrases',
+      view: fourToTakeOff(),
+      seams: ['sort'],
+    },
+    {
+      name: 'two filters side by side',
+      view: { braindumpFilters: filters({ priorities: ['high'], containers: ['project:Work'] }) },
+      seams: ['priority'],
+    },
+    { name: 'a filter alone', view: { braindumpFilters: filters({ priorities: ['high', 'low'] }) }, seams: [] },
+    {
+      name: 'every setting',
+      view: {
+        braindumpGroupBy: 'project',
+        braindumpSortBy: 'title',
+        braindumpFilters: filters({
+          priorities: ['high'],
+          containers: ['project:Work'],
+          goals: ['g1'],
+          hideFinished: true,
+        }),
+      },
+      seams: ['sort', 'priority', 'project', 'goal'],
+    },
+  ] satisfies { name: string; view: ViewSeed; seams: string[] }[])(
+    'sets a seam where a filter meets the next setting, never between two phrases nor after the last: $name',
+    ({ view, seams }) => {
+      seed(view);
+      renderBraindump();
+      const seamed = clauses().filter((c) => c.classList.contains('mr-[8px]'));
+      expect(seamed.map((c) => c.getAttribute('data-clause'))).toEqual(seams);
+      // A margin on the setting BEFORE the seam, which never shrinks for it: a
+      // filter as wide as its line hangs the 8px past the line's end rather
+      // than take them from its values…
+      for (const c of seamed) expect(c).toHaveClass('shrink-0');
+      // …and never one on the setting after it, so a line never starts indented.
+      for (const c of clauses()) expect(c.className).not.toMatch(/(^|[\s:])-?(ml|mx|ms|pl|px|ps)-/);
+    }
+  );
 
-  it('measures again, a frame later, when its text changes size with its string unchanged', async () => {
-    // A text-spacing override, or text-only zoom: the same string, set wider,
-    // in a column that has not moved.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('line');
+  // 5px in every mode, between settings and between a filter's values: the
+  // reach a ✕ takes above and below itself on the phone, and on the desktop
+  // under a coarse pointer. With less, one row's reach lay over the next row's
+  // words, and a tap on a name took a different setting off.
+  it.each([{ variant: 'sidebar' as const }, { variant: 'mobile' as const }])(
+    "keeps its lines 5px apart, and a filter's, in the $variant mount",
+    ({ variant }) => {
+      everything();
+      renderBraindump(variant);
+      expect(lines()).toHaveClass('gap-y-[5px]');
+      for (const id of FILTERS) expect(clause(id)).toHaveClass('gap-y-[5px]');
+    }
+  );
 
-    lineWidthOf = () => 150;
-    resample(80);
-    // Never inside the observer's own delivery, which writes nothing.
-    expect(fit()).toBe('line');
-    await nextFrame();
-    expect(fit()).toBe('stack');
-  });
+  // Glyph to glyph: on a pointer a ✕ takes no room, and the words' 1px of
+  // padding makes 19 between settings 20 and a filter's 15 between values 16.
+  // Past an in-flow ✕ — the phone, and the desktop under a coarse pointer —
+  // 16 and 10.
+  it.each([
+    {
+      variant: 'sidebar' as const,
+      settings: ['gap-x-[19px]', 'pointer-coarse:gap-x-[16px]'],
+      values: ['gap-x-[15px]', 'pointer-coarse:gap-x-[10px]'],
+      words: ['pr-px', 'pointer-coarse:pr-0'],
+      not: ['gap-x-[16px]', 'gap-x-[10px]'],
+    },
+    {
+      variant: 'mobile' as const,
+      settings: ['gap-x-[16px]'],
+      values: ['gap-x-[10px]'],
+      words: [],
+      not: ['gap-x-[19px]', 'gap-x-[15px]', 'pr-px'],
+    },
+  ])(
+    "spaces the settings and a filter's values for the $variant mount",
+    ({ variant, settings, values, words, not }) => {
+      everything();
+      renderBraindump(variant);
+      expect(lines()).toHaveClass(...settings);
+      for (const id of FILTERS) expect(clause(id)).toHaveClass(...values);
+      const allWords = Array.from(shelf().querySelectorAll('[data-chip-label]'));
+      expect(allWords).toHaveLength(8);
+      if (words.length > 0) for (const w of allWords) expect(w).toHaveClass(...words);
+      for (const el of [lines(), ...clauses(), ...allWords]) {
+        for (const cls of not) expect(el).not.toHaveClass(cls);
+      }
+    }
+  );
 
-  it('measures a stacked shelf again when its text shrinks, which resizes none of its lines', async () => {
-    // The override taken off again: the stack goes back to one line. Every
-    // stacked line stretches across the column, so the lines stay the size
-    // they were, and only the sample says the text has changed.
-    layOut();
-    boxWidth = 150;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('stack');
-
-    lineWidthOf = () => 50;
-    resample(60);
-    expect(fit()).toBe('stack');
-    await nextFrame();
-    expect(fit()).toBe('line');
-  });
-
-  it('measures in a frame where the column moved too, which a drag alone never is', async () => {
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('line');
-
-    // One delivery: the column widens by 10 as the text widens by half. Had
-    // the frame after it only compared, the old text's 200 would still fit.
-    boxWidth = 260;
-    lineWidthOf = () => 150;
-    deliver([probe(), boxWidth], [sample(), 105]);
-    await nextFrame();
-    expect(fit()).toBe('stack');
-  });
-
-  it('writes nothing inside the observer\'s delivery, and fits in the frame after it', async () => {
-    // A fit that changes changes the shelf's height, and under the canvas
-    // header's pill that resizes the view's scroll viewport, which useFitHourPx
-    // watches at the probe's own depth. Written mid-delivery, the engine skips
-    // that observation and raises a "ResizeObserver loop" error on the page.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    expect(fit()).toBe('line');
-
-    boxWidth = 150;
-    resize();
-    expect(fit()).toBe('line');
-    await nextFrame();
-    expect(fit()).toBe('stack');
-
-    // And back: an unstack saved a frame by deciding it in the delivery brings
-    // the same error back on every widen.
-    boxWidth = 250;
-    resize();
-    expect(fit()).toBe('stack');
-    await nextFrame();
-    expect(fit()).toBe('line');
-  });
-
-  it('keeps a measure asked for by an earlier delivery in the same frame', async () => {
-    // The text grows, then the column moves, before the frame runs: the frame
-    // the first delivery asked for serves both, and still measures.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('line');
-
-    lineWidthOf = () => 150;
-    resample(80);
-    resize();
-    await nextFrame();
-    expect(fit()).toBe('stack');
-  });
-
-  it('keeps a measure asked for by a later delivery in the same frame', async () => {
-    // The column moves, then the text grows, before the frame runs: a frame
-    // already asked for serves every delivery before it runs, the later ones
-    // too.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('line');
-
-    lineWidthOf = () => 150;
-    resize();
-    resample(80);
-    await nextFrame();
-    expect(fit()).toBe('stack');
-  });
-
-  it('measures nothing inside a delivery, the first one too, only in the frame after it', async () => {
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    layOut();
-    boxWidth = 150;
-    const laidOut = Element.prototype.getBoundingClientRect;
-    let lineReads = 0;
-    Element.prototype.getBoundingClientRect = function getBoundingClientRect(this: Element) {
-      if (this.hasAttribute('data-line')) lineReads += 1;
-      return laidOut.call(this);
-    } as Element['getBoundingClientRect'];
-
-    resize();
-    expect(lineReads).toBe(0);
-
-    await nextFrame();
-    expect(lineReads).toBeGreaterThan(0);
-    expect(fit()).toBe('stack');
-  });
-
-  it('measures nothing for a sample gone to nothing, which is the shelf being hidden', async () => {
-    // A hidden shelf has nothing to fit, and its sample coming back is a
-    // resize of its own, which measures then. The stub still lays the lines
-    // out, wider now, so a measure here would show as a stack.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('line');
-
-    lineWidthOf = () => 150;
-    resample(0);
-    await nextFrame();
-    expect(fit()).toBe('line');
-
-    resample(80);
-    await nextFrame();
-    expect(fit()).toBe('stack');
-  });
-
-  it('fits nothing while hidden, so it comes back in the fit it left in', async () => {
-    // display:none takes the lines box to 0, where every line is too wide: a
-    // fit there would write the stack, and the shelf's return would paint it
-    // for a frame before the frame after put the line back.
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await firstDelivery();
-    expect(fit()).toBe('line');
-
-    boxWidth = 0;
-    deliver([probe(), 0], [sample(), 0]);
-    await nextFrame();
-    expect(fit()).toBe('line');
-
-    boxWidth = 250;
-    deliver([probe(), 250], [sample(), 70]);
-    await nextFrame();
-    expect(fit()).toBe('line');
-  });
-
-  it('watches its probe and its sample, and nothing whose size the fit decides', () => {
-    // Not the lines: a stacked line stretches across the column, so the text
-    // changing size resized nothing there, and a line resizing in a frame the
-    // column also moved could not be told from a drag.
-    seed({ braindumpGroupBy: 'project' });
-    renderBraindump();
-    const watchesExactlyTheTwo = () => {
-      const { els } = shelfObserver();
-      expect(els).toHaveLength(2);
-      expect(els).toContain(probe());
-      expect(els).toContain(sample());
-    };
-    watchesExactlyTheTwo();
-
-    act(() =>
-      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
-    );
-    watchesExactlyTheTwo();
-  });
-
-  it('samples the line in its own type, out of flow and unbreakable, and adds no text', () => {
-    // Its width has to answer to the font, to spacing and to the rem, and never
-    // to the column: out of flow, unbreakable, pinned at the root's top-left
-    // corner and never stretched from it, which is why the list is exact. The
-    // rem of padding stands for the gaps and dots, which are sized in rem.
-    // Phrase and padding both come through ::before, so the shelf's text content
-    // stays the visible text; aria-hidden and invisible keep the sample out of
-    // the accessibility tree, and nothing about it shows or takes a pointer.
-    seed({ braindumpGroupBy: 'project' });
-    renderBraindump();
-    const s = sample();
-
-    expect(s.parentElement).toBe(shelf());
-    // One string: jest-dom's types take `exact` only beside a single argument.
-    expect(s).toHaveClass(
-      "pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:pl-4 before:content-['Hide_finished']",
-      { exact: true }
-    );
-    expect(s).toHaveAttribute('aria-hidden', 'true');
-    expect(s.textContent).toBe('');
-  });
-
-  it('re-fits when a value joins a clause that is already showing', () => {
-    // Lines as wide as their text, so a value that adds no line still adds width.
-    lineWidthOf = (line) => (line.textContent ?? '').length * 10;
-    layOut();
-    boxWidth = 60;
-    seed({ braindumpFilters: filters({ priorities: ['high'] }) });
-    renderBraindump();
-    expect(fit()).toBe('line');
-
-    act(() => useViewStore.setState({ braindumpFilters: filters({ priorities: ['high', 'low'] }) }));
-    expect(fit()).toBe('stack');
-  });
-
-  it('measures again when web fonts land, which resizes nothing', async () => {
-    let fontsLand = () => {};
-    const ready = new Promise<void>((resolve) => {
-      fontsLand = resolve;
-    });
-    Object.defineProperty(document, 'fonts', { configurable: true, value: { ready } });
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    expect(fit()).toBe('line');
-
-    // The swapped-in face sets the same text wider.
-    layOut();
-    boxWidth = 150;
-    await act(async () => {
-      fontsLand();
-      await ready;
-    });
-
-    expect(fit()).toBe('stack');
-  });
-
-  it('measures again when the fonts a new text asks for land after it', async () => {
-    // The page's fonts had landed by mount. A text arriving later can ask for
-    // a subset nothing has loaded yet (a Cyrillic goal name, landing with the
-    // planner), and the change of text measures it in the fallback face.
-    let ready = Promise.resolve();
-    Object.defineProperty(document, 'fonts', { configurable: true, get: () => ({ ready }) });
-    layOut();
-    boxWidth = 250;
-    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ hideFinished: true }) });
-    renderBraindump();
-    await act(async () => {
-      await ready;
-    });
-    expect(fit()).toBe('line');
-
-    let fontsLand = () => {};
-    ready = new Promise<void>((resolve) => {
-      fontsLand = resolve;
-    });
-    // Three lines in the fallback face fit where two in Inter did.
-    lineWidthOf = () => 70;
-    act(() =>
-      useViewStore.setState({ braindumpFilters: filters({ hideFinished: true, priorities: ['high'] }) })
-    );
-    expect(fit()).toBe('line');
-
-    lineWidthOf = () => 100;
-    await act(async () => {
-      fontsLand();
-      await ready;
-    });
-    expect(fit()).toBe('stack');
-  });
-
-  it('carries every rule the stack lays out by, as classes on the one DOM', () => {
+  it('carries every rule the paragraph lays out by, as classes', () => {
     // jsdom cannot lay any of this out, so the classes are the assertion, and
-    // each is load-bearing. Without flex-col the stack never stacks. A line that
-    // cannot shrink and wrap cannot share a row between its clauses. A
-    // multi-select that stays shrink-0 holds its one-line width, and one that
-    // cannot wrap or drop below its content clips its values at the column's
-    // edge instead of wrapping them. A value that cannot shrink clips its name
-    // rather than ellipsizing it, and so does a single phrase.
-    seed({
-      braindumpGroupBy: 'project',
-      braindumpSortBy: 'title',
-      braindumpFilters: filters({
-        priorities: ['high'],
-        containers: ['project:Work'],
-        goals: ['g1'],
-        hideFinished: true,
-      }),
-    });
+    // each is load-bearing. A filter is one item of the paragraph that wraps
+    // its values only between one another, and only once it is as wide as a
+    // line: without flex-wrap its values run off the line's end, and without
+    // max-w-full it never stops at the line's width to wrap them. A value
+    // never wraps apart from its ✕ and ellipsizes its name past a line; a
+    // phrase never breaks at all, and ellipsizes past a line too, its ✕ never
+    // shrinking away.
+    everything();
     renderBraindump();
-    const stacked = (...rules: string[]) => rules.map((r) => `group-data-[fit=stack]/shelf:${r}`);
 
-    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass(
-      'flex',
-      'min-w-0',
-      'flex-1',
-      'overflow-hidden',
-      ...stacked('flex-col')
-    );
-    for (const line of lineEls()) {
-      expect(line).toHaveClass('flex', 'shrink-0', ...stacked('shrink', 'min-w-0', 'flex-wrap'));
-    }
-    for (const id of ['group', 'sort', 'hide-finished']) {
-      expect(clause(id)).toHaveClass('flex', 'shrink-0', 'whitespace-nowrap', ...stacked('min-w-0', 'max-w-full'));
-      // The phrase ellipsizes; its ✕, after it, never shrinks away.
-      const [label, x] = Array.from(clause(id)!.children);
-      expect(label).toHaveClass('min-w-0', 'truncate');
-      expect(x).toHaveClass('shrink-0');
-      expect(x).toHaveAttribute('data-shelf-remove');
-    }
-    for (const id of ['priority', 'project', 'goal']) {
-      expect(clause(id)).toHaveClass('flex', 'shrink-0', ...stacked('shrink', 'min-w-0', 'flex-wrap'));
-      const values = clause(id)!.querySelectorAll(':scope > [data-value]');
-      expect(values.length).toBe(clause(id)!.children.length);
+    for (const id of FILTERS) {
+      const run = clause(id)!;
+      expect(run.parentElement).toBe(lines());
+      expect(run.className).toMatch(FLEX_BOX);
+      expect(run).toHaveClass('flex-wrap', 'min-w-0', 'max-w-full');
+      const values = run.querySelectorAll(':scope > [data-value]');
+      expect(values.length).toBe(run.children.length);
       expect(values.length).toBeGreaterThan(0);
       for (const value of values) {
+        expect(value.className).toMatch(FLEX_BOX);
         expect(value).toHaveClass('min-w-0', 'max-w-full');
+        expect(value).not.toHaveClass('flex-wrap');
         const [label, x] = Array.from(value.children);
         expect(label).toHaveClass('min-w-0');
         expect(label.lastElementChild).toHaveClass('truncate');
@@ -1327,24 +1435,26 @@ describe('fit: one line, or the stack', () => {
         expect(x).toHaveAttribute('data-shelf-remove');
       }
     }
-  });
-
-  it('renders, and keeps the fit it measured, with no ResizeObserver at all', () => {
-    const recording = globalThis.ResizeObserver;
-    delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
-    try {
-      seed({ braindumpGroupBy: 'project' });
-      renderBraindump();
-      expect(shelf()).toHaveAttribute('data-fit', 'line');
-    } finally {
-      globalThis.ResizeObserver = recording;
+    for (const id of PHRASES) {
+      const phrase = clause(id)!;
+      expect(phrase.parentElement).toBe(lines());
+      expect(phrase.className).toMatch(FLEX_BOX);
+      expect(phrase).toHaveClass('min-w-0', 'max-w-full');
+      expect(phrase).not.toHaveClass('flex-wrap');
+      const unit = wordsIn(phrase).parentElement!;
+      expect(unit.className).toMatch(FLEX_BOX);
+      expect(unit).toHaveClass('min-w-0', 'max-w-full');
+      const [label, x] = Array.from(unit.children);
+      expect(label).toHaveClass('min-w-0', 'truncate');
+      expect(x).toHaveClass('shrink-0');
+      expect(x).toHaveAttribute('data-shelf-remove');
     }
   });
 });
 
 describe('the two mounts', () => {
-  it('gives the phone 28px targets and leaves the sidebar at its own density', () => {
-    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+  it('gives the phone 28px targets, and the sidebar the same only under a coarse pointer', () => {
+    seed(fourToTakeOff());
 
     renderBraindump('mobile');
     expect(opener()).toHaveClass(
@@ -1362,38 +1472,146 @@ describe('the two mounts', () => {
     );
     // 14px wide, reaching 7px right and only the 4px gap left, so a tap on
     // the words beside it still opens the menu.
+    expect(removeXs()).toHaveLength(4);
     for (const x of removeXs()) {
       expect(x).toHaveClass(
-        'w-3.5',
+        'w-[14px]',
         'relative',
         'before:absolute',
-        'before:-left-1',
+        'before:-left-[4px]',
         'before:-right-[7px]',
         'before:-inset-y-[5px]',
         "before:content-['']"
       );
     }
-    // The lines box clips, so it carries the reach's 5px inside it.
-    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('-my-[5px]', 'py-[5px]');
-    // And the rows a line or a list wraps into keep that 5px between them, or
-    // one row's reach lies over the next row's words.
-    expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass(
-      '[&_[data-clause]]:gap-y-[5px]',
-      '[&_[data-line]]:gap-y-[5px]'
-    );
-    // The phone tab has no collapsing column to hold a fit through.
+    // Nothing clips a reach: no box between a target and the shelf's own
+    // edge, the shelf's included, cuts off what hangs past the target.
+    for (const target of [...removeXs(), resetX(), opener()]) expect(clippersAbove(target)).toEqual([]);
+    // The phone tab has no collapsing column to ride out.
     expect(shelf().style.minWidth).toBe('');
     cleanup();
 
     renderBraindump('sidebar');
+    // No reach at rest, so the sidebar keeps its density…
     expect(opener()).not.toHaveClass('before:absolute');
     expect(resetX()).not.toHaveClass('before:absolute');
+    expect(removeXs()).toHaveLength(4);
     for (const x of removeXs()) expect(x).not.toHaveClass('before:absolute');
-    // No reach, so no gap to keep for one: the sidebar keeps its density.
-    expect(shelf().querySelector('[data-shelf-lines]')).not.toHaveClass('[&_[data-clause]]:gap-y-[5px]');
-    expect(shelf().querySelector('[data-shelf-lines]')).not.toHaveClass('[&_[data-line]]:gap-y-[5px]');
+    // …and a tablet on the desktop shell gets the phone's from the stylesheet,
+    // so it never paints a frame of the pointer layout first.
+    expect(opener()).toHaveClass(
+      'pointer-coarse:before:absolute',
+      'pointer-coarse:before:inset-x-0',
+      'pointer-coarse:before:-inset-y-[5px]',
+      "pointer-coarse:before:content-['']"
+    );
+    expect(resetX()).toHaveClass(
+      'pointer-coarse:relative',
+      'pointer-coarse:before:absolute',
+      'pointer-coarse:before:-inset-x-[6px]',
+      'pointer-coarse:before:-inset-y-[5px]',
+      "pointer-coarse:before:content-['']"
+    );
+    for (const x of removeXs()) {
+      expect(x).toHaveClass(
+        'pointer-coarse:before:absolute',
+        'pointer-coarse:before:-left-[4px]',
+        'pointer-coarse:before:-right-[7px]',
+        'pointer-coarse:before:-inset-y-[5px]',
+        "pointer-coarse:before:content-['']"
+      );
+    }
     // The narrowest column, less the capsule's 10px sides.
     expect(shelf().style.minWidth).toBe(`${SIDEBAR_MIN_WIDTH - 20}px`);
+  });
+
+  it('draws a ✕ on a pointer only under its setting or on keyboard focus, and takes no hit until then', () => {
+    everything();
+    renderBraindump();
+    expect(removeXs()).toHaveLength(8);
+    for (const x of removeXs()) {
+      // At rest, clear ink AND no hit: the gaps between the settings are the
+      // opener's, and a click there can never land on a ✕ that was not drawn.
+      // A colour, never an opacity, with no plain ink beside it to outrank it.
+      expect(x).toHaveClass('text-transparent', 'pointer-events-none');
+      expect(x).not.toHaveClass('text-muted-foreground');
+      expect(x).not.toHaveClass('pointer-events-auto');
+      // Drawn, and hit, while its setting is under the pointer, or on keyboard focus.
+      expect(x).toHaveClass(
+        'group-hover/unit:text-muted-foreground',
+        'group-hover/unit:pointer-events-auto',
+        'focus-visible:text-muted-foreground',
+        'focus-visible:pointer-events-auto'
+      );
+      // Focused AND under the pointer, the full ink a plain hover gives: the
+      // focus rule's muted ink comes later in the sheet and would outrank it.
+      expect(x).toHaveClass('hover:focus-visible:text-foreground');
+      // Forced colours paint the clear ink in a system colour, so every ✕ is
+      // drawn at rest there; it takes its hit at rest too, ink and hits together.
+      expect(x).toHaveClass('forced-colors:pointer-events-auto');
+      // Out of flow, in the gap after its words, from the edge of the very
+      // setting whose hover draws it.
+      expect(x).toHaveClass('absolute', 'left-full', 'top-0');
+      const unit = x.parentElement!;
+      expect(unit).toHaveClass('group/unit', 'relative');
+      expect(unit.querySelector(':scope > [data-chip-label]')).not.toBeNull();
+      // It hangs past its words — the last on a line into the shelf's inset —
+      // so nothing between it and the shelf's edge may clip it.
+      expect(clippersAbove(x)).toEqual([]);
+      // Under a coarse pointer, which never hovers, it is the phone's ✕: in
+      // flow, drawn, and hit.
+      expect(x).toHaveClass(
+        'pointer-coarse:relative',
+        'pointer-coarse:left-auto',
+        'pointer-coarse:top-auto',
+        'pointer-coarse:ml-[4px]',
+        'pointer-coarse:pointer-events-auto',
+        'pointer-coarse:text-muted-foreground'
+      );
+    }
+  });
+
+  it('draws every ✕ on the phone, in flow after its words, where nothing hovers', () => {
+    touch.current = true;
+    everything();
+    renderBraindump('mobile');
+    expect(removeXs()).toHaveLength(8);
+    for (const x of removeXs()) {
+      expect(x).toHaveClass('relative', 'ml-[4px]', 'text-muted-foreground');
+      // Takes a tap, whichever class says so: its unit's does today.
+      expect(pointerAtRest(x)).toBe('auto');
+      // None of the pointer's: nothing clear at rest, and nothing waiting on a
+      // hover or a focus to be drawn.
+      for (const cls of ['absolute', 'left-full', 'top-0', 'text-transparent', 'pointer-events-none']) {
+        expect(x).not.toHaveClass(cls);
+      }
+      expect(x.className).not.toMatch(/group-hover|focus-visible:(text|pointer)|pointer-coarse:/);
+    }
+  });
+
+  it("lights a setting's words under the pointer or while its ✕ has keyboard focus, on a pointer only", () => {
+    everything();
+    renderBraindump();
+    expect(shelf().querySelectorAll('[data-chip-label]')).toHaveLength(8);
+    for (const words of shelf().querySelectorAll('[data-chip-label]')) {
+      expect(words).toHaveClass(
+        'group-hover/unit:text-foreground',
+        'group-has-[:focus-visible]/unit:text-foreground'
+      );
+    }
+    // The lead words keep their own muted ink, which the hover does not reach.
+    const lead = wordsIn(clause('group')!).firstElementChild!;
+    expect(lead).toHaveTextContent(/^Grouped by$/);
+    expect(lead).toHaveClass('text-muted-foreground');
+    expect(lead.className).not.toMatch(/group-hover|group-has/);
+    cleanup();
+
+    // On the phone nothing hovers, and a tap opens the sheet over the words at once.
+    renderBraindump('mobile');
+    expect(shelf().querySelectorAll('[data-chip-label]')).toHaveLength(8);
+    for (const words of shelf().querySelectorAll('[data-chip-label]')) {
+      expect(words.className).not.toMatch(/group-hover|group-has/);
+    }
   });
 
   it('is named by its own text, and described with the nouns the glyphs stand for', () => {
@@ -1416,6 +1634,13 @@ describe('the two mounts', () => {
     const onScreen = Array.from(shelf().querySelectorAll('[data-chip-label]'), (l) => l.textContent ?? '');
     expect(words(onScreen.join(' '))).toEqual(words(opener().textContent ?? ''));
     expect(opener()).not.toHaveAttribute('aria-label');
+    // Said, and never drawn: the copy is sr-only and the description hidden,
+    // so neither paints the text a second time under the words. The name and
+    // the description compute the same either way, so only the class and the
+    // attribute can tell.
+    expect(opener().children).toHaveLength(1);
+    expect(opener().firstElementChild).toHaveClass('sr-only');
+    expect(document.getElementById(opener().getAttribute('aria-describedby')!)).toHaveAttribute('hidden');
     // Under the words, which let a click through to it, and covering them.
     expect(opener()).toHaveClass('absolute', 'inset-0');
     expect(shelf().querySelector('[data-shelf-lines]')).toHaveClass('pointer-events-none', 'relative');
@@ -1436,10 +1661,10 @@ describe('the two mounts', () => {
   });
 
   it.each([
-    { name: 'reset', x: () => resetX(), tip: 'Reset display' },
-    { name: 'per-setting', x: () => removeXs()[0], tip: 'Remove' },
-  ])("gives the $name × the header's own tooltip on a pointer, never a native title", async ({ x, tip }) => {
-    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+    { name: 'Reset button', x: () => resetX(), tip: 'Reset display' },
+    { name: 'per-setting ✕', x: () => removeXs()[0], tip: 'Remove' },
+  ])("gives the $name the header's own tooltip on a pointer, never a native title", async ({ x, tip }) => {
+    seed(fourToTakeOff());
     renderBraindump();
     // A native title as well would fire two tooltips for one hover.
     expect(x()).not.toHaveAttribute('title');
@@ -1448,13 +1673,14 @@ describe('the two mounts', () => {
     expect(await screen.findByRole('tooltip')).toHaveTextContent(tip);
   });
 
-  // The sidebar's stack has the canvas's overlap too (a ×'s tip over the × on
-  // the line below), so its tips let a click through as well.
+  // The sidebar's paragraph wraps as the canvas's does, so a tip there hangs
+  // over the line below too (a ✕'s over the ✕ under it), and lets a click
+  // through to it as well.
   it.each([
-    { name: 'reset', x: () => resetX() },
-    { name: 'per-setting', x: () => removeXs()[0] },
-  ])('lets a click through its $name ×’s tip in the sidebar too', async ({ x }) => {
-    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+    { name: 'Reset button', x: () => resetX() },
+    { name: 'per-setting ✕', x: () => removeXs()[0] },
+  ])('lets a click through the tip of the $name in the sidebar too', async ({ x }) => {
+    seed(fourToTakeOff());
     renderBraindump();
     fireEvent.pointerEnter(x());
     fireEvent.pointerMove(x());
@@ -1466,11 +1692,11 @@ describe('the two mounts', () => {
   });
 
   it.each([
-    { name: 'reset', x: () => resetX() },
-    { name: 'per-setting', x: () => removeXs()[0] },
-  ])('gives the phone $name × no tooltip, as the rest of that header has none', async ({ x }) => {
+    { name: 'Reset button', x: () => resetX() },
+    { name: 'per-setting ✕', x: () => removeXs()[0] },
+  ])('gives the phone $name no tooltip, as the rest of that header has none', async ({ x }) => {
     touch.current = true;
-    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title' });
+    seed(fourToTakeOff());
     renderBraindump('mobile');
     fireEvent.pointerEnter(x());
     fireEvent.pointerMove(x());
