@@ -86,13 +86,23 @@ test.describe('Layouts: Notebook', () => {
     await expect(page.getByTestId('header-next')).toBeVisible();
     // Capture is the page's last line.
     await expect(page.locator('[data-dock-page] input')).toHaveAttribute('placeholder', 'write a line…');
-    // The title loses its inset, so the Display shelf under it must too, or its
-    // line starts 15px right of the title it sits under. It shows only while a
-    // display option is off its default.
-    const shelf = book.getByTestId('display-shelf-braindump');
-    if (await shelf.count()) {
-      await expect(shelf).toHaveCSS('padding-left', '0px');
-    }
+  });
+
+  test("the braindump's Display shelf lines up with its title", async ({ page }) => {
+    // The shelf shows only while a display option is off its default, so sort
+    // the braindump by title. An init script, not a one-off write: login's own
+    // init script re-seeds dsul-view on every load, and this one runs after it.
+    await page.addInitScript(() => {
+      const blob = JSON.parse(localStorage.getItem('dsul-view') ?? '{"state":{},"version":1}');
+      blob.state = { ...blob.state, braindumpSortBy: 'title' };
+      localStorage.setItem('dsul-view', JSON.stringify(blob));
+    });
+    await reloadApp(page);
+    // The title loses its inset, so the shelf under it must too, or its line
+    // starts 15px right of the title it sits under.
+    const shelf = page.locator('[data-book]').getByTestId('display-shelf-braindump');
+    await expect(shelf).toBeVisible();
+    await expect(shelf).toHaveCSS('padding-left', '0px');
   });
 
   test('the page tabs switch scope, and the ribbon marks today only', async ({ page }) => {
