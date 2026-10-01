@@ -1,6 +1,14 @@
 'use client';
 
-import { useEffect, useId, useRef, useState, type FormEvent, type KeyboardEvent } from 'react';
+import {
+  useEffect,
+  useId,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type FormEvent,
+  type KeyboardEvent,
+} from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { formatDistanceToNowStrict } from 'date-fns';
@@ -12,6 +20,7 @@ import { ModelPicker } from './model-picker';
 import { useAIConnectionStore, useAICapabilities } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { revealChat } from '@/lib/open-chat';
+import { getDesktopBridge } from '@/lib/desktop';
 import { useUIStore } from '@/lib/ui-store';
 import {
   MODEL_PROVIDERS,
@@ -49,6 +58,22 @@ import { cn } from '@/lib/utils';
 
 const OPENROUTER_START = '/api/ai/openrouter/start';
 const UNAVAILABLE_COPY = 'Connecting a model isn’t available on this server yet.';
+
+const noopSubscribe = () => () => {};
+const isDesktopApp = () => getDesktopBridge() !== null;
+
+/**
+ * Whether this page is inside the desktop app (electron/). OpenRouter's sign-in
+ * can't finish there: the shell sends openrouter.ai to the system browser, and
+ * the callback then lands in a browser that has neither the PKCE cookie (it is
+ * in the app's cookie jar) nor, often, a dsul session. So the app offers the
+ * key path only. A connection belongs to the account, so one made by signing
+ * in from a browser works in the app too. Read as app/login/page.tsx reads it,
+ * so the server render and hydration agree.
+ */
+function useInDesktopApp(): boolean {
+  return useSyncExternalStore(noopSubscribe, isDesktopApp, () => false);
+}
 
 /** What `/api/ai/openrouter/callback` reports back through `?connect=`. */
 type FlowResult = 'ok' | 'denied' | 'expired' | 'failed' | 'busy' | 'unavailable';
@@ -519,6 +544,7 @@ function ConnectForm({
 }) {
   const uid = useId();
   const busy = useAIConnectionStore((s) => s.busy === 'connect');
+  const inDesktopApp = useInDesktopApp();
   const [provider, setProvider] = useState<ModelProviderId>(
     () => MODEL_PROVIDERS.find((p) => p !== exclude) ?? 'openai'
   );
@@ -574,29 +600,41 @@ function ConnectForm({
         </p>
       )}
 
-      <div className="bg-secondary/60 flex flex-col gap-3 rounded-[6px] p-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="min-w-0">
-          <p className="text-foreground text-sm font-medium">Sign in with OpenRouter</p>
-          <p className="text-muted-foreground text-xs">
-            One account for hundreds of models, including free ones. Nothing to copy or paste.
-          </p>
-        </div>
-        <a
-          href={OPENROUTER_START}
-          data-testid="mcp-openrouter-signin"
-          className={cn(buttonVariants({ size: 'sm' }), 'shrink-0 self-start sm:self-auto')}
+      {inDesktopApp ? (
+        <p
+          className="text-muted-foreground max-w-[60ch] text-xs leading-relaxed"
+          data-testid="mcp-openrouter-browser"
         >
-          Sign in with OpenRouter
-        </a>
-      </div>
+          To sign in with OpenRouter instead of pasting a key, connect from dsul in your browser.
+          The connection works here too.
+        </p>
+      ) : (
+        <>
+          <div className="bg-secondary/60 flex flex-col gap-3 rounded-[6px] p-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="min-w-0">
+              <p className="text-foreground text-sm font-medium">Sign in with OpenRouter</p>
+              <p className="text-muted-foreground text-xs">
+                One account for hundreds of models, including free ones. Nothing to copy or paste.
+              </p>
+            </div>
+            <a
+              href={OPENROUTER_START}
+              data-testid="mcp-openrouter-signin"
+              className={cn(buttonVariants({ size: 'sm' }), 'shrink-0 self-start sm:self-auto')}
+            >
+              Sign in with OpenRouter
+            </a>
+          </div>
 
-      <div className="flex items-center gap-3" aria-hidden>
-        <span className="bg-border h-px flex-1" />
-        <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
-          Or paste a key
-        </span>
-        <span className="bg-border h-px flex-1" />
-      </div>
+          <div className="flex items-center gap-3" aria-hidden>
+            <span className="bg-border h-px flex-1" />
+            <span className="text-muted-foreground text-[10px] font-medium tracking-wider uppercase">
+              Or paste a key
+            </span>
+            <span className="bg-border h-px flex-1" />
+          </div>
+        </>
+      )}
 
       <form
         onSubmit={submit}
@@ -807,6 +845,10 @@ function ConnectedCard({
   const name = providerName(model.provider, model.baseUrl);
   const host = model.provider === 'custom' ? hostOf(model.baseUrl) : null;
   const oauth = model.authMethod === 'oauth';
+  // A sign-in is renewed by signing in again, except in the desktop app, where
+  // that flow can't finish (useInDesktopApp): there a pasted key replaces it.
+  const inDesktopApp = useInDesktopApp();
+  const signInAgain = oauth && !inDesktopApp;
   const failing = model.status === 'failing';
   const unreadable = failing && model.problem === 'key_unreadable';
   const needsModel = !failing && !model.model;
@@ -850,7 +892,7 @@ function ConnectedCard({
     });
   };
 
-  const replaceAction = oauth ? (
+  const replaceAction = signInAgain ? (
     <a
       href={OPENROUTER_START}
       data-testid="mcp-signin-again"
@@ -986,7 +1028,7 @@ function ConnectedCard({
         </>
       )}
 
-      {mode === 'replace' && !oauth && (
+      {mode === 'replace' && !signInAgain && (
         <ReplaceKeyForm model={model} onDone={() => setMode('idle')} />
       )}
 

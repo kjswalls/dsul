@@ -772,6 +772,60 @@ describe('failing', () => {
   }
 });
 
+describe('in the desktop app', () => {
+  // OpenRouter's sign-in can't finish inside the shell (its callback lands in
+  // the system browser, away from the PKCE cookie), so the app never offers it.
+  beforeEach(() => {
+    (window as unknown as { dsulDesktop?: unknown }).dsulDesktop = { version: 1 };
+  });
+  afterEach(() => {
+    delete (window as unknown as { dsulDesktop?: unknown }).dsulDesktop;
+  });
+
+  it('offers the key form only, and says sign-in works from the browser', () => {
+    given(NOTHING_CONNECTED);
+    renderPanel();
+    expect(screen.queryByTestId('mcp-openrouter-signin')).toBeNull();
+    expect(screen.queryByText('Or paste a key')).toBeNull();
+    expect(screen.getByTestId('mcp-openrouter-browser')).toHaveTextContent(
+      'To sign in with OpenRouter instead of pasting a key, connect from dsul in your browser. The connection works here too.'
+    );
+    expect(screen.getByTestId('mcp-connect-form')).toBeInTheDocument();
+  });
+
+  it('a rejected sign-in is replaced with a pasted OpenRouter key, not signed in again', async () => {
+    const failing = view({
+      provider: 'openrouter',
+      authMethod: 'oauth',
+      status: 'failing',
+      problem: 'key_rejected',
+      model: 'openai/gpt-4o-mini',
+    });
+    given(CONNECTED_MODEL, failing);
+    server.put = () => json({ connection: view({ provider: 'openrouter', model: 'openai/gpt-4o-mini' }) });
+    renderPanel();
+    expect(screen.queryByTestId('mcp-signin-again')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Replace key' }));
+    const key = screen.getByTestId('mcp-replace-key') as HTMLInputElement;
+    fireEvent.change(key, { target: { value: SENTINEL } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT')).toBe(true));
+    expect(calls.find((c) => c.method === 'PUT')!.body).toEqual({
+      provider: 'openrouter',
+      apiKey: SENTINEL,
+      model: 'openai/gpt-4o-mini',
+    });
+  });
+
+  it('Use a different provider: the key form, without the sign-in', () => {
+    given(CONNECTED_MODEL, view());
+    renderPanel();
+    fireEvent.click(screen.getByTestId('mcp-switch'));
+    expect(screen.getByTestId('mcp-connect-switch')).toBeInTheDocument();
+    expect(screen.queryByTestId('mcp-openrouter-signin')).toBeNull();
+  });
+});
+
 describe('the ?connect= notice', () => {
   const cases: [string, string][] = [
     ['ok', 'Signed in with OpenRouter. You’re connected.'],
