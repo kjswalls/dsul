@@ -336,6 +336,8 @@ export function OrganizerSection({
   label,
   count,
   action,
+  hint,
+  hintTestId,
   children,
   testId,
   className,
@@ -344,6 +346,10 @@ export function OrganizerSection({
   /** Number or phrase after the dot — `3`, `2 of 5`. Omitted, no dot. */
   count?: ReactNode;
   action?: ReactNode;
+  /** A short, quiet caption on the heading's own line. Takes no row of its own,
+      so a form of empty sections doesn't read as a wall of instructions. */
+  hint?: ReactNode;
+  hintTestId?: string;
   children?: ReactNode;
   testId?: string;
   className?: string;
@@ -354,13 +360,24 @@ export function OrganizerSection({
         {/* Normal case, the count a step lighter beside it — "Items 1/3 today".
             The uppercase eyebrow read as a form's section label; this reads as
             a list's heading, which is what it is. */}
-        <p className="text-muted-foreground text-xs font-medium">
-          {label}
-          {count !== undefined && count !== null && (
-            <>
-              {' '}
-              <span className="text-muted-foreground/70 ml-1 font-normal tabular-nums">{count}</span>
-            </>
+        <p className="text-muted-foreground flex min-w-0 items-baseline gap-2 text-xs font-medium">
+          <span className="shrink-0">
+            {label}
+            {count !== undefined && count !== null && (
+              <>
+                {' '}
+                <span className="text-muted-foreground/70 ml-1 font-normal tabular-nums">{count}</span>
+              </>
+            )}
+          </span>
+          {hint && (
+            <span
+              className="text-muted-foreground/70 min-w-0 truncate font-normal"
+              data-testid={hintTestId}
+              title={typeof hint === 'string' ? hint : undefined}
+            >
+              {hint}
+            </span>
           )}
         </p>
         {action}
