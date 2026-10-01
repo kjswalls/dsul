@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, cleanup, waitFor } from '@testing-library/react';
+import { render, cleanup, waitFor, act } from '@testing-library/react';
 
 /**
  * The item load follows the route, and the identity does not.
@@ -217,5 +217,176 @@ describe('the item load follows the route', () => {
     );
 
     await waitFor(() => expect(initializeStore).toHaveBeenCalledWith(USER));
+  });
+});
+
+/**
+ * Channel secrets, gateway and dismissed nudges render nothing on the planner,
+ * so on a needs-items route they wait for the item load to settle instead of
+ * queueing beside it in the cold-start burst. Settings and extensions do not
+ * wait: one paints the grid and gates /settings, the other drives grouping.
+ */
+describe('the post-load reads wait for the planner', () => {
+  const secrets = vi.fn<(userId: string) => Promise<void>>(async () => {});
+  const gateway = vi.fn<(userId: string) => Promise<void>>(async () => {});
+  const nudges = vi.fn<(userId: string) => Promise<void>>(async () => {});
+  const extensions = vi.fn<(userId: string) => Promise<void>>(async () => {});
+  const deferredStubs = [secrets, gateway, nudges];
+
+  /** The load, held open until the test settles it. */
+  let settle: (outcome?: { error: string }) => void = () => {};
+  const heldLoad = vi.fn((userId: string) => {
+    // As the real one does: raised synchronously, before the first await.
+    usePlannerStore.setState({ userId, isLoading: true });
+    return new Promise<void>((resolve) => {
+      settle = (outcome) => {
+        // A load that bowed out (switched / signed out) leaves the store alone.
+        if (usePlannerStore.getState().userId === userId) {
+          usePlannerStore.setState({ isLoading: false, error: outcome?.error ?? null });
+        }
+        resolve();
+      };
+    });
+  });
+
+  const renderProvider = () =>
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+  beforeEach(() => {
+    pathname = '/';
+    settle = () => {};
+    heldLoad.mockClear();
+    loadSettings.mockClear();
+    for (const fn of [...deferredStubs, extensions]) fn.mockClear();
+    usePlannerStore.getState().clearStore();
+    usePlannerStore.setState({ initializeStore: heldLoad, error: null });
+    useExtensionsStore.setState({ hydrate: extensions });
+    useChannelSecretsStore.setState({ hydrate: secrets });
+    useGatewayStore.setState({ hydrate: gateway });
+    useNudgeStore.setState({ hydrate: nudges });
+    useMorningStore.setState({ settingsHydratedUserId: null });
+  });
+
+  afterEach(() => {
+    cleanup();
+    usePlannerStore.setState({ initializeStore: original.initializeStore, error: null });
+    useExtensionsStore.setState({ hydrate: original.extensions });
+    useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useGatewayStore.setState({ hydrate: original.gateway });
+    useNudgeStore.setState({ hydrate: original.nudges });
+    useMorningStore.setState({ settingsHydratedUserId: null });
+  });
+
+  const settleLoad = async (outcome?: { error: string }) => {
+    await act(async () => {
+      settle(outcome);
+      await Promise.resolve();
+    });
+  };
+
+  it('on the planner: settings and extensions in the burst, the other three after it', async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    await waitFor(() => expect(loadSettings).toHaveBeenCalled());
+    expect(extensions).toHaveBeenCalledWith(USER);
+    for (const fn of deferredStubs) expect(fn).not.toHaveBeenCalled();
+
+    await settleLoad();
+    for (const fn of deferredStubs) {
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(fn).toHaveBeenCalledWith(USER);
+    }
+  });
+
+  it('a FAILED load still releases them — the settings rows do not wait on a retry', async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    await settleLoad({ error: 'boom' });
+    for (const fn of deferredStubs) expect(fn).toHaveBeenCalledWith(USER);
+  });
+
+  it('on a lean route there is no load to wait for', async () => {
+    pathname = '/settings/day';
+    renderProvider();
+    await waitFor(() => {
+      for (const fn of deferredStubs) expect(fn).toHaveBeenCalledWith(USER);
+    });
+    expect(heldLoad).not.toHaveBeenCalled();
+  });
+
+  it('leaving for a lean route mid-load flushes them before the load settles', async () => {
+    const view = renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    for (const fn of deferredStubs) expect(fn).not.toHaveBeenCalled();
+
+    pathname = '/settings/day';
+    view.rerender(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+    for (const fn of deferredStubs) expect(fn).toHaveBeenCalledWith(USER);
+    // The load's own `.then` may ask again later; the stores dedupe that.
+    await settleLoad();
+  });
+
+  it("the boot's double adoption releases each read once", async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    // The SIGNED_IN the client raises at init, beside getSession's answer.
+    act(() => emitAuth('SIGNED_IN', { user: { id: USER } }));
+    expect(heldLoad).toHaveBeenCalledTimes(1);
+    for (const fn of deferredStubs) expect(fn).not.toHaveBeenCalled();
+
+    await settleLoad();
+    for (const fn of deferredStubs) expect(fn).toHaveBeenCalledTimes(1);
+  });
+
+  it("an account switch mid-load: A's settle releases nothing, B's does", async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    const settleA = settle;
+
+    act(() => emitAuth('SIGNED_IN', { user: { id: 'user-b' } }));
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith('user-b'));
+    const settleB = settle;
+
+    await act(async () => {
+      settleA();
+      await Promise.resolve();
+    });
+    for (const fn of deferredStubs) expect(fn).not.toHaveBeenCalled();
+
+    await act(async () => {
+      settleB();
+      await Promise.resolve();
+    });
+    for (const fn of deferredStubs) {
+      expect(fn).toHaveBeenCalledTimes(1);
+      expect(fn).toHaveBeenCalledWith('user-b');
+    }
+  });
+
+  it('a sign-out mid-load: the settle releases nothing', async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    act(() => emitAuth('SIGNED_OUT', null));
+    await settleLoad();
+    for (const fn of deferredStubs) expect(fn).not.toHaveBeenCalled();
+  });
+
+  it('a SIGNED_IN after the load has settled asks again — the stores own the dedupe', async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    await settleLoad();
+    for (const fn of deferredStubs) expect(fn).toHaveBeenCalledTimes(1);
+
+    // A visibility re-emit: what lets channel-secrets retry an un-stamped read.
+    act(() => emitAuth('SIGNED_IN', { user: { id: USER } }));
+    for (const fn of deferredStubs) expect(fn).toHaveBeenCalledTimes(2);
   });
 });

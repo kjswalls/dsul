@@ -69,8 +69,6 @@ vi.mock('@/lib/supabase', () => ({
   createClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) } }),
 }));
 
-vi.mock('@/lib/user-profile', () => ({ isOnboardingComplete: async () => true }));
-
 vi.mock('react-markdown', () => ({
   default: ({ children }: { children: string }) => <div>{children}</div>,
 }));

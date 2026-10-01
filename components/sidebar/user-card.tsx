@@ -20,6 +20,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import { RELAY } from '@/lib/relay-config';
 import { createClient } from '@/lib/supabase';
+import { useSessionUserStore } from '@/lib/session-user-store';
 import { flushSettings } from '@/lib/settings-service';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { cn } from '@/lib/utils';
@@ -49,23 +50,15 @@ export function UserCard() {
   const openDialog = useUIStore((s) => s.openDialog);
   const streaksOn = useStreaksEnabled();
 
-  const [email, setEmail] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
+  // Off the session the provider already adopted — no getUser() round trip
+  // per mount. Display only (lib/session-user-store.ts).
+  const sessionUser = useSessionUserStore((s) => s.user);
+  const email = sessionUser?.email ?? null;
+  const displayName = sessionUser?.displayName ?? null;
+  const avatarUrl = sessionUser?.avatarUrl ?? null;
   const prevStreak = useRef<number | null>(null);
   const burstTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [burst, setBurst] = useState(false);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setEmail(user.email ?? null);
-        setDisplayName(user.user_metadata?.full_name ?? user.user_metadata?.name ?? null);
-        setAvatarUrl(user.user_metadata?.avatar_url ?? user.user_metadata?.picture ?? null);
-      }
-    });
-  }, []);
 
   const handleSignOut = async () => {
     // Settings writes are debounced 500ms. Anything still buffered has to land

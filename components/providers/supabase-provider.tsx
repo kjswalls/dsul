@@ -15,12 +15,16 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
+import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
+import { useUIStore } from '@/lib/ui-store';
 import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
+import { leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { routeNeedsItems } from '@/lib/route-data';
 import { useTheme } from 'next-themes';
 import type { TimeBucket } from '@/lib/planner-types';
+import type { User } from '@supabase/supabase-js';
 
 export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const initializeStore = usePlannerStore((s) => s.initializeStore);
@@ -57,6 +61,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
    * to ask for the same load the auth path would have asked for.
    */
   const loadPlannerRef = useRef<((userId: string) => void) | null>(null);
+  /** Its sibling for the post-load reads — see hydrateAfterLoad. */
+  const hydrateAfterLoadRef = useRef<((userId: string) => void) | null>(null);
 
   /**
    * setTheme, held at arm's length from the auth effect below.
@@ -287,6 +293,39 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
      * account switch with no intervening SIGNED_OUT is not stranded on the
      * previous account's data.
      */
+    /**
+     * The reads nothing on the planner's first paint consumes, held until the
+     * item load has settled instead of joining it.
+     *
+     * On a cold database every request in the first burst queues at the
+     * gateway, so each one that rides beside the seven-table load delays the
+     * grid. These three render nothing there: which channel credentials are
+     * SET and which gateway is configured are read only by /settings, and the
+     * dismissed-nudge set only by useOneTimeNudge — and a nudge has no
+     * business firing before the items it is about exist. hydrateSettings and
+     * the extensions store stay in the burst (adoptUser): one paints the grid
+     * and gates /settings, the other drives grouping and streaks.
+     *
+     * Each store dedupes its own call (channel-secrets stamps before its
+     * await; gateway and nudges hold an in-flight claim), so the few places
+     * that can ask twice — the load's `.then` and the navigation effect, a
+     * boot's double adoption — cost nothing. Same fire-and-forget posture as
+     * before: none of them can fail the data load.
+     *
+     * `hydrate` is read off getState() AT CALL TIME, never captured: the
+     * provider tests stub it through setState.
+     */
+    const hydrateAfterLoad = (userId: string) => {
+      useChannelSecretsStore.getState().hydrate(userId);
+      useGatewayStore.getState().hydrate(userId);
+      useNudgeStore.getState().hydrate(userId);
+    };
+    /** "Has THIS account's load landed (ok or failed) and is it still on screen?" */
+    const plannerSettledFor = (userId: string) => {
+      const s = usePlannerStore.getState();
+      return s.userId === userId && !s.isLoading;
+    };
+
     const loadPlanner = (userId: string) => {
       if (loadedUserId.current === userId) return;
       loadedUserId.current = userId;
@@ -311,6 +350,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       initializeStore(userId).then(
         () => {
           const state = usePlannerStore.getState();
+          // The deferred reads go out on a FAILED load too, ahead of the unlatch
+          // below: the settings rows they fill must not wait on a retry that
+          // may never come. `plannerSettledFor` is also what bows out a load
+          // that no longer speaks for the screen — superseded by a newer load
+          // of the same account (whose own `.then` does this), switched away
+          // from (userId moved on), or signed out of (clearStore nulled it).
+          if (plannerSettledFor(userId)) hydrateAfterLoad(userId);
           if (state.error && state.userId === userId && loadedUserId.current === userId) {
             loadedUserId.current = null;
             return;
@@ -325,6 +371,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // is what stops the latch becoming permanent again.
         () => {
           if (loadedUserId.current === userId) loadedUserId.current = null;
+          if (plannerSettledFor(userId)) hydrateAfterLoad(userId);
         }
       );
     };
@@ -346,8 +393,16 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
      * Then the loads, which must NOT precede it — a clear landing on top of a
      * freshly hydrated store would reset the values that just arrived.
      */
-    const adoptUser = (userId: string) => {
+    const adoptUser = (user: User) => {
+      const userId = user.id;
       adoptLocalState(userId);
+      // The name and avatar the chrome shows, off the user this session
+      // already holds — so no widget has to spend a GET /auth/v1/user on its
+      // own mount. After the local-state adoption, before the loads, and in
+      // the same synchronous block as identifyUser: an A→B switch replaces the
+      // profile in the same tick as the planner wipe. Display only — see
+      // lib/session-user-store.ts.
+      useSessionUserStore.getState().setUser(sessionUserFrom(user));
       // WHO, before anything that needs to know. `userId` on planner-store used
       // to be stamped only by initializeStore, which made "signed in" and "the
       // item fetch has begun" the same fact — so a surface that needed only the
@@ -377,30 +432,44 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // gates the overdue sweep, and extensions must never be able to fail
       // the data load.
       useExtensionsStore.getState().hydrate(userId);
-      // Which channel credentials are SET — never their values. Same
-      // fire-and-forget posture: a settings page that cannot say "saved" is a
-      // cosmetic loss; a planner that failed to load is not.
-      useChannelSecretsStore.getState().hydrate(userId);
-      // Same posture again: which gateway is configured, never its token.
-      useGatewayStore.getState().hydrate(userId);
-      // One-time nudges' dismissed-forever set. Same fire-and-forget posture:
-      // a nudge that fails to load stays inert, never a failed data load.
-      useNudgeStore.getState().hydrate(userId);
+      // Channel secrets, gateway, dismissed nudges: AFTER the load, not beside
+      // it — see hydrateAfterLoad. Where no load runs (a lean route), or it
+      // has already settled (a visibility SIGNED_IN, a retry event), there is
+      // nothing to wait for; that second case is also what keeps
+      // channel-secrets' "un-stamp and retry on the next auth event" contract.
+      //
+      // MUST follow loadPlanner. On a needs-items route a pending load reads
+      // as unsettled here only because initializeStore raises isLoading
+      // synchronously before its first await (and identifyUser does on a
+      // switch) — so the check is left to the load's own `.then`. A boot's
+      // double adoption (getSession + the client's SIGNED_IN) dedupes the same
+      // way: the second loadPlanner is latched, the load is still pending, and
+      // only the one `.then` calls through.
+      if (!needsItemsRef.current || plannerSettledFor(userId)) hydrateAfterLoad(userId);
     };
 
     // Published for the navigation effect below, which needs the SAME load —
     // latch, failure unlatch and first-run seeding included — rather than a
     // second copy of it.
     loadPlannerRef.current = loadPlanner;
+    hydrateAfterLoadRef.current = hydrateAfterLoad;
 
     // Check current session on mount
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) adoptUser(session.user.id);
+      if (session?.user) adoptUser(session.user);
     });
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
-        adoptUser(session.user.id);
+        adoptUser(session.user);
+      } else if ((event === 'USER_UPDATED' || event === 'TOKEN_REFRESHED') && session?.user) {
+        // PROFILE ONLY. Never adoptUser, never the loadedUserId /
+        // hydratedUserId latches: a refresh routed through the adoption path
+        // is the re-adopt-on-refresh bug those latches exist to stop (a reload
+        // that wipes the undo stack). And only for the account already shown —
+        // an event naming someone else is not an account switch; SIGNED_IN is.
+        const s = useSessionUserStore.getState();
+        if (s.user?.id === session.user.id) s.setUser(sessionUserFrom(session.user));
       } else if (event === 'SIGNED_OUT') {
         hydratedUserId.current = null;
         loadedUserId.current = null;
@@ -412,6 +481,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
+        useSessionUserStore.getState().clear();
+        // ui-store is a module singleton and outlives the account: a first-run
+        // flag left up here would hand the NEXT account the previous one's
+        // Beacon onboarding (AppShell's watcher also clears it on a "done"
+        // answer for a new account; this covers sign-out with no sign-in).
+        useUIStore.getState().setChatOnboardingActive(false);
         // clearStore only resets the planner's DATA. Everything this browser
         // has persisted ABOUT the account — the Beacon API key and its
         // transcripts, the canvas filters, the morning decay policy, the
@@ -419,6 +494,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // with it. Sign-out is not the only path this runs on (see
         // lib/local-state.ts), but it is the one the user asked for.
         clearUserScopedLocalState();
+        // Last, once everything above is dropped: a session that ended under
+        // the page (a revoked refresh token) has no button pushing /login, and
+        // on '/' the planner would otherwise sit on its loading skeleton for
+        // good. See lib/signed-out-redirect.ts.
+        leaveForLoginIfSignedOutPage();
       }
     });
 
@@ -449,11 +529,19 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
    * are both real: land on / first and `adoptUser` does the load (this runs
    * before the session resolves, sees no user, and correctly does nothing);
    * arrive from a lean route and the stamp is already there.
+   *
+   * The opposite direction rides the same effect: LEAVING for a lean route
+   * flushes the post-load reads (hydrateAfterLoad) that the load would
+   * otherwise have released, since that is the page that shows them.
    */
   useEffect(() => {
-    if (!needsItems) return;
     const userId = usePlannerStore.getState().userId;
-    if (userId) loadPlannerRef.current?.(userId);
+    if (!userId) return;
+    if (needsItems) loadPlannerRef.current?.(userId);
+    // Left for a lean route with the load still in flight (/ → /settings
+    // before it settles): settings reads these now, and the load's `.then`
+    // may be a while. The stores dedupe, so its later call is a no-op.
+    else hydrateAfterLoadRef.current?.(userId);
   }, [needsItems]);
 
   return <>{children}</>;

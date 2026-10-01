@@ -40,6 +40,7 @@ import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { HelpMenu } from '@/components/shell/help-menu';
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { selectPlannerSettled } from '@/lib/planner-ready';
 import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
@@ -65,7 +66,7 @@ import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete } from '@/lib/user-profile';
-import { createClient } from '@/lib/supabase';
+import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileTab } from '@/lib/mobile-nav-store';
 
 function DraggableTaskOverlay({ title, count = 0 }: { title: string; count?: number }) {
@@ -240,25 +241,40 @@ export function AppShell() {
     document.documentElement.dataset.typeMode = typeMode;
   }, [typeMode]);
 
-  // Check onboarding status on mount
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      const uid = data.user?.id;
-      if (!uid) return;
-      const done = await isOnboardingComplete(uid);
-      if (!done) {
-        setTourUserId(uid);
-        setShowTour(true);
-        // Published for the chat surfaces too: Beacon's own first-run Q&A
-        // renders off the same answer, and on a phone its field competes with
-        // the dock's. Seeding it here — the earliest place the answer exists —
-        // means the dock is already standing down by the time the tour's
-        // step 4 switches to the Beacon tab.
-        useUIStore.getState().setChatOnboardingActive(true);
-      }
-    });
-  }, []);
+  // Onboarding status, once the planner load has settled. The account comes
+  // off planner-store (identifyUser) rather than a getUser() round trip of its
+  // own, and the read waits for the load so it stays out of the cold-start
+  // burst. Child effects run before the provider's (see the EOD effect below),
+  // so the first check sees no userId and the subscription catches the rest.
+  // BOTH answers are applied: a "done" for a newly identified account clears
+  // whatever an earlier account left up — see lib/onboarding-watch.ts.
+  useEffect(
+    () =>
+      watchOnboardingAfterLoad({
+        getState: usePlannerStore.getState,
+        subscribe: usePlannerStore.subscribe,
+        isComplete: isOnboardingComplete,
+        onResult: (uid, needed) => {
+          if (needed) {
+            setTourUserId(uid);
+            setShowTour(true);
+          } else {
+            setShowTour(false);
+            setTourUserId(null);
+          }
+          // Published for the chat surfaces too: Beacon's own first-run Q&A
+          // renders off the same answer, and on a phone its field competes
+          // with the dock's. Seeding it here — the earliest place the answer
+          // exists — means the dock is already standing down by the time the
+          // tour's step 4 switches to the Beacon tab. A "done" answer lowers it
+          // only for ANOTHER account: the tour marks completion before Beacon's
+          // Q&A is answered, and a remount (/ → /settings → /) reads "done" for
+          // the account still mid-Q&A — see chatOnboardingUserId in ui-store.
+          useUIStore.getState().applyChatOnboardingAnswer(uid, needed);
+        },
+      }),
+    []
+  );
 
   // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
   useEffect(() => {
@@ -279,8 +295,7 @@ export function AppShell() {
     // never re-snapshots — leaving a permanently empty review for anyone who
     // arrived by tapping the push notification. `userId` is set in the same
     // set() as isLoading:true, so it is the signal that a load has begun.
-    const isLoaded = (s: { userId: string | null; isLoading: boolean }) =>
-      !!s.userId && !s.isLoading;
+    const isLoaded = selectPlannerSettled;
 
     if (isLoaded(usePlannerStore.getState())) {
       openAndClear();
@@ -547,7 +562,9 @@ export function AppShell() {
     return null;
   }, [activeDialog]);
 
-  // Render skeleton during SSR to avoid hydration mismatch from dnd-kit
+  // Render skeleton during SSR to avoid hydration mismatch from dnd-kit. This
+  // is the pre-mount half; PlannerSkeleton (inside ViewRouter and the
+  // braindump) is the post-mount half that knows the persisted scope/layout.
   if (!mounted) {
     return (
       <>

@@ -4,6 +4,7 @@ import { useLayoutEffect, useState } from 'react';
 import { ChevronsLeftRight, ChevronsRightLeft } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { useViewStore } from '@/lib/view-store';
+import { usePlannerSettled } from '@/lib/planner-ready';
 import {
   MAX_WEEK_DAYS,
   WEEK_GEOMETRY,
@@ -77,6 +78,7 @@ export function WeekScale({ className }: { className?: string }) {
   const setWeekDaysVisible = useViewStore((s) => s.setWeekDaysVisible);
 
   const visible = scope === 'week' && isScalableLayout(layout);
+  const settled = usePlannerSettled();
 
   // The readout needs the same scrollport width the views derive from, and this
   // control lives outside their <ScrollArea> — so it finds the viewport by role
@@ -90,6 +92,13 @@ export function WeekScale({ className }: { className?: string }) {
     // fresh <ScrollArea> each time. A stale width is never cleared on the way
     // out — the control is unmounted then anyway, and re-measuring on the way
     // back in is one layout pass.
+    //
+    // And on the planner's pending → settled edge: the week views mount their
+    // ScrollArea only once the load has landed (ViewRouter shows a skeleton in
+    // their place until then), while this control lives in the header and
+    // mounts at once. Without `settled` in the deps, a cold load straight into
+    // a week layout runs this effect against the skeleton, finds no viewport,
+    // and never looks again until the layout changes.
     const viewport = document.querySelector<HTMLElement>(
       '[data-tour="timeline"] [data-slot="scroll-area-viewport"]'
     );
@@ -102,7 +111,7 @@ export function WeekScale({ className }: { className?: string }) {
     const ro = new ResizeObserver(measure);
     ro.observe(viewport);
     return () => ro.disconnect();
-  }, [visible, layout]);
+  }, [visible, layout, settled]);
 
   if (!visible) return null;
 

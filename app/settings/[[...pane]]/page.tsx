@@ -358,15 +358,15 @@ export default function SettingsPage() {
 
   const replayTour = useCallback(async () => {
     await flushSettings();
-    const supabase = createClient();
-    const { data } = await supabase.auth.getUser();
-    const uid = data.user?.id;
+    // The account the provider already stamped — no getUser() round trip.
+    const uid = userId;
     if (uid) await resetOnboardingComplete(uid);
     // The tour's steps target shell-only DOM and OnboardingTour mounts inside
-    // AppShell, so the only way to replay it is to go where it lives — its
-    // mount effect re-checks completion and opens itself.
+    // AppShell, so the only way to replay it is to go where it lives —
+    // AppShell's onboarding watcher (lib/onboarding-watch.ts) re-checks once
+    // the planner is loaded and opens it.
     router.push('/');
-  }, [router]);
+  }, [router, userId]);
 
   // Wrapped once here rather than inside the manifest record, so the palette
   // and the page cannot ease differently.

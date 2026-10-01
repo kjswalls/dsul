@@ -3,6 +3,7 @@
 import { useMemo } from 'react';
 
 import { usePlannerStore } from './planner-store';
+import { usePlannerSettled } from './planner-ready';
 import { useViewStore, type TypeFilter } from './view-store';
 import {
   EMPTY_VIEW_FILTERS,
@@ -421,7 +422,7 @@ export function useDisplaySummary(surface: DisplaySurface): DisplaySummary {
   const canvasGroupBy = useCanvasGroupBy();
   const braindumpGroupBy = useBraindumpGroupBy();
   const goalsOn = useGoalsEnabled();
-  const loaded = usePlannerStore((s) => !!s.userId && !s.isLoading);
+  const loaded = usePlannerSettled();
   const projects = usePlannerStore((s) => s.projects);
   const goals = usePlannerStore((s) => s.goals);
   const projectColor = usePlannerStore((s) => s.getProjectColor);

@@ -17,6 +17,8 @@ import { KeyCap } from '@/components/planner/organize/primitives';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys } from '@/lib/commands/keys';
 import { usePlannerStore } from '@/lib/planner-store';
+import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
+import { selectPlannerPending, selectPlannerSettled } from '@/lib/planner-ready';
 import { useUIStore, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useViewStore } from '@/lib/view-store';
@@ -492,7 +494,14 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
    * `!isLoading` alone is not loaded (see app-shell.tsx), and a failed load
    * leaves an empty store too.
    */
-  const loaded = usePlannerStore((s) => !!s.userId && !s.isLoading && !s.error);
+  const loaded = usePlannerStore((s) => selectPlannerSettled(s) && !s.error);
+  /**
+   * The list body's own gate: bars until the load lands, so a cold launch
+   * never shows the empty-state poem ("A clear head") over an account that is
+   * about to fill. Pending only — a FAILED load is settled and keeps the poem
+   * beside its Retry notice, which is why this is not `!loaded`.
+   */
+  const pending = usePlannerStore(selectPlannerPending);
   const openTotal = useMemo(() => base.filter((r) => !isRowCompletedOn(r, null)).length, [base]);
   const openShown = useMemo(() => rows.filter((r) => !isRowCompletedOn(r, null)).length, [rows]);
   const narrowed = narrowingClauseCount(braindumpFilters, goalMemberIds) > 0;
@@ -815,33 +824,40 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           // Fill the column only when there is genuinely nothing here — a
           // paused-only sidebar still wants the poem's space collapsed so the
           // Paused strip sits under the header rather than adrift at the foot.
-          shownRows.length === 0 && pausedCount === 0 && 'flex-1',
+          // Not while pending: the skeleton sits where rows will, so the
+          // quick-add card sits under it as it sits under real rows, rather
+          // than jumping from the foot when the load lands.
+          !pending && shownRows.length === 0 && pausedCount === 0 && 'flex-1',
           // The whole list lights only when what is landing will be hidden by
           // the Display filters, so there is no row slot to show instead.
           landingIds.size > 0 && !landingShown && 'ring-2 ring-ring/60'
         )}
       >
         <div className="px-[14px] py-2">
-          {grouped.map((g) =>
-            g.label ? (
-              <GroupSection
-                key={g.key}
-                groupKey={g.key}
-                label={g.label}
-                gate={g.gate}
-                className="pt-5 first:pt-1"
-                forceOpen={landingIds.size > 0 && g.rows.some((r) => landingIds.has(r.item.id))}
-              >
-                {g.rows.map(renderRow)}
-              </GroupSection>
-            ) : (
-              <div key="all" className="space-y-0">
-                {g.rows.map(renderRow)}
-              </div>
+          {pending ? (
+            <PlannerSkeleton variant="braindump" />
+          ) : (
+            grouped.map((g) =>
+              g.label ? (
+                <GroupSection
+                  key={g.key}
+                  groupKey={g.key}
+                  label={g.label}
+                  gate={g.gate}
+                  className="pt-5 first:pt-1"
+                  forceOpen={landingIds.size > 0 && g.rows.some((r) => landingIds.has(r.item.id))}
+                >
+                  {g.rows.map(renderRow)}
+                </GroupSection>
+              ) : (
+                <div key="all" className="space-y-0">
+                  {g.rows.map(renderRow)}
+                </div>
+              )
             )
           )}
 
-          {shownRows.length === 0 && pausedCount === 0 && (
+          {!pending && shownRows.length === 0 && pausedCount === 0 && (
             <div className="relative flex min-h-[220px] flex-col items-center justify-center gap-2 py-12 text-center">
               {RELAY.emptyState && (
                 // pitch matches the dock capsule (20) — tile size derives from it.

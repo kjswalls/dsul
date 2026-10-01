@@ -38,6 +38,8 @@ vi.mock('@/lib/db', async () => {
     fetchRoutines: vi.fn(async () => []),
     fetchSeasons: vi.fn(async () => []),
     fetchGoals: vi.fn(async () => []),
+    // No RPC: the per-table fallback, started synchronously (the fetchers above).
+    loadPlannerData: vi.fn((_u: string, perTable: () => Promise<unknown>) => perTable()),
     createProject: vi.fn(async () => {}),
     adoptContainerMembers: vi.fn(async () => {}),
   };
@@ -293,5 +295,86 @@ describe('the first-run seed', () => {
     expect(result).toBe('refused');
     expect(store().projects).toEqual([]);
     expect(db.createProject).not.toHaveBeenCalled();
+  });
+});
+
+describe('the bundle load (load_planner, migration 050)', () => {
+  const perTableFetchers = () => [
+    db.fetchItems,
+    db.fetchProjects,
+    db.fetchItemTypes,
+    db.fetchRoutines,
+    db.fetchSeasons,
+    db.fetchGoals,
+  ];
+  const bundleData = (ids: string[]) => ({
+    items: ids.map(task),
+    projects: [],
+    itemTypes: [],
+    routines: [],
+    seasons: [],
+    goals: [],
+  });
+
+  beforeEach(() => {
+    for (const fetcher of perTableFetchers()) vi.mocked(fetcher).mockClear();
+    vi.mocked(db.loadPlannerData).mockClear();
+  });
+
+  it('lands without touching a single per-table fetcher', async () => {
+    vi.mocked(db.loadPlannerData).mockImplementationOnce(async () => bundleData(['b1']) as never);
+
+    await store().initializeStore(A);
+
+    for (const fetcher of perTableFetchers()) expect(fetcher).not.toHaveBeenCalled();
+    expect(store().items.map((i) => i.id)).toEqual(['b1']);
+    expect(store().isLoading).toBe(false);
+    expect(store().error).toBeNull();
+    // Arrays, not nulls: every feature the bundle answered for is available.
+    expect(store().collectionsAvailable).toBe(true);
+    expect(store().goalsAvailable).toBe(true);
+    expect(store().itemTypesAvailable).toBe(true);
+  });
+
+  it('runs all six fetchers when it falls back to the per-table load', async () => {
+    const loading = store().initializeStore(A);
+    // The default stub delegates synchronously: the fetchers have started
+    // before anything has been awaited.
+    for (const fetcher of perTableFetchers()) expect(fetcher).toHaveBeenCalledTimes(1);
+    fetchNo(0).resolve([task('t1')]);
+    await loading;
+    expect(store().items.map((i) => i.id)).toEqual(['t1']);
+  });
+
+  it('records a failed load when the bundle rejects', async () => {
+    vi.mocked(db.loadPlannerData).mockImplementationOnce(async () => {
+      throw postgrestError();
+    });
+
+    await store().initializeStore(A);
+
+    expect(store().isLoading).toBe(false);
+    expect(store().error).toBe('Failed to load data');
+    expect(store().loadFailedUserId).toBe(A);
+  });
+
+  it('is dropped when a newer load replaced it while it was in flight', async () => {
+    let answer: (data: unknown) => void = () => {};
+    vi.mocked(db.loadPlannerData).mockImplementationOnce(
+      () => new Promise((resolve) => (answer = resolve as typeof answer)) as never
+    );
+
+    const older = store().initializeStore(A);
+    const newer = store().initializeStore(A);
+    await settle();
+
+    answer(bundleData(['stale']));
+    await older;
+    expect(store().items).toEqual([]);
+    expect(store().isLoading).toBe(true);
+
+    fetchNo(0).resolve([task('fresh')]);
+    await newer;
+    expect(store().items.map((i) => i.id)).toEqual(['fresh']);
   });
 });

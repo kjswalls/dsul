@@ -32,6 +32,8 @@ vi.mock('@/lib/db', async (importOriginal) => {
   deleteSeason: vi.fn(async () => {}),
   restoreSeason: vi.fn(async () => {}),
   fetchGoals: vi.fn(async () => []),
+  // No RPC: the per-table fallback, started synchronously (the fetchers above).
+  loadPlannerData: vi.fn((_u: string, perTable: () => Promise<unknown>) => perTable()),
   createGoal: vi.fn(async () => {}),
   updateGoal: vi.fn(async () => {}),
   deleteGoal: vi.fn(async () => {}),
