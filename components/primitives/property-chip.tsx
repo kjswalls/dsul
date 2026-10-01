@@ -21,6 +21,7 @@ export function PropertyChip({
   icon: Icon,
   id,
   ariaLabel,
+  ariaDescribedBy,
   label,
   value,
   display,
@@ -45,6 +46,8 @@ export function PropertyChip({
   id?: string;
   /** An explicit accessible name, for a chip whose visible text is just a value. */
   ariaLabel?: string;
+  /** Points the trigger at a description that lives outside the chip. */
+  ariaDescribedBy?: string;
   /** Shown when `value` is empty — the noun for this property. */
   label: string;
   /** The set value. Empty/undefined renders the unset (dashed) state. */
@@ -124,6 +127,7 @@ export function PropertyChip({
           type="button"
           id={id}
           aria-label={ariaLabel}
+          aria-describedby={ariaDescribedBy}
           disabled={disabled}
           data-testid={testId}
           data-set={isSet || undefined}
@@ -211,6 +215,7 @@ export function ChipOption({
   tone = 'default',
   testId,
   value,
+  ariaLabel,
 }: {
   selected?: boolean;
   onSelect: () => void;
@@ -220,11 +225,14 @@ export function ChipOption({
   testId?: string;
   /** Machine-readable option value, so a test never matches on label copy. */
   value?: string;
+  /** For an option whose visible words are not the whole story ("Reset"). */
+  ariaLabel?: string;
 }) {
   return (
     <button
       type="button"
       onClick={onSelect}
+      aria-label={ariaLabel}
       data-testid={testId}
       data-value={value}
       data-selected={selected || undefined}

@@ -254,10 +254,10 @@ export function useOverdueSweep() {
 
     // ── Gate 4: the feature is switched on ────────────────────────────────────
     // `morningCheckEnabled` is checked too, not just `morningAutoAgeEnabled`.
-    // The settings UI nests both auto-age rows inside `{morningCheckEnabled &&
-    // …}`, so turning the morning check off hides the auto-age switch while
-    // leaving its stored value at `true`. Without this check the user would be
-    // left with an invisible control silently mutating their data.
+    // The settings pane draws auto-age as a chip under the morning check and
+    // hides it while the check is off, leaving its stored value at `true`.
+    // Without this check the user would be left with an invisible control
+    // silently mutating their data.
     if (!morningCheckEnabled || !autoAgeEnabled) return;
 
     // ── Gate 5: the threshold is sane ─────────────────────────────────────────

@@ -255,10 +255,10 @@ function LandingRow({ title, reveal }: { title: string; reveal: boolean }) {
       ref={ref}
       data-testid="braindump-landing"
       aria-hidden
-      className="flex w-full items-center gap-2 rounded-lg bg-primary/10 px-2 py-1.5 ring-1 ring-inset ring-primary/50"
+      className="drop-line flex w-full items-center gap-2 px-2 pb-1.5 pt-2"
     >
-      <span className="h-3.5 w-3.5 flex-shrink-0 rounded-full border border-dashed border-primary/70" />
-      <span className="flex-1 truncate text-sm text-foreground/80">{title}</span>
+      <span className="drop-ghost h-3.5 w-3.5 flex-shrink-0 rounded-[4px] border border-muted-foreground" />
+      <span className="drop-ghost flex-1 truncate text-sm">{title}</span>
     </div>
   );
 }
@@ -830,7 +830,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
           !pending && shownRows.length === 0 && pausedCount === 0 && 'flex-1',
           // The whole list lights only when what is landing will be hidden by
           // the Display filters, so there is no row slot to show instead.
-          landingIds.size > 0 && !landingShown && 'ring-2 ring-ring/60'
+          landingIds.size > 0 && !landingShown && 'drop-armed'
         )}
       >
         <div className="px-[14px] py-2">

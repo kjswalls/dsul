@@ -66,7 +66,7 @@ export function ListDropZone({
       data-dnd-acts={lit ? 'true' : 'false'}
       className={cn(
         'rounded-card transition-colors',
-        lit && 'bg-primary/5 ring-2 ring-ring/50',
+        lit && 'drop-armed',
         className
       )}
     >
