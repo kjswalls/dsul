@@ -1,0 +1,69 @@
+# XcodeGen spec for the dsul iPhone app. The .xcodeproj is generated from this
+# file and never committed: run `xcodegen generate` in ios/ after every pull.
+name: Dsul
+options:
+  bundleIdPrefix: app.dsul
+  deploymentTarget:
+    iOS: "27.0"
+  createIntermediateGroups: true
+settings:
+  base:
+    SWIFT_VERSION: "6.0"
+    DEVELOPMENT_TEAM: ""
+packages:
+  DsulCore:
+    path: DsulCore
+targets:
+  Dsul:
+    type: application
+    platform: iOS
+    sources:
+      - path: Dsul
+    dependencies:
+      - package: DsulCore
+    info:
+      path: Dsul/Info.plist
+      properties:
+        CFBundleDisplayName: dsul
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        UILaunchScreen: {}
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        CADisableMinimumFrameDurationOnPhone: true
+        UTExportedTypeDeclarations:
+          - UTTypeIdentifier: app.dsul.item-ref
+            UTTypeDescription: dsul item reference
+            UTTypeConformsTo:
+              - public.data
+            UTTypeTagSpecification: {}
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.dsul.ios
+        TARGETED_DEVICE_FAMILY: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        CODE_SIGN_STYLE: Automatic
+  DsulTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: DsulTests
+    dependencies:
+      - target: Dsul
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: app.dsul.ios.tests
+schemes:
+  Dsul:
+    build:
+      targets:
+        Dsul: all
+        DsulTests: [test]
+    test:
+      gatherCoverageData: true
+      targets:
+        - DsulTests

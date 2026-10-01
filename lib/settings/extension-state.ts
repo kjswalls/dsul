@@ -1,9 +1,9 @@
 /**
  * What one extension's state reads as, everywhere it is shown.
  *
- * The settings index (components/settings/extension-index.tsx) and the
- * extensions store (/extensions) both print a one-word state beside every
- * extension, and they must never disagree — Beeminder is the extension where
+ * The list of your extensions (components/settings/extension-rail-list.tsx)
+ * and the store's cards (components/extensions/store-card.tsx) both print a
+ * one-word state beside every extension, and they must never disagree — Beeminder is the extension where
  * "On" beside an "Unavailable" pane costs real money. So the rule has exactly
  * one home, here, and both surfaces call it.
  */

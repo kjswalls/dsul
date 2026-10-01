@@ -1,9 +1,14 @@
 # Plugins, Themes & the Store — extensibility across dsul (and future apps)
 
 > **Addendum (2026-10-01): the in-app extensions store is NOT Project C.**
-> The store is the **Browse** tab of Settings → Extensions, beside the plain
-> **List** tab (components/extensions/extension-browse.tsx; `?view=browse`, the
-> tab you used last is remembered; `/extensions` and ⌘K only open it). It is a
+> The store is the body of Settings → Extensions
+> (components/extensions/extension-browse.tsx; `/extensions` and ⌘K only open
+> it), widened rightward to the window's edge. Your own extensions are a
+> sub-list under Extensions in the settings rail
+> (components/settings/extension-rail-list.tsx): Browse, then On, then Off
+> folded, each with a switch that writes the extension's own toggle; on a phone
+> the same list heads the pane. (It was List and Browse tabs for a day; Kirby
+> picked the rail on 2026-10-01.) It is a
 > storefront over the eleven FIRST-PARTY entries in `OFFICIAL_EXTENSIONS`: a
 > featured slot, four shelves grouped by what an extension does for you (`shelf`
 > on the manifest, chip in `?shelf=`), a live preview per extension (inert sample
@@ -13,7 +18,7 @@
 > into the page margin so the rail never moves. The pane gained a header
 > (`components/settings/extension-hero.tsx`): a preview thumbnail beside what
 > changes, needs/cost chips, a maker's note, and "Back to Browse" when you came
-> from the store; the switch is still the pane's own record. (It shipped first as
+> from the store; the rail's switch writes that same record. (It shipped first as
 > its own /extensions page; Kirby asked on 2026-10-01 for it to live in Settings.) Nothing here registers, downloads or runs third-party
 > code — Project C's registry, review and payments questions are untouched.
 >
