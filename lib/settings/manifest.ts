@@ -313,8 +313,20 @@ export interface SettingRecord {
   placeholder?: string | ((ctx: SettingCtx) => string);
   /** Behind the per-pane Advanced disclosure, and excluded from search unless opted in. */
   advanced?: boolean;
-  /** Renders indented under its parent and is disabled while the parent is off. */
+  /**
+   * Shown under its parent only while every ancestor is on — as a chip under
+   * the root row (lib/settings/groups.ts), or as an ordinary row below it when
+   * it cannot be a chip. Hidden, not disabled, while an ancestor is off: the
+   * stored value is untouched and comes back with the parent. Search still
+   * lists it, disabled, so a query never finds less than the manifest holds.
+   */
   dependsOn?: string;
+  /**
+   * Presentation only: a word before the value on a merged chip — the value
+   * half of a switch-plus-value pair ("Auto-clear stale items · after 30 days").
+   * Read nowhere else.
+   */
+  chipPrefix?: string;
   /**
    * The user_settings column, mirrored to `data-setting` on the control.
    * `show_completed_tasks` is already an e2e selector — see tests/e2e/settings.spec.ts.
@@ -926,6 +938,7 @@ export const SETTINGS: SettingRecord[] = [
     description: 'How long an item can sit past due before it is cleared.',
     control: 'enum',
     dependsOn: 'rituals.autoAge',
+    chipPrefix: 'after',
     dbColumn: 'morning_auto_age_days',
     options: [
       { value: '7', label: '7 days' },

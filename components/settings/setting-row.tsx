@@ -37,6 +37,22 @@ import { highlightRuns, type MatchRange } from '@/lib/settings/search';
 const RESET_LABEL = 'Reset to default';
 
 /**
+ * The words a reset says for one label and its default — shared by a row's
+ * reset and a chip's, so the two never drift.
+ */
+export function resetLabel(label: string, fallback: string): { title: string; ariaLabel: string } {
+  return {
+    title: `${RESET_LABEL} · ${fallback}`,
+    ariaLabel: `${label} is changed from its default. ${RESET_LABEL}: ${fallback}`,
+  };
+}
+
+/** The same words for one record — what its row's and its chip's reset say. */
+export function resetLabelFor(record: SettingRecord) {
+  return resetLabel(record.label, displayValue(record, record.defaultValue));
+}
+
+/**
  * With one user and no support channel, per-row reset IS the support channel.
  *
  * The label names the STATE as well as the action, because the lime modified
@@ -57,13 +73,13 @@ function ResetButton({
   onReset: () => void;
   className?: string;
 }) {
-  const fallback = displayValue(record, record.defaultValue);
+  const words = resetLabelFor(record);
   return (
     <button
       type="button"
       onClick={onReset}
-      title={`${RESET_LABEL} · ${fallback}`}
-      aria-label={`${record.label} is changed from its default. ${RESET_LABEL}: ${fallback}`}
+      title={words.title}
+      aria-label={words.ariaLabel}
       className={cn(
         'text-muted-foreground hover:text-foreground absolute grid size-6 place-items-center',
         'rounded-[5px] opacity-0 transition-[opacity,color]',
@@ -233,7 +249,12 @@ function ControlFor({
           aria-describedby={describedBy}
           value={String(value)}
           disabled={disabled}
-          onChange={(e) => onWrite(e.target.value)}
+          // Clearing a native time input (or a half-typed one, in some
+          // browsers) fires change with ''. That is not a time, and writing it
+          // would store a cue that never fires.
+          onChange={(e) => {
+            if (e.target.value) onWrite(e.target.value);
+          }}
           className={cn(
             'border-input bg-background text-foreground h-8 w-[104px] rounded-md border px-2',
             'font-num text-xs disabled:cursor-not-allowed disabled:opacity-50',
@@ -344,7 +365,10 @@ export function SettingRow({
   paneName,
   ranges,
   matchedValue,
-  /** Parent is off: rendered, visible, and genuinely disabled. */
+  /**
+   * An ancestor is off. Search results only — the pane hides such a row
+   * instead (lib/settings/groups.ts) — and genuinely disabled, never faded.
+   */
   inactive,
   highlighted,
 }: {
