@@ -63,3 +63,41 @@ test.describe('Layouts: Console', () => {
     }
   });
 });
+
+test.describe('Layouts: Notebook', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notebook'));
+    await reloadApp(page);
+  });
+
+  test('lays the braindump and the day out as a spread, with the pinned controls intact', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'notebook');
+    await expect(shell).toHaveAttribute('data-layout-header', 'masthead');
+
+    const book = page.locator('[data-book]');
+    await expect(book.getByTestId('braindump')).toBeVisible();
+    await expect(book.getByRole('main')).toBeVisible();
+    // The masthead is the capsule without its chrome: navigation still works.
+    await expect(page.getByTestId('header-date')).toBeVisible();
+    await expect(page.getByTestId('header-next')).toBeVisible();
+    // Capture is the page's last line.
+    await expect(page.locator('[data-dock-page] input')).toHaveAttribute('placeholder', 'write a line…');
+  });
+
+  test('the page tabs switch scope, and the ribbon marks today only', async ({ page }) => {
+    await expect(page.getByTestId('page-ribbon')).toBeVisible();
+    const tabs = page.getByTestId('page-tabs');
+    await tabs.getByRole('tab', { name: 'Week' }).click();
+    await expect(tabs.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-dnd-bucket="morning"]')).toHaveCount(0);
+    await tabs.getByRole('tab', { name: 'Day' }).click();
+    await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible();
+
+    await page.getByTestId('header-next').click();
+    await expect(page.getByTestId('page-ribbon')).toHaveCount(0);
+  });
+});

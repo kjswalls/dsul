@@ -45,19 +45,26 @@ export function SurfaceHeader({
 }) {
   return (
     <div
+      data-surface-header=""
       className={cn(
         'shrink-0 rounded-[10px] bg-surface-3 px-[10px] py-[6px] shadow-[var(--shadow-elev-bar)]',
         className
       )}
     >
-      <div className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]">
+      <div
+        data-surface-pill=""
+        className="flex h-[37px] items-center gap-2 rounded-[10px] bg-surface-2 px-[15px] shadow-[var(--shadow-elev-sm)]"
+      >
         {icon}
         {/* No leading-none beside the truncate: `truncate` is overflow:hidden,
             and a line box exactly 12px tall (--text-sm) is shorter than Inter's
             1.21em glyph box, so the tail of "Braindump"'s p was being clipped.
             The theme's own 17px line height clears the descender and still sits
             well inside the 37px pill. */}
-        <h2 className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-foreground">
+        <h2
+          data-surface-title=""
+          className="min-w-0 flex-1 truncate font-sans text-sm font-medium text-foreground"
+        >
           {title}
         </h2>
         {children}

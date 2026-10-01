@@ -18,7 +18,7 @@
  * Two kinds of slot:
  *   - STRUCTURAL ones (sidebar, capture, canvas) change what mounts where, so
  *     the desktop shell reads them and lays out accordingly.
- *   - STYLED ones (buckets, rows, relay) are stamped on the desktop shell's
+ *   - STYLED ones (header, buckets, rows, relay) are stamped on the desktop shell's
  *     root as `data-layout-<slot>` (layoutAttributes) and drawn by rules in
  *     app/globals.css. Stamped on the SHELL, not on <html>: that is what keeps
  *     every layout desktop-only for free — the mobile shell is another tree
@@ -39,14 +39,22 @@ import type { DarkLook, LightLook } from '@/lib/theme-looks';
 export const LAYOUT_SLOTS = {
   /** Where the braindump lives: the resizable left column, or a narrow pane on the right. */
   sidebar: ['left', 'pane-right'],
-  /** Where the capture bar lives: the sidebar dock, or a prompt across the bottom. */
-  capture: ['dock', 'prompt-bottom'],
-  /** The canvas: a rounded plate on the backdrop, or flat with hairline seams. */
-  canvas: ['plate', 'flat'],
-  /** A bucket: a card holding its rows, or a heading over bare rows. */
-  buckets: ['cards', 'headings'],
-  /** A row's tick: the checkbox, or a text `[ ]` / `[x]`. */
-  rows: ['rows', 'text'],
+  /**
+   * Where the capture bar lives: the sidebar dock, a prompt across the bottom,
+   * or a bare "write a line…" at the foot of the braindump's page.
+   */
+  capture: ['dock', 'prompt-bottom', 'page-foot'],
+  /**
+   * The canvas: a rounded plate on the backdrop, flat with hairline seams, or
+   * one page of a two-page spread whose other page is the braindump.
+   */
+  canvas: ['plate', 'flat', 'spread'],
+  /** The date and view controls: the capsule, or a serif masthead with no chrome. */
+  header: ['capsule', 'masthead'],
+  /** A bucket: a card holding its rows, a `## heading` over bare rows, or a small-caps label. */
+  buckets: ['cards', 'headings', 'labels'],
+  /** A row's tick: the checkbox, a text `[ ]` / `[x]`, or an inked box with a hand-drawn tick on ruled paper. */
+  rows: ['rows', 'text', 'ruled'],
   /** The RelayField's motion in the shell. */
   relay: ['on', 'off'],
 } as const;
@@ -56,13 +64,20 @@ export type SlotVariant<S extends LayoutSlot> = (typeof LAYOUT_SLOTS)[S][number]
 export type LayoutSlots = { [S in LayoutSlot]: SlotVariant<S> };
 
 /** Slots drawn by CSS off a `data-layout-<slot>` stamp rather than by a component. */
-export const STYLED_SLOTS = ['buckets', 'rows', 'relay'] as const satisfies readonly LayoutSlot[];
+export const STYLED_SLOTS = ['header', 'buckets', 'rows', 'relay'] as const satisfies readonly LayoutSlot[];
 
 /** Named additions — the only things a layout may add. Closed, like the slots. */
-export const LAYOUT_ORNAMENTS = ['status-line'] as const;
+export const LAYOUT_ORNAMENTS = [
+  /** A one-line terminal status bar across the top (components/shell/status-line.tsx). */
+  'status-line',
+  /** Day / Week tabs standing off the right page's edge (components/shell/page-tabs.tsx). */
+  'page-tabs',
+  /** A ribbon bookmark hanging over the page while it shows today (same file). */
+  'ribbon',
+] as const;
 export type LayoutOrnament = (typeof LAYOUT_ORNAMENTS)[number];
 
-export type LayoutTheme = 'classic' | 'console';
+export type LayoutTheme = 'classic' | 'console' | 'notebook';
 
 export interface LayoutDef {
   value: LayoutTheme;
@@ -78,6 +93,7 @@ const CLASSIC_SLOTS: LayoutSlots = {
   sidebar: 'left',
   capture: 'dock',
   canvas: 'plate',
+  header: 'capsule',
   buckets: 'cards',
   rows: 'rows',
   relay: 'on',
@@ -101,11 +117,28 @@ export const LAYOUTS: LayoutDef[] = [
       sidebar: 'pane-right',
       capture: 'prompt-bottom',
       canvas: 'flat',
+      header: 'capsule',
       buckets: 'headings',
       rows: 'text',
       relay: 'off',
     },
     ornaments: ['status-line'],
+  },
+  {
+    value: 'notebook',
+    label: 'Notebook',
+    description: 'A paper planner open on the desk: the braindump on the left page, the day on the right.',
+    pairsWith: { light: 'paper' },
+    slots: {
+      sidebar: 'left',
+      capture: 'page-foot',
+      canvas: 'spread',
+      header: 'masthead',
+      buckets: 'labels',
+      rows: 'ruled',
+      relay: 'off',
+    },
+    ornaments: ['page-tabs', 'ribbon'],
   },
 ];
 

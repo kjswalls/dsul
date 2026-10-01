@@ -2279,3 +2279,162 @@ body {
 [data-layout-rows='text'] [data-testid='item-complete-button']:hover {
   color: var(--foreground);
 }
+
+/* ── Notebook: the spread, the masthead, labels and ruled rows ──────────────
+   The paper is its own, not a theme's: a planner's page is cream whatever the
+   colour theme does, and it pairs with Paper. --nb-* are inert anywhere a
+   [data-book] (desktop-shell's `canvas: 'spread'`) is not rendered. */
+:root {
+  --nb-desk: oklch(0.83 0.025 65);
+  --nb-page: oklch(0.975 0.014 88);
+  --nb-rule: oklch(0.6 0.05 240 / 16%);
+  --nb-spine: oklch(0.4 0.03 60 / 14%);
+  --nb-ink: oklch(0.35 0.03 60);
+  --nb-ribbon: oklch(0.45 0.1 160);
+  --nb-ribbon-ink: oklch(0.97 0.02 90);
+  --nb-tab: oklch(0.92 0.03 85);
+  --nb-sheet-shadow: 0 14px 34px oklch(0.3 0.04 60 / 26%);
+}
+/* On body, not :root: next/font defines --font-source-serif by a className on
+   <body>, so declared any higher it computes to guaranteed-invalid. */
+body {
+  --font-serif-display: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
+}
+.dark {
+  --nb-desk: oklch(0.13 0.008 60);
+  --nb-page: oklch(0.215 0.012 70);
+  --nb-rule: oklch(0.85 0.03 240 / 8%);
+  --nb-spine: oklch(0 0 0 / 35%);
+  --nb-ink: oklch(0.82 0.02 80);
+  --nb-ribbon: oklch(0.66 0.11 160);
+  --nb-ribbon-ink: oklch(0.17 0.02 160);
+  --nb-tab: oklch(0.27 0.014 70);
+  --nb-sheet-shadow: 0 14px 34px oklch(0 0 0 / 50%);
+}
+
+/* canvas: 'spread' — one sheet under both pages, ruled, with the spine's
+   shadow on each side of the fold. */
+[data-book] {
+  border-radius: 6px;
+  background-color: var(--nb-page);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--nb-rule) 31px 32px);
+  box-shadow: var(--nb-sheet-shadow);
+}
+/* Docked open only: padding would hold a collapsed (w-0) column open, and the
+   peeked card keeps its own drop shadow. */
+[data-book] [data-testid='sidebar-column'][data-column-state='open'] {
+  padding-inline: 20px 14px;
+  box-shadow: inset -22px 0 22px -22px var(--nb-spine);
+}
+[data-book] > main::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 26px;
+  background: linear-gradient(90deg, var(--nb-spine), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* capture: 'page-foot' — the dock drawn as the page's last ruled line. The
+   omnibar inside is untouched: every mode, the panel and ⌘I still work. */
+[data-dock-page] {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-inline: 0;
+}
+[data-dock-page] [data-omnibar-pill] {
+  background: transparent !important;
+  box-shadow: none !important;
+  translate: none !important;
+  border-radius: 0;
+  border-bottom: 1px solid var(--nb-ink);
+  padding-inline: 2px;
+}
+[data-dock-page] [data-omnibar-pill] input {
+  font-family: var(--font-serif-display);
+  font-style: italic;
+  font-size: 15px;
+}
+
+/* header: 'masthead' — the capsule's controls without the capsule: the date
+   set as a serif masthead, the view row as quiet text. Same buttons, same
+   test ids; only the chrome goes. */
+[data-layout-header='masthead'] [data-header-capsule],
+[data-layout-header='masthead'] [data-header-pill] {
+  background: transparent;
+  box-shadow: none;
+}
+[data-layout-header='masthead'] [data-header-capsule] {
+  padding: 0;
+}
+[data-layout-header='masthead'] [data-testid='header-date'] {
+  font-family: var(--font-serif-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+[data-layout-header='masthead'] [data-book] [data-surface-header],
+[data-layout-header='masthead'] [data-book] [data-surface-pill] {
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+[data-layout-header='masthead'] [data-book] [data-surface-title] {
+  font-family: var(--font-serif-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* buckets: 'labels' — no card, the caption a small-caps label in the ribbon's
+   ink. The drag slot keeps its surface, as under 'headings'. */
+[data-layout-buckets='labels'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='labels'] [data-bucket-label] {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--nb-ribbon);
+}
+
+/* rows: 'ruled' — an inked box, and a hand-drawn tick that overshoots it when
+   done. Same button and hit area; the strike-through takes the tick's ink. */
+[data-layout-rows='ruled'] [data-testid='item-complete-button'] {
+  overflow: visible;
+  background: transparent;
+  border: 1.5px solid var(--nb-ink);
+  border-radius: 2px;
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'] > * {
+  display: none;
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'][data-checked='true']::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: -4px;
+  width: 6px;
+  height: 12px;
+  border: solid var(--nb-ribbon);
+  border-width: 0 2.5px 2.5px 0;
+  border-radius: 0 0 2px 0;
+  transform: rotate(40deg);
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'][data-checked='partial']::after {
+  content: '';
+  position: absolute;
+  inset: auto 2px 5px 2px;
+  height: 2px;
+  background: var(--nb-ribbon);
+}
+[data-layout-rows='ruled'] [data-testid='item-card'][data-completed='true'] p {
+  text-decoration-color: var(--nb-ribbon);
+}

@@ -91,6 +91,6 @@ export function useLayoutDef(): LayoutDef {
  * person closed would be a side effect nobody asked for.
  */
 export function revealDock(): void {
-  if (layoutDef(useLookStore.getState().layout).slots.capture !== 'dock') return;
+  if (layoutDef(useLookStore.getState().layout).slots.capture === 'prompt-bottom') return;
   useSidebarStore.getState().setLeftSidebarOpen(true);
 }
