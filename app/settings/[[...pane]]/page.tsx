@@ -319,7 +319,7 @@ export default function SettingsPage() {
     JSON.stringify([s.provider, s.model, s.systemPrompt, s.apiKey])
   );
   const paletteTick = usePaletteStore((s) => s.palette);
-  const lookTick = useLookStore((s) => `${s.light}|${s.dark}`);
+  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}`);
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(

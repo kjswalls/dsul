@@ -674,6 +674,9 @@ export function RelayField({
     <div
       ref={containerRef}
       aria-hidden
+      // The handle a layout's `relay: 'off'` hides by (app/globals.css). Hidden,
+      // the IntersectionObserver below sees it leave and stops the loop.
+      data-relay-field=""
       className={cn('pointer-events-none overflow-hidden', className)}
       style={mask ? { maskImage: mask, WebkitMaskImage: mask } : undefined}
     >

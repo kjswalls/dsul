@@ -55,6 +55,8 @@ export interface UserSettingsRow {
    */
   theme_light?: string | null;
   theme_dark?: string | null;
+  /** The desktop layout (lib/layout-themes.ts, migration 055). Same null rule. */
+  layout?: string | null;
 }
 
 const DEFAULT_SETTINGS: UserSettingsRow = {
@@ -127,7 +129,7 @@ const STABLE_SETTINGS_COLUMNS = [
  * too early wipes everyone's settings, so err towards leaving it here.
  *
  * Currently: migration 022 (morning auto-age), 029 (habit reminders), 031
- * (stakes) and 052 (theme per mode). Migration 025 (theme_palette) graduated to stable on 2026-08-12
+ * (stakes), 052 (theme per mode) and 055 (layout). Migration 025 (theme_palette) graduated to stable on 2026-08-12
  * once it was applied to prod.
  */
 const PENDING_SCHEMA_COLUMNS = [
@@ -145,6 +147,8 @@ const PENDING_SCHEMA_COLUMNS = [
   // Migration 052: the theme picked for each mode.
   'theme_light',
   'theme_dark',
+  // Migration 055: the desktop layout.
+  'layout',
 ] as const;
 
 const SETTINGS_SELECT = [...STABLE_SETTINGS_COLUMNS, ...PENDING_SCHEMA_COLUMNS].join(',');

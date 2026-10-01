@@ -22,6 +22,7 @@ import {
   isLightLook,
   lightLookDef,
 } from '@/lib/theme-looks';
+import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
@@ -166,6 +167,19 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lightLook, darkLook]);
 
+  // The layout's localStorage mirror. No DOM stamp here: the desktop shell
+  // stamps its own root (lib/layout-themes.ts), which keeps a layout off the
+  // phone without a media query.
+  const layout = useLookStore((s) => s.layout);
+  useEffect(() => {
+    try {
+      if (layout === DEFAULT_LAYOUT) window.localStorage.removeItem(LAYOUT_STORAGE_KEY);
+      else window.localStorage.setItem(LAYOUT_STORAGE_KEY, layout);
+    } catch {
+      // Private mode — the pick still holds for this session.
+    }
+  }, [layout]);
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -283,9 +297,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           theme_palette: 'default',
           theme_light: DEFAULT_LIGHT_LOOK,
           theme_dark: DEFAULT_DARK_LOOK,
+          layout: DEFAULT_LAYOUT,
         });
         useLookStore.getState().setLight(DEFAULT_LIGHT_LOOK);
         useLookStore.getState().setDark(DEFAULT_DARK_LOOK);
+        useLookStore.getState().setLayout(DEFAULT_LAYOUT);
       } else {
         if (isThemePalette(settings.theme_palette)) {
           usePaletteStore.getState().setPalette(settings.theme_palette);
@@ -297,6 +313,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         }
         if (isDarkLook(settings.theme_dark)) {
           useLookStore.getState().setDark(settings.theme_dark);
+        }
+        if (isLayoutTheme(settings.layout)) {
+          useLookStore.getState().setLayout(settings.layout);
         }
       }
     };

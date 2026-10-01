@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { revealDock } from '@/lib/look-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { saveSettings } from '@/lib/settings-service';
 import { applyThemeChange } from '@/lib/theme-transition';
@@ -50,7 +51,7 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
           // ChatPanel mounts inside SidebarDock, which lives in a w-0
           // overflow-hidden container while the sidebar is collapsed — so
           // expanding chat alone expands a panel nobody can see.
-          useSidebarStore.getState().setLeftSidebarOpen(true);
+          revealDock();
           useSidebarStore.getState().setChatExpanded(true);
         }),
       userId,
