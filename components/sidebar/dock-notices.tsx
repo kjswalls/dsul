@@ -305,7 +305,7 @@ function OverflowRow({
  * next SIGNED_IN, which Supabase sends when the tab is shown with a live
  * session.
  */
-export function DockNotices() {
+export function DockNotices({ alwaysVisible = false }: { alwaysVisible?: boolean } = {}) {
   const notices = useDockNotices();
   const { visible, overflow, isExpanded, setExpanded } = useCappedStack(notices, MAX_ROWS);
   const leftSidebarOpen = useSidebarStore((s) => s.leftSidebarOpen);
@@ -315,7 +315,10 @@ export function DockNotices() {
   // The column is clipped to w-0 when collapsed, not unmounted — so without
   // this a tray left open would keep floating over the canvas, anchored to a
   // zero-width box. Unmounting the rows closes every Popover with them.
-  const columnVisible = leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
+  // A dock laid across the foot of the shell (SidebarDock placement="bottom")
+  // is never in that column, so it never goes away with it.
+  const columnVisible =
+    alwaysVisible || leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
   if (!columnVisible || notices.length === 0) return null;
 
   return (

@@ -68,6 +68,7 @@ import {
   streaksEnabled,
 } from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
+import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
@@ -576,7 +577,7 @@ export const STATIC_COMMANDS: Command[] = [
     // dock's rows do not render while the sidebar column is collapsed. Flipping
     // isOpen there looks broken in precisely the same way.
     run: (ctx) => {
-      if (!ctx.isMobile) useSidebarStore.getState().setLeftSidebarOpen(true);
+      if (!ctx.isMobile) revealDock();
       const store = useMorningStore.getState();
       store.resetDismissal();
       store.open();
@@ -853,12 +854,9 @@ export const STATIC_COMMANDS: Command[] = [
     // at all — the feature that matters most on the worst day must not depend
     // on a provider being reachable. So it is never gated: with no chat to open,
     // the card renders in the dock's catch-up host instead (SidebarDock on
-    // desktop, which lives in the sidebar, hence opening it; the phone's dock
-    // is always on screen).
+    // desktop, hence revealing it; the phone's dock is always on screen).
     run: (ctx) => {
-      if (!revealChat(ctx.isMobile) && !ctx.isMobile) {
-        useSidebarStore.getState().setLeftSidebarOpen(true);
-      }
+      if (!revealChat(ctx.isMobile) && !ctx.isMobile) revealDock();
       useProposalStore.getState().request('catch-up');
     },
   },
@@ -916,7 +914,7 @@ export const STATIC_COMMANDS: Command[] = [
       // Opening chat while the sidebar is collapsed would expand a panel
       // inside a w-0 overflow-hidden column: nothing appears, and the state
       // silently desyncs from what the user last saw.
-      if (!sidebar.chatExpanded) sidebar.setLeftSidebarOpen(true);
+      if (!sidebar.chatExpanded) revealDock();
       sidebar.toggleChat();
     },
   },
@@ -1028,7 +1026,7 @@ export const STATIC_COMMANDS: Command[] = [
         const nav = useMobileNavStore.getState();
         if (nav.activeTab === 'chat') nav.setActiveTab('today');
       } else {
-        useSidebarStore.getState().setLeftSidebarOpen(true);
+        revealDock();
       }
       useUIStore.getState().focusOmnibar();
     },
@@ -1229,9 +1227,9 @@ export const STATIC_COMMANDS: Command[] = [
     // No shortcut on purpose: a binding would join the frozen id list in
     // commands.test.ts for a page most people open a handful of times.
     run: (ctx) => {
-      // The store is the Browse tab of Settings → Extensions.
-      if (ctx.navigate) ctx.navigate('/settings/extensions?view=browse');
-      else if (typeof window !== 'undefined') window.location.assign('/settings/extensions?view=browse');
+      // The store is the body of Settings → Extensions.
+      if (ctx.navigate) ctx.navigate('/settings/extensions');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/extensions');
     },
   },
   {

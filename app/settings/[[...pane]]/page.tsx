@@ -134,7 +134,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
     <main
       // Mirrors SettingsShell's own container exactly, so the real surface
       // lands where the skeleton stood instead of jumping under the cursor.
-      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8"
+      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]"
       data-testid="settings-page"
       data-settings-state="loading"
     >
@@ -177,9 +177,13 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
       </div>
 
       {/* The old screen's whole point, kept and demoted: if this is still here
-          after five seconds something is genuinely wrong, and a signed-out
-          visitor (the proxy lets requests through when Supabase itself is
-          unreachable) needs a way out that isn't the back button. */}
+          after five seconds something is genuinely wrong, and a visitor with no
+          usable session needs a way out that isn't the back button. Not one with
+          NO session: proxy.ts sends that to /login (and reads an unreachable
+          Supabase as one), and so does the provider for a page the server let
+          through. This is for a stored session the browser could not refresh,
+          or a cookie the proxy could not decode and so let through; the
+          provider keeps both here on purpose (see its mount check). */}
       <p role="status" aria-live="polite" className="text-muted-foreground min-h-5 text-sm">
         {stuck ? 'Still loading your settings.' : ''}
       </p>
@@ -325,7 +329,7 @@ export default function SettingsPage() {
       `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
-  const lookTick = useLookStore((s) => `${s.light}|${s.dark}`);
+  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}`);
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(

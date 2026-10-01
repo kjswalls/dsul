@@ -462,6 +462,7 @@ export function BucketCard({
                       keeps the caption from contradicting it (and is the whole
                       signal on an empty current bucket, which has no card). */}
                   <span
+                    data-bucket-label
                     className={cn(
                       'truncate font-sans text-xs font-medium',
                       isCurrent ? 'text-muted-foreground' : BUCKET_LABEL_INK

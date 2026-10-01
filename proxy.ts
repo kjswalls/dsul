@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr';
 import { NextResponse, type NextRequest } from 'next/server';
 import { canonicalRedirect } from '@/lib/canonical-host';
+import { isSignedOutPath, loginPathFor } from '@/lib/signed-out-redirect';
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -15,7 +16,9 @@ export async function proxy(request: NextRequest) {
     return NextResponse.redirect(canonical, 307);
   }
 
-  // Allow disabling auth for v0 preview / local dev without a real session
+  // Allow disabling auth for v0 preview / local dev. The server gate only: a
+  // page with no session stored still leaves for /login from the browser,
+  // which reads no flag (lib/signed-out-redirect.ts leaveForLoginIfNoSession).
   if (process.env.NEXT_PUBLIC_DISABLE_AUTH === 'true') {
     return NextResponse.next({ request });
   }
@@ -52,13 +55,17 @@ export async function proxy(request: NextRequest) {
     // Refresh session if expired
     const { data: { user } } = await supabase.auth.getUser();
 
-    // Redirect unauthenticated users to /login.
+    // Redirect unauthenticated users to /login, carrying where they were going
+    // as ?redirect= (lib/signed-out-redirect.ts). This used to keep only the
+    // query: /connect?code=… (the OpenClaw pairing link) arrived as
+    // /login?code=…, a sign-in then landed on '/' with the code gone, and the
+    // desktop shell dropped the redirect outright, reading a top-level `code` as
+    // an auth code (electron/lib/policy.cjs carriesAuthCode).
     // Skip API routes — they use Bearer auth and return their own 401s.
     const isApiRoute = pathname === '/api' || pathname.startsWith('/api/');
-    if (!user && pathname !== '/login' && !pathname.startsWith('/auth') && !isApiRoute) {
-      const url = request.nextUrl.clone();
-      url.pathname = '/login';
-      return NextResponse.redirect(url);
+    if (!user && !isSignedOutPath(pathname) && !isApiRoute) {
+      const login = loginPathFor(`${pathname}${request.nextUrl.search}`, request.nextUrl.origin);
+      return NextResponse.redirect(new URL(login, request.url));
     }
 
     // Redirect authenticated users away from /login
@@ -76,8 +83,17 @@ export async function proxy(request: NextRequest) {
   return supabaseResponse;
 }
 
+// /manifest.json and /sw.js are left out with the icons, because the browser
+// fetches them on its own and the gate cannot tell who is asking. A
+// <link rel=manifest> goes out WITHOUT cookies unless it says
+// crossorigin="use-credentials", so the gate took every visitor, signed in
+// included, for a signed-out one and answered with the login page's HTML:
+// Chrome, Edge and Android never got a manifest to parse, so no install prompt
+// and no app name or icons. A service worker's update check from a browser
+// whose session has ended met the same redirect and failed as one. Neither file
+// holds anything an account owns.
 export const config = {
   matcher: [
-    '/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|icon|apple-icon|manifest\\.json$|sw\\.js$|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
   ],
 };

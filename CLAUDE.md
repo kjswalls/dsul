@@ -275,6 +275,12 @@ rather than taking the flag.
   100ms (off under reduced motion), because the untransitioned version flickered at each
   flex gap a sweep crosses. The fade is opacity-only, so it adds no recalc; never widen it
   to other properties.
+- **The desktop app's top 43px is a window-drag band.** On macOS the Electron window has no
+  title bar, and `.titlebar-drag` (first child of `<body>`, rule in [globals.css](app/globals.css))
+  is what the window is dragged by; clicks there never reach the page. Anything interactive or
+  hover-driven above y 43 takes `titlebar-hole`. It is all keyed off `env(titlebar-area-*)` with
+  `0px` fallbacks, so browsers and the PWA never see it. The `-35px` in the sidebar wordmark's
+  padding couples to `MAC_LIGHTS.x` in `electron/lib/window-chrome.cjs` — change one, change both.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)

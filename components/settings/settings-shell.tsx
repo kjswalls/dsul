@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -31,7 +31,7 @@ import {
   ancestorsOf,
   type PaneGroup,
 } from '@/lib/settings/groups';
-import { ExtensionIndex } from './extension-index';
+import { ExtensionRailList } from './extension-rail-list';
 import { ExtensionHero } from './extension-hero';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { ShortcutsPanel } from './shortcuts-panel';
@@ -47,19 +47,20 @@ import { revealChat } from '@/lib/open-chat';
  * <ScrollArea> (which silently drops height caps anyway). That is what retires
  * the skipped desktop-scroll test for issue #92 rather than re-fixing it.
  *
- * The rail is ONE level and stays that way. Extensions have panes of their own
- * (/settings/extensions/<slug>) but they do not get rail entries — seven map
- * entries plus one per extension is not a map. A sub-pane instead lights its
- * parent's rail row, rolls its search hits up into that row's count, and puts
- * the way back in the breadcrumb. Search itself is NOT scoped to a pane, here
- * or anywhere: a query still crosses every pane, sub-panes included, which is
- * why the results list groups by ALL_PANES rather than by the rail.
+ * The rail is one level everywhere but Extensions. While you are in
+ * Extensions (and not searching) its row opens a sub-list on a desktop —
+ * Browse, then your extensions with a switch each (extension-rail-list.tsx) —
+ * so the pane can be the store and nothing else. The other rows stay put, and
+ * the sub-list closes again when you leave. On a phone the rail is a chip strip
+ * with no room to nest, so the same list sits at the top of the pane instead.
+ * Which of the two shows is decided in CSS at the md breakpoint, not by
+ * `isMobile`, which reads false for a phone's first frame.
+ * Search is NOT scoped to a pane, here or anywhere: a query still crosses every
+ * pane, sub-panes included, which is why the results list groups by ALL_PANES
+ * rather than by the rail.
  */
 
 const ADV_KEY = 'dsul-settings-advanced';
-
-type ExtensionsView = 'list' | 'browse';
-const EXTENSIONS_VIEW_KEY = 'dsul-settings-extensions-view';
 
 /** How long a deep link waits out a loading ancestor before settling on the
  *  nearest drawn row — a load that never finishes must not strand it. */
@@ -73,67 +74,22 @@ function Eyebrow({
   // nothing between <h1>Settings</h1> and the end of the page.
   as: Tag = 'p',
   id,
-  // Drops the eyebrow's own margins when a row around it sets the spacing.
-  flush = false,
 }: {
   children: React.ReactNode;
   icon?: React.ElementType;
   as?: 'p' | 'h2';
   id?: string;
-  flush?: boolean;
 }) {
   return (
     <Tag
       id={id}
       className={cn(
-        'text-muted-foreground flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase',
-        !flush && 'mt-6 mb-1'
+        'text-muted-foreground mt-6 mb-1 flex items-center gap-2 text-[10px] font-medium tracking-wider uppercase'
       )}
     >
       {Icon && <Icon className="size-3" aria-hidden />}
       {children}
     </Tag>
-  );
-}
-
-/** List or Browse, for the Extensions pane. A segmented pair, not a nav: both
- *  views are the same pane, so they are pressed buttons over one region. */
-function ExtensionsViewTabs({
-  view,
-  onChange,
-}: {
-  view: ExtensionsView;
-  onChange: (view: ExtensionsView) => void;
-}) {
-  const options: { id: ExtensionsView; label: string }[] = [
-    { id: 'list', label: 'List' },
-    { id: 'browse', label: 'Browse' },
-  ];
-  return (
-    <div
-      role="group"
-      aria-label="Show extensions as"
-      className="bg-secondary ml-auto inline-flex gap-0.5 rounded-[7px] p-0.5"
-      data-testid="extensions-view-tabs"
-    >
-      {options.map((option) => (
-        <button
-          key={option.id}
-          type="button"
-          aria-pressed={view === option.id}
-          onClick={() => onChange(option.id)}
-          className={cn(
-            'rounded-[5px] px-2.5 py-0.5 text-xs font-medium transition-colors',
-            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
-            view === option.id
-              ? 'bg-card text-foreground shadow-xs'
-              : 'text-muted-foreground hover:text-foreground'
-          )}
-        >
-          {option.label}
-        </button>
-      ))}
-    </div>
   );
 }
 
@@ -222,47 +178,6 @@ export function SettingsShell({
   const parentPane = activePane.parent ? paneById(activePane.parent) : undefined;
   // The rail row this pane belongs to — itself, or its parent inside a sub-pane.
   const railPane = railPaneFor(pane);
-
-  /* ── Extensions: List or Browse ────────────────────────────────────────────
-     The store is the Browse tab of the Extensions pane, not a page of its own,
-     so the plain list and the store are one place. `?view=browse` names the tab
-     (it is what /extensions and ⌘K open); with no param the pane shows the tab
-     you used last, so the crumb back from an extension lands where you were.
-     A view, not a setting: it never syncs and has no record. */
-  const searchParams = useSearchParams();
-  const viewParam = searchParams?.get('view');
-  // Lazy, not an effect: the shell only mounts on the client, behind the
-  // page's hydration gate, so storage is readable here — and reading it after
-  // paint drew List for a frame before Browse.
-  const [rememberedView, setRememberedView] = useState<ExtensionsView>(() => {
-    try {
-      return localStorage.getItem(EXTENSIONS_VIEW_KEY) === 'browse' ? 'browse' : 'list';
-    } catch {
-      return 'list'; // private mode — default to the list
-    }
-  });
-  // Arriving with ?view= (from /extensions, ⌘K or a Browse link) counts as
-  // choosing that tab, so the crumb and the rail come back to it too.
-  useEffect(() => {
-    if (pane !== 'extensions' || (viewParam !== 'browse' && viewParam !== 'list')) return;
-    setRememberedView((current) => (current === viewParam ? current : viewParam));
-    try {
-      localStorage.setItem(EXTENSIONS_VIEW_KEY, viewParam);
-    } catch {
-      /* private mode — the tab just isn't remembered */
-    }
-  }, [pane, viewParam]);
-  const extensionsView: ExtensionsView =
-    viewParam === 'browse' || viewParam === 'list' ? viewParam : rememberedView;
-  const showExtensionsView = (view: ExtensionsView) => {
-    setRememberedView(view);
-    try {
-      localStorage.setItem(EXTENSIONS_VIEW_KEY, view);
-    } catch {
-      /* private mode — the tab just isn't remembered */
-    }
-    router.replace(view === 'browse' ? '/settings/extensions?view=browse' : '/settings/extensions', { scroll: false });
-  };
 
   /* ── Advanced disclosure state is per-pane and deliberately NOT a setting ──
      An effect, not a lazy initialiser: this is a client component but it still
@@ -593,10 +508,7 @@ export function SettingsShell({
       ? paneOwn.rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id))
       : paneOwn.rows;
   return (
-    <main
-      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8"
-      data-extensions-view={pane === 'extensions' ? extensionsView : undefined}
-    >
+    <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
       {/* Three crumbs inside an extension, two everywhere else. The rail's
           Extensions row does navigate back up, but from inside a sub-pane it
           renders as the CURRENT row — a lit row does not read as a way out. So
@@ -636,8 +548,15 @@ export function SettingsShell({
             // to stick within — the classic silent no-op. The pane scrolls the
             // DOCUMENT (no inner overflow box, which is what closed #92), so
             // this sticks against the viewport with nothing else to configure.
-            'md:mx-0 md:w-[184px] md:flex-col md:self-start md:overflow-visible md:px-0',
-            'md:sticky md:top-8'
+            // The Extensions sub-list can make the rail taller than a short
+            // window, and a sticky box taller than the viewport hides its own
+            // bottom until the page ends — so it scrolls itself once it would.
+            // The 4px of padding keeps focus rings out of that clip, and the
+            // matching negative margins (and top-7) keep every row exactly
+            // where it sat before. In the desktop app the rows stick below its
+            // top band instead (env() is undefined everywhere else, so top-7).
+            'md:-mx-1 md:-my-1 md:w-[192px] md:flex-col md:self-start md:p-1',
+            'md:sticky md:top-[max(1.75rem,calc(env(titlebar-area-height,0px)_-_4px))] md:max-h-[calc(100dvh-3.5rem)] md:overflow-x-hidden md:overflow-y-auto'
           )}
         >
           {PANES.map((p) => {
@@ -648,11 +567,15 @@ export function SettingsShell({
             const count = searching ? paneMatchCount(results, p.id) : null;
             const active = !searching && p.id === railPane;
             const Icon = p.icon;
+            // Inside Extensions the lit row is the sub-list's — Browse or the
+            // extension you're on — so on a desktop the parent reads as open,
+            // not lit. The phone's chip strip has no sub-list and keeps it lit.
+            const open = !searching && p.id === 'extensions' && railPane === 'extensions';
             return (
+              <Fragment key={p.id}>
               <button
-                key={p.id}
                 type="button"
-                aria-current={active || undefined}
+                aria-current={(active && (isMobile || !open)) || undefined}
                 onClick={() => {
                   setRawQuery('');
                   setQuery('');
@@ -664,6 +587,7 @@ export function SettingsShell({
                   active
                     ? 'bg-secondary text-foreground font-medium'
                     : 'text-secondary-foreground hover:bg-accent',
+                  open && 'md:hover:bg-accent md:bg-transparent',
                   searching && count === 0 && 'text-muted-foreground/50'
                 )}
               >
@@ -671,6 +595,12 @@ export function SettingsShell({
                 <span className="whitespace-nowrap">{p.name}</span>
                 {count !== null && <CountChip n={count} />}
               </button>
+              {open && (
+                <div className="border-border mt-0.5 mb-1.5 ml-[15px] hidden border-l pl-1.5 md:block">
+                  <ExtensionRailList ctx={ctx} pane={pane} variant="rail" />
+                </div>
+              )}
+              </Fragment>
             );
           })}
         </nav>
@@ -843,16 +773,7 @@ export function SettingsShell({
             <>
               {pane === 'look' && <LookPreview />}
 
-              {pane === 'extensions' ? (
-                <div className="mt-6 mb-1 flex items-center gap-3">
-                  <Eyebrow icon={activePane.icon} flush>
-                    {activePane.name}
-                  </Eyebrow>
-                  <ExtensionsViewTabs view={extensionsView} onChange={showExtensionsView} />
-                </div>
-              ) : (
-                <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
-              )}
+              <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
               {/* An extension pane's blurb IS its catalog description, and the
                   toggle directly below carries that same sentence as its own
                   description — printing it twice, one line apart, reads as a
@@ -875,21 +796,25 @@ export function SettingsShell({
                   (CONNECT_PANEL_RECORD_IDS) are drawn by it instead of below. */}
               {pane === 'beacon' && <ModelConnectionPanel isMobile={isMobile} highlightId={highlight} />}
 
-              {pane === 'extensions' &&
-                (extensionsView === 'browse' ? (
-                  // Browse is the one pane body wider than a column of rows. It
-                  // grows to the RIGHT only, into the page margin, so the rail,
-                  // the search box and the tabs stay exactly where every other
-                  // pane has them (re-centering a wider page moved the rail
-                  // 190px on every tab switch). The negative margin is the
-                  // page margin less the gutter, and zero once the window is no
-                  // wider than the page.
-                  <div className="md:mr-[min(0px,calc((880px-100vw)/2+24px))] md:max-w-[960px]">
+              {pane === 'extensions' && (
+                <>
+                  {/* A phone has no rail to nest the list in, so your
+                      extensions and their switches come first here. */}
+                  <div className="mb-6 md:hidden">
+                    <ExtensionRailList ctx={ctx} pane={pane} variant="pane" />
+                  </div>
+                  {/* The store is the one pane body wider than a column of
+                      rows. It grows to the RIGHT only, into the page margin, up
+                      to the window's edge less the gutter, so the rail and the
+                      search box stay exactly where every other pane has them
+                      (re-centering a wider page moved the rail 190px). The
+                      negative margin is the page margin less the gutter, and
+                      zero once the window is no wider than the page. */}
+                  <div className="md:mr-[min(0px,calc((880px-100vw)/2+24px))] md:max-w-[1200px]">
                     <ExtensionBrowse ctx={ctx} />
                   </div>
-                ) : (
-                  <ExtensionIndex ctx={ctx} />
-                ))}
+                </>
+              )}
 
               {/* The Keyboard pane's rows ARE the shortcut records, and they
                   are grouped rather than flat — nineteen bindings in one

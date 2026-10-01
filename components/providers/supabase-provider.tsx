@@ -22,6 +22,7 @@ import {
   isLightLook,
   lightLookDef,
 } from '@/lib/theme-looks';
+import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
@@ -30,7 +31,7 @@ import { useNudgeStore } from '@/lib/nudge-store';
 import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
 import { useUIStore } from '@/lib/ui-store';
 import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
-import { leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
+import { leaveForLoginIfNoSession, leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { routeNeedsItems } from '@/lib/route-data';
@@ -167,6 +168,19 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lightLook, darkLook]);
 
+  // The layout's localStorage mirror. No DOM stamp here: the desktop shell
+  // stamps its own root (lib/layout-themes.ts), which keeps a layout off the
+  // phone without a media query.
+  const layout = useLookStore((s) => s.layout);
+  useEffect(() => {
+    try {
+      if (layout === DEFAULT_LAYOUT) window.localStorage.removeItem(LAYOUT_STORAGE_KEY);
+      else window.localStorage.setItem(LAYOUT_STORAGE_KEY, layout);
+    } catch {
+      // Private mode — the pick still holds for this session.
+    }
+  }, [layout]);
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -286,9 +300,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           theme_palette: 'default',
           theme_light: DEFAULT_LIGHT_LOOK,
           theme_dark: DEFAULT_DARK_LOOK,
+          layout: DEFAULT_LAYOUT,
         });
         useLookStore.getState().setLight(DEFAULT_LIGHT_LOOK);
         useLookStore.getState().setDark(DEFAULT_DARK_LOOK);
+        useLookStore.getState().setLayout(DEFAULT_LAYOUT);
       } else {
         if (isThemePalette(settings.theme_palette)) {
           usePaletteStore.getState().setPalette(settings.theme_palette);
@@ -300,6 +316,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         }
         if (isDarkLook(settings.theme_dark)) {
           useLookStore.getState().setDark(settings.theme_dark);
+        }
+        if (isLayoutTheme(settings.layout)) {
+          useLookStore.getState().setLayout(settings.layout);
         }
       }
     };
@@ -520,9 +539,34 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     hydrateAfterLoadRef.current = hydrateAfterLoad;
 
     // Check current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) adoptUser(session.user);
-    });
+    supabase.auth.getSession().then(
+      ({ data: { session }, error }) => {
+        if (session?.user) adoptUser(session.user);
+        // NOTHING STORED, and nothing will ever say so: supabase-js emits
+        // SIGNED_OUT only for a session it held, so a page that never had one
+        // (the desktop app's first launch, with the server gate not catching
+        // it) sat on PlannerSkeleton for good. See lib/signed-out-redirect.ts.
+        //
+        // `!error` keeps an offline user when getSession RESOLVES. A stored
+        // session whose refresh could not reach Supabase comes back with no
+        // session but WITH an AuthRetryableFetchError, and auth-js keeps it to
+        // retry; sending that user to /login would strand them on a sign-in
+        // form they cannot use, so they stay where they are. That is the
+        // backstop, not the usual road: a real offline launch rejects (below).
+        else if (!session && !error) leaveForLoginIfNoSession();
+      },
+      // A rejection proves nothing about the account, and it is how an offline
+      // launch with an expired session actually ends. auth-js retries the
+      // refresh for up to ~30s, and getSession holds the auth lock while it
+      // waits on it. The subscription below asks for that lock to announce
+      // INITIAL_SESSION, gives up waiting after lockAcquireTimeout (5s) and
+      // steals it, so getSession rejects with "Lock … was released because
+      // another request stole it", about 31s after load (Chromium, a refresh
+      // answering 503). A request from another tab can steal it the same way.
+      // That user still holds a session either way, so this neither bounces
+      // nor clears a cookie; it only stops being unhandled.
+      (err) => console.error('[auth] getSession failed on mount', err)
+    );
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {

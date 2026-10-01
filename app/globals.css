@@ -1699,7 +1699,10 @@ body {
 }
 
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  /* The desktop app's top band too (.titlebar-drag below): page zoom can put the mobile
+     shell in a narrow desktop window. Browsers define no titlebar-area, so this is the
+     safe-area inset alone everywhere else. */
+  padding-top: max(env(safe-area-inset-top, 0px), env(titlebar-area-height, 0px));
 }
 
 /* Touch target minimum size for accessibility */
@@ -2171,4 +2174,267 @@ body {
 [data-reduce-motion='true'] .drop-armed,
 [data-reduce-motion='true'] .drop-line::before {
   animation: none;
+}
+
+/* ── Desktop app: the window's top band ─────────────────────────────────────
+   The macOS desktop app has no title bar (electron/lib/window-chrome.cjs): its traffic
+   lights sit in the 43px every desktop page leaves at the top. titleBarOverlay is the only
+   thing that defines env(titlebar-area-*). No browser, no installed PWA (the manifest has
+   no display_override), no framed window and no macOS full screen does, so every rule
+   that reads it falls back to exactly today's value there. Each env() keeps its 0px
+   fallback, never a bare 0 (0 inside calc() or min() is invalid). Never test
+   (display-mode: window-controls-overlay): Electron never matches it.
+
+   .titlebar-drag is what the window is dragged by. It stays the FIRST element in <body>
+   (app/layout.tsx): where drag regions overlap, the later one in the document wins,
+   z-index is ignored, and pointer-events:none exempts nothing. min() holds it to 43px
+   when the page is zoomed out, because env() is in CSS px and grows as zoom shrinks.
+
+   A drag region swallows clicks AND pointer enter/leave, so anything interactive or
+   hover-driven that reaches into the top 43px takes .titlebar-hole, or moves down. Even a
+   clipped, invisible box punches a hole, which is why the sidebar's word only does while
+   the column shows (.titlebar-hole-word). Menus, tooltips and dialogs are portalled after
+   the band, so the attribute rules below cover every one of them. */
+.titlebar-drag {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: min(43px, env(titlebar-area-height, 0px));
+  pointer-events: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.titlebar-hole,
+.titlebar-hole-word .wordmark,
+[data-radix-popper-content-wrapper],
+[role='dialog'],
+[role='alertdialog'] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ── Layouts: the styled slots (lib/layout-themes.ts) ───────────────────────
+   A layout's STYLED slots are drawn here, off the `data-layout-<slot>` stamps
+   the desktop shell puts on its own root (layoutAttributes). Keyed on the slot
+   variant, never on a layout's name, so a second layout that wants heading
+   buckets gets them by naming the variant. Scoped under the shell's stamp,
+   never <html>: that is what keeps every layout off the phone, whose shell is
+   another tree. Each rule restyles; none hides a control a person acts with —
+   the tick stays the same button, only drawn as text. */
+
+/* relay: 'off' — the motion goes; the IntersectionObserver in relay-field.tsx
+   sees the element leave and stops its frame loop. */
+[data-layout-relay='off'] [data-relay-field] {
+  display: none;
+}
+
+/* buckets: 'headings' — the card under each bucket's rows goes, the caption
+   becomes a `## heading`. Only the resting card: the drop slot a drag opens
+   (--bkt-tray / --bkt-tray-armed) keeps its surface, because lib/dnd/CONTRACT
+   needs a visible hover state on the bare bucket droppable. The "now" rule
+   down the left wall is an inset shadow composed after these, so it stays. */
+[data-layout-buckets='headings'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='headings'] [data-bucket-label] {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  color: var(--foreground);
+  text-transform: lowercase;
+}
+[data-layout-buckets='headings'] [data-bucket-label]::before {
+  content: '## ';
+  color: var(--success-text);
+}
+
+/* rows: 'text' — the tick drawn as [ ] / [~] / [x]. Same button, same hit
+   area (the 16px height stays; it only widens to fit three characters). */
+[data-layout-rows='text'] [data-testid='item-complete-button'] {
+  width: auto;
+  min-width: 3ch;
+  border-color: transparent;
+  background: none;
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'] > * {
+  display: none;
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']::before {
+  content: '[ ]';
+  white-space: pre;
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'][data-checked='partial']::before {
+  content: '[~]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'][data-checked='true']::before {
+  content: '[x]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']:hover {
+  color: var(--foreground);
+}
+
+/* ── Notebook: the spread, the masthead, labels and ruled rows ──────────────
+   The paper is its own, not a theme's: a planner's page is cream whatever the
+   colour theme does, and it pairs with Paper. --nb-* are inert anywhere a
+   [data-book] (desktop-shell's `canvas: 'spread'`) is not rendered. */
+:root {
+  --nb-desk: oklch(0.83 0.025 65);
+  --nb-page: oklch(0.975 0.014 88);
+  --nb-rule: oklch(0.6 0.05 240 / 16%);
+  --nb-spine: oklch(0.4 0.03 60 / 14%);
+  --nb-ink: oklch(0.35 0.03 60);
+  --nb-ribbon: oklch(0.45 0.1 160);
+  --nb-ribbon-ink: oklch(0.97 0.02 90);
+  --nb-tab: oklch(0.92 0.03 85);
+  --nb-sheet-shadow: 0 14px 34px oklch(0.3 0.04 60 / 26%);
+}
+/* On body, not :root: next/font defines --font-source-serif by a className on
+   <body>, so declared any higher it computes to guaranteed-invalid. */
+body {
+  --font-serif-display: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
+}
+.dark {
+  --nb-desk: oklch(0.13 0.008 60);
+  --nb-page: oklch(0.215 0.012 70);
+  --nb-rule: oklch(0.85 0.03 240 / 8%);
+  --nb-spine: oklch(0 0 0 / 35%);
+  --nb-ink: oklch(0.82 0.02 80);
+  --nb-ribbon: oklch(0.66 0.11 160);
+  --nb-ribbon-ink: oklch(0.17 0.02 160);
+  --nb-tab: oklch(0.27 0.014 70);
+  --nb-sheet-shadow: 0 14px 34px oklch(0 0 0 / 50%);
+}
+
+/* canvas: 'spread' — one sheet under both pages, ruled, with the spine's
+   shadow on each side of the fold. */
+[data-book] {
+  border-radius: 6px;
+  background-color: var(--nb-page);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--nb-rule) 31px 32px);
+  box-shadow: var(--nb-sheet-shadow);
+}
+/* Docked open only: padding would hold a collapsed (w-0) column open, and the
+   peeked card keeps its own drop shadow. */
+[data-book] [data-testid='sidebar-column'][data-column-state='open'] {
+  padding-inline: 20px 14px;
+  box-shadow: inset -22px 0 22px -22px var(--nb-spine);
+}
+[data-book] > main::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 26px;
+  background: linear-gradient(90deg, var(--nb-spine), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* capture: 'page-foot' — the dock drawn as the page's last ruled line. The
+   omnibar inside is untouched: every mode, the panel and ⌘I still work. */
+[data-dock-page] {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-inline: 0;
+}
+[data-dock-page] [data-omnibar-pill] {
+  background: transparent !important;
+  box-shadow: none !important;
+  translate: none !important;
+  border-radius: 0;
+  border-bottom: 1px solid var(--nb-ink);
+  padding-inline: 2px;
+}
+[data-dock-page] [data-omnibar-pill] input {
+  font-family: var(--font-serif-display);
+  font-style: italic;
+  font-size: 15px;
+}
+
+/* header: 'masthead' — the capsule's controls without the capsule: the date
+   set as a serif masthead, the view row as quiet text. Same buttons, same
+   test ids; only the chrome goes. */
+[data-layout-header='masthead'] [data-header-capsule],
+[data-layout-header='masthead'] [data-header-pill] {
+  background: transparent;
+  box-shadow: none;
+}
+[data-layout-header='masthead'] [data-header-capsule] {
+  padding: 0;
+}
+[data-layout-header='masthead'] [data-testid='header-date'] {
+  font-family: var(--font-serif-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+[data-layout-header='masthead'] [data-book] [data-surface-header],
+[data-layout-header='masthead'] [data-book] [data-surface-pill] {
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+[data-layout-header='masthead'] [data-book] [data-surface-title] {
+  font-family: var(--font-serif-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* buckets: 'labels' — no card, the caption a small-caps label in the ribbon's
+   ink. The drag slot keeps its surface, as under 'headings'. */
+[data-layout-buckets='labels'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='labels'] [data-bucket-label] {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--nb-ribbon);
+}
+
+/* rows: 'ruled' — an inked box, and a hand-drawn tick that overshoots it when
+   done. Same button and hit area; the strike-through takes the tick's ink. */
+[data-layout-rows='ruled'] [data-testid='item-complete-button'] {
+  overflow: visible;
+  background: transparent;
+  border: 1.5px solid var(--nb-ink);
+  border-radius: 2px;
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'] > * {
+  display: none;
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'][data-checked='true']::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: -4px;
+  width: 6px;
+  height: 12px;
+  border: solid var(--nb-ribbon);
+  border-width: 0 2.5px 2.5px 0;
+  border-radius: 0 0 2px 0;
+  transform: rotate(40deg);
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'][data-checked='partial']::after {
+  content: '';
+  position: absolute;
+  inset: auto 2px 5px 2px;
+  height: 2px;
+  background: var(--nb-ribbon);
+}
+[data-layout-rows='ruled'] [data-testid='item-card'][data-completed='true'] p {
+  text-decoration-color: var(--nb-ribbon);
 }

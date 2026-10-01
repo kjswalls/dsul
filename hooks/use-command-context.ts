@@ -53,9 +53,9 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
         (() => {
           // revealChat re-reads the gate itself; this is the render's view of
           // it, so a stale closure can only ever open less, never more. It
-          // opens the sidebar too on desktop: ChatPanel mounts inside
-          // SidebarDock, which lives in a w-0 overflow-hidden container while
-          // the sidebar is collapsed.
+          // reveals the dock too on desktop (revealDock): ChatPanel mounts
+          // inside SidebarDock, which lives in a w-0 overflow-hidden container
+          // while the sidebar is collapsed.
           if (canChat) revealChat(isMobile);
         }),
       userId,

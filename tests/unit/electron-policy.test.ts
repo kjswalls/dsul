@@ -176,6 +176,17 @@ describe('carriesAuthCode', () => {
     expect(carriesAuthCode('https://do.dsul.app/connect?code=x')).toBe(true);
   });
 
+  it('leaves a signed-out bounce carrying the pairing link alone', () => {
+    // proxy.ts and the provider send a signed-out /connect?code=… here with the
+    // whole destination encoded inside `redirect` (lib/signed-out-redirect.ts
+    // loginPathFor). The old /login?code=… was dropped by this guard.
+    expect(carriesAuthCode('https://do.dsul.app/login?redirect=%2Fconnect%3Fcode%3DABCD1234')).toBe(false);
+    // And /auth/callback's failure, which hands the same destination back.
+    expect(
+      carriesAuthCode('https://do.dsul.app/login?redirect=%2Fconnect%3Fcode%3DABCD1234&error=expired')
+    ).toBe(false);
+  });
+
   it('leaves ordinary pages alone', () => {
     for (const url of [
       'https://do.dsul.app/',

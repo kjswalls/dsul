@@ -1,4 +1,5 @@
 import { getAICapabilities } from './ai-connection-store';
+import { revealDock } from './look-store';
 import { useMobileNavStore } from './mobile-nav-store';
 import { useProposalStore, type ProposalSurface } from './proposal-store';
 import { useSidebarStore } from './sidebar-store';
@@ -6,7 +7,9 @@ import { useSidebarStore } from './sidebar-store';
 /**
  * Opens the chat surface iff something can answer (`getAICapabilities().canChat`).
  *
- * Desktop: the left sidebar, with chat expanded. Mobile: the chat tab. Returns
+ * Desktop: the dock, revealed (`revealDock`, which opens the left sidebar
+ * unless the layout lays the dock across the bottom), with chat expanded.
+ * Mobile: the chat tab. Returns
  * whether it opened, so a caller (a command, the catch-up card, the settings
  * no-results button) can do something else when chat is not there to open —
  * an open into a surface that is hidden is a button that does nothing.
@@ -16,9 +19,8 @@ export function revealChat(isMobile: boolean): boolean {
   if (isMobile) {
     useMobileNavStore.getState().setActiveTab('chat');
   } else {
-    const sidebar = useSidebarStore.getState();
-    sidebar.setLeftSidebarOpen(true);
-    sidebar.setChatExpanded(true);
+    revealDock();
+    useSidebarStore.getState().setChatExpanded(true);
   }
   return true;
 }

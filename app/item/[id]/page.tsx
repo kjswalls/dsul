@@ -31,8 +31,10 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
  * so the editor does not mount a second live copy).
  *
  * Auth follows the app's client-side model: the root layout's
- * SupabaseProvider hydrates the store when a session exists; without one this
- * page simply has no items and shows the not-found state with a sign-in link.
+ * SupabaseProvider hydrates the store when a session exists. With none stored
+ * it sends the page to /login, keeping this item as ?redirect=; a stored one it
+ * cannot use leaves the page with no items, on the not-found state with a
+ * sign-in link.
  */
 
 /* ItemDialog is the app's largest component and drags react-day-picker in
@@ -98,7 +100,7 @@ export default function ItemPage() {
   const config = getItemTypeConfig(itemTypeName(item));
 
   return (
-    <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8">
+    <main className="mx-auto flex max-w-4xl flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
       <nav className="text-muted-foreground flex items-center gap-1.5 text-xs">
         <Link
           href="/"

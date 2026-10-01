@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useLayoutEffect, useReducer, useRef } from 'react';
-import { isRowCompletedOn, type SortableRow } from '@/lib/sort-rows';
+import { isRowSettledOn, type SortableRow } from '@/lib/sort-rows';
 import { useDragStore } from '@/lib/drag-store';
 
 /**
@@ -80,7 +80,7 @@ export function useSinkHold<E extends HTMLElement = HTMLDivElement>(
 
   const completedAs = useCallback(
     (row: SortableRow, dateStr: string | null): boolean => {
-      const actual = isRowCompletedOn(row, dateStr);
+      const actual = isRowSettledOn(row, dateStr);
       const key = `${row.item.id}|${dateStr ?? ''}`;
       batch.current.set(key, actual);
       return committed.current.get(key) ?? actual;

@@ -22,6 +22,7 @@ const {
   shell,
 } = require('electron');
 const policy = require('./lib/policy.cjs');
+const { windowChrome } = require('./lib/window-chrome.cjs');
 
 const APP_ID = 'app.dsul.desktop';
 const IS_MAC = process.platform === 'darwin';
@@ -199,6 +200,9 @@ function createWindow() {
     title: 'dsul',
     backgroundColor: backgroundColor(),
     autoHideMenuBar: process.platform === 'win32',
+    // macOS: no title bar; the traffic lights sit in the page's own top band
+    // (lib/window-chrome.cjs). Windows and Linux keep the native frame.
+    ...windowChrome(process.platform),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,

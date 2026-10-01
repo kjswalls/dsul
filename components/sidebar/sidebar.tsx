@@ -287,6 +287,9 @@ export function Sidebar() {
       <div
         ref={columnRef}
         data-testid="sidebar-column"
+        // Read by layouts that dress the column (app/globals.css, [data-book]):
+        // padding on a w-0 box would hold it open, and the peek keeps its shadow.
+        data-column-state={peeking ? 'peek' : isVisible ? 'open' : 'closed'}
         className={cn(
           // pt-[31px] matches the canvas header so the Braindump title row lines
           // up vertically with the date selector (both 43px from window top per
@@ -297,7 +300,9 @@ export function Sidebar() {
           // it reads as lag, so the column goes to direct manipulation for the
           // duration and picks the transition back up on release.
           resizing && 'transition-none',
-          peeking && 'absolute left-0 top-0 bottom-0 z-[24] rounded-card bg-surface-0 shadow-soft-lg'
+          // titlebar-hole: in the desktop app the band over this column's top would
+          // otherwise read as the pointer leaving, and end the peek.
+          peeking && 'titlebar-hole absolute left-0 top-0 bottom-0 z-[24] rounded-card bg-surface-0 shadow-soft-lg'
         )}
       >
         {/* The wordmark lives IN the top padding, not in the flow. pt-[31px] is
@@ -308,9 +313,21 @@ export function Sidebar() {
             the capsule's 10px plus the pill's 15px, so the word starts over
             the count's first figure. Out of the braindump <section> on purpose:
             it names the app, not the list, and stays out of that section's
-            testid scope. No opacity on it or any parent — its dot is lime. */}
+            testid scope. No opacity on it or any parent — its dot is lime.
+
+            In the macOS desktop app the traffic lights take the word's place at x 37
+            and the word starts 14px past them: env(titlebar-area-x) is the lights'
+            right edge plus their own 37px inset, and this column starts at 12, so
+            37 - 14 + 12 = 35 (electron/lib/window-chrome.cjs; a test pins both).
+            Everywhere else the env() is undefined and the inset stays 25px. The word
+            is a hole in the window-drag band (so its hover still fires) only while
+            the column shows: a collapsed column clips it, but its box would still
+            punch an undraggable patch beside the lights. */}
         <Wordmark
-          className="pointer-events-none absolute inset-x-0 top-0 h-[31px] px-[25px] text-foreground select-none"
+          className={cn(
+            'pointer-events-none absolute inset-x-0 top-0 h-[31px] pr-[25px] pl-[max(25px,calc(env(titlebar-area-x,0px)_-_35px))] text-foreground select-none',
+            isVisible && 'titlebar-hole-word'
+          )}
           data-testid="sidebar-wordmark"
         />
         <Braindump />
@@ -332,7 +349,12 @@ export function Sidebar() {
           (WEEK_GUTTER_Z = 22) would otherwise paint over the peeked card and
           catch the pointer on its way to the pin, ending the peek. */}
       {mounted && peeking && (
-        <div aria-hidden className="absolute left-0 top-0 z-[23] h-full w-[var(--sidebar-w)]" />
+        <div
+          aria-hidden
+          data-testid="sidebar-peek-footprint"
+          // A hole in the desktop app's drag band for the same reason as the column.
+          className="titlebar-hole absolute left-0 top-0 z-[23] h-full w-[var(--sidebar-w)]"
+        />
       )}
 
       {/* Keep open — the peek's own way to become permanent. Hovering the
@@ -416,7 +438,7 @@ export function Sidebar() {
               // outline-none because the bar below IS the focus indicator — a
               // ring drawn around a transparent gutter strip reads as a stray
               // rectangle floating between two cards.
-              className="group absolute left-full top-0 z-30 h-full w-3 cursor-col-resize touch-none focus-visible:outline-none"
+              className="titlebar-hole group absolute left-full top-0 z-30 h-full w-3 cursor-col-resize touch-none focus-visible:outline-none"
             >
               {/* Rest is a transparent bar rather than a faded one: every state
                   change here is background-color, so the accent is only ever
@@ -620,7 +642,7 @@ export function Sidebar() {
               }}
               onMouseLeave={cancelPeek}
               className={cn(
-                'group absolute -left-3 top-0 z-50 h-full w-8 cursor-pointer',
+                'titlebar-hole group absolute -left-3 top-0 z-50 h-full w-8 cursor-pointer',
                 'focus-visible:outline-none'
               )}
             >

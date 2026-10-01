@@ -57,9 +57,11 @@ electron/
 - **Size and paint.**
   - Set `minWidth: 900`. Below 768px the mobile shell renders (hooks/use-mobile.ts:3), and below 1180px the item panel overlays the page instead of docking (components/shell/desktop-shell.tsx:216).
   - Take `backgroundColor` from `nativeTheme.shouldUseDarkColors`: `#0e1014` dark or `#fbfaf9` light (app/layout.tsx:68-71). Show the window on `ready-to-show`.
-- **v1 keeps the standard OS frame.** A hidden title bar would put:
-  - the macOS traffic lights on top of the wordmark (components/sidebar/sidebar.tsx:312-315);
-  - the Windows caption buttons over the item panel's close control (components/planner/item-dialog.tsx:3049-3062).
+- **Frame (revised 2026-10-01, after Kirby's first run on a Mac).** v1 shipped with the standard OS frame; v0.1.1 drops the macOS title bar, the way Claude's app does.
+  - macOS: `titleBarStyle: 'hidden'`, traffic lights at `{x: 37, y: 20}` and `titleBarOverlay: {height: 43}` (electron/lib/window-chrome.cjs). The overlay is what defines `env(titlebar-area-*)` for the page, and nothing else does (no browser, no installed PWA, no framed window, not macOS full screen), so every rule the page keys off it falls back to today's layout everywhere else.
+  - The page's top 43px (the shell's 12px gutter plus the sidebar's 31px wordmark row) is a window-drag band: `.titlebar-drag`, the first child of `<body>` (app/globals.css). Anything interactive or hover-driven above y 43 takes `titlebar-hole`. The wordmark moves to 14px past the green light; the full-page routes pad their top to the band.
+  - Windows and Linux keep the native frame: the caption buttons would sit over the canvas card's rounded top-right corner, and their colours cannot follow dsul's theme without a bridge method. Electron ignores drag regions in a framed window, so the page's CSS does nothing there.
+  - Release order: the web half deploys first (it is inert until a shell sets `titleBarOverlay`), then the shell is released. A new shell on an old deployment would have no drag band.
 - **Guards.** Attach them in `app.on('web-contents-created')`, so every webContents has them before its first load.
   - **`will-navigate`, `will-frame-navigate` and `will-redirect`.** `will-frame-navigate` covers subframes; the app has none today.
     - An app URL stays in the window, unless `carriesAuthCode` is true: the path is `/auth/callback`, or the URL has a `code` query parameter.
@@ -472,7 +474,7 @@ Also in v1: the push-row copy, the Wave icons, the CLAUDE.md layout line and the
 - Same-origin second windows.
 - The stale-window reload.
 - A shortcut override and a settings UI for it.
-- A custom title bar.
+- A custom title bar on Windows (macOS has one since v0.1.1).
 - Launch at login.
 - Find-in-page.
 - Remembering window size and position.
