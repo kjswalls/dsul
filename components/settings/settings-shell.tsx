@@ -1,12 +1,13 @@
 'use client';
 
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SettingRow } from './setting-row';
+import { SettingChip } from './setting-chip';
 import { LookPreview } from './look-preview';
 import {
   ALL_PANES,
@@ -21,6 +22,13 @@ import {
   type DestinationRecord,
 } from '@/lib/settings/manifest';
 import { searchSettings, paneRows, paneMatchCount, highlightRuns } from '@/lib/settings/search';
+import {
+  groupPaneRows,
+  isShown,
+  anyAncestorPending,
+  ancestorsOf,
+  type PaneGroup,
+} from '@/lib/settings/groups';
 import { ExtensionIndex } from './extension-index';
 import { ShortcutsPanel } from './shortcuts-panel';
 
@@ -42,6 +50,9 @@ import { ShortcutsPanel } from './shortcuts-panel';
  */
 
 const ADV_KEY = 'dsul-settings-advanced';
+/** How long a deep link waits out a loading ancestor before settling on the
+ *  nearest drawn row — a load that never finishes must not strand it. */
+const PENDING_WAIT_MS = 3000;
 
 function Eyebrow({
   children,
@@ -247,8 +258,27 @@ export function SettingsShell({
      a ref guards against re-arrival for the same id.
 
      Two: an advanced row isn't in the DOM until its disclosure is open, so a
-     deep link to one has to open it first and come back on the next commit. */
+     deep link to one has to open it first and come back on the next commit.
+
+     Three: a dependent may not be a row of its own. The value half of a merged
+     chip answers through `data-setting-alias`, and a dependent hidden because
+     an ancestor is off lands on the nearest ancestor that IS drawn — the
+     switch that has to go on before the thing you were sent to exists. While
+     an ancestor is still loading, "hidden" is not known yet, so the arrival
+     waits for `focusPending` to clear rather than ringing the wrong row. */
   const arrivedFor = useRef<string | null>(null);
+  const focusRecord = focusId ? settingById(focusId) : undefined;
+  const focusPending = focusRecord ? anyAncestorPending(focusRecord, ctx) : false;
+  // A load that never finishes (a failed extensions hydrate leaves its loaded
+  // flag false until the next auth event) must not strand the arrival — and the
+  // `?focus=` it would have stripped. After PENDING_WAIT_MS the walk runs anyway
+  // and settles on the nearest drawn ancestor, which is the pending toggle row.
+  const [waitedOutFor, setWaitedOutFor] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusId || !focusPending) return;
+    const t = setTimeout(() => setWaitedOutFor(focusId), PENDING_WAIT_MS);
+    return () => clearTimeout(t);
+  }, [focusId, focusPending]);
   const ringRef = useRef<number | null>(null);
   const clearRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -271,21 +301,33 @@ export function SettingsShell({
       return;
     }
 
-    const node = document.querySelector<HTMLElement>(`[data-setting-row="${focusId}"]`);
+    const find = (id: string) =>
+      document.querySelector<HTMLElement>(`[data-setting-row="${id}"]`) ??
+      document.querySelector<HTMLElement>(`[data-setting-alias="${id}"]`);
+    let node = find(focusId);
+    if (!node) {
+      if (focusPending && waitedOutFor !== focusId) return;
+      const record = settingById(focusId);
+      for (const ancestor of record ? ancestorsOf(record) : []) {
+        node = find(ancestor.id);
+        if (node) break;
+      }
+    }
     if (!node) return;
     arrivedFor.current = focusId;
+    const hostId = node.dataset.settingRow ?? focusId;
 
     const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     node.scrollIntoView({ block: 'center', behavior: reduced ? 'auto' : 'smooth' });
-    // The ROW, not the control — a screen reader should read label, description
-    // and current value before Space can flip anything.
+    // The ROW (or the chip's frame), not the control — a screen reader should
+    // read label, description and current value before Space can flip anything.
     node.focus({ preventScroll: true });
 
     // Ring on the next frame, so the scroll is under way before it appears.
-    ringRef.current = requestAnimationFrame(() => setHighlight(focusId));
+    ringRef.current = requestAnimationFrame(() => setHighlight(hostId));
     clearRef.current = setTimeout(() => setHighlight(null), 1600);
     window.history.replaceState({}, '', window.location.pathname);
-  }, [focusId, pane, advOpen]);
+  }, [focusId, pane, advOpen, focusPending, waitedOutFor]);
 
   const write = useCallback(
     (record: SettingRecord, next: string | boolean) => {
@@ -294,47 +336,40 @@ export function SettingsShell({
     [ctx]
   );
 
+  const announce = useCallback((message: string) => {
+    setNotice(message);
+    if (noticeTimer.current) clearTimeout(noticeTimer.current);
+    noticeTimer.current = setTimeout(() => setNotice(''), 4000);
+  }, []);
+
   const reset = useCallback(
     (record: SettingRecord) => {
       record.write(record.defaultValue, ctx);
-      setNotice(`${record.label} reset to ${displayValue(record, record.defaultValue)}`);
-      if (noticeTimer.current) clearTimeout(noticeTimer.current);
-      noticeTimer.current = setTimeout(() => setNotice(''), 4000);
+      announce(`${record.label} reset to ${displayValue(record, record.defaultValue)}`);
     },
-    [ctx]
+    [ctx, announce]
+  );
+
+  /** A merged chip is two records and one sentence: each half goes back to its
+   *  own default, in the order given, and the notice names the chip. */
+  const resetMany = useCallback(
+    (records: SettingRecord[], label: string, display: string) => {
+      for (const record of records) record.write(record.defaultValue, ctx);
+      announce(`${label} reset to ${display}`);
+    },
+    [ctx, announce]
   );
 
   useEffect(() => () => void (noticeTimer.current && clearTimeout(noticeTimer.current)), []);
 
   const rowFor = (record: SettingRecord, extra?: { paneName?: string; ranges?: [number, number][]; matchedValue?: string }) => {
-    // A dependent row is ALWAYS rendered and visible — you can see what turning
-    // the parent on will get you before you turn it on — but genuinely
-    // disabled, never `opacity-50 pointer-events-none`, which leaves a control
-    // keyboard-operable while looking dead.
-    //
-    // Walks the WHOLE chain, not one link: autoAgeDays → autoAge →
-    // morningCheck, and setMorningCheckEnabled never clears morningAutoAgeEnabled.
-    // Reading only the immediate parent leaves the grandchild live and writable
-    // under a branch use-overdue-sweep refuses to act on. `seen` is a cycle stop
-    // — the manifest test asserts a parent exists, never that the graph is a DAG,
-    // and this runs during render.
-    let inactive = false;
-    try {
-      const seen = new Set<string>();
-      let cursor = record.dependsOn;
-      while (cursor && !seen.has(cursor)) {
-        seen.add(cursor);
-        const parent = settingById(cursor);
-        if (!parent) break;
-        if (!parent.read(ctx)) {
-          inactive = true;
-          break;
-        }
-        cursor = parent.dependsOn;
-      }
-    } catch {
-      inactive = false;
-    }
+    // In the pane a dependent whose ancestor is off is not drawn at all (see
+    // groupFor) — the chips and rows under a switch exist while it is on. This
+    // path still meets one in SEARCH, which lists every record it counts, so
+    // there it is drawn and genuinely disabled, never `opacity-50
+    // pointer-events-none`, which leaves a control keyboard-operable while
+    // looking dead. isShown walks the whole chain, not one link.
+    const inactive = record.dependsOn ? !isShown(record, ctx) : false;
 
     let value: string | boolean = '';
     try {
@@ -344,7 +379,7 @@ export function SettingsShell({
     }
 
     return (
-      <div key={record.id} className={record.dependsOn ? 'border-border ml-3 border-l pl-4' : undefined}>
+      <div key={record.id}>
         <SettingRow
           record={record}
           ctx={ctx}
@@ -357,6 +392,50 @@ export function SettingsShell({
           ranges={extra?.ranges}
           matchedValue={extra?.matchedValue}
         />
+      </div>
+    );
+  };
+
+  /**
+   * One pane group as one list item. No indent and no rail on anything: a
+   * dependent shares its root's left edge, and is simply absent while an
+   * ancestor is off.
+   *
+   * Chips are a SIBLING block below the root's row, not inside it — inside,
+   * they would sit in the row's label column, take its hover wash and wake its
+   * reset button on focus, and the root's switch would lose its vertical.
+   */
+  const groupFor = (group: PaneGroup) => {
+    if (group.mode === 'row') return rowFor(group.parent);
+    if (group.mode === 'rows') {
+      return (
+        <Fragment key={group.parent.id}>
+          {rowFor(group.parent)}
+          {group.descendants.filter((d) => isShown(d, ctx)).map((d) => rowFor(d))}
+        </Fragment>
+      );
+    }
+    const shown = group.chips.filter((chip) =>
+      isShown(chip.kind === 'merged' ? chip.toggle : chip.record, ctx)
+    );
+    return (
+      <div key={group.parent.id} data-setting-group={group.parent.id}>
+        {rowFor(group.parent)}
+        {shown.length > 0 && (
+          <div className="flex flex-wrap gap-2 pb-3">
+            {shown.map((chip) => (
+              <SettingChip
+                key={chip.kind === 'merged' ? chip.toggle.id : chip.record.id}
+                spec={chip}
+                ctx={ctx}
+                highlight={highlight}
+                onWrite={write}
+                onReset={reset}
+                onResetMany={resetMany}
+              />
+            ))}
+          </div>
+        )}
       </div>
     );
   };
@@ -637,7 +716,7 @@ export function SettingsShell({
                   onReset={reset}
                 />
               ) : (
-                <div className="divide-border divide-y">{rows.map((record) => rowFor(record))}</div>
+                <div className="divide-border divide-y">{groupPaneRows(rows).map(groupFor)}</div>
               )}
 
               {advanced.length > 0 && (
