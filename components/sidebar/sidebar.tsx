@@ -287,6 +287,9 @@ export function Sidebar() {
       <div
         ref={columnRef}
         data-testid="sidebar-column"
+        // Read by layouts that dress the column (app/globals.css, [data-book]):
+        // padding on a w-0 box would hold it open, and the peek keeps its shadow.
+        data-column-state={peeking ? 'peek' : isVisible ? 'open' : 'closed'}
         className={cn(
           // pt-[31px] matches the canvas header so the Braindump title row lines
           // up vertically with the date selector (both 43px from window top per

@@ -230,14 +230,21 @@ export const DesktopShell = memo(function DesktopShell() {
         // One sheet of paper under both pages, so the braindump and the day
         // read as facing pages of one book. The ornaments hang off the book,
         // not off <main>, which clips its overflow.
-        <div data-book="" className="relative flex min-w-0 flex-1">
+        // gap-3 is the sidebar sash's gutter, as in Classic: without it the
+        // sash would sit over the right page's first 12px and take its clicks.
+        <div data-book="" className="relative flex min-w-0 flex-1 gap-3">
           {pages}
-          {layout.ornaments.includes('ribbon') && (
-            <Ribbon className="absolute top-0 right-16 z-[5]" />
-          )}
-          {layout.ornaments.includes('page-tabs') && (
-            <PageTabs className="absolute top-28 left-full z-[5]" />
-          )}
+          {/* Inert with <main> while the item panel overlays: they sit under
+              it then, and must not stay in the tab order. The ribbon hangs
+              12px in from the page's right edge, clear of WeekScale (32px). */}
+          <div inert={panelOverlays && !!panelState} className="contents">
+            {layout.ornaments.includes('ribbon') && (
+              <Ribbon className="absolute top-0 right-3 z-[5]" />
+            )}
+            {layout.ornaments.includes('page-tabs') && (
+              <PageTabs className="absolute top-28 left-full z-[5]" />
+            )}
+          </div>
         </div>
       ) : (
         pages
@@ -291,7 +298,9 @@ export const DesktopShell = memo(function DesktopShell() {
         plate
           ? 'gap-3 bg-surface-0 p-3'
           : spread
-            ? cn('bg-[var(--nb-desk)] p-5', panelState ? 'pr-5' : 'pr-14')
+            ? // pr-14 holds the page tabs. Only a DOCKED panel takes that room;
+              // an overlaid one (<=1180px) takes no width, so the book keeps it.
+              cn('bg-[var(--nb-desk)] p-5', panelState && !panelOverlays ? 'pr-5' : 'pr-14')
             : 'bg-canvas',
         banded && 'flex-col'
       )}

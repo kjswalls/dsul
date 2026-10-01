@@ -2281,7 +2281,9 @@ body {
   background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--nb-rule) 31px 32px);
   box-shadow: var(--nb-sheet-shadow);
 }
-[data-book] [data-testid='sidebar-column'] {
+/* Docked open only: padding would hold a collapsed (w-0) column open, and the
+   peeked card keeps its own drop shadow. */
+[data-book] [data-testid='sidebar-column'][data-column-state='open'] {
   padding-inline: 20px 14px;
   box-shadow: inset -22px 0 22px -22px var(--nb-spine);
 }
