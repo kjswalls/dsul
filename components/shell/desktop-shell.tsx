@@ -236,7 +236,9 @@ export const DesktopShell = memo(function DesktopShell() {
           closed, the same 12px the collapsed sidebar deliberately keeps. */}
       <div
         className={cn(
-          'relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
+          // titlebar-hole: the panel scrolls (surface.tsx), so its content passes under
+          // the desktop app's drag band, where it could not be clicked.
+          'titlebar-hole relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
           panelState ? 'w-[420px]' : cn('w-0', plate && '-ml-3'),
           // Flat: no gutter to eat, and a hairline seam where the plate's edge was.
           !plate && panelState && 'border-l border-border bg-canvas',

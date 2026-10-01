@@ -81,6 +81,9 @@ export default function RootLayout({
       <body
         className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} font-sans antialiased`}
       >
+        {/* The macOS desktop app's window-drag band; 0px tall everywhere else. FIRST in
+            <body>, always: see .titlebar-drag in globals.css. */}
+        <div aria-hidden className="titlebar-drag" />
         {/* One-time key migration — anchor-* → dsul-* (the Anchor→dsul rename).
             MUST stay above the palette script and ahead of all hydration: an
             unstamped browser is an ORPHANED browser to lib/local-state.ts, so

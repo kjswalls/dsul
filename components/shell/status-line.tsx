@@ -76,7 +76,14 @@ export function StatusLine({ className }: { className?: string }) {
     <div
       data-testid="status-line"
       className={cn(
-        'flex h-8 flex-shrink-0 items-center gap-5 overflow-hidden border-b border-border px-4 font-mono text-xs whitespace-nowrap text-muted-foreground',
+        'flex flex-shrink-0 items-center gap-5 overflow-hidden border-b border-border pr-4 font-mono text-xs whitespace-nowrap text-muted-foreground',
+        // In the macOS desktop app this line IS the title bar: it sits in the
+        // window's 43px drag band (app/globals.css), so it grows to the band,
+        // centres its text on the traffic lights (the 11px it gains goes on top)
+        // and starts 14px past the green one, as the sidebar's word does
+        // (electron/lib/window-chrome.cjs: 37 - 14 = 23). Everywhere else the
+        // env() is undefined and this is h-8 px-4, exactly as before.
+        'h-[max(2rem,min(43px,env(titlebar-area-height,0px)))] pt-[max(0px,calc(min(43px,env(titlebar-area-height,0px))_-_2rem))] pl-[max(1rem,calc(env(titlebar-area-x,0px)_-_23px))]',
         className
       )}
     >
@@ -96,7 +103,8 @@ export function StatusLine({ className }: { className?: string }) {
         data-testid="status-line-braindump"
         aria-pressed={paneOpen}
         onClick={togglePane}
-        className="rounded-[3px] px-1 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
+        // titlebar-hole: in the desktop app the band would swallow its clicks.
+        className="titlebar-hole rounded-[3px] px-1 transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary"
       >
         :braindump {paneOpen ? '−' : '+'}
       </button>

@@ -38,7 +38,7 @@ function Step({
 
 export default function OpenClawDocsPage() {
   return (
-    <div className="min-h-[100dvh] bg-background px-4 py-10">
+    <div className="min-h-[100dvh] bg-background px-4 py-10 pt-[max(2.5rem,env(titlebar-area-height,0px))]">
       <div className="mx-auto w-full max-w-xl space-y-8">
         <Link
           href="/"

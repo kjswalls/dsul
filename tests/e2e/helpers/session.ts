@@ -5,10 +5,13 @@ import type { Cookie } from '@playwright/test';
  * obtained in Node can be injected into a browser context as cookies.
  *
  * Extracted from the old helpers/auth.ts so globalSetup and per-test login share
- * ONE implementation — a drift here silently breaks the entire suite, and the
- * app has no auth gate locally (NEXT_PUBLIC_DISABLE_AUTH=true short-circuits
- * proxy.ts), so the failure mode is a fully-rendered EMPTY planner rather than a
- * redirect to /login.
+ * ONE implementation — a drift here breaks the entire suite, and not always
+ * loudly. A cookie the app finds no session in is sent to /login, by proxy.ts
+ * (its gate is live under .env.test, which sets no NEXT_PUBLIC_DISABLE_AUTH; a
+ * local `next dev` also reads .env.local, which can switch it off) and by the
+ * provider's own no-session check (lib/signed-out-redirect.ts). A cookie the
+ * decoder throws on is quieter: proxy.ts fails open, the browser client rejects
+ * it too, and every page sits on its loading skeleton.
  *
  * Cookie encoding (matches @supabase/ssr v0.9 defaults):
  *   name:  sb-<project-ref>-auth-token   (ref = the URL's first hostname label)

@@ -35,9 +35,42 @@ describe('/auth/callback', () => {
     },
   );
 
-  it('sends a failed exchange to the login page', async () => {
+  it('sends a failed exchange to the login page, keeping where it was going', async () => {
     exchange.mockResolvedValue({ error: { message: 'bad_code_verifier' } });
     const res = await at('?code=abc&next=%2Fgoal%2Fx');
+    expect(res.headers.get('location')).toBe(
+      'https://do.dsul.app/login?redirect=%2Fgoal%2Fx&error=auth',
+    );
+  });
+
+  it('keeps a pairing link through a failed sign-in, its code inside redirect', async () => {
+    // The retry from /login reads `redirect` again (lib/auth-redirect.ts), so
+    // the pairing code survives an expired or already-spent link. A top-level
+    // `code` would read as an auth code to the desktop shell's guard.
+    exchange.mockResolvedValue({
+      error: { code: 'flow_state_expired', message: 'invalid flow state, flow state has expired' },
+    });
+    const res = await at('?next=%2Fconnect%3Fcode%3DABCD1234&code=STALECODE123');
+    const location = new URL(res.headers.get('location')!);
+    expect(location.pathname).toBe('/login');
+    expect(location.searchParams.get('error')).toBe('expired');
+    expect(location.searchParams.get('redirect')).toBe('/connect?code=ABCD1234');
+    expect(location.searchParams.has('code')).toBe(false);
+  });
+
+  it('keeps where it was going when the provider came back with an error and no code', async () => {
+    // A cancelled Google sign-in, or a magic link a mail scanner opened first:
+    // GoTrue appends its error to the redirectTo, which still has `next`.
+    const res = await at('?next=%2Fgoal%2Fx&error=access_denied&error_description=denied');
+    expect(exchange).not.toHaveBeenCalled();
+    expect(res.headers.get('location')).toBe(
+      'https://do.dsul.app/login?redirect=%2Fgoal%2Fx&error=auth',
+    );
+  });
+
+  it('carries nothing back for a next it would not go to', async () => {
+    exchange.mockResolvedValue({ error: { message: 'bad_code_verifier' } });
+    const res = await at('?code=abc&next=%2F%2Fevil.com');
     expect(res.headers.get('location')).toBe('https://do.dsul.app/login?error=auth');
   });
 

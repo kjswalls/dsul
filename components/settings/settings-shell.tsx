@@ -452,7 +452,7 @@ export function SettingsShell({
 
   const { rows, advanced } = paneRows(pane, { isMobile });
   return (
-    <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8">
+    <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
       {/* Three crumbs inside an extension, two everywhere else. The rail's
           Extensions row does navigate back up, but from inside a sub-pane it
           renders as the CURRENT row — a lit row does not read as a way out. So
@@ -497,9 +497,10 @@ export function SettingsShell({
             // bottom until the page ends — so it scrolls itself once it would.
             // The 4px of padding keeps focus rings out of that clip, and the
             // matching negative margins (and top-7) keep every row exactly
-            // where it sat before.
+            // where it sat before. In the desktop app the rows stick below its
+            // top band instead (env() is undefined everywhere else, so top-7).
             'md:-mx-1 md:-my-1 md:w-[192px] md:flex-col md:self-start md:p-1',
-            'md:sticky md:top-7 md:max-h-[calc(100dvh-3.5rem)] md:overflow-x-hidden md:overflow-y-auto'
+            'md:sticky md:top-[max(1.75rem,calc(env(titlebar-area-height,0px)_-_4px))] md:max-h-[calc(100dvh-3.5rem)] md:overflow-x-hidden md:overflow-y-auto'
           )}
         >
           {PANES.map((p) => {
