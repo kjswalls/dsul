@@ -32,11 +32,12 @@ import { resetLabel, resetLabelFor } from './setting-row';
 
 type OnWrite = (record: SettingRecord, next: string | boolean) => void;
 
-/** The pill. Overrides PropertyChip's dimmed disabled state on purpose: the
- *  modified dot sits beside it, and nothing here fades through opacity. */
+/** The pill, sized to the 11px row description it sits under. Overrides
+ *  PropertyChip's dimmed disabled state on purpose: the modified dot sits
+ *  beside it, and nothing here fades through opacity. */
 const PILL = cn(
-  'bg-secondary text-foreground h-auto min-h-7 rounded-sm border-transparent px-2.5 py-1',
-  'text-left text-[12.5px] leading-snug',
+  'bg-secondary text-foreground h-auto min-h-6 rounded-sm border-transparent px-2 py-0.5',
+  'text-left text-[11px] leading-snug',
   'disabled:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-100'
 );
 
