@@ -685,7 +685,7 @@ export function ContainerDraftFields({
               testPrefix={`${p}-milestones`}
               orderable
               pickerHint="One-time items only. A repeating item never finishes."
-              emptyHint={hasNew('milestone') ? undefined : "Checkpoints on the way — e.g. “Run a 10k” by October."}
+              emptyHint={hasNew('milestone') ? undefined : "Checkpoints on the way"}
               eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a milestone is a one-shot item."
               onChange={(milestoneIds) => onChange({ milestoneIds })}
@@ -700,7 +700,7 @@ export function ContainerDraftFields({
               hiddenIds={NOTHING_HIDDEN}
               testPrefix={`${p}-checkins`}
               pickerHint="Repeating items only — a check-in comes round again."
-              emptyHint={hasNew('checkin') ? undefined : "A recurring review — e.g. a weekly look back on Sundays."}
+              emptyHint={hasNew('checkin') ? undefined : "A regular look back"}
               eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a check-in is a repeating item."
               onChange={(checkinIds) => onChange({ checkinIds })}
@@ -714,7 +714,7 @@ export function ContainerDraftFields({
               members={pick(draft.memberIds)}
               hiddenIds={NOTHING_HIDDEN}
               testPrefix={`${p}-supporting`}
-              emptyHint={hasNew('member') ? undefined : "The habits and tasks that serve it."}
+              emptyHint={hasNew('member') ? undefined : "Habits and tasks that serve it"}
               eligible={(i) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id)}
               onChange={(memberIds) => onChange({ memberIds })}
               footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add new supporting work…" />}
@@ -736,7 +736,7 @@ export function ContainerDraftFields({
               onChange({ routineIds: draft.routineIds.filter((id) => id !== routineId) })
             }
             testPrefix={p}
-            emptyHint="Routines this stretch switches on and off with it."
+            emptyHint="Switch on and off with it"
           />
         )}
         {(kind === 'routine' || kind === 'season') && (
@@ -756,8 +756,8 @@ export function ContainerDraftFields({
               hasNew('items')
                 ? undefined
                 : kind === 'routine'
-                  ? 'The habits you want to run — and pause — together.'
-                  : 'Anything that only matters during this stretch.'
+                  ? 'Habits that run and pause together'
+                  : 'What only matters for now'
             }
             onChange={(itemIds) => onChange({ itemIds })}
             footer={

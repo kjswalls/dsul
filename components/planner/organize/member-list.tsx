@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, Trash2 } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { LinkExistingPill, OrganizerSection } from '@/components/primitives/organizer-chips';
@@ -154,9 +154,9 @@ function memberMeta(item: Item): { text: string; numeric: boolean } {
  * A cap rather than the whole pool because browsing on an empty query means
  * this list is now unbounded by default — someone with 400 braindump items
  * would render 400 buttons to pick one. Eight is deliberately more than the six
- * the search-only version showed: the list is scrollable and arrow-navigable
- * now, so more rows cost nothing to reach, and a browse list of six is barely a
- * browse.
+ * the search-only version showed, and it is also the whole list: the picker
+ * never scrolls inside the dialog's own scroll (that was a nested scrollbar),
+ * so anything past eight is reached by narrowing, which the "N more" line says.
  */
 const PICKER_LIMIT = 8;
 
@@ -377,10 +377,9 @@ export function ItemMemberList({
   const q = query.trim().toLowerCase();
   const admits = eligible ?? isCollectible;
   const pool = items.filter((i) => admits(i) && !memberIds.includes(i.id));
-  const candidates = (q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool).slice(
-    0,
-    PICKER_LIMIT
-  );
+  const matches = q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool;
+  const candidates = matches.slice(0, PICKER_LIMIT);
+  const overflow = matches.length - candidates.length;
 
   /**
    * Clamped during render, not in an effect, and at BOTH ends.
@@ -400,8 +399,8 @@ export function ItemMemberList({
    */
   const active = Math.max(0, Math.min(cursor, candidates.length - 1));
 
-  // Keep the highlight on screen. Without this the cursor walks off the bottom
-  // of the 148px window and ↓ appears to stop working — the selection is moving,
+  // Keep the highlight on screen. Without this the cursor can walk off the
+  // bottom of the scrolling surface and ↓ appears to stop working — the selection is moving,
   // just where nobody can see it. `nearest` so it never scrolls when it doesn't
   // have to, which is what keeps the list from lurching on every keystroke.
   useEffect(() => {
@@ -420,6 +419,8 @@ export function ItemMemberList({
         label={label}
         count={members.length > 0 ? (count ?? members.length) : undefined}
         testId={`${testPrefix}-members`}
+        hint={members.length === 0 && !adding ? emptyHint : undefined}
+        hintTestId={`${testPrefix}-empty-hint`}
         action={
           <LinkExistingPill
             testId={`${testPrefix}-member-add`}
@@ -563,77 +564,87 @@ export function ItemMemberList({
           </div>
         )}
 
-        {members.length === 0 && !adding && emptyHint && (
-          <p
-            className="text-muted-foreground px-[7px] text-xs italic"
-            data-testid={`${testPrefix}-empty-hint`}
-          >
-            {emptyHint}
-          </p>
-        )}
-
+        {/* The picker is ONE inset well — search, results and the way out — so
+            it reads as a thing that opened inside the section rather than more
+            form. The results never scroll inside the dialog's own scroll: they
+            stop at PICKER_LIMIT and say how many more a narrower query finds. */}
         {adding && (
-          <div className="flex flex-col gap-1">
+          <div className="bg-surface-3 mt-1 flex flex-col gap-1 rounded-lg p-1.5">
+            <div className="flex items-center gap-1.5 pl-[7px]">
+              <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+              <Input
+                ref={searchRef}
+                autoFocus
+                placeholder="Find an item…"
+                value={query}
+                onChange={(e) => {
+                  setQuery(e.target.value);
+                  // Home on every keystroke: the list under the cursor is a
+                  // different list now, so the old index points at nothing the user
+                  // chose.
+                  setCursor(0);
+                }}
+                /**
+                 * The whole keyboard contract, on the input rather than the rows.
+                 *
+                 * The rows are buttons and could take focus themselves, but then ↓
+                 * from the field moves focus OUT of it and the next character typed
+                 * goes nowhere. This is the combobox pattern for exactly that
+                 * reason: focus never leaves the input, `aria-activedescendant`
+                 * tells a screen reader which row is current, and the highlight is
+                 * ours to draw.
+                 */
+                role="combobox"
+                aria-expanded
+                aria-controls={`${testPrefix}-member-candidates`}
+                aria-activedescendant={
+                  candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
+                }
+                onKeyDown={(e) => {
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    setCursor(Math.min(active + 1, candidates.length - 1));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setCursor(Math.max(active - 1, 0));
+                  } else if (e.key === 'Enter') {
+                    // Guarded on the row existing, not on the list being non-empty:
+                    // Enter on "Nothing matches" must do nothing, not add whatever
+                    // happens to be at index 0 of a stale render.
+                    if (candidates[active]) {
+                      e.preventDefault();
+                      add(candidates[active].id);
+                    }
+                  }
+                }}
+                className="h-8 flex-1 border-0 bg-transparent px-1 shadow-none"
+                data-testid={`${testPrefix}-member-search`}
+              />
+              {/* THE WAY OUT, and it became load-bearing when the picker started
+                  staying open across adds. Before that, adding something closed
+                  it; now the only other exits are the Escape rung and switching
+                  container — and the console is a vaul bottom SHEET below `md`,
+                  where there is no Escape key at all. On the search row, so it
+                  is always in reach however long the list. */}
+              <button
+                type="button"
+                onClick={closePicker}
+                className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-7 shrink-0 items-center rounded-[5px] px-2 text-xs font-medium"
+                data-testid={`${testPrefix}-member-add-done`}
+              >
+                Done
+              </button>
+            </div>
             {pickerHint && (
-              <p className="text-muted-foreground px-[7px] text-xs" data-testid={`${testPrefix}-member-hint`}>
+              <p
+                className="text-muted-foreground px-[7px] text-[11px]"
+                data-testid={`${testPrefix}-member-hint`}
+              >
                 {pickerHint}
               </p>
             )}
-            <Input
-              ref={searchRef}
-              autoFocus
-              placeholder="Find an item…"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
-                // Home on every keystroke: the list under the cursor is a
-                // different list now, so the old index points at nothing the user
-                // chose.
-                setCursor(0);
-              }}
-              /**
-               * The whole keyboard contract, on the input rather than the rows.
-               *
-               * The rows are buttons and could take focus themselves, but then ↓
-               * from the field moves focus OUT of it and the next character typed
-               * goes nowhere. This is the combobox pattern for exactly that
-               * reason: focus never leaves the input, `aria-activedescendant`
-               * tells a screen reader which row is current, and the highlight is
-               * ours to draw.
-               */
-              role="combobox"
-              aria-expanded
-              aria-controls={`${testPrefix}-member-candidates`}
-              aria-activedescendant={
-                candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
-              }
-              onKeyDown={(e) => {
-                if (e.key === 'ArrowDown') {
-                  e.preventDefault();
-                  setCursor(Math.min(active + 1, candidates.length - 1));
-                } else if (e.key === 'ArrowUp') {
-                  e.preventDefault();
-                  setCursor(Math.max(active - 1, 0));
-                } else if (e.key === 'Enter') {
-                  // Guarded on the row existing, not on the list being non-empty:
-                  // Enter on "Nothing matches" must do nothing, not add whatever
-                  // happens to be at index 0 of a stale render.
-                  if (candidates[active]) {
-                    e.preventDefault();
-                    add(candidates[active].id);
-                  }
-                }
-              }}
-              className="bg-background border-border h-8"
-              data-testid={`${testPrefix}-member-search`}
-            />
 
-            {/* Plain overflow-y-auto: <ScrollArea> silently drops max-h. */}
-            <div
-              id={`${testPrefix}-member-candidates`}
-              role="listbox"
-              className="max-h-[148px] space-y-px overflow-y-auto"
-            >
+            <div id={`${testPrefix}-member-candidates`} role="listbox" className="space-y-px">
               {candidates.map((item, i) => (
                 <button
                   key={item.id}
@@ -653,7 +664,7 @@ export function ItemMemberList({
                   data-active={i === active || undefined}
                   className={cn(
                     'flex h-8 w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left text-sm',
-                    i === active && 'bg-accent'
+                    i === active && 'bg-background'
                   )}
                 >
                   {/* The same glyph as the row it will become. Without it, choosing
@@ -680,21 +691,14 @@ export function ItemMemberList({
                 </p>
               )}
             </div>
-
-            {/* THE WAY OUT, and it became load-bearing when the picker started
-                staying open across adds. Before that, adding something closed it;
-                now the only other exits are the Escape rung and switching
-                container — and the console is a vaul bottom SHEET below `md`,
-                where there is no Escape key at all. RoutineMemberList has shipped
-                this row since Phase 2 for the same reason. */}
-            <button
-              type="button"
-              onClick={closePicker}
-              className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-8 items-center self-start rounded-[5px] px-[7px] text-left text-sm"
-              data-testid={`${testPrefix}-member-add-done`}
-            >
-              Done
-            </button>
+            {overflow > 0 && (
+              <p
+                className="text-muted-foreground/70 px-[7px] py-1 text-[11px]"
+                data-testid={`${testPrefix}-member-more`}
+              >
+                {overflow} more. Type to narrow.
+              </p>
+            )}
           </div>
         )}
 
@@ -771,6 +775,8 @@ export function RoutineMemberList({
         label="Routines"
         count={members.length > 0 ? members.length : undefined}
         testId={`${testPrefix}-routines`}
+        hint={members.length === 0 && !adding ? emptyHint : undefined}
+        hintTestId={`${testPrefix}-routines-empty-hint`}
         action={
           <LinkExistingPill
             testId={`${testPrefix}-routine-add`}
@@ -819,15 +825,6 @@ export function RoutineMemberList({
               </div>
             ))}
           </div>
-        )}
-
-        {members.length === 0 && !adding && emptyHint && (
-          <p
-            className="text-muted-foreground px-[7px] text-xs italic"
-            data-testid={`${testPrefix}-routines-empty-hint`}
-          >
-            {emptyHint}
-          </p>
         )}
 
         {adding && !none && (
