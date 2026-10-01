@@ -50,6 +50,8 @@ vi.mock('@/lib/db', async () => {
     fetchRoutines: async () => [],
     fetchSeasons: async () => [],
     fetchGoals: async () => [],
+    // No RPC: the per-table fallback, started synchronously (the fetchers above).
+    loadPlannerData: vi.fn((_u: string, perTable: () => Promise<unknown>) => perTable()),
   };
 });
 

@@ -1716,6 +1716,60 @@ body {
   width: 100%;
 }
 
+/* ── Planner skeleton ─────────────────────────────────────────────────────
+   components/primitives/planner-skeleton.tsx — the canvas and braindump while
+   the planner's load is in flight. Neutral only, never lime (CLAUDE.md): the
+   bars are surface-3 and the only motion is opacity on the skeleton's OWN
+   elements, which replace the views rather than dimming them.
+
+   The 250ms delay with fill-mode `both` holds the skeleton invisible first, so
+   a warm load (20-200ms) swaps straight to the view without ever flashing bars.
+   The breathe starts after the fade-in has finished.
+
+   Deliberately no `transition` here, and deliberately not up in the week
+   recede region: week-column-hover.test.tsx counts the transitions between
+   `--day-recede:` and `@layer base {`.
+
+   Reduced motion keeps the DELAY (a 1ms step-in instead of the fade) and drops
+   the breathe. The blanket `[data-reduce-motion] *` rule clamps durations only,
+   so the delay survives it — which is what keeps warm loads blank there too. */
+@keyframes planner-skeleton-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes planner-skeleton-breathe {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0.6;
+  }
+}
+.planner-skeleton {
+  animation: planner-skeleton-in 200ms var(--ease-out-soft, ease-out) 250ms both;
+}
+.planner-skeleton [data-skeleton-bars] {
+  animation: planner-skeleton-breathe 1.6s ease-in-out 450ms infinite alternate;
+}
+@media (prefers-reduced-motion: reduce) {
+  .planner-skeleton {
+    animation: planner-skeleton-in 1ms steps(1) 250ms both;
+  }
+  .planner-skeleton [data-skeleton-bars] {
+    animation: none;
+  }
+}
+[data-reduce-motion='true'] .planner-skeleton {
+  animation: planner-skeleton-in 1ms steps(1) 250ms both;
+}
+[data-reduce-motion='true'] .planner-skeleton [data-skeleton-bars] {
+  animation: none;
+}
+
 /* ── Zen room ────────────────────────────────────────────────────────────
    components/zen/zen-room.tsx. Two pieces of motion, both deliberately
    below the threshold of "something is happening".

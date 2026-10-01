@@ -58,6 +58,8 @@ vi.mock('@/lib/db', async (importOriginal) => {
     fetchRoutines: vi.fn(async () => []),
     fetchSeasons: vi.fn(async () => []),
     fetchGoals: vi.fn(async () => []),
+    // No RPC: the per-table fallback, started synchronously (the fetchers above).
+    loadPlannerData: vi.fn((_u: string, perTable: () => Promise<unknown>) => perTable()),
     fetchContainersSeeded: vi.fn(() => {
       ctl.seedReads++;
       if (!ctl.holdSeeding) return Promise.resolve(true);

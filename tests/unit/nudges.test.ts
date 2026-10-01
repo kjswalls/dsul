@@ -81,3 +81,62 @@ describe('nudge store', () => {
     expect(useNudgeStore.getState().hydratedUserId).toBeNull();
   });
 });
+
+describe('nudge store in-flight claim', () => {
+  /** A load the test resolves by hand. */
+  const deferred = () => {
+    let resolve!: (v: string[] | null) => void;
+    const promise = new Promise<string[] | null>((r) => (resolve = r));
+    return { promise, resolve };
+  };
+
+  it('two concurrent hydrates for one account read once', async () => {
+    const d = deferred();
+    mockLoad.mockReturnValueOnce(d.promise);
+    const a = useNudgeStore.getState().hydrate('user-1');
+    const b = useNudgeStore.getState().hydrate('user-1');
+    d.resolve(['streaks-on']);
+    await Promise.all([a, b]);
+    expect(mockLoad).toHaveBeenCalledTimes(1);
+    expect(useNudgeStore.getState().hydratedUserId).toBe('user-1');
+  });
+
+  it('a null read releases the claim, so the next hydrate re-reads', async () => {
+    mockLoad.mockResolvedValueOnce(null);
+    await useNudgeStore.getState().hydrate('user-1');
+    mockLoad.mockResolvedValueOnce(['streaks-on']);
+    await useNudgeStore.getState().hydrate('user-1');
+    expect(mockLoad).toHaveBeenCalledTimes(2);
+    expect(useNudgeStore.getState().dismissed).toEqual(['streaks-on']);
+  });
+
+  it("drops a switched-away account's late answer", async () => {
+    const dA = deferred();
+    const dB = deferred();
+    mockLoad.mockReturnValueOnce(dA.promise).mockReturnValueOnce(dB.promise);
+    const a = useNudgeStore.getState().hydrate('user-a');
+    const b = useNudgeStore.getState().hydrate('user-b');
+    dB.resolve([]);
+    await b;
+    dA.resolve(['streaks-on']);
+    await a;
+    expect(useNudgeStore.getState().hydratedUserId).toBe('user-b');
+    expect(useNudgeStore.getState().dismissed).toEqual([]);
+  });
+
+  it('a superseded null cannot release the newer account\'s claim', async () => {
+    const dA = deferred();
+    const dB = deferred();
+    mockLoad.mockReturnValueOnce(dA.promise).mockReturnValueOnce(dB.promise);
+    const a = useNudgeStore.getState().hydrate('user-a');
+    const b = useNudgeStore.getState().hydrate('user-b');
+    dA.resolve(null);
+    await a;
+    // B is still in flight: a second ask for it must not read again.
+    void useNudgeStore.getState().hydrate('user-b');
+    expect(mockLoad).toHaveBeenCalledTimes(2);
+    dB.resolve([]);
+    await b;
+    expect(useNudgeStore.getState().hydratedUserId).toBe('user-b');
+  });
+});

@@ -816,7 +816,12 @@ export async function fetchItems(userId: string, type?: string, client?: DbClien
     ({ data, error } = await run());
   }
   if (error) throw error;
-  return (data as ItemRow[]).map(itemFromRow);
+  return itemsFromRows(data as ItemRow[]);
+}
+
+/** Shared by fetchItems and loadPlannerData, so both paths map rows alike. */
+function itemsFromRows(rows: ItemRow[]): Item[] {
+  return rows.map(itemFromRow);
 }
 
 /**
@@ -1659,7 +1664,11 @@ export async function fetchItemTypes(userId: string, client?: DbClient): Promise
     console.warn('fetchItemTypes failed (migration 021 applied?):', error.message);
     return null;
   }
-  return (data as ItemTypeDefRow[]).map(itemTypeDefFromRow);
+  return itemTypesFromRows(data as ItemTypeDefRow[]);
+}
+
+function itemTypesFromRows(rows: ItemTypeDefRow[]): ItemTypeDef[] {
+  return rows.map(itemTypeDefFromRow);
 }
 
 export async function createItemType(userId: string, def: ItemTypeDef, client?: DbClient): Promise<void> {
@@ -1999,13 +2008,27 @@ export async function fetchRoutines(userId: string, client?: DbClient): Promise<
   ]);
   const error = routines.error ?? members.error;
   if (error) return unavailable('fetchRoutines', error, '024', 'seasons/routines');
+  return assembleRoutines(routines.data as RoutineRow[], (members.data ?? []) as RoutineMemberRow[]);
+}
+
+interface RoutineMemberRow {
+  routine_id: string;
+  item_id: string;
+}
+
+/**
+ * Routine rows + membership rows → Routine[]. Pure, and shared by
+ * fetchRoutines and loadPlannerData: the member rows must already be in the
+ * fetch order (sort_order nulls last, item_id), which both reads guarantee.
+ */
+function assembleRoutines(rows: RoutineRow[], members: RoutineMemberRow[]): Routine[] {
   const itemIdsByRoutine = new Map<string, string[]>();
-  for (const row of (members.data ?? []) as { routine_id: string; item_id: string }[]) {
+  for (const row of members) {
     const list = itemIdsByRoutine.get(row.routine_id);
     if (list) list.push(row.item_id);
     else itemIdsByRoutine.set(row.routine_id, [row.item_id]);
   }
-  return (routines.data as RoutineRow[]).map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     name: row.name,
     icon: row.icon ?? undefined,
@@ -2129,6 +2152,22 @@ export async function fetchSeasons(userId: string, client?: DbClient): Promise<S
   ]);
   const error = seasons.error ?? itemMembers.error ?? routineMembers.error;
   if (error) return unavailable('fetchSeasons', error, '024', 'seasons/routines');
+  return assembleSeasons(
+    seasons.data as SeasonRow[],
+    (itemMembers.data ?? []) as Record<string, string>[],
+    (routineMembers.data ?? []) as Record<string, string>[],
+  );
+}
+
+/**
+ * Season rows + both membership lists → Season[]. Pure, and shared by
+ * fetchSeasons and loadPlannerData.
+ */
+function assembleSeasons(
+  rows: SeasonRow[],
+  itemMembers: Record<string, string>[],
+  routineMembers: Record<string, string>[],
+): Season[] {
   const groupBy = (rows: Record<string, string>[], key: string) => {
     const map = new Map<string, string[]>();
     for (const row of rows) {
@@ -2138,9 +2177,9 @@ export async function fetchSeasons(userId: string, client?: DbClient): Promise<S
     }
     return map;
   };
-  const itemIdsBySeason = groupBy((itemMembers.data ?? []) as Record<string, string>[], 'item_id');
-  const routineIdsBySeason = groupBy((routineMembers.data ?? []) as Record<string, string>[], 'routine_id');
-  return (seasons.data as SeasonRow[]).map((row) => ({
+  const itemIdsBySeason = groupBy(itemMembers, 'item_id');
+  const routineIdsBySeason = groupBy(routineMembers, 'routine_id');
+  return rows.map((row) => ({
     id: row.id,
     name: row.name,
     icon: row.icon ?? undefined,
@@ -2471,9 +2510,16 @@ export async function fetchGoals(userId: string, client?: DbClient): Promise<Goa
   ]);
   const error = goals.error ?? members.error;
   if (error) return unavailable('fetchGoals', error, '036', 'goals');
+  return assembleGoals(goals.data as GoalRow[], (members.data ?? []) as GoalMemberRow[]);
+}
 
+/**
+ * Goal rows + membership rows → Goal[]. Pure, and shared by fetchGoals and
+ * loadPlannerData.
+ */
+function assembleGoals(rows: GoalRow[], members: GoalMemberRow[]): Goal[] {
   const membersByGoal = new Map<string, GoalMembers>();
-  for (const row of (members.data ?? []) as GoalMemberRow[]) {
+  for (const row of members) {
     let entry = membersByGoal.get(row.goal_id);
     if (!entry) {
       entry = { memberIds: [], milestoneIds: [], checkinIds: [] };
@@ -2499,7 +2545,7 @@ export async function fetchGoals(userId: string, client?: DbClient): Promise<Goa
   // of them: spreading copies the three ARRAY REFERENCES, so every memberless
   // goal would share one set and the first in-place push would appear on all of
   // them at once. fetchRoutines avoids this by construction (`?? []`).
-  return (goals.data as GoalRow[]).map((row) => ({
+  return rows.map((row) => ({
     id: row.id,
     name: row.name,
     why: row.why ?? undefined,
@@ -2808,9 +2854,133 @@ export async function fetchProjects(userId: string, client?: DbClient): Promise<
     .from('projects')
     .select('*')
     .eq('user_id', userId)
-    .is('deleted_at', null);
+    .is('deleted_at', null)
+    // An explicit order, where there used to be none. Heap order reshuffles
+    // after every UPDATE (MVCC writes the new tuple elsewhere), and
+    // load_planner (050) serves `created_at, id` — without this the project
+    // pickers' order would depend on which load path ran. Mirrored in 050:
+    // change one, change both.
+    .order('created_at', { ascending: true })
+    .order('id', { ascending: true });
   if (error) throw error;
-  return (data as ProjectRow[]).map(projectFromRow);
+  return projectsFromRows(data as ProjectRow[]);
+}
+
+function projectsFromRows(rows: ProjectRow[]): Project[] {
+  return rows.map(projectFromRow);
+}
+
+/**
+ * Everything initializeStore loads in one go. The four nullable collections
+ * keep their per-table meaning: null is "this feature's table is unreachable",
+ * which gates the feature's UI off — never "no rows".
+ */
+export interface PlannerData {
+  items: Item[];
+  projects: Project[];
+  itemTypes: ItemTypeDef[] | null;
+  routines: Routine[] | null;
+  seasons: Season[] | null;
+  goals: Goal[] | null;
+}
+
+/** The jsonb object load_planner() (migration 050) answers, at shape v1. */
+interface PlannerBundleRow {
+  v: number;
+  uid: string | null;
+  items: ItemRow[];
+  projects: ProjectRow[];
+  item_types: ItemTypeDefRow[];
+  routines: RoutineRow[];
+  routine_items: RoutineMemberRow[];
+  seasons: SeasonRow[];
+  season_items: Record<string, string>[];
+  season_routines: Record<string, string>[];
+  goals: GoalRow[];
+  goal_items: GoalMemberRow[];
+}
+
+// Page-lifetime latch, the itemsWindowAvailable pattern: once the RPC is known
+// to be missing, every later load in this tab goes straight to the per-table
+// fetchers instead of paying a doomed round trip first. A tab that loaded
+// before 050 was pushed stays on the fallback until it reloads — harmless.
+let plannerRpcAvailable = true;
+
+export function getPlannerRpcAvailable(): boolean {
+  return plannerRpcAvailable;
+}
+
+// PGRST202: PostgREST has no such function (050 not pushed, or its schema
+// cache not yet reloaded). 42883: the function is unknown to Postgres itself.
+// 42P01: the function exists but a relation it reads does not — a deploy
+// window, or a later rename that forgot to re-create it (050's header rule).
+// The last is the dangerous one, because it degrades silently; the static
+// migration test and the e2e single-request assertion are what catch it.
+const missingPlannerRpc = (error: { code?: string } | null) =>
+  error?.code === 'PGRST202' || error?.code === '42883' || error?.code === '42P01';
+
+/**
+ * The whole planner load: one `load_planner` RPC (migration 050) in place of
+ * the ten per-table requests, assembled by the SAME pure assemblers the
+ * per-table fetchers use, so the two paths cannot map rows differently.
+ *
+ * `perTable` is the caller's own fallback, and it is called SYNCHRONOUSLY when
+ * the RPC is already known to be unavailable. That keeps the per-table
+ * fetchers starting in the same frame as initializeStore, as they did before
+ * this function existed, which the load-race tests (identify-user-midload,
+ * planner-load-retry) rely on — and it is why the fallback is a callback
+ * rather than something this module calls itself: the store's own module-level
+ * fetcher calls are what `vi.mock('@/lib/db')` intercepts.
+ *
+ * Only a MISSING RPC falls back. Any other error — a 5xx, an expired JWT
+ * (PGRST301), a statement timeout, a 42501 — rejects and fails the load,
+ * which goes through the store's existing retry latch. Falling back there
+ * would stack the ten-request burst on top of the call that just failed, on a
+ * database that is probably already struggling.
+ */
+export function loadPlannerData(
+  userId: string,
+  perTable: () => Promise<PlannerData>,
+  client?: DbClient,
+): Promise<PlannerData> {
+  if (!plannerRpcAvailable) return perTable();
+  return (async () => {
+    const { data, error } = await (client ?? createClient()).rpc('load_planner');
+    if (missingPlannerRpc(error)) {
+      plannerRpcAvailable = false;
+      console.warn('load_planner: migration 050 not applied — per-table load.', error?.code);
+      return perTable();
+    }
+    if (error) throw error;
+    const bundle = data as PlannerBundleRow | null;
+    if (!bundle || bundle.v !== 1) {
+      // A shape this build cannot read (a newer server, a hand-edited
+      // function). Reading it anyway risks landing a partial planner as a
+      // successful load; the per-table path is never wrong, only slower.
+      plannerRpcAvailable = false;
+      console.warn('load_planner: unknown bundle shape — per-table load.', bundle?.v);
+      return perTable();
+    }
+    // An answer for someone else's session is a FAILURE, not a result. The
+    // per-table path under a mismatched token returned empty arrays for this
+    // user, which passes the provider's `!state.error` gate and runs first-run
+    // seeding against a populated account. Throwing goes through the store's
+    // catch, which drops a superseded load and otherwise records
+    // loadFailedUserId so the provider can retry.
+    if (bundle.uid !== userId) {
+      throw new Error('load_planner answered for a different session');
+    }
+    // On this path all four nullable collections are arrays: 050 replays
+    // after 021, 024 and 036, so the RPC existing implies their tables do.
+    return {
+      items: itemsFromRows(bundle.items),
+      projects: projectsFromRows(bundle.projects),
+      itemTypes: itemTypesFromRows(bundle.item_types),
+      routines: assembleRoutines(bundle.routines, bundle.routine_items),
+      seasons: assembleSeasons(bundle.seasons, bundle.season_items, bundle.season_routines),
+      goals: assembleGoals(bundle.goals, bundle.goal_items),
+    };
+  })();
 }
 
 /**

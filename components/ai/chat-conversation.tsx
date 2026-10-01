@@ -19,8 +19,6 @@ import { toDateStr } from '@/lib/recurrence';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
 import { chatAssistantLabel, chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
-import { createClient } from '@/lib/supabase';
-import { isOnboardingComplete } from '@/lib/user-profile';
 import { useUIStore } from '@/lib/ui-store';
 import { cn } from '@/lib/utils';
 
@@ -92,7 +90,11 @@ export function ChatConversation({
   // chatOnboardingActive in lib/ui-store.ts).
   const showOnboarding = useUIStore((s) => s.chatOnboardingActive);
   const setShowOnboarding = useUIStore((s) => s.setChatOnboardingActive);
-  const [userId, setUserId] = useState<string | null>(null);
+  // Whether to show it is AppShell's call (lib/onboarding-watch.ts), made once
+  // the planner load settles; WHO it is for is the account the provider
+  // already stamped. No getUser() or onboarding read of this component's own —
+  // so a surface that mounts this outside AppShell must run the watcher too.
+  const userId = usePlannerStore((s) => s.userId);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const isMobile = variant === 'mobile';
@@ -103,18 +105,6 @@ export function ChatConversation({
     syncOpenclawInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
-
-  // Check auth + onboarding status
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(async ({ data }) => {
-      const uid = data.user?.id;
-      if (!uid) return;
-      setUserId(uid);
-      const done = await isOnboardingComplete(uid);
-      if (!done) setShowOnboarding(true);
-    });
-  }, [setShowOnboarding]);
 
   // Auto-scroll to bottom — scroll within container, not the whole page
   useEffect(() => {

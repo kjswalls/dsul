@@ -65,6 +65,7 @@ import {
   restoreRoutine as rawRestoreRoutine,
   fetchSeasons,
   fetchGoals,
+  loadPlannerData,
   createGoal as dbCreateGoal,
   updateGoal as rawUpdateGoal,
   deleteGoal as rawDeleteGoal,
@@ -77,6 +78,7 @@ import {
   itemDbType,
   adoptContainerMembers,
   type TrashEntry,
+  type PlannerData,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
 import type { CommitResult, SeedPlan } from './seed-containers';
@@ -1583,6 +1585,46 @@ const PERSISTED_SETTINGS_DEFAULTS = {
   timeFormat: '12h',
 } satisfies Partial<PlannerStore>;
 
+/**
+ * The per-table load: six fetchers, ten requests. initializeStore hands this to
+ * loadPlannerData as the fallback for a database without migration 050's
+ * load_planner RPC. It lives HERE rather than in db.ts so the fetcher calls go
+ * through this module's imports, which is what `vi.mock('@/lib/db')`
+ * intercepts in the store tests.
+ */
+function loadPlannerTables(userId: string): Promise<PlannerData> {
+  return Promise.all([
+    fetchItems(userId),
+    fetchProjects(userId),
+    fetchItemTypes(userId),
+    fetchRoutines(userId),
+    // Rides the SAME Promise.all as items, deliberately: the overdue
+    // sweep's only hydration gate is `!isLoading`, which is cleared by
+    // initializeStore's single set(). Fetch seasons anywhere else — a lazy
+    // load, a second effect — and the sweep runs against an empty
+    // list, reads every member of an inactive season as unprotected,
+    // and unschedules them in one silent batch. See use-overdue-sweep.
+    // (load_planner returns them in the same single answer, for the same
+    // reason.)
+    fetchSeasons(userId),
+    // Goals ride the same Promise.all, and for the sweep's sake as
+    // much as the seasons above: the auto-age sweep subtracts
+    // milestone-role items before unscheduling anything, and its only
+    // hydration gate is the `!isLoading` that initializeStore's single set()
+    // clears. Fetch goals anywhere else and the sweep runs against an
+    // empty goal list, reads every milestone as unprotected, and
+    // erases a year of target dates in one silent batch.
+    fetchGoals(userId),
+  ]).then(([items, projects, itemTypes, routines, seasons, goals]) => ({
+    items,
+    projects,
+    itemTypes,
+    routines,
+    seasons,
+    goals,
+  }));
+}
+
 export const usePlannerStore = create<PlannerStore>()(
   persist(
     (set, get) => {
@@ -2640,35 +2682,19 @@ export const usePlannerStore = create<PlannerStore>()(
         });
 
         try {
-          const [
+          // One RPC (migration 050) when the database has it, the per-table
+          // fallback when it does not. Either way every collection arrives in
+          // this ONE await, so the single set() below still clears isLoading
+          // with seasons, goals and routines in the same commit — the overdue
+          // sweep's hydration gate (see loadPlannerTables).
+          const {
             items,
             projects,
-            itemTypesResult,
-            routinesResult,
-            seasonsResult,
-            goalsResult,
-          ] =
-            await Promise.all([
-              fetchItems(userId),
-              fetchProjects(userId),
-              fetchItemTypes(userId),
-              fetchRoutines(userId),
-              // Rides the SAME Promise.all as items, deliberately: the overdue
-              // sweep's only hydration gate is `!isLoading`, which is cleared by
-              // the single set() below. Fetch seasons anywhere else — a lazy
-              // load, a second effect — and the sweep runs against an empty
-              // list, reads every member of an inactive season as unprotected,
-              // and unschedules them in one silent batch. See use-overdue-sweep.
-              fetchSeasons(userId),
-              // Goals ride the same Promise.all, and for the sweep's sake as
-              // much as the seasons above: the auto-age sweep subtracts
-              // milestone-role items before unscheduling anything, and its only
-              // hydration gate is the `!isLoading` that the single set() below
-              // clears. Fetch goals anywhere else and the sweep runs against an
-              // empty goal list, reads every milestone as unprotected, and
-              // erases a year of target dates in one silent batch.
-              fetchGoals(userId),
-            ]);
+            itemTypes: itemTypesResult,
+            routines: routinesResult,
+            seasons: seasonsResult,
+            goals: goalsResult,
+          } = await loadPlannerData(userId, () => loadPlannerTables(userId));
           // A SLOWER RESPONSE FOR A PREVIOUS ACCOUNT MUST NEVER LAND ON THE
           // CURRENT ONE — the rule supabase-provider's `hydrateSettings`
           // already follows across its own await, and the one place on this

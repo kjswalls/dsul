@@ -52,15 +52,34 @@ const INITIAL = {
  */
 let writeQueue: Promise<unknown> = Promise.resolve();
 
+/**
+ * The most recently REQUESTED hydrate — a synchronous claim, apart from
+ * `hydratedUserId`, which is stamped WITH the values after the await and so
+ * cannot double as an in-flight marker (the nudge-store pattern). It does two
+ * jobs: a second ask for the same account while the first is in flight costs
+ * nothing (the provider can ask from the load's `.then` and from the
+ * navigation flush), and a slow response for a switched-away account is
+ * dropped instead of being stamped over the newer one. Not released after a
+ * success — it then equals `hydratedUserId`, so it guards nothing extra.
+ */
+let hydratingFor: string | null = null;
+
 export const useGatewayStore = create<GatewayStore>((set, get) => ({
   ...INITIAL,
 
   hydrate: async (userId) => {
-    if (get().hydratedUserId === userId) return;
+    if (get().hydratedUserId === userId || hydratingFor === userId) return;
+    // A bare A→B switch (no SIGNED_OUT between) must never show A's URL and
+    // "token saved" as B's while B's answer is in flight — cleared here,
+    // synchronously, as channel-secrets-store does.
+    const switching = get().hydratedUserId !== null;
+    hydratingFor = userId;
+    if (switching) set({ ...INITIAL });
     try {
       const res = await fetch('/api/agent/gateway');
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
+      if (hydratingFor !== userId) return;
       set({
         gatewayUrl: data.gatewayUrl ?? '',
         hasToken: Boolean(data.hasToken),
@@ -70,6 +89,7 @@ export const useGatewayStore = create<GatewayStore>((set, get) => ({
         error: null,
       });
     } catch {
+      if (hydratingFor !== userId) return;
       // A gateway that cannot be read is a gateway that is not configured —
       // which is true and renderable, not an error state to explain.
       set({ ...INITIAL, hydratedUserId: userId, available: false });
@@ -91,7 +111,10 @@ export const useGatewayStore = create<GatewayStore>((set, get) => ({
     writeQueue = writeQueue.then(() => saveToServer({ token: trimmed }, set, get));
   },
 
-  reset: () => set({ ...INITIAL }),
+  reset: () => {
+    hydratingFor = null;
+    set({ ...INITIAL });
+  },
 }));
 
 /**

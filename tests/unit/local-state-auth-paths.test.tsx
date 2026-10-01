@@ -27,6 +27,12 @@ import { render, cleanup, waitFor } from '@testing-library/react';
  * `adoptUser`, and the fact that a browser refusing to persist still boots.
  */
 
+import { signedOutNav } from '@/lib/signed-out-redirect';
+
+// jsdom cannot navigate; every SIGNED_OUT below would otherwise log its
+// "Not implemented: navigation". The redirect itself is asserted at the end.
+const navReplace = vi.spyOn(signedOutNav, 'replace').mockImplementation(() => {});
+
 const SERVER = {
   theme: 'dark',
   time_format: '24h',
@@ -47,8 +53,11 @@ vi.mock('@/lib/settings-service', () => ({
 }));
 
 /** The session the provider finds on mount, and the auth events after it. */
-let mountSession: { user: { id: string } } | null = null;
-let emit: (event: string, session: { user: { id: string } } | null) => void = () => {};
+type FakeSession = {
+  user: { id: string; email?: string; user_metadata?: Record<string, unknown> };
+};
+let mountSession: FakeSession | null = null;
+let emit: (event: string, session: FakeSession | null) => void = () => {};
 
 vi.mock('@/lib/supabase', () => ({
   createClient: () => ({
@@ -73,6 +82,8 @@ import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
+import { useSessionUserStore } from '@/lib/session-user-store';
+import { useUIStore } from '@/lib/ui-store';
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -133,6 +144,8 @@ describe('every path into "the current user changed"', () => {
     useAISettingsStore.getState().clearUserScopedState();
     useViewStore.getState().clearUserScopedState('all');
     useChatStore.getState().clear();
+    useSessionUserStore.setState({ user: null });
+    useUIStore.setState({ chatOnboardingActive: false });
   });
 
   afterEach(() => {
@@ -269,6 +282,10 @@ describe('every path into "the current user changed"', () => {
     usePlannerStore.setState({
       initializeStore: async () => {
         calls.push('planner');
+        // Settle the load: channel secrets are a post-load read now
+        // (supabase-provider's hydrateAfterLoad), released by its `.then`.
+        await new Promise((r) => setTimeout(r, 0));
+        usePlannerStore.setState({ isLoading: false });
       },
     });
     useExtensionsStore.setState({
@@ -292,9 +309,131 @@ describe('every path into "the current user changed"', () => {
       Storage.prototype.setItem = setItem;
     }
 
-    expect(calls.sort()).toEqual(['extensions', 'planner', 'secrets']);
+    await waitFor(() => expect(calls.sort()).toEqual(['extensions', 'planner', 'secrets']));
     expect(vi.mocked(loadSettings)).toHaveBeenCalledWith(USER_B);
     // And the part of the clear that does not need storage still happened.
     expect(useAISettingsStore.getState().apiKey).toBe('');
   });
+});
+
+/**
+ * The chrome's name and avatar come off the session the provider adopts
+ * (lib/session-user-store.ts), not a getUser() per widget mount. That makes
+ * the provider the one writer, so the account-switch paths above have to move
+ * the profile too — and the refresh events, which carry an updated profile,
+ * must never be mistaken for an adoption.
+ */
+describe('the session profile the chrome displays', () => {
+  const A = {
+    user: { id: USER_A, email: 'a@example.com', user_metadata: { full_name: 'Ada A', avatar_url: 'https://a/img' } },
+  };
+  const B = {
+    user: { id: USER_B, email: 'b@example.com', user_metadata: { name: 'Bo B', picture: 'https://b/img' } },
+  };
+  let extensionHydrates = 0;
+
+  beforeEach(() => {
+    localStorage.clear();
+    vi.mocked(loadSettings).mockClear();
+    vi.mocked(loadSettings).mockImplementation(async () => SERVER);
+    mountSession = null;
+    extensionHydrates = 0;
+    usePlannerStore.setState({ initializeStore: async () => {} });
+    // adoptUser calls this unconditionally (no latch of its own), so its count
+    // is the tell for "an event went through adoptUser".
+    useExtensionsStore.setState({
+      hydrate: async () => {
+        extensionHydrates += 1;
+      },
+    });
+    useChannelSecretsStore.setState({ hydrate: async () => {} });
+    useSessionUserStore.setState({ user: null });
+    useUIStore.setState({ chatOnboardingActive: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+    usePlannerStore.setState({ initializeStore: original.initializeStore });
+    useExtensionsStore.setState({ hydrate: original.extensions });
+    useChannelSecretsStore.setState({ hydrate: original.secrets });
+  });
+
+  it('is populated from the mount session', async () => {
+    mountSession = A;
+    await mount();
+    expect(useSessionUserStore.getState().user).toEqual({
+      id: USER_A,
+      email: 'a@example.com',
+      displayName: 'Ada A',
+      avatarUrl: 'https://a/img',
+    });
+  });
+
+  it('is replaced by a bare SIGNED_IN for another account, with the planner', async () => {
+    mountSession = A;
+    await mount();
+
+    emit('SIGNED_IN', B);
+
+    expect({
+      plannerUser: usePlannerStore.getState().userId,
+      profile: useSessionUserStore.getState().user,
+    }).toEqual({
+      plannerUser: USER_B,
+      profile: { id: USER_B, email: 'b@example.com', displayName: 'Bo B', avatarUrl: 'https://b/img' },
+    });
+  });
+
+  it('is cleared on SIGNED_OUT, and so is the Beacon first-run flag', async () => {
+    mountSession = A;
+    await mount();
+    useUIStore.getState().setChatOnboardingActive(true);
+
+    emit('SIGNED_OUT', null);
+
+    expect(useSessionUserStore.getState().user).toBeNull();
+    expect(useUIStore.getState().chatOnboardingActive).toBe(false);
+  });
+
+  it('leaves for /login on a SIGNED_OUT nothing else navigated from (a revoked session on /)', async () => {
+    mountSession = A;
+    await mount();
+    navReplace.mockClear();
+
+    emit('SIGNED_OUT', null);
+
+    // Without this the planner's skeleton reads "no account" as "still
+    // loading" and spins forever (lib/planner-ready.ts).
+    expect(navReplace).toHaveBeenCalledWith('/login');
+  });
+
+  it('takes a USER_UPDATED for the same account without re-adopting it', async () => {
+    mountSession = A;
+    await mount();
+    const settingsLoads = vi.mocked(loadSettings).mock.calls.length;
+    const hydrates = extensionHydrates;
+
+    emit('USER_UPDATED', { user: { ...A.user, user_metadata: { full_name: 'Ada Renamed' } } });
+
+    expect(useSessionUserStore.getState().user?.displayName).toBe('Ada Renamed');
+    expect(useSessionUserStore.getState().user?.avatarUrl).toBeNull();
+    expect(vi.mocked(loadSettings).mock.calls.length).toBe(settingsLoads);
+    expect(extensionHydrates).toBe(hydrates);
+  });
+
+  it.each(['TOKEN_REFRESHED', 'USER_UPDATED'])(
+    'ignores a %s naming a different account — that is not a switch',
+    async (event) => {
+      mountSession = A;
+      await mount();
+      const before = useSessionUserStore.getState().user;
+      const hydrates = extensionHydrates;
+
+      emit(event, B);
+
+      expect(useSessionUserStore.getState().user).toBe(before);
+      expect(usePlannerStore.getState().userId).toBe(USER_A);
+      expect(extensionHydrates).toBe(hydrates);
+    }
+  );
 });

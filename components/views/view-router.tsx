@@ -6,19 +6,26 @@ import { WeekSchedule } from '@/components/views/week-schedule';
 import { DayBuckets } from '@/components/views/day-buckets';
 import { DayList } from '@/components/views/day-list';
 import { DaySchedule } from '@/components/views/day-schedule';
-import { useViewStore } from '@/lib/view-store';
+import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
+import { useCanvasWide, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
-import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerSettled } from '@/lib/planner-ready';
 
 /**
  * Routes the canvas to one of the six scope × layout views. Subscribes to drag
  * state here (not via a prop) so a drag only re-renders the canvas subtree —
  * the views need it for drop hints, the rest of the shell doesn't.
+ *
+ * Until the planner's load has landed it renders a PlannerSkeleton in the
+ * view's place instead of the view itself. Rendering the view over an empty
+ * store drew a real, EMPTY day — "nothing planned" — for the length of every
+ * cold load, which is a claim about the account, not a loading state. The
+ * view mounts on the settled edge, with its data.
  */
 export function ViewRouter() {
   const activeId = useDragStore((s) => s.activeId);
-  const isLoading = usePlannerStore((s) => s.isLoading);
-  const userId = usePlannerStore((s) => s.userId);
+  const settled = usePlannerSettled();
+  const wide = useCanvasWide();
   const { scope, layout } = useViewStore();
 
   const view = (() => {
@@ -43,21 +50,16 @@ export function ViewRouter() {
       data-testid="view-root"
       data-view-scope={scope}
       data-view-layout={layout}
-      // Whether the planner store's initial fetch has LANDED. Hydration is not
-      // the same thing: initializeStore replaces `projects`/`habitGroups`/
-      // `items` wholesale when it resolves, so a write made in the window
-      // between mount and that resolve is silently discarded. A test that acted
-      // on "the page is interactive" could therefore create a project, watch it
-      // appear, and find it gone — which reads as a broken create, not a race.
-      //
-      // `userId &&`, not `!isLoading` alone: isLoading is FALSE at rest and only
-      // flips true once initializeStore starts, so the bare check is satisfied
-      // by the pre-init state and would wave a test through before the fetch has
-      // even been issued. userId is set in the same set() that raises the flag.
-      data-loaded={userId && !isLoading ? 'true' : 'false'}
+      // Whether the planner store's initial fetch has LANDED — the same
+      // predicate that swaps the skeleton out, so `data-loaded="false"` and
+      // the skeleton are one state. A test that acted on "the page is
+      // interactive" instead could create a project, watch it appear, and find
+      // it gone when initializeStore's wholesale replace landed. Why the
+      // predicate is `userId && !isLoading` lives at lib/planner-ready.ts.
+      data-loaded={settled ? 'true' : 'false'}
       style={{ display: 'contents' }}
     >
-      {view}
+      {settled ? view : <PlannerSkeleton variant={layout} scope={scope} wide={wide} />}
     </div>
   );
 }

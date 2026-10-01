@@ -85,6 +85,35 @@ test.describe('Smoke: core daily loop', () => {
     }
   });
 
+  test('the planner loads in one load_planner request, not the per-table fan-out', async ({
+    page,
+  }) => {
+    // The guard against the silent fallback. loadPlannerData reads a 42P01 as
+    // "050 not applied" and latches onto the ten-request path with nothing but
+    // a console.warn — so a later migration that renames a relation load_planner
+    // reads, and forgets to re-create it, would fail no unit test. The local
+    // stack replays 050, so here the RPC must be the path actually taken.
+    const rpc: string[] = [];
+    const perTable: string[] = [];
+    page.on('request', (req) => {
+      const url = req.url();
+      if (req.method() === 'POST' && url.includes('/rest/v1/rpc/load_planner')) rpc.push(url);
+      if (
+        req.method() === 'GET' &&
+        (/\/rest\/v1\/(items_windowed|routine_items|season_items|goal_items)\?/.test(url) ||
+          // The planner's projects read. fetchTrashedNames also reads projects,
+          // for TRASHED rows (`deleted_at=not.is.null`), and is not the load.
+          (/\/rest\/v1\/projects\?/.test(url) && url.includes('deleted_at=is.null')))
+      ) {
+        perTable.push(url);
+      }
+    });
+
+    await reloadApp(page);
+    await expect.poll(() => rpc.length, { timeout: 10_000 }).toBe(1);
+    expect(perTable).toEqual([]);
+  });
+
   test('day/week toggle switches views', async ({ page }) => {
     // Scope is a dropdown selector: open it, then pick the option.
     const pickScope = async (option: string) => {

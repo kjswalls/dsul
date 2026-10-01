@@ -124,7 +124,22 @@ interface UIStore {
    * tour's step 4 (or a swipe) can reach the Beacon tab.
    */
   chatOnboardingActive: boolean;
-  setChatOnboardingActive: (active: boolean) => void;
+  /**
+   * The account the flag was raised FOR, or null. A "done" answer from
+   * AppShell's watcher may only lower another account's flag: the tour marks
+   * onboarding complete before Beacon's Q&A has been answered, so after /  →
+   * /settings → / a remounted AppShell reads "done" for the SAME account that
+   * is still mid-Q&A — and lowering it there would throw the Q&A away.
+   */
+  chatOnboardingUserId: string | null;
+  /** Raising takes the owner; lowering always clears it. */
+  setChatOnboardingActive: (active: boolean, userId?: string | null) => void;
+  /**
+   * Applies one onboarding answer for `userId` (lib/onboarding-watch.ts):
+   * "needed" raises the flag for that account; "done" lowers it only when it
+   * is held by a different account (or by nobody — a no-op then).
+   */
+  applyChatOnboardingAnswer: (userId: string, needed: boolean) => void;
 
   /** Bumping the token tells the omnibar to grab focus (⌘K etc.). */
   omnibarFocusToken: number;
@@ -151,7 +166,16 @@ export const useUIStore = create<UIStore>()((set, get) => ({
   },
 
   chatOnboardingActive: false,
-  setChatOnboardingActive: (active) => set({ chatOnboardingActive: active }),
+  chatOnboardingUserId: null,
+  setChatOnboardingActive: (active, userId = null) =>
+    set({ chatOnboardingActive: active, chatOnboardingUserId: active ? userId : null }),
+  applyChatOnboardingAnswer: (userId, needed) => {
+    if (needed) {
+      set({ chatOnboardingActive: true, chatOnboardingUserId: userId });
+    } else if (get().chatOnboardingUserId !== userId) {
+      set({ chatOnboardingActive: false, chatOnboardingUserId: null });
+    }
+  },
 
   omnibarFocusToken: 0,
   focusOmnibar: () => set((s) => ({ omnibarFocusToken: s.omnibarFocusToken + 1 })),

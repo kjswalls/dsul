@@ -178,8 +178,12 @@ describe('braindump header: the count', () => {
     renderBraindump();
     expect(count()).toBeUndefined();
     expect(heading()).toHaveTextContent('Braindump');
+    // The count and the list's skeleton share one gate (lib/planner-ready.ts),
+    // so they flip on the same edge — never a number over bars, or bars under one.
+    expect(screen.queryByTestId('planner-skeleton')).not.toBeNull();
     act(() => usePlannerStore.setState({ isLoading: false }));
     expect(count()).toBe('3 undated');
+    expect(screen.queryByTestId('planner-skeleton')).toBeNull();
   });
 
   it('shows the word, not "0 undated", over an empty list', () => {

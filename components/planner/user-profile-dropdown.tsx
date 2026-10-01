@@ -1,6 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { User, Settings, LogOut, MessageSquarePlus } from 'lucide-react';
@@ -16,6 +15,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
 import { createClient } from '@/lib/supabase';
+import { useSessionUserStore } from '@/lib/session-user-store';
 import { flushSettings } from '@/lib/settings-service';
 
 interface UserProfileDropdownProps {
@@ -54,28 +54,11 @@ function getInitials(email: string, name?: string | null): string {
 
 export function UserProfileDropdown({ settingsHref, onOpenBugReport }: UserProfileDropdownProps) {
   const router = useRouter();
-  const [email, setEmail] = useState<string | null>(null);
-  const [displayName, setDisplayName] = useState<string | null>(null);
-  const [avatarUrl, setAvatarUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (user) {
-        setEmail(user.email ?? null);
-        setDisplayName(
-          user.user_metadata?.full_name ??
-          user.user_metadata?.name ??
-          null
-        );
-        setAvatarUrl(
-          user.user_metadata?.avatar_url ??
-          user.user_metadata?.picture ??
-          null
-        );
-      }
-    });
-  }, []);
+  // See user-card.tsx — the provider's adopted session, not a getUser() per mount.
+  const sessionUser = useSessionUserStore((s) => s.user);
+  const email = sessionUser?.email ?? null;
+  const displayName = sessionUser?.displayName ?? null;
+  const avatarUrl = sessionUser?.avatarUrl ?? null;
 
   const handleSignOut = async () => {
     // See user-card.tsx — flush the debounced settings patch first.
