@@ -101,6 +101,16 @@ describe('resolveDrop — droppable ID grammar (lib/dnd/CONTRACT.md)', () => {
     it('unschedules the dropped item', () => {
       expect(resolveDrop('t1', 'sidebar', ctx())).toEqual({ kind: 'unschedule', itemId: 't1' });
     });
+
+    it('pauses a habit from the canvas, and leaves one already in the braindump', () => {
+      expect(
+        resolveDrop('h1', 'sidebar', ctx({ itemType: 'habit', draggedPlacement: { placed: true, recurring: true } }))
+      ).toEqual({ kind: 'pause-item', itemId: 'h1' });
+      expect(
+        resolveDrop('h1', 'sidebar', ctx({ itemType: 'habit', draggedPlacement: { placed: false } }))
+      ).toBeNull();
+      expect(resolveDrop('h1', 'sidebar', ctx({ itemType: 'habit' }))).toBeNull();
+    });
   });
 
   describe('projectblock:{name}', () => {

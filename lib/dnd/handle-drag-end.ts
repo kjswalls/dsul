@@ -21,7 +21,8 @@ export type DropCommand =
   | { kind: 'assign-habit-bucket'; habitId: string; bucket: TimeBucket }
   | { kind: 'unschedule'; itemId: string }
   | { kind: 'move-task-to-project-block'; taskId: string }
-  | { kind: 'move-task-to-date'; taskId: string; dateStr: string };
+  | { kind: 'move-task-to-date'; taskId: string; dateStr: string }
+  | { kind: 'pause-item'; itemId: string };
 
 /**
  * Where the dragged item sits right now, as far as a `list:{date}` drop cares.
@@ -227,8 +228,15 @@ export function resolveDrop(
       : { kind: 'assign-habit-bucket', habitId: itemId, bucket };
   }
 
-  // sidebar — drop back into the Braindump, i.e. unschedule
+  // sidebar — drop back into the Braindump. A task is unscheduled. A habit on
+  // the canvas recurs and has no day to take away, so it is paused instead and
+  // shows in the sidebar's Paused section; one already in the braindump stays
+  // put. Whether it CAN pause (capability, not already paused) is the store's
+  // check, and the shell asks it through sidebarDropPlan (lib/dnd/sidebar-drop.ts).
   if (targetId === 'sidebar') {
+    if (itemType === 'habit') {
+      return ctx.draggedPlacement?.placed ? { kind: 'pause-item', itemId } : null;
+    }
     return { kind: 'unschedule', itemId };
   }
 

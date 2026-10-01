@@ -26,6 +26,9 @@ const SIGNIFICANT_ACTIONS = [
   // selected item and raised nothing — not even an undo affordance.
   'Schedule items:',
   'Move habit to',
+  // A paused habit leaves the grid on the spot, whether from the menu or by
+  // dropping it on the sidebar, so it gets the same offer as a move.
+  'Pause habit:',
   'Move all tasks',
   'Reset streak:',
   'Delete items',

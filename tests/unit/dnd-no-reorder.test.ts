@@ -60,6 +60,7 @@ const COMMAND_INTENT: Record<DropCommand['kind'], 'move' | 'reorder'> = {
   unschedule: 'move',
   'move-task-to-project-block': 'move',
   'move-task-to-date': 'move',
+  'pause-item': 'move',
 };
 
 function ctx(overrides: Partial<DropContext> = {}): DropContext {
