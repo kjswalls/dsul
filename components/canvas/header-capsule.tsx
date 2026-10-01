@@ -143,7 +143,12 @@ export function HeaderCapsule() {
   const goNext = () => stepScope(1);
 
   return (
-    <div className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2 shadow-[var(--shadow-elev-bar)]">
+    // data-header-capsule: the handle the `header: 'masthead'` layout slot
+    // restyles by (app/globals.css). Same controls either way.
+    <div
+      data-header-capsule=""
+      className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2 shadow-[var(--shadow-elev-bar)]"
+    >
       {/* Row 1 — calendar + date nav */}
       <div className="flex items-center gap-1 px-1">
         <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
@@ -229,7 +234,10 @@ export function HeaderCapsule() {
           shape controls between them. Type is a content question and now lives
           in Display with the rest of them; what stays out here is the pair that
           changes the view's SHAPE. */}
-      <div className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]">
+      <div
+        data-header-pill=""
+        className="flex items-center rounded-[10px] bg-surface-2 px-1.5 py-1.5 shadow-[var(--shadow-elev-sm)]"
+      >
         <SelectMenu
           value={layout}
           options={LAYOUT_OPTIONS}

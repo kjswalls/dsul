@@ -135,6 +135,7 @@ export function Omnibar({
   onFocusChange,
   onPulse,
   captureRelay = false,
+  placeholder: placeholderOverride,
 }: {
   variant?: OmnibarVariant;
   initialQuery?: string;
@@ -142,6 +143,8 @@ export function Omnibar({
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
   captureRelay?: boolean;
+  /** Dock only: a layout's own resting line ("write a line…"). Commands still name theirs. */
+  placeholder?: string;
 } = {}) {
   const isLauncher = variant === 'launcher';
   const {
@@ -1182,6 +1185,7 @@ export function Omnibar({
               e.preventDefault();
               inputRef.current?.focus();
             }}
+            data-omnibar-pill=""
             className={cn(
               'relative z-10 flex w-full items-center',
               isLauncher
@@ -1423,7 +1427,7 @@ export function Omnibar({
                   ? (activeCommand.argument?.placeholder ?? '')
                   : isLauncher
                     ? 'Search, add a task, run a command, or ask Beacon…'
-                    : // Dock leans capture: LEAD with the everyday action, then
+                    : placeholderOverride ?? // Dock leans capture: LEAD with the everyday action, then
                       // name enough of the rest that the bar does not read as a
                       // single-purpose add field. It used to say only "Add a
                       // task…", which undersold three of the four modes at the

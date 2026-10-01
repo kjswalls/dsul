@@ -9,6 +9,7 @@ import { Omnibar } from '@/components/sidebar/omnibar';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { RELAY } from '@/lib/relay-config';
+import { useLayoutDef } from '@/lib/look-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { cn } from '@/lib/utils';
 
@@ -45,6 +46,10 @@ import { cn } from '@/lib/utils';
 export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' | 'bottom' } = {}) {
   const chatExpanded = useSidebarStore((s) => s.chatExpanded);
   const bottom = placement === 'bottom';
+  // `capture: 'page-foot'`: the same dock at the foot of the braindump's page,
+  // its capsule and pill drawn as a bare ruled line (app/globals.css,
+  // [data-dock-page]). Same omnibar, so every mode and shortcut still works.
+  const pageFoot = useLayoutDef().slots.capture === 'page-foot';
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Relay wakes up while the omnibar input is focused. Driven by the omnibar's
   // own focus (via onFocusChange) rather than the dock's focus-within: the
@@ -135,6 +140,7 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
         // the keyboard: the capsule outlives every row in it and closes over the
         // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
         data-dock-surface
+        data-dock-page={pageFoot ? '' : undefined}
         // No overflow-hidden here: the omnibar's suggestion panel grows upward
         // out of the dock, so clipping the capsule would cut it off. The relay
         // clips itself instead (its own rounded overflow-hidden, below).
@@ -166,7 +172,12 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
           <UserCard />
         </div>
         <div className="relative z-10 mt-5">
-          <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
+          <Omnibar
+            variant="dock"
+            onFocusChange={setFocused}
+            onPulse={pulse}
+            placeholder={pageFoot ? 'write a line…' : undefined}
+          />
         </div>
       </div>
     </div>
