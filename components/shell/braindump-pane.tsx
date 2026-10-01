@@ -17,14 +17,17 @@ const PANE_W = 'w-[300px]';
  * target. The Braindump inside is the same component with the same droppable,
  * so a drag onto it pauses or unschedules exactly as it does on the left.
  */
-export function BraindumpPane() {
+export function BraindumpPane({ covered = false }: { covered?: boolean }) {
   const open = useSidebarStore((s) => s.leftSidebarOpen);
+  // `covered`: the item panel overlays this pane below 1180px, so it leaves
+  // the tab order the way <main> does (desktop-shell's `inert`).
+  const away = !open || covered;
   return (
     <aside
       data-tour="left-sidebar"
       data-testid="braindump-pane"
-      aria-hidden={!open || undefined}
-      inert={!open}
+      aria-hidden={away || undefined}
+      inert={away}
       className={cn(
         'relative flex h-full flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
         open ? cn(PANE_W, 'border-l border-border') : 'w-0'

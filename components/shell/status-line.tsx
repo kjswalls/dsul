@@ -8,8 +8,18 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { flattenDayRows } from '@/lib/day-items';
 import { isRowCompletedOn } from '@/lib/sort-rows';
-import { toDateStr } from '@/lib/recurrence';
+import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
+
+/**
+ * Skipped for the day, or cancelled: on the list, but neither open nor done.
+ * Per-date for a recurring item, `status` for a one-off — never `status` for a
+ * recurring one (CLAUDE.md: completedDates, not scalar status).
+ */
+function isSetAside(item: { repeatFrequency?: string; skippedDates?: string[]; status?: string }, dateStr: string): boolean {
+  if (isRecurring(item)) return isSkippedOnDate(item, dateStr);
+  return item.status === 'skipped' || item.status === 'cancelled';
+}
 
 /** The wall clock, to the minute, re-aimed at each minute's edge. */
 function useMinuteClock(): Date | null {
@@ -51,9 +61,13 @@ export function StatusLine({ className }: { className?: string }) {
   const { open, done } = useMemo(() => {
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const dateStr = toDateStr(selectedDate, tz);
-    const rows = flattenDayRows(day);
-    const doneCount = rows.filter((r) => isRowCompletedOn(r, dateStr)).length;
-    return { open: rows.length - doneCount, done: doneCount };
+    let openCount = 0;
+    let doneCount = 0;
+    for (const row of flattenDayRows(day)) {
+      if (isRowCompletedOn(row, dateStr)) doneCount++;
+      else if (!isSetAside(row.item, dateStr)) openCount++;
+    }
+    return { open: openCount, done: doneCount };
   }, [day, selectedDate, userTimezone]);
 
   const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak ?? 0), 0);

@@ -72,10 +72,15 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
         data-testid="dock-bottom"
         className="relative flex flex-shrink-0 flex-col border-t border-border"
       >
-        <div className="px-4 empty:hidden [&>*]:mt-1.5">
+        {/* Out of flow, notices and undo alike: everything above this dock
+            is the canvas, whose height the schedule grid fits its hours to
+            (lib/use-fit-hour-px.ts), so a row arriving here must not take
+            height from it. z-[31] clears the item panel, which overlays the
+            row at z-30 below 1180px. */}
+        <div className="absolute inset-x-4 bottom-full z-[31] mb-1.5 flex flex-col gap-1.5 [&>*]:bg-canvas">
           <DockNotices alwaysVisible />
+          <UndoStrip />
         </div>
-        <UndoStrip className="absolute inset-x-4 bottom-full z-20 mb-1.5 bg-canvas" />
         <div data-tour="right-sidebar" data-dock-surface className="relative flex flex-col">
           {chatExpanded && (
             <div className="flex h-[42vh] min-h-0 flex-col border-b border-border px-4 pt-3 pb-2">

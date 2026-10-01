@@ -250,11 +250,25 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   // Anchor a card just outside the spotlight target, computed from its live
   // rect — replaces hardcoded left/right offsets that broke when the sidebar
   // width changed. Falls back to null (callers keep a static class) if no rect.
+  // The card sits beside its target on the preferred side, flips when that
+  // side has no room for it, and goes above a target too wide for either —
+  // a layout (lib/layout-themes.ts) can put the braindump at the right edge or
+  // lay the dock across the whole foot of the screen.
   const cardAnchor = (side: 'left' | 'right') => {
     if (!spotlightRect) return undefined;
-    const top = spotlightRect.top + spotlightRect.height / 2;
+    const CARD_W = 288 + 16;
     const iw = typeof window !== 'undefined' ? window.innerWidth : 0;
-    return side === 'right'
+    const ih = typeof window !== 'undefined' ? window.innerHeight : 0;
+    const roomRight = iw - spotlightRect.right - 16;
+    const roomLeft = spotlightRect.left - 16;
+    let place: 'left' | 'right' | 'above' = side;
+    if (place === 'right' && roomRight < CARD_W) place = roomLeft >= CARD_W ? 'left' : 'above';
+    else if (place === 'left' && roomLeft < CARD_W) place = roomRight >= CARD_W ? 'right' : 'above';
+    if (place === 'above') {
+      return { left: '50%', bottom: ih - spotlightRect.top + 16, transform: 'translateX(-50%)' as const };
+    }
+    const top = spotlightRect.top + spotlightRect.height / 2;
+    return place === 'right'
       ? { left: spotlightRect.right + 16, top, transform: 'translateY(-50%)' as const }
       : { right: iw - spotlightRect.left + 16, top, transform: 'translateY(-50%)' as const };
   };

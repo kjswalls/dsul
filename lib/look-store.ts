@@ -2,6 +2,7 @@
 
 import { create } from 'zustand';
 import { applyThemeChange } from '@/lib/theme-transition';
+import { useSidebarStore } from '@/lib/sidebar-store';
 import {
   DEFAULT_DARK_LOOK,
   DEFAULT_LIGHT_LOOK,
@@ -80,4 +81,16 @@ export const useLookStore = create<LookStore>((set) => ({
  */
 export function useLayoutDef(): LayoutDef {
   return layoutDef(useLookStore((s) => s.layout));
+}
+
+/**
+ * Open the column the capture dock lives in, if it lives in one. Chat, the
+ * dock's notices and the omnibar sit in the collapsible left column only under
+ * `capture: 'dock'`; a layout that lays the dock across the bottom keeps them
+ * on screen whatever the braindump is doing, so reopening a braindump the
+ * person closed would be a side effect nobody asked for.
+ */
+export function revealDock(): void {
+  if (layoutDef(useLookStore.getState().layout).slots.capture !== 'dock') return;
+  useSidebarStore.getState().setLeftSidebarOpen(true);
 }

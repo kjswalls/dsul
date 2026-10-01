@@ -68,6 +68,7 @@ import {
   streaksEnabled,
 } from '../extension-gates';
 import { useSidebarStore } from '../sidebar-store';
+import { revealDock } from '../look-store';
 import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
@@ -574,7 +575,7 @@ export const STATIC_COMMANDS: Command[] = [
     // dock's rows do not render while the sidebar column is collapsed. Flipping
     // isOpen there looks broken in precisely the same way.
     run: (ctx) => {
-      if (!ctx.isMobile) useSidebarStore.getState().setLeftSidebarOpen(true);
+      if (!ctx.isMobile) revealDock();
       const store = useMorningStore.getState();
       store.resetDismissal();
       store.open();
@@ -896,7 +897,7 @@ export const STATIC_COMMANDS: Command[] = [
       // Opening chat while the sidebar is collapsed would expand a panel
       // inside a w-0 overflow-hidden column: nothing appears, and the state
       // silently desyncs from what the user last saw.
-      if (!sidebar.chatExpanded) sidebar.setLeftSidebarOpen(true);
+      if (!sidebar.chatExpanded) revealDock();
       sidebar.toggleChat();
     },
   },
@@ -1008,7 +1009,7 @@ export const STATIC_COMMANDS: Command[] = [
         const nav = useMobileNavStore.getState();
         if (nav.activeTab === 'chat') nav.setActiveTab('today');
       } else {
-        useSidebarStore.getState().setLeftSidebarOpen(true);
+        revealDock();
       }
       useUIStore.getState().focusOmnibar();
     },

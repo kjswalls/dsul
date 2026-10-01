@@ -216,7 +216,7 @@ export const DesktopShell = memo(function DesktopShell() {
 
       </main>
 
-      {slots.sidebar === 'pane-right' && <BraindumpPane />}
+      {slots.sidebar === 'pane-right' && <BraindumpPane covered={panelOverlays && !!panelState} />}
 
       {/* The item panel — a sibling surface on the backdrop, not a layer over
           the canvas. `flat` drops its card chrome so it reads as the paper
