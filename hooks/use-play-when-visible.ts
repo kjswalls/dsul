@@ -19,8 +19,12 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  * (not playing) styles must be a frame that already makes sense on its own,
  * because that is what reduced motion shows forever.
  */
-export function usePlayWhenVisible(ref: RefObject<Element | null>): boolean {
+export function usePlayWhenVisible(
+  ref: RefObject<Element | null>,
+  { whileEngaged = false }: { whileEngaged?: boolean } = {}
+): boolean {
   const [onScreen, setOnScreen] = useState(false);
+  const [engaged, setEngaged] = useState(false);
   const [tabVisible, setTabVisible] = useState(true);
   const [reduced, setReduced] = useState(true);
 
@@ -33,6 +37,37 @@ export function usePlayWhenVisible(ref: RefObject<Element | null>): boolean {
     observer.observe(el);
     return () => observer.disconnect();
   }, [ref]);
+
+  // A shelf of cards is a page of loops; with `whileEngaged` each one waits on
+  // its still frame until its own card is pointed at or focused. The card is
+  // the nearest link or button around the preview, so hovering its title plays
+  // it too.
+  useEffect(() => {
+    const el = ref.current;
+    if (!whileEngaged || !el) return;
+    const host = el.closest('a, button') ?? el;
+    // Keyboard focus only: a browser focuses a link on mousedown, so counting
+    // any focus kept a ⌘-clicked card looping long after the pointer left.
+    const keyboardFocus = () => host.matches(':focus-visible') || host.querySelector(':focus-visible') !== null;
+    const on = () => setEngaged(true);
+    const focusIn = () => {
+      if (keyboardFocus()) setEngaged(true);
+    };
+    const off = () => setEngaged(keyboardFocus());
+    const blur = (event: Event) => {
+      if (!host.contains((event as FocusEvent).relatedTarget as Node | null)) setEngaged(host.matches(':hover'));
+    };
+    host.addEventListener('pointerenter', on);
+    host.addEventListener('pointerleave', off);
+    host.addEventListener('focusin', focusIn);
+    host.addEventListener('focusout', blur);
+    return () => {
+      host.removeEventListener('pointerenter', on);
+      host.removeEventListener('pointerleave', off);
+      host.removeEventListener('focusin', focusIn);
+      host.removeEventListener('focusout', blur);
+    };
+  }, [ref, whileEngaged]);
 
   useEffect(() => {
     const sync = () => setTabVisible(document.visibilityState !== 'hidden');
@@ -56,5 +91,5 @@ export function usePlayWhenVisible(ref: RefObject<Element | null>): boolean {
     };
   }, []);
 
-  return onScreen && tabVisible && !reduced;
+  return onScreen && tabVisible && !reduced && (!whileEngaged || engaged);
 }

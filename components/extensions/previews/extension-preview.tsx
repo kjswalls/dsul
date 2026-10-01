@@ -504,9 +504,19 @@ export const EXTENSION_PREVIEWS: Record<string, Scene> = {
   [EXT_ACCOUNTABILITY_PARTNER]: Partner,
 };
 
-export function ExtensionPreview({ slug, className }: { slug: string; className?: string }) {
+export function ExtensionPreview({
+  slug,
+  className,
+  play = 'visible',
+}: {
+  slug: string;
+  className?: string;
+  /** 'visible' loops while on screen (an extension's own page, one preview);
+   *  'engaged' rests until its card is hovered or focused (the store's grid). */
+  play?: 'visible' | 'engaged';
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const playing = usePlayWhenVisible(ref);
+  const playing = usePlayWhenVisible(ref, { whileEngaged: play === 'engaged' });
   const SceneFor = EXTENSION_PREVIEWS[slug];
   const manifest = extensionManifest(slug);
   if (!SceneFor) return null;

@@ -1209,8 +1209,9 @@ export const STATIC_COMMANDS: Command[] = [
     // No shortcut on purpose: a binding would join the frozen id list in
     // commands.test.ts for a page most people open a handful of times.
     run: (ctx) => {
-      if (ctx.navigate) ctx.navigate('/extensions');
-      else if (typeof window !== 'undefined') window.location.assign('/extensions');
+      // The store is the Browse tab of Settings → Extensions.
+      if (ctx.navigate) ctx.navigate('/settings/extensions?view=browse');
+      else if (typeof window !== 'undefined') window.location.assign('/settings/extensions?view=browse');
     },
   },
   {

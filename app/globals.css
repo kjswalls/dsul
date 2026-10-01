@@ -1546,6 +1546,12 @@ body {
   scroll-behavior: auto !important;
 }
 
+/* The store card's hover lift. Its motion-reduce: variants only hear the OS
+   query, so the in-app veto needs saying here too. The shadow and border stay. */
+[data-reduce-motion="true"] [data-store-card] {
+  translate: none !important;
+}
+
 /* Thin Lucide strokes (Linear-style icon pass). Attribute-scoped so the few
    deliberate inline strokeWidth sites (the dock's mode card 2.25, chat 1.25,
    legacy views) keep their values — CSS overrides the svg presentation
