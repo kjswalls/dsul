@@ -59,6 +59,15 @@ import Testing
         #expect(planner.scheduled.allSatisfy { ($0.startMin ?? -1) >= 0 })
     }
 
+    @Test func stressOnTwoDaysNeverRepeatsAnId() {
+        let planner = makePlanner()
+        planner.stress()
+        planner.shiftDay(by: 1)
+        planner.stress()
+        #expect(planner.scheduled.count == 40)
+        #expect(Set(planner.items.map(\.id)).count == planner.items.count)
+    }
+
     @Test func sampleIdsAreStable() {
         #expect(makePlanner().braindump[0].id == makePlanner().braindump[0].id)
     }
@@ -92,6 +101,59 @@ import Testing
         planner.goToToday()
         #expect(planner.isOnToday)
         #expect(planner.selectedDayString == "2026-10-01")
+    }
+
+    @Test func refreshTodayCarriesASelectionThatWasOnToday() {
+        let planner = makePlanner()
+        planner.refreshToday(to: planner.today.adding(days: 1))
+        #expect(planner.today.description == "2026-10-02")
+        #expect(planner.selectedDayString == "2026-10-02")
+        #expect(planner.isOnToday)
+    }
+
+    @Test func refreshTodayLeavesAPickedDayAlone() {
+        let planner = makePlanner()
+        planner.shiftDay(by: -3)
+        planner.refreshToday(to: planner.today.adding(days: 1))
+        #expect(planner.today.description == "2026-10-02")
+        #expect(planner.selectedDayString == "2026-09-28")
+        #expect(!planner.isOnToday)
+    }
+
+    @Test func refreshTodayOnTheSameDayChangesNothing() {
+        let planner = makePlanner()
+        planner.shiftDay(by: 2)
+        planner.refreshToday(to: planner.today)
+        #expect(planner.selectedDayString == "2026-10-03")
+        #expect(planner.today.description == "2026-10-01")
+    }
+
+    @Test func refreshTodayReadsTheDeviceDayFromADate() {
+        let planner = makePlanner()
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let noon = calendar.date(from: DateComponents(year: 2026, month: 10, day: 5, hour: 12))!
+        planner.refreshToday(now: noon, calendar: calendar)
+        #expect(planner.selectedDayString == "2026-10-05")
+    }
+
+    // MARK: Sheets
+
+    @Test func oneSheetShowsOverWhicheverHostIsOnTop() {
+        let planner = makePlanner()
+        planner.activeSheet = .capture
+        #expect(planner.sheetOverApp == .capture)
+        #expect(planner.sheetOverBraindump == nil)
+
+        planner.activeSheet = nil
+        planner.showBraindumpSheet = true
+        planner.activeSheet = .datePicker
+        #expect(planner.sheetOverApp == nil)
+        #expect(planner.sheetOverBraindump == .datePicker)
+
+        // A dismissal through either host clears the one flag.
+        planner.sheetOverBraindump = nil
+        #expect(planner.activeSheet == nil)
     }
 
     // MARK: Completion

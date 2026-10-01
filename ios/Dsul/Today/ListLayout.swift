@@ -19,8 +19,17 @@ struct ListLayout: View {
             }
             if sections.isEmpty {
                 Section {
-                    Text("Nothing on this day")
-                        .foregroundStyle(.secondary)
+                    if filter != .all && planner.count(.all) > 0 {
+                        // The day has items; only the chip hides them.
+                        Text("Nothing matches this filter")
+                            .foregroundStyle(.secondary)
+                        Button("Show all") {
+                            withAnimation(.snappy) { filter = .all }
+                        }
+                    } else {
+                        Text("Nothing on this day")
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             ForEach(sections) { section in

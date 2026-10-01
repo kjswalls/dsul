@@ -28,6 +28,12 @@ struct ScheduleView: View {
                 BraindumpSheet(detent: $detent)
                     .environment(planner)
                     .environment(drag)
+                    // Capture and Go to date, stacked on the braindump while
+                    // it is up (RootView presents them otherwise).
+                    .sheet(item: $planner.sheetOverBraindump) { sheet in
+                        PlannerSheetContent(sheet: sheet)
+                            .environment(planner)
+                    }
             }
             .onChange(of: drag.contentY != nil) { _, hovering in
                 if hovering { autoscroller.start() } else { autoscroller.stop() }

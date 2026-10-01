@@ -53,6 +53,14 @@ struct ListSection: Identifiable, Hashable, Sendable {
     let doneCount: Int
 }
 
+/// The sheets anything in the app can raise, one at a time. The braindump
+/// sheet is not one of them: it stays up over Schedule, and these stack on it.
+enum PlannerSheet: String, Identifiable, Hashable, Sendable {
+    case capture, datePicker
+
+    var id: String { rawValue }
+}
+
 /// Sample data for the shell, the layouts and the drag spike. No network,
 /// no persistence: toggles and drops live until the app quits.
 @Observable @MainActor
@@ -61,9 +69,27 @@ final class SamplePlanner {
     var items: [SampleItem]
     /// The projects, in the order the chips and sections show them.
     let projects: [String]
-    let today: DayString
+    /// The device's day. Moves at midnight and on returning to the app
+    /// (`refreshToday`), never from a view's body.
+    private(set) var today: DayString
     var selectedDay: DayString
     var showBraindumpSheet = false
+    /// The one sheet up besides the braindump, if any. The single source of
+    /// truth: the two hosts below read it, and a dismissal clears it.
+    var activeSheet: PlannerSheet?
+
+    /// What RootView presents: the sheet, unless the braindump sheet is up,
+    /// since a view can't present over a sheet its own subtree put up.
+    var sheetOverApp: PlannerSheet? {
+        get { showBraindumpSheet ? nil : activeSheet }
+        set { activeSheet = newValue }
+    }
+
+    /// What the braindump sheet presents, stacked on itself, while it is up.
+    var sheetOverBraindump: PlannerSheet? {
+        get { showBraindumpSheet ? activeSheet : nil }
+        set { activeSheet = newValue }
+    }
 
     convenience init(todayString: String) {
         self.init(today: DayString(todayString))
@@ -152,6 +178,19 @@ final class SamplePlanner {
     func select(_ day: DayString) { selectedDay = day }
     func shiftDay(by days: Int) { selectedDay = selectedDay.adding(days: days) }
     func goToToday() { selectedDay = today }
+
+    /// Moves `today` to the device's day now. See `refreshToday(to:)`.
+    func refreshToday(now: Date = Date(), calendar: Calendar = .current) {
+        refreshToday(to: DayString(date: now, calendar: calendar))
+    }
+
+    /// Moves `today` to `newToday`. The selection follows only if it was on
+    /// today; a day picked on purpose stays picked.
+    func refreshToday(to newToday: DayString) {
+        guard newToday != today else { return }
+        if selectedDay == today { selectedDay = newToday }
+        today = newToday
+    }
 
     /// Whether `item` is on `day`. Habits ask the repeat (lib/recurrence.ts
     /// `shouldShowOnDate`, as `deriveDayItems` does); tasks show on their day.
@@ -308,14 +347,13 @@ final class SamplePlanner {
     }
 
     /// Fills the selected day to 40 blocks, for the spike's "no hitches on a busy day" test.
+    /// Fresh ids each time: a fixed run would repeat across days.
     func stress() {
-        var k = 1000
         var count = scheduled.count
         while count < 40 {
-            k += 1
             let start = (count * 35) % (23 * 60)
-            items.append(SampleItem(id: Self.uuid(k), title: "Block \(count + 1)",
-                                    durationMin: [15, 30, 45][k % 3], startMin: start,
+            items.append(SampleItem(id: UUID(), title: "Block \(count + 1)",
+                                    durationMin: [15, 30, 45][count % 3], startMin: start,
                                     day: selectedDay, bucket: DayBucket.owning(minute: start)))
             count += 1
         }

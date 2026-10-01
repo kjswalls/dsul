@@ -52,6 +52,7 @@ struct CaptureBar: View {
 
 /// The small sheet a tap on the capture bar opens. The field stays focused
 /// after each Return, so thoughts go in one after another; Done closes it.
+/// However it closes, Done or a swipe down, what's typed is kept.
 struct CaptureSheet: View {
     @Environment(SamplePlanner.self) private var planner
     @Environment(\.dismiss) private var dismiss
@@ -82,7 +83,7 @@ struct CaptureSheet: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("Done", systemImage: "checkmark") {
-                        submit()
+                        commit()
                         dismiss()
                     }
                 }
@@ -90,15 +91,23 @@ struct CaptureSheet: View {
         }
         .presentationDetents([.height(190)])
         .onAppear { focused = true }
+        // A swipe down closes the sheet without Done; the text still goes in.
+        .onDisappear { commit() }
     }
 
+    /// Return: capture, then keep typing.
     private func submit() {
+        commit()
+        focused = true
+    }
+
+    /// Captures what's typed, if anything, and clears the field.
+    private func commit() {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {
             planner.capture(trimmed)
             added += 1
         }
         text = ""
-        focused = true
     }
 }

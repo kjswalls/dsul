@@ -1,6 +1,9 @@
 import Foundation
 
-// Port of the optimistic completion step in `setHabitStatus`, lib/planner-store.ts.
+// Port of the optimistic completion step in `toggleHabitStatus` (and the habit
+// branch of `setItemsCompleted`), lib/planner-store.ts.
+// Not yet ported: the TS also clears that day's skip (`skippedDates`) when it
+// completes the habit. Port that once iOS has `skippedDates`.
 // The streak is an opaque stored counter: it moves +1 or -1 only when the day's
 // completion actually changes, never recomputed from `completedDates`, and never
 // below 0. On the web the server RPC owns the real transition; this is the

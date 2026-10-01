@@ -32,15 +32,19 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `components/views/day-schedule.tsx`; `DayBuckets.swift` ← the bucket
   placement in `lib/day-items.ts` and the in-bucket row order in
   `components/views/day-buckets.tsx`; `HabitCompletion.swift` ← the
-  optimistic completion step of `setHabitStatus` in `lib/planner-store.ts`.
+  optimistic completion step of `toggleHabitStatus` (and the habit branch of
+  `setItemsCompleted`) in `lib/planner-store.ts`, minus clearing the day's
+  skip, which waits for `skippedDates` on iOS.
   Each cites what it mirrors.
 
 ## Today (PR 2)
 - **G over F, provisionally.** The capsule is a `ToolbarItem(.topBarTrailing)`
-  beside the avatar: a `Menu` whose `primaryAction` steps to the next layout,
-  long press for the full menu (Layout, and Show with Day only until Week
-  exists), a swipe in either axis steps with `.sensoryFeedback(.selection)`,
-  and VoiceOver adjusts it. `LayoutSwitcher` is self-contained so it can move
+  beside the avatar: a plain view, not a `Menu` (a menu's tap and a swipe on
+  it either never both fire or double-step). A tap steps to the next layout,
+  a swipe in either axis steps with `.sensoryFeedback(.selection)` and wins
+  outright over the tap (`exclusively(before:)`), long press opens the full
+  menu as a context menu (Layout, and Show with Day only until Week exists),
+  and VoiceOver activates or adjusts it. `LayoutSwitcher` is self-contained so it can move
   into the capture bar if Kirby picks F. The layout is `@AppStorage`.
 - **Buckets follow the stored bucket, not the hour.** An item shows in its
   `timeBucket` and nowhere if it has none, as `deriveDayItems` does; a drop on
@@ -50,7 +54,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   a graphical date picker, and a Today button jumps back.
 - **Capture bar.** A button drawn as a field opens a small capture sheet that
   stays open for rapid entry; the tray count switches Today to Schedule and
-  opens the braindump sheet, which only ever opens over Schedule. Hidden on
+  opens the braindump sheet, which only ever opens over Schedule. Capture and
+  Go to date are one `PlannerSheet` on the planner (`activeSheet`): RootView
+  presents it, or, while the braindump sheet is up, the braindump sheet does,
+  stacked, since nothing under a sheet can present. A swipe-down on capture
+  keeps what was typed. `today` moves at midnight and on returning to the
+  app, carrying the selection only if it was on today. Hidden on
   Ask; a compact rendering for the `.inline` placement. The drag probe moved
   from Today's toolbar into the avatar menu.
 

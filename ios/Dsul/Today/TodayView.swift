@@ -8,7 +8,6 @@ struct TodayView: View {
     @Environment(SamplePlanner.self) private var planner
     @AppStorage(TodayLayout.storageKey) private var layout: TodayLayout = .list
     @State private var showProbe = false
-    @State private var showDatePicker = false
 
     var body: some View {
         NavigationStack {
@@ -18,7 +17,7 @@ struct TodayView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    TodayTitle(showDatePicker: $showDatePicker, layout: layout)
+                    TodayTitle(layout: layout)
                 }
                 .sharedBackgroundVisibility(.hidden)
                 ToolbarItem(placement: .topBarTrailing) {
@@ -28,10 +27,6 @@ struct TodayView: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     AvatarMenu(showProbe: $showProbe)
                 }
-            }
-            .sheet(isPresented: $showDatePicker) {
-                DatePickerSheet()
-                    .environment(planner)
             }
         }
         .onChange(of: layout) { _, newLayout in
@@ -61,9 +56,9 @@ struct TodayView: View {
 }
 
 /// "Today" (or the date) over "Tue, Sep 29 · List". A tap opens the date
-/// picker; off today, a Today button jumps back.
+/// picker (a `PlannerSheet`, so it shows over the braindump sheet too); off
+/// today, a Today button jumps back.
 private struct TodayTitle: View {
-    @Binding var showDatePicker: Bool
     var layout: TodayLayout
 
     @Environment(SamplePlanner.self) private var planner
@@ -71,7 +66,7 @@ private struct TodayTitle: View {
     var body: some View {
         HStack(spacing: 10) {
             Button {
-                showDatePicker = true
+                planner.activeSheet = .datePicker
             } label: {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(PlannerFormat.title(selected: planner.selectedDay, today: planner.today))
