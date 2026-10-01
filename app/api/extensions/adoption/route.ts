@@ -11,11 +11,11 @@ import { computeAdoption, type AdoptionCounts } from '@/lib/extension-adoption';
  *
  * The session authorises (anyone signed in may read it); the service role
  * performs, because extension_adoption() aggregates ACROSS accounts and is
- * executable by nothing else (migration 050). Only rounded fractions leave this
+ * executable by nothing else (migration 051). Only rounded fractions leave this
  * route, and computeAdoption withholds any figure built on too few people — the
  * counts themselves never reach a browser.
  *
- * A database without migration 050 answers `{ available: false }`: the store
+ * A database without migration 051 answers `{ available: false }`: the store
  * then simply shows no figures, which is also what it shows before launch.
  */
 export async function GET() {

@@ -115,7 +115,7 @@ export function ExtensionsStorePage() {
       <StoreHeader />
 
       <div className="flex flex-col gap-3">
-        <label className="bg-secondary text-muted-foreground flex max-w-md items-center gap-2 rounded-lg px-3 py-2 text-sm">
+        <label className="bg-secondary text-muted-foreground focus-within:ring-ring flex max-w-md items-center gap-2 rounded-lg px-3 py-2 text-sm focus-within:ring-2">
           <Search className="size-4 shrink-0" aria-hidden />
           <input
             type="search"
@@ -123,7 +123,8 @@ export function ExtensionsStorePage() {
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Search extensions"
             aria-label="Search extensions"
-            className="text-foreground placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 outline-none"
+            // The X below is the clear control; the browser's own would make two.
+            className="text-foreground placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 outline-none [&::-webkit-search-cancel-button]:appearance-none"
           />
           {query && (
             <button type="button" onClick={() => setQuery('')} aria-label="Clear search" className="hover:text-foreground">
@@ -177,9 +178,7 @@ export function ExtensionsStorePage() {
       )}
 
       {matches.length === 0 ? (
-        <p className="text-muted-foreground py-12 text-center text-sm">
-          No extension matches “{query.trim() || chips.find((chip) => chip.id === filter)?.label}”.
-        </p>
+        <p className="text-muted-foreground py-12 text-center text-sm">{emptyLine(query, filter)}</p>
       ) : (
         catalogByShelf(matches).map(({ shelf, extensions }) => (
           <section key={shelf.id} className="flex flex-col gap-3" data-store-shelf={shelf.id} aria-labelledby={`shelf-${shelf.id}`}>
@@ -204,6 +203,15 @@ export function ExtensionsStorePage() {
       )}
     </main>
   );
+}
+
+/** What an empty result says, worded for the search and the chip that emptied it. */
+function emptyLine(query: string, filter: Filter): string {
+  const q = query.trim();
+  if (filter === 'on') return q ? `Nothing you have on matches “${q}”.` : 'Nothing is switched on yet.';
+  const shelf = STORE_SHELVES.find((s) => s.id === filter);
+  if (shelf) return q ? `Nothing in ${shelf.name} matches “${q}”.` : `Nothing in ${shelf.name} yet.`;
+  return `No extension matches “${q}”.`;
 }
 
 function StoreHeader() {

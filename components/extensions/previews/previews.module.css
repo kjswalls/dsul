@@ -12,8 +12,9 @@
  * card and a server render all show the same meaningful frame: the tick done,
  * the burst gone, the banner in place. The media/attribute blocks at the end
  * are a backstop: the global `[data-reduce-motion] *` clamp in globals.css
- * shortens durations to 0.01ms, which on an `infinite` loop strobes, so these
- * remove the animation outright instead.
+ * runs each animation once at 0.01ms and so snaps it to its END keyframe,
+ * which for most of these loops is not the still frame; these remove the
+ * animation outright so the resting style is what shows.
  *
  * Lime is only a completion here (the tick), as everywhere in the app; streaks
  * and the heatmap use the warning tokens the real features use. Nothing that
@@ -284,6 +285,8 @@
   border: 1px solid var(--border);
   border-radius: 0.55em;
   background: var(--background);
+  /* On the rail, not the rows, so the mark below steps in the rows' em. */
+  font-size: 0.9em;
 }
 .railRow {
   position: relative;
@@ -294,7 +297,6 @@
   height: 1.95em;
   padding: 0 0.55em;
   color: var(--secondary-foreground);
-  font-size: 0.9em;
 }
 .railRow i { width: 0.55em; height: 0.55em; border-radius: 0.12em; background: var(--c); }
 .railMark {
@@ -395,6 +397,8 @@
 .lock {
   position: absolute;
   inset: 0;
+  /* A sibling of .stage, so it needs the stage's container font of its own. */
+  font-size: clamp(9px, 4.3cqw, 15px);
   background: linear-gradient(
     160deg,
     color-mix(in oklab, var(--accent-3) 22%, var(--canvas)),
@@ -403,7 +407,7 @@
 }
 .clock {
   position: absolute;
-  top: 52%;
+  top: 57%;
   right: 0;
   left: 0;
   font-size: 3.4em;
@@ -413,7 +417,7 @@
   line-height: 1;
   text-align: center;
 }
-.date { position: absolute; top: 42%; right: 0; left: 0; color: var(--secondary-foreground); font-size: 0.9em; text-align: center; }
+.date { position: absolute; top: 48%; right: 0; left: 0; color: var(--secondary-foreground); font-size: 0.9em; text-align: center; }
 .top { align-items: flex-start; }
 .banner {
   position: relative;

@@ -252,7 +252,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     needs: ['Home Assistant'],
     whatChanges: [
       'Reminders are read aloud on the Home Assistant speakers you pick.',
-      'They use the same wording as your other reminders.',
+      'Each is one short spoken line: the habit, and how many days you have kept it up.',
     ],
     makerNote:
       'A reminder you hear from across the room is harder to swipe away than one on a lock screen. Your Home Assistant has to be reachable from the internet, because dsul calls it from its own server.',

@@ -304,7 +304,7 @@ const Voice: Scene = () => (
         </div>
       </div>
       <div className={s.caption}>
-        <span className={s.captionText}>It’s 7:30. Time for Stretch 10 min.</span>
+        <span className={s.captionText}>Stretch 10 min. 4 days so far.</span>
       </div>
       <div className={s.where}>
         <i />
@@ -337,7 +337,7 @@ const Text: Scene = () => (
           <div className={s.bannerTitle}>
             Messages<span>now</span>
           </div>
-          Read 20 pages is still open today. You have until midnight.
+          Still open today — Read 20 pages · 11 days riding on it
         </div>
       </div>
     </div>
@@ -470,7 +470,7 @@ const Partner: Scene = () => (
             <b>
               dsul<span>9:00 PM</span>
             </b>
-            Sam’s Tuesday: 4 of 5 habits, 6 tasks done.
+            Sam’s 2026-09-29: 4/5 done. Done — Meditate, Run, Read and Walk. Not done — Stretch.
             <div className={s.bar}>
               <i />
               <i />

@@ -2,7 +2,7 @@
  * Adoption figures for the extensions store — the arithmetic, kept pure.
  *
  * The database answers with COUNTS per slug (extension_adoption(), migration
- * 050). This turns them into the two fractions a card may show, and it is the
+ * 051). This turns them into the two fractions a card may show, and it is the
  * only place that decides whether a figure is safe to show at all:
  *
  *   hasItOn    share of people with the extension on. Accounts without a saved
@@ -42,7 +42,9 @@ export interface AdoptionStat {
 function share(part: number, whole: number): number | null {
   if (whole < MIN_PEOPLE) return null;
   if (part < MIN_SIDE || whole - part < MIN_SIDE) return null;
-  return Math.round((part / whole) * 20) / 20;
+  // Both sides have at least MIN_SIDE people, so neither 0% nor 100% is true;
+  // rounding 97% up to "100% kept it on" would say something that isn't.
+  return Math.min(0.95, Math.max(0.05, Math.round((part / whole) * 20) / 20));
 }
 
 export function computeAdoption(

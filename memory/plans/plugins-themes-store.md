@@ -12,7 +12,7 @@
 > code — Project C's registry, review and payments questions are untouched.
 >
 > **Open question 9 (telemetry vs privacy) is answered for this store:**
-> migration 050 keeps an append-only, owner-readable history of extension
+> migration 051 keeps an append-only, owner-readable history of extension
 > switches (`extension_toggle_events`, written by a trigger), and
 > `extension_adoption()` — service role only — returns per-slug COUNTS.
 > `/api/extensions/adoption` turns them into fractions rounded to 5% and withholds

@@ -1,4 +1,4 @@
--- 050_extension_toggle_events.sql
+-- 051_extension_toggle_events.sql
 --
 -- What the extensions store needs to say "kept on by 81% after 30 days".
 --
@@ -25,9 +25,8 @@ create table if not exists public.extension_toggle_events (
   enabled boolean not null,
   at timestamptz not null default now(),
   -- Rows written by the one-off backfill below. Their `at` is a guess (the
-  -- row's updated_at), and they only exist for people who still have the
-  -- extension on — so they would make every backfilled user a "keeper". The
-  -- kept-on rate leaves them out entirely.
+  -- row's updated_at) and the history before it is gone, so the kept-on rate
+  -- leaves out every account that has one for that slug.
   backfilled boolean not null default false
 );
 
@@ -86,14 +85,15 @@ create trigger user_extensions_log_toggle
   for each row execute function public.log_extension_toggle();
 
 -- ─── Backfill, once ──────────────────────────────────────────────────────────
--- Everyone who has an extension on today gets one `backfilled` event, so the
--- history is never missing a switch that happened before it existed. The
+-- Every saved row today, on OR off, gets one `backfilled` event carrying its
+-- current value. The on ones keep the history from missing a switch that
+-- happened before it existed; the off ones mark someone who already tried it
+-- and switched it off, so a later switch-on doesn't count them as new. The
 -- not-exists guard keeps a re-run from duplicating anything.
 insert into public.extension_toggle_events (user_id, slug, enabled, at, backfilled)
-select ue.user_id, ue.slug, true, ue.updated_at, true
+select ue.user_id, ue.slug, ue.enabled, ue.updated_at, true
 from public.user_extensions ue
-where ue.enabled
-  and not exists (
+where not exists (
     select 1 from public.extension_toggle_events e
     where e.user_id = ue.user_id and e.slug = ue.slug
   );
