@@ -13,7 +13,7 @@ import SwiftUI
 /// - the subtasks, each ticked in place, its title opening its own page.
 ///
 /// The verbs sit in a bar under the scroll (`VerbBar`), the rest of the
-/// pause family behind ⋯ in the toolbar. Which verbs, and in which slots, is
+/// pause family (and a series' Reschedule) behind ⋯ in the toolbar. Which verbs, and in which slots, is
 /// ItemSheetModel's, asked of what the planner offers (`offeredVerbs`), so the
 /// sheet never shows a verb the web's gates or the server refuse. Each one
 /// acts on the day the sheet was opened with, read when it is tapped
@@ -85,10 +85,7 @@ struct ItemDetail: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Menu {
                         ForEach(verbs.menu, id: \.self) { verb in
-                            Button(ItemSheetModel.menuTitle(verb),
-                                   systemImage: ItemSheetModel.symbol(verb, item, ctx)) {
-                                run(verb)
-                            }
+                            menuEntry(verb, item, ctx)
                         }
                     } label: {
                         Label("More", systemImage: "ellipsis")
@@ -96,6 +93,23 @@ struct ItemDetail: View {
                     .menuOrder(.fixed)
                     .tint(Color.primary)
                 }
+            }
+        }
+    }
+
+    /// One ⋯ entry. Reschedule opens the bar's three choices as a submenu;
+    /// every other verb runs when tapped.
+    @ViewBuilder
+    private func menuEntry(_ verb: SheetVerb, _ item: SampleItem, _ ctx: VerbContext) -> some View {
+        if verb == .reschedule {
+            Menu(ItemSheetModel.menuTitle(verb), systemImage: ItemSheetModel.symbol(verb, item, ctx)) {
+                Button("Today", systemImage: "sun.max") { reschedule(.today) }
+                Button("Next week", systemImage: "calendar.badge.plus") { reschedule(.nextWeek) }
+                Button("Pick a date\u{2026}", systemImage: "calendar") { reschedule(.pick) }
+            }
+        } else {
+            Button(ItemSheetModel.menuTitle(verb), systemImage: ItemSheetModel.symbol(verb, item, ctx)) {
+                run(verb)
             }
         }
     }

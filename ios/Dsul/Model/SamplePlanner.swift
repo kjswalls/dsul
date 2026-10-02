@@ -461,9 +461,10 @@ final class SamplePlanner {
     /// store's `moveTaskToDate`, DsulCore `moving`): that start date, its
     /// bucket kept (Anytime when it had none), its time and length kept. The
     /// caller picks the day (`nextDayOf` for Tomorrow); the gate is the web's
-    /// `reschedule` one, asked off the item's own day or, undated, the target,
-    /// as the server asks it. A habit, a recurring item, a finished one, one in
-    /// a project block and a subtask are refused.
+    /// `reschedule` one (lib/row-moves.ts `canReschedule`), asked off the
+    /// item's own day or, undated, the target, as the server asks it. A
+    /// recurring task may move: the day becomes its series start. A habit, a
+    /// finished item, one in a project block and a subtask are refused.
     func move(_ id: UUID, to dateStr: String) {
         guard let target = DayString(dateStr), let i = items.firstIndex(where: { $0.id == id }) else { return }
         let before = items[i]

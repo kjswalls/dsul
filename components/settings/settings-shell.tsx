@@ -507,8 +507,23 @@ export function SettingsShell({
     pane === 'beacon'
       ? paneOwn.rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id))
       : paneOwn.rows;
+  const wide = pane === 'extensions';
+  // Only the store itself runs past 600px; search results and an extension's
+  // own rows keep the column every other pane has.
+  const storeShowing = pane === 'extensions' && !searching;
   return (
-    <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
+    <main
+      className={cn(
+        'mx-auto flex flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]',
+        // The Extensions pane is the one whose body is a store, not a column
+        // of rows, so the whole page widens there and stays centred — widening
+        // the store alone, rightward, left the page heavy on one side. An
+        // extension's own page is rows again, so it is the usual width, centred
+        // like every other pane.
+        wide ? 'max-w-[1320px]' : 'max-w-[880px]'
+      )}
+      data-wide={wide || undefined}
+    >
       {/* Three crumbs inside an extension, two everywhere else. The rail's
           Extensions row does navigate back up, but from inside a sub-pane it
           renders as the CURRENT row — a lit row does not read as a way out. So
@@ -605,8 +620,8 @@ export function SettingsShell({
           })}
         </nav>
 
-        <div className="min-w-0 flex-1 md:max-w-[600px]">
-          <div className="relative">
+        <div className={cn('min-w-0 flex-1', !storeShowing && 'md:max-w-[600px]')}>
+          <div className="relative md:max-w-[600px]">
             <Search
               className="text-muted-foreground pointer-events-none absolute top-2.5 left-3 size-3.5"
               aria-hidden
@@ -804,15 +819,9 @@ export function SettingsShell({
                     <ExtensionRailList ctx={ctx} pane={pane} variant="pane" />
                   </div>
                   {/* The store is the one pane body wider than a column of
-                      rows. It grows to the RIGHT only, into the page margin, up
-                      to the window's edge less the gutter, so the rail and the
-                      search box stay exactly where every other pane has them
-                      (re-centering a wider page moved the rail 190px). The
-                      negative margin is the page margin less the gutter, and
-                      zero once the window is no wider than the page. */}
-                  <div className="md:mr-[min(0px,calc((880px-100vw)/2+24px))] md:max-w-[1200px]">
-                    <ExtensionBrowse ctx={ctx} />
-                  </div>
+                      rows: it takes the whole column the wide page gives it,
+                      while the search box above keeps the usual 600px. */}
+                  <ExtensionBrowse ctx={ctx} />
                 </>
               )}
 

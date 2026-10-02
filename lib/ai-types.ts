@@ -113,6 +113,7 @@ export type ApiErrorCode =
   | 'not_connected'
   | 'busy'
   | 'conflict'
+  | 'not_found'
   | 'server';
 
 /**

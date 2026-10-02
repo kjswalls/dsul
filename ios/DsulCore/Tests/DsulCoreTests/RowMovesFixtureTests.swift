@@ -40,6 +40,7 @@ private struct Fixture: Decodable, Sendable {
     let nextDayLabel: [LabelCase]
     let formatTargetDay: [DayCase]
     let canMoveToNextDay: [MoveCase]
+    let canReschedule: [MoveCase]
 }
 
 private enum FixtureError: Error {
@@ -69,6 +70,8 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         #expect(!f.formatTargetDay.isEmpty)
         #expect(f.canMoveToNextDay.contains { $0.expected })
         #expect(f.canMoveToNextDay.contains { !$0.expected })
+        #expect(f.canReschedule.contains { $0.expected })
+        #expect(f.canReschedule.contains { !$0.expected })
     }
 
     @Test func nextDayTargetMatchesTheWeb() throws {
@@ -93,6 +96,13 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         for c in try loadFixture().canMoveToNextDay {
             let kind = try #require(ItemKind(rawValue: c.kind), "\(c.name): unknown kind \(c.kind)")
             #expect(canMoveToNextDay(c.item, kind: kind, dateStr: c.dateStr) == c.expected, "\(c.name)")
+        }
+    }
+
+    @Test func canRescheduleMatchesTheWeb() throws {
+        for c in try loadFixture().canReschedule {
+            let kind = try #require(ItemKind(rawValue: c.kind), "\(c.name): unknown kind \(c.kind)")
+            #expect(canReschedule(c.item, kind: kind, dateStr: c.dateStr) == c.expected, "\(c.name)")
         }
     }
 

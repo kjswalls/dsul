@@ -35,7 +35,7 @@ import { useScheduleFocusStore } from '@/lib/schedule-focus-store';
 import { LaneCapRow } from '@/components/primitives/lane-cap';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { milestoneItemIds } from '@/lib/goals';
-import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -660,10 +660,11 @@ export function ScheduleBlock({
   const nextDay = nextDayTarget(dateStr, todayStr);
   const canNextDay = canMoveToNextDay(item, itemType, dateStr);
   const canBraindump = canSendToBraindump(item, itemType, dateStr, milestoneIds);
-  // Reschedule: the carry's gate with the day left open. A timed block keeps
+  // Reschedule: the carry's gate with the day left open, recurring tasks
+  // included (the picked day becomes the series start). A timed block keeps
   // its clock time here too. `picking` pins the controls while the calendar is
   // open, or they'd fade out from under it as the pointer leaves the block.
-  const canReschedule = canNextDay;
+  const canReschedule = canRescheduleItem(item, itemType, dateStr);
   const [picking, setPicking] = useState(false);
   // Which edge is under an active resize — drives the one lime glyph the target/
   // trim mark styles light on the handle being dragged (see HandleGrip). A ref

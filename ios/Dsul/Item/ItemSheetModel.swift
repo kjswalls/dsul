@@ -100,7 +100,9 @@ enum ItemSheetModel {
     ///   circle);
     /// - a one-off task-like item: the tick, Tomorrow, Reschedule;
     /// - a recurring task-like item: the tick, Skip or Unskip, Pause.
-    /// ⋯ holds whatever of Pause and Pause until the bar doesn't. A subtask is
+    /// ⋯ holds whatever of Pause, Pause until and Reschedule the bar doesn't:
+    /// a series' Reschedule (lib/row-moves.ts `canReschedule`) moves its start,
+    /// so it waits there rather than beside the day's verbs. A subtask is
     /// offered the tick alone, so it gets the tick alone.
     static func verbs(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> SheetVerbs {
         let has = Set(offered)
@@ -109,8 +111,9 @@ enum ItemSheetModel {
             return SheetVerbs(bar: has.contains(.resume) ? [.resume] : [], menu: [], notDue: false)
         }
         let pauseFamily: [SheetVerb] = has.contains(.pause) ? [.pause, .pauseUntil] : []
+        let overflow: [SheetVerb] = pauseFamily + (has.contains(.reschedule) ? [.reschedule] : [])
         if item.recurs && ctx.occurrence == .absent {
-            return SheetVerbs(bar: [], menu: pauseFamily, notDue: true)
+            return SheetVerbs(bar: [], menu: overflow, notDue: true)
         }
 
         let skipSlot: SheetVerb? = has.contains(.unskip) ? .unskip : (has.contains(.skip) ? .skip : nil)
@@ -127,7 +130,7 @@ enum ItemSheetModel {
             bar = [tick, skipSlot, pause].compactMap { $0 }
         }
         bar = Array(bar.prefix(3))
-        return SheetVerbs(bar: bar, menu: pauseFamily.filter { !bar.contains($0) }, notDue: false)
+        return SheetVerbs(bar: bar, menu: overflow.filter { !bar.contains($0) }, notDue: false)
     }
 
     /// The web's `onDay` (item-context-menu.tsx): "today" in a label is only
@@ -182,8 +185,8 @@ enum ItemSheetModel {
         return verbDetail(.nextDay, item, ctx)
     }
 
-    /// The ⋯ menu's words. It only ever holds Pause and Pause until; the rest
-    /// are named for completeness.
+    /// The ⋯ menu's words. It only ever holds Pause, Pause until and a
+    /// series' Reschedule; the rest are named for completeness.
     static func menuTitle(_ verb: SheetVerb) -> String {
         switch verb {
         case .pause: "Pause"

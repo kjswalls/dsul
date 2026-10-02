@@ -37,6 +37,9 @@ export function isAppIcon(value: unknown): value is AppIcon {
   return typeof value === 'string' && APP_ICONS.some((i) => i.value === value);
 }
 
+/** Cache-buster on the icon URLs (app/layout.tsx, public/manifest.json); bump it with the artwork. */
+export const ICON_REV = '2';
+
 /**
  * Where an icon href lives for a look. The lime set mirrors the Aurora file
  * names under /icons/lime/, so the swap is a prefix change and nothing else —

@@ -1504,6 +1504,49 @@
       }
     },
     {
+      "name": "a recurring task rescheduled starts its series there",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "date": "2026-10-05",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-10-05",
+          "timeBucket": "morning"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "updates": {
+              "startDate": "2026-10-05",
+              "timeBucket": "morning"
+            }
+          }
+        ]
+      }
+    },
+    {
       "name": "a habit is not moved",
       "now": "2026-10-02T15:00:00.000Z",
       "timeZone": "America/New_York",

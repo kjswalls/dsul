@@ -226,11 +226,13 @@ describe('reschedule: pick any day', () => {
     fireEvent.click(within(popover).getByRole('button', { name }));
   };
 
-  it('a one-off open task gets it; the carry gate refuses the rest', () => {
-    renderRow('one-off');
-    expect(rescheduleBtn()).not.toBeNull();
-    cleanup();
-    for (const id of ['daily', 'done', 'cancelled', 'in-block', 'habit']) {
+  it('one-off and recurring open tasks get it; the rest are refused', () => {
+    for (const id of ['one-off', 'daily']) {
+      renderRow(id);
+      expect(rescheduleBtn()).not.toBeNull();
+      cleanup();
+    }
+    for (const id of ['done', 'cancelled', 'in-block', 'habit']) {
       renderRow(id);
       expect(rescheduleBtn()).toBeNull();
       cleanup();
@@ -244,6 +246,22 @@ describe('reschedule: pick any day', () => {
     expect(taskById('one-off').timeBucket).toBe('anytime');
     expect(openEditFor).not.toHaveBeenCalled();
     expect(screen.queryByTestId('item-reschedule-popover')).toBeNull();
+  });
+
+  it('moves a recurring series start to the picked day', () => {
+    renderRow('daily');
+    pick(/July 20/);
+    expect(taskById('daily').startDate).toBe('2026-07-20');
+    expect(taskById('daily').repeatFrequency).toBe('daily');
+  });
+
+  it('a braindump row keeps Schedule and Delete in one capsule, like the planner rows', () => {
+    store().unscheduleTask('one-off');
+    render(<LiveRow id="one-off" context="braindump" />);
+    // RowControlGroup's capsule: one shadowed span around both, at its gap-px.
+    const capsule = rescheduleBtn()!.closest('span.shadow-sm');
+    expect(capsule).not.toBeNull();
+    expect(capsule).toBe(screen.getByTestId('item-delete-button').closest('span.shadow-sm'));
   });
 
   it('schedules a braindump row onto a day, taking it out of the braindump', () => {
@@ -409,7 +427,15 @@ describe('schedule block controls', () => {
     expect(screen.getByTestId('block-controls')).toBeInTheDocument();
   });
 
-  it.each(['daily', 'done', 'in-block'])('%s renders no empty capsule', (id) => {
+  it('a recurring block offers Reschedule alone (the carries would rewrite the series)', () => {
+    render(<LiveBlock id="daily" />);
+    const controls = screen.getByTestId('block-controls');
+    expect(within(controls).getByTestId('item-reschedule-button')).toBeInTheDocument();
+    expect(within(controls).queryByTestId('item-tomorrow-button')).toBeNull();
+    expect(within(controls).queryByTestId('item-unschedule-button')).toBeNull();
+  });
+
+  it.each(['done', 'in-block'])('%s renders no empty capsule', (id) => {
     render(<LiveBlock id={id} />);
     expect(screen.queryByTestId('block-controls')).toBeNull();
   });

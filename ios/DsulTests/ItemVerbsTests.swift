@@ -178,6 +178,34 @@ import Testing
         #expect(body?["date"] as? String == "2026-10-05")
     }
 
+    /// A series takes Reschedule (lib/row-moves.ts `canReschedule`) but not
+    /// Tomorrow: the picked day becomes its start. The sheet keeps the bar for
+    /// the day's verbs and puts Reschedule behind ⋯.
+    @Test func rescheduleMovesASeriesStartAndWaitsBehindMore() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.plantsJSON])))
+        await server.on(itemRoute(PlannerJSON.plants), .status(200, ok))
+        let planner = await loaded(server)
+        let plants = try #require(planner.item(PlannerJSON.plants))
+        let ctx = planner.verbContext(for: plants, day: .selected)
+        let offered = planner.offeredVerbs(for: plants, day: .selected)
+        #expect(offered == [.tick, .skip, .pause, .reschedule])
+        let verbs = ItemSheetModel.verbs(plants, ctx, offered: offered)
+        #expect(verbs.bar == [.tick, .skip, .pause])
+        #expect(verbs.menu == [.pauseUntil, .reschedule])
+
+        planner.move(PlannerJSON.plants, to: "2026-10-05")
+        let moved = planner.item(PlannerJSON.plants)
+        #expect(moved?.startDate == "2026-10-05")
+        #expect(moved?.timeBucket == "morning")
+        #expect(moved?.repeatFrequency == "daily")
+        await drain(planner)
+
+        let body = await sentBody(server, PlannerJSON.plants)
+        #expect(body?["action"] as? String == "move")
+        #expect(body?["date"] as? String == "2026-10-05")
+    }
+
     // MARK: Pause and resume
 
     /// The stored zone is given, so today and the stamp don't depend on the
@@ -265,7 +293,6 @@ import Testing
         planner.unskip(PlannerJSON.water, on: today)            // not skipped
         planner.skip(PlannerJSON.stretch, on: today)            // already skipped
         planner.move(PlannerJSON.water, to: "2026-10-02")       // a habit has no day
-        planner.move(PlannerJSON.plants, to: "2026-10-02")      // a series' day is its anchor
         planner.move(PlannerJSON.bags, to: "2026-10-02")        // a subtask shows only in its parent
         planner.pause(PlannerJSON.bags, until: nil)             // and isn't paused on its own
         planner.resume(PlannerJSON.water)                       // not paused

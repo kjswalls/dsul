@@ -27,6 +27,13 @@ export const MAX_CHAT_CONTEXT_CHARS = 60_000
 export const MAX_OUTPUT_TOKENS = 2_000
 /** One turn: a long pasted note fits, a pasted book does not. */
 export const MAX_MESSAGE_CHARS = 8_000
+/**
+ * One reply. The model path's stream stops here (lib/ai-server/stream.ts), and
+ * a saved reply is clipped to it (chat_messages' CHECK, migration 057). The
+ * model never reaches it (MAX_OUTPUT_TOKENS); OpenClaw's streams are uncapped,
+ * which is why a save clips rather than refuses.
+ */
+export const MAX_ASSISTANT_CHARS = 40_000
 /** The whole transcript sent upstream. The newest turns win. */
 export const MAX_TRANSCRIPT_CHARS = 32_000
 export const MAX_MESSAGES = 40

@@ -26,7 +26,11 @@
  * targets, which is usually bare grid. So the gesture must also START on empty
  * space and travel under {@link MAX_TRAVEL_PX}. Modifier clicks are ignored so
  * a mis-aimed ⌘/shift-click while building a multi-selection doesn't wipe it,
- * and a press that dismisses an open popover or menu does only that.
+ * and a press that dismisses an open popover or menu does only that. A click's
+ * follow-on, a double-click's second, is ignored too: it lands wherever the
+ * first left the page, and the first either was a click-away already or was a
+ * click on something that has since moved out from under the pointer (a
+ * Display shelf ✕ that took its setting off, and the shelf's last line with it).
  */
 
 export const CLICK_AWAY_SCOPE_ATTR = 'data-click-away-scope';
@@ -105,7 +109,7 @@ function onScrollbar(e: PointerEvent): boolean {
 function onClick(e: MouseEvent) {
   const start = press;
   press = null;
-  if (!start || e.button !== 0 || hasModifier(e) || e.defaultPrevented) return;
+  if (!start || e.button !== 0 || e.detail > 1 || hasModifier(e) || e.defaultPrevented) return;
   if (Math.hypot(e.clientX - start.x, e.clientY - start.y) > MAX_TRAVEL_PX) return;
   if (!isClickAwayTarget(e.target)) return;
   // Snapshot: a handler may unsubscribe (the panel closes) mid-iteration.

@@ -24,7 +24,7 @@ import {
   isRemindable,
   isSkippable,
 } from '@/lib/item-registry';
-import { canMoveToNextDay, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
 import { occursOn } from '@/lib/reminders/due';
@@ -953,6 +953,7 @@ type RowMovesFixture = {
   nextDayLabel: CarryLabelCase[];
   formatTargetDay: DayCopyCase[];
   canMoveToNextDay: MoveCase[];
+  canReschedule: MoveCase[];
 };
 
 function buildRowMoves(): RowMovesFixture {
@@ -995,7 +996,7 @@ function buildRowMoves(): RowMovesFixture {
   ).map(([name, dateStr]) => ({ name, dateStr, expected: formatTargetDay(dateStr) }));
   const oneOff = (over: Record<string, unknown> = {}) => task(701, 'buy milk', { startDate: T, ...over });
   const errand = (over: Record<string, unknown> = {}) => custom(702, 'errand', 'post office', { startDate: T, ...over });
-  const moves = (
+  const moveInputs = (
     [
       ['one-off pending', oneOff(), 'task'],
       ['one-off completed', oneOff({ status: 'completed' }), 'task'],
@@ -1018,8 +1019,18 @@ function buildRowMoves(): RowMovesFixture {
       ['habit', habit(703, 'stretch'), 'habit'],
       ['a task asked about as a habit', oneOff(), 'habit'],
     ] as [string, Item, 'task' | 'habit'][]
-  ).map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canMoveToNextDay(item, kind, T) }));
-  return { nextDayTarget: targets, nextDayLabel: labels, formatTargetDay: days, canMoveToNextDay: moves };
+  );
+  // The same rows asked both gates: Reschedule's differs from the carry's only
+  // in taking a recurring task (its picked day becomes the series start).
+  const moves = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canMoveToNextDay(item, kind, T) }));
+  const reschedules = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canReschedule(item, kind, T) }));
+  return {
+    nextDayTarget: targets,
+    nextDayLabel: labels,
+    formatTargetDay: days,
+    canMoveToNextDay: moves,
+    canReschedule: reschedules,
+  };
 }
 
 // ── cadence.json ─────────────────────────────────────────────────────────────
@@ -1403,6 +1414,9 @@ describe('day fixtures shared with DsulCore', () => {
 
     const moves = generated['row-moves'] as RowMovesFixture;
     expect(new Set(moves.canMoveToNextDay.map((c) => c.expected))).toEqual(both);
+    expect(new Set(moves.canReschedule.map((c) => c.expected))).toEqual(both);
+    // At least one row where the two gates part: a recurring task.
+    expect(moves.canReschedule.some((c, i) => c.expected !== moves.canMoveToNextDay[i].expected)).toBe(true);
     expect(new Set(moves.nextDayLabel.map((c) => c.expected))).toEqual(new Set(['Move to tomorrow', 'Move to next day']));
 
     const occurs = (generated.occurs as { cases: OccursCase[] }).cases;

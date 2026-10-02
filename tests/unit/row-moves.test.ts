@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   canMoveToNextDay,
+  canReschedule,
   canSendToBraindump,
   formatTargetDay,
   nextDayLabel,
@@ -49,6 +50,23 @@ describe('gates', () => {
     const r = { ...base, repeatFrequency: 'daily' as const };
     expect(canMoveToNextDay(r, 'task', d)).toBe(false);
     expect(canSendToBraindump(r, 'task', d, none)).toBe(false);
+  });
+  it('a recurring task may still be rescheduled: the picked day becomes its start', () => {
+    const r = { ...base, repeatFrequency: 'daily' as const };
+    expect(canReschedule(r, 'task', d)).toBe(true);
+    expect(canReschedule({ ...r, completedDates: [d] }, 'task', d)).toBe(false);
+    expect(canReschedule({ ...r, inProjectBlock: true }, 'task', d)).toBe(false);
+    expect(canReschedule(r, 'habit', d)).toBe(false);
+  });
+  it('reschedule otherwise follows the carry', () => {
+    expect(canReschedule(base, 'task', d)).toBe(true);
+    for (const it of [
+      { ...base, status: 'completed' as const },
+      { ...base, status: 'cancelled' as const },
+      { ...base, inProjectBlock: true },
+    ]) {
+      expect(canReschedule(it, 'task', d)).toBe(false);
+    }
   });
   it('done, cancelled and in-block tasks take neither', () => {
     for (const it of [

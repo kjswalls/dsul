@@ -1,6 +1,7 @@
 /**
  * In-memory, per-instance, per-user buckets for the calls that reach a
- * provider on the user's behalf outside chat.
+ * provider on the user's behalf outside chat, and for the saved-conversation
+ * routes.
  *
  * Server-only. A speed bump, not a guarantee: each serverless instance keeps
  * its own map (design R6). What it slows down is using dsul as a key oracle
@@ -11,10 +12,25 @@
  * is capped at MAX_KEYS entries by evicting the least recently used.
  */
 
-/** connect: PUT + OAuth callback, 20/h; check: recheck, models, anthropic describe, 60/h. */
-export type Bucket = 'connect' | 'check';
+/**
+ * connect: PUT + OAuth callback, 20/h; check: recheck, models, anthropic describe, 60/h.
+ * The saved conversations (/api/ai/conversations/**), which reach no provider and
+ * only bound how hard one account can lean on the database through these routes
+ * (an owner's direct PostgREST calls to its own rows are outside them; migration
+ * 057's ACCESS note):
+ * conv_write: a turn save, rename, star, tally or delete, 600/h;
+ * conv_read: History pages, an item's lookup, a thread, 1,200/h;
+ * conv_search: 300/h.
+ */
+export type Bucket = 'connect' | 'check' | 'conv_write' | 'conv_read' | 'conv_search';
 
-const LIMITS: Record<Bucket, number> = { connect: 20, check: 60 };
+const LIMITS: Record<Bucket, number> = {
+  connect: 20,
+  check: 60,
+  conv_write: 600,
+  conv_read: 1_200,
+  conv_search: 300,
+};
 const WINDOW_MS = 60 * 60 * 1000;
 const MAX_KEYS = 5_000;
 

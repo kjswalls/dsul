@@ -11,10 +11,12 @@
  * streams, and a custom host's stream is bounded by `guardedFetch`'s body cap.
  */
 
+import { MAX_ASSISTANT_CHARS } from '@/lib/ai-limits';
 import { SSE_DONE, sseFrame, type SseFrame } from '@/lib/sse';
 import { ProviderError, USER_MESSAGES } from './errors';
 
-const DEFAULT_MAX_CHARS = 40_000;
+/** The reply cap a saved conversation also clips to: one constant for both. */
+const DEFAULT_MAX_CHARS = MAX_ASSISTANT_CHARS;
 
 /** AbortSignal.any when present; manual fallback. */
 export function anySignal(signals: AbortSignal[]): AbortSignal {
@@ -44,7 +46,7 @@ export function deltasToSse(
   opts: {
     abort: AbortController;
     onError: (err: unknown) => Promise<SseFrame>;
-    /** default 40_000 */
+    /** default MAX_ASSISTANT_CHARS (40_000) */
     maxChars?: number;
   }
 ): ReadableStream<Uint8Array> {

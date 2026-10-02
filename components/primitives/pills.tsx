@@ -52,8 +52,8 @@ export function RailTooltip({
   side?: 'top' | 'right' | 'bottom' | 'left';
   /**
    * Let a click through the tip to whatever it covers, for triggers packed
-   * closer than a tip is tall: the Display shelf's stacked ✕s, where one
-   * line's tip sat over the next line's ✕ and took the click meant for it.
+   * closer than a tip is tall: the Display shelf's ✕s, where one line's tip
+   * sat over the next line's ✕ and took the click meant for it.
    * The tip still stays up while the pointer is over it, until the pointer
    * rests on a control under it with a tip of its own (app/globals.css).
    */

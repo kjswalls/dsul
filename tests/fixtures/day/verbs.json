@@ -1161,14 +1161,15 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1219,13 +1220,14 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1276,13 +1278,14 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "unskip",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1330,13 +1333,14 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1384,12 +1388,13 @@
           "target": "2026-10-06"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1441,12 +1446,13 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1493,12 +1499,13 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Schedule"
         }
       },
       "eligible": [
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -1601,14 +1608,15 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "resume"
+        "resume",
+        "reschedule"
       ]
     },
     {
@@ -2582,14 +2590,15 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -2641,13 +2650,14 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -2699,13 +2709,14 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
         "unskip",
-        "pause"
+        "pause",
+        "reschedule"
       ]
     },
     {
@@ -2754,12 +2765,13 @@
           "target": "2026-10-03"
         },
         "reschedule": {
-          "eligible": false,
+          "eligible": true,
           "label": "Reschedule"
         }
       },
       "eligible": [
-        "pause"
+        "pause",
+        "reschedule"
       ]
     }
   ]

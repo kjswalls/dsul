@@ -1,14 +1,16 @@
 import Foundation
 
 // Port of lib/row-moves.ts, the carry: where "move to tomorrow" lands, what it
-// is called, and which items may take it (`canMoveToNextDay`), plus
+// is called, and which items may take it (`canMoveToNextDay`, and
+// Reschedule's looser `canReschedule`), plus
 // `addDaysToDateStr` from lib/goals.ts, which it lands with. Keep in step: a
 // change there without the same change here is drift, and the phone offers a
 // carry the web refuses (or lands it on another day). Checked against the web
 // by RowMovesFixtureTests (tests/fixtures/day/row-moves.json).
 //
 // Refused, as on the web: a habit or any type without `dateAddressable`; a
-// recurring item, whose `startDate` is the series anchor; a task inside a
+// recurring item, whose `startDate` is the series anchor (except by
+// Reschedule, where the picked day becomes the series start); a task inside a
 // project block; and anything not open on the day (done or cancelled). A
 // subtask and a paused item are NOT refused here; the sheet asks other gates.
 //
@@ -54,6 +56,15 @@ private func isOpenOn(_ item: Item, _ dateStr: String) -> Bool {
 /// The registry is asked about `kind` unless the item is a custom type, which
 /// answers for its slug (`typeNameOf`), exactly as the web asks it.
 public func canMoveToNextDay(_ item: Item, kind: ItemKind, dateStr: String) -> Bool {
+    if isRecurring(item.rule) { return false }
+    return canReschedule(item, kind: kind, dateStr: dateStr)
+}
+
+/// lib/row-moves.ts `canReschedule`: the Reschedule picker's gate, the
+/// carry's except that a recurring task may take it too. A picked day becomes
+/// the series start, and that day always shows as an occurrence
+/// (`anchoredSeriesOn`), so the move lands where the person put it.
+public func canReschedule(_ item: Item, kind: ItemKind, dateStr: String) -> Bool {
     guard kind == .task else { return false }
     let typeName: String
     if item.type == "custom", let slug = item.customType, !slug.isEmpty {
@@ -62,7 +73,7 @@ public func canMoveToNextDay(_ item: Item, kind: ItemKind, dateStr: String) -> B
         typeName = kind.rawValue
     }
     guard caps(typeName).dateAddressable else { return false }
-    if isRecurring(item.rule) || item.inProjectBlock == true { return false }
+    if item.inProjectBlock == true { return false }
     return isOpenOn(item, dateStr)
 }
 

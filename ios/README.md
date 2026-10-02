@@ -166,8 +166,10 @@ or on the sample:
 4. **Each verb.** On a one-off task: Done, Tomorrow (the row moves to
    tomorrow), Reschedule → Today, Next week, Pick a date… (the picker names
    the day on its button; Cancel changes nothing), and ⋯ → Pause until…,
-   whose picker starts tomorrow. On a habit: the title's circle ticks, Skip
-   today turns into Unskip today in the same place, Pause turns into Resume.
+   whose picker starts tomorrow. On a recurring task: ⋯ → Reschedule moves
+   the series to start on the day picked. On a habit: the title's circle
+   ticks, Skip today turns into Unskip today in the same place, Pause turns
+   into Resume.
    The sheet stays open after each.
 5. **Another day.** Pick tomorrow on Today and open a habit: the bar says Skip,
    not Skip today, under "For" and that day. Open a weekday habit on a

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, act, fireEvent } from '@testing-library/react';
 
 // DesktopShell with its columns stubbed: the header row keeps controls that
@@ -169,8 +169,26 @@ function openMenu() {
 const frame = () =>
   act(() => new Promise<void>((resolve) => requestAnimationFrame(() => resolve())));
 
+/**
+ * Whether the browser draws focus where it lands (:focus-visible). jsdom's
+ * answer turns on what earlier cases dispatched, so here it is drawn wherever
+ * it lands, but on a control a case says a click left undrawn.
+ */
+const undrawnControls = new Set<Element>();
+const undrawn = (id: string) => undrawnControls.add(screen.getByTestId(id));
+const realMatches = Element.prototype.matches;
+let focusVisible: ReturnType<typeof vi.spyOn> | null = null;
+
+beforeEach(() => {
+  focusVisible = vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+    return selector === ':focus-visible' ? !undrawnControls.has(this) : realMatches.call(this, selector);
+  });
+});
+
 afterEach(() => {
   cleanup();
+  focusVisible?.mockRestore();
+  undrawnControls.clear();
   document.body.querySelectorAll('[data-testid="menu-item"]').forEach((el) => el.remove());
 });
 
@@ -190,7 +208,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     focusAndReveal(main, 'clipped-control', 100);
     await frame();
     expect(main.scrollLeft).toBe(51);
-    fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Shift' });
+    fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'v' });
     await frame();
     expect(main.scrollLeft).toBe(51);
   });
@@ -290,7 +308,9 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('mid-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
-      // A key that moves nothing, such as the Shift of the next Shift+Tab.
+      // A key that moves nothing, and the Shift of the next Shift+Tab, which
+      // the hook does not hear.
+      fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'v' });
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Shift' });
       await frame();
       expect(main.scrollLeft).toBe(51);
@@ -323,7 +343,8 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('mid-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
-      // The shelf refits under it, 60px left: cut at 51, and whole at rest.
+      // The layout moves it 60px left with no event of its own (a view
+      // switched from a store): cut at 51, and whole at rest.
       place('mid-control', 140, 32);
       act(() => seenCallbacks.forEach((notify) => notify()));
       await frame();
@@ -382,6 +403,8 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       focusAndReveal(main, 'clipped-control', 100);
       await frame();
       const target = screen.getByTestId('mid-control');
+      // The browser draws no focus on a button a click lands on.
+      undrawn('mid-control');
       act(() => target.focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
@@ -399,6 +422,9 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       focusAndReveal(main, 'clipped-control', 100);
       await frame();
       const target = screen.getByTestId('mid-control');
+      // Undrawn, as the browser leaves focus a click gives: it is the click
+      // landing on it, not a click handing focus on, so it is placed.
+      undrawn('mid-control');
       fireEvent.pointerDown(target, { pointerId: 1 });
       act(() => target.focus());
       fireEvent.pointerUp(target, { pointerId: 1 });
@@ -427,7 +453,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       const target = screen.getByTestId('mid-control');
       fireEvent.pointerDown(target, { pointerId: 1 });
       act(() => target.focus());
-      fireEvent.keyDown(target, { key: 'Shift' });
+      fireEvent.keyDown(target, { key: 'v' });
       fireEvent.pointerUp(target, { pointerId: 1 });
       await frame();
       expect(main.scrollLeft).toBe(0);
@@ -473,7 +499,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(51);
     });
 
-    /** Shift+Tab from the schedule onto the reset ✕, and back along the row to Scope. */
+    /** Shift+Tab from the schedule onto Reset, and back along the row to Scope. */
     async function backToScope() {
       render(<DesktopShell />);
       const main = await layOut();
@@ -543,7 +569,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
     it('keeps the slide, cut part-way, for a control that has not moved since it was made, though the one it was made for has', async () => {
       render(<DesktopShell />);
       const main = await layOut();
-      // Zen needs 21 here (390 to 422), and the reset ✕, 10px on, 31.
+      // Zen needs 21 here (390 to 422), and Reset, 10px on, 31.
       place('clipped-control', 400, 32);
       focusAndReveal(main, 'cut-control', 100);
       await frame();
@@ -552,12 +578,12 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('mid-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(21);
-      // Zen moves; the reset ✕ does not.
+      // Zen moves; Reset does not.
       place('cut-control', 350, 32);
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Enter' });
       await frame();
       expect(main.scrollLeft).toBe(21);
-      // The reset ✕ shows 22px of 32 at 21: kept, as the browser would leave it.
+      // Reset shows 22px of 32 at 21: kept, as the browser would leave it.
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
       act(() => screen.getByTestId('clipped-control').focus());
       await frame();
@@ -635,8 +661,8 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('wide-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
-      // ...and so is the ✕ on it, whole at 51, and the reset ✕ two stops on,
-      // whole there too, keeps its tooltip.
+      // ...and so is the ✕ on it, whole at 51, and Reset two stops on, whole
+      // there too, keeps its tooltip.
       fireEvent.keyDown(screen.getByTestId('wide-control'), { key: 'Tab' });
       act(() => x.focus());
       await frame();
@@ -647,7 +673,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       expect(main.scrollLeft).toBe(51);
     });
 
-    it('keeps the slide for the shelf text a setting lengthened at its end, which shows part-way there, and for the reset ✕ after it', async () => {
+    it('keeps the slide for the shelf text a setting lengthened at its end, which shows part-way there, and for Reset after it', async () => {
       render(<DesktopShell />);
       const main = await layOut();
       // The text, 49 to 329: 29 shows it whole, and 51 cuts 2px at its start.
@@ -666,7 +692,7 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       act(() => screen.getByTestId('wide-control').focus());
       await frame();
       expect(main.scrollLeft).toBe(51);
-      // The reset ✕ (319 to 351) shows whole at 51, and its tooltip stays up.
+      // Reset (319 to 351) shows whole at 51, and its tooltip stays up.
       fireEvent.keyDown(screen.getByTestId('wide-control'), { key: 'Tab' });
       act(() => screen.getByTestId('clipped-control').focus());
       await frame();
@@ -713,8 +739,8 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
 
     it('places afresh a control mounted in the row since the slide was made, where the slide cuts it', async () => {
       const main = await backToScope();
-      // The reset ✕ mounted again as a second setting comes back: 324 to 356,
-      // which needs 56 and shows 27px of 32 at 51.
+      // Reset mounted again as a fourth ✕ comes on: 324 to 356, which needs
+      // 56 and shows 27px of 32 at 51.
       const mounted = mount('mounted-control', 425, 32);
       fireEvent.keyDown(screen.getByTestId('mid-control'), { key: 'Tab' });
       act(() => mounted.focus());
@@ -1211,6 +1237,269 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
       fireEvent.contextMenu(target);
       await frame();
       expect(main.scrollLeft).toBe(0);
+    });
+  });
+
+  // A Display shelf ✕ hands focus on as its own setting goes: to the shelf's
+  // text, to the next ✕, or with the last setting to the Display trigger.
+  // After a click that control is undrawn (no :focus-visible), and with the
+  // item panel docked it can sit past the edge: showing it slid the canvas
+  // under the pointer, for a control nobody could see.
+  describe('after a click in it hands focus on to another control', () => {
+    /** A click on `pressed` whose handler hands focus to `to`, which the browser reveals. */
+    function clickHandingOn(main: HTMLElement, pressed: string, to: string, revealTo: number) {
+      const target = screen.getByTestId(pressed);
+      fireEvent.pointerDown(target, { pointerId: 1 });
+      act(() => target.focus());
+      fireEvent.pointerUp(target, { pointerId: 1 });
+      focusAndReveal(main, to, revealTo);
+    }
+
+    it('leaves the box at rest for an undrawn control past the edge, undoing the browser’s reveal', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('clipped-control');
+      clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('leaves a slide it made where it was, for an undrawn control the slide cuts', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      // The seen control shows whole at rest, and 51 cuts it.
+      undrawn('seen-control');
+      clickHandingOn(main, 'cut-control', 'seen-control', 0);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('keeps it there through a modifier on its own, Shift included, and places it once a key draws it', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('clipped-control');
+      clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+      await frame();
+      const control = screen.getByTestId('clipped-control');
+      fireEvent.keyDown(control, { key: 'Meta' });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      // Chromium draws focus on a lone Shift, the first half of a Shift-click:
+      // placing it then slid the canvas just as the click came down.
+      undrawnControls.clear();
+      fireEvent.keyDown(control, { key: 'Shift' });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      fireEvent.keyDown(control, { key: 'v' });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    // Chromium draws focus on a lone Shift, Caps Lock or AltGr, and a Ctrl, Alt or ⌘ held
+    // after Shift finds it drawn: none of them may place the control.
+    it.each(['Shift', 'CapsLock', 'AltGraph', 'Control', 'Alt', 'Meta'])(
+      'keeps it there through a lone %s with focus drawn',
+      async (key) => {
+        render(<DesktopShell />);
+        const main = await layOut();
+        undrawn('clipped-control');
+        clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+        await frame();
+        undrawnControls.clear();
+        fireEvent.keyDown(screen.getByTestId('clipped-control'), { key });
+        await frame();
+        expect(main.scrollLeft).toBe(0);
+      }
+    );
+
+    // Radix's trigger opens its menu on the keydown, and focus is in the menu
+    // by the next frame, when the hook stands down for a layer.
+    it.each(['Enter', ' ', 'ArrowDown'])(
+      'places it before %j reaches it, so a menu it opens is drawn against a control in view',
+      async (k) => {
+        render(<DesktopShell />);
+        const main = await layOut();
+        undrawn('clipped-control');
+        clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+        await frame();
+        expect(main.scrollLeft).toBe(0);
+        const control = screen.getByTestId('clipped-control');
+        control.setAttribute('aria-haspopup', 'menu');
+        let whenOpened: number | null = null;
+        control.addEventListener('keydown', () => {
+          whenOpened = main.scrollLeft;
+          openMenu();
+        });
+        fireEvent.keyDown(control, { key: k });
+        expect(whenOpened).toBe(51);
+        await frame();
+        expect(main.scrollLeft).toBe(51);
+      }
+    );
+
+    // A ✕ a tap handed focus to, on a tablet: its Enter takes its setting off
+    // and hands focus on again, so the ✕ is gone by the time anything shows.
+    it('leaves a key on a control that opens no menu to place where focus ends up, a frame later', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('clipped-control');
+      clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+      await frame();
+      const control = screen.getByTestId('clipped-control');
+      let whenPressed: number | null = null;
+      control.addEventListener('keydown', () => {
+        whenPressed = main.scrollLeft;
+        act(() => screen.getByTestId('mid-control').focus());
+      });
+      fireEvent.keyDown(control, { key: 'Enter' });
+      expect(whenPressed).toBe(0);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    it('leaves a key that moves focus on to place what it moves to, a frame later', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('clipped-control');
+      clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+      await frame();
+      // Even off a control that opens a menu: only a key that opens one is placed first.
+      screen.getByTestId('clipped-control').setAttribute('aria-haspopup', 'menu');
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Tab', shiftKey: true });
+      expect(main.scrollLeft).toBe(0);
+      act(() => screen.getByTestId('mid-control').focus());
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    // Focus a script moved on before the frame fell: a key on where it went is
+    // not a key on the control the last pass left undrawn.
+    it('leaves a key on a control focus moved to since the last pass to place where focus ends up, a frame later', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('clipped-control');
+      clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+      await frame();
+      screen.getByTestId('clipped-control').setAttribute('aria-haspopup', 'menu');
+      const late = mount('late-control', 430, 40);
+      act(() => late.focus({ preventScroll: true }));
+      late.addEventListener('keydown', () => act(() => screen.getByTestId('mid-control').focus()));
+      fireEvent.keyDown(late, { key: 'Enter' });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+    });
+
+    // A click counts until a key other than a modifier on its own goes down, so a button the
+    // layout moves after a lone ⌘ is still placed afresh, as after the click alone.
+    it('counts a click through a modifier on its own', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      fireEvent.pointerDown(window, { pointerId: 1 });
+      place('clipped-control', 430, 32);
+      fireEvent.pointerUp(window, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(61);
+      fireEvent.keyDown(screen.getByTestId('clipped-control'), { key: 'Meta' });
+      place('clipped-control', 420, 32);
+      act(() => seenCallbacks.forEach((notify) => notify()));
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('places a control the browser draws as focused as ever', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      clickHandingOn(main, 'mid-control', 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('places focus a key moves on afterwards as ever', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('cut-control');
+      clickHandingOn(main, 'mid-control', 'cut-control', 0);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      fireEvent.keyDown(screen.getByTestId('cut-control'), { key: 'Tab' });
+      act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('takes focus a menu hands back after a pick, the press outside the box, as ever', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const control = screen.getByTestId('clipped-control');
+      undrawn('clipped-control');
+      const item = openMenu();
+      await frame();
+      fireEvent.pointerDown(item, { pointerId: 1 });
+      fireEvent.pointerUp(item, { pointerId: 1 });
+      act(() => control.focus({ preventScroll: true }));
+      item.remove();
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('takes focus a menu hands back after a pick as ever, though an earlier click in the box handed nothing', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const mid = screen.getByTestId('mid-control');
+      fireEvent.pointerDown(mid, { pointerId: 1 });
+      act(() => mid.focus());
+      fireEvent.pointerUp(mid, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      const control = screen.getByTestId('clipped-control');
+      undrawn('clipped-control');
+      const item = openMenu();
+      await frame();
+      fireEvent.pointerDown(item, { pointerId: 1 });
+      fireEvent.pointerUp(item, { pointerId: 1 });
+      act(() => control.focus({ preventScroll: true }));
+      item.remove();
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('notes no slide for a control it leaves undrawn, so a click on along the row keeps the slide it made before', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      const late = mount('late-control', 430, 40);
+      focusAndReveal(main, 'clipped-control', 100);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      undrawn('wide-control');
+      clickHandingOn(main, 'cut-control', 'wide-control', 30);
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+      fireEvent.pointerDown(late, { pointerId: 1 });
+      act(() => late.focus());
+      fireEvent.pointerUp(late, { pointerId: 1 });
+      await frame();
+      expect(main.scrollLeft).toBe(51);
+    });
+
+    it('places focus a script moves on after a key, which no click handed', async () => {
+      render(<DesktopShell />);
+      const main = await layOut();
+      undrawn('cut-control');
+      undrawn('clipped-control');
+      clickHandingOn(main, 'mid-control', 'cut-control', 0);
+      await frame();
+      expect(main.scrollLeft).toBe(0);
+      fireEvent.keyDown(screen.getByTestId('cut-control'), { key: 'v' });
+      await frame();
+      act(() => screen.getByTestId('clipped-control').focus({ preventScroll: true }));
+      await frame();
+      expect(main.scrollLeft).toBe(51);
     });
   });
 

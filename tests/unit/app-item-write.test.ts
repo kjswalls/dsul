@@ -17,7 +17,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
  * `skip` is the store's setItemSkipped: on a habit, toggleHabitStatus to
  * skipped or pending (the completion cleared either way, the skip RPC only on
  * a change, the status snapshot); on a task-like row, the two per-date RPCs and
- * nothing else. `move` is moveTaskToDate, behind lib/row-moves.ts's gate.
+ * nothing else. `move` is moveTaskToDate, behind lib/row-moves.ts's Reschedule gate.
  * `pause` is setItemPaused, resolved by lib/item-pause.ts in the user's zone.
  *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
@@ -694,11 +694,71 @@ describe('move', () => {
     expect(update.calls).toContainEqual(['eq', ['type', 'book']]);
   });
 
+  it('never asks a one-off about its completed dates', async () => {
+    await write({ action: 'move', date: TOMORROW });
+    expect(queries.filter((q) => called(q, 'contains').length > 0)).toEqual([]);
+  });
+
+  describe('a recurring task (Reschedule, lib/row-moves.ts canReschedule)', () => {
+    /** Whether the series' own day is done, as the one-date read answers it. */
+    let doneOnStart: boolean;
+    beforeEach(() => {
+      row = RECURRING_TASK;
+      doneOnStart = false;
+      const base = respond;
+      respond = (q) =>
+        q.table === 'items' && called(q, 'contains').length > 0
+          ? { data: doneOnStart ? { id: ITEM } : null, error: null }
+          : base(q);
+    });
+
+    it('moves its series start to the picked day, keeping its bucket', async () => {
+      const res = await write({ action: 'move', date: TOMORROW });
+      expect(res.status).toBe(200);
+      expect(writes('items', 'update')).toEqual([{ start_date: TOMORROW, time_bucket: 'afternoon' }]);
+    });
+
+    it('asks about its own start day alone, as the user, never reading the column', async () => {
+      await write({ action: 'move', date: TOMORROW });
+      const asked = queries.filter((q) => called(q, 'contains').length > 0);
+      expect(asked).toHaveLength(1);
+      expect(called(asked[0], 'select')).toEqual([['id']]);
+      expect(asked[0].calls).toEqual(
+        expect.arrayContaining([
+          ['eq', ['id', ITEM]],
+          ['eq', ['user_id', USER]],
+          ['contains', ['completed_dates', [RECURRING_TASK.start_date]]],
+        ]),
+      );
+    });
+
+    it('moves a recurring custom type by its stored slug', async () => {
+      row = { ...RECURRING_TASK, type: 'book' };
+      expect((await write({ action: 'move', date: TOMORROW })).status).toBe(200);
+    });
+
+    it('409s a series whose own day is done, as the web gate refuses it', async () => {
+      doneOnStart = true;
+      const res = await write({ action: 'move', date: TOMORROW });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'not_movable' });
+      expect(writes('items', 'update')).toEqual([]);
+    });
+
+    it.each([
+      ['inside its project block', { in_project_block: true }],
+      ['cancelled', { status: 'cancelled' }],
+      ['a subtask', { parent_item_id: PARENT }],
+    ])('409s one %s and writes nothing', async (_, over) => {
+      row = { ...RECURRING_TASK, ...over };
+      expect((await write({ action: 'move', date: TOMORROW })).status).toBe(409);
+      expect(writes('items', 'update')).toEqual([]);
+    });
+  });
+
   it.each([
     ['a habit', HABIT],
     ['a habit with a NULL frequency', { ...HABIT, repeat_frequency: null }],
-    ['a recurring task, whose date is the series anchor', RECURRING_TASK],
-    ['a recurring custom type', { ...RECURRING_TASK, type: 'book' }],
     ['a task inside its project block', { ...ONE_OFF, in_project_block: true }],
     ['a completed task', { ...ONE_OFF, status: 'completed' }],
     ['a cancelled task', { ...ONE_OFF, status: 'cancelled' }],

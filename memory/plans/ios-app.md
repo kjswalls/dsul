@@ -131,13 +131,15 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   | Paused today | Resume | – |
   | Habit | Skip / Unskip today, Pause, Pause until (its tick is the title's circle) | – |
   | One-off task-like | Done, Tomorrow (Next day when it lands later), Reschedule | Pause, Pause until… |
-  | Recurring task-like | Done today, Skip / Unskip today, Pause | Pause until… |
+  | Recurring task-like | Done today, Skip / Unskip today, Pause | Pause until…, Reschedule |
   | Subtask | Done | – |
 
   Only what `SamplePlanner.offers` allows shows: the web's gate
   (`verbEligible`), the server's own where it asks more (no skip or carry for
   a subtask; `isPausable`), and the server's `writes`. A verb and its opposite
-  share a slot, so VoiceOver's focus stays put. Reschedule is a menu (Today,
+  share a slot, so VoiceOver's focus stays put. A series takes Reschedule but
+  not Tomorrow (lib/row-moves.ts `canReschedule`, #375): the picked day
+  becomes its start, so it waits behind ⋯. Reschedule is a menu (Today,
   Next week by Week starts on, Pick a date…); Pick a date and Pause until open
   `DayPickSheet`, nested in the sheet and never the planner's slot, which
   writes only on its confirm button ("Move to Thu, Oct 8"); Pause until starts

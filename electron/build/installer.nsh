@@ -13,8 +13,16 @@
 
 ; An update runs the old uninstaller first; keeping the key through it means sign-in links never
 ; find it missing mid-update. customInstall rewrites it straight after.
+;
+; Open at login (main.cjs setLoginItem) is a Run value named after the app id, plus the
+; StartupApproved twin Task Manager writes when it is switched off there. Nothing else removes
+; them, and a Run value left behind lists a dsul that no longer exists under Startup apps (and
+; ticks the box again on a reinstall). An update must keep them: unlike the dsul key, nothing
+; writes them back afterwards, so deleting them here would switch Open at login off every update.
 !macro customUnInstall
   ${ifNot} ${isUpdated}
     DeleteRegKey HKCU "Software\Classes\dsul"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "${APP_ID}"
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run" "${APP_ID}"
   ${endIf}
 !macroend

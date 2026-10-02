@@ -19,7 +19,7 @@ import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
 import { isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { isRecurring } from './recurrence';
-import { canMoveToNextDay } from './row-moves';
+import { canReschedule } from './row-moves';
 import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
 import { createServiceClient } from './supabase-service';
@@ -636,14 +636,36 @@ async function skip(ctx: WriteContext, body: IntentBody<'skip'>): Promise<Respon
  * `move`: Tomorrow and Reschedule, the store's moveTaskToDate. The phone picks
  * the day (nextDayTarget, or the one picked), as the web's verbs pass it in.
  *
- * Gate: lib/row-moves.ts canMoveToNextDay, asked of the row: a date-addressable
- * type, never recurring (startDate is the series anchor, with no per-occurrence
- * override), never inside a project block (nothing here clears it, so the item
- * would land nowhere visible), never finished. And never a subtask, which
- * shows only inside its parent. Refused is a 409: the row said no, not the body.
+ * Gate: lib/row-moves.ts canReschedule, the looser of the two verbs' gates,
+ * asked of the row: a date-addressable type, never inside a project block
+ * (nothing here clears it, so the item would land nowhere visible), never
+ * finished. A recurring task may move: the picked day becomes the series
+ * start, which always shows as an occurrence. Tomorrow's own refusal of a
+ * series (canMoveToNextDay) is the phone's to keep, since the write is the
+ * same. And never a subtask, which shows only inside its parent. Refused is a
+ * 409: the row said no, not the body.
  */
 async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Response> {
-  const { client, id, type, row } = ctx;
+  const { userId, client, id, type, row } = ctx;
+  const kind = type === 'habit' ? 'habit' : 'task';
+  // The day the gate asks about, as the web's rowDateOf does: the row's own
+  // date, or the target for an undated one.
+  const dateStr = row.start_date ?? body.date;
+  // Whether that day is done matters only for a series (isOpenOn), so only
+  // then is it asked, and of that one date: the row read leaves
+  // completed_dates out.
+  let completedDates: string[] = [];
+  if (kind === 'task' && ctx.recurring && !row.parent_item_id) {
+    const { data, error } = await client
+      .from('items')
+      .select('id')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .contains('completed_dates', [dateStr])
+      .maybeSingle();
+    if (error) throw error;
+    if (data) completedDates = [dateStr];
+  }
   const movable = {
     id,
     type: type === 'task' || type === 'habit' ? type : 'custom',
@@ -651,11 +673,9 @@ async function move(ctx: WriteContext, body: IntentBody<'move'>): Promise<Respon
     status: row.status as Task['status'],
     repeatFrequency: ctx.frequency as Task['repeatFrequency'],
     inProjectBlock: !!row.in_project_block,
-    // Never read: a recurring row is refused before its days are asked about.
-    completedDates: [] as string[],
+    completedDates,
   };
-  const kind = type === 'habit' ? 'habit' : 'task';
-  if (row.parent_item_id || !canMoveToNextDay(movable, kind, row.start_date ?? body.date)) {
+  if (row.parent_item_id || !canReschedule(movable, kind, dateStr)) {
     return refused('not_movable', 409);
   }
   // The bucket fallback is load-bearing: a day view lists only rows that have

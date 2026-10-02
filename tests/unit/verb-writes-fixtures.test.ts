@@ -279,6 +279,9 @@ async function build(): Promise<VerbWrites> {
     ['an undated task gets a day and anytime', oneOff({ startDate: undefined, timeBucket: undefined, isScheduled: false }), D],
     ['an overdue one-off comes to today', oneOff({ startDate: '2026-09-28' }), D],
     ['custom one-off', errand(), '2026-10-03'],
+    // Reschedule takes a series (lib/row-moves.ts canReschedule): the picked
+    // day becomes its start, and the rest of the row is kept.
+    ['a recurring task rescheduled starts its series there', daily(), '2026-10-05'],
     ['a habit is not moved', stretch(), '2026-10-03'],
   ] as [string, Item, string][]) {
     moves.push(await move(...args));

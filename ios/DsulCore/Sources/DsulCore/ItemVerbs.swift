@@ -181,7 +181,8 @@ public func nextDayOf(_ item: Item, _ ctx: VerbContext) -> String {
 /// - unskip: skipped that day and not absent;
 /// - pause: `isPausable` and not paused today; resume: paused today;
 /// - nextDay: task-like, dated, and `canMoveToNextDay` off its day;
-/// - reschedule: the same with the date left open, so an undated item may.
+/// - reschedule: `canReschedule` with the date left open, so an undated item
+///   may, and so may a recurring task (its picked day becomes the series start).
 public func verbEligible(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Bool {
     switch verb {
     case .tick:
@@ -203,7 +204,7 @@ public func verbEligible(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Bo
         return isTaskLike(item) && present(item.startDate) != nil
             && canMoveToNextDay(item, kind: kindOf(item), dateStr: rowDateOf(item, ctx))
     case .reschedule:
-        return isTaskLike(item) && canMoveToNextDay(item, kind: kindOf(item), dateStr: rowDateOf(item, ctx))
+        return isTaskLike(item) && canReschedule(item, kind: kindOf(item), dateStr: rowDateOf(item, ctx))
     }
 }
 
