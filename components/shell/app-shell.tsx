@@ -45,7 +45,6 @@ import { milestoneItemIds } from '@/lib/goals';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
-import { useChatStore } from '@/lib/chat-store';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
@@ -211,16 +210,12 @@ export function AppShell() {
   useEffect(() => {
     setMounted(true);
     adoptLegacyViewPrefs();
-    // Hydrate the chat transcript here rather than waiting for
-    // ChatConversation to mount. A command ("Plan my day") can send a message
-    // before the panel has ever been opened, and send() persists the message
-    // list it appends to — over an empty one, that wipes the saved history.
-    useChatStore.getState().hydrate();
   }, []);
 
   // Settings writes are debounced 500ms; closing the tab inside that window
   // would otherwise drop the patch. pagehide (not beforeunload) is the event
-  // that actually fires on mobile Safari.
+  // that actually fires on mobile Safari. (Saved conversations flush on their
+  // own pagehide, registered once by lib/conversations-store.ts.)
   useEffect(() => {
     const onPageHide = () => void flushSettings();
     window.addEventListener('pagehide', onPageHide);

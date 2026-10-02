@@ -61,7 +61,8 @@ vi.mock('next/navigation', () => ({
 import { Braindump } from '@/components/sidebar/braindump';
 import { ChatConversation } from '@/components/ai/chat-conversation';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
-import { useChatStore } from '@/lib/chat-store';
+import { clearChatState, useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
+import { generalThreadId } from '@/lib/open-chat';
 import { usePlannerStore } from '@/lib/planner-store';
 import { CONNECTED_MODEL, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
@@ -78,7 +79,7 @@ beforeEach(() => {
     seasons: [],
   });
   unseed = seedAI(CONNECTED_MODEL);
-  useChatStore.setState({ messages: [], isLoading: false });
+  clearChatState();
 });
 afterEach(() => {
   cleanup();
@@ -87,6 +88,41 @@ afterEach(() => {
 
 /** The user menu the phone shell hangs in the dateless tabs' header capsule. */
 const AVATAR = <button aria-label="User menu">K</button>;
+
+/** The panels' one (general) conversation, as a load leaves it, holding one reply. */
+function seedReply(content: string) {
+  const id = generalThreadId();
+  const reply: ChatMessage = {
+    id: 'reply-1',
+    role: 'assistant',
+    content,
+    status: 'complete',
+    errorCode: null,
+    replyTo: null,
+    answerer: 'model',
+    model: null,
+    createdAt: 1_759_400_000_000,
+    pos: 1,
+    sync: 'saved',
+  };
+  useConversationsStore.setState((s) => ({
+    threads: {
+      ...s.threads,
+      [id]: {
+        id,
+        itemId: null,
+        draftTitle: null,
+        saved: true,
+        messages: [reply],
+        load: 'loaded',
+        hasEarlier: false,
+        streaming: false,
+        typing: false,
+        fetchedAt: Date.now(),
+      },
+    },
+  }));
+}
 
 /** ReactMarkdown wraps the reply in a <p>; its parent is the prose block. */
 const replyBlock = (text: string) => screen.getByText(text).parentElement;
@@ -144,7 +180,7 @@ describe('the chat tab shell', () => {
   });
 
   it('cards the AI’s replies, which have nothing else bounding them on paper', () => {
-    useChatStore.setState({ messages: [{ role: 'assistant', content: 'Two items are open.' }] });
+    seedReply('Two items are open.');
     render(<MobileChatPanel />);
 
     // design/mobile-redesign/ChatTab.dc.html: surface-2, hairline, soft shadow.
@@ -167,7 +203,7 @@ describe('the desktop conversation', () => {
   });
 
   it('leaves its replies flat — the sidebar panel is already the card', () => {
-    useChatStore.setState({ messages: [{ role: 'assistant', content: 'Two items are open.' }] });
+    seedReply('Two items are open.');
     render(<ChatConversation variant="desktop" hideHeader />);
 
     expect(replyBlock('Two items are open.')?.className).not.toMatch(/bg-surface-2/);

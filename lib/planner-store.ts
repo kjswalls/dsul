@@ -27,6 +27,7 @@ import type {
   Goal,
   GoalRole,
   Proposal,
+  ProposalOperation,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
 // The time → bucket rules live in a plain module so a route can share them.
@@ -353,8 +354,10 @@ interface PlannerStore {
    * Apply an accepted AI proposal. Operations are re-validated against the type
    * registry here (never trust the model), then applied in ONE set() so the
    * whole plan is a single Cmd+Z. Returns the number of operations applied.
+   * `onAccepted` hears the operations that survived re-validation, before the
+   * set (proposal-store counts them on the conversation that asked).
    */
-  applyProposal: (proposal: Proposal) => number;
+  applyProposal: (proposal: Proposal, onAccepted?: (accepted: ProposalOperation[]) => void) => number;
 
   // Multi-select bulk actions (any kind). Each does exactly ONE set() so the
   // whole gesture is a single undo, then fans out one DB write per item with
@@ -3217,7 +3220,7 @@ export const usePlannerStore = create<PlannerStore>()(
         );
       },
 
-      applyProposal: (proposal) => {
+      applyProposal: (proposal, onAccepted) => {
         const state = get();
         // Re-validate at the boundary rather than trusting whatever produced
         // the proposal: the card may have been rendered minutes ago, and the
@@ -3232,6 +3235,12 @@ export const usePlannerStore = create<PlannerStore>()(
           milestoneIds: milestoneItemIds(state.goals),
         });
         if (accepted.length === 0) return 0;
+        // A tally is bookkeeping about the plan, never a reason to lose it.
+        try {
+          onAccepted?.(accepted);
+        } catch {
+          /* the plan applies regardless */
+        }
 
         // Armed before the set(), like every other labelled action — the label
         // is consumed by the NEXT history save.

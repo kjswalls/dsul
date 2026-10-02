@@ -49,11 +49,18 @@ import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
-import { proposalCardShowsOn } from '@/lib/open-chat';
+import { generalThreadId, proposalCardShowsOn } from '@/lib/open-chat';
 import { getAICapabilities } from '@/lib/ai-connection-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useChatStore } from '@/lib/chat-store';
+import { chatTransport } from '@/lib/chat-transport';
+import { httpConversationsApi } from '@/lib/conversations-api';
+import {
+  clearChatState,
+  configureConversations,
+  conversationsSettled,
+  useConversationsStore,
+} from '@/lib/conversations-store';
 import { useProposalStore, type ProposalStatus, type ProposalSurface } from '@/lib/proposal-store';
 import {
   seedAI,
@@ -62,6 +69,7 @@ import {
   OPENCLAW_PLUGIN,
   type SeedAI,
 } from './helpers/ai-fixtures';
+import { fakeApi, fakeTransport, flush, type FakeTransport } from './helpers/conversations-fakes';
 
 /* ── fixtures ────────────────────────────────────────────────────────── */
 
@@ -111,27 +119,29 @@ const seed = (o?: SeedAI) => {
 };
 
 const addTask = vi.fn();
-const send = vi.fn(async () => {});
 const originalAddTask = usePlannerStore.getState().addTask;
-const originalSend = useChatStore.getState().send;
+/** The real conversations store over fakes: a send is a turn this sees. */
+let transport: FakeTransport;
 
 beforeEach(() => {
   addTask.mockClear();
-  send.mockClear();
   // Spied, not stubbed out of existence: the assertion that matters is that
   // ⌘Enter without chat never files the text as a task.
   usePlannerStore.setState({ addTask });
-  useChatStore.setState({ send, messages: [], isLoading: false });
+  transport = fakeTransport();
+  configureConversations({ api: fakeApi().api, transport: transport.transport });
+  clearChatState();
   useSidebarStore.setState({ chatExpanded: false, leftSidebarOpen: true });
   useProposalStore.getState().dismiss();
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await conversationsSettled();
   unseed();
   unseed = () => {};
   usePlannerStore.setState({ addTask: originalAddTask });
-  useChatStore.setState({ send: originalSend });
+  configureConversations({ api: httpConversationsApi, transport: chatTransport });
   useProposalStore.getState().dismiss();
 });
 
@@ -231,15 +241,17 @@ describe.each(NO_CHAT)('with no chat (%s)', (_label, state) => {
     expect(askRow()).toBeNull();
   });
 
-  it('consumes ⌘Enter without opening chat or filing the text as a task', () => {
+  it('consumes ⌘Enter without opening chat or filing the text as a task', async () => {
     const input = renderDock('plan my day');
     const notPrevented = fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    await act(() => flush());
 
     // Consumed: had it fallen through, cmdk's root Enter would have run the
     // highlighted Add row and filed "plan my day" as a task.
     expect(notPrevented).toBe(false);
     expect(addTask).not.toHaveBeenCalled();
-    expect(send).not.toHaveBeenCalled();
+    expect(transport.inputs).toEqual([]);
+    expect(useConversationsStore.getState().threads).toEqual({});
     expect(useSidebarStore.getState().chatExpanded).toBe(false);
     // The text stays where it was: nothing happened to it.
     expect(input.value).toBe('plan my day');
@@ -408,6 +420,48 @@ describe('catch-up when chat is hidden', () => {
     expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
   });
 
+  it("carries the conversation's own plan when the key is turned down mid-review", () => {
+    // "Turn this into a plan" answers on `conv:<general>`; the card outlives
+    // the gate exactly as the catch-up card does (components/ai/proposal-card.tsx).
+    seed(CONNECTED_MODEL);
+    useSidebarStore.setState({ chatExpanded: true });
+    render(<SidebarDock />);
+    const id = generalThreadId();
+    act(() => {
+      useProposalStore.setState({
+        status: 'ready',
+        error: null,
+        proposal: REVIEW,
+        lastRequest: { intent: 'ask', prompt: 'plan it', surface: `conv:${id}` },
+      });
+    });
+    expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+
+    act(() => seed(FAILING));
+    expect(getAICapabilities().canChat).toBe(false);
+    const host = screen.getByTestId('dock-catch-up-host');
+    expect(within(host).getByTestId('proposal-card')).toBeInTheDocument();
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+  });
+
+  it('shows a card with no request left to match once, not once per mount', () => {
+    // An accept the planner took nothing from leaves 'empty' with no request:
+    // every ProposalCard renders it, so the chat slot must mount only one.
+    seed(CONNECTED_MODEL);
+    useSidebarStore.setState({ chatExpanded: true });
+    render(<SidebarDock />);
+    act(() => {
+      useProposalStore.setState({
+        status: 'empty',
+        emptyMessage: 'Those items have changed — nothing left to apply.',
+        proposal: null,
+        lastRequest: null,
+      });
+    });
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+  });
+
   it('uses the chat panel instead when chat is there, so the card never shows twice', () => {
     seed(CONNECTED_MODEL);
     useSidebarStore.setState({ leftSidebarOpen: false });
@@ -493,11 +547,15 @@ describe('with a connected model', () => {
     expect(footer.textContent).toMatch(/↵ AI/);
   });
 
-  it('sends ⌘Enter to the chat and opens it', () => {
+  it('sends ⌘Enter to the chat and opens it', async () => {
     const input = renderDock('plan my day');
     fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+    await act(() => flush());
 
-    expect(send).toHaveBeenCalledWith('plan my day');
+    // Into the panel's one (general) conversation, as one turn.
+    expect(transport.inputs.map((i) => i.message)).toEqual(['plan my day']);
+    expect(transport.inputs[0].conversationId).toBe(generalThreadId());
+    expect(useConversationsStore.getState().threads[generalThreadId()]?.messages[0]?.content).toBe('plan my day');
     expect(addTask).not.toHaveBeenCalled();
     expect(useSidebarStore.getState().chatExpanded).toBe(true);
   });

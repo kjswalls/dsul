@@ -73,10 +73,9 @@ import { useSelectionStore, selectableIdsInDom } from '../selection-store';
 import { useMobileNavStore } from '../mobile-nav-store';
 import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
-import { useChatStore } from '../chat-store';
 import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
-import { revealChat } from '../open-chat';
+import { askNew, revealChat } from '../open-chat';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig } from '../item-registry';
@@ -869,17 +868,10 @@ export const STATIC_COMMANDS: Command[] = [
     keywords: 'plan day schedule ai organise organize',
     aliases: ['plan'],
     hidden: () => !getAICapabilities().canChat,
-    // send() no-ops while a response is streaming.
-    availableWhen: () => getAICapabilities().canChat && !useChatStore.getState().isLoading,
-    run: (ctx) => {
-      ctx.openChat();
-      const chat = useChatStore.getState();
-      // ChatConversation is what normally hydrates the store, and it has not
-      // mounted yet at this point. Sending first would append to an empty
-      // message list and immediately persist it over the saved transcript.
-      chat.hydrate();
-      void chat.send('Plan my day');
-    },
+    availableWhen: () => getAICapabilities().canChat,
+    // Always a fresh conversation, titled after the ritual, so a reply still
+    // streaming somewhere else is never in the way.
+    run: (ctx) => askNew('Plan my day', { title: 'Plan my day', isMobile: ctx.isMobile }),
   },
   {
     id: 'rituals.eod',

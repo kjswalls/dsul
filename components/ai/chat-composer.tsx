@@ -5,7 +5,8 @@ import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { useChatStore } from '@/lib/chat-store';
+import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
+import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
 import { chatAssistantName, chatPlaceholder } from '@/lib/chat-utils';
 import { cn } from '@/lib/utils';
 
@@ -20,10 +21,31 @@ interface ChatComposerProps {
    * keeps a single address for typing whichever surface you are on.
    */
   variant: 'panel' | 'dock';
+  /** Where a send goes (lib/open-chat.ts `sendFrom` decides what that means). */
+  binding: ComposerBinding;
   /** Grows the panel variant's icon buttons to touch size. 'dock' is already 48px. */
   touch?: boolean;
   /** Increment to focus the field (a tab activating, a panel expanding). */
   focusSignal?: number;
+}
+
+/**
+ * The conversation a binding is showing right now, if it has one yet: an
+ * item's resolves through the store's index (or the draft still on its way to
+ * its first save).
+ */
+function boundThreadId(s: ConversationsState, binding: ComposerBinding): string | null {
+  switch (binding.kind) {
+    case 'home':
+      return null;
+    case 'item': {
+      const known = s.itemIndex[binding.itemId];
+      if (typeof known === 'string') return resolveConversationId(known);
+      return Object.values(s.threads).find((t) => t.itemId === binding.itemId && !t.saved && t.load !== 'gone')?.id ?? null;
+    }
+    default:
+      return resolveConversationId(binding.id);
+  }
 }
 
 /**
@@ -37,10 +59,13 @@ interface ChatComposerProps {
  * it from the foot of the conversation into the dock. Two implementations would
  * have drifted on the first of those rules that got fixed in one place.
  */
-export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps) {
-  const send = useChatStore((s) => s.send);
-  const stop = useChatStore((s) => s.stop);
-  const isLoading = useChatStore((s) => s.isLoading);
+export function ChatComposer({ variant, binding, touch, focusSignal }: ChatComposerProps) {
+  const threadId = useConversationsStore((s) => boundThreadId(s, binding));
+  // Busy from the moment a send starts (before an item's conversation is even
+  // known) until the reply has finished arriving.
+  const isLoading = useConversationsStore(
+    (s) => !!s.sending[bindingKey(binding)] || (threadId !== null && !!s.threads[threadId]?.streaming)
+  );
   const { target } = useAICapabilities();
 
   const [input, setInput] = useState('');
@@ -67,7 +92,12 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
-    send(text);
+    void sendFrom(binding, text);
+  };
+
+  /** Stops this conversation's reply only: another conversation's stream is its own. */
+  const stop = () => {
+    if (threadId) useConversationsStore.getState().stop(threadId);
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -121,7 +151,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
         />
         {isLoading ? (
           /* A reply that has started going wrong is worth interrupting, and the
-             store can (`abortController.abort()`) — there was simply no way to
+             store can (it aborts the reply's stream) — there was simply no way to
              ask. Send is disabled mid-stream anyway, so this occupies a slot
              that was dead, and on the phone this bar is the only control the
              chat tab has. */

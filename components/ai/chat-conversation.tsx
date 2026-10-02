@@ -6,7 +6,10 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatComposer } from '@/components/ai/chat-composer';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
-import { useChatStore } from '@/lib/chat-store';
+import { resolveConversationId, useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
+import { bindingKey, sendFrom, useGeneralThreadId, type ComposerBinding } from '@/lib/open-chat';
+import { buildPlanPrompt } from '@/lib/plan-prompt';
+import { chatErrorCopy } from '@/lib/chat-errors';
 import { useProposalStore } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
@@ -46,13 +49,21 @@ interface ChatConversationProps {
    * desktop panel already IS a card, so it keeps the flat default.
    */
   cardedReplies?: boolean;
+  /**
+   * The saved conversation to show. Absent: the general conversation the
+   * single-thread panels share (`useGeneralThreadId`, lib/open-chat.ts).
+   */
+  conversationId?: string;
 }
 
+/** One empty transcript, so a selector for a thread not yet made is stable. */
+const NO_MESSAGES: ChatMessage[] = [];
+
 /**
- * The chat conversation (messages + input) on top of chat-store, answered by a
- * connected model or by OpenClaw. Shared by the desktop sidebar chat panel and
- * the mobile chat tab — replaces the duplicated bodies of chat-sidebar and
- * mobile-chat-panel.
+ * The chat conversation (messages + input) over one saved conversation
+ * (lib/conversations-store.ts), answered by a connected model or by OpenClaw.
+ * Shared by the desktop sidebar chat panel and the mobile chat tab — replaces
+ * the duplicated bodies of chat-sidebar and mobile-chat-panel.
  *
  * Both hosts mount it only while the AI gate says something can answer, so
  * every branch here can assume an answerer; `target` names which.
@@ -63,14 +74,22 @@ export function ChatConversation({
   hideHeader,
   hideComposer,
   cardedReplies,
+  conversationId,
 }: ChatConversationProps) {
-  // `send` outlived the composer's move into ChatComposer: an opener is a
-  // tap that sends a message, so this surface still has one thing to say.
-  const { messages, isLoading, isTyping, send, hydrate } = useChatStore();
+  const generalId = useGeneralThreadId();
+  // A draft rebound to its real id (a 409) is the same conversation.
+  const id = resolveConversationId(conversationId ?? generalId);
+  const binding = useMemo<ComposerBinding>(() => ({ kind: 'conversation', id }), [id]);
+  const messages = useConversationsStore((s) => s.threads[id]?.messages ?? NO_MESSAGES);
+  const isTyping = useConversationsStore((s) => !!s.threads[id]?.typing);
+  // Busy from the send's first instant until the reply has finished arriving.
+  const isLoading = useConversationsStore(
+    (s) => !!s.sending[bindingKey(binding)] || !!s.threads[id]?.streaming
+  );
   // The AI gate (lib/ai-registry.ts), which fails closed. `canPropose` gates
   // ONE thing here, "Turn this into a plan": OpenClaw's plugin path answers
   // chat but has no proposal transport, so it can chat without proposing.
-  const { target, agentId, canChat, canPropose } = useAICapabilities();
+  const { target, agentId, canChat, canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
@@ -82,21 +101,14 @@ export function ChatConversation({
   // explanation. Superseding another surface's request is safe now: the store
   // drops the reply of any request that is no longer current.
   const proposalBusy = useProposalStore(
-    (s) => s.status === 'loading' && s.lastRequest?.surface === 'chat'
+    (s) => s.status === 'loading' && s.lastRequest?.surface === `conv:${id}`
   );
   const timeFormatStr = useTimeFormat();
 
-  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [copiedId, setCopiedId] = useState<string | null>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const isMobile = variant === 'mobile';
-
-  // Readiness is the connection store's job now (hydrated at sign-in, and
-  // re-checked by Settings → AI); this only loads the saved transcript.
-  useEffect(() => {
-    hydrate();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   // Auto-scroll to bottom — scroll within container, not the whole page
   useEffect(() => {
@@ -105,11 +117,21 @@ export function ChatConversation({
     container.scrollTop = container.scrollHeight;
   }, [messages, isLoading, isTyping]);
 
-  const copyMessage = useCallback((content: string, index: number) => {
+  const copyMessage = useCallback((content: string, messageId: string) => {
     navigator.clipboard.writeText(content);
-    setCopiedIndex(index);
-    setTimeout(() => setCopiedIndex(null), 2000);
+    setCopiedId(messageId);
+    setTimeout(() => setCopiedId(null), 2000);
   }, []);
+
+  /**
+   * "Not saved", once per turn: under its reply, or under the question when
+   * there is no reply to carry it (a stop before the first word).
+   */
+  const endsUnsavedTurn = (i: number) => {
+    const m = messages[i];
+    const next = messages[i + 1];
+    return m.sync === 'unsaved' && !(next?.sync === 'unsaved' && next.replyTo === m.id);
+  };
 
   // Only read when the transcript is empty, but hooks cannot be conditional —
   // the guard is the cheap `messages.length` check inside. Gated on CHAT, not
@@ -131,35 +153,17 @@ export function ChatConversation({
    * Hand the exchange to the proposal path, so a conversation can end in
    * something you tap rather than something you then go and do by hand.
    *
-   * Sends the EXCHANGE, not the raw question: what makes a plan worth proposing
-   * is usually in the reply ("push the two writing ones to Thursday"), and
-   * a proposer given only "what should I do about this week" has to re-derive
-   * the whole answer and will land somewhere else. The card is rendered by the
+   * Sends the EXCHANGE, not the raw question (lib/plan-prompt.ts says why).
+   * The card answers on this conversation's own surface (`conv:<id>`), so what
+   * it changes is counted on this conversation, and it is rendered by the
    * parent shell above the transcript — a decision waiting on you does not
    * belong at the bottom of scrollback.
    */
   const askForPlan = useCallback(
-    (index: number) => {
-      const reply = stripReasoningTags(messages[index]?.content ?? '');
-      let ask = '';
-      for (let i = index - 1; i >= 0; i--) {
-        if (messages[i].role === 'user') {
-          ask = messages[i].content;
-          break;
-        }
-      }
-      requestProposal(
-        'ask',
-        [
-          'Turn this conversation into concrete planner changes.',
-          '',
-          `I asked: ${clip(ask)}`,
-          '',
-          `You answered: ${clip(reply)}`,
-        ].join('\n')
-      );
+    (replyId: string) => {
+      requestProposal('ask', buildPlanPrompt(messages, replyId), undefined, { conversationId: id });
     },
-    [messages, requestProposal]
+    [messages, requestProposal, id]
   );
 
   return (
@@ -215,7 +219,7 @@ export function ChatConversation({
                   {openers.map((opener) => (
                     <button
                       key={opener.id}
-                      onClick={() => send(opener.prompt)}
+                      onClick={() => void sendFrom(binding, opener.prompt)}
                       className="rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-ai/40 hover:bg-muted"
                     >
                       {opener.label}
@@ -228,7 +232,7 @@ export function ChatConversation({
         ) : (
           <div className={cn('flex flex-col gap-3 px-4 pb-4', isMobile ? '-mt-12' : '-mt-6')}>
             {messages.map((msg, i) => (
-              <div key={i} className="group">
+              <div key={msg.id} className="group">
                 {msg.role === 'user' ? (
                   <div className="flex items-start justify-end gap-3">
                     <div className="flex max-w-[85%] flex-col items-end gap-1">
@@ -241,22 +245,23 @@ export function ChatConversation({
                           isMobile ? 'opacity-60' : 'opacity-0 group-hover:opacity-100'
                         )}
                       >
-                        {msg.timestamp && (
+                        {msg.createdAt > 0 && (
                           <span className="text-2xs text-muted-foreground">
-                            {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
+                            {formatChatTimestamp(msg.createdAt, timeFormatStr, userTimezone)}
                           </span>
                         )}
                         <button
-                          onClick={() => copyMessage(msg.content, i)}
+                          onClick={() => copyMessage(msg.content, msg.id)}
                           className="p-1 text-muted-foreground transition-colors hover:text-foreground"
                         >
-                          {copiedIndex === i ? (
+                          {copiedId === msg.id ? (
                             <Check className="h-3 w-3 text-success" />
                           ) : (
                             <Copy className="h-3 w-3" />
                           )}
                         </button>
                       </div>
+                      {endsUnsavedTurn(i) && <NotSaved />}
                     </div>
                     <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-muted">
                       <User className="h-4 w-4 text-muted-foreground" />
@@ -277,11 +282,26 @@ export function ChatConversation({
                         <ReactMarkdown remarkPlugins={[remarkGfm]}>
                           {stripReasoningTags(msg.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '')}
                         </ReactMarkdown>
-                      ) : isTyping && i === messages.length - 1 ? (
-                        <TypingIndicator />
-                      ) : isLoading && i === messages.length - 1 ? (
-                        <LoadingDots />
+                      ) : msg.status === 'streaming' ? (
+                        // The plugin answers in one piece, so it types; a
+                        // stream that has not started yet waits.
+                        isTyping && msg.answerer === 'openclaw' && openclawTransport === 'plugin' ? (
+                          <TypingIndicator />
+                        ) : (
+                          <LoadingDots />
+                        )
                       ) : null}
+                      {/* A failed reply's words are ours, by its code, never
+                          its content: they were not the AI's to save or to
+                          send back to a model (lib/chat-errors.ts). */}
+                      {msg.status === 'error' && (
+                        <p
+                          data-testid="chat-error-note"
+                          className={cn('not-prose text-sm text-muted-foreground', msg.content && 'mt-2')}
+                        >
+                          {chatErrorCopy(msg.errorCode, msg.answerer)}
+                        </p>
+                      )}
                     </div>
                     <div
                       className={cn(
@@ -289,17 +309,17 @@ export function ChatConversation({
                         isMobile ? 'opacity-60' : 'opacity-0 group-hover:opacity-100'
                       )}
                     >
-                      {msg.timestamp && (
+                      {msg.createdAt > 0 && (
                         <span className="text-2xs text-muted-foreground">
-                          {formatChatTimestamp(msg.timestamp, timeFormatStr, userTimezone)}
+                          {formatChatTimestamp(msg.createdAt, timeFormatStr, userTimezone)}
                         </span>
                       )}
                       {msg.content && (
                         <button
-                          onClick={() => copyMessage(msg.content, i)}
+                          onClick={() => copyMessage(msg.content, msg.id)}
                           className="p-1 text-muted-foreground transition-colors hover:text-foreground"
                         >
-                          {copiedIndex === i ? (
+                          {copiedId === msg.id ? (
                             <Check className="h-3 w-3 text-success" />
                           ) : (
                             <Copy className="h-3 w-3" />
@@ -307,6 +327,7 @@ export function ChatConversation({
                         </button>
                       )}
                     </div>
+                    {endsUnsavedTurn(i) && <NotSaved />}
 
                     {/* Latest reply only: one offer at the foot of the thread,
                         not a button under every paragraph ever said. Outside the
@@ -314,9 +335,13 @@ export function ChatConversation({
                         one affordance that has to be findable without knowing it
                         is there, and the lime accent must never be dimmed by a
                         parent's opacity. */}
-                    {canPropose && msg.content && i === messages.length - 1 && !isLoading && (
+                    {canPropose &&
+                      msg.content &&
+                      msg.status !== 'error' &&
+                      i === messages.length - 1 &&
+                      !isLoading && (
                       <button
-                        onClick={() => askForPlan(i)}
+                        onClick={() => askForPlan(msg.id)}
                         disabled={proposalBusy}
                         data-testid="chat-make-plan"
                         className="mt-1 inline-flex w-fit items-center gap-1.5 rounded-full border border-border px-2.5 py-1 text-2xs font-medium text-muted-foreground transition-colors hover:border-ai/40 hover:text-foreground disabled:opacity-50"
@@ -329,11 +354,6 @@ export function ChatConversation({
                 )}
               </div>
             ))}
-            {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
-              <div className="text-sm text-foreground">
-                <LoadingDots />
-              </div>
-            )}
           </div>
         )}
       </div>
@@ -343,7 +363,7 @@ export function ChatConversation({
         <div
           className={cn('shrink-0 px-3 pb-3 pt-2', isMobile && 'border-t border-border bg-background')}
         >
-          <ChatComposer variant="panel" touch={isMobile} focusSignal={focusSignal} />
+          <ChatComposer variant="panel" binding={binding} touch={isMobile} focusSignal={focusSignal} />
         </div>
       )}
     </>
@@ -351,16 +371,16 @@ export function ChatConversation({
 }
 
 /**
- * Caps one side of the excerpt handed to the proposer.
- *
- * The whole planner already travels with a proposal request; a long reply on
- * top of it is the part that pushes the prompt somewhere it starts losing the
- * item list off the front. The tail is what gets cut because the conclusion —
- * the part worth acting on — is at the end of an answer, not the start.
+ * A turn the account will never hold: the save was refused, or gave up after
+ * its retries. Not behind the hover fade: it is news about the conversation,
+ * not a tool.
  */
-function clip(text: string, max = 2000): string {
-  const trimmed = text.trim();
-  return trimmed.length <= max ? trimmed : `…${trimmed.slice(-max)}`;
+function NotSaved() {
+  return (
+    <span data-testid="chat-not-saved" className="text-2xs text-muted-foreground">
+      Not saved
+    </span>
+  );
 }
 
 function LoadingDots() {

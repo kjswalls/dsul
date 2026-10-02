@@ -10,7 +10,7 @@ import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { revealChat, useChatHostCard } from '@/lib/open-chat';
+import { revealChat, useChatCardSurface, useChatHostCard, useGeneralThreadId } from '@/lib/open-chat';
 import { cn } from '@/lib/utils';
 
 /**
@@ -49,6 +49,8 @@ export function MobileBottomDock() {
    * composer here would be a field that sends nowhere under the wrong surface.
    */
   const chatBar = activeTab === 'chat' && canChat;
+  // The conversation the chat tab shows, and so the one this bar sends into.
+  const generalThreadId = useGeneralThreadId();
   /**
    * The catch-up host. "Pick things back up" is local and needs no model
    * (lib/commands/registry.ts), and its card answers on the chat surface — so
@@ -58,6 +60,8 @@ export function MobileBottomDock() {
    * while the card has something to show, so a resting dock is unchanged.
    */
   const hostCard = useChatHostCard();
+  // The catch-up card's surface, or the chat tab's conversation's plan.
+  const hostSurface = useChatCardSurface();
   /**
    * Latched once it shows, as on the desktop (components/sidebar/sidebar-dock.tsx
    * says why): when the gate opens mid-review, the card's new home would be a
@@ -118,7 +122,7 @@ export function MobileBottomDock() {
           The margin lives on the box, which exists only while the card shows. */}
       {catchUpHost && (
         <div className="mb-1.5 max-h-[50vh] overflow-y-auto" data-testid="mobile-catch-up-host">
-          <ProposalCard surface="chat" />
+          <ProposalCard surface={hostSurface} />
         </div>
       )}
 
@@ -141,7 +145,11 @@ export function MobileBottomDock() {
                 changes between tabs; swapping the pill for an empty well was
                 the phase-2 regression this closes. */}
             {chatBar ? (
-              <ChatComposer variant="dock" focusSignal={chatFocusSignal} />
+              <ChatComposer
+                variant="dock"
+                binding={{ kind: 'conversation', id: generalThreadId }}
+                focusSignal={chatFocusSignal}
+              />
             ) : (
               // captureRelay: the radial relay
               // (components/primitives/relay-field.tsx) lives INSIDE this pill on

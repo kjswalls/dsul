@@ -265,6 +265,17 @@ describe('a card whose surface goes away', () => {
     unmount();
     expect(dismiss).not.toHaveBeenCalled();
   });
+
+  it("never dismisses a conversation's plan on unmount: leaving the conversation is the close", () => {
+    // A tab switch, an item opened over it or a closed rail unmounts the
+    // conversation's view without closing it, and the plan cost a model call.
+    // rail-store drops the card once the conversation leaves both Ask stacks.
+    surface = 'conv:abc';
+    const { unmount } = render(<ProposalCard surface="conv:abc" />);
+    expect(screen.getByTestId('proposal-card')).toBeTruthy();
+    unmount();
+    expect(dismiss).not.toHaveBeenCalled();
+  });
 });
 
 describe('states with a way out', () => {

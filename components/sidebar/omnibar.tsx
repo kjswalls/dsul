@@ -18,7 +18,7 @@ import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
-import { useChatStore } from '@/lib/chat-store';
+import { askFromCommandBar } from '@/lib/open-chat';
 import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { sortGoalsForDisplay } from '@/lib/goals';
@@ -598,9 +598,11 @@ export function Omnibar({
     // Read fresh, not from the render: the gate can drop (a key rejected
     // mid-session) between the render that drew a row and the keypress on it.
     if (!getAICapabilities().canChat) return;
-    ctx.openChat();
+    // lib/open-chat.ts opens chat (the sidebar on desktop, the chat tab on the
+    // phone) and decides which conversation. Nothing opens it first: from C2
+    // that route reads whether Ask was already showing before it reveals it.
+    askFromCommandBar(chatText, ctx.isMobile);
     useCommandUsageStore.getState().record('rituals.chat');
-    if (chatText) useChatStore.getState().send(chatText);
     closeAndClear();
     inputRef.current?.blur();
     // Chat opens in the sidebar (not a dialog), so the launcher is still active

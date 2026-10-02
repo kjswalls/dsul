@@ -89,11 +89,17 @@ export function ProposalCard({
    * tells them. Dropping the request is the honest read of the gesture: they
    * closed the thing they asked from. Re-asking is one click.
    *
+   * A conversation's card (`conv:`) is exempt, as the catch-up card is: its
+   * view unmounts for a tab switch, an item opened over it or a closed rail,
+   * none of which is closing the conversation, and the plan cost a model call.
+   * rail-store drops it once the conversation has left both Ask stacks, which
+   * is the close (lib/rail-store.ts).
+   *
    * Reads the store imperatively so the cleanup sees the state at UNMOUNT
    * rather than whatever was captured when the effect ran.
    */
   useEffect(() => {
-    if (surface === 'chat') return;
+    if (surface === 'chat' || surface.startsWith('conv:')) return;
     return () => {
       const store = useProposalStore.getState();
       if (store.lastRequest?.surface === surface) store.dismiss();

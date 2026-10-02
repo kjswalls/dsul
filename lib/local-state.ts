@@ -1,8 +1,8 @@
 'use client';
 
 import { useAISettingsStore } from './ai-settings-store';
-import { clearChatState } from './chat-store';
 import { useCommandUsageStore } from './command-usage-store';
+import { clearChatState } from './conversations-store';
 import { useEODStore } from './eod-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
@@ -16,13 +16,14 @@ import { useViewStore } from './view-store';
  *
  * ── THE PROBLEM ─────────────────────────────────────────────────────────────
  * Ten separate things persist to localStorage under BROWSER-GLOBAL keys —
- * `dsul-ai-settings`, `dsul-view`, `planner-storage`, `dsul-chat-history`
- * and the rest. None of them carries an account. On a shared browser they hold
- * whoever signed in last, so the next person to sign in inherits them: their
- * canvas filters name someone else's projects, the palette's "Recent" group
- * lists someone else's commands, the chat panel rehydrates someone else's
- * conversation, and — the sharp one, until the AI key moved server-side — the
- * AI settings page showed them someone else's API key as an editable field.
+ * `dsul-ai-settings`, `dsul-view`, `planner-storage` and the rest (and, until
+ * conversations moved to the account, `dsul-chat-history`). None of them
+ * carries an account. On a shared browser they hold whoever signed in last, so
+ * the next person to sign in inherits them: their canvas filters name someone
+ * else's projects, the palette's "Recent" group lists someone else's commands,
+ * the chat panel rehydrated someone else's conversation, and — the sharp one,
+ * until the AI key moved server-side — the AI settings page showed them
+ * someone else's API key as an editable field.
  *
  * lib/settings/hydration.ts already writes this problem down ("Every store the
  * settings surface reads is localStorage-persisted under a browser-GLOBAL key
@@ -123,7 +124,9 @@ import { useViewStore } from './view-store';
  *                          and there is no server copy to restore it from.
  *   dsul-command-usage   DISCLOSIVE — "Recent" renders the previous person's
  *                          last actions as labels.
- *   chat transcripts       DISCLOSIVE, obviously and entirely.
+ *   chat conversations     DISCLOSIVE, obviously and entirely. Held in memory
+ *                          now (lib/conversations-store.ts), and the pre-2a
+ *                          transcript keys are swept on the way out.
  *   sweep-grace            DISCLOSIVE — keyed by the previous account's row ids.
  *
  * ── WHAT IS NEVER CLEARED, EVEN UNDER 'all' ─────────────────────────────────
@@ -270,10 +273,11 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
 ];
 
 /**
- * Per-user state that reaches localStorage without a zustand persist blob, so
- * the audit test cannot walk it by key: chat transcripts span one fixed key
- * plus one per item thread, and sweep-grace is plain functions over a raw map.
- * Both are wholly disclosive, so neither takes a scope. Covered by named tests.
+ * Per-user state outside any zustand persist blob, so the audit test cannot
+ * walk it by key: saved conversations are a memory-only cache (whose clear
+ * also sweeps the pre-2a transcript keys, one fixed plus one per item thread),
+ * and sweep-grace is plain functions over a raw map. Both are wholly
+ * disclosive, so neither takes a scope. Covered by named tests.
  */
 const RAW_CLEARERS: readonly (() => void)[] = [clearChatState, clearReleased];
 
@@ -385,8 +389,8 @@ export function adoptLocalState(userId: string): boolean {
  * The stamp is deliberately NOT written here: the tab that wrote it owns it,
  * and re-writing it from a handler is how a storage listener becomes a loop.
  *
- * Registered at module scope and guarded for SSR, the same shape chat-store
- * uses for its own provider subscription. The residual race — this tab having
+ * Registered at module scope and guarded for SSR, the same shape
+ * conversations-store uses for its own window listeners. The residual race — this tab having
  * already hydrated the NEW user's settings when the event lands, and holding
  * defaults until the next reload — is the narrow, non-leaking direction, and
  * the event is delivered long before those fetches resolve.

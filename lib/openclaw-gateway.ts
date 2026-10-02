@@ -105,24 +105,24 @@ export async function getGatewayConfig(userId: string): Promise<GatewayConfig | 
 }
 
 /**
- * Stable session keys, derived SERVER-SIDE from the authenticated user.
+ * One gateway session per saved conversation, keyed SERVER-SIDE.
  *
- * Sessions have no TTL by default, so a stable key is what gives a thread
- * durable gateway-side memory across reloads and devices.
+ * Sessions have no TTL by default, so a stable key is what gives a
+ * conversation durable gateway-side memory across reloads and devices, and a
+ * new chat is a new id, so it really is new on OpenClaw.
  *
  * Never accept a session key from the client. `subagent:`, `cron:` and `acp:`
  * are reserved namespaces the gateway rejects from external callers, and a
- * caller-supplied key would also let one browser address another thread. Both
- * are structurally impossible here because every key is built from the fixed
- * `dsul:` literal plus values the server already knows — so there is no
- * denylist to maintain and nothing to keep in sync with the gateway.
+ * caller-supplied key would also let one browser address another user's
+ * session. Both are structurally impossible here because the key is built
+ * from the fixed `dsul:` literal, the AUTHENTICATED user id and a UUID the
+ * route validated (app/api/chat/route.ts) — so there is no denylist to
+ * maintain and nothing to keep in sync with the gateway. No ownership read:
+ * the uid prefix already scopes the key, and the conversation's row does not
+ * exist before its first turn ends.
  */
-export function chatSessionKey(userId: string): string {
-  return `dsul:u:${userId}:chat`
-}
-
-export function itemSessionKey(userId: string, itemId: string): string {
-  return `dsul:u:${userId}:item:${itemId}`
+export function conversationSessionKey(userId: string, conversationId: string): string {
+  return `dsul:u:${userId}:chat:${conversationId}`
 }
 
 /**
@@ -130,9 +130,9 @@ export function itemSessionKey(userId: string, itemId: string): string {
  *
  * A proposal request is a one-shot machine exchange: a system prompt demanding
  * JSON, the whole planner as context, and a JSON object back. Putting that on
- * `chatSessionKey` would splice it into the middle of the conversation the user
- * is actually having, and the next thing they said would be answered by a model
- * that had just been told to reply in JSON only.
+ * a `conversationSessionKey` would splice it into the middle of a conversation
+ * the user is actually having, and the next thing they said would be answered
+ * by a model that had just been told to reply in JSON only.
  *
  * The honest cost: this session accumulates too, and there is no documented way
  * to ask the gateway for a stateless turn. It grows slowly (one short exchange

@@ -86,6 +86,7 @@ import ItemPage from '@/app/item/[id]/page';
 import { mobileTabOrder, useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
+import { generalThreadId } from '@/lib/open-chat';
 import type { TaskItem } from '@/lib/planner-types';
 import {
   CONNECTED_MODEL,
@@ -322,6 +323,34 @@ describe('the catch-up host in the phone dock', () => {
     await catchUp();
 
     expect(host()).toBeNull();
+  });
+
+  it("carries the chat tab's own plan when the key is turned down mid-review", () => {
+    seed(CONNECTED_MODEL);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileBottomDock />);
+    act(() => {
+      useProposalStore.setState({
+        status: 'ready',
+        error: null,
+        proposal: {
+          id: 'plan-1',
+          summary: 'A lighter week',
+          operations: [{ kind: 'create' as const, itemType: 'task', title: 'Call the bank' }],
+          createdAt: '2026-10-01T00:00:00.000Z',
+        },
+        lastRequest: { intent: 'ask', prompt: 'plan it', surface: `conv:${generalThreadId()}` },
+      });
+    });
+    // The chat tab carries it while there is one.
+    expect(host()).toBeNull();
+
+    act(() => {
+      unseed();
+      seed({ ...CONNECTED_MODEL, model: { provider: 'openai', model: 'gpt-4o-mini', status: 'failing', problem: 'key_rejected' } });
+    });
+    expect(within(host() as HTMLElement).getByTestId('proposal-card')).toBeInTheDocument();
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
   });
 });
 

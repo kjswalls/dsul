@@ -13,7 +13,14 @@ import {
   recordAgentReply,
   type ItemEvent,
 } from '@/lib/db';
-import { itemChatStore } from '@/lib/chat-store';
+import {
+  resolveConversationId,
+  useConversationsStore,
+  type ChatMessage,
+  type ConversationsState,
+} from '@/lib/conversations-store';
+import { sendFrom } from '@/lib/open-chat';
+import { chatErrorCopy } from '@/lib/chat-errors';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
@@ -797,22 +804,58 @@ function HeatmapSection({ item }: { item: Item }) {
 
 // ── Per-item thread ──────────────────────────────────────────────────────────
 
+/** One empty transcript, so a selector for an item nobody has chatted about is stable. */
+const NO_MESSAGES: ChatMessage[] = [];
+
+/**
+ * The item's one conversation as the store holds it now: the saved one it is
+ * indexed to, else the draft on its way to its first save, else one found gone
+ * (deleted elsewhere), which stays on screen until the next send starts afresh.
+ */
+function itemThreadId(s: ConversationsState, itemId: string): string | null {
+  const known = s.itemIndex[itemId];
+  if (typeof known === 'string') return resolveConversationId(known);
+  let gone: string | null = null;
+  for (const t of Object.values(s.threads)) {
+    if (t.itemId !== itemId || t.saved) continue;
+    if (t.load !== 'gone') return t.id;
+    gone = t.id;
+  }
+  return gone;
+}
+
 export function ItemThread({ item, className }: { item: Item; className?: string }) {
-  // Store identity is cached per item id (itemChatStore), so the hook target
-  // is stable across renders and hook ORDER never changes.
-  const useThread = useMemo(() => itemChatStore(item.id), [item.id]);
-  const { messages, isLoading, isTyping, send, hydrate } = useThread();
+  // The item's one saved conversation (lib/conversations-store.ts): the same
+  // on every device, kept until the user deletes it.
+  const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
+  const messages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined) ?? NO_MESSAGES);
+  const isTyping = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.typing));
+  // Busy from the send's first instant (before the item's conversation is even
+  // known) until the reply has finished arriving.
+  const isLoading = useConversationsStore(
+    (s) => !!s.sending[`item:${item.id}`] || !!(threadId && s.threads[threadId]?.streaming)
+  );
   const { canChat, target } = useAICapabilities();
   const [draft, setDraft] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
   const prevCount = useRef(0);
 
+  // Find the item's conversation and fetch its transcript, only while
+  // something can answer (the thread is not shown otherwise).
   useEffect(() => {
-    hydrate();
-  }, [hydrate]);
+    if (!canChat) return;
+    let live = true;
+    const store = useConversationsStore.getState();
+    void store.resolveItemThread(item.id).then((id) => {
+      if (live) void useConversationsStore.getState().openThread(id);
+    });
+    return () => {
+      live = false;
+    };
+  }, [canChat, item.id]);
 
   // Scroll ONLY the thread's own list, and only on new messages — never on
-  // the initial hydrate. scrollIntoView would scroll every ancestor too,
+  // the initial load. scrollIntoView would scroll every ancestor too,
   // yanking the edit panel (or the page) down to the thread on open.
   useEffect(() => {
     const el = listRef.current;
@@ -826,7 +869,7 @@ export function ItemThread({ item, className }: { item: Item; className?: string
     const text = draft.trim();
     if (!text || isLoading) return;
     setDraft('');
-    void send(text);
+    void sendFrom({ kind: 'item', itemId: item.id }, text);
   };
 
   // After every hook: a thread with nothing to answer it is a field that sends
@@ -841,20 +884,41 @@ export function ItemThread({ item, className }: { item: Item; className?: string
       <SectionLabel>Thread</SectionLabel>
       {messages.length > 0 && (
         <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                'max-w-[92%] rounded-md px-2.5 py-1.5 text-xs leading-relaxed whitespace-pre-wrap',
-                m.role === 'user'
-                  ? 'bg-secondary text-foreground self-end'
-                  : 'bg-warning/10 text-foreground self-start'
-              )}
-            >
-              {m.content ||
-                (isTyping || isLoading ? '…' : '')}
-            </div>
-          ))}
+          {messages.map((m, i) => {
+            const next = messages[i + 1];
+            // "Not saved" once per turn: under its reply, or under the question
+            // when no reply came.
+            const notSaved = m.sync === 'unsaved' && !(next?.sync === 'unsaved' && next.replyTo === m.id);
+            return (
+              <div
+                key={m.id}
+                className={cn('flex max-w-[92%] flex-col gap-0.5', m.role === 'user' ? 'self-end items-end' : 'self-start')}
+              >
+                <div
+                  className={cn(
+                    'rounded-md px-2.5 py-1.5 text-xs leading-relaxed whitespace-pre-wrap',
+                    m.role === 'user' ? 'bg-secondary text-foreground' : 'bg-warning/10 text-foreground'
+                  )}
+                >
+                  {m.content || (m.status === 'streaming' ? '…' : '')}
+                  {/* A failed reply's words are ours, by its code (lib/chat-errors.ts). */}
+                  {m.status === 'error' && (
+                    <span
+                      data-testid="chat-error-note"
+                      className={cn('block text-muted-foreground', m.content && 'mt-1')}
+                    >
+                      {chatErrorCopy(m.errorCode, m.answerer)}
+                    </span>
+                  )}
+                </div>
+                {notSaved && (
+                  <span data-testid="chat-not-saved" className="text-muted-foreground text-[10px]">
+                    Not saved
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
       <div className="border-input flex items-center gap-1.5 rounded-md border px-2 py-1">

@@ -13,7 +13,7 @@ import { RELAY } from '@/lib/relay-config';
 import { useLayoutDef } from '@/lib/look-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { useChatHostCard } from '@/lib/open-chat';
+import { useChatCardSurface, useChatHostCard } from '@/lib/open-chat';
 import { cn } from '@/lib/utils';
 
 /**
@@ -74,6 +74,9 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
   // remounted. Latched, it stays where it is until it is done (accepted,
   // dismissed) or the user opens chat, which then carries it.
   const hostCard = useChatHostCard();
+  // The catch-up card, or the general conversation's plan when that is what
+  // the gate closed under: both are chat's, and both outlive it.
+  const hostSurface = useChatCardSurface();
   const [hosting, setHosting] = useState(false);
   const showCatchUpHost = hostCard && !chatOpen && (!canChat || hosting);
   // State that trails what is on screen, adjusted during render (React's
@@ -136,7 +139,7 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
               data-testid="dock-catch-up-host"
               className="max-h-[42vh] overflow-y-auto border-b border-border px-4 pt-3 pb-2"
             >
-              <ProposalCard surface="chat" />
+              <ProposalCard surface={hostSurface} />
             </div>
           )}
           {/* pr-16 keeps the user row clear of the help button, which is
@@ -220,7 +223,7 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
             data-testid="dock-catch-up-host"
             className="relative z-10 mb-3 max-h-[50vh] overflow-y-auto"
           >
-            <ProposalCard surface="chat" />
+            <ProposalCard surface={hostSurface} />
           </div>
         )}
         <div className="relative z-10">

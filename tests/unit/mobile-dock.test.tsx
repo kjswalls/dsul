@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
 
 /**
  * The redesigned mobile dock — the mode card, the sheet behind it, and the two
@@ -47,8 +47,17 @@ vi.mock('next/navigation', () => ({
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { useChatStore } from '@/lib/chat-store';
+import { chatTransport } from '@/lib/chat-transport';
+import { httpConversationsApi } from '@/lib/conversations-api';
+import {
+  clearChatState,
+  configureConversations,
+  conversationsSettled,
+  useConversationsStore,
+} from '@/lib/conversations-store';
+import { generalThreadId } from '@/lib/open-chat';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
 
 /** Where the stubbed layout puts the dock's top edge, in a 800px-tall viewport. */
 const DOCK_TOP = 724;
@@ -279,48 +288,67 @@ describe('the omnibar in the dock', () => {
 
 describe('the chat composer in the dock', () => {
   const input = () => screen.getByTestId('chat-dock-input') as HTMLTextAreaElement;
+  /** The real conversations store over fakes: a send is a turn this sees. */
+  let transport: FakeTransport;
 
   beforeEach(() => {
     useMobileNavStore.setState({ activeTab: 'chat' });
-    useChatStore.setState({ isLoading: false, send: vi.fn() });
+    transport = fakeTransport();
+    configureConversations({ api: fakeApi().api, transport: transport.transport });
+    clearChatState();
   });
 
-  it('sends on Enter and clears, and newlines on Shift+Enter', () => {
-    const send = vi.fn();
-    useChatStore.setState({ send });
+  afterEach(async () => {
+    await conversationsSettled();
+    configureConversations({ api: httpConversationsApi, transport: chatTransport });
+  });
+
+  it('sends on Enter and clears, and newlines on Shift+Enter', async () => {
     render(<MobileBottomDock />);
 
     fireEvent.change(input(), { target: { value: 'plan my afternoon' } });
     fireEvent.keyDown(input(), { key: 'Enter', shiftKey: true });
-    expect(send).not.toHaveBeenCalled();
+    await act(() => flush());
+    expect(transport.inputs).toEqual([]);
     expect(input().value).toBe('plan my afternoon');
 
     fireEvent.keyDown(input(), { key: 'Enter' });
-    expect(send).toHaveBeenCalledWith('plan my afternoon');
+    await act(() => flush());
+    // Into the chat tab's one (general) conversation.
+    expect(transport.inputs.map((i) => i.message)).toEqual(['plan my afternoon']);
+    expect(transport.inputs[0].conversationId).toBe(generalThreadId());
     expect(input().value).toBe('');
   });
 
-  it('lets an IME keep Enter for committing its candidate', () => {
-    const send = vi.fn();
-    useChatStore.setState({ send });
+  it('lets an IME keep Enter for committing its candidate', async () => {
     render(<MobileBottomDock />);
 
     fireEvent.change(input(), { target: { value: 'こんにち' } });
     fireEvent.keyDown(input(), { key: 'Enter', isComposing: true });
+    await act(() => flush());
 
-    expect(send).not.toHaveBeenCalled();
+    expect(transport.inputs).toEqual([]);
     expect(input().value).toBe('こんにち');
   });
 
-  it('will not send whitespace, and stands down mid-stream', () => {
-    const send = vi.fn();
-    useChatStore.setState({ send, isLoading: true });
+  it('will not send whitespace, and stands down mid-stream', async () => {
+    // A reply still arriving in the conversation the dock is bound to.
+    const reply = hangs();
+    transport.next = reply.run;
+    void useConversationsStore.getState().send(generalThreadId(), 'earlier');
     render(<MobileBottomDock />);
 
     fireEvent.change(input(), { target: { value: '   ' } });
     fireEvent.keyDown(input(), { key: 'Enter' });
-    expect(send).not.toHaveBeenCalled();
+    await act(() => flush());
+    expect(transport.inputs.map((i) => i.message)).toEqual(['earlier']);
     expect(input()).toBeDisabled();
+
+    await act(async () => {
+      reply.release('done');
+      await flush();
+    });
+    expect(input()).not.toBeDisabled();
   });
 
   it('shows the send button only once there is something to send', () => {

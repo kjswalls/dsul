@@ -5,7 +5,8 @@ import { Sparkles, ChevronDown } from 'lucide-react';
 import { ChatConversation } from '@/components/ai/chat-conversation';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { RelayField } from '@/components/primitives/relay-field';
-import { useChatStore } from '@/lib/chat-store';
+import { useConversationsStore } from '@/lib/conversations-store';
+import { useChatCardSurface, useGeneralThreadId } from '@/lib/open-chat';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { chatAssistantLabel } from '@/lib/chat-utils';
@@ -22,7 +23,10 @@ export function ChatPanel({ focusSignal }: { focusSignal: number }) {
   const toggleChat = useSidebarStore((s) => s.toggleChat);
   const router = useRouter();
   const { target, agentId } = useAICapabilities();
-  const isStreaming = useChatStore((s) => s.isLoading);
+  // The one conversation this panel shows (lib/open-chat.ts).
+  const conversationId = useGeneralThreadId();
+  const isStreaming = useConversationsStore((s) => !!s.threads[conversationId]?.streaming);
+  const cardSurface = useChatCardSurface();
 
   const label = chatAssistantLabel(target, agentId);
 
@@ -54,10 +58,13 @@ export function ChatPanel({ focusSignal }: { focusSignal: number }) {
         )}
         {/* Above the transcript: a proposal is a decision waiting on you, and
             burying it under scrollback would make it exactly the thing this
-            design is trying to stop being — a message you have to go find. */}
-        <ProposalCard className="mx-2.5 mt-2.5 shrink-0" />
+            design is trying to stop being — a message you have to go find.
+            One card for the catch-up ('chat') and this conversation's own
+            plan (`conv:<id>`): whichever was asked (lib/open-chat.ts). */}
+        <ProposalCard surface={cardSurface} className="mx-2.5 mt-2.5 shrink-0" />
         <ChatConversation
           variant="desktop"
+          conversationId={conversationId}
           hideHeader
           focusSignal={focusSignal}
           onOpenSettings={() => router.push('/settings/beacon')}

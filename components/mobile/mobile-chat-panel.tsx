@@ -6,6 +6,7 @@ import { ProposalCard } from '@/components/ai/proposal-card';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { chatAssistantLabel } from '@/lib/chat-utils';
+import { useChatCardSurface, useGeneralThreadId } from '@/lib/open-chat';
 
 interface MobileChatPanelProps {
   onOpenSettings?: () => void;
@@ -15,7 +16,8 @@ interface MobileChatPanelProps {
 
 /**
  * Mobile chat tab — the dateless header capsule over the shared
- * ChatConversation (lib/chat-store.ts), both sitting on the paper backdrop.
+ * ChatConversation (the general conversation, lib/open-chat.ts), both sitting
+ * on the paper backdrop.
  *
  * The composer is NOT here. Per design/mobile-redesign/ChatTab.dc.html the
  * dock's bar is the chat input, so this passes `hideComposer` and the dock
@@ -27,6 +29,9 @@ export function MobileChatPanel({ onOpenSettings, headerAccessory }: MobileChatP
   // Named after whoever EFFECTIVELY answers, not the device's stored choice:
   // the gate falls back to whatever else is connected.
   const { target, agentId } = useAICapabilities();
+  // The one conversation this tab shows; the dock's composer sends into it.
+  const conversationId = useGeneralThreadId();
+  const cardSurface = useChatCardSurface();
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-2">
@@ -38,12 +43,15 @@ export function MobileChatPanel({ onOpenSettings, headerAccessory }: MobileChatP
       </SurfaceHeader>
 
       <div className="relative flex min-h-0 flex-1 flex-col">
-        <ProposalCard className="mx-[10px] shrink-0" />
+        {/* One card for the catch-up ('chat') and this conversation's plan
+            (`conv:<id>`): whichever was asked (lib/open-chat.ts). */}
+        <ProposalCard surface={cardSurface} className="mx-[10px] shrink-0" />
         {/* cardedReplies: with the panel gone the conversation sits on the
             paper, and the card is what separates a reply from it
             (design/mobile-redesign/ChatTab.dc.html). */}
         <ChatConversation
           variant="mobile"
+          conversationId={conversationId}
           hideHeader
           hideComposer
           cardedReplies

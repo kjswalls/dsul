@@ -20,7 +20,9 @@ import {
  * The AI gate is the REAL one (lib/ai-connection-store.ts + ai-settings-store),
  * seeded per case through the shared fixture: the component asks
  * `useAICapabilities()` and nothing else, so a mock of either store here would
- * be testing the mock.
+ * be testing the mock. So is the conversation: the real conversations store,
+ * with its HTTP API and its transport faked (configureConversations), and the
+ * transcript seeded as a loaded thread.
  */
 
 /** OpenClaw through the user's own gateway: chats AND proposes. */
@@ -32,49 +34,41 @@ const OPENCLAW_GATEWAY: SeedAI = {
   choice: 'openclaw',
 };
 
-const send = vi.fn();
-const stop = vi.fn();
 const requestProposal = vi.fn();
 
-let messages: Array<{ role: 'user' | 'assistant'; content: string }> = [];
 let proposalStatus = 'idle';
 let proposalSurface = 'chat';
-let isLoading = false;
 
-// Selector-aware: ChatConversation destructures the whole store, but
-// ChatComposer — which owns the field and the stop button now — subscribes to
-// one slice at a time. A mock that ignored the selector handed the composer the
-// entire state object where it expected `send`, and React refused the listener.
-vi.mock('@/lib/chat-store', () => {
-  const state = () => ({
-    messages,
-    isLoading,
-    isTyping: false,
-    send,
-    stop,
-    hydrate: vi.fn(),
-  });
-  return {
-    useChatStore: (sel?: (s: unknown) => unknown) => (sel ? sel(state()) : state()),
+vi.mock('@/lib/planner-store', () => {
+  const state = {
+    items: [],
+    projects: [],
+    itemTypes: [],
+    routines: [],
+    seasons: [],
+    goals: [],
+    userTimezone: 'UTC',
   };
+  // A selector hook for the components, and getState for the store's send.
+  return { usePlannerStore: Object.assign((sel: (s: unknown) => unknown) => sel(state), { getState: () => state }) };
 });
 
-vi.mock('@/lib/planner-store', () => ({
-  usePlannerStore: (sel: (s: unknown) => unknown) =>
-    sel({ items: [], routines: [], seasons: [], userTimezone: 'UTC' }),
-}));
+vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
-vi.mock('@/lib/proposal-store', () => ({
-  useProposalStore: (sel: (s: unknown) => unknown) =>
-    sel({
-      request: requestProposal,
-      status: proposalStatus,
-      // Which surface owns the pending request. The chat button disables only
-      // for its OWN — a breakdown loading inside an item panel used to grey
-      // this out with no spinner visible anywhere on screen.
-      lastRequest: { surface: proposalSurface },
-    }),
-}));
+vi.mock('@/lib/proposal-store', () => {
+  const state = () => ({
+    request: requestProposal,
+    status: proposalStatus,
+    // Which surface owns the pending request. The chat button disables only
+    // for its OWN — a breakdown loading inside an item panel used to grey
+    // this out with no spinner visible anywhere on screen.
+    lastRequest: { surface: proposalSurface },
+    dismiss: vi.fn(),
+  });
+  return {
+    useProposalStore: Object.assign((sel: (s: unknown) => unknown) => sel(state()), { getState: state }),
+  };
+});
 
 vi.mock('@/lib/use-time-format', () => ({ useTimeFormat: () => 'HH:mm' }));
 
@@ -88,8 +82,21 @@ vi.mock('react-markdown', () => ({
 vi.mock('remark-gfm', () => ({ default: () => {} }));
 
 import { ChatConversation } from '@/components/ai/chat-conversation';
+import {
+  clearChatState,
+  configureConversations,
+  conversationsSettled,
+  useConversationsStore,
+  type ChatMessage,
+} from '@/lib/conversations-store';
+import { chatTransport } from '@/lib/chat-transport';
+import { chatErrorCopy } from '@/lib/chat-errors';
+import { buildPlanPrompt } from '@/lib/plan-prompt';
+import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
 
 const PLAN_BUTTON = 'chat-make-plan';
+/** The saved conversation every case renders. */
+const CONV = '6f1e2d3c-4b5a-4968-8776-655443322110';
 
 let unseed: () => void = () => {};
 const seed = (o: SeedAI) => {
@@ -97,24 +104,68 @@ const seed = (o: SeedAI) => {
   unseed = seedAI(o);
 };
 
+let transport: FakeTransport;
+let seq = 0;
+
+/** A transcript line as the store holds a saved one. */
+function msg(role: 'user' | 'assistant', content: string, o: Partial<ChatMessage> = {}): ChatMessage {
+  seq += 1;
+  return {
+    id: `m-${seq}`,
+    role,
+    content,
+    status: 'complete',
+    errorCode: null,
+    replyTo: null,
+    answerer: role === 'assistant' ? 'model' : null,
+    model: null,
+    createdAt: 1_759_400_000_000,
+    pos: seq,
+    sync: 'saved',
+    ...o,
+  };
+}
+
+/** The conversation as the store would hold it after a load (or mid-stream). */
+function setThread(messages: ChatMessage[], o: { streaming?: boolean } = {}) {
+  useConversationsStore.setState((s) => ({
+    threads: {
+      ...s.threads,
+      [CONV]: {
+        id: CONV,
+        itemId: null,
+        draftTitle: null,
+        saved: true,
+        messages,
+        load: 'loaded',
+        hasEarlier: false,
+        streaming: !!o.streaming,
+        typing: false,
+        fetchedAt: Date.now(),
+      },
+    },
+  }));
+}
+
 beforeEach(() => {
-  send.mockClear();
-  stop.mockClear();
   requestProposal.mockClear();
-  isLoading = false;
-  messages = [];
+  transport = fakeTransport();
+  configureConversations({ api: fakeApi().api, transport: transport.transport });
+  clearChatState();
   seed(CONNECTED_MODEL);
   proposalStatus = 'idle';
   proposalSurface = 'chat';
 });
 
-afterEach(() => {
+afterEach(async () => {
   cleanup();
+  await conversationsSettled();
   unseed();
   unseed = () => {};
+  configureConversations({ transport: chatTransport });
 });
 
-const renderChat = () => render(<ChatConversation variant="desktop" />);
+const renderChat = () => render(<ChatConversation variant="desktop" conversationId={CONV} />);
 
 describe('conversation openers', () => {
   it('offers something to say when the transcript is empty', () => {
@@ -123,21 +174,25 @@ describe('conversation openers', () => {
     expect(openers.querySelectorAll('button').length).toBeGreaterThan(0);
   });
 
-  it('sends the full prompt, not the short chip label', () => {
+  it('sends the full prompt, not the short chip label', async () => {
     // The chip has to fit a narrow sidebar; the prompt does not, and the
     // difference is most of what makes the answer good.
     renderChat();
     const first = screen.getByTestId('chat-openers').querySelector('button')!;
     const label = first.textContent ?? '';
     fireEvent.click(first);
+    await flush();
 
-    expect(send).toHaveBeenCalledTimes(1);
-    const sent = send.mock.calls[0][0] as string;
+    expect(transport.inputs).toHaveLength(1);
+    const sent = transport.inputs[0].message;
     expect(sent.length).toBeGreaterThan(label.length);
+    // Into THIS conversation, as its first turn.
+    expect(transport.inputs[0].conversationId).toBe(CONV);
+    expect(useConversationsStore.getState().threads[CONV]?.messages[0]?.content).toBe(sent);
   });
 
   it('disappears once there is a conversation to look at', () => {
-    messages = [{ role: 'user', content: 'hi' }];
+    setThread([msg('user', 'hi')]);
     renderChat();
     expect(screen.queryByTestId('chat-openers')).toBeNull();
   });
@@ -176,56 +231,61 @@ describe('the empty state', () => {
 
 describe('turning a conversation into a plan', () => {
   it('offers the plan button under an assistant reply', () => {
-    messages = [
-      { role: 'user', content: 'what should I do about this week?' },
-      { role: 'assistant', content: 'Push the two writing tasks to Thursday.' },
-    ];
+    setThread([
+      msg('user', 'what should I do about this week?'),
+      msg('assistant', 'Push the two writing tasks to Thursday.'),
+    ]);
     renderChat();
     expect(screen.getByTestId(PLAN_BUTTON)).toBeTruthy();
   });
 
   it('offers it once, on the latest reply only', () => {
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'first answer' },
-      { role: 'user', content: 'b' },
-      { role: 'assistant', content: 'second answer' },
-    ];
+    setThread([
+      msg('user', 'a'),
+      msg('assistant', 'first answer'),
+      msg('user', 'b'),
+      msg('assistant', 'second answer'),
+    ]);
     renderChat();
     expect(screen.getAllByTestId(PLAN_BUTTON)).toHaveLength(1);
   });
 
-  it('sends the exchange, not just the question', () => {
+  it('sends the exchange, not just the question, on this conversation’s own surface', () => {
     // What makes a plan worth proposing usually lives in the reply. A
     // proposer handed only the question has to re-derive the answer and will
     // land somewhere else.
-    messages = [
-      { role: 'user', content: 'what should I do about this week?' },
-      { role: 'assistant', content: 'Push the two writing tasks to Thursday.' },
+    const messages = [
+      msg('user', 'what should I do about this week?'),
+      msg('assistant', 'Push the two writing tasks to Thursday.'),
     ];
+    setThread(messages);
     renderChat();
     fireEvent.click(screen.getByTestId(PLAN_BUTTON));
 
     expect(requestProposal).toHaveBeenCalledTimes(1);
-    const [intent, prompt] = requestProposal.mock.calls[0];
+    const [intent, prompt, itemId, o] = requestProposal.mock.calls[0];
     expect(intent).toBe('ask');
     expect(prompt).toContain('what should I do about this week?');
     expect(prompt).toContain('Push the two writing tasks to Thursday.');
+    expect(prompt).toBe(buildPlanPrompt(messages, messages[1].id));
+    // The card answers on `conv:<id>`, and what it changes counts on this conversation.
+    expect(itemId).toBeUndefined();
+    expect(o).toEqual({ conversationId: CONV });
   });
 
   it('reaches back past intervening turns for the question that prompted the reply', () => {
-    messages = [
-      { role: 'user', content: 'the original ask' },
-      { role: 'assistant', content: 'an answer' },
-      { role: 'assistant', content: 'a follow-up thought' },
-    ];
+    setThread([
+      msg('user', 'the original ask'),
+      msg('assistant', 'an answer'),
+      msg('assistant', 'a follow-up thought'),
+    ]);
     renderChat();
     fireEvent.click(screen.getByTestId(PLAN_BUTTON));
     expect(requestProposal.mock.calls[0][1]).toContain('the original ask');
   });
 
   it('is absent under a user message', () => {
-    messages = [{ role: 'user', content: 'hi' }];
+    setThread([msg('user', 'hi')]);
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
@@ -234,10 +294,7 @@ describe('turning a conversation into a plan', () => {
     // resolveAICapabilities is the single question. A button that silently does
     // nothing is worse than no button (lib/ai-registry.ts).
     seed(NOTHING_CONNECTED);
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'b' },
-    ];
+    setThread([msg('user', 'a'), msg('assistant', 'b')]);
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
@@ -246,20 +303,14 @@ describe('turning a conversation into a plan', () => {
     // The propose route never reroutes an OpenClaw user's planner to a model
     // they did not pick, and the plugin path cannot carry a proposal.
     seed(OPENCLAW_PLUGIN);
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'b' },
-    ];
+    setThread([msg('user', 'a'), msg('assistant', 'b')]);
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
 
   it('is offered on the agent tier, which proposes through the user own gateway', () => {
     seed(OPENCLAW_GATEWAY);
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'b' },
-    ];
+    setThread([msg('user', 'a'), msg('assistant', 'b', { answerer: 'openclaw' })]);
     renderChat();
     expect(screen.getByTestId(PLAN_BUTTON)).toBeTruthy();
   });
@@ -268,10 +319,8 @@ describe('turning a conversation into a plan', () => {
     // Each click costs a model call. The card says "Thinking it through…", but
     // that is above the transcript and easy to miss from down here.
     proposalStatus = 'loading';
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'b' },
-    ];
+    proposalSurface = `conv:${CONV}`;
+    setThread([msg('user', 'a'), msg('assistant', 'b')]);
     renderChat();
     const button = screen.getByTestId(PLAN_BUTTON) as HTMLButtonElement;
     expect(button.disabled).toBe(true);
@@ -284,23 +333,20 @@ describe('turning a conversation into a plan', () => {
     // out this button too leaves a dead control with no explanation — and
     // superseding is safe now, because the store drops a superseded reply.
     proposalStatus = 'loading';
-    proposalSurface = 'item:abc';
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'b' },
-    ];
-    renderChat();
-    expect((screen.getByTestId(PLAN_BUTTON) as HTMLButtonElement).disabled).toBe(false);
+    for (const surface of ['item:abc', 'chat', 'conv:another-conversation']) {
+      proposalSurface = surface;
+      setThread([msg('user', 'a'), msg('assistant', 'b')]);
+      renderChat();
+      expect((screen.getByTestId(PLAN_BUTTON) as HTMLButtonElement).disabled).toBe(false);
+      cleanup();
+    }
   });
 
   it('clips a long reply from the front, keeping the conclusion', () => {
     // The whole planner already travels with the request; an unbounded reply on
     // top of it is what starts pushing the item list out of the prompt.
     const long = 'x'.repeat(5000) + 'THE ACTUAL CONCLUSION';
-    messages = [
-      { role: 'user', content: 'the ask' },
-      { role: 'assistant', content: long },
-    ];
+    setThread([msg('user', 'the ask'), msg('assistant', long)]);
     renderChat();
     fireEvent.click(screen.getByTestId(PLAN_BUTTON));
 
@@ -311,45 +357,101 @@ describe('turning a conversation into a plan', () => {
   });
 
   it('is absent while a reply is still empty', () => {
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: '' },
-    ];
+    setThread([msg('user', 'a'), msg('assistant', '', { status: 'streaming', sync: 'pending', pos: null })], {
+      streaming: true,
+    });
+    renderChat();
+    expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
+  });
+
+  it('is absent under a failed reply, whose words are ours and never a model’s', () => {
+    // Error copy is not content: it is never handed back to a model, here
+    // as a plan's "You answered:" or anywhere else.
+    setThread([msg('user', 'a'), msg('assistant', 'Half', { status: 'error', errorCode: 'rate_limit' })]);
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
 });
 
+describe('how a saved turn reads', () => {
+  it('a failed reply shows what arrived, then our words for its code', () => {
+    setThread([msg('user', 'a'), msg('assistant', 'Half an answer', { status: 'error', errorCode: 'rate_limit' })]);
+    renderChat();
+    expect(screen.getByText('Half an answer')).toBeInTheDocument();
+    expect(screen.getByTestId('chat-error-note').textContent).toBe(chatErrorCopy('rate_limit', 'model'));
+  });
+
+  it('a failed reply with nothing in it is only the note, worded for who was asked', () => {
+    setThread([
+      msg('user', 'a'),
+      msg('assistant', '', { status: 'error', errorCode: 'not_connected', answerer: 'openclaw' }),
+    ]);
+    renderChat();
+    expect(screen.getByTestId('chat-error-note').textContent).toBe(
+      'Connect your OpenClaw gateway in Settings to chat.'
+    );
+  });
+
+  it('a turn the account will never hold says "Not saved", once', () => {
+    const q = msg('user', 'a', { sync: 'unsaved', pos: null });
+    setThread([q, msg('assistant', 'b', { sync: 'unsaved', pos: null, replyTo: q.id })]);
+    renderChat();
+    expect(screen.getAllByTestId('chat-not-saved')).toHaveLength(1);
+    expect(screen.getByText('Not saved')).toBeInTheDocument();
+  });
+
+  it('a question stopped before any reply carries the line itself', () => {
+    setThread([msg('user', 'a', { sync: 'unsaved', pos: null })]);
+    renderChat();
+    expect(screen.getAllByTestId('chat-not-saved')).toHaveLength(1);
+  });
+
+  it('a saved or still-saving turn says nothing about it', () => {
+    const q = msg('user', 'a', { sync: 'pending', pos: null });
+    setThread([msg('user', 'old'), msg('assistant', 'older'), q, msg('assistant', 'b', { sync: 'pending', replyTo: q.id })]);
+    renderChat();
+    expect(screen.queryByTestId('chat-not-saved')).toBeNull();
+  });
+});
+
 describe('interrupting a reply', () => {
   /**
-   * The store could always abort (`abortController.abort()`), and `send`'s
-   * finally clears isLoading either way — there was simply no way to ask. The
-   * send button is disabled while streaming, so this occupies a dead slot.
+   * The store could always abort, and a stopped turn ends either way — there
+   * was simply no way to ask. The send button is disabled while streaming, so
+   * this occupies a dead slot.
    */
-  it('offers a stop button while a reply is streaming', () => {
-    isLoading = true;
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'partial' },
-    ];
+  it('offers a stop button while a reply is streaming, and it stops THIS conversation', async () => {
+    const turn = hangs('partial');
+    transport.next = turn.run;
+    setThread([]);
     renderChat();
+    const input = screen.getByPlaceholderText('Ask anything…');
+    fireEvent.change(input, { target: { value: 'a' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+    await flush();
+
     fireEvent.click(screen.getByTestId('chat-stop'));
-    expect(stop).toHaveBeenCalledTimes(1);
+    await flush();
+
+    const messages = useConversationsStore.getState().threads[CONV]!.messages;
+    expect(messages.map((m) => [m.content, m.status])).toEqual([
+      ['a', 'complete'],
+      ['partial', 'stopped'],
+    ]);
+    expect(screen.queryByTestId('chat-stop')).toBeNull();
   });
 
   it('is absent when nothing is streaming', () => {
-    messages = [{ role: 'user', content: 'a' }];
+    setThread([msg('user', 'a')]);
     renderChat();
     expect(screen.queryByTestId('chat-stop')).toBeNull();
   });
 
   it('does not offer a plan while the reply is still arriving', () => {
     // Half an answer is not something to turn into planner changes.
-    isLoading = true;
-    messages = [
-      { role: 'user', content: 'a' },
-      { role: 'assistant', content: 'half an ans' },
-    ];
+    setThread([msg('user', 'a'), msg('assistant', 'half an ans', { status: 'streaming', sync: 'pending', pos: null })], {
+      streaming: true,
+    });
     renderChat();
     expect(screen.queryByTestId(PLAN_BUTTON)).toBeNull();
   });
