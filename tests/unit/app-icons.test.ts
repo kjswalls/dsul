@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /**
@@ -34,7 +34,7 @@ vi.mock('@/lib/supabase', () => ({
   }),
 }));
 
-import { APP_ICONS, DEFAULT_APP_ICON, iconHrefFor, isAppIcon } from '@/lib/app-icons';
+import { APP_ICONS, DEFAULT_APP_ICON, ICON_REV, iconHrefFor, isAppIcon } from '@/lib/app-icons';
 import { loadSettings } from '@/lib/settings-service';
 import { settingById } from '@/lib/settings/manifest';
 
@@ -95,5 +95,16 @@ describe('app icons — the setting', () => {
     expect(selects[1].split(',')).not.toContain('app_icon');
     expect(settings.theme).toBe('dark');
     expect(settings.app_icon).toBeUndefined();
+  });
+});
+
+describe('icon cache-buster', () => {
+  it('keeps the ?v= query through the lime swap', () => {
+    expect(iconHrefFor(`/icons/icon-32.png?v=${ICON_REV}`, 'lime')).toBe(`/icons/lime/icon-32.png?v=${ICON_REV}`);
+  });
+
+  it('matches the manifest icons', () => {
+    const manifest = JSON.parse(readFileSync(join(process.cwd(), 'public/manifest.json'), 'utf8'));
+    for (const icon of manifest.icons) expect(icon.src).toMatch(new RegExp(`\\?v=${ICON_REV}$`));
   });
 });
