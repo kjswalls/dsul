@@ -44,7 +44,7 @@ jobs:
           # Swift port mirrors, the app routes the phone decodes, and the shared
           # fixtures both sides read, so a web edit re-runs the Swift tests.
           if git diff --name-only "$BASE" "$GITHUB_SHA" \
-             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/(recurrence|schedule-constants|day-items|active|item-toggle|grouping|item-registry|braindump-members|planner-store|app-api|app-auth)\.ts$|components/views/(day-buckets|day-schedule)\.tsx$|tests/fixtures/(recurrence|day|app)/|app/api/app/)' \
+             | grep -E '^(ios/|\.github/workflows/ios\.yml$|lib/(recurrence|schedule-constants|day-items|active|item-toggle|grouping|item-registry|braindump-members|planner-store|app-api|app-auth|app-icons)\.ts$|components/views/(day-buckets|day-schedule)\.tsx$|tests/fixtures/(recurrence|day|app)/|app/api/app/)' \
              | grep -qvE '^ios/.*\.md$'; then
             echo ios=true >> "$GITHUB_OUTPUT"
           else

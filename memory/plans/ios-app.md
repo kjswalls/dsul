@@ -138,7 +138,7 @@ and the PR would stall.
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
-  routines, seasons and two settings, `completedDates` windowed to 400 days),
+  routines, seasons and three settings, `completedDates` windowed to 400 days),
   `POST /api/app/items` (capture, under the phone's own lowercase id, so a
   retry is answered 200 for the same row) and `POST /api/app/items/:id`
   (`complete` with a date, an end state and a counted habit's tally, or
@@ -174,6 +174,18 @@ and the PR would stall.
   sends nothing (`tickIntent` is nil), as the web refuses it.
 - **Habits can't be dropped on an hour from the phone** (the route answers
   `not_schedulable`); only tasks reach the braindump in practice.
+- **The home-screen icon follows the App icon pick** (lib/app-icons.ts,
+  `user_settings.app_icon`, migration 056), which the planner payload carries
+  as `settings.appIcon`: `'aurora' | 'lime' | null`, an unknown slug read as
+  Aurora and null (never chosen, or a database without 056, which the route
+  survives by reading the settings again without the column) leaving the icon
+  alone. `AppIconSwitcher` calls `setAlternateIconName` only when the pick
+  differs from the icon showing, one change at a time, from AppGate (each
+  fetch, and again on returning to the app, since iOS refuses a change made
+  in the background). Lime is `AppIcon-Lime`, listed in project.yml's
+  `ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`. The web tab's Lime once the
+  day is done (lib/day-done.ts) is not ported: iOS alerts on every icon change.
+  Picking the icon on the phone waits for a settings write route.
 
 ## Writes go through the server
 When the app writes, it calls the bearer-auth `/api/app/*` routes (above),

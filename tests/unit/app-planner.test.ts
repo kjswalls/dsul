@@ -389,6 +389,7 @@ const BUNDLE = {
 const SETTINGS_ROW = {
   timezone: 'America/Los_Angeles',
   show_completed_tasks: true,
+  app_icon: 'lime',
   openclaw_api_key: `dsul_${'ab'.repeat(32)}`,
   openclaw_webhook_url: 'https://hooks.example.com',
 };
@@ -469,7 +470,7 @@ describe('the payload fixture shared with DsulCore', () => {
     expect(generated.v).toBe(1);
     expect(generated.userId).toBe(USER);
     expect(generated.fetchedAt).toBe(NOW);
-    expect(generated.settings).toEqual({ timezone: 'America/Los_Angeles', showCompletedTasks: true });
+    expect(generated.settings).toEqual({ timezone: 'America/Los_Angeles', showCompletedTasks: true, appIcon: 'lime' });
   });
 
   it('carries every case the Swift decoder has to meet', () => {
@@ -530,7 +531,7 @@ describe('GET /api/app/planner', () => {
 
     const settings = queries.filter((q) => q.table === 'user_settings');
     expect(settings).toHaveLength(1);
-    expect(settings[0].calls).toContainEqual(['select', ['timezone, show_completed_tasks']]);
+    expect(settings[0].calls).toContainEqual(['select', ['timezone, show_completed_tasks, app_icon']]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
     // Nothing else is read: no per-table burst on top of the RPC.
     expect(queries.map((q) => q.table)).toEqual(['user_settings']);
@@ -539,7 +540,31 @@ describe('GET /api/app/planner', () => {
   it('falls back to the web’s defaults when there is no settings row', async () => {
     respondWith({ user_settings: { data: null, error: null } });
     const body = await (await get()).json();
-    expect(body.settings).toEqual({ timezone: null, showCompletedTasks: true });
+    expect(body.settings).toEqual({ timezone: null, showCompletedTasks: true, appIcon: null });
+  });
+
+  it('reads the settings again without app_icon on a database without migration 056', async () => {
+    respond = (q) => {
+      if (q.table !== 'user_settings') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
+      const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
+      return columns.includes('app_icon')
+        ? { data: null, error: { code: '42703', message: 'column user_settings.app_icon does not exist' } }
+        : { data: { timezone: 'Europe/Paris', show_completed_tasks: false }, error: null };
+    };
+    const res = await get();
+    expect(res.status).toBe(200);
+    expect((await res.json()).settings).toEqual({ timezone: 'Europe/Paris', showCompletedTasks: false, appIcon: null });
+    const selects = queries.filter((q) => q.table === 'user_settings').map((q) => q.calls.find(([m]) => m === 'select')?.[1][0]);
+    expect(selects).toEqual(['timezone, show_completed_tasks, app_icon', 'timezone, show_completed_tasks']);
+  });
+
+  it('answers app_icon as the web reads it: null stays unchosen, an unknown slug is Aurora', async () => {
+    respondWith({ user_settings: { data: { ...SETTINGS_ROW, app_icon: null }, error: null } });
+    expect((await (await get()).json()).settings.appIcon).toBeNull();
+    respondWith({ user_settings: { data: { ...SETTINGS_ROW, app_icon: 'sunset' }, error: null } });
+    expect((await (await get()).json()).settings.appIcon).toBe('aurora');
+    respondWith({ user_settings: { data: { ...SETTINGS_ROW, app_icon: 'aurora' }, error: null } });
+    expect((await (await get()).json()).settings.appIcon).toBe('aurora');
   });
 
   it('401s a JWT PostgREST rejects, so the phone refreshes', async () => {

@@ -4,7 +4,8 @@
   "fetchedAt": "2026-10-02T15:04:05.000Z",
   "settings": {
     "timezone": "America/Los_Angeles",
-    "showCompletedTasks": true
+    "showCompletedTasks": true,
+    "appIcon": "lime"
   },
   "items": [
     {

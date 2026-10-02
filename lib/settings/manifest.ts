@@ -970,11 +970,11 @@ export const SETTINGS: SettingRecord[] = [
     id: 'look.appIcon',
     pane: 'look',
     label: 'App icon',
-    description: "The icon in your browser tab and the desktop app's Dock and taskbar.",
+    description: "The icon in your browser tab, the desktop app's Dock and taskbar, and the iPhone app's Home Screen icon.",
     control: 'enum',
     dbColumn: 'app_icon',
     options: APP_ICONS.map((i) => ({ value: i.value, label: i.label })),
-    keywords: ['icon', 'favicon', 'dock', 'taskbar', 'logo', 'lime', 'aurora'],
+    keywords: ['icon', 'favicon', 'dock', 'taskbar', 'logo', 'lime', 'aurora', 'iphone', 'home screen'],
     read: () => look().appIcon,
     // Same pairing as look.layout: the store setter is local state only, so
     // the Supabase write rides here.

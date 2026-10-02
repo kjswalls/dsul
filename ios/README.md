@@ -70,6 +70,11 @@ The phone talks to production, so it can only sign in once `/auth/ios` and
 - **Writes** show at once and are sent one at a time, in order. If the server
   refuses one, a banner says so and the app reloads your day; if it can't be
   reached at all, the change is undone.
+- **The app icon** follows Settings → Look → App icon on the web: pick Lime
+  there and the iPhone swaps to the Lime icon the next time it loads your day
+  (iOS shows a one-line alert each time an app changes its icon). The web
+  tab's Lime-when-the-day-is-done swap stays on the web, since the phone
+  would alert every evening.
 - **The avatar** (your initials, top right) shows your email and **Sign out**.
   Sign out ends this phone's session only; the web and the desktop app stay
   signed in. On the sample, it says **Leave sample data** instead.

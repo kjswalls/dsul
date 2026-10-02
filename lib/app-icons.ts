@@ -10,8 +10,12 @@
  * Aurora is the bundle icon everywhere and the only one a home-screen install
  * or a closed desktop app ever shows; Lime is swapped in at runtime
  * (components/providers/favicon-sync.tsx in the tab, the bridge's setAppIcon in
- * the shell). The tab also turns Lime for the rest of a day whose items are
- * all done (lib/day-done.ts), whatever is picked here.
+ * the shell, and the iPhone app's alternate icon, which follows the pick from
+ * /api/app/planner: ios/Dsul/App/AppIconSwitcher.swift, ported in
+ * ios/DsulCore/Sources/DsulCore/AppIcon.swift, so a new icon here needs a case
+ * there and an icon set in the app). The tab also turns Lime for the rest of a
+ * day whose items are all done (lib/day-done.ts), whatever is picked here; the
+ * iPhone doesn't, since iOS alerts on every icon change.
  */
 
 export const APP_ICONS = [
