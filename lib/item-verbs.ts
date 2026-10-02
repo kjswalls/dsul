@@ -5,7 +5,7 @@ import { streaksEnabled } from './extension-gates';
 import { getItemTypeConfig, isPausable, isSkippable, itemTypeName } from './item-registry';
 import { toggleRowDone, toggleTaskDone } from './item-toggle';
 import { isCompletedOnDate, isRecurring } from './recurrence';
-import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from './row-moves';
+import { canMoveToNextDay, canReschedule, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from './row-moves';
 import type { OccurrenceState } from './container-schedule';
 import type { HabitItem, Item, Task } from './planner-types';
 
@@ -259,11 +259,14 @@ const nextDay: ItemVerb = {
   run: (item, ctx) => planner().moveTaskToDate(item.id, nextDayOf(item, ctx)),
 };
 
-/** The carry's gate with the day left open — so an undated item may take it too. */
+/**
+ * The carry's gate with the day left open, so an undated item may take it too,
+ * and a recurring task: its picked day becomes the series start.
+ */
 const reschedule: ItemVerb = {
   id: 'reschedule',
   label: (item) => (isTaskLike(item) && item.startDate ? 'Reschedule' : 'Schedule'),
-  eligible: (item, ctx) => isTaskLike(item) && canMoveToNextDay(item, kindOf(item), rowDateOf(item, ctx)),
+  eligible: (item, ctx) => isTaskLike(item) && canReschedule(item, kindOf(item), rowDateOf(item, ctx)),
   run: (item, _ctx, dateStr) => {
     if (dateStr) planner().moveTaskToDate(item.id, dateStr);
   },

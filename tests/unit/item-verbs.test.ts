@@ -97,7 +97,9 @@ describe('item verbs', () => {
   it('keeps the carries off recurring items and undated ones', () => {
     const series = task({ startDate: '2026-09-01', repeatFrequency: 'daily' });
     expect(ids(series, ctxOn(TODAY))).not.toContain('nextDay');
-    expect(ids(series, ctxOn(TODAY))).not.toContain('reschedule');
+    // Reschedule is the exception: a picked day becomes the series start.
+    expect(ids(series, ctxOn(TODAY))).toContain('reschedule');
+    expect(ITEM_VERBS.reschedule.label(series, ctxOn(TODAY))).toBe('Reschedule');
     const undated = task();
     expect(ids(undated, ctxOn(TODAY))).not.toContain('nextDay');
     expect(ids(undated, ctxOn(TODAY))).toContain('reschedule');
