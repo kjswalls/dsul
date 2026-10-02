@@ -1012,7 +1012,7 @@ async function withResolvedContainer(
 const REMINDER_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor'] as const;
 
 /** True only for "the database doesn't have a column we asked for". */
-function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+export function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
   if (error.code === '42703' || error.code === 'PGRST204') return true;
   return /column\b.*\bdoes not exist/i.test(error.message ?? '');

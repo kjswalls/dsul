@@ -8,12 +8,14 @@ import {
   fetchProjects,
   fetchRoutines,
   fetchSeasons,
+  isMissingColumnError,
   loadPlannerData,
   setItemCompletion,
   updateItem,
   type PlannerData,
 } from './db';
 import { getItemTypeConfig } from './item-registry';
+import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { getBucketForTime } from './time-bucket';
 import { reportLiveCompletion } from './stakes/live';
 import { createServiceClient } from './supabase-service';
@@ -121,7 +123,16 @@ export interface AppPlannerPayload {
   v: 1;
   userId: string;
   fetchedAt: string;
-  settings: { timezone: string | null; showCompletedTasks: boolean };
+  settings: {
+    timezone: string | null;
+    showCompletedTasks: boolean;
+    /**
+     * The App icon pick (lib/app-icons.ts), which the iPhone's home-screen
+     * icon follows. Null means never chosen on any device (or a database
+     * without migration 056), so the phone leaves its icon as it is.
+     */
+    appIcon: AppIcon | null;
+  };
   items: Item[];
   projects: Project[];
   routines: Routine[] | null;
@@ -131,8 +142,34 @@ export interface AppPlannerPayload {
 /**
  * Named columns, never `*`: the same row holds `openclaw_api_key`, a plaintext
  * key with service-role power that RLS lets this token read.
+ *
+ * `app_icon` is migration 056, which may not be applied yet (it sits in
+ * lib/settings-service.ts PENDING_SCHEMA_COLUMNS): PostgREST refuses the whole
+ * select over one unknown column, so a missing one is read again without it.
  */
-const SETTINGS_COLUMNS = 'timezone, show_completed_tasks';
+const STABLE_SETTINGS_COLUMNS = 'timezone, show_completed_tasks';
+const SETTINGS_COLUMNS = `${STABLE_SETTINGS_COLUMNS}, app_icon`;
+
+interface SettingsRow {
+  timezone?: string | null;
+  show_completed_tasks?: boolean | null;
+  app_icon?: string | null;
+}
+
+async function readSettings(userId: string, client: Client): Promise<SettingsRow | null> {
+  const read = (columns: string) =>
+    client.from('user_settings').select(columns).eq('user_id', userId).maybeSingle();
+  let result = await read(SETTINGS_COLUMNS);
+  if (result.error && isMissingColumnError(result.error)) result = await read(STABLE_SETTINGS_COLUMNS);
+  if (result.error) throw result.error;
+  return result.data as SettingsRow | null;
+}
+
+/** The web's rule (migration 056): an unknown slug is Aurora, null is unchosen. */
+function appIconFrom(value: string | null | undefined): AppIcon | null {
+  if (value == null) return null;
+  return isAppIcon(value) ? value : DEFAULT_APP_ICON;
+}
 
 /**
  * The per-table fallback for a database without load_planner (050), with the
@@ -160,12 +197,10 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, settingsResult] = await Promise.all([
+    const [data, settings] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
-      client.from('user_settings').select(SETTINGS_COLUMNS).eq('user_id', userId).maybeSingle(),
+      readSettings(userId, client),
     ]);
-    if (settingsResult.error) throw settingsResult.error;
-    const settings = settingsResult.data as { timezone?: string | null; show_completed_tasks?: boolean | null } | null;
 
     const payload: AppPlannerPayload = {
       v: 1,
@@ -175,6 +210,7 @@ export async function getPlanner(req: Request): Promise<Response> {
         timezone: settings?.timezone ?? null,
         // The web's default when the row or the column is missing.
         showCompletedTasks: settings?.show_completed_tasks ?? true,
+        appIcon: appIconFrom(settings?.app_icon),
       },
       items: data.items,
       projects: data.projects,

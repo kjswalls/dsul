@@ -20,8 +20,17 @@ struct AppGate: View {
             }
             // Back in front: a fetch, unless the last one is under a minute
             // old (PlannerSync). RootView moves `today` on the same change.
+            // The icon is asked again too, in case iOS refused it last time.
             .onChange(of: scenePhase) { _, phase in
-                if phase == .active { planner?.refreshIfStale() }
+                guard phase == .active else { return }
+                planner?.refreshIfStale()
+                AppIconSwitcher.shared.follow(planner?.settings.appIcon)
+            }
+            // The home-screen icon follows the App icon pick, which arrives
+            // with each fetch. Nil (the sample, or nothing loaded yet) leaves
+            // it alone.
+            .onChange(of: planner?.settings.appIcon) { _, pick in
+                AppIconSwitcher.shared.follow(pick)
             }
     }
 

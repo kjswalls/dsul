@@ -57,6 +57,7 @@ private struct RawItems: Decodable, Sendable {
         let p = try JSONDecoder().decode(PlannerPayload.self, from: data)
         let raw = try JSONDecoder().decode(RawItems.self, from: data)
         #expect(p.v == 1)
+        #expect(p.settings.appIcon == .lime)
         #expect(p.droppedItems == 0)
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
@@ -178,6 +179,24 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.droppedItems == 0)
         #expect(p.settings.timezone == nil)
         #expect(p.settings.showCompletedTasks)
+        // A server older than the field: the pick is unknown, not Aurora.
+        #expect(p.settings.appIcon == nil)
+    }
+
+    @Test func theAppIconPickIsReadLeniently() throws {
+        func icon(_ value: String) throws -> AppIcon? {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{"timezone":null,"appIcon":\(value)},
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).settings.appIcon
+        }
+        #expect(try icon(#""lime""#) == .lime)
+        #expect(try icon(#""aurora""#) == .aurora)
+        #expect(try icon("null") == nil)
+        #expect(try icon(#""sunset""#) == .aurora)
+        // A wrong type is dropped, like every other lenient field.
+        #expect(try icon("7") == nil)
     }
 
     @Test func containerMembersKeepOnlyUUIDs() throws {

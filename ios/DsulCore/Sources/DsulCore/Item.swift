@@ -297,27 +297,39 @@ public struct Season: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// The two `user_settings` columns Today reads. `timezone` is the stored value
+/// The `user_settings` columns the phone reads. `timezone` is the stored value
 /// untrimmed; the caller applies `timezone?.trim() || device`
 /// (components/supabase-provider.tsx, lib/planner-store.ts).
 public struct PlannerSettings: Codable, Sendable, Hashable {
     public var timezone: String?
     /// Defaults to true, as the web's store does when the row has none.
     public var showCompletedTasks: Bool
+    /// The App icon pick; nil when never chosen, or from a server older than
+    /// the field. An unknown slug reads as Aurora (`AppIcon(stored:)`).
+    public var appIcon: AppIcon?
 
-    public init(timezone: String? = nil, showCompletedTasks: Bool = true) {
+    public init(timezone: String? = nil, showCompletedTasks: Bool = true, appIcon: AppIcon? = nil) {
         self.timezone = timezone
         self.showCompletedTasks = showCompletedTasks
+        self.appIcon = appIcon
     }
 
     enum CodingKeys: String, CodingKey {
-        case timezone, showCompletedTasks
+        case timezone, showCompletedTasks, appIcon
     }
 
     public init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         self.timezone = c.lenientString(.timezone)
         self.showCompletedTasks = c.lenientBool(.showCompletedTasks) ?? true
+        self.appIcon = AppIcon(stored: c.lenientString(.appIcon))
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encodeIfPresent(timezone, forKey: .timezone)
+        try c.encode(showCompletedTasks, forKey: .showCompletedTasks)
+        try c.encodeIfPresent(appIcon?.rawValue, forKey: .appIcon)
     }
 }
 
