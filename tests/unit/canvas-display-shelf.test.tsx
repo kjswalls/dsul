@@ -64,6 +64,7 @@ import type { Goal } from '@/lib/planner-types';
 import { useEODStore } from '@/lib/eod-store';
 import { resetNoticeAnchors } from '@/lib/notice-anchors';
 import { enableGoalsAndOrganize } from './support/extensions';
+import { finishExit, recordResizeObservers, settle, watchLayoutReads } from './support/shelf';
 
 /** jsdom has no pointer capture, which Radix's menus ask for on the way open. */
 beforeAll(() => {
@@ -249,61 +250,6 @@ function expectNothingFadesLime(surface: Element) {
   }
 }
 
-/**
- * Every layout read made from here until `stop`, for a case to ask which of
- * them landed on the shelf: a box's size or place on either axis, its rects,
- * or its computed style. jsdom answers each one with 0 or an empty value, so a
- * shelf that measured would still render; the reads themselves are the
- * evidence. The braindump's suite watches the same reads.
- */
-function watchLayoutReads() {
-  const getters = [
-    vi.spyOn(Element.prototype, 'getBoundingClientRect'),
-    vi.spyOn(Element.prototype, 'getClientRects'),
-    vi.spyOn(Element.prototype, 'clientWidth', 'get'),
-    vi.spyOn(Element.prototype, 'clientHeight', 'get'),
-    vi.spyOn(Element.prototype, 'scrollWidth', 'get'),
-    vi.spyOn(Element.prototype, 'scrollHeight', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get'),
-  ];
-  // Called with the element rather than on it, so it is the argument that says where.
-  const styles = vi.spyOn(window, 'getComputedStyle');
-  return {
-    readsIn: (root: Element) =>
-      [...getters.flatMap((s) => s.mock.contexts as unknown[]), ...styles.mock.calls.map(([el]) => el)].filter(
-        (el) => el instanceof Element && root.contains(el)
-      ),
-    stop: () => [...getters, styles].forEach((s) => s.mockRestore()),
-  };
-}
-
-/**
- * Past anything a measure could be put off to: two frames, then a task. The
- * measured shelf compared its widths a frame after a resize, and measured
- * again once the fonts were in.
- */
-async function settle() {
-  await act(async () => {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
-
-/** Let a closing sheet go: jsdom plays no animation, and vaul's Presence waits for one. */
-async function finishExit() {
-  const menu = screen.getByTestId('display-menu');
-  await waitFor(() => expect(menu).toHaveAttribute('data-state', 'closed'));
-  const end = new Event('animationend');
-  Object.defineProperty(end, 'animationName', { value: getComputedStyle(menu).animationName });
-  act(() => {
-    menu.dispatchEvent(end);
-  });
-  await waitFor(() => expect(screen.queryByTestId('display-menu')).toBeNull());
-}
-
 beforeEach(() => seed());
 afterEach(() => {
   cleanup();
@@ -353,7 +299,15 @@ describe('the desktop mount, under the view pill', () => {
 
     // The capsule is sized by its content; without containment it would grow to
     // the paragraph's whole line and the paragraph would never wrap.
-    expect(shelf()).toHaveClass('contain-inline-size', 'px-4', 'pr-3.5', 'pt-1', 'pb-px');
+    expect(shelf()).toHaveClass('contain-inline-size', 'px-4', 'pt-1', 'pb-px');
+    // The Zen leaf's 0.875rem, so Reset lines up under it at any font size,
+    // unless that and the capsule's p-2 come to less than a fine pointer's ✕:
+    // 14px at any size, it hangs into both after a line-filling value, and a
+    // rem inset alone let it out past the capsule under a browser font size of
+    // about 10px.
+    expect(shelf()).toHaveClass('pr-[max(0.875rem,calc(14px-0.5rem))]');
+    expect(shelf()).not.toHaveClass('pr-3.5');
+    expect(capsule).toHaveClass('p-2');
     // One class to an assertion: a negated toHaveClass with several passes as
     // soon as any one of them is gone.
     expect(shelf()).not.toHaveClass('px-[15px]');
@@ -391,8 +345,14 @@ describe('the desktop mount, under the view pill', () => {
       // is its own setting's, and no other's. The target takes the pointer
       // itself, as the paragraph around it does not, or nothing ever hovers
       // it; and it is the box the ✕ is placed against, or every ✕ is placed
-      // against the paragraph instead of beside its own words.
-      expect(x.parentElement).toHaveClass('group/unit', 'relative', 'pointer-events-auto');
+      // against the paragraph instead of beside its own words. Under a coarse
+      // pointer, which never hovers, it lets a tap through to the opener.
+      expect(x.parentElement).toHaveClass(
+        'group/unit',
+        'relative',
+        'pointer-events-auto',
+        'pointer-coarse:pointer-events-none'
+      );
       expect(x.previousElementSibling).toHaveAttribute('data-chip-label');
       // At rest the paragraph is words alone. The ✕ is in the gap after its
       // words, out of flow, in clear ink and not there to hit: the gap is the
@@ -403,11 +363,13 @@ describe('the desktop mount, under the view pill', () => {
       expect(x).not.toHaveClass('pointer-events-auto');
       expect(x).not.toHaveClass('relative');
       // Its setting under the pointer, or keyboard focus on the ✕ itself,
-      // draws it and lets it take the click.
+      // draws it and lets it take the click; focus draws it as the pointer on
+      // the ✕ would, full ink on its plate.
       expect(x).toHaveClass(
         'group-hover/unit:text-muted-foreground',
         'group-hover/unit:pointer-events-auto',
-        'focus-visible:text-muted-foreground',
+        'focus-visible:text-foreground',
+        'focus-visible:bg-accent',
         'focus-visible:pointer-events-auto'
       );
       // A coarse pointer never hovers, so there the ✕ is the phone's: drawn,
@@ -428,25 +390,12 @@ describe('the desktop mount, under the view pill', () => {
   });
 
   it("measures nothing: no observer, no layout read, no font wait, no fit written behind React's back", async () => {
-    // jsdom has no ResizeObserver, and a shelf that guarded its own would make
-    // none here whatever it made in a browser, so one is put in that records
-    // every observer made and what each was asked to watch. Nor has it
+    // jsdom has no ResizeObserver, so one is put in that records every
+    // observer made and what each was asked to watch. Nor has it
     // document.fonts, which the measured shelf waited on before measuring
     // again, so one is put in that counts its reads.
-    const made: Element[][] = [];
-    class RecordingResizeObserver {
-      private readonly watched: Element[] = [];
-      constructor() {
-        made.push(this.watched);
-      }
-      observe(el: Element) {
-        this.watched.push(el);
-      }
-      unobserve() {}
-      disconnect() {}
-    }
-    const real = globalThis.ResizeObserver;
-    globalThis.ResizeObserver = RecordingResizeObserver as unknown as typeof ResizeObserver;
+    const observers = recordResizeObservers();
+    const made = observers.made;
     let fontReads = 0;
     Object.defineProperty(document, 'fonts', {
       configurable: true,
@@ -477,7 +426,7 @@ describe('the desktop mount, under the view pill', () => {
         // No observer past the capsule's own, none watching the shelf, no
         // layout read off anything in it, and no wait on a font.
         expect(made).toHaveLength(atRest.observers);
-        for (const watched of made) for (const el of watched) expect(shelf().contains(el)).toBe(false);
+        for (const { els } of made) for (const el of els) expect(shelf().contains(el)).toBe(false);
         expect(reads.readsIn(shelf())).toEqual([]);
         expect(fontReads).toBe(atRest.fontReads);
       } finally {
@@ -488,8 +437,7 @@ describe('the desktop mount, under the view pill', () => {
       expect(document.querySelector('[data-fit]')).toBeNull();
       expect(shelf().querySelector('[data-line], [data-shelf-probe], [data-shelf-sample]')).toBeNull();
     } finally {
-      if (real) globalThis.ResizeObserver = real;
-      else delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
+      observers.restore();
       delete (document as { fonts?: unknown }).fonts;
     }
   });
@@ -765,6 +713,23 @@ describe('the desktop mount, under the view pill', () => {
     // Not <body>: the capsule handed the shelf the menu's ref.
     expect(document.activeElement).toBe(trigger());
     expect(setWhenFocused).toBe('project');
+  });
+
+  // Every setting a phrase, and the one handed focus the last of them, which
+  // Reset ended until the fourth ✕ went: its ✕ stays mounted, and focused.
+  it('keeps the last phrase’s ✕ it hands focus to as Reset goes', () => {
+    seed(FOUR_ENDING_IN_A_PHRASE);
+    renderCapsule();
+    expect(resetButton()).toBeInTheDocument();
+    const handedTo = screen.getByRole('button', { name: 'Remove Hide finished' });
+    const type = screen.getByRole('button', { name: 'Remove Showing Tasks' });
+    type.focus();
+
+    fireEvent.click(type);
+
+    expect(queryReset()).toBeNull();
+    expect(handedTo.isConnected).toBe(true);
+    expect(document.activeElement).toBe(handedTo);
   });
 
   it.each([

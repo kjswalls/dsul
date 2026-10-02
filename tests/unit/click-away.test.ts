@@ -93,6 +93,16 @@ describe('subscribeClickAway', () => {
     expect(h).not.toHaveBeenCalled();
   });
 
+  it("ignores a click's follow-on, which lands wherever the first click left the page", () => {
+    const h = vi.fn();
+    off = subscribeClickAway(h);
+    press(el('empty'), { mods: { detail: 2 } });
+    press(el('empty'), { mods: { detail: 3 } });
+    expect(h).not.toHaveBeenCalled();
+    press(el('empty'), { mods: { detail: 1 } });
+    expect(h).toHaveBeenCalledTimes(1);
+  });
+
   it('lets a press that dismisses a popover do only that', () => {
     const h = vi.fn();
     off = subscribeClickAway(h);

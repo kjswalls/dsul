@@ -271,15 +271,20 @@ export function HeaderCapsule() {
           so without containment the capsule would grow to that line and the
           paragraph would never wrap — it needs its width from outside.
           Contained, the capsule keeps the width its two rows give it and the
-          shelf takes that. px-4 puts the text under the Layout icon, and
-          pr-3.5 puts Reset, at the end of its line, under the Zen leaf, which
-          the pill insets 14px (its px-1.5, then half of what w-8 leaves around
-          the 16px leaf); pt-1 and pb-px keep the braindump's 8px above and 9px
-          below. */}
+          shelf takes that. px-4 puts the text under the Layout icon, and a
+          0.875rem right inset puts Reset, at the end of its line, under the
+          Zen leaf, which the pill insets as much at any font size (its
+          px-1.5, then half of what w-8 leaves around the 1rem leaf). The ✕
+          that hangs past the last setting on a line is 14px at any size, and
+          hangs into that inset and the capsule's own p-2; under a browser
+          font size of about 10px the two together come to less, and the ✕
+          poked past the capsule's edge. So the inset is the larger of the
+          0.875rem and what makes up the 14px. pt-1 and pb-px keep the
+          braindump's 8px above and 9px below. */}
       <DisplayShelf
         surface="canvas"
         menu={displayRef}
-        className="contain-inline-size px-4 pr-3.5 pt-1 pb-px"
+        className="contain-inline-size px-4 pr-[max(0.875rem,calc(14px-0.5rem))] pt-1 pb-px"
       />
     </div>
   );

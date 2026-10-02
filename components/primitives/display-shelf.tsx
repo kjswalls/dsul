@@ -168,12 +168,19 @@ const MULTI_GAP = { fine: 'gap-x-[15px] pointer-coarse:gap-x-[10px]', touch: 'ga
 const SEAM = 'mr-[8px] shrink-0';
 /**
  * One removable thing — a phrase or a value — and the pointer's target for its
- * ✕. It takes the pointer, where the words of the old layout let it through to
- * the opener underneath, so it says what the opener did: the arrow, not a text
- * cursor, and no selection from a drag, a double-click or a long press.
+ * ✕. It says what the opener did: the arrow, not a text cursor, and no
+ * selection from a drag, a double-click or a long press.
  */
-const UNIT =
-  'group/unit pointer-events-auto relative inline-flex min-w-0 max-w-full cursor-default select-none items-center';
+const UNIT = 'group/unit relative inline-flex min-w-0 max-w-full cursor-default select-none items-center';
+/**
+ * A unit takes the pointer only where the pointer hovers, which it needs for
+ * its ✕. Where nothing hovers (the phone, and a coarse pointer on the desktop
+ * shell) its words let a tap through to the opener underneath, as all of them
+ * did before the paragraph, so a screen reader's touch exploration finds the
+ * shelf's button there, named by the whole summary, and not a span with no
+ * name. Each ✕ there takes its own (X_REACH).
+ */
+const UNIT_HIT = { fine: 'pointer-events-auto pointer-coarse:pointer-events-none', touch: '' };
 /** A unit's words: 1px of padding on a fine pointer, so its ✕ starts clear of the last glyph. */
 const WORDS_PAD = { fine: 'pr-px pointer-coarse:pr-0', touch: '' };
 /**
@@ -244,22 +251,24 @@ type Remove = (removal: DisplayRemoval, label: string) => React.ReactNode;
 /**
  * One setting as the shelf draws it. The words are aria-hidden: the opener
  * underneath says all of them as its name, so what a screen reader meets here
- * is the ✕s alone. Each phrase and value is a pointer target of its own (the
- * ✕ shows for the one under the pointer), and a click on its words opens the
- * menu, as a click on the opener does. `seam` sets it apart from the next
- * setting; `tail` is Reset, for the last one.
+ * is the ✕s alone. On a fine pointer each phrase and value is a pointer target
+ * of its own (the ✕ shows for the one under the pointer), and a click on its
+ * words opens the menu, as a click on the opener does. `seam` sets it apart
+ * from the next setting; `tail` is Reset, for the last one.
  */
 function Clause({
   clause: c,
   remove,
   open,
+  toOpener,
   touch,
   seam,
   tail,
 }: {
   clause: DisplayClause;
   remove: Remove;
-  open: () => void;
+  open: (e: React.MouseEvent) => void;
+  toOpener: () => void;
   touch: boolean;
   seam: boolean;
   tail?: React.ReactNode;
@@ -274,10 +283,27 @@ function Clause({
     x: React.ReactNode,
     glyphed = false
   ) => (
-    <span key={key} data-value={key} className={UNIT} onClick={open}>
+    <span key={key} data-value={key} className={cn(UNIT, UNIT_HIT[mode])}>
+      {/* The words take the click that opens the menu, not the unit around
+          them (on a fine pointer; elsewhere a tap on them is the opener's).
+          Aria-hidden, they keep the handler out of the accessibility tree,
+          where on the unit it listed every setting as a nameless clickable
+          stop over the opener; and a press on the ✕ let go over its own words
+          lands on the unit, the two's common ancestor, and opens nothing.
+          They take focus from the press, out of the Tab order, and hand it
+          straight on to the opener under them, so it ends where a press on
+          the opener leaves it. Untaken, it fell to <body>, and Chromium draws
+          whatever a script focuses from there: the menu, and the opener it
+          hands focus back to as it closes, wore a keyboard ring around the
+          whole paragraph after a mouse's click. Kept, it sat on an
+          aria-hidden node, which Chromium un-hides with a warning, and a key
+          drew a ring around one setting and did nothing. */}
       <span
         data-chip-label=""
         aria-hidden
+        tabIndex={-1}
+        onFocus={toOpener}
+        onClick={open}
         className={cn(
           glyphed ? 'inline-flex min-w-0 items-center gap-1' : 'min-w-0 truncate',
           WORDS_PAD[mode],
@@ -291,16 +317,21 @@ function Clause({
   );
   const slot = (kind: 'phrase' | 'filter') =>
     tail ? <span className={cn(RESET_SLOT, RESET_PAD[kind][mode])}>{tail}</span> : null;
-  /** The last phrase, held to Reset. */
-  const phrase = (node: React.ReactNode) =>
-    tail ? (
-      <span className={TAIL}>
-        {node}
-        {slot('phrase')}
-      </span>
-    ) : (
-      node
-    );
+  /**
+   * The last phrase, held to Reset. Every phrase has the span, `contents` (no
+   * box at all) where there is no Reset, so a phrase never changes parents as
+   * Reset comes and goes: a ✕ that takes the shelf from four to three would
+   * otherwise remount the last phrase's ✕ it had just handed focus to, and
+   * focus would fall to <body>. With no box, the unit stays the clause's own
+   * flex item, which its words' truncation needs: a box between the two
+   * would take the words' width and never let them shrink.
+   */
+  const phrase = (node: React.ReactNode) => (
+    <span className={tail ? TAIL : 'contents'}>
+      {node}
+      {slot('phrase')}
+    </span>
+  );
   const root = (base: string) => cn(base, seam && SEAM, tail && 'grow');
   switch (c.id) {
     case 'group':
@@ -348,14 +379,25 @@ function Clause({
 }
 
 /**
- * Focus, drawn INSIDE the control's own box, in the app's ring colour (the
- * base layer's outline-ring/50; only the shape changes): a 1.5px line. On a
- * ✕ it sits 2px in, so it clears the words 1px to its left and the next
- * value's glyph 1px to its right by 3px each; Reset has room around it, so
- * its line runs on its own edge.
+ * Keyboard focus on a ✕ or Reset: the look the pointer on it gives, full ink
+ * on its plate, and a line around it. The look carries focus on its own in
+ * every theme (the glyph goes from the muted ink to the foreground's); the
+ * line is the theme's accent, which the light themes' grounds barely part
+ * from (Paper's lime is 1.3:1 on the shelf's ground), so it never carries it
+ * alone.
+ *
+ * The line is drawn INSIDE the control's own box, at the accent's full
+ * strength, as the Organize console draws its own (the base layer's
+ * outline-ring/50 halves it, and a theme's accent never dims): 2px, the
+ * thinnest Chromium draws as written (it floors an outline's width to whole
+ * pixels, so a 1.5px one came out 1px). On a ✕ it runs 1px in from the edge,
+ * so it clears the words 1px to its left and the next value's glyph 1px to
+ * its right by 2px each, and the ✕'s own strokes by a pixel; Reset has room
+ * around it, so its line runs along its own edge.
  */
-const FOCUS_RING = 'focus-visible:outline-solid focus-visible:outline-[1.5px]';
-const FOCUS_IN = { x: 'focus-visible:outline-offset-[-2px]', reset: 'focus-visible:outline-offset-[-1.5px]' };
+const FOCUS_LOOK = 'focus-visible:bg-accent focus-visible:text-foreground';
+const FOCUS_RING = 'focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring';
+const FOCUS_IN = { x: 'focus-visible:outline-offset-[-3px]', reset: 'focus-visible:outline-offset-[-2px]' };
 
 /** A ✕ or Reset's 28px reach where nothing hovers, around a box of its own. */
 const X_REACH = {
@@ -395,12 +437,40 @@ function ShelfBody({
   openerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   // The hook DisplayMenu picks its shell with, so the popup this announces is
-  // the one that opens. `touch` is the mount's, and only shapes targets.
+  // the one that opens. `touch` is the mount's: it shapes the shelf's own
+  // layout, targets and tips, never which popup opens.
   const isTouch = useIsMobile();
   const descId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
   const text = clauses.map(clauseText).join('; ');
-  const open = () => menu.current?.open(openerRef);
+  /**
+   * A click's follow-ons, a double-click's second, open nothing: they land
+   * wherever the first left the paragraph, which after a ✕ took its setting
+   * off is the next setting's words, the opener, another ✕ or Reset (which
+   * take nothing off for one either), or, when it took that line away, the
+   * page below the shelf. A key's click counts 0.
+   */
+  const open = (e: React.MouseEvent) => {
+    if (e.detail > 1) return;
+    menu.current?.open(openerRef);
+  };
+  /**
+   * Focus to the opener, without scrolling: where a mouse's press on a
+   * setting's words or click on a ✕ leaves it. The browser draws none of that
+   * focus, and on the opener the next key only opens the menu.
+   */
+  const toOpener = () => openerRef.current?.focus({ preventScroll: true });
+  /**
+   * A HELD Enter or Space presses nothing more, here as on the trigger. On a
+   * ✕ a held Enter would clear the whole shelf: each press hands focus to the
+   * next ✕, and the key's autorepeat presses that one too. On the opener, a
+   * pick made with a held key closes the menu and hands focus back while the
+   * key is still down, and the repeats would open the menu again (Space as it
+   * comes up) and walk on into its rows.
+   */
+  const ignoreHeldKey = (e: React.KeyboardEvent) => {
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault();
+  };
   const mode = touch ? 'touch' : 'fine';
 
   /**
@@ -419,14 +489,31 @@ function ShelfBody({
     );
 
   /**
+   * Whether a click on a ✕ walks focus on to the next ✕, as a key's press
+   * does: where nothing hovers (the phone mount, a coarse pointer), since a
+   * TalkBack or VoiceOver double-tap there can arrive as a click of 1. Forced
+   * colours draw every ✕ at rest, but no more of the focus a mouse leaves on
+   * one than anywhere else, so there a click hands it to the opener too.
+   */
+  const clickWalksOn = () => touch || !!window.matchMedia?.('(pointer: coarse)').matches;
+
+  /**
    * One setting's ✕. Its own setting is all it takes off, so its button
    * unmounts under the press, and focus is handed on FIRST, as Reset's is: to
-   * the next setting's ✕, or the one before it when this was the last, or to
-   * the trigger when nothing else is left and the shelf is about to go. Never
-   * to Reset, which goes once fewer than four things are left to take off.
-   * Every other setting's ✕ survives the removal — the model takes off exactly
-   * the one value named (display-summary.test.ts holds it to that over every
-   * combination) and each ✕ is keyed by what it names.
+   * the next setting's ✕, or the one before it when this was the last, so the
+   * keyboard can walk on taking things off; to the trigger when nothing else
+   * is left and the shelf is about to go; never to Reset, which goes once
+   * fewer than four things are left to take off. But after a mouse's click,
+   * to the opener instead, without scrolling: the browser draws no focus a
+   * click leaves, so the next ✕ would hold it unseen, and the next Space would
+   * take its setting off too, where on the opener it only opens the menu. A
+   * key's press counts 0 clicks, and so does a screen reader's on the desktop;
+   * where nothing hovers a screen reader's double-tap can count 1, so a click
+   * there walks on (clickWalksOn). Every other setting's ✕ survives the
+   * removal: the model takes off exactly the one value named
+   * (display-summary.test.ts holds it to that over every combination), each
+   * ✕ is keyed by what it names, and no wrapper comes or goes around one (see
+   * `phrase` in Clause).
    */
   const removeButton = (removal: DisplayRemoval, label: string) => (
     <button
@@ -434,26 +521,30 @@ function ShelfBody({
       data-shelf-remove=""
       data-testid={`display-shelf-remove-${surface}`}
       aria-label={label}
-      // A HELD Enter would otherwise clear the whole shelf: each press hands
-      // focus to the next ✕, and the key's autorepeat presses that one too.
-      // Space activates on release, so it cannot repeat.
-      onKeyDown={(e) => {
-        if (e.repeat && e.key === 'Enter') e.preventDefault();
-      }}
+      onKeyDown={ignoreHeldKey}
       onClick={(e) => {
-        // Its setting's words open the menu; the ✕ must not.
-        e.stopPropagation();
+        // A follow-on, a double-click's or a double-tap's second, takes nothing
+        // more off: the first moved this ✕ under the pointer. Its press gave
+        // this ✕ the mouse's focus, undrawn, so on a pointer that goes back to
+        // the opener, as after the first click; where clicks walk on, it stays
+        // on the ✕ the tap found.
+        if (e.detail > 1) {
+          if (!clickWalksOn()) toOpener();
+          return;
+        }
         const all = Array.from(
           rootRef.current?.querySelectorAll<HTMLButtonElement>('[data-shelf-remove]') ?? []
         );
         const i = all.indexOf(e.currentTarget);
         const next = all[i + 1] ?? all[i - 1];
-        if (next) next.focus();
-        else menu.current?.focus();
+        if (!next) menu.current?.focus();
+        else if (e.detail === 0 || clickWalksOn()) next.focus();
+        else toOpener();
         removeDisplaySetting(surface, removal);
       }}
       className={cn(
         'grid h-[18px] w-[14px] shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
+        FOCUS_LOOK,
         FOCUS_RING,
         FOCUS_IN.x,
         touch
@@ -468,17 +559,18 @@ function ShelfBody({
             // the ✕ keeps both lit with no dead ground to cross. The 1px keeps
             // the hit boundary off the last glyph (Chromium snaps a fractional
             // edge up to half a pixel in), so a click on a name's last pixel
-            // opens the menu. Keyboard focus reaches it regardless and draws it
-            // (and a drawn ✕ takes a click); under the pointer as well, it takes
-            // the full ink a plain hover gives (hover:focus-visible: outranks the
-            // focus rule, which would otherwise keep it muted). Forced colours
-            // (Windows High Contrast) paint clear ink in a system colour, so
-            // there every ✕ is drawn at rest, and takes its hit at rest too: ink
-            // and hits always come back together. Under a coarse pointer, which
-            // never hovers, it is the phone's ✕ instead: in flow, drawn, with
-            // reach.
+            // opens the menu. Keyboard focus reaches it regardless and draws it,
+            // as the pointer on it would (FOCUS_LOOK), and a drawn ✕ takes a
+            // click. Forced colours (Windows High Contrast) paint clear ink in
+            // a system colour, so there every ✕ is drawn at rest, and takes its
+            // hit at rest too: ink and hits always come back together. Its
+            // corners are rounded and Chromium hit-tests the rounding, so a
+            // square box of its own (after:) takes the corners, or a sweep
+            // along a line's top or bottom row from the words passed through
+            // ground that was neither's. Under a coarse pointer, which never
+            // hovers, it is the phone's ✕ instead: in flow, drawn, with reach.
             cn(
-              'pointer-events-none absolute left-full top-0 text-transparent group-hover/unit:pointer-events-auto group-hover/unit:text-muted-foreground focus-visible:pointer-events-auto focus-visible:text-muted-foreground hover:focus-visible:text-foreground forced-colors:pointer-events-auto',
+              "pointer-events-none absolute left-full top-0 text-transparent group-hover/unit:pointer-events-auto group-hover/unit:text-muted-foreground focus-visible:pointer-events-auto forced-colors:pointer-events-auto after:absolute after:inset-0 after:content-['']",
               X_REACH.coarse
             )
       )}
@@ -508,7 +600,14 @@ function ShelfBody({
             data-testid={`display-shelf-reset-${surface}`}
             aria-label="Reset display"
             onClick={(e) => {
-              e.stopPropagation();
+              // A follow-on resets nothing: a ✕'s click can re-wrap Reset under
+              // the pointer (the 280px braindump), and a double-click's second
+              // press would take every setting off. As on a ✕, its press's
+              // focus goes back to the opener on a pointer.
+              if (e.detail > 1) {
+                if (!clickWalksOn()) toOpener();
+                return;
+              }
               // Focus to the trigger FIRST: a reset takes the count to zero, so
               // the shelf unmounts under the pressed button.
               menu.current?.focus();
@@ -516,6 +615,7 @@ function ShelfBody({
             }}
             className={cn(
               'pointer-events-auto grid h-[18px] w-[16px] shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
+              FOCUS_LOOK,
               FOCUS_RING,
               FOCUS_IN.reset,
               touch ? RESET_REACH.touch : RESET_REACH.coarse
@@ -533,12 +633,17 @@ function ShelfBody({
       ref={rootRef}
       data-testid={`display-shelf-${surface}`}
       className={cn(
-        'relative flex items-start px-[15px] pb-[3px] pt-2 text-[11px] font-medium leading-[18px] text-secondary-foreground',
+        'flex items-start px-[15px] pb-[3px] pt-2 text-[11px] font-medium leading-[18px] text-secondary-foreground',
         className
       )}
       style={floor === undefined ? undefined : { minWidth: floor }}
     >
-      <div className="relative flex min-w-0 flex-1">
+      {/* The opener's ground, words and all, is no empty space to the
+          desktop's click-away (lib/click-away.ts). The words are no control,
+          so a click that opened the menu from them also let go of the item
+          selection and closed the docked item panel, which a click on the
+          opener keeps. */}
+      <div data-click-away-ignore="" className="relative flex min-w-0 flex-1">
         {/* The opener, UNDER the words rather than around them: a button
             cannot hold the ✕ buttons, so it covers the paragraph's box from
             behind, and takes the clicks that land between the words (a click
@@ -558,6 +663,7 @@ function ShelfBody({
           // handle picks the shell. Handing over the ref brings focus back here
           // on close, while this text is still on screen to take it.
           ref={openerRef}
+          onKeyDown={ignoreHeldKey}
           onClick={open}
           className={cn(
             'absolute inset-0 rounded-[4px]',
@@ -568,7 +674,8 @@ function ShelfBody({
         </button>
         {/* The words, over the opener: `relative` so they paint above it, and
             pointer-events-none so a click in the gaps between the settings
-            still lands on it; each setting takes its own pointer (UNIT). */}
+            still lands on it; on a fine pointer each setting takes its own
+            (UNIT_HIT). */}
         <span data-shelf-lines="" className={cn(FLOW, FLOW_GAP[mode])}>
           {clauses.map((c, i) => (
             <Clause
@@ -576,6 +683,7 @@ function ShelfBody({
               clause={c}
               remove={remove}
               open={open}
+              toOpener={toOpener}
               touch={touch}
               seam={i < lastIndex && (isFilter(c) || isFilter(clauses[i + 1]))}
               tail={i === lastIndex ? reset : undefined}

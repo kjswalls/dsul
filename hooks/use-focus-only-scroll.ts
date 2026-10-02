@@ -22,22 +22,26 @@ import { useEffect, type RefObject } from 'react';
  * scrolls, so the same Tab lands on a control nobody can see, one of them the
  * shelf's Reset, which clears every canvas Display setting.
  *
- * So a frame after focus moves anywhere, a key goes down in the box, the box
- * scrolls or resizes, or what the focused control paints starts or stops
- * showing whole or at all, give or take a pixel at the box's edges, the box is
- * placed for whatever has focus: at rest if it shows there, unless it holds
- * (below), and otherwise moved only when it has to be, because Radix closes a
- * tooltip on any scroll around its trigger, and a tooltip is the only name Zen
- * and the shelf's ✕s show. One out of sight, or showing a pixel or less, comes
- * in to the least slide that shows it whole. So does whatever has focus when
- * the box's width changes (the item panel docks a frame at a time), and a
- * control the layout moves (the shelf refitting, a view switched under it) once
- * the move leaves it cut. Otherwise one that shows, whole or cut part-way,
- * keeps the slide the hook last made, as the browser would leave it, and the
- * tooltip focus opened stays up, unless the slide was made for a layout that is
- * gone and cuts it by more than a pixel (below). A slide the hook did not make
- * comes back as far as that least one: the browser centres what it reveals (Zen
- * slid Week 212px at 1240, where 47 shows it).
+ * So a frame after focus moves anywhere, a key goes down in the box (other than
+ * a modifier on its own), the box scrolls or resizes, or what the focused
+ * control paints starts or stops showing whole or at all, give or take a pixel
+ * at the box's edges, the box is placed for whatever has focus: at rest if it
+ * shows there, unless it holds (below), and otherwise moved only when it has to
+ * be, because Radix closes a tooltip on any scroll around its trigger, and a
+ * tooltip is the only name Zen and the shelf's ✕s show. One out of sight, or
+ * showing a pixel or less, comes in to the least slide that shows it whole. So
+ * does whatever has focus when the box's width changes (the item panel docks a
+ * frame at a time), and a control the layout moves after a pass has placed the
+ * box for it (a setting taken on or off the shelf, a view switched under it)
+ * once the move leaves it cut. Focus that arrives as the layout moves what it
+ * arrives on (Enter on a ✕ hands focus to the next one, then the paragraph
+ * re-wraps) is focus coming to where the move leaves it. Otherwise one that
+ * shows, whole or cut part-way, keeps the slide the hook last made, as the
+ * browser would leave it, and the tooltip focus opened stays up, unless the
+ * slide was made for a layout that is gone and cuts it by more than a pixel
+ * (below). A slide the hook did not make comes back as far as that least one:
+ * the browser centres what it reveals (Zen slid Week 212px at 1240, where 47
+ * shows it).
  *
  * A key moving focus along the row the box slid for keeps the slide too, for a
  * control that shows whole there, even where it would show at rest, for as long
@@ -88,6 +92,25 @@ import { useEffect, type RefObject } from 'react';
  * keeps the slide, cut part-way, as the browser would leave it: the shelf's
  * text, cut at its start alone, keeps it while a setting added or taken off
  * moves its end within view.
+ *
+ * Focus a click in the box hands on to another control, which the browser
+ * does not draw as focused (it matches no :focus-visible), moves nothing: the
+ * box goes back to where the hook last left it, undoing any scroll the browser
+ * made to show what it focused. A Display shelf ✕ or its Reset hands focus on
+ * as what it takes off goes: to the next ✕, to the shelf's own text, or with
+ * the last of it to the Display trigger, any of which can sit past the edge
+ * with the item panel docked: showing it slid the canvas under the pointer,
+ * and the next click landed on something else. A setting's words hand a
+ * press's focus on to that text too. A key draws it, and places it by the
+ * rules above; one that opens a menu from it (Enter, Space, ↓) places it
+ * before the menu opens, so the Display trigger's menu is drawn beside the
+ * trigger, not against one past the edge. The shelf's text opens the same
+ * menu, drawn against the trigger wherever it sits, as after a click on the
+ * text's words. A modifier on its own is not heard, though Chromium draws
+ * focus on a lone Shift: it is the first half of a Shift-click, and placing
+ * what it drew slid the canvas just as that click came down. Focus a menu
+ * hands back after a pick is not handed on in this sense (the press was
+ * outside the box), nor is focus a click leaves on what it pressed.
  *
  * Four more holds, whatever has focus. While a pointer is down nothing moves: a
  * press moves focus, and sliding the box before the release moves what was
@@ -142,96 +165,120 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     // else made and the hook left, short of the least slide).
     let along = false;
     let row: Element | null = null;
-    // Whether a pointer went down or came up since the last key went down in
-    // the box.
+    // Whether a pointer went down or came up since the last key other than a
+    // modifier on its own went down in the box.
     let clicked = false;
+    // What the last press landed on, where that was in the box.
+    let pressedAt: Node | null = null;
+    // The control the last pass left the box where it was for, undrawn
+    // (`handed`).
+    let handedTo: Element | null = null;
     const down = new Set<number>();
+    // One pass: place the box for whatever has focus. `keyed` is a key going
+    // down on that control now, which draws it.
+    const pass = (keyed: boolean) => {
+      handedTo = null;
+      const focused = document.activeElement;
+      const inside = focused && box.contains(focused) ? focused : null;
+      watch(inside);
+      // Focus that comes back from a layer, or from nothing, to another
+      // control comes along no row; back to the control it left, it finds
+      // what that control had, as a hold does.
+      if (!inside) row = null;
+      if (down.size > 0) return;
+      // <main> itself goes inert under the overlaid item panel; an ancestor
+      // only while Zen's switch lifts the planner away.
+      if (box.parentElement?.closest('[inert]')) return;
+      if (box.scrollLeft === 0 && box.scrollWidth <= box.clientWidth) {
+        // No slide to keep: what was noted for the last one, and any hold on
+        // it, is stale by the time the row overflows again.
+        width = box.clientWidth;
+        made = null;
+        held = false;
+        return;
+      }
+      let x = 0;
+      let span: Span | null = null;
+      let at: Element | null = null;
+      if (inside) {
+        span = measure(box, inside);
+        if (span) {
+          at = rowOf(box, inside);
+          const widthChanged = box.clientWidth !== width;
+          const shifted = last?.el === inside && !same(last, span);
+          const moved = box.scrollLeft !== placed;
+          const shown = whole(span, box.scrollLeft, box.clientWidth);
+          // A button a click moves is placed afresh (a slider thumb is not
+          // one, and holds).
+          const pressed = clicked && inside instanceof HTMLButtonElement;
+          // Focus a click in the box handed on to another control, undrawn,
+          // whether just now or still: the box stays where the hook left it.
+          const handed =
+            !keyed &&
+            pressedAt !== null &&
+            (clicked || last?.el === inside) &&
+            !inside.contains(pressedAt) &&
+            !inside.matches(':focus-visible');
+          handedTo = handed ? inside : null;
+          // Focus moving on finds a slide made for a layout that is gone when
+          // it was held for the control focus left, or placed while a control
+          // wider than the box had focus, or when the layout has moved an
+          // edge of the control focus came to that the slide cuts, or added
+          // the control to the row, since the slide was made.
+          const was = made?.sat.get(inside);
+          const elsewhere = was
+            ? !cutAlike(was, span, box.scrollLeft, box.clientWidth)
+            : made !== null && made.row === at;
+          const gone =
+            last !== null && last.el !== inside && (held || (made !== null && made.wide) || elsewhere);
+          if (last?.el !== inside) {
+            held = false;
+            // `last !== null` only matters for a focused box, whose row is null.
+            along = !clicked && last !== null && at === row;
+          }
+          if (shifted) {
+            held = shown && !pressed;
+            along = false;
+          }
+          along = along && shown && !widthChanged && !moved;
+          const holds = held && shown && !widthChanged && !moved;
+          // A slide made for a layout that is gone stays for a control it cuts
+          // by a pixel or less, which the observer, its root a pixel wider on
+          // each side, counts as whole: placing it afresh would move the box
+          // at least a pixel and close the tooltip focus opens on it.
+          const near = whole(span, box.scrollLeft - 0.5, box.clientWidth + 1);
+          const how = widthChanged || shifted || (gone && !near) ? 'fresh' : moved ? 'moved' : 'kept';
+          x = handed
+            ? placed
+            : holds || along
+              ? box.scrollLeft
+              : place(span, box.scrollLeft, box.clientWidth, how);
+          // A slide made here, for this control: note where its row sits.
+          // (A slide kept along the row is `kept` at the same slide.)
+          if (!handed && x !== 0 && !holds && (how !== 'kept' || x !== box.scrollLeft)) {
+            made = { row: at, sat: controls(box, at), wide: span.to - span.from > box.clientWidth };
+          }
+        }
+      } else if (focused && focused !== document.body && !box.parentElement?.contains(focused)) {
+        return;
+      }
+      if (x === 0) made = null;
+      if (box.scrollLeft !== x) box.scrollLeft = x;
+      placed = box.scrollLeft;
+      width = box.clientWidth;
+      last = span;
+      row = at;
+    };
     const settle = () => {
       cancelAnimationFrame(frame);
       frame = requestAnimationFrame(() => {
         frame = 0;
-        const focused = document.activeElement;
-        const inside = focused && box.contains(focused) ? focused : null;
-        watch(inside);
-        // Focus that comes back from a layer, or from nothing, to another
-        // control comes along no row; back to the control it left, it finds
-        // what that control had, as a hold does.
-        if (!inside) row = null;
-        if (down.size > 0) return;
-        // <main> itself goes inert under the overlaid item panel; an ancestor
-        // only while Zen's switch lifts the planner away.
-        if (box.parentElement?.closest('[inert]')) return;
-        if (box.scrollLeft === 0 && box.scrollWidth <= box.clientWidth) {
-          // No slide to keep: what was noted for the last one, and any hold on
-          // it, is stale by the time the row overflows again.
-          width = box.clientWidth;
-          made = null;
-          held = false;
-          return;
-        }
-        let x = 0;
-        let span: Span | null = null;
-        let at: Element | null = null;
-        if (inside) {
-          span = measure(box, inside);
-          if (span) {
-            at = rowOf(box, inside);
-            const widthChanged = box.clientWidth !== width;
-            const shifted = last?.el === inside && !same(last, span);
-            const moved = box.scrollLeft !== placed;
-            const shown = whole(span, box.scrollLeft, box.clientWidth);
-            // A button a click moves is placed afresh (a slider thumb is not
-            // one, and holds).
-            const pressed = clicked && inside instanceof HTMLButtonElement;
-            // Focus moving on finds a slide made for a layout that is gone when
-            // it was held for the control focus left, or placed while a control
-            // wider than the box had focus, or when the layout has moved an
-            // edge of the control focus came to that the slide cuts, or added
-            // the control to the row, since the slide was made.
-            const was = made?.sat.get(inside);
-            const elsewhere = was
-              ? !cutAlike(was, span, box.scrollLeft, box.clientWidth)
-              : made !== null && made.row === at;
-            const gone =
-              last !== null && last.el !== inside && (held || (made !== null && made.wide) || elsewhere);
-            if (last?.el !== inside) {
-              held = false;
-              // `last !== null` only matters for a focused box, whose row is null.
-              along = !clicked && last !== null && at === row;
-            }
-            if (shifted) {
-              held = shown && !pressed;
-              along = false;
-            }
-            along = along && shown && !widthChanged && !moved;
-            const holds = held && shown && !widthChanged && !moved;
-            // A slide made for a layout that is gone stays for a control it cuts
-            // by a pixel or less, which the observer, its root a pixel wider on
-            // each side, counts as whole: placing it afresh would move the box
-            // at least a pixel and close the tooltip focus opens on it.
-            const near = whole(span, box.scrollLeft - 0.5, box.clientWidth + 1);
-            const how = widthChanged || shifted || (gone && !near) ? 'fresh' : moved ? 'moved' : 'kept';
-            x = holds || along ? box.scrollLeft : place(span, box.scrollLeft, box.clientWidth, how);
-            // A slide made here, for this control: note where its row sits.
-            // (A slide kept along the row is `kept` at the same slide.)
-            if (x !== 0 && !holds && (how !== 'kept' || x !== box.scrollLeft)) {
-              made = { row: at, sat: controls(box, at), wide: span.to - span.from > box.clientWidth };
-            }
-          }
-        } else if (focused && focused !== document.body && !box.parentElement?.contains(focused)) {
-          return;
-        }
-        if (x === 0) made = null;
-        if (box.scrollLeft !== x) box.scrollLeft = x;
-        placed = box.scrollLeft;
-        width = box.clientWidth;
-        last = span;
-        row = at;
+        pass(false);
       });
     };
-    // Something can move the focused control with no event of its own: the
-    // shelf refitting a frame after the box resized, a view switched from a
-    // store, a season line appearing ahead of the review notice. So the
+    // Something can move the focused control with no event of its own: a
+    // view switched from a store, a setting taken on or off the shelf from
+    // one, a season line appearing ahead of the review notice. So the
     // observer watches the control and its children, which a control squeezed
     // below its content paints past its box (measure()), and hears any of them
     // start or stop showing whole, or at all. Its root reaches a pixel past the
@@ -262,15 +309,41 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
     const press = (e: PointerEvent) => {
       down.add(e.pointerId);
       clicked = true;
+      pressedAt = e.target instanceof Node && box.contains(e.target) ? e.target : null;
     };
     const release = (e: PointerEvent) => {
       down.delete(e.pointerId);
       clicked = true;
       settle();
     };
-    const key = () => {
+    const key = (e: KeyboardEvent) => {
+      // A modifier on its own is the first half of a chord or of a
+      // Shift-click, and moves nothing. Chromium draws focus on a lone Shift
+      // or Caps Lock, and placing a control a click left undrawn for it slid
+      // the box under the pointer as the Shift-click came down.
+      if (MODIFIERS.has(e.key)) return;
       clicked = false;
-      settle();
+      // A key that opens a menu from the control a click left undrawn places
+      // it now, before the key reaches it: the next pass would find focus in
+      // the menu and stand down. That keeps the Display trigger's menu (the
+      // trigger takes focus from the last ✕ and from Reset) from opening
+      // against a trigger past the edge. The shelf's text opens the same menu,
+      // drawn against the trigger wherever it sits, which placing the text
+      // does not move, as after a click on its words. Only a control that
+      // opens one: on a ✕ the same key hands focus on, and placing the ✕ first
+      // would slide the box for a control about to go.
+      if (
+        OPENS.has(e.key) &&
+        handedTo !== null &&
+        document.activeElement === handedTo &&
+        handedTo.hasAttribute('aria-haspopup')
+      ) {
+        cancelAnimationFrame(frame);
+        frame = 0;
+        pass(true);
+      } else {
+        settle();
+      }
     };
     // A release can go unheard: outside the window, or taken by a native
     // context menu, which opens on the press on macOS and Linux. Losing the
@@ -309,6 +382,11 @@ export function useFocusOnlyScroll(ref: RefObject<HTMLElement | null>) {
 
 /** A focused element's span in the box at rest, from the box's inner left edge. */
 type Span = { el: Element; from: number; to: number };
+
+/** Keys that only modify another: on their own, the hook does not hear them. */
+const MODIFIERS = new Set(['Shift', 'Control', 'Alt', 'AltGraph', 'Meta', 'CapsLock']);
+/** Keys a menu button opens on: Radix's dropdown trigger takes all three, a button's click the first two. */
+const OPENS = new Set(['Enter', ' ', 'ArrowDown']);
 
 const CLIPS = /^(hidden|clip|auto|scroll)$/;
 

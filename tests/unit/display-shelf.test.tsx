@@ -96,35 +96,19 @@ import { NO_CONTAINER } from '@/lib/container-registry';
 import { EXT_GOALS } from '@/lib/extension-registry';
 import { clauseText, useDisplaySummary } from '@/lib/display-summary';
 import { SIDEBAR_MIN_WIDTH } from '@/lib/sidebar-store';
+import { CLICK_AWAY_SCOPE_ATTR, isClickAwayTarget } from '@/lib/click-away';
 import type { Goal } from '@/lib/planner-types';
 import { disableExtensions, enableGoalsAndOrganize } from './support/extensions';
+import { finishExit, recordResizeObservers, settle, watchLayoutReads } from './support/shelf';
 
 /**
- * A ResizeObserver that records what each instance was handed. The shelf
- * measures nothing, so it builds none — but dnd-kit builds observers of its own
- * around the braindump, so the case that says so counts them before the shelf
- * mounts and after, and looks at what every one of them watches.
+ * A ResizeObserver that records what each instance was handed, in for the
+ * whole file. The shelf measures nothing, so it builds none — but dnd-kit
+ * builds observers of its own around the braindump, so the case that says so
+ * counts them before the shelf mounts and after, and looks at what every one of
+ * them watches.
  */
-type Observation = { cb: ResizeObserverCallback; els: Element[] };
-const observations: Observation[] = [];
-class RecordingResizeObserver {
-  private readonly rec: Observation;
-  constructor(cb: ResizeObserverCallback) {
-    this.rec = { cb, els: [] };
-    observations.push(this.rec);
-  }
-  observe(el: Element) {
-    this.rec.els.push(el);
-  }
-  unobserve(el: Element) {
-    this.rec.els = this.rec.els.filter((e) => e !== el);
-  }
-  disconnect() {
-    this.rec.els = [];
-  }
-}
-
-const realResizeObserver = globalThis.ResizeObserver;
+let observers: ReturnType<typeof recordResizeObservers>;
 
 /**
  * Radix's menus open on pointerdown and ask for pointer capture on the way.
@@ -141,15 +125,12 @@ beforeAll(() => {
     Element.prototype.releasePointerCapture = () => {};
   }
   if (!Element.prototype.scrollIntoView) Element.prototype.scrollIntoView = () => {};
-  globalThis.ResizeObserver = RecordingResizeObserver as unknown as typeof ResizeObserver;
+  observers = recordResizeObservers();
 });
 
 // The recording observer is this file's own, so whatever it replaced goes back
 // (nothing, in jsdom). The guarded shims above only ever fill a gap.
-afterAll(() => {
-  if (realResizeObserver) globalThis.ResizeObserver = realResizeObserver;
-  else delete (globalThis as { ResizeObserver?: unknown }).ResizeObserver;
-});
+afterAll(() => observers.restore());
 
 const GOALS = [
   { id: 'g1', name: 'Learn Chinese', state: 'active', memberIds: [], milestoneIds: [], checkinIds: [] },
@@ -300,71 +281,11 @@ const clippersAbove = (el: Element) => {
   return found;
 };
 
-/**
- * Let a closing menu go. jsdom plays no animation, so where a stylesheet gives
- * the closed content one (vaul's own does, for the sheet), Radix's Presence
- * holds it mounted until an `animationend` naming it arrives. The focus return
- * rides that unmount, a tick after it.
- */
-async function finishExit() {
-  const menu = screen.getByTestId('display-menu');
-  await waitFor(() => expect(menu).toHaveAttribute('data-state', 'closed'));
-  const end = new Event('animationend');
-  Object.defineProperty(end, 'animationName', { value: getComputedStyle(menu).animationName });
-  act(() => {
-    menu.dispatchEvent(end);
-  });
-  await waitFor(() => expect(screen.queryByTestId('display-menu')).toBeNull());
-}
-
-/**
- * Every layout read made from here until `stop`, for a case to ask which of
- * them landed on the shelf: a box's size or place on either axis, its rects,
- * or its computed style. jsdom answers each one with 0 or an empty value, so a
- * shelf that measured would still render; the reads themselves are the
- * evidence.
- */
-function watchLayoutReads() {
-  const getters = [
-    vi.spyOn(Element.prototype, 'getBoundingClientRect'),
-    vi.spyOn(Element.prototype, 'getClientRects'),
-    vi.spyOn(Element.prototype, 'clientWidth', 'get'),
-    vi.spyOn(Element.prototype, 'clientHeight', 'get'),
-    vi.spyOn(Element.prototype, 'scrollWidth', 'get'),
-    vi.spyOn(Element.prototype, 'scrollHeight', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get'),
-    vi.spyOn(HTMLElement.prototype, 'offsetLeft', 'get'),
-  ];
-  // Called with the element rather than on it, so it is the argument that says where.
-  const styles = vi.spyOn(window, 'getComputedStyle');
-  return {
-    readsIn: (root: Element) =>
-      [...getters.flatMap((s) => s.mock.contexts as unknown[]), ...styles.mock.calls.map(([el]) => el)].filter(
-        (el) => el instanceof Element && root.contains(el)
-      ),
-    stop: () => [...getters, styles].forEach((s) => s.mockRestore()),
-  };
-}
-
-/**
- * Past anything a measure could be put off to: two frames, then a task. The
- * old shelf compared its widths a frame after a resize, and measured again
- * once the fonts were in.
- */
-async function settle() {
-  await act(async () => {
-    await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-  });
-}
-
 beforeEach(() => seed());
 afterEach(() => {
   cleanup();
   touch.current = false;
-  observations.length = 0;
+  observers.made.length = 0;
   delete (document as { fonts?: unknown }).fonts;
 });
 
@@ -623,7 +544,7 @@ describe('Reset display, at the end of the paragraph', () => {
     expect(setWhenFocused).toBe('project');
     // And opens nothing. That holds by where Reset sits, outside every unit
     // (the placement cases pin it), so its click has no words' handler to
-    // bubble into; its own stopPropagation is not what this observes.
+    // bubble into.
     expect(screen.queryByTestId('display-menu')).toBeNull();
     expect(trigger()).toHaveAttribute('aria-expanded', 'false');
   });
@@ -826,8 +747,9 @@ describe('a ✕ for each setting', () => {
     expect(trigger()).toHaveAttribute('data-active', 'true');
   });
 
-  // Each ✕ sits inside the unit whose click opens the menu — the unit's hover
-  // is what draws it — so its own click has to stop there.
+  // Each ✕ sits beside the words whose click opens the menu, in the unit whose
+  // hover draws it: its own click has no handler that opens the menu to
+  // bubble into.
   it.each([
     {
       name: 'Remove Grouped by Project',
@@ -841,7 +763,7 @@ describe('a ✕ for each setting', () => {
       setting: () => useViewStore.getState().braindumpFilters.priorities,
       left: ['low'],
     },
-  ])('takes its setting off and opens nothing, from inside words that open the menu: $name', async ({
+  ])('takes its setting off and opens nothing, from beside words that open the menu: $name', async ({
     name,
     unit,
     setting,
@@ -931,6 +853,225 @@ describe('a ✕ for each setting', () => {
     expect(document.activeElement).toBe(trigger());
   });
 
+  // A pointer's click counts 1. The browser draws no focus a mouse's click
+  // leaves, so focus handed to the next ✕ sat where nobody could see it (on a
+  // fine pointer the ✕ itself is not drawn until its setting is under the
+  // pointer; in forced colours it is, but not the focus), and the next Space
+  // took that setting off too.
+  it.each([
+    { name: 'a fine pointer', media: null },
+    { name: 'forced colours', media: '(forced-colors: active)' },
+  ])('hands focus to the opener after a click under $name, without scrolling', ({ media }) => {
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({ ...realMatchMedia(query), matches: media !== null && query.includes(media) }) as MediaQueryList;
+    seed(fourToTakeOff());
+    renderBraindump();
+    const scrolls: (FocusOptions | undefined)[] = [];
+    const real = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+      this: HTMLElement,
+      options?: FocusOptions
+    ) {
+      if (this === opener()) scrolls.push(options);
+      real.call(this, options);
+    });
+    try {
+      removeX('Remove Priority: High').focus();
+
+      fireEvent.click(removeX('Remove Priority: High'), { detail: 1 });
+
+      expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['low']);
+      expect(document.activeElement).toBe(opener());
+      expect(scrolls).toEqual([{ preventScroll: true }]);
+    } finally {
+      spy.mockRestore();
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  // Where nothing hovers, a screen reader's double-tap on a phone or tablet
+  // can arrive as a click of 1, so a click there walks on as a key does.
+  it.each([
+    { name: 'the phone mount', variant: 'mobile' as const, media: null },
+    { name: 'a coarse pointer', variant: 'sidebar' as const, media: '(pointer: coarse)' },
+  ])('hands focus on to the next ✕ after a click under $name', ({ variant, media }) => {
+    touch.current = variant === 'mobile';
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({ ...realMatchMedia(query), matches: media !== null && query.includes(media) }) as MediaQueryList;
+    try {
+      seed(fourToTakeOff());
+      renderBraindump(variant);
+      removeX('Remove Priority: High').focus();
+
+      fireEvent.click(removeX('Remove Priority: High'), { detail: 1 });
+
+      expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['low']);
+      expect(document.activeElement).toBe(removeX('Remove Priority: Low'));
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  // Where every ✕ is drawn, the first click's re-wrap can put the next ✕
+  // under the pointer or the finger, and a double-click's or double-tap's
+  // second click lands on it.
+  it.each([
+    { name: 'the phone mount', variant: 'mobile' as const, media: null },
+    { name: 'a coarse pointer', variant: 'sidebar' as const, media: '(pointer: coarse)' },
+    { name: 'a fine pointer', variant: 'sidebar' as const, media: null },
+  ])("takes nothing more off for a click's follow-on that lands on a ✕, under $name", ({ variant, media }) => {
+    touch.current = variant === 'mobile';
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({ ...realMatchMedia(query), matches: media !== null && query.includes(media) }) as MediaQueryList;
+    try {
+      seed(fourToTakeOff());
+      renderBraindump(variant);
+
+      fireEvent.click(removeX('Remove Priority: High'), { detail: 1 });
+      fireEvent.click(removeX('Remove Priority: Low'), { detail: 2 });
+      fireEvent.click(removeX('Remove Priority: Low'), { detail: 3 });
+
+      expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['low']);
+      // A click of its own still takes it off.
+      fireEvent.click(removeX('Remove Priority: Low'), { detail: 1 });
+      expect(useViewStore.getState().braindumpFilters.priorities).toEqual([]);
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  // The follow-on's press gives the ✕ it lands on the mouse's focus, which the
+  // browser does not draw, and a Space then took that setting off too.
+  it.each([
+    { name: 'a fine pointer', variant: 'sidebar' as const, media: null, walks: false },
+    { name: 'forced colours', variant: 'sidebar' as const, media: '(forced-colors: active)', walks: false },
+    { name: 'a coarse pointer', variant: 'sidebar' as const, media: '(pointer: coarse)', walks: true },
+    { name: 'the phone mount', variant: 'mobile' as const, media: null, walks: true },
+  ])("leaves focus after a click's follow-on on a ✕ where the click before it left it, under $name", ({
+    variant,
+    media,
+    walks,
+  }) => {
+    touch.current = variant === 'mobile';
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({ ...realMatchMedia(query), matches: media !== null && query.includes(media) }) as MediaQueryList;
+    const scrolls: (FocusOptions | undefined)[] = [];
+    const real = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+      this: HTMLElement,
+      options?: FocusOptions
+    ) {
+      if (this.dataset.testid === 'display-shelf-open-braindump') scrolls.push(options);
+      real.call(this, options);
+    });
+    try {
+      seed(fourToTakeOff());
+      renderBraindump(variant);
+      removeX('Remove Priority: High').focus();
+      fireEvent.click(removeX('Remove Priority: High'), { detail: 1 });
+      const low = removeX('Remove Priority: Low');
+      const left = walks ? low : opener();
+      expect(document.activeElement).toBe(left);
+
+      // A double-click's second, then a triple-click's third: each press
+      // focuses the ✕ again (jsdom focuses nothing on a press, so the test does).
+      for (const detail of [2, 3]) {
+        act(() => low.focus());
+        fireEvent.click(low, { detail });
+        expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['low']);
+        expect(document.activeElement).toBe(left);
+      }
+      expect(scrolls).toEqual(Array(walks ? 0 : 3).fill({ preventScroll: true }));
+    } finally {
+      spy.mockRestore();
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  // A ✕'s click can re-wrap Reset under the pointer (Wind-down's ✕ in the 280px
+  // braindump), and the double-click's second press then took every setting off.
+  it.each([
+    { name: 'a fine pointer', variant: 'sidebar' as const, media: null, walks: false },
+    { name: 'forced colours', variant: 'sidebar' as const, media: '(forced-colors: active)', walks: false },
+    { name: 'a coarse pointer', variant: 'sidebar' as const, media: '(pointer: coarse)', walks: true },
+    { name: 'the phone mount', variant: 'mobile' as const, media: null, walks: true },
+  ])("resets nothing on a click's follow-on that lands on Reset, under $name", ({ variant, media, walks }) => {
+    touch.current = variant === 'mobile';
+    const realMatchMedia = window.matchMedia;
+    window.matchMedia = (query: string) =>
+      ({ ...realMatchMedia(query), matches: media !== null && query.includes(media) }) as MediaQueryList;
+    try {
+      seed({ ...fourToTakeOff(), braindumpFilters: filters({ priorities: ['high', 'medium', 'low'] }) });
+      renderBraindump(variant);
+      removeX('Remove Priority: Medium').focus();
+      fireEvent.click(removeX('Remove Priority: Medium'), { detail: 1 });
+      expect(document.activeElement).toBe(walks ? removeX('Remove Priority: Low') : opener());
+
+      // jsdom focuses nothing on a press, so the test does.
+      act(() => resetX().focus());
+      fireEvent.click(resetX(), { detail: 2 });
+
+      expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['high', 'low']);
+      expect(useViewStore.getState().braindumpGroupBy).toBe('project');
+      expect(queryShelf()).not.toBeNull();
+      expect(document.activeElement).toBe(walks ? resetX() : opener());
+    } finally {
+      window.matchMedia = realMatchMedia;
+    }
+  });
+
+  it('hands focus to the trigger after a click that takes the last setting, and the shelf with it', () => {
+    seed({ braindumpFilters: filters({ goals: ['g1'] }) });
+    renderBraindump();
+
+    fireEvent.click(removeX('Remove Goal: Learn Chinese'), { detail: 1 });
+
+    expect(queryShelf()).toBeNull();
+    expect(document.activeElement).toBe(trigger());
+  });
+
+  // Reset goes with the fourth thing to take off, and the last phrase, which
+  // it ended, is left without it. That phrase keeps its place in the DOM:
+  // rebuilt, it took the ✕ just handed focus with it, and focus fell to <body>.
+  it.each([{ variant: 'sidebar' as const }, { variant: 'mobile' as const }])(
+    "keeps the last phrase's ✕ it hands focus to as Reset goes, in the $variant mount",
+    ({ variant }) => {
+      seed({
+        braindumpGroupBy: 'project',
+        braindumpSortBy: 'title',
+        braindumpFilters: filters({ priorities: ['high'], hideFinished: true }),
+      });
+      renderBraindump(variant);
+      expect(resetX()).toBeInTheDocument();
+      const handedTo = removeX('Remove Hide finished');
+      removeX('Remove Priority: High').focus();
+
+      fireEvent.click(removeX('Remove Priority: High'));
+
+      expect(queryReset()).toBeNull();
+      expect(handedTo.isConnected).toBe(true);
+      expect(document.activeElement).toBe(handedTo);
+    }
+  );
+
+  it('keeps a focused ✕ in the last phrase as a fourth thing to take off brings Reset back', () => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    expect(queryReset()).toBeNull();
+    const focused = removeX('Remove Hide finished');
+    focused.focus();
+
+    act(() => useViewStore.setState({ braindumpFilters: filters({ priorities: ['high'], hideFinished: true }) }));
+
+    expect(resetX()).toBeInTheDocument();
+    expect(focused.isConnected).toBe(true);
+    expect(document.activeElement).toBe(focused);
+  });
+
   it('takes off a project the store no longer has, which no menu row can', () => {
     seed({ braindumpFilters: filters({ containers: ['project:Gone', 'project:Work'] }) });
     renderBraindump();
@@ -945,12 +1086,25 @@ describe('a ✕ for each setting', () => {
     renderBraindump();
     expect(shelf().querySelectorAll('[data-chip-label]')).toHaveLength(8);
     expect(removeXs()).toHaveLength(8);
-    for (const label of shelf().querySelectorAll('[data-chip-label]')) {
+    for (const label of shelf().querySelectorAll<HTMLElement>('[data-chip-label]')) {
       expect(label).toHaveAttribute('aria-hidden', 'true');
       expect(label.querySelector('button')).toBeNull();
+      // A press can focus them, though Tab never stops there, and they hand
+      // it straight on to the opener under them, so focus a script moves on
+      // from there is a mouse's and draws no ring.
+      expect(label).toHaveAttribute('tabindex', '-1');
     }
     for (const x of [...removeXs(), resetX()]) {
       expect(x.closest('[aria-hidden]')).toBeNull();
+    }
+    // React gives each element it renders with an onClick a native onclick,
+    // and Chromium lists a clickable element in the accessibility tree. So the
+    // menu's click is on the hidden words, never on the unit around them, or
+    // every setting would be a nameless stop over the opener.
+    const clickable = Array.from(shelf().querySelectorAll<HTMLElement>('*')).filter((el) => el.onclick !== null);
+    expect(clickable.filter((el) => el.hasAttribute('data-chip-label'))).toHaveLength(8);
+    for (const el of clickable) {
+      expect(el instanceof HTMLButtonElement || el.closest('[aria-hidden="true"]') !== null).toBe(true);
     }
     // Each ✕ beside its words, never inside them.
     for (const x of removeXs()) expect(x.parentElement!.querySelector(':scope > [data-chip-label]')).not.toBeNull();
@@ -960,15 +1114,41 @@ describe('a ✕ for each setting', () => {
     expect(opener()).toHaveClass('absolute');
   });
 
-  it('ignores a held Enter, so autorepeat cannot walk the shelf clear', () => {
+  it.each(['Enter', ' '])('ignores a held %j, so autorepeat cannot walk the shelf clear', (key) => {
     everything();
     renderBraindump();
     const first = removeXs()[0];
     first.focus();
     // A repeated keydown's default (the click) is cancelled; a fresh one's is not.
-    expect(fireEvent.keyDown(first, { key: 'Enter', repeat: true })).toBe(false);
-    expect(fireEvent.keyDown(first, { key: 'Enter' })).toBe(true);
+    expect(fireEvent.keyDown(first, { key, repeat: true })).toBe(false);
+    expect(fireEvent.keyDown(first, { key })).toBe(true);
   });
+
+  // The look carries focus in every theme; the accent line could not alone,
+  // since Paper's lime barely parts from its ground. The line is inside the
+  // box, where the paragraph leaves no room around a ✕ for a ring, at the
+  // accent's full strength (the base layer's ring colour is halved), and in
+  // whole pixels: Chromium floors an outline's width, so a 1.5px line drew 1px.
+  it.each([{ variant: 'sidebar' as const }, { variant: 'mobile' as const }])(
+    'draws focus on each ✕ and Reset in the $variant mount as the pointer on it would, with a 2px accent line inside',
+    ({ variant }) => {
+      touch.current = variant === 'mobile';
+      everything();
+      renderBraindump(variant);
+      const look = ['focus-visible:bg-accent', 'focus-visible:text-foreground'];
+      const line = ['focus-visible:outline-solid', 'focus-visible:outline-2', 'focus-visible:outline-ring'];
+      for (const x of removeXs()) {
+        expect(x).toHaveClass('hover:bg-accent', 'hover:text-foreground', ...look, ...line);
+        expect(x).toHaveClass('focus-visible:outline-offset-[-3px]');
+      }
+      expect(resetX()).toHaveClass('hover:bg-accent', 'hover:text-foreground', ...look, ...line);
+      expect(resetX()).toHaveClass('focus-visible:outline-offset-[-2px]');
+      for (const target of [...removeXs(), resetX()]) {
+        expect(target.className).not.toMatch(/outline-\[\d*\.\d+px\]/);
+        expect(target.className).not.toMatch(/outline-ring\//);
+      }
+    }
+  );
 });
 
 describe('opening the menu from the shelf', () => {
@@ -1016,6 +1196,96 @@ describe('opening the menu from the shelf', () => {
     await waitFor(() => expect(document.activeElement).toBe(opener()));
   });
 
+  it("opens nothing from a click's follow-ons, which land where the first left the paragraph", async () => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title', braindumpFilters: filters({ priorities: ['high'] }) });
+    renderBraindump();
+    // A double-click on a ✕: the first takes its setting off, and the second
+    // lands on whatever the paragraph moved under the pointer, the next
+    // setting's words or the opener between them.
+    fireEvent.click(removeX('Remove Sorted by Title A–Z'), { detail: 1 });
+    fireEvent.click(wordsIn(clause('priority')!), { detail: 2 });
+    fireEvent.click(opener(), { detail: 2 });
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+    expect(useViewStore.getState().braindumpSortBy).toBe('default');
+    expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['high']);
+
+    // A click of its own still opens it.
+    fireEvent.click(wordsIn(clause('priority')!), { detail: 1 });
+    expect(await screen.findByTestId('display-menu')).toBeInTheDocument();
+  });
+
+  it('opens nothing from a press on a ✕ let go over its own words, which clicks the setting around both', async () => {
+    seed({ braindumpGroupBy: 'project', braindumpFilters: filters({ priorities: ['high'] }) });
+    renderBraindump();
+    const unit = removeX('Remove Priority: High').parentElement!;
+    expect(unit).toContainElement(wordsIn(unit));
+
+    fireEvent.click(unit);
+
+    await act(() => new Promise((resolve) => setTimeout(resolve, 0)));
+    expect(screen.queryByTestId('display-menu')).toBeNull();
+    expect(useViewStore.getState().braindumpFilters.priorities).toEqual(['high']);
+  });
+
+  it.each(['Enter', ' '])(
+    'ignores a held %j on its text, so autorepeat cannot open the menu again as a pick hands focus back',
+    (key) => {
+      seed({ braindumpGroupBy: 'project' });
+      renderBraindump();
+      opener().focus();
+      expect(fireEvent.keyDown(opener(), { key, repeat: true })).toBe(false);
+      expect(fireEvent.keyDown(opener(), { key })).toBe(true);
+    }
+  );
+
+  // lib/click-away.ts takes a click on anything that is no control, inside the
+  // desktop shell, for a click on nothing, and lets go of the item selection
+  // and the docked item panel. The words are no control, and the menu's click
+  // on them cost both, as a click on the opener never did.
+  it("keeps the selection through a click on a setting's words, as through one on the opener", () => {
+    everything();
+    renderBraindump();
+    document.body.setAttribute(CLICK_AWAY_SCOPE_ATTR, '');
+    try {
+      for (const target of [opener(), lines(), ...units(), ...units().map(wordsIn), ...clauses()]) {
+        expect(isClickAwayTarget(target)).toBe(false);
+      }
+      // The shelf's own padding stays empty space, as it was.
+      expect(isClickAwayTarget(shelf())).toBe(true);
+    } finally {
+      document.body.removeAttribute(CLICK_AWAY_SCOPE_ATTR);
+    }
+  });
+
+  // Kept on the words, focus sat on an aria-hidden node, which Chromium
+  // un-hides with a warning, and a key drew a ring around one setting and did
+  // nothing. On the opener, the next key opens the menu.
+  it("hands the focus a press gives a setting's words straight on to the opener under them, without scrolling", () => {
+    everything();
+    renderBraindump();
+    const scrolls: (FocusOptions | undefined)[] = [];
+    const real = HTMLElement.prototype.focus;
+    const spy = vi.spyOn(HTMLElement.prototype, 'focus').mockImplementation(function (
+      this: HTMLElement,
+      options?: FocusOptions
+    ) {
+      if (this === opener()) scrolls.push(options);
+      real.call(this, options);
+    });
+    try {
+      expect(units()).toHaveLength(8);
+      for (const unit of units()) {
+        act(() => removeXs()[0].focus());
+        act(() => wordsIn(unit).focus());
+        expect(document.activeElement).toBe(opener());
+      }
+      expect(scrolls).toEqual(Array(8).fill({ preventScroll: true }));
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it('takes the pointer on every phrase and value as the opener under it would (the arrow, and no selection), on Reset, and nowhere between', () => {
     everything();
     renderBraindump();
@@ -1024,8 +1294,10 @@ describe('opening the menu from the shelf', () => {
     expect(units()).toHaveLength(8);
     for (const unit of units()) {
       // A target of its own, over a paragraph that lets the gaps between the
-      // settings through to the opener…
-      expect(unit).toHaveClass('pointer-events-auto');
+      // settings through to the opener, where the pointer hovers. A coarse
+      // pointer never does, so there the words let a tap through to the
+      // opener too, as on the phone.
+      expect(unit).toHaveClass('pointer-events-auto', 'pointer-coarse:pointer-events-none');
       // …that says what the opener would: the arrow, not a text cursor, and no
       // selection from a drag, a double-click or a long press.
       expect(unit).toHaveClass('cursor-default', 'select-none');
@@ -1051,6 +1323,24 @@ describe('opening the menu from the shelf', () => {
     );
     expect(between).toEqual(expect.arrayContaining([...clauses(), resetX().parentElement]));
     expect(between.filter((el) => pointerAtRest(el) !== 'none').map((el) => el.className)).toEqual([]);
+  });
+
+  // Where nothing hovers, a setting's words have nothing to draw, and a span
+  // that took the tap stood between the opener and a screen reader's touch
+  // exploration, which found a node with no name there instead of the button
+  // that reads the whole summary.
+  it("lets a tap on a setting's words through to the opener on the phone, and takes it on each ✕ and Reset", () => {
+    touch.current = true;
+    everything();
+    renderBraindump('mobile');
+    expect(units()).toHaveLength(8);
+    for (const unit of units()) {
+      expect(pointerAtRest(unit)).toBe('none');
+      expect(pointerAtRest(unit.querySelector('[data-chip-label]')!)).toBe('none');
+      expect(unit.className).not.toMatch(/pointer-events-auto/);
+    }
+    for (const x of [...removeXs(), resetX()]) expect(pointerAtRest(x)).toBe('auto');
+    expect(pointerAtRest(opener())).toBe('auto');
   });
 
   it('sends focus to the trigger when the pick made from it takes the shelf away', async () => {
@@ -1255,6 +1545,30 @@ describe('the paragraph', () => {
     ]);
   });
 
+  // Every phrase has its wrapper whether or not Reset follows it, so none
+  // changes parents as Reset comes and goes (the focus cases above). Where no
+  // Reset follows, the wrapper has no box at all, which keeps the unit the
+  // clause's own flex item: a box between them would take the words' width
+  // and never let them truncate.
+  it('wraps every phrase alike, in a box only where Reset follows it', () => {
+    seed({ braindumpGroupBy: 'project', braindumpSortBy: 'title', braindumpFilters: filters({ hideFinished: true }) });
+    renderBraindump();
+    const wrapper = (id: string) => clause(id)!.firstElementChild as HTMLElement;
+    expect(queryReset()).toBeNull();
+    for (const id of ['group', 'sort', 'hide-finished']) {
+      expect(wrapper(id).className).toBe('contents');
+      expect(wrapper(id)).toContainElement(wordsIn(clause(id)!));
+    }
+
+    act(() => useViewStore.setState({ braindumpFilters: filters({ priorities: ['high'], hideFinished: true }) }));
+
+    expect(wrapper('group').className).toBe('contents');
+    expect(wrapper('sort').className).toBe('contents');
+    expect(wrapper('hide-finished')).toHaveClass('grow');
+    expect(wrapper('hide-finished')).not.toHaveClass('contents');
+    expect(wrapper('hide-finished')).toContainElement(resetX());
+  });
+
   it("measures nothing: no observer, no layout read, no font wait, no fit written behind React's back", async () => {
     let fontReads = 0;
     Object.defineProperty(document, 'fonts', {
@@ -1268,7 +1582,7 @@ describe('the paragraph', () => {
     // already built its own observers around.
     renderBraindump();
     expect(queryShelf()).toBeNull();
-    const built = observations.length;
+    const built = observers.made.length;
     const reads = watchLayoutReads();
     try {
       act(() =>
@@ -1284,8 +1598,8 @@ describe('the paragraph', () => {
       // Nor a frame or a task later, where a measure put off would land.
       await settle();
 
-      expect(observations).toHaveLength(built);
-      expect(observations.flatMap((o) => o.els).filter((el) => shelf().contains(el))).toEqual([]);
+      expect(observers.made).toHaveLength(built);
+      expect(observers.made.flatMap((o) => o.els).filter((el) => shelf().contains(el))).toEqual([]);
       expect(reads.readsIn(shelf())).toEqual([]);
       expect(fontReads).toBe(0);
     } finally {
@@ -1536,19 +1850,23 @@ describe('the two mounts', () => {
       expect(x).toHaveClass('text-transparent', 'pointer-events-none');
       expect(x).not.toHaveClass('text-muted-foreground');
       expect(x).not.toHaveClass('pointer-events-auto');
-      // Drawn, and hit, while its setting is under the pointer, or on keyboard focus.
+      // Drawn, and hit, while its setting is under the pointer, or on keyboard
+      // focus, which draws it as the pointer on the ✕ itself would: full ink
+      // on its plate.
       expect(x).toHaveClass(
         'group-hover/unit:text-muted-foreground',
         'group-hover/unit:pointer-events-auto',
-        'focus-visible:text-muted-foreground',
+        'focus-visible:text-foreground',
+        'focus-visible:bg-accent',
         'focus-visible:pointer-events-auto'
       );
-      // Focused AND under the pointer, the full ink a plain hover gives: the
-      // focus rule's muted ink comes later in the sheet and would outrank it.
-      expect(x).toHaveClass('hover:focus-visible:text-foreground');
       // Forced colours paint the clear ink in a system colour, so every ✕ is
       // drawn at rest there; it takes its hit at rest too, ink and hits together.
       expect(x).toHaveClass('forced-colors:pointer-events-auto');
+      // Its corners are rounded and Chromium hit-tests the rounding, so a
+      // square box of its own takes them: a sweep along a line's top or bottom
+      // row from the words onto the ✕ crosses no ground that is neither's.
+      expect(x).toHaveClass('after:absolute', 'after:inset-0', "after:content-['']");
       // Out of flow, in the gap after its words, from the edge of the very
       // setting whose hover draws it.
       expect(x).toHaveClass('absolute', 'left-full', 'top-0');
@@ -1578,14 +1896,14 @@ describe('the two mounts', () => {
     expect(removeXs()).toHaveLength(8);
     for (const x of removeXs()) {
       expect(x).toHaveClass('relative', 'ml-[4px]', 'text-muted-foreground');
-      // Takes a tap, whichever class says so: its unit's does today.
+      // Takes a tap, whichever class says so: its own does today.
       expect(pointerAtRest(x)).toBe('auto');
       // None of the pointer's: nothing clear at rest, and nothing waiting on a
-      // hover or a focus to be drawn.
+      // hover or a focus to be drawn or hit (focus only deepens its ink).
       for (const cls of ['absolute', 'left-full', 'top-0', 'text-transparent', 'pointer-events-none']) {
         expect(x).not.toHaveClass(cls);
       }
-      expect(x.className).not.toMatch(/group-hover|focus-visible:(text|pointer)|pointer-coarse:/);
+      expect(x.className).not.toMatch(/group-hover|focus-visible:pointer|pointer-coarse:/);
     }
   });
 
