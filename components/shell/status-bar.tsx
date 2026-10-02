@@ -17,7 +17,8 @@ import { cn } from '@/lib/utils';
  * schedule grid fits its hour height to (lib/use-fit-hour-px.ts).
  */
 export function StatusBar({ className }: { className?: string }) {
-  const { open, done } = useDayCounts();
+  // The week's counts while the canvas shows a week, beside the word Week.
+  const { open, done } = useDayCounts({ followScope: true });
   const scope = useViewStore((s) => s.scope);
   // The kind of file the tabs name the days as, when they name one.
   const tabs = useLayoutDef().slots.tabs;

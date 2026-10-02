@@ -157,6 +157,30 @@ test.describe('Layouts: Notepad', () => {
     await expect(column).toHaveAttribute('data-column-state', 'open');
   });
 
+  test('its Markdown style still ticks a `- [ ]` and opens the panel', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad-markdown'));
+    const title = testTitle('notepad');
+    try {
+      const id = await createTestTask(page, {
+        title,
+        startDate: getTodayStr(),
+        timeBucket: 'morning',
+        isScheduled: true,
+      });
+      await reloadApp(page);
+      await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout-rows', 'tasks');
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+      await expect(completeButton(page, id)).toHaveAttribute('data-checked', 'true');
+
+      await itemCard(page, id).getByText(title).click();
+      await expect(page.getByTestId('item-dialog')).toBeVisible();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+
   test('its Retro style names the days as .txt files in its own colours', async ({ page }) => {
     await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad-retro'));
     await reloadApp(page);

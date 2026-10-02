@@ -1,7 +1,9 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { useDayItems } from '@/hooks/use-day-items';
+import { addDays, startOfWeek } from 'date-fns';
+import { useDayItemsForDates } from '@/hooks/use-day-items';
+import { useViewStore } from '@/lib/view-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { flattenDayRows } from '@/lib/day-items';
 import { isRowCompletedOn } from '@/lib/sort-rows';
@@ -17,27 +19,44 @@ function isSetAside(item: { repeatFrequency?: string; skippedDates?: string[]; s
   return item.status === 'skipped' || item.status === 'cancelled';
 }
 
+/** date-fns' weekStartsOn for the planner's week-start setting. */
+export const WEEK_STARTS = { sunday: 0, monday: 1, saturday: 6 } as const;
+
 /**
- * How much of the selected day is open and done, for the shell's status
- * ornaments (status-line, status-bar). Counted off the same useDayItems the
+ * How much of what is on screen is open and done, for the shell's status
+ * ornaments (status-line, status-bar): the selected day, or with `followScope`
+ * the whole week while the canvas shows one. Counted off the same day items the
  * views draw from, so the numbers agree with what is on screen (filters,
- * paused items hidden) rather than re-deriving "what is on today".
+ * paused items hidden) rather than re-deriving "what is on today"; each day's
+ * rows are judged on that day's own date.
  */
-export function useDayCounts(): { open: number; done: number } {
-  const day = useDayItems();
+export function useDayCounts({ followScope = false }: { followScope?: boolean } = {}): {
+  open: number;
+  done: number;
+} {
   const selectedDate = usePlannerStore((s) => s.selectedDate);
+  const weekStartDay = usePlannerStore((s) => s.weekStartDay);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const week = useViewStore((s) => s.scope === 'week') && followScope;
+  const dates = useMemo(() => {
+    if (!week) return [selectedDate];
+    const start = startOfWeek(selectedDate, { weekStartsOn: WEEK_STARTS[weekStartDay] ?? 0 });
+    return Array.from({ length: 7 }, (_, i) => addDays(start, i));
+  }, [week, selectedDate, weekStartDay]);
+  const days = useDayItemsForDates(dates);
   return useMemo(() => {
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const dateStr = toDateStr(selectedDate, tz);
     let open = 0;
     let done = 0;
-    for (const row of flattenDayRows(day)) {
-      if (isRowCompletedOn(row, dateStr)) done++;
-      else if (!isSetAside(row.item, dateStr)) open++;
-    }
+    days.forEach((day, i) => {
+      const dateStr = toDateStr(dates[i], tz);
+      for (const row of flattenDayRows(day)) {
+        if (isRowCompletedOn(row, dateStr)) done++;
+        else if (!isSetAside(row.item, dateStr)) open++;
+      }
+    });
     return { open, done };
-  }, [day, selectedDate, userTimezone]);
+  }, [days, dates, userTimezone]);
 }
 
 /** The wall clock, to the minute, re-aimed at each minute's edge. Null until mounted. */

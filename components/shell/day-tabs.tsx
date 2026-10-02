@@ -10,6 +10,7 @@ import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys, isApplePlatform } from '@/lib/commands/keys';
 import { SCOPE_OPTIONS } from '@/lib/view-options';
 import { goToDate } from '@/lib/nav-commands';
+import { WEEK_STARTS } from '@/hooks/use-day-counts';
 import type { SlotVariant } from '@/lib/layout-themes';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +18,6 @@ type TabsVariant = Exclude<SlotVariant<'tabs'>, 'none'>;
 
 const noSubscribe = () => () => {};
 
-const WEEK_STARTS = { sunday: 0, monday: 1, saturday: 6 } as const;
 
 /** A day's tab name: plain, or as the file it would be saved as. */
 function dayName(date: Date, variant: TabsVariant, selected: boolean): string {
@@ -70,7 +70,9 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
     const date = addDays(anchor, offset * span);
     return {
       offset,
-      date,
+      // Stepped from the selected day, as stepScope does, so a week tab keeps
+      // the weekday the header's chevron would; only the label is the week's.
+      target: addDays(selectedDate, offset * span),
       label: week ? weekName(date, variant) : dayName(date, variant, offset === 0),
     };
   });
@@ -99,22 +101,23 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
         braindump{ext && <span className="text-muted-foreground">{ext}</span>}
       </button>
 
-      <div role="tablist" aria-label={week ? 'Weeks' : 'Days'} className="ml-3.5 flex min-w-0 items-end gap-0.5">
+      {/* Navigation, not an ARIA tablist: each tab goes to a date, and there is
+          no tab panel to own. The current one says so with aria-current. */}
+      <nav aria-label={week ? 'Weeks' : 'Days'} className="ml-3.5 flex min-w-0 items-end gap-0.5">
         {mounted &&
           tabs.map((t) => (
             <button
               key={t.offset}
               type="button"
-              role="tab"
-              aria-selected={t.offset === 0}
+              aria-current={t.offset === 0 ? 'date' : undefined}
               data-testid={t.offset === 0 ? 'day-tab-current' : t.offset < 0 ? 'day-tab-prev' : 'day-tab-next'}
-              onClick={() => t.offset !== 0 && goToDate(t.date, t.offset > 0 ? 'left' : 'right')}
+              onClick={() => t.offset !== 0 && goToDate(t.target, t.offset > 0 ? 'left' : 'right')}
               className={cn(TAB, t.offset === 0 ? TAB_ON : TAB_OFF)}
             >
               <span className="truncate">{t.label}</span>
             </button>
           ))}
-      </div>
+      </nav>
 
       <div className="ml-auto flex h-9 flex-none items-center gap-0.5 text-xs text-muted-foreground">
         {SCOPE_OPTIONS.map((o) => (
@@ -136,6 +139,7 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
             type="button"
             onClick={() => useUIStore.getState().openDialog({ type: 'launcher' })}
             title="Search and commands"
+            aria-label="Search and commands"
             className="titlebar-hole ml-2 rounded-[6px] px-2 py-1 text-muted-foreground/70 transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             {hint}
