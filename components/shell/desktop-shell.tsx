@@ -20,6 +20,8 @@ import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { BraindumpPane } from '@/components/shell/braindump-pane';
 import { StatusLine } from '@/components/shell/status-line';
 import { PageTabs, Ribbon } from '@/components/shell/page-tabs';
+import { DayTabs } from '@/components/shell/day-tabs';
+import { StatusBar } from '@/components/shell/status-bar';
 import { cn } from '@/lib/utils';
 
 /** Below this the panel stops compressing the canvas and overlays it instead. */
@@ -39,7 +41,8 @@ const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
  *
  * LAYOUTS (lib/layout-themes.ts). The structural slots are read here: where the
  * braindump sits (`sidebar`), where capture sits (`capture`), whether the
- * canvas is a plate (`canvas`), and the `status-line` ornament. The styled
+ * canvas is a plate (`canvas`), the day tabs across the top (`tabs`), and the
+ * `status-line` and `status-bar` ornaments. The styled
  * slots are stamped on this root (layoutAttributes) for app/globals.css, which
  * is what keeps every layout off the phone. Classic renders the exact tree it
  * always has; a layout with a top or bottom band wraps the row in a column.
@@ -56,10 +59,14 @@ export const DesktopShell = memo(function DesktopShell() {
   const { slots } = layout;
   const plate = slots.canvas === 'plate';
   const spread = slots.canvas === 'spread';
+  const sheet = slots.canvas === 'sheet';
+  const flatPanel = slots.canvas === 'flat' || sheet;
   const statusLine = layout.ornaments.includes('status-line');
+  const statusBar = layout.ornaments.includes('status-bar');
+  const tabs = slots.tabs === 'none' ? null : slots.tabs;
   const captureBottom = slots.capture === 'prompt-bottom';
   // A top or bottom band spans the whole shell, so the row goes in a column.
-  const banded = statusLine || captureBottom;
+  const banded = statusLine || captureBottom || !!tabs || statusBar;
 
   // Editing an item IS the selection here — the ui-store's single dialog slot
   // already gives us retargeting for free: clicking another row calls
@@ -131,9 +138,10 @@ export const DesktopShell = memo(function DesktopShell() {
         inert={panelOverlays && !!panelState}
         className={cn(
           'relative flex flex-1 flex-col overflow-hidden',
-          // Spread: the right page shares the book's paper (app/globals.css,
-          // [data-book]) rather than being a surface of its own.
-          spread ? 'bg-transparent' : 'bg-canvas',
+          // Spread and sheet: the page shares the paper under both panes
+          // (app/globals.css, [data-book] / [data-sheet]) rather than being a
+          // surface of its own.
+          spread || sheet ? 'bg-transparent' : 'bg-canvas',
           plate && 'rounded-[30px] border border-border shadow-[var(--shadow-elev-panel)]'
         )}
       >
@@ -246,6 +254,13 @@ export const DesktopShell = memo(function DesktopShell() {
             )}
           </div>
         </div>
+      ) : sheet ? (
+        // One document under both panes, the window's chrome around it
+        // (app/globals.css, [data-sheet]). gap-3 is the sash's gutter, as in
+        // the spread; the seam is drawn on the column's own edge.
+        <div data-sheet="" className="relative flex min-w-0 flex-1 gap-3 bg-canvas">
+          {pages}
+        </div>
       ) : (
         pages
       )}
@@ -274,8 +289,8 @@ export const DesktopShell = memo(function DesktopShell() {
           // the desktop app's drag band, where it could not be clicked.
           'titlebar-hole relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
           panelState ? 'w-[420px]' : cn('w-0', plate && '-ml-3'),
-          // Flat: no gutter to eat, and a hairline seam where the plate's edge was.
-          slots.canvas === 'flat' && panelState && 'border-l border-border bg-canvas',
+          // Flat and sheet: no gutter to eat, and a hairline seam where the plate's edge was.
+          flatPanel && panelState && 'border-l border-border bg-canvas',
           // Spread: a loose sheet laid beside the book, clear of its page tabs.
           spread && panelState && 'ml-12 rounded-[6px] bg-[var(--nb-page)] shadow-[var(--nb-sheet-shadow)]',
           plate
@@ -303,15 +318,19 @@ export const DesktopShell = memo(function DesktopShell() {
             ? // pr-14 holds the page tabs. Only a DOCKED panel takes that room;
               // an overlaid one (<=1180px) takes no width, so the book keeps it.
               cn('bg-[var(--nb-desk)] p-5', panelState && !panelOverlays ? 'pr-5' : 'pr-14')
-            : 'bg-canvas',
+            : sheet
+              ? 'bg-[var(--np-chrome)]'
+              : 'bg-canvas',
         banded && 'flex-col'
       )}
     >
       {banded ? (
         <>
           {statusLine && <StatusLine />}
+          {tabs && <DayTabs variant={tabs} />}
           <div className="relative flex min-h-0 flex-1">{row}</div>
           {captureBottom && <SidebarDock placement="bottom" />}
+          {statusBar && <StatusBar />}
         </>
       ) : (
         row

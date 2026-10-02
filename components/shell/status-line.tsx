@@ -1,74 +1,30 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
 import { format } from 'date-fns';
-import { useDayItems } from '@/hooks/use-day-items';
+import { useDayCounts, useMinuteClock } from '@/hooks/use-day-counts';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useStreaksEnabled } from '@/lib/extension-gates';
-import { flattenDayRows } from '@/lib/day-items';
-import { isRowCompletedOn } from '@/lib/sort-rows';
-import { isRecurring, isSkippedOnDate, toDateStr } from '@/lib/recurrence';
 import { cn } from '@/lib/utils';
-
-/**
- * Skipped for the day, or cancelled: on the list, but neither open nor done.
- * Per-date for a recurring item, `status` for a one-off — never `status` for a
- * recurring one (CLAUDE.md: completedDates, not scalar status).
- */
-function isSetAside(item: { repeatFrequency?: string; skippedDates?: string[]; status?: string }, dateStr: string): boolean {
-  if (isRecurring(item)) return isSkippedOnDate(item, dateStr);
-  return item.status === 'skipped' || item.status === 'cancelled';
-}
-
-/** The wall clock, to the minute, re-aimed at each minute's edge. */
-function useMinuteClock(): Date | null {
-  const [now, setNow] = useState<Date | null>(null);
-  useEffect(() => {
-    let timer: number;
-    const tick = () => {
-      const d = new Date();
-      setNow(d);
-      timer = window.setTimeout(tick, 60_000 - (d.getSeconds() * 1000 + d.getMilliseconds()) + 50);
-    };
-    tick();
-    return () => window.clearTimeout(timer);
-  }, []);
-  return now;
-}
 
 /**
  * The `status-line` ornament (lib/layout-themes.ts): one constant-height line
  * across the top of the shell — the selected day, how much of it is open and
  * done, the best streak, the clock, and the braindump pane's switch.
  *
- * It reads; it never acts on the plan. The counts come from the same
- * useDayItems the views draw from, so they agree with what is on screen
- * (filters, paused items hidden) rather than re-deriving "what is on today".
+ * It reads; it never acts on the plan. The counts are useDayCounts, which
+ * agrees with what is on screen (hooks/use-day-counts.ts).
  * Constant height on purpose: it sits above the header row, and everything
  * there is an input to the schedule grid's fitted hour height (desktop-shell).
  */
 export function StatusLine({ className }: { className?: string }) {
-  const day = useDayItems();
+  const { open, done } = useDayCounts();
   const selectedDate = usePlannerStore((s) => s.selectedDate);
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
   const habits = usePlannerStore((s) => s.habits);
   const streaksOn = useStreaksEnabled();
   const paneOpen = useSidebarStore((s) => s.leftSidebarOpen);
   const togglePane = useSidebarStore((s) => s.toggleLeftSidebar);
   const now = useMinuteClock();
-
-  const { open, done } = useMemo(() => {
-    const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-    const dateStr = toDateStr(selectedDate, tz);
-    let openCount = 0;
-    let doneCount = 0;
-    for (const row of flattenDayRows(day)) {
-      if (isRowCompletedOn(row, dateStr)) doneCount++;
-      else if (!isSetAside(row.item, dateStr)) openCount++;
-    }
-    return { open: openCount, done: doneCount };
-  }, [day, selectedDate, userTimezone]);
 
   const bestStreak = habits.reduce((max, h) => Math.max(max, h.streak ?? 0), 0);
 

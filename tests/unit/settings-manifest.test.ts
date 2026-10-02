@@ -902,3 +902,36 @@ describe('the push row in the desktop app', () => {
     expect(record.unavailable?.(ctx)).toBeNull();
   });
 });
+
+describe('settings manifest — layout and its style', () => {
+  // userId null: the writes stop at the store, never reaching saveSettings.
+  const local: SettingCtx = { ...ctx, userId: null };
+  const layout = () => settingById('look.layout')!;
+  const style = () => settingById('look.layoutStyle')!;
+
+  afterEach(async () => {
+    const { useLookStore } = await import('@/lib/look-store');
+    useLookStore.getState().setLayout('classic');
+  });
+
+  it('Layout lists one entry per family, and Style the styles', () => {
+    expect(layout().options?.map((o) => o.value)).toEqual(['classic', 'console', 'notebook', 'notepad']);
+    expect(style().options?.map((o) => o.label)).toEqual(['Quiet', 'Markdown', 'Retro']);
+  });
+
+  it('a style is kept when its family is picked again, and dropped for another family', async () => {
+    const { useLookStore } = await import('@/lib/look-store');
+    layout().write('notepad', local);
+    expect(style().unavailable?.(local)).toBeNull();
+    style().write('notepad-retro', local);
+    expect(useLookStore.getState().layout).toBe('notepad-retro');
+    expect(layout().read(local)).toBe('notepad');
+
+    layout().write('notepad', local);
+    expect(useLookStore.getState().layout).toBe('notepad-retro');
+
+    layout().write('console', local);
+    expect(useLookStore.getState().layout).toBe('console');
+    expect(style().unavailable?.(local)).toMatch(/Only Notepad/);
+  });
+});
