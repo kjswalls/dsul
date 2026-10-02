@@ -306,10 +306,12 @@ struct ItemDetail: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
-                // As tall as the row, so a tap above or below one line of
-                // title still opens it.
-                .frame(minHeight: 44)
+                // The hit shape overhangs a line of title by 11pt each way,
+                // the row's full 44, as Today's rows do, so a tap above or
+                // below it still opens it and the press fill stays put.
+                .padding(.vertical, 11)
                 .contentShape(Rectangle())
+                .padding(.vertical, -11)
             }
             .buttonStyle(RowPressStyle())
         }

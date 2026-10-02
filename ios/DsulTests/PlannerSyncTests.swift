@@ -529,6 +529,8 @@ final class DragFlag {
         await drain(planner)
 
         #expect(planner.item(PlannerJSON.groceries)?.status == "completed")
+        // Nothing on screen moved, so nothing says it was undone.
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
         let posts = await server.count(itemRoute(PlannerJSON.groceries))
         #expect(posts == 3)
     }
@@ -552,6 +554,7 @@ final class DragFlag {
         #expect(kept?.isScheduled == true)
         #expect(kept?.startTime == "09:00")
         #expect(planner.isScheduled(milk.id))
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
         let posts = await server.count(itemRoute(milk.id))
         #expect(posts == 1)
     }
@@ -595,6 +598,68 @@ final class DragFlag {
         #expect(groceries?.pausedUntil == nil)
         let posts = await server.count(itemRoute(PlannerJSON.groceries))
         #expect(posts == 2)
+    }
+
+    /// A habit's status is the item's, not a day's: every day's tick writes
+    /// it. So a failed tick yesterday puts back yesterday alone, and the
+    /// status stays where today's tick, which landed, left it.
+    @Test func aFailedTickYesterdayLeavesTheStatusATickTodaySet() async {
+        let journal = UUID(uuidString: "0d000000-0000-4000-8000-000000000008")!
+        let journalJSON = "{\"id\":\"\(lowerID(journal))\",\"type\":\"habit\",\"title\":\"Journal\","
+            + "\"status\":\"pending\",\"timeBucket\":\"evening\",\"repeatFrequency\":\"daily\",\"streak\":0,"
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [journalJSON])), .offline)
+        await server.on(itemRoute(journal), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        let yesterday = planner.today.adding(days: -1)
+
+        planner.toggle(journal, on: yesterday)       // never reaches the server
+        planner.toggle(journal, on: planner.today)   // lands
+        #expect(planner.item(journal)?.completedDates == [yesterday.description, PlannerJSON.today])
+        await drain(planner)
+
+        let item = planner.item(journal)
+        #expect(item?.completedDates == [PlannerJSON.today])
+        #expect(item?.status == "done")
+        #expect(item?.streak == 1)
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(journal))
+        #expect(posts == 2)
+    }
+
+    /// A fetch that fails while a write on the failed item is still out (a
+    /// pull to refresh) leaves the failure for later, not forgotten: the
+    /// write that lands is played on the rebase, and the drain refetches.
+    @Test func aFailureWaitsForAWriteStillOutOnItsItem() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.bank), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        await server.gate(itemRoute(PlannerJSON.bank))
+
+        planner.schedule(PlannerJSON.bank, startMin: 9 * 60)   // never reaches the server
+        planner.move(PlannerJSON.bank, to: "2026-10-02")       // held, then lands
+        await server.admit(itemRoute(PlannerJSON.bank))
+        // The carry is out only once the drop has failed.
+        let carryOut = await waitUntil { await server.count(itemRoute(PlannerJSON.bank)) == 2 }
+        #expect(carryOut)
+
+        await planner.refresh()   // fails with the carry still out
+        #expect(planner.item(PlannerJSON.bank)?.startTime == "09:00")
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+
+        await server.admit(itemRoute(PlannerJSON.bank))
+        await drain(planner)
+
+        let bank = planner.item(PlannerJSON.bank)
+        #expect(bank?.isScheduled == false)
+        #expect(bank?.startTime == nil)
+        #expect(bank?.timeBucket == "anytime")
+        #expect(bank?.startDate == "2026-10-02")
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let gets = await server.count(plannerRoute)
+        #expect(gets == 3)
     }
 
     @Test func aSlotPutsBackItsOwnFieldsAndNoOthers() {

@@ -180,7 +180,8 @@ import Testing
         #expect(ItemSheetModel.rescheduleWords(roadmap, roadmapCtx)
                 == DayPickWords(title: "Reschedule", confirmVerb: "Move to", note: nil))
         #expect(ItemSheetModel.pauseUntilWords.note
-                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile.")
+                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile — "
+                + "your streak and history stay exactly as they are.")
     }
 
     /// A Pause until picker confirmed after midnight: a day that is now today,

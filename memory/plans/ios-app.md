@@ -341,13 +341,20 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   while ticks keep landing under it. A failed write shows a banner and
   refetches once the queue drains, and the server's answer replaces every
   guess. If that refetch fails too, each failed write's slot (`WriteSlot`) is
-  rebased, unless a write for the item is still queued: the slot goes back to
-  the item before the earliest failed write in it, with every write in it
-  that landed after that one played again on top, in order, through the
-  planner's own steps (`replaying`; a pause is resolved again against the
-  rebased item, as the server resolved it against its row). So the slot ends
-  where the server holds it, and every other slot is left as it is: a tick
-  that landed is never undone by a carry that failed. A landed write doesn't
+  rebased: the slot goes back to the item before the earliest failed write in
+  it, with every write in it that landed after that one played again on top,
+  in order, through the planner's own steps (`replaying`; a pause is resolved
+  again against the rebased item, at the planner's clock, as the server
+  resolved it against its row). So the slot ends where the server holds it,
+  and every other slot is left as it is: a tick that landed is never undone by
+  a carry that failed. A habit's status and day count are the one overlap,
+  since every day's tick and skip writes them, so a day's rebase takes them
+  from before the item's earliest failed day with every landed day replayed
+  (`dayWideFields`). A fetch that fails while a write on the failed item is
+  still out (a pull to refresh) keeps that item's failures, records what
+  lands, and the drain refetches; they are rebased only if that fails too.
+  The "so that change was undone" banner shows only when a revert moved
+  something; otherwise it is the plain "Couldn't reach dsul". A landed write doesn't
   moot a failed one in its slot, because two writes there need not set the
   same fields (a carry keeps the time a failed drop set, a skip leaves the
   tally a failed tick set, a resume of an item the server never paused writes

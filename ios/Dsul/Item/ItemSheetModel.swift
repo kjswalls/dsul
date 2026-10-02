@@ -282,7 +282,8 @@ enum ItemSheetModel {
     /// leaves open; the note is the web's own (item-dialog.tsx's picker).
     static let pauseUntilWords = DayPickWords(
         title: "Pause until", confirmVerb: "Pause until",
-        note: "It comes back on the day you pick, on its own. Nothing is lost meanwhile.")
+        note: "It comes back on the day you pick, on its own. Nothing is lost meanwhile — "
+            + "your streak and history stay exactly as they are.")
 
     /// What the banner says when Pause until's day is no longer after today:
     /// the picker was left open across midnight. A pause has to end after
