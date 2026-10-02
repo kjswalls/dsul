@@ -112,6 +112,7 @@ describe('the AI server boundary', () => {
     'lib/ai-connection-store.ts',
     'lib/chat-target.ts',
     'lib/open-chat.ts',
+    'lib/conversation-types.ts',
   ])('%s is client-safe: no Node builtin, no server module', (rel) => {
     const file = FILES.find((f) => f.rel === rel);
     expect(file, `${rel} exists`).toBeDefined();

@@ -28,6 +28,7 @@ import { createServiceClient } from '@/lib/supabase-service';
 import { ProviderError } from './errors';
 import { credentialsFor } from './providers';
 import type { ModelMeta, ProviderCredentials } from './providers/types';
+import { isMissingSchema } from './schema-codes';
 import { loadEncryptionKey, openSecret, sealSecret, type SealContext } from './secret-box';
 
 export interface ModelConnectionRow {
@@ -72,13 +73,6 @@ const TABLE = 'model_connections';
 const COLUMNS =
   'user_id, provider, base_url, model, model_meta, auth_method, key_ciphertext, status, last_error, checked_at';
 
-/**
- * The schema is not there yet (053 not applied, or a stale PostgREST cache):
- * undefined table, undefined column, and PostgREST's two "not in the schema
- * cache" codes. Everything else is a real failure.
- */
-const NO_SCHEMA_CODES = new Set(['42P01', 'PGRST205', '42703', 'PGRST204']);
-
 type DbError = { code?: unknown } | null | undefined;
 
 function codeOf(error: DbError): string | undefined {
@@ -88,9 +82,12 @@ function codeOf(error: DbError): string | undefined {
   return typeof code === 'string' ? code : undefined;
 }
 
+/**
+ * The schema is not there yet (053 not applied, or a stale PostgREST cache):
+ * the shared set in schema-codes.ts. Everything else is a real failure.
+ */
 function isNoSchema(error: DbError): boolean {
-  const code = codeOf(error);
-  return code !== undefined && NO_SCHEMA_CODES.has(code);
+  return isMissingSchema(codeOf(error));
 }
 
 function service(op: AiDbError['op']): ReturnType<typeof createServiceClient> {
@@ -141,7 +138,7 @@ function sealContext(userId: string, provider: ModelProviderId, baseUrl: string 
 }
 
 /**
- * 42P01 / PGRST205 / 42703 / PGRST204 => unavailable 'no_table'. Missing env
+ * Missing schema (schema-codes.ts) => unavailable 'no_table'. Missing env
  * key => 'no_key'. Any other DB error THROWS (route answers 503).
  */
 export async function readModelConnection(userId: string): Promise<RowRead> {

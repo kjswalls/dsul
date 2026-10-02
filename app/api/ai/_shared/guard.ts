@@ -9,6 +9,7 @@
  */
 
 import { NextResponse } from 'next/server';
+import type { SupabaseClient } from '@supabase/supabase-js';
 import { createClient } from '@/lib/supabase-server';
 import type { ApiErrorCode } from '@/lib/ai-types';
 
@@ -18,19 +19,31 @@ import type { ApiErrorCode } from '@/lib/ai-types';
  */
 export const NO_STORE = { 'Cache-Control': 'no-store' } as const;
 
-/** The signed-in user, validated by the auth server. Null on any failure. */
-export async function requireSessionUser(): Promise<{ id: string } | null> {
+/**
+ * The signed-in user, validated by the auth server, and the cookie client that
+ * validated them. Null on any failure.
+ *
+ * `db` runs as that user: RLS and SECURITY INVOKER functions are the tenant
+ * guard on everything a route does with it (the saved conversations). It is
+ * never the service role.
+ */
+export async function requireSession(): Promise<{ user: { id: string }; db: SupabaseClient } | null> {
   try {
-    const supabase = await createClient();
+    const db = await createClient();
     const {
       data: { user },
       error,
-    } = await supabase.auth.getUser();
+    } = await db.auth.getUser();
     if (error || !user) return null;
-    return { id: user.id };
+    return { user: { id: user.id }, db };
   } catch {
     return null;
   }
+}
+
+/** The signed-in user, validated by the auth server. Null on any failure. */
+export async function requireSessionUser(): Promise<{ id: string } | null> {
+  return (await requireSession())?.user ?? null;
 }
 
 /**

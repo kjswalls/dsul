@@ -6,6 +6,10 @@ import * as chat from '@/app/api/chat/route';
 import * as propose from '@/app/api/ai/propose/route';
 import * as start from '@/app/api/ai/openrouter/start/route';
 import * as callback from '@/app/api/ai/openrouter/callback/[state]/route';
+import * as conversations from '@/app/api/ai/conversations/route';
+import * as conversationSearch from '@/app/api/ai/conversations/search/route';
+import * as conversation from '@/app/api/ai/conversations/[id]/route';
+import * as turns from '@/app/api/ai/conversations/[id]/turns/route';
 import * as conn from '@/lib/ai-server/connections';
 import type { ModelConnectionRow } from '@/lib/ai-server/connections';
 import * as box from '@/lib/ai-server/secret-box';
@@ -144,6 +148,9 @@ function req(method: string, path: string, body?: unknown, headers: Record<strin
   });
 }
 const params = (state: string) => ({ params: Promise.resolve({ state }) });
+const idParams = (id: string) => ({ params: Promise.resolve({ id }) });
+/** A valid id, so a 403 comes from the origin check and never from id validation. */
+const CONV = 'c0000000-0000-4000-8000-0000000000a1';
 
 /** Every route handler, as a thunk over optional extra headers. */
 const HANDLERS: Array<[string, (headers?: Record<string, string>) => Promise<Response>, 'json' | 'redirect']> = [
@@ -161,10 +168,58 @@ const HANDLERS: Array<[string, (headers?: Record<string, string>) => Promise<Res
     (hd) => callback.GET(req('GET', `/api/ai/openrouter/callback/${'A'.repeat(22)}?code=abcdefgh12`, undefined, hd), params('A'.repeat(22))),
     'redirect',
   ],
+  ['conversations GET', (hd) => conversations.GET(req('GET', '/api/ai/conversations', undefined, hd)), 'json'],
+  [
+    'conversations search POST',
+    (hd) => conversationSearch.POST(req('POST', '/api/ai/conversations/search', { q: 'dentist' }, hd)),
+    'json',
+  ],
+  ['conversation GET', (hd) => conversation.GET(req('GET', `/api/ai/conversations/${CONV}`, undefined, hd), idParams(CONV)), 'json'],
+  [
+    'conversation PATCH',
+    (hd) => conversation.PATCH(req('PATCH', `/api/ai/conversations/${CONV}`, { starred: true }, hd), idParams(CONV)),
+    'json',
+  ],
+  [
+    'conversation DELETE',
+    (hd) => conversation.DELETE(req('DELETE', `/api/ai/conversations/${CONV}`, undefined, hd), idParams(CONV)),
+    'json',
+  ],
+  [
+    'turns POST',
+    (hd) =>
+      turns.POST(
+        req(
+          'POST',
+          `/api/ai/conversations/${CONV}/turns`,
+          {
+            ownerId: 'user-1',
+            create: { itemId: null, title: 'Plan' },
+            messages: [{ id: 'c0000000-0000-4000-8000-0000000000b1', role: 'user', content: 'plan' }],
+          },
+          hd
+        ),
+        idParams(CONV)
+      ),
+    'json',
+  ],
 ];
 
 const STATE_CHANGING = HANDLERS.filter(([name]) =>
-  ['connection PUT', 'connection PATCH model', 'connection PATCH recheck', 'connection DELETE', 'chat POST', 'propose POST'].includes(name)
+  [
+    'connection PUT',
+    'connection PATCH model',
+    'connection PATCH recheck',
+    'connection DELETE',
+    'chat POST',
+    'propose POST',
+    // The conversation routes with an origin check. Never 'conversation GET':
+    // a read has none, so here it would reach the auth-only mock's .from().
+    'conversations search POST',
+    'conversation PATCH',
+    'conversation DELETE',
+    'turns POST',
+  ].includes(name)
 );
 
 let fetchSpy: ReturnType<typeof vi.spyOn>;
