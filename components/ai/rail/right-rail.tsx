@@ -3,9 +3,12 @@
 import { useEffect, useRef } from 'react';
 import { AskHome } from '@/components/ai/ask/ask-home';
 import { ConversationView } from '@/components/ai/ask/conversation-view';
+import { ConversationTitleMenu } from '@/components/ai/ask/conversation-title-menu';
+import { HistoryButton, HistoryView } from '@/components/ai/ask/history-view';
+import { NewChatButton } from '@/components/ai/ask/new-chat-empty';
 import { ComposerAwakeContext } from '@/components/ai/bound-composer';
 import { RailHeader, useBackLabel, useConversationTitle } from '@/components/ai/rail/rail-header';
-import { useConversationsStore } from '@/lib/conversations-store';
+import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { focusIsInRail, useRailStore, type AskView } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 
@@ -17,7 +20,10 @@ function viewKeyOf(view: AskView | undefined): string {
   return 'history';
 }
 
-/** A field that keeps its own Escape: anything typed into, except an empty Ask box. */
+/**
+ * A field that keeps its own Escape: anything typed into, except an empty Ask
+ * box and an empty History search, where Escape goes back a view.
+ */
 function ownsEscape(el: HTMLElement): boolean {
   const typing =
     el instanceof HTMLInputElement ||
@@ -25,8 +31,19 @@ function ownsEscape(el: HTMLElement): boolean {
     el instanceof HTMLSelectElement ||
     el.isContentEditable;
   if (!typing) return false;
+  if (el instanceof HTMLInputElement && el.hasAttribute('data-ask-search')) return el.value !== '';
   return !(el instanceof HTMLTextAreaElement && el.closest('[data-ask-composer]') && !el.value.trim());
 }
+
+/**
+ * How a conversation's header reads:
+ *   saved    its title is the ⌄ menu (Rename, Star, Delete), then "+"
+ *   unsaved  its title plainly, then "+": a first turn on its way, or a
+ *            conversation found deleted, has no row to rename or delete
+ *   new      "New chat", then History (mocks 3 and 6): the draft has nothing
+ *            to keep, and History replaces it (the level rule)
+ */
+type ConversationHeader = 'saved' | 'unsaved' | 'new';
 
 const back = () => useRailStore.getState().back('desktop');
 const close = () => useRailStore.getState().closeRail();
@@ -78,6 +95,13 @@ export function RightRail({
   const lastNav = useRailStore((s) => s.lastNav);
   const backTo = useBackLabel(top ?? null, beneath);
   const conversationTitle = useConversationTitle(top?.kind === 'conversation' ? top.id : null);
+  const conversationHeader = useConversationsStore((s): ConversationHeader | null => {
+    if (top?.kind !== 'conversation') return null;
+    const id = resolveConversationId(top.id);
+    if (s.summaries[id]) return 'saved';
+    const t = s.threads[id];
+    return t && (t.messages.length > 0 || t.load === 'gone' || t.saved) ? 'unsaved' : 'new';
+  });
   const asideRef = useRef<HTMLElement>(null);
   const viewKey = viewKeyOf(top);
 
@@ -116,9 +140,13 @@ export function RightRail({
     setTimeout(() => {
       const root = asideRef.current;
       // Only focus that is still lost: a box that took a request, or anything
-      // the user moved to meanwhile, keeps it.
-      const active = document.activeElement;
-      if (!root || (active && active !== document.body)) return;
+      // the user moved to meanwhile, keeps it. The heading counts as lost:
+      // React keeps the header's <h2> from view to view, so a Back pressed on
+      // it (Escape, after a push parked focus there) would otherwise leave
+      // focus there, not on the control that pushed the view.
+      const active = document.activeElement as HTMLElement | null;
+      const parked = !!active && root?.contains(active) && active.hasAttribute('data-ask-heading');
+      if (!root || (active && active !== document.body && !parked)) return;
       const opener = returnTo
         ? Array.from(root.querySelectorAll<HTMLElement>('[data-ask-focus]')).find(
             (el) => el.dataset.askFocus === returnTo
@@ -150,12 +178,32 @@ export function RightRail({
   let header;
   let body = null;
   if (!top) {
-    header = <RailHeader home title="Ask" onClose={close} />;
+    const actions = (
+      <>
+        <HistoryButton />
+        <NewChatButton />
+      </>
+    );
+    header = <RailHeader home title="Ask" actions={actions} onClose={close} />;
     body = <AskHome />;
+  } else if (top.kind === 'history') {
+    header = <RailHeader back={{ label: backTo, onBack: back }} title="History" actions={<NewChatButton />} onClose={close} />;
+    body = <HistoryView />;
+  } else if (top.kind === 'conversation') {
+    const id = resolveConversationId(top.id);
+    const title = conversationHeader === 'new' ? 'New chat' : (conversationTitle ?? 'New chat');
+    header = (
+      <RailHeader
+        back={{ label: backTo, onBack: back }}
+        title={title}
+        heading={conversationHeader === 'saved' ? <ConversationTitleMenu key={id} id={id} title={title} /> : undefined}
+        actions={conversationHeader === 'new' ? <HistoryButton /> : <NewChatButton />}
+        onClose={close}
+      />
+    );
+    body = <ConversationView id={top.id} />;
   } else {
-    const title = top.kind === 'history' ? 'History' : top.kind === 'conversation' ? (conversationTitle ?? 'New chat') : undefined;
-    header = <RailHeader back={{ label: backTo, onBack: back }} title={title} onClose={close} />;
-    if (top.kind === 'conversation') body = <ConversationView id={top.id} />;
+    header = <RailHeader back={{ label: backTo, onBack: back }} onClose={close} />;
   }
 
   return (

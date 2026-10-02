@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { ChevronLeft, Sparkles, X } from 'lucide-react';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -62,18 +62,25 @@ export function useBackLabel(view: AskView | null, beneath: AskView | undefined)
  *    which is where focus goes when a push removes what held it.
  *  - At Ask home the ground is the relay field, waking while any conversation
  *    streams (it was the old chat panel's; layouts with the relay off hide it).
+ *  - `heading` replaces the plain title for a view whose title is a control
+ *    (a saved conversation's ⌄ menu); it renders its own `data-ask-heading`.
+ *  - `actions` sit before ✕: History and "+" in Ask's views.
  *  - `data-sub-input`: the item panel's Enter-to-submit covers its whole
  *    aside, and this row is inside it.
  */
 export function RailHeader({
   back,
   title,
+  heading,
+  actions,
   home = false,
   onClose,
   closeTestId = 'rail-close',
 }: {
   back?: { label: string; onBack: () => void };
   title?: string;
+  heading?: ReactNode;
+  actions?: ReactNode;
   /** Ask home: the ✦, and the relay ground. */
   home?: boolean;
   onClose: () => void;
@@ -115,23 +122,28 @@ export function RailHeader({
             <span className="truncate">{back.label}</span>
           </button>
         )}
-        {title && (
-          <h2
-            tabIndex={-1}
-            data-ask-heading=""
-            className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-foreground outline-none"
-          >
-            {home && <Sparkles className="size-4 shrink-0 text-ai" aria-hidden />}
-            <span className="truncate">{title}</span>
-          </h2>
-        )}
+        {heading ??
+          (title && (
+            <h2
+              tabIndex={-1}
+              data-ask-heading=""
+              className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-foreground outline-none"
+            >
+              {home && <Sparkles className="size-4 shrink-0 text-ai" aria-hidden />}
+              <span className="truncate">{title}</span>
+            </h2>
+          ))}
+        {actions && <div className="ml-auto flex shrink-0 items-center gap-0.5">{actions}</div>}
         <button
           type="button"
           onClick={onClose}
           data-testid={closeTestId}
           aria-label="Close"
           title={`Close (${chordLabel(keys, isMac)})`}
-          className="ml-auto flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          className={cn(
+            'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+            !actions && 'ml-auto'
+          )}
         >
           <X className="size-4" aria-hidden />
         </button>

@@ -868,7 +868,11 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
     loadMore: async () => {
       get().ensureOwner();
       const s = get();
-      if (s.saving === 'off' || s.list.status !== 'loaded' || !s.list.cursor) return;
+      // 'error' with a cursor is a later page that failed: History's "Try
+      // again" asks for it once more. (A first page that failed has no cursor;
+      // ensureLoaded is its retry.)
+      if (s.saving === 'off' || !s.list.cursor) return;
+      if (s.list.status !== 'loaded' && s.list.status !== 'error') return;
       const st = stamp();
       const cursor = s.list.cursor;
       set((x) => ({ list: { ...x.list, status: 'loading' } }));

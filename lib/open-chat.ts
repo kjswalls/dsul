@@ -14,8 +14,10 @@ import {
   type AskView,
   type ComposerBinding,
 } from './rail-store';
-import { closeItemPanel, useUIStore } from './ui-store';
+import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
 import { useViewStore } from './view-store';
+import { usePlannerStore } from './planner-store';
+import type { Task } from './planner-types';
 
 export { bindingKey, type ComposerBinding } from './rail-store';
 
@@ -157,6 +159,88 @@ export function useChatCardHomeShown(surface: AskSurface): boolean {
   // one card whatever its conversation. C5 (the Ask tab) makes this the
   // desktop rule over the phone stack.
   return onTab && canChat;
+}
+
+// ── Opening what Ask holds ───────────────────────────────────────────────────
+
+/**
+ * Show Ask from a command (the palette), with whatever was on top of it closed
+ * through the one flushing close, so the view about to be pushed is the one on
+ * screen. False when nothing can answer.
+ */
+function revealForCommand(isMobile: boolean): boolean {
+  if (!revealChat(isMobile)) return false;
+  if (!isMobile) closeItemPanel();
+  return true;
+}
+
+/**
+ * A new chat: a draft pushed over what Ask shows, with its box asked for. It
+ * has no row until its first turn is saved, so leaving it unsent leaves
+ * nothing behind. "+" in an Ask header pushes it in place (`returnFocus`: the
+ * "+" itself, so Back hands focus back to it); the palette's "New chat" shows
+ * Ask first (`reveal`). Returns the draft's id, or null with nothing to answer.
+ */
+export function newChat(isMobile: boolean, o: { reveal?: boolean; returnFocus?: string } = {}): string | null {
+  if (o.reveal ? !revealForCommand(isMobile) : !getAICapabilities().canChat) return null;
+  const id = useConversationsStore.getState().newDraft();
+  const rail = useRailStore.getState();
+  const view: AskView = o.returnFocus
+    ? { kind: 'conversation', id, returnFocus: o.returnFocus }
+    : { kind: 'conversation', id };
+  rail.push(isMobile ? 'phone' : 'desktop', view);
+  rail.focusComposer({ kind: 'draft', id });
+  return id;
+}
+
+/**
+ * History, pushed over what Ask shows. The header's History button pushes it
+ * in place, and focus lands on its heading (a pointer open); the palette's
+ * "Conversation history" shows Ask first and asks for the search field.
+ */
+export function openHistory(
+  isMobile: boolean,
+  o: { reveal?: boolean; focusSearch?: boolean; returnFocus?: string } = {}
+): void {
+  if (o.reveal ? !revealForCommand(isMobile) : !getAICapabilities().canChat) return;
+  const rail = useRailStore.getState();
+  const view: AskView = o.returnFocus ? { kind: 'history', returnFocus: o.returnFocus } : { kind: 'history' };
+  rail.push(isMobile ? 'phone' : 'desktop', view);
+  // Replaces the box request a reveal makes: History has no box.
+  if (o.focusSearch) rail.requestFocus({ target: 'history-search' });
+}
+
+/**
+ * Open a saved conversation from a view already on screen: a History row (and
+ * a conversation row in Ask home's activity list).
+ *
+ *  - An ITEM's conversation opens its item, landing on the item's Conversation
+ *    section (`pendingReveal`, which ItemConversation consumes). On desktop the
+ *    item takes the slot over the view, and Back returns to that view; on the
+ *    phone the Ask tab turns the open into a push.
+ *  - A general conversation, or an item's whose item is gone, is pushed, the
+ *    row that opened it named in `returnFocus` so Back hands focus back to it.
+ *    The view says when the item is gone; the conversation can still go on,
+ *    with no item to focus its context on.
+ *
+ * Also the seam a deep link to a conversation would call (it would reveal Ask
+ * first: this assumes Ask is on screen, and asks for no focus).
+ */
+export function openConversation(id: string, isMobile: boolean, o: { returnFocus?: string } = {}): void {
+  if (!getAICapabilities().canChat) return;
+  const rid = resolveConversationId(id);
+  const conversations = useConversationsStore.getState();
+  const itemId = conversations.summaries[rid]?.itemId ?? conversations.threads[rid]?.itemId ?? null;
+  const item = itemId ? usePlannerStore.getState().items.find((i) => i.id === itemId) : undefined;
+  if (item) {
+    useRailStore.getState().setPendingReveal(item.id);
+    openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
+    return;
+  }
+  const view: AskView = o.returnFocus
+    ? { kind: 'conversation', id: rid, returnFocus: o.returnFocus }
+    : { kind: 'conversation', id: rid };
+  useRailStore.getState().push(isMobile ? 'phone' : 'desktop', view);
 }
 
 // ── Where a send goes ────────────────────────────────────────────────────────

@@ -9,10 +9,11 @@ import { act, renderHook } from '@testing-library/react';
  * The command bar's routing is tests/unit/command-bar-ask.test.ts.
  */
 
+const planner = vi.hoisted(() => ({ items: [] as unknown[] }));
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
     getState: () => ({
-      items: [],
+      items: planner.items,
       projects: [],
       itemTypes: [],
       routines: [],
@@ -28,6 +29,9 @@ import {
   askNew,
   bindingKey,
   generalThreadId,
+  newChat,
+  openConversation,
+  openHistory,
   resetGeneralThread,
   resolveSendTarget,
   revealChat,
@@ -72,6 +76,7 @@ beforeEach(() => {
   useMobileNavStore.getState().setActiveTab('today');
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useViewStore.setState({ zenOpen: false, zenMoving: false });
+  planner.items = [];
 });
 
 afterEach(async () => {
@@ -571,5 +576,139 @@ describe("chat's card and where it is hosted", () => {
       const { result } = renderHook(() => useChatCardHomeShown('phone'));
       expect(result.current).toBe(true);
     });
+  });
+});
+
+describe('newChat (C4)', () => {
+  it("pushes a draft over Ask in place, its box asked for, Back's focus named", () => {
+    const id = newChat(false, { returnFocus: 'new-chat' });
+    expect(id).not.toBeNull();
+    expect(rail().stacks.desktop).toEqual([{ kind: 'conversation', id, returnFocus: 'new-chat' }]);
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'draft', id } });
+    // A draft only: no row, nothing sent, until its first turn.
+    expect(store().threads[id as string]).toMatchObject({ saved: false, messages: [] });
+    expect(api.turns).toEqual([]);
+    // In place: the "+" is on screen, so nothing is revealed.
+    expect(rail().summoned).toBe(false);
+  });
+
+  it('replaces a conversation at its level, and keeps History beneath', () => {
+    rail().push('desktop', { kind: 'history' });
+    rail().push('desktop', { kind: 'conversation', id: 'c1' });
+    const id = newChat(false);
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history' }, { kind: 'conversation', id }]);
+  });
+
+  it('from the palette: shows Ask first, closing an item on top through the one flushing close', () => {
+    const calls: string[] = [];
+    const off = registerItemPanelFlush(() => calls.push('flush'));
+    openItem();
+    const id = newChat(false, { reveal: true });
+    expect(calls).toEqual(['flush']);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(rail().summoned).toBe(true);
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'draft', id } });
+    off();
+  });
+
+  it('does nothing with nothing to answer', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    expect(newChat(false)).toBeNull();
+    expect(newChat(false, { reveal: true })).toBeNull();
+    expect(rail().stacks.desktop).toEqual([]);
+    expect(store().threads).toEqual({});
+  });
+});
+
+describe('openHistory (C4)', () => {
+  it('pushes History in place, asking for no field', () => {
+    openHistory(false, { returnFocus: 'history' });
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history', returnFocus: 'history' }]);
+    expect(rail().pendingFocus).toBeNull();
+  });
+
+  it('replaces a new chat (the level rule), so Back goes home and the draft leaves nothing', () => {
+    const id = newChat(false) as string;
+    openHistory(false);
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history' }]);
+    rail().back('desktop');
+    expect(rail().stacks.desktop).toEqual([]);
+    expect(api.turns).toEqual([]);
+    expect(store().summaries[id]).toBeUndefined();
+  });
+
+  it('from the palette: shows Ask and asks for the search field, not the box', () => {
+    openHistory(false, { reveal: true, focusSearch: true });
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(rail().summoned).toBe(true);
+    expect(rail().pendingFocus).toEqual({ target: 'history-search' });
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history' }]);
+  });
+
+  it('does nothing with nothing to answer', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    openHistory(false, { reveal: true, focusSearch: true });
+    openHistory(false);
+    expect(rail().stacks.desktop).toEqual([]);
+    expect(rail().pendingFocus).toBeNull();
+  });
+});
+
+describe('openConversation (C4)', () => {
+  const seedSummaries = (...rows: ReturnType<typeof summary>[]) =>
+    useConversationsStore.setState((s) => ({
+      summaries: { ...s.summaries, ...Object.fromEntries(rows.map((r) => [r.id, r])) },
+    }));
+
+  it('pushes a general conversation, naming the row that opened it', () => {
+    seedSummaries(summary({ id: 'c1' }));
+    rail().push('desktop', { kind: 'history' });
+    openConversation('c1', false, { returnFocus: 'conv:c1' });
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1', returnFocus: 'conv:c1' }]);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+  });
+
+  it("opens an item's conversation as its item, on the Conversation section", () => {
+    planner.items = [{ id: 'i1', type: 'task', title: 'Book the dentist', status: 'pending' }];
+    seedSummaries(summary({ id: 'c2', itemId: 'i1' }));
+    rail().push('desktop', { kind: 'history' });
+    openConversation('c2', false, { returnFocus: 'conv:c2' });
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1', type: 'task' } });
+    expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+    // History stays beneath: Back from the item returns to it.
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history' }]);
+  });
+
+  it("opens a habit's as a habit", () => {
+    planner.items = [{ id: 'h1', type: 'habit', title: 'Stretch' }];
+    seedSummaries(summary({ id: 'c3', itemId: 'h1' }));
+    openConversation('c3', false);
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'h1', type: 'habit' } });
+  });
+
+  it("pushes an item's conversation whose item is gone, like any other", () => {
+    seedSummaries(summary({ id: 'c4', itemId: 'gone' }));
+    openConversation('c4', false);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    expect(rail().pendingReveal).toBeNull();
+    expect(rail().stacks.desktop).toEqual([{ kind: 'conversation', id: 'c4' }]);
+  });
+
+  it('pushes on the phone stack from the phone', () => {
+    seedSummaries(summary({ id: 'c5' }));
+    openConversation('c5', true);
+    expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id: 'c5' }]);
+    expect(rail().stacks.desktop).toEqual([]);
+  });
+
+  it('does nothing with nothing to answer', () => {
+    seedSummaries(summary({ id: 'c6' }));
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    openConversation('c6', false);
+    expect(rail().stacks.desktop).toEqual([]);
   });
 });

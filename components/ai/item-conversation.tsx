@@ -4,6 +4,8 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BandLabel } from '@/components/planner/item-bands';
+import { TranscriptMessages } from '@/components/ai/chat-transcript';
+import { ItemConversationMenu } from '@/components/ai/ask/conversation-title-menu';
 import {
   resolveConversationId,
   useConversationsStore,
@@ -65,6 +67,13 @@ function railBodyOf(el: HTMLElement | null): HTMLElement | null {
  * Every shape returns null when nothing can answer: a conversation nobody can
  * answer in is a field that sends nowhere.
  *
+ * In the rail (pinned, transcript) the messages are Ask's own
+ * (components/ai/chat-transcript.tsx: your bubble, plain replies, Copy, the
+ * status lines), and once the conversation is saved its heading has a ⌄: Star,
+ * and Delete conversation… (no Rename: its title is the item's). Deleted here
+ * or elsewhere, the item stays, and its next send starts a fresh conversation;
+ * one found deleted elsewhere stays on screen under a notice until then.
+ *
  * OPENED FOR ITS CONVERSATION. An item opened from a History or activity row
  * carries a reveal request (rail-store `pendingReveal`); the pinned shape
  * consumes it and scrolls the rail body, and only the rail body, to this
@@ -83,6 +92,8 @@ export function ItemConversation({
   const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
   const messages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined) ?? NO_MESSAGES);
   const isTyping = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.typing));
+  const saved = useConversationsStore((s) => !!(threadId && s.summaries[threadId]));
+  const gone = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.load === 'gone'));
   // Busy from the send's first instant (before the item's conversation is even
   // known) until the reply has finished arriving.
   const isLoading = useConversationsStore(
@@ -152,11 +163,13 @@ export function ItemConversation({
   if (!inline) {
     if (messages.length === 0) return null;
     return (
-      <div ref={listRef} data-testid="item-conversation" className={cn('flex flex-col gap-2', className)}>
-        <BandLabel>Conversation</BandLabel>
-        {messages.map((m, i) => (
-          <MessageRow key={m.id} m={m} next={messages[i + 1]} rail />
-        ))}
+      <div ref={listRef} data-testid="item-conversation" className={cn('flex flex-col gap-3', className)}>
+        <div className="flex min-h-6 items-center justify-between gap-2">
+          <BandLabel>Conversation</BandLabel>
+          {saved && threadId && <ItemConversationMenu id={threadId} />}
+        </div>
+        {gone && <GoneNotice />}
+        <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} />
       </div>
     );
   }
@@ -166,6 +179,7 @@ export function ItemConversation({
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
       <BandLabel>Thread</BandLabel>
+      {gone && <GoneNotice />}
       {messages.length > 0 && (
         <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
           {messages.map((m, i) => (
@@ -202,34 +216,29 @@ export function ItemConversation({
   );
 }
 
+/** The item's conversation was deleted on another device, or in another tab or window. */
+function GoneNotice() {
+  return (
+    <p role="status" data-testid="conversation-gone" className="text-xs text-muted-foreground">
+      This conversation was deleted.
+    </p>
+  );
+}
+
 /**
- * One message. In the rail, yours is a soft bubble and a reply is plain text
- * with no bubble at all; inline keeps the compact tinted pair it always had.
+ * One message, inline: the compact tinted pair the inline thread always had.
  * "Not saved" shows once per turn: under its reply, or under the question when
  * no reply came.
  */
-function MessageRow({ m, next, rail = false }: { m: ChatMessage; next: ChatMessage | undefined; rail?: boolean }) {
+function MessageRow({ m, next }: { m: ChatMessage; next: ChatMessage | undefined }) {
   const notSaved = m.sync === 'unsaved' && !(next?.sync === 'unsaved' && next.replyTo === m.id);
   const mine = m.role === 'user';
   return (
-    <div
-      className={cn(
-        'flex flex-col gap-0.5',
-        rail ? (mine ? 'max-w-[85%] self-end items-end' : 'self-stretch') : 'max-w-[92%]',
-        !rail && (mine ? 'self-end items-end' : 'self-start')
-      )}
-    >
+    <div className={cn('flex max-w-[92%] flex-col gap-0.5', mine ? 'self-end items-end' : 'self-start')}>
       <div
         className={cn(
-          'whitespace-pre-wrap',
-          rail
-            ? mine
-              ? 'rounded-2xl bg-secondary px-3 py-2 text-sm leading-relaxed text-foreground'
-              : 'text-sm leading-relaxed text-foreground'
-            : cn(
-                'rounded-md px-2.5 py-1.5 text-xs leading-relaxed',
-                mine ? 'bg-secondary text-foreground' : 'bg-warning/10 text-foreground'
-              )
+          'whitespace-pre-wrap rounded-md px-2.5 py-1.5 text-xs leading-relaxed',
+          mine ? 'bg-secondary text-foreground' : 'bg-warning/10 text-foreground'
         )}
       >
         {m.content || (m.status === 'streaming' ? '…' : '')}

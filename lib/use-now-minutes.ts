@@ -25,6 +25,19 @@ export function useNowMinutes(timezone?: string): number | null {
   return useSyncExternalStore(subscribeToMinute, getSnapshot, getServerSnapshot);
 }
 
+/**
+ * The wall clock as epoch milliseconds, floored to the minute, or `null` on the
+ * server and during hydration. Same tick as useNowMinutes; for a view that
+ * sorts by DAY (History's Today / Yesterday / Earlier), which needs the instant
+ * and not the time of day. Floored so every read within a minute is the same
+ * snapshot, as useSyncExternalStore requires.
+ */
+export function useNowMinuteMs(): number | null {
+  return useSyncExternalStore(subscribeToMinute, getMinuteMs, getServerSnapshot);
+}
+
+const getMinuteMs = () => Math.floor(Date.now() / 60_000) * 60_000;
+
 function subscribeToMinute(onChange: () => void) {
   let timer: ReturnType<typeof setTimeout>;
   const tick = () => {
