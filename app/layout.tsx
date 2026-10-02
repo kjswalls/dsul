@@ -7,6 +7,7 @@ import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
 import { FaviconSync } from '@/components/providers/favicon-sync'
 import { Toaster } from '@/components/ui/sonner'
+import { ICON_REV } from '@/lib/app-icons'
 import './globals.css'
 
 const inter = Inter({
@@ -60,14 +61,17 @@ export const metadata: Metadata = {
   icons: {
     // The Aurora mark (scripts/app-icon). One dark tile for light and dark tab bars alike.
     // FaviconSync swaps these hrefs to their /icons/lime/ twins for a Lime pick
-    // or a finished day; the apple-touch icon stays Aurora.
+    // or a finished day; the apple-touch icon stays Aurora. The ?v= query is
+    // what makes a browser that cached the old Wave favicon fetch these: tab
+    // icons are cached per URL, far longer than any header asks. Bump ICON_REV
+    // (lib/app-icons.ts) whenever the artwork changes.
     icon: [
-      { url: '/icons/icon-16.png', sizes: '16x16', type: 'image/png' },
-      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
-      { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: `/icons/icon-16.png?v=${ICON_REV}`, sizes: '16x16', type: 'image/png' },
+      { url: `/icons/icon-32.png?v=${ICON_REV}`, sizes: '32x32', type: 'image/png' },
+      { url: `/icons/icon-192.png?v=${ICON_REV}`, sizes: '192x192', type: 'image/png' },
+      { url: `/icons/icon-512.png?v=${ICON_REV}`, sizes: '512x512', type: 'image/png' },
     ],
-    apple: '/icons/icon-180.png',
+    apple: `/icons/icon-180.png?v=${ICON_REV}`,
   },
 }
 
