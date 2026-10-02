@@ -40,6 +40,7 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { placementOf } from '@/lib/dnd/handle-drag-end';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { milestoneItemIds } from '@/lib/goals';
+import { braindumpMembers } from '@/lib/braindump-members';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -203,6 +204,9 @@ function QuickAddRow({ scrollRef }: { scrollRef: React.RefObject<HTMLDivElement 
  * A function rather than inline in the memo because the drop preview runs it a
  * second time, over the tasks as a drop would leave them: one predicate for
  * "what is here" and "where would this land" means the two cannot disagree.
+ *
+ * Membership itself lives in lib/braindump-members.ts, which the iPhone's port
+ * is checked against; only the Display narrowing is this file's own.
  */
 function braindumpRows(
   tasks: readonly Task[],
@@ -211,23 +215,7 @@ function braindumpRows(
   braindumpFilters: ReturnType<typeof useViewStore.getState>['braindumpFilters'],
   goalMemberIds: ReturnType<typeof useGoalFilterIds>
 ): { base: RowItem[]; rows: RowItem[] } {
-  const unscheduledTasks = tasks.filter((task) => {
-    if (suppressedIds.has(task.id)) return false;
-    if (task.isScheduled || task.timeBucket) return false;
-    return true;
-  });
-
-  const unscheduledHabits = habits.filter((habit) => {
-    if (suppressedIds.has(habit.id)) return false;
-    if (habit.timeBucket) return false;
-    if (habit.repeatFrequency && habit.repeatFrequency !== 'none') return false;
-    return true;
-  });
-
-  const base: RowItem[] = [
-    ...unscheduledTasks.map((task) => ({ itemType: 'task' as const, item: task })),
-    ...unscheduledHabits.map((habit) => ({ itemType: 'habit' as const, item: habit })),
-  ];
+  const base: RowItem[] = braindumpMembers(tasks, habits, suppressedIds);
 
   const rows = base.filter((row) => {
     if (row.itemType === 'task') {

@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Plus, Sparkles, SlashSquare, CheckCircle2, Flame, X,
+import { Plus, Sparkles, SlashSquare, X,
   Target, Search, CornerDownLeft, Check,
 } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
@@ -19,6 +19,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useChatStore } from '@/lib/chat-store';
+import { getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
 import { groupResults, searchGoals, searchItems, type SearchGroup } from '@/lib/search';
 import { sortGoalsForDisplay } from '@/lib/goals';
 import { useGoalsEnabled } from '@/lib/extension-gates';
@@ -73,6 +74,20 @@ const FREE_TEXT_COMMAND_LIMIT = 4;
 export type OmnibarVariant = 'dock' | 'launcher';
 
 /**
+ * The launcher's resting line (and, with a full stop, the ⌘K dialog's
+ * screen-reader description). It offers to ask only when something will
+ * answer, and names who: a model is "AI", OpenClaw keeps its own name.
+ */
+export function launcherDescription(
+  canChat: boolean,
+  answererName: 'AI' | 'OpenClaw' | null
+): string {
+  return canChat
+    ? `Search, add a task, run a command, or ask ${answererName === 'OpenClaw' ? 'OpenClaw' : 'AI'}`
+    : 'Search, add a task, or run a command';
+}
+
+/**
  * How long the capture relay's brightness window stays open, in ms.
  *
  * The field rests at zero intensity, so this — not `burstDecay` — is what makes
@@ -105,8 +120,9 @@ function PanelShell({ isLauncher, children }: { isLauncher: boolean; children: R
  *   both are mounted.
  * @param initialQuery seeds the input on mount (launcher only) — e.g. the `/`
  *   binding opens the launcher already in command mode.
- * @param onAskBeacon overrides where "Ask Beacon" opens the chat. Desktop
- *   grows the sidebar dock (default); mobile switches to the Chat tab.
+ * @param onAskBeacon overrides where "Ask AI" opens the chat. Desktop
+ *   grows the sidebar dock (default); mobile switches to the Chat tab. Either
+ *   way the omnibar only calls it while the AI gate says something answers.
  * @param onFocusChange reports the input's focus state to the parent (the dock
  *   drives its ambient relay from this — a stable signal, unlike container
  *   focus-within which sticks when a menu returns focus or a child unmounts).
@@ -135,6 +151,7 @@ export function Omnibar({
   onFocusChange,
   onPulse,
   captureRelay = false,
+  placeholder: placeholderOverride,
 }: {
   variant?: OmnibarVariant;
   initialQuery?: string;
@@ -142,13 +159,14 @@ export function Omnibar({
   onFocusChange?: (focused: boolean) => void;
   onPulse?: () => void;
   captureRelay?: boolean;
+  /** Dock only: a layout's own resting line ("write a line…"). Commands still name theirs. */
+  placeholder?: string;
 } = {}) {
   const isLauncher = variant === 'launcher';
   const {
     tasks,
     habits,
     addTask,
-    getProjectEmoji,
     userTimezone,
     routines,
     seasons,
@@ -225,6 +243,12 @@ export function Omnibar({
   );
 
   const ctx = useCommandContext({ openChat: onAskBeacon });
+  // The AI gate (lib/ai-registry.ts). Every chat affordance below — the `?`
+  // prefix, the Ask rows, the `? chat` hint, ⌘Enter, the launcher's copy and
+  // footer — exists only while something can answer. Fails closed: while the
+  // status is unknown, `?` is just search text.
+  const { canChat, answererName } = useAICapabilities();
+  const askLabel = `Ask ${answererName ?? 'AI'}`;
   const usage = useCommandUsageStore((s) => s.usage);
   const bindings = useShortcutBindings();
 
@@ -292,10 +316,11 @@ export function Omnibar({
   // project called "/etc" has to be typeable.
   const isCommandMode = !activeCommand && trimmed.startsWith('/');
   const isAddMode = !activeCommand && trimmed.startsWith('+');
-  const isChatMode = !activeCommand && trimmed.startsWith('?');
+  // With no chat, `?` is not a mode at all: the text searches like any other.
+  const isChatMode = canChat && !activeCommand && trimmed.startsWith('?');
   const commandQuery = isCommandMode ? trimmed.slice(1).trim() : '';
   const addTitle = isAddMode ? trimmed.slice(1).trim() : trimmed;
-  // Every prefix is stripped, not just '?': ⌘Enter sends to Beacon from any
+  // Every prefix is stripped, not just '?': ⌘Enter sends to the chat from any
   // mode, and it must not send the literal '+' or '/' along with the text.
   const chatText =
     isChatMode || isAddMode || isCommandMode ? trimmed.slice(1).trim() : trimmed;
@@ -407,7 +432,7 @@ export function Omnibar({
    * always on offer. Only shown when you have not typed a query — once you are
    * searching, relevance is the only ordering that makes sense.
    *
-   * Add task and Ask Beacon are excluded: the inline rows below already are
+   * Add task and Ask AI are excluded: the inline rows below already are
    * those two commands, so a recent entry for either would render twice.
    */
   const recentCommandRows = useMemo<CommandRow[]>(() => {
@@ -430,7 +455,7 @@ export function Omnibar({
       return ctx.isMobile ? rows.slice(0, MOBILE_ROW_LIMIT) : rows;
     }
 
-    // Free text: the inline quick-add and Ask Beacon rows below already ARE
+    // Free text: the inline quick-add and Ask AI rows below already ARE
     // those two commands, so drop the duplicates before capping. Per-goal
     // "Open X" commands go the same way and for the same reason — the Goals
     // section above is those rows, with the same destination — and leaving both
@@ -570,6 +595,9 @@ export function Omnibar({
   };
 
   const askBeacon = () => {
+    // Read fresh, not from the render: the gate can drop (a key rejected
+    // mid-session) between the render that drew a row and the keypress on it.
+    if (!getAICapabilities().canChat) return;
     ctx.openChat();
     useCommandUsageStore.getState().record('rituals.chat');
     if (chatText) useChatStore.getState().send(chatText);
@@ -894,7 +922,7 @@ export function Omnibar({
                       <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
                         <Sparkles className="h-4 w-4 text-ai" />
                         <span className="truncate">
-                          Ask Beacon
+                          {askLabel}
                           {chatText ? (
                             <>
                               {' '}
@@ -1044,11 +1072,11 @@ export function Omnibar({
                         </CommandItem>
                       )}
                       {commandRows.map(renderCommandRow)}
-                      {!isCommandMode && !isAddMode && (
+                      {!isCommandMode && !isAddMode && canChat && (
                         <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
                           <Sparkles className="h-4 w-4 text-ai" />
                           <span className="truncate">
-                            Ask Beacon
+                            {askLabel}
                             {chatText ? (
                               <>
                                 {' '}
@@ -1084,9 +1112,11 @@ export function Omnibar({
                       <span className="flex items-center gap-1">
                         <SlashSquare className="h-3 w-3" /> commands
                       </span>
-                      <span className="flex items-center gap-1">
-                        <Sparkles className="h-3 w-3" /> ? chat
-                      </span>
+                      {canChat && (
+                        <span className="flex items-center gap-1">
+                          <Sparkles className="h-3 w-3" /> ? chat
+                        </span>
+                      )}
                     </div>
                   )}
                 </>
@@ -1182,6 +1212,7 @@ export function Omnibar({
               e.preventDefault();
               inputRef.current?.focus();
             }}
+            data-omnibar-pill=""
             className={cn(
               'relative z-10 flex w-full items-center',
               isLauncher
@@ -1378,9 +1409,15 @@ export function Omnibar({
                 }
                 // Not while a chip is pending — ⌘Enter there would abandon the
                 // command and send the half-typed argument as a chat message.
+                //
+                // ALWAYS consumed, and acts only when something can answer. It
+                // must not fall through without chat: cmdk's root keydown takes
+                // Enter with no modifier check unless defaultPrevented, and in
+                // the dock Enter adds a task, so "plan my day" would be filed as
+                // one.
                 if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !activeCommand) {
                   e.preventDefault();
-                  askBeacon();
+                  if (canChat) askBeacon();
                   return;
                 }
                 // Submit a text argument explicitly rather than relying on cmdk
@@ -1404,7 +1441,7 @@ export function Omnibar({
               // A multi-line paste can't be a search and can't be typed into a
               // single-line input without folding — treat it as a list and hand
               // it to the bulk-add dialog. Chat mode keeps native paste (a
-              // pasted paragraph is a legitimate question for Beacon), and so
+              // pasted paragraph is a legitimate question to ask), and so
               // does a pending command chip (its argument is a value, not a
               // list). The typed query survives, as the braindump's draft
               // does: the paste is what's being promoted, not the draft.
@@ -1422,12 +1459,21 @@ export function Omnibar({
                 activeCommand
                   ? (activeCommand.argument?.placeholder ?? '')
                   : isLauncher
-                    ? 'Search, add a task, run a command, or ask Beacon…'
-                    : // Dock leans capture: LEAD with the everyday action, then
+                    ? `${launcherDescription(canChat, answererName)}…`
+                    : placeholderOverride ?? // Dock leans capture: LEAD with the everyday action, then
                       // name enough of the rest that the bar does not read as a
                       // single-purpose add field. It used to say only "Add a
-                      // task…", which undersold three of the four modes at the
-                      // one moment the bar is being looked at and not used.
+                      // task…", which undersold the other modes at the one
+                      // moment the bar is being looked at and not used.
+                      //
+                      // CONSTANT, whatever the AI gate says. The launcher's line
+                      // can wait for the gate (it is summoned, long after the
+                      // status has loaded); the resting dock is on screen from
+                      // the first paint, and a bar that rewrote its own words a
+                      // second after load would be the flicker the gate is
+                      // built to avoid. So it names chat nowhere: the hint row
+                      // below advertises `? chat` on focus, and only when chat
+                      // exists.
                       //
                       // Deliberately NOT the launcher's line above. The split is
                       // the point: the launcher opens as a command surface and so
@@ -1435,13 +1481,15 @@ export function Omnibar({
                       // rests as a capture bar and only widens from there. Commands
                       // are the omission that pays for the width — they are the
                       // launcher's headline, they live under ⌘K, and the hint row
-                      // below still advertises the + / command / ? prefixes the
+                      // below still advertises the + / command prefixes the
                       // moment this bar is focused.
                       //
                       // Width is the other constraint. Measure with the app's OWN
                       // ramp, not Tailwind's: this input is `text-sm`, and
                       // app/globals.css redefines --text-sm to 12px (not 16, not
-                      // 14). At 12px Inter this string is ~162px.
+                      // 14). At 12px Inter this string is roughly 120px (scaled
+                      // from the ~162px measured for the longer line it
+                      // replaced, "Add a task, search, or chat…").
                       //
                       // Desktop: SIDEBAR_MIN_WIDTH is 280px, less the dock's
                       // px-[10px] well and the pill's px-[22px] = 216px of text
@@ -1454,7 +1502,7 @@ export function Omnibar({
                       // rather than overflows) but it does get truncated mid-word,
                       // which is worse copy than a shorter honest one. Measure
                       // before lengthening.
-                      'Add a task, search, or chat…'
+                      'Add a task or search…'
               }
               // The phone keyboard's return key reads "go" while marks are up,
               // since it runs the selection rather than picking a row.
@@ -1486,8 +1534,9 @@ export function Omnibar({
         {/* Launcher footer: a persistent hint bar pinned to the card bottom
             (order-3, so it sits BELOW the order-2 panel and outside its scroll).
             The left mirrors the dock's in-panel prefix hint; the right spells out
-            the Enter / Beacon / Escape keys. Dock renders no footer — its hint
-            lives inside the panel. */}
+            the Enter / ask / Escape keys (the chat parts only while something
+            can answer). Dock renders no footer — its hint lives inside the
+            panel. */}
         {isLauncher && (
           <div
             data-testid="omnibar-launcher-footer"
@@ -1495,7 +1544,7 @@ export function Omnibar({
           >
             {activeCommand ? (
               // Chip state: the prefixes are suspended and ⌘↵ no longer asks
-              // Beacon, so the resting copy would be wrong on both sides.
+              // anyone, so the resting copy would be wrong on both sides.
               <div
                 data-testid="omnibar-picker-hint"
                 className="flex min-w-0 items-center gap-2 truncate font-mono tracking-normal"
@@ -1527,14 +1576,20 @@ export function Omnibar({
                   <span className="flex items-center gap-1">
                     <SlashSquare className="h-3 w-3" /> commands
                   </span>
-                  <span className="flex items-center gap-1">
-                    <Sparkles className="h-3 w-3" /> chat
-                  </span>
+                  {canChat && (
+                    <span className="flex items-center gap-1">
+                      <Sparkles className="h-3 w-3" /> chat
+                    </span>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 font-mono tracking-normal">
                   <span>↵ open</span>
-                  <span aria-hidden>·</span>
-                  <span>{isMac ? '⌘' : 'Ctrl'}↵ Beacon</span>
+                  {canChat && (
+                    <>
+                      <span aria-hidden>·</span>
+                      <span>{`${isMac ? '⌘' : 'Ctrl'}↵ ${answererName ?? 'AI'}`}</span>
+                    </>
+                  )}
                   <span aria-hidden>·</span>
                   <span>esc</span>
                 </div>

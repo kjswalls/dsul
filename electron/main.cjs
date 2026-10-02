@@ -22,6 +22,8 @@ const {
   shell,
 } = require('electron');
 const policy = require('./lib/policy.cjs');
+const { windowChrome } = require('./lib/window-chrome.cjs');
+const appIcons = require('./lib/app-icon.cjs');
 
 const APP_ID = 'app.dsul.desktop';
 const IS_MAC = process.platform === 'darwin';
@@ -53,6 +55,7 @@ let shortcutRegistered = false;
 let update = null; // { version, url } once GitHub has a newer release
 let pending = null; // { kind: 'google' | 'email', until } while a sign-in may come back
 let signInNoticeUntil = 0;
+let appIcon = appIcons.DEFAULT_LOOK; // the look the Dock or window shows (lib/app-icon.cjs)
 const seenCodes = new Set();
 const queuedLinks = [];
 
@@ -157,6 +160,9 @@ function registerProtocol() {
 
 function ready() {
   pending = readPending();
+  appIcon = readAppIcon();
+  // The Dock bounces the bundle's Aurora at launch either way; this swaps it as early as it can.
+  if (IS_MAC) applyAppIcon(appIcon);
   configureSession(session.defaultSession);
   installMenu();
   createWindow();
@@ -199,6 +205,11 @@ function createWindow() {
     title: 'dsul',
     backgroundColor: backgroundColor(),
     autoHideMenuBar: process.platform === 'win32',
+    // macOS: no title bar; the traffic lights sit in the page's own top band
+    // (lib/window-chrome.cjs). Windows and Linux keep the native frame.
+    ...windowChrome(process.platform),
+    // Off the Mac the window's icon is the taskbar's, so a Lime user never sees Aurora there.
+    ...(IS_MAC ? {} : { icon: iconImage(appIcon) }),
     webPreferences: {
       preload: path.join(__dirname, 'preload.cjs'),
       contextIsolation: true,
@@ -495,6 +506,54 @@ function registerIpc() {
     signInNoticeUntil = 0;
     return live;
   });
+
+  // The page's Settings → Look choice. A repeat (every sign-in sends one) touches nothing.
+  ipcMain.handle('dsul:set-app-icon', (event, look) => {
+    if (!fromApp(event)) return false;
+    const next = appIcons.parseLook(look);
+    if (!next) return false;
+    if (next !== appIcon) {
+      appIcon = next;
+      writeAppIcon();
+      applyAppIcon(next);
+    }
+    return true;
+  });
+}
+
+// ── App icon ─────────────────────────────────────────────────────────────────
+
+// The look is kept on disk so the next launch starts on it. It is not secret, so no 0o600.
+const appIconFile = () => path.join(app.getPath('userData'), 'app-icon.json');
+
+function readAppIcon() {
+  try {
+    return appIcons.parseLook(JSON.parse(fs.readFileSync(appIconFile(), 'utf8')).look) || appIcons.DEFAULT_LOOK;
+  } catch {
+    return appIcons.DEFAULT_LOOK;
+  }
+}
+
+function writeAppIcon() {
+  try {
+    fs.writeFileSync(appIconFile(), JSON.stringify({ look: appIcon }));
+  } catch {
+    // This run still shows it; the next launch starts on the previous look.
+  }
+}
+
+// build/app-icon-*.png is packed for this (electron-builder.config.cjs files).
+function iconImage(look) {
+  return nativeImage.createFromPath(path.join(__dirname, 'build', appIcons.iconFile(look)));
+}
+
+// macOS: the Dock and ⌘-Tab, for as long as the app runs. Elsewhere: the window and its taskbar
+// button. A missing file is an empty image, which changes nothing rather than blanking the icon.
+function applyAppIcon(look) {
+  const img = iconImage(look);
+  if (img.isEmpty()) return;
+  if (IS_MAC) app.dock?.setIcon(img);
+  else if (win && !win.isDestroyed()) win.setIcon(img);
 }
 
 // ── Sign-in handoff ──────────────────────────────────────────────────────────

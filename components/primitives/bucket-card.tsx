@@ -436,7 +436,9 @@ export function BucketCard({
             sets its own. A shut bucket's peek is a third, middle child that
             takes the free width (flex-1) and truncates into it; the name and
             the cluster keep their ends either way. */}
-        <header className={cn('flex items-center justify-between', g.head)}>
+        {/* data-bucket-head / data-bucket-glyph: handles for the layouts that
+            draw a bucket as a line of text (app/globals.css, `buckets`). */}
+        <header data-bucket-head="" className={cn('flex items-center justify-between', g.head)}>
           {/* h3 wrapping the button, not the other way round: a heading is flow
               content and a button only takes phrasing content, so the usual
               accordion nesting is the only one that validates. The negative
@@ -450,18 +452,19 @@ export function BucketCard({
                     (showHalo ? (
                       // `isolate` keeps the halo's -z-10 above the caption
                       // button's hover fill instead of under it.
-                      <span className="relative isolate flex flex-none">
+                      <span data-bucket-glyph="" className="relative isolate flex flex-none">
                         <CurrentGlyphHalo bleed={haloBleed} />
                         <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
                       </span>
                     ) : (
-                      <Icon className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
+                      <Icon data-bucket-glyph="" className={cn('flex-none', g.nodeIcon, BUCKET_LABEL_INK)} />
                     ))}
                   {/* The current bucket steps up one tone, not to full ink. The
                       lime rule on the card already says where you are; this only
                       keeps the caption from contradicting it (and is the whole
                       signal on an empty current bucket, which has no card). */}
                   <span
+                    data-bucket-label
                     className={cn(
                       'truncate font-sans text-xs font-medium',
                       isCurrent ? 'text-muted-foreground' : BUCKET_LABEL_INK

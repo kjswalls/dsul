@@ -116,13 +116,15 @@ describe('buildDsulContext', () => {
 });
 
 describe('BEACON_SYSTEM_PROMPT', () => {
-  it('is byte-identical to the pre-registry string', () => {
+  it('is pinned byte for byte, and names no assistant', () => {
     expect(BEACON_SYSTEM_PROMPT).toBe(
-      'You are Beacon, a warm and encouraging AI assistant built into dsul — a daily planner for neurodivergent people. ' +
+      'You are a warm and encouraging AI assistant built into dsul, a daily planner for neurodivergent people. ' +
         "You have full visibility into the user's current tasks, habits, and projects. " +
         'Help them plan their day, break down overwhelming tasks, celebrate progress, and stay focused. ' +
         "Be concise, warm, and never judgmental. When you reference their tasks or habits, be specific — you can see exactly what they're working on."
     );
+    // The AI has no name (decision 10): the model must not introduce itself as one.
+    expect(BEACON_SYSTEM_PROMPT).not.toMatch(/\bBeacon\b/);
   });
 
   it('announces custom-type nouns when hydrated types are passed', () => {

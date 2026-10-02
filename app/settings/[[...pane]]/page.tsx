@@ -18,6 +18,7 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useLookStore } from '@/lib/look-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -133,7 +134,7 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
     <main
       // Mirrors SettingsShell's own container exactly, so the real surface
       // lands where the skeleton stood instead of jumping under the cursor.
-      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8"
+      className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]"
       data-testid="settings-page"
       data-settings-state="loading"
     >
@@ -176,9 +177,13 @@ function SettingsSkeleton({ userId }: { userId: string | null }) {
       </div>
 
       {/* The old screen's whole point, kept and demoted: if this is still here
-          after five seconds something is genuinely wrong, and a signed-out
-          visitor (the proxy lets requests through when Supabase itself is
-          unreachable) needs a way out that isn't the back button. */}
+          after five seconds something is genuinely wrong, and a visitor with no
+          usable session needs a way out that isn't the back button. Not one with
+          NO session: proxy.ts sends that to /login (and reads an unreachable
+          Supabase as one), and so does the provider for a page the server let
+          through. This is for a stored session the browser could not refresh,
+          or a cookie the proxy could not decode and so let through; the
+          provider keeps both here on purpose (see its mount check). */}
       <p role="status" aria-live="polite" className="text-muted-foreground min-h-5 text-sm">
         {stuck ? 'Still loading your settings.' : ''}
       </p>
@@ -309,17 +314,22 @@ export default function SettingsPage() {
       `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}|` +
       `${s.stakesEnabled}|${s.stakesSettleTime}`
   );
-  // apiKey rides the tick VERBATIM, not as a set/unset flag: one non-empty key
-  // replacing another is exactly what a flag can't see, and the text controls
-  // commit on blur by comparing their draft against the last RENDERED value —
-  // so a stale value prop silently drops the next edit. JSON.stringify rather
-  // than a '|' join because systemPrompt is free text and can contain the
-  // separator. No new exposure: it is already plaintext in dsul-ai-settings.
-  const aiTick = useAISettingsStore((s) =>
-    JSON.stringify([s.provider, s.model, s.systemPrompt, s.apiKey])
+  // systemPrompt rides the tick VERBATIM: the text controls commit on blur by
+  // comparing their draft against the last RENDERED value, so a stale value
+  // prop silently drops the next edit. JSON.stringify rather than a '|' join
+  // because it is free text and can contain the separator.
+  const aiTick = useAISettingsStore((s) => JSON.stringify([s.chatTarget, s.systemPrompt]));
+  // What the server last said is connected. The AI pane's rows read it through
+  // getState() (who answers, the status words on the panel-owned records), so
+  // it has to move the ctx like every other store. Never a key: the store
+  // cannot hold one.
+  const aiConnTick = useAIConnectionStore(
+    (s) =>
+      `${s.phase}|${s.available}|${s.model?.provider}|${s.model?.model}|${s.model?.status}|` +
+      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
-  const lookTick = useLookStore((s) => `${s.light}|${s.dark}`);
+  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}`);
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(
@@ -409,6 +419,7 @@ export default function SettingsPage() {
       eodTick,
       reminderTick,
       aiTick,
+      aiConnTick,
       paletteTick,
       lookTick,
       extensionsTick,

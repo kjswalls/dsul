@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 
 /**
- * The extensions store (the Browse tab of Settings → Extensions) and the copy,
+ * The extensions store (the body of Settings → Extensions) and the copy,
  * previews and adoption figures behind it.
  *
  * Four claims, each one a way the store could quietly lie:
@@ -135,7 +135,7 @@ describe('adoption figures', () => {
   });
 });
 
-describe('the Browse tab', () => {
+describe('the store', () => {
   beforeEach(() => {
     usePlannerStore.setState({ userId: 'test-user' });
     useMorningStore.setState({ settingsHydratedUserId: 'test-user' });
@@ -177,13 +177,13 @@ describe('the Browse tab', () => {
   });
 
   it('filters by shelf through the URL, and the featured slot shows only under All', () => {
-    params = new URLSearchParams('view=browse');
+    params = new URLSearchParams();
     const { rerender } = render(<ExtensionBrowse ctx={ctx} />);
     expect(document.querySelector(`[data-store-featured="${FEATURED_SLUG}"]`)).toBeTruthy();
     fireEvent.click(screen.getByRole('button', { name: 'Put something on the line' }));
-    expect(replace).toHaveBeenCalledWith('/settings/extensions?view=browse&shelf=stakes', { scroll: false });
+    expect(replace).toHaveBeenCalledWith('/settings/extensions?shelf=stakes', { scroll: false });
 
-    params = new URLSearchParams('view=browse&shelf=stakes');
+    params = new URLSearchParams('shelf=stakes');
     rerender(<ExtensionBrowse ctx={ctx} />);
     expect(document.querySelectorAll('[data-store-shelf]')).toHaveLength(1);
     expect(document.querySelector('[data-store-shelf="stakes"]')).toBeTruthy();
@@ -202,7 +202,7 @@ describe('the Browse tab', () => {
       // Explicitly off, default-on extensions included.
       enabled: Object.fromEntries(slugs.map((slug) => [slug, false])),
     });
-    params = new URLSearchParams('view=browse&shelf=on');
+    params = new URLSearchParams('shelf=on');
     render(<ExtensionBrowse ctx={ctx} />);
     expect(screen.getByRole('button', { name: 'On · 0' })).toBeTruthy();
     expect(screen.getByText('Nothing is switched on yet.')).toBeTruthy();
@@ -349,12 +349,12 @@ describe('doors into the store', () => {
     expect(routeNeedsItems('/extensions')).toBe(false);
   });
 
-  it('has a ⌘K command with no shortcut, opening Settings on Browse', () => {
+  it('has a ⌘K command with no shortcut, opening Settings → Extensions', () => {
     const command = STATIC_COMMANDS.find((c) => c.id === 'app.extensions');
     expect(command).toBeTruthy();
     expect(command!.shortcut).toBeUndefined();
     const navigate = vi.fn();
     command!.run({ navigate } as never);
-    expect(navigate).toHaveBeenCalledWith('/settings/extensions?view=browse');
+    expect(navigate).toHaveBeenCalledWith('/settings/extensions');
   });
 });

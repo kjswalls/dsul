@@ -17,6 +17,7 @@ import {
   useSweepNotice,
   useSyncErrorNotice,
 } from '@/components/notices/notice-sources';
+import { useAINotice } from '@/components/notices/ai-notice';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { capNotices, placeNotices, type DockNotice } from '@/lib/dock-notices';
 import { useLiveNoticeAnchors } from '@/lib/notice-anchors';
@@ -89,6 +90,9 @@ function useDockNotices(): DockNotice[] {
   const eod = useEodNotice();
   const sweep = useSweepNotice();
   const syncError = useSyncErrorNotice();
+  // The AI's key stopped working, or it moved to the user's own model. No
+  // anchor: the surfaces it would sit on are the ones the AI gate has hidden.
+  const ai = useAINotice();
   const live = useLiveNoticeAnchors();
 
   // What is left after every notice with a mounted object has gone to it. The
@@ -96,7 +100,7 @@ function useDockNotices(): DockNotice[] {
   // question with nowhere else to live, plus anything `blocked` (pinned) and
   // anything carrying a tray (which only the dock can open).
   return placeNotices(
-    [waiting, eod, sweep, syncError].filter((n): n is DockNotice => n !== null),
+    [waiting, eod, sweep, syncError, ai].filter((n): n is DockNotice => n !== null),
     live
   ).dock;
 }
@@ -301,7 +305,7 @@ function OverflowRow({
  * next SIGNED_IN, which Supabase sends when the tab is shown with a live
  * session.
  */
-export function DockNotices() {
+export function DockNotices({ alwaysVisible = false }: { alwaysVisible?: boolean } = {}) {
   const notices = useDockNotices();
   const { visible, overflow, isExpanded, setExpanded } = useCappedStack(notices, MAX_ROWS);
   const leftSidebarOpen = useSidebarStore((s) => s.leftSidebarOpen);
@@ -311,7 +315,10 @@ export function DockNotices() {
   // The column is clipped to w-0 when collapsed, not unmounted — so without
   // this a tray left open would keep floating over the canvas, anchored to a
   // zero-width box. Unmounting the rows closes every Popover with them.
-  const columnVisible = leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
+  // A dock laid across the foot of the shell (SidebarDock placement="bottom")
+  // is never in that column, so it never goes away with it.
+  const columnVisible =
+    alwaysVisible || leftSidebarOpen || (leftSidebarHoverEnabled && leftSidebarHovered);
   if (!columnVisible || notices.length === 0) return null;
 
   return (

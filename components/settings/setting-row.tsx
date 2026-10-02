@@ -371,6 +371,13 @@ export function SettingRow({
    */
   inactive,
   highlighted,
+  /**
+   * A way to where the setting is actually made, drawn after the control.
+   * Search results only, for a record whose control lives in a panel rather
+   * than in its row (CONNECT_PANEL_RECORD_IDS): an 'info' value alone is a
+   * dead end.
+   */
+  action,
 }: {
   record: SettingRecord;
   ctx: SettingCtx;
@@ -382,6 +389,7 @@ export function SettingRow({
   matchedValue?: string;
   inactive?: boolean;
   highlighted?: boolean;
+  action?: React.ReactNode;
 }) {
   const uid = useId();
   const controlId = `set-${record.id}-${uid}`;
@@ -520,6 +528,7 @@ export function SettingRow({
             onWrite={onWrite}
           />
         )}
+        {action}
       </div>
 
       {/* On a wide row the control is a full-width textarea below the label, so

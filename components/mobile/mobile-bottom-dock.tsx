@@ -2,13 +2,15 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { ChatComposer } from '@/components/ai/chat-composer';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { DockNoticesMobile } from '@/components/sidebar/dock-notices';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { useUIStore } from '@/lib/ui-store';
+import { revealChat, useChatHostCard } from '@/lib/open-chat';
 import { cn } from '@/lib/utils';
 
 /**
@@ -18,7 +20,7 @@ import { cn } from '@/lib/utils';
  * ABOVE it rather than inside it. Owns the bottom safe area. NOT overflow-hidden
  * — the omnibar's results panel opens upward out of it.
  *
- * The pill is the omnibar everywhere except Beacon, where it is the chat
+ * The pill is the omnibar everywhere except the chat tab, where it is the chat
  * composer instead. One bar, one address for typing, whichever surface you are
  * on — which is the same argument that keeps the notice stack mounted here on
  * every tab.
@@ -40,22 +42,37 @@ export function MobileBottomDock() {
   const dockRef = useRef<HTMLDivElement>(null);
   const [chatFocusSignal, setChatFocusSignal] = useState(0);
 
+  const { canChat } = useAICapabilities();
   /**
-   * Beacon's tab, EXCEPT while the first-run Q&A is up.
-   *
-   * ChatConversation hands that branch to OnboardingChat, which brings a field
-   * of its own — so a composer down here would be the second field on the tab
-   * and, thanks to the focus below, the one holding the caret: the answer to
-   * the onboarding question would be posted to the chat transcript instead,
-   * and the question would sit there unanswered. The omnibar takes the row for
-   * that stretch, the way it does on every other tab.
+   * The chat tab, and only while something can answer. The shell shows Today
+   * for a chat tab that cannot (components/shell/mobile-shell.tsx), so a
+   * composer here would be a field that sends nowhere under the wrong surface.
    */
-  const onboarding = useUIStore((s) => s.chatOnboardingActive);
-  const chatBar = activeTab === 'chat' && !onboarding;
+  const chatBar = activeTab === 'chat' && canChat;
+  /**
+   * The catch-up host. "Pick things back up" is local and needs no model
+   * (lib/commands/registry.ts), and its card answers on the chat surface — so
+   * when there is no chat tab to show it, it shows here, above the bar. No
+   * `known` term: the gate is closed while its read is pending or failed, and
+   * catch-up is the feature that must still work on that day. Mounted only
+   * while the card has something to show, so a resting dock is unchanged.
+   */
+  const hostCard = useChatHostCard();
+  /**
+   * Latched once it shows, as on the desktop (components/sidebar/sidebar-dock.tsx
+   * says why): when the gate opens mid-review, the card's new home would be a
+   * chat tab the user is not on, so unlatched it would vanish from Today and
+   * come back with every dropped line ticked again. It stays until it is done
+   * or the user goes to the chat tab, which then carries it (`!chatBar`, so it
+   * never renders twice).
+   */
+  const [hosting, setHosting] = useState(false);
+  const catchUpHost = hostCard && !chatBar && (!canChat || hosting);
+  if (catchUpHost !== hosting) setHosting(catchUpHost);
 
-  // Arriving on Beacon puts the caret in the composer, exactly as it did when
-  // the composer lived in the panel — the field moved down here, the behaviour
-  // did not move with it on its own.
+  // Arriving on the chat tab puts the caret in the composer, exactly as it did
+  // when the composer lived in the panel — the field moved down here, the
+  // behaviour did not move with it on its own.
   useEffect(() => {
     if (chatBar) setChatFocusSignal((n) => n + 1);
   }, [chatBar]);
@@ -90,12 +107,20 @@ export function MobileBottomDock() {
           shells: the app's rows read as the app's rows, on the dock rather than
           in it.
 
-          Mounted on every tab, Beacon included. The point of one voice with one
+          Mounted on every tab, chat included. The point of one voice with one
           address is that going quiet on the tab where the user is talking to
-          Beacon would put the two halves of the same conversation on different
+          the AI would put the two halves of the same conversation on different
           screens. */}
       <DockNoticesMobile />
       <UndoStrip className="mb-1.5" />
+
+      {/* A plain overflow box, not ScrollArea: the Radix wrapper drops max-h.
+          The margin lives on the box, which exists only while the card shows. */}
+      {catchUpHost && (
+        <div className="mb-1.5 max-h-[50vh] overflow-y-auto" data-testid="mobile-catch-up-host">
+          <ProposalCard surface="chat" />
+        </div>
+      )}
 
       <div
         className="rounded-[10px] bg-surface-3 p-[10px] shadow-[var(--shadow-elev-bar)]"
@@ -133,7 +158,7 @@ export function MobileBottomDock() {
               <Omnibar
                 variant="dock"
                 captureRelay
-                onAskBeacon={() => useMobileNavStore.getState().setActiveTab('chat')}
+                onAskBeacon={() => revealChat(true)}
               />
             )}
           </div>

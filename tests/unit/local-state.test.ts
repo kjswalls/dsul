@@ -27,9 +27,11 @@ import { seededLocalStorage } from '../e2e/helpers/session';
  *
  * Everything in lib/*-store.ts that persists does so under a BROWSER-GLOBAL
  * localStorage key, so on a shared browser the next person to sign in inherits
- * the last person's. The sharp end is `dsul-ai-settings.apiKey` — a
- * credential the inheriting user can read out of devtools and edit through the
- * settings UI — but it is not the only end, and the drift scans at the bottom
+ * the last person's. The sharp end used to be `dsul-ai-settings.apiKey` — a
+ * credential the inheriting user could read out of devtools; that key now lives
+ * server-side, and what the blob still holds (custom instructions the user
+ * wrote, who answers their chat) is disclosive rather than secret. It was never
+ * the only end, and the drift scans at the bottom
  * of this file exist because a hand-kept list of eight stores is a list that
  * will be seven stores by next quarter.
  */
@@ -95,61 +97,75 @@ beforeEach(() => {
   clearUserScopedLocalState();
 });
 
-describe('the credential — dsul-ai-settings.apiKey', () => {
-  it('is gone from memory and from disk after the user changes', () => {
+/** Text user A wrote into the AI instructions field — the disclosive sentinel. */
+const A_PROMPT = 'A private prompt about A';
+
+describe('the AI settings — dsul-ai-settings', () => {
+  it('are gone from memory and from disk after the user changes', () => {
     useAISettingsStore.setState({
-      provider: 'anthropic',
-      apiKey: 'sk-ant-user-a-secret',
-      model: 'claude-opus-4',
-      assistantName: "A's Beacon",
-      systemPrompt: 'A private prompt about A',
+      chatTarget: 'openclaw',
+      assistantName: "A's assistant",
+      systemPrompt: A_PROMPT,
+      legacyNotice: true,
     });
-    expect(persistedState('dsul-ai-settings').apiKey).toBe('sk-ant-user-a-secret');
+    expect(persistedState('dsul-ai-settings').systemPrompt).toBe(A_PROMPT);
 
     clearUserScopedLocalState();
 
-    expect(useAISettingsStore.getState().apiKey).toBe('');
-    expect(persistedState('dsul-ai-settings')).toMatchObject({
-      provider: 'openclaw',
-      apiKey: '',
+    expect(useAISettingsStore.getState().systemPrompt).toBe('');
+    expect(useAISettingsStore.getState().chatTarget).toBe('model');
+    expect(persistedState('dsul-ai-settings')).toEqual({
+      chatTarget: 'model',
       assistantName: 'Beacon',
       systemPrompt: '',
+      legacyNotice: false,
     });
     // And nothing anywhere in localStorage still holds the string.
-    expect(JSON.stringify(localStorage)).not.toContain('sk-ant-user-a-secret');
+    expect(JSON.stringify(localStorage)).not.toContain(A_PROMPT);
   });
 
-  it('does not survive a DIFFERENT user signing in', () => {
+  it('hold no credential at all — the key lives server-side now', () => {
+    expect(Object.keys(persistedState('dsul-ai-settings')).sort()).toEqual([
+      'assistantName',
+      'chatTarget',
+      'legacyNotice',
+      'systemPrompt',
+    ]);
+  });
+
+  it('do not survive a DIFFERENT user signing in', () => {
     adoptLocalState(USER_A);
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
+    useAISettingsStore.setState({ systemPrompt: A_PROMPT, chatTarget: 'openclaw' });
 
     expect(adoptLocalState(USER_B)).toBe(true);
 
-    expect(useAISettingsStore.getState().apiKey).toBe('');
+    expect(useAISettingsStore.getState().systemPrompt).toBe('');
+    expect(useAISettingsStore.getState().chatTarget).toBe('model');
     expect(localStateOwner()).toBe(USER_B);
   });
 
-  it('DOES survive the same user signing in again', () => {
+  it('DO survive the same user signing in again', () => {
     adoptLocalState(USER_A);
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
+    useAISettingsStore.setState({ systemPrompt: A_PROMPT, chatTarget: 'openclaw' });
 
     // Supabase re-emits SIGNED_IN on every hidden→visible transition. A clear
     // on one of those would throw away what the user set this session.
     expect(adoptLocalState(USER_A)).toBe(false);
 
-    expect(useAISettingsStore.getState().apiKey).toBe('sk-ant-user-a-secret');
+    expect(useAISettingsStore.getState().systemPrompt).toBe(A_PROMPT);
+    expect(useAISettingsStore.getState().chatTarget).toBe('openclaw');
   });
 
-  it('is cleared even on an UNSTAMPED browser — a credential cannot wait for proof', () => {
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
+  it('are cleared even on an UNSTAMPED browser — text the user wrote is disclosive', () => {
+    useAISettingsStore.setState({ systemPrompt: A_PROMPT });
 
     expect(adoptUnstamped(USER_A)).toBe(true);
 
-    expect(useAISettingsStore.getState().apiKey).toBe('');
+    expect(useAISettingsStore.getState().systemPrompt).toBe('');
   });
 });
 
-describe('Beacon transcripts', () => {
+describe('chat transcripts', () => {
   it('drops the global thread and every item thread, opened this session or not', () => {
     useChatStore.setState({ messages: [{ role: 'user', content: 'A private question' }] });
     localStorage.setItem(
@@ -220,7 +236,7 @@ describe('the ownership stamp', () => {
 
 describe('hostile storage cannot take the clear — or the boot — down with it', () => {
   it('runs every clearer even when persisting throws, and does not rethrow', () => {
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
+    useAISettingsStore.setState({ systemPrompt: A_PROMPT });
     useViewStore.setState({
       canvasFilters: { ...useViewStore.getState().canvasFilters, containers: ['project:A Private'] },
     });
@@ -241,7 +257,7 @@ describe('hostile storage cannot take the clear — or the boot — down with it
 
     // In-memory state is the part that still can be fixed, and every store past
     // the first one got its turn.
-    expect(useAISettingsStore.getState().apiKey).toBe('');
+    expect(useAISettingsStore.getState().systemPrompt).toBe('');
     expect(useViewStore.getState().canvasFilters.containers).toEqual([]);
     expect(useCommandUsageStore.getState().usage).toEqual({});
   });
@@ -258,7 +274,7 @@ describe('another tab adopting a new user (case 5)', () => {
 
   it('clears this tab, which the stamp comparison alone can never do', () => {
     adoptLocalState(USER_A);
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
+    useAISettingsStore.setState({ systemPrompt: A_PROMPT });
 
     siblingTabStamped(USER_B);
 
@@ -266,21 +282,21 @@ describe('another tab adopting a new user (case 5)', () => {
     // stamp already says USER_B. If the listener had not cleared, the next
     // set() anywhere would write A's blob back under B's stamp — permanently,
     // since adopt would never fire again.
-    expect(useAISettingsStore.getState().apiKey).toBe('');
+    expect(useAISettingsStore.getState().systemPrompt).toBe('');
     expect(adoptLocalState(USER_B)).toBe(false);
-    useAISettingsStore.setState({ model: 'gpt-4o' });
-    expect(persistedState('dsul-ai-settings').apiKey).toBe('');
+    useAISettingsStore.setState({ chatTarget: 'openclaw' });
+    expect(persistedState('dsul-ai-settings').systemPrompt).toBe('');
   });
 
   it('ignores storage events for every other key', () => {
     adoptLocalState(USER_A);
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret' });
+    useAISettingsStore.setState({ systemPrompt: A_PROMPT });
 
     window.dispatchEvent(
       new StorageEvent('storage', { key: 'dsul-view', newValue: '{"state":{}}' })
     );
 
-    expect(useAISettingsStore.getState().apiKey).toBe('sk-ant-user-a-secret');
+    expect(useAISettingsStore.getState().systemPrompt).toBe(A_PROMPT);
   });
 });
 
@@ -357,8 +373,8 @@ describe("morning-store's sweep stamps are pruned, not kept and not dropped", ()
 });
 
 describe('an unstamped browser drops the disclosive and spares the inert', () => {
-  it('takes the credential, the filters, the transcripts and the ranking', () => {
-    useAISettingsStore.setState({ apiKey: 'sk-ant-user-a-secret', systemPrompt: 'A wrote this' });
+  it('takes the AI instructions, the filters, the transcripts and the ranking', () => {
+    useAISettingsStore.setState({ chatTarget: 'openclaw', systemPrompt: 'A wrote this' });
     useViewStore.setState({
       canvasFilters: { ...useViewStore.getState().canvasFilters, containers: ['project:A Private'] },
     });
@@ -373,7 +389,7 @@ describe('an unstamped browser drops the disclosive and spares the inert', () =>
 
     adoptUnstamped(USER_B);
 
-    expect(useAISettingsStore.getState().apiKey).toBe('');
+    expect(useAISettingsStore.getState().chatTarget).toBe('model');
     expect(useAISettingsStore.getState().systemPrompt).toBe('');
     expect(useViewStore.getState().canvasFilters.containers).toEqual([]);
     expect(useCommandUsageStore.getState().usage).toEqual({});
@@ -636,12 +652,22 @@ describe('nothing persists per-user state outside the registry', () => {
       // with it, a boolean per pane, and inert by the classification in
       // lib/local-state.ts — so it is not in the registry, deliberately.
       'components/settings/settings-shell.tsx',
+      // `dsul-settings-extensions-off-open`: whether the rail's list of
+      // extensions shows the ones that are off. One boolean, per device on
+      // purpose, and says nothing about anyone — which extensions are on is
+      // server state, not this.
+      'components/settings/extension-rail-list.tsx',
       // The palette mirror the pre-paint script reads. Presentation, explicitly
       // out of scope — see the theme/palette note in lib/local-state.ts.
       'components/providers/supabase-provider.tsx',
       // `dsul.wordmark.nextFlavor`: which hover flavor the logo shows next.
       // One small integer, per device on purpose, and says nothing about anyone.
       'lib/wordmark-flavors.ts',
+      // `dsul-no-session-bounce`, sessionStorage: when this tab last left a
+      // page with no session for /login, and a random id for the page load
+      // that did it. The loop guard's whole state; it dies with the tab and is
+      // written only when nobody is signed in, so there is no one to clear it for.
+      'lib/signed-out-redirect.ts',
     ].sort());
   });
 });

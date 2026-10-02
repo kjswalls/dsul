@@ -4,11 +4,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * The gateway store's hydrate: one read per account however many times the
  * provider asks (the load's `.then` and the navigation flush both can), a late
  * answer for a switched-away account dropped, and a bare A→B switch that never
- * shows A's configuration as B's.
+ * shows A's configuration as B's. And its save: the AI gate re-asks the server
+ * afterwards, since the gate is what picks the chat transport.
  */
 
-vi.mock('@/lib/chat-store', () => ({
-  useChatStore: { getState: () => ({ syncOpenclawInfo: vi.fn() }) },
+// serverChanged, not refresh: a status read already out may predate the save,
+// and refresh would join it.
+const serverChanged = vi.hoisted(() => vi.fn(async () => {}));
+vi.mock('@/lib/ai-connection-store', () => ({
+  useAIConnectionStore: { getState: () => ({ serverChanged }) },
 }));
 
 import { useGatewayStore } from '@/lib/gateway-store';
@@ -30,6 +34,7 @@ const fetchMock = vi.fn();
 
 beforeEach(() => {
   fetchMock.mockReset();
+  serverChanged.mockClear();
   vi.stubGlobal('fetch', fetchMock);
   useGatewayStore.getState().reset();
 });
@@ -137,5 +142,25 @@ describe('gateway store hydrate', () => {
     });
     await useGatewayStore.getState().hydrate('user-a');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('gateway store save', () => {
+  it('re-asks the AI gate after a save, so the next message takes the new transport', async () => {
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) } as Response);
+    useGatewayStore.getState().setToken('tok-123');
+    await vi.waitFor(() => expect(serverChanged).toHaveBeenCalledTimes(1));
+    expect(useGatewayStore.getState()).toMatchObject({ hasToken: true, error: null });
+  });
+
+  it('does not re-ask after a failed save', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      json: async () => ({ error: 'Could not save.' }),
+    } as Response);
+    useGatewayStore.getState().setGatewayUrl('https://gw.example');
+    await vi.waitFor(() => expect(useGatewayStore.getState().error).toBe('Could not save.'));
+    expect(serverChanged).not.toHaveBeenCalled();
   });
 });

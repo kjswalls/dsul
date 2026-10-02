@@ -56,7 +56,7 @@ const SERVER = {
   stakes_settle_time: '23:45',
 };
 
-const loadSettings = vi.fn(async () => SERVER);
+const loadSettings = vi.fn<(userId: string) => Promise<Record<string, unknown>>>(async () => SERVER);
 
 vi.mock('@/lib/settings-service', () => ({
   loadSettings: (userId: string) => loadSettings(userId),
@@ -87,19 +87,25 @@ import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { useLookStore } from '@/lib/look-store';
 
-/** The three loads that are not under test, stubbed at the store boundary. */
+/** The four loads that are not under test, stubbed at the store boundary. */
 const original = {
   initializeStore: usePlannerStore.getState().initializeStore,
   extensions: useExtensionsStore.getState().hydrate,
   secrets: useChannelSecretsStore.getState().hydrate,
+  ai: useAIConnectionStore.getState().hydrate,
 };
 
 describe('hydrateSettings applies every store in one uninterrupted block', () => {
   beforeEach(() => {
+    loadSettings.mockClear();
+    loadSettings.mockImplementation(async () => SERVER);
     usePlannerStore.setState({ initializeStore: async () => {}, timeFormat: '12h' });
     useExtensionsStore.setState({ hydrate: async () => {} });
     useChannelSecretsStore.setState({ hydrate: async () => {} });
+    useAIConnectionStore.setState({ hydrate: async () => {} });
     useSidebarStore.setState({ leftSidebarHoverEnabled: false });
     useMorningStore.setState({ settingsHydratedUserId: null });
     // The previous account's values, as localStorage would have left them.
@@ -118,7 +124,42 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
     usePlannerStore.setState({ initializeStore: original.initializeStore });
     useExtensionsStore.setState({ hydrate: original.extensions });
     useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useAIConnectionStore.setState({ hydrate: original.ai });
     useMorningStore.setState({ settingsHydratedUserId: null });
+  });
+
+  /**
+   * Rituals are opt-in. A NULL `morning_check_enabled` — a row from before the
+   * column had a default, or a fresh account's first read — is a person who
+   * never turned the morning check on, so it hydrates OFF. The previous
+   * account's `true` is left in the store first, so a pass cannot be the
+   * store's own default showing through.
+   */
+  it('reads a NULL morning_check_enabled as off', async () => {
+    useMorningStore.setState({ morningCheckEnabled: true });
+    loadSettings.mockImplementation(async () => ({ ...SERVER, morning_check_enabled: null }));
+
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    await waitFor(() => expect(useMorningStore.getState().settingsHydratedUserId).toBe(USER));
+    expect(useMorningStore.getState().morningCheckEnabled).toBe(false);
+  });
+
+  it('keeps a stored true as true — existing accounts are untouched', async () => {
+    useMorningStore.setState({ morningCheckEnabled: false });
+
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+
+    await waitFor(() => expect(useMorningStore.getState().settingsHydratedUserId).toBe(USER));
+    expect(useMorningStore.getState().morningCheckEnabled).toBe(true);
   });
 
   it('never lets the stamp be observed ahead of the values it vouches for', async () => {
@@ -188,5 +229,77 @@ describe('hydrateSettings applies every store in one uninterrupted block', () =>
     // Sanity: the settings under test really did come from the response.
     expect(useEODStore.getState().eodReviewTime).toBe('19:15');
     expect(setTheme).toHaveBeenCalledWith('dark');
+  });
+});
+
+/**
+ * The app icon (migration 056) follows the theme columns' null rule: a column
+ * nobody ever wrote leaves this device's pick standing, a real slug is
+ * applied, and a slug this build does not know is ignored rather than snapped
+ * to Aurora. Unlike the themes it survives ?reset-theme — an icon cannot make
+ * the page unreadable, so there is nothing to recover from.
+ */
+describe('hydrateSettings and the app icon', () => {
+  const mount = async () => {
+    render(
+      <SupabaseProvider>
+        <div />
+      </SupabaseProvider>
+    );
+    await waitFor(() => expect(useMorningStore.getState().settingsHydratedUserId).toBe(USER));
+  };
+
+  beforeEach(() => {
+    loadSettings.mockClear();
+    usePlannerStore.setState({ initializeStore: async () => {} });
+    useExtensionsStore.setState({ hydrate: async () => {} });
+    useChannelSecretsStore.setState({ hydrate: async () => {} });
+    useAIConnectionStore.setState({ hydrate: async () => {} });
+    useMorningStore.setState({ settingsHydratedUserId: null });
+    useLookStore.setState({ appIcon: 'aurora', appIconKnown: false });
+  });
+
+  afterEach(() => {
+    cleanup();
+    usePlannerStore.setState({ initializeStore: original.initializeStore });
+    useExtensionsStore.setState({ hydrate: original.extensions });
+    useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useAIConnectionStore.setState({ hydrate: original.ai });
+    useMorningStore.setState({ settingsHydratedUserId: null });
+    try {
+      window.localStorage.removeItem('dsul-app-icon');
+      sessionStorage.removeItem('dsul-palette-reset');
+    } catch {
+      // jsdom always has storage; the guard matches the provider's.
+    }
+  });
+
+  it("keeps the device's pick when the column is null", async () => {
+    useLookStore.setState({ appIcon: 'lime', appIconKnown: true });
+    loadSettings.mockImplementation(async () => ({ ...SERVER, app_icon: null }));
+    await mount();
+    expect(useLookStore.getState().appIcon).toBe('lime');
+  });
+
+  it('applies a stored lime, and marks the pick known', async () => {
+    loadSettings.mockImplementation(async () => ({ ...SERVER, app_icon: 'lime' }));
+    await mount();
+    expect(useLookStore.getState()).toMatchObject({ appIcon: 'lime', appIconKnown: true });
+    // The mirror writes it through for the next load.
+    await waitFor(() => expect(window.localStorage.getItem('dsul-app-icon')).toBe('lime'));
+  });
+
+  it('ignores a slug it does not know', async () => {
+    useLookStore.setState({ appIcon: 'lime', appIconKnown: true });
+    loadSettings.mockImplementation(async () => ({ ...SERVER, app_icon: 'bogus' }));
+    await mount();
+    expect(useLookStore.getState().appIcon).toBe('lime');
+  });
+
+  it('still applies under ?reset-theme', async () => {
+    sessionStorage.setItem('dsul-palette-reset', '1');
+    loadSettings.mockImplementation(async () => ({ ...SERVER, app_icon: 'lime' }));
+    await mount();
+    expect(useLookStore.getState().appIcon).toBe('lime');
   });
 });

@@ -83,6 +83,7 @@ import { useViewStore } from '@/lib/view-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
 import { PRIORITY_FILTER_ORDER, priorityFilterLabel } from '@/lib/display-summary';
 import { enableGoalsAndOrganize } from './support/extensions';
+import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 import type { Goal, Routine, Season } from '@dsul/types';
 
 /**
@@ -678,10 +679,16 @@ describe('the mobile header mount', () => {
   });
 
   it('does not ride the Chat tab, which reads no view store at all', () => {
-    useMobileNavStore.setState({ activeTab: 'chat' });
-    renderHeader();
+    // The chat tab is on screen only while something can answer.
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      useMobileNavStore.setState({ activeTab: 'chat' });
+      renderHeader();
 
-    expect(screen.queryByTestId('display-trigger-canvas')).toBeNull();
+      expect(screen.queryByTestId('display-trigger-canvas')).toBeNull();
+    } finally {
+      unseed();
+    }
   });
 
   it('mounts on Today', () => {

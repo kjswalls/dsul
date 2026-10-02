@@ -65,6 +65,7 @@ import { useEODStore } from '@/lib/eod-store';
 import { resetNoticeAnchors } from '@/lib/notice-anchors';
 import { enableGoalsAndOrganize } from './support/extensions';
 import { finishExit, recordResizeObservers, settle, watchLayoutReads } from './support/shelf';
+import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 
 /** jsdom has no pointer capture, which Radix's menus ask for on the way open. */
 beforeAll(() => {
@@ -909,13 +910,19 @@ describe('the phone mount, at the foot of the Today card', () => {
   });
 
   it('is not on the Braindump or Chat tab, whatever the canvas holds', () => {
-    for (const tab of ['braindump', 'chat'] as const) {
-      seed({ canvasGroupBy: 'project', canvasFilters: filters({ hideFinished: true }) });
-      useMobileNavStore.setState({ activeTab: tab });
-      renderPhoneHeader();
+    // The chat tab is on screen only while something can answer.
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      for (const tab of ['braindump', 'chat'] as const) {
+        seed({ canvasGroupBy: 'project', canvasFilters: filters({ hideFinished: true }) });
+        useMobileNavStore.setState({ activeTab: tab });
+        renderPhoneHeader();
 
-      expect(queryShelf()).toBeNull();
-      cleanup();
+        expect(queryShelf()).toBeNull();
+        cleanup();
+      }
+    } finally {
+      unseed();
     }
   });
 

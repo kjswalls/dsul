@@ -1699,7 +1699,10 @@ body {
 }
 
 .pt-safe {
-  padding-top: env(safe-area-inset-top, 0px);
+  /* The desktop app's top band too (.titlebar-drag below): page zoom can put the mobile
+     shell in a narrow desktop window. Browsers define no titlebar-area, so this is the
+     safe-area inset alone everywhere else. */
+  padding-top: max(env(safe-area-inset-top, 0px), env(titlebar-area-height, 0px));
 }
 
 /* Touch target minimum size for accessibility */
@@ -2171,4 +2174,699 @@ body {
 [data-reduce-motion='true'] .drop-armed,
 [data-reduce-motion='true'] .drop-line::before {
   animation: none;
+}
+
+/* ── Desktop app: the window's top band ─────────────────────────────────────
+   The macOS desktop app has no title bar (electron/lib/window-chrome.cjs): its traffic
+   lights sit in the 43px every desktop page leaves at the top. titleBarOverlay is the only
+   thing that defines env(titlebar-area-*). No browser, no installed PWA (the manifest has
+   no display_override), no framed window and no macOS full screen does, so every rule
+   that reads it falls back to exactly today's value there. Each env() keeps its 0px
+   fallback, never a bare 0 (0 inside calc() or min() is invalid). Never test
+   (display-mode: window-controls-overlay): Electron never matches it.
+
+   .titlebar-drag is what the window is dragged by. It stays the FIRST element in <body>
+   (app/layout.tsx): where drag regions overlap, the later one in the document wins,
+   z-index is ignored, and pointer-events:none exempts nothing. min() holds it to 43px
+   when the page is zoomed out, because env() is in CSS px and grows as zoom shrinks.
+
+   A drag region swallows clicks AND pointer enter/leave, so anything interactive or
+   hover-driven that reaches into the top 43px takes .titlebar-hole, or moves down. Even a
+   clipped, invisible box punches a hole, which is why the sidebar's word only does while
+   the column shows (.titlebar-hole-word). Menus, tooltips and dialogs are portalled after
+   the band, so the attribute rules below cover every one of them. */
+.titlebar-drag {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: min(43px, env(titlebar-area-height, 0px));
+  pointer-events: none;
+  -webkit-app-region: drag;
+  app-region: drag;
+}
+.titlebar-hole,
+.titlebar-hole-word .wordmark,
+[data-radix-popper-content-wrapper],
+[role='dialog'],
+[role='alertdialog'] {
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+}
+
+/* ── Layouts: the styled slots (lib/layout-themes.ts) ───────────────────────
+   A layout's STYLED slots are drawn here, off the `data-layout-<slot>` stamps
+   the desktop shell puts on its own root (layoutAttributes). Keyed on the slot
+   variant, never on a layout's name, so a second layout that wants heading
+   buckets gets them by naming the variant. Scoped under the shell's stamp,
+   never <html>: that is what keeps every layout off the phone, whose shell is
+   another tree. Each rule restyles; none hides a control a person acts with —
+   the tick stays the same button, only drawn as text. */
+
+/* relay: 'off' — the motion goes; the IntersectionObserver in relay-field.tsx
+   sees the element leave and stops its frame loop. */
+[data-layout-relay='off'] [data-relay-field] {
+  display: none;
+}
+
+/* buckets: 'headings' — the card under each bucket's rows goes, the caption
+   becomes a `## heading`. Only the resting card: the drop slot a drag opens
+   (--bkt-tray / --bkt-tray-armed) keeps its surface, because lib/dnd/CONTRACT
+   needs a visible hover state on the bare bucket droppable. The "now" rule
+   down the left wall is an inset shadow composed after these, so it stays. */
+[data-layout-buckets='headings'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='headings'] [data-bucket-label] {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  color: var(--foreground);
+  text-transform: lowercase;
+}
+[data-layout-buckets='headings'] [data-bucket-label]::before {
+  content: '## ';
+  color: var(--success-text);
+}
+
+/* rows: 'text' — the tick drawn as [ ] / [~] / [x]. Same button, same hit
+   area (the 16px height stays; it only widens to fit three characters).
+   rows: 'tasks' is the same tick as a markdown task, `- [ ]`. */
+[data-layout-rows='text'] [data-testid='item-complete-button'],
+[data-layout-rows='tasks'] [data-testid='item-complete-button'] {
+  width: auto;
+  min-width: 3ch;
+  border-color: transparent;
+  background: none;
+  border-radius: 3px;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, Consolas, monospace);
+  font-size: 12px;
+  line-height: 1;
+  color: var(--muted-foreground);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'] > *,
+[data-layout-rows='tasks'] [data-testid='item-complete-button'] > * {
+  display: none;
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']::before {
+  content: '[ ]';
+  white-space: pre;
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'][data-checked='partial']::before {
+  content: '[~]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button'][data-checked='true']::before {
+  content: '[x]';
+  color: var(--success-text);
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button'] {
+  min-width: 5ch;
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button']::before {
+  content: '- [ ]';
+  white-space: pre;
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button'][data-checked='partial']::before {
+  content: '- [~]';
+  color: var(--success-text);
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button'][data-checked='true']::before {
+  content: '- [x]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']:hover,
+[data-layout-rows='tasks'] [data-testid='item-complete-button']:hover {
+  color: var(--foreground);
+}
+
+/* ── Notebook: the spread, the masthead, labels and ruled rows ──────────────
+   The paper is its own, not a theme's: a planner's page is cream whatever the
+   colour theme does, and it pairs with Paper. --nb-* are inert anywhere a
+   [data-book] (desktop-shell's `canvas: 'spread'`) is not rendered. */
+:root {
+  --nb-desk: oklch(0.83 0.025 65);
+  --nb-page: oklch(0.975 0.014 88);
+  --nb-rule: oklch(0.6 0.05 240 / 16%);
+  --nb-spine: oklch(0.4 0.03 60 / 14%);
+  --nb-ink: oklch(0.35 0.03 60);
+  --nb-ribbon: oklch(0.45 0.1 160);
+  --nb-ribbon-ink: oklch(0.97 0.02 90);
+  --nb-tab: oklch(0.92 0.03 85);
+  --nb-sheet-shadow: 0 14px 34px oklch(0.3 0.04 60 / 26%);
+}
+/* On body, not :root: next/font defines --font-source-serif by a className on
+   <body>, so declared any higher it computes to guaranteed-invalid. */
+body {
+  --font-serif-display: var(--font-source-serif), 'Source Serif 4', Georgia, serif;
+}
+.dark {
+  --nb-desk: oklch(0.13 0.008 60);
+  --nb-page: oklch(0.215 0.012 70);
+  --nb-rule: oklch(0.85 0.03 240 / 8%);
+  --nb-spine: oklch(0 0 0 / 35%);
+  --nb-ink: oklch(0.82 0.02 80);
+  --nb-ribbon: oklch(0.66 0.11 160);
+  --nb-ribbon-ink: oklch(0.17 0.02 160);
+  --nb-tab: oklch(0.27 0.014 70);
+  --nb-sheet-shadow: 0 14px 34px oklch(0 0 0 / 50%);
+}
+
+/* canvas: 'spread' — one sheet under both pages, ruled, with the spine's
+   shadow on each side of the fold. */
+[data-book] {
+  border-radius: 6px;
+  background-color: var(--nb-page);
+  background-image: repeating-linear-gradient(to bottom, transparent 0 31px, var(--nb-rule) 31px 32px);
+  box-shadow: var(--nb-sheet-shadow);
+}
+/* Docked open only: padding would hold a collapsed (w-0) column open, and the
+   peeked card keeps its own drop shadow. */
+[data-book] [data-testid='sidebar-column'][data-column-state='open'] {
+  padding-inline: 20px 14px;
+  box-shadow: inset -22px 0 22px -22px var(--nb-spine);
+}
+[data-book] > main::before {
+  content: '';
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 26px;
+  background: linear-gradient(90deg, var(--nb-spine), transparent);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* capture: 'page-foot' — the dock drawn as the page's last ruled line (and
+   'caret', Notepad's, below, as a bare line of text). The omnibar inside is
+   untouched: every mode, the panel and ⌘I still work. */
+[data-dock-page] {
+  background: transparent !important;
+  box-shadow: none !important;
+  padding-inline: 0;
+}
+[data-dock-page] [data-omnibar-pill] {
+  background: transparent !important;
+  box-shadow: none !important;
+  translate: none !important;
+  border-radius: 0;
+  padding-inline: 2px;
+}
+[data-dock-page='page-foot'] [data-omnibar-pill] {
+  border-bottom: 1px solid var(--nb-ink);
+}
+[data-dock-page='page-foot'] [data-omnibar-pill] input {
+  font-family: var(--font-serif-display);
+  font-style: italic;
+  font-size: 15px;
+}
+
+/* header: 'masthead' — the capsule's controls without the capsule: the date
+   set as a serif masthead, the view row as quiet text. Same buttons, same
+   test ids; only the chrome goes. */
+[data-layout-header='masthead'] [data-header-capsule],
+[data-layout-header='masthead'] [data-header-pill] {
+  background: transparent;
+  box-shadow: none;
+}
+[data-layout-header='masthead'] [data-header-capsule] {
+  padding: 0;
+}
+[data-layout-header='masthead'] [data-testid='header-date'] {
+  font-family: var(--font-serif-display);
+  font-size: 28px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  line-height: 1.2;
+}
+[data-layout-header='masthead'] [data-book] [data-surface-header],
+[data-layout-header='masthead'] [data-book] [data-surface-pill] {
+  background: transparent;
+  box-shadow: none;
+  padding-inline: 0;
+}
+/* The braindump's Display shelf rides under that title (SurfaceHeader's `below`)
+   and keeps its own 15px inset, so it follows the title to the page's edge. Its
+   Reset and ✕ sit flush right, as the pill's controls now do. */
+[data-layout-header='masthead'] [data-book] [data-testid='display-shelf-braindump'] {
+  padding-inline: 0;
+}
+[data-layout-header='masthead'] [data-book] [data-surface-title] {
+  font-family: var(--font-serif-display);
+  font-size: 20px;
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+/* buckets: 'labels' — no card, the caption a small-caps label in the ribbon's
+   ink. The drag slot keeps its surface, as under 'headings'. */
+[data-layout-buckets='labels'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='labels'] [data-bucket-label] {
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--nb-ribbon);
+}
+
+/* rows: 'ruled' — an inked box, and a hand-drawn tick that overshoots it when
+   done. Same button and hit area; the strike-through takes the tick's ink. */
+[data-layout-rows='ruled'] [data-testid='item-complete-button'] {
+  overflow: visible;
+  background: transparent;
+  border: 1.5px solid var(--nb-ink);
+  border-radius: 2px;
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'] > * {
+  display: none;
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'][data-checked='true']::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: -4px;
+  width: 6px;
+  height: 12px;
+  border: solid var(--nb-ribbon);
+  border-width: 0 2.5px 2.5px 0;
+  border-radius: 0 0 2px 0;
+  transform: rotate(40deg);
+}
+[data-layout-rows='ruled'] [data-testid='item-complete-button'][data-checked='partial']::after {
+  content: '';
+  position: absolute;
+  inset: auto 2px 5px 2px;
+  height: 2px;
+  background: var(--nb-ribbon);
+}
+[data-layout-rows='ruled'] [data-testid='item-card'][data-completed='true'] p {
+  text-decoration-color: var(--nb-ribbon);
+}
+
+/* ── Notepad: the sheet, plain text, its styles ─────────────────────────────
+   The braindump and the day as two documents in one sheet ([data-sheet],
+   desktop-shell's `canvas: 'sheet'`), the window's chrome around it holding
+   the day tabs and the status bar. The sheet is the theme's canvas and the
+   chrome a step darker, so Notepad wears whatever colour theme is on unless
+   its style brings its own skin. */
+:root {
+  --np-chrome: color-mix(in oklab, var(--canvas) 94%, black);
+}
+.dark {
+  --np-chrome: color-mix(in oklab, var(--canvas) 80%, black);
+}
+
+/* canvas: 'sheet' — a hairline seam between the two documents, drawn on the
+   open column's own edge (the sash's gutter stays clear). The wordmark goes:
+   the chrome above already says which app this is. */
+[data-sheet] [data-testid='sidebar-column'][data-column-state='open']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  inset-block: 24px;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+[data-sheet] [data-testid='sidebar-column'][data-column-state='open'] {
+  padding-inline: 22px 18px;
+}
+[data-sheet] [data-testid='sidebar-wordmark'] {
+  visibility: hidden;
+}
+
+/* capture: 'caret' — the dock's line as the end of the braindump's text: no
+   rule under it, a caret in the accent blinking where you would type. */
+[data-dock-page='caret'] [data-omnibar-pill] input {
+  caret-color: var(--success-text);
+}
+/* Only on an empty line with no command chip: anywhere else it would sit in
+   front of text it is not the end of. */
+[data-dock-page='caret'] [data-omnibar-pill]:not(:focus-within):has(> input:placeholder-shown):not(:has(> button))::before {
+  content: '';
+  flex: none;
+  width: 2px;
+  height: 1.15em;
+  margin-right: -4px;
+  border-radius: 1px;
+  background: var(--success-text);
+  animation: np-caret 1.1s steps(1) infinite;
+}
+@keyframes np-caret {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-dock-page='caret'] [data-omnibar-pill]::before {
+    animation: none !important;
+  }
+}
+
+/* header: 'plain' — the capsule's controls with no capsule: the date as a line
+   of text, the view row as quiet words. The braindump's title row goes plain
+   with it. Same buttons, same test ids; only the chrome goes. */
+[data-layout-header='plain'] [data-header-capsule],
+[data-layout-header='plain'] [data-header-pill],
+[data-layout-header='plain'] [data-surface-header],
+[data-layout-header='plain'] [data-surface-pill] {
+  background: transparent;
+  box-shadow: none;
+}
+[data-layout-header='plain'] [data-header-capsule] {
+  padding: 0;
+}
+[data-layout-header='plain'] [data-surface-header],
+[data-layout-header='plain'] [data-surface-pill],
+[data-layout-header='plain'] [data-testid='display-shelf-braindump'] {
+  padding-inline: 0;
+}
+[data-layout-header='plain'] [data-testid='header-date'] {
+  font-size: 15px;
+  font-weight: 600;
+}
+[data-layout-header='plain'] [data-surface-title] {
+  font-weight: 600;
+}
+
+/* buckets: 'rules' — a bucket as `── Morning ──────`, in the text's own box-
+   drawing line; 'markdown' as `## Morning`; 'caps' as a bold MORNING. No card
+   under any of them, and no glyph: a text file has none. The drag slot keeps
+   its surface, as under 'headings'. */
+[data-layout-buckets='rules'],
+[data-layout-buckets='markdown'],
+[data-layout-buckets='caps'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='rules'] [data-bucket-glyph],
+[data-layout-buckets='markdown'] [data-bucket-glyph],
+[data-layout-buckets='caps'] [data-bucket-glyph] {
+  display: none;
+}
+[data-layout-buckets='markdown'] [data-bucket-label] {
+  font-weight: 600;
+  color: var(--foreground);
+}
+[data-layout-buckets='markdown'] [data-bucket-label]::before {
+  content: '## ';
+  color: var(--success-text);
+}
+[data-layout-buckets='rules'] [data-bucket-label] {
+  font-weight: 400;
+}
+[data-layout-buckets='rules'] [data-bucket-label]::before {
+  content: '── ';
+}
+[data-layout-buckets='rules'] [data-bucket-head] > h3 {
+  flex: 1 1 auto;
+}
+[data-layout-buckets='rules'] [data-bucket-head] > h3::after {
+  content: '';
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 1px;
+  margin-inline: 10px 6px;
+  background: var(--border);
+}
+[data-layout-buckets='caps'] [data-bucket-label] {
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+/* type: one monospace face for the whole shell. --font-ui and --font-content
+   are body's, so they are redefined here, and the shell sets its own
+   font-family because what it inherits was computed at body. .font-mono and
+   code have the system stack baked in (see Terminal), so they follow too. */
+[data-layout-type='plex'] {
+  --font-ui: var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace;
+}
+[data-layout-type='jetbrains'] {
+  --font-ui: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
+}
+[data-layout-type='mono'] {
+  --font-ui: ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+[data-layout-type='plex'],
+[data-layout-type='jetbrains'],
+[data-layout-type='mono'] {
+  --font-content: var(--font-ui);
+  --font-mono: var(--font-ui);
+  font-family: var(--font-ui);
+}
+[data-layout-type='plex'] :is(.font-mono, code, pre, kbd, samp),
+[data-layout-type='jetbrains'] :is(.font-mono, code, pre, kbd, samp),
+[data-layout-type='mono'] :is(.font-mono, code, pre, kbd, samp) {
+  font-family: var(--font-mono);
+}
+
+/* ── Writer: one quiet column ────────────────────────────────────────────────
+   The page as a writing app's: one narrow column of light monospace, the
+   bucket you are in kept in ink while the rest of the day goes grey, a round
+   tick, and the braindump behind a tab on the left edge. */
+
+/* measure: 'narrow' — the canvas as one reading column. The week column views
+   still opt out (data-wide), since seven days never fit a column; every
+   canvas-container flips together, as the utility requires. */
+[data-layout-measure='narrow'] .canvas-container:not([data-wide='true']) {
+  max-width: 720px;
+}
+
+/* type: 'dm' — DM Mono, Light for the page. The reading size steps up with it;
+   the rows' metadata keeps its own. */
+[data-layout-type='dm'] {
+  --font-ui: var(--font-dm-mono), 'DM Mono', ui-monospace, monospace;
+  --font-content: var(--font-ui);
+  --font-mono: var(--font-ui);
+  --font-content-weight: 300;
+  --text-content: 14px;
+  font-family: var(--font-ui);
+}
+/* The looser leading is the list rows' only: the schedule panes size their
+   title clamp off the default 17px line (day-schedule.tsx), so a taller line
+   there would clip a block's last line mid-glyph. */
+[data-layout-type='dm'] [data-testid='item-card'] {
+  --text-content--line-height: 22px;
+}
+[data-layout-type='dm'] :is(.font-mono, code, pre, kbd, samp) {
+  font-family: var(--font-mono);
+}
+
+/* buckets: 'focus' — a bucket is a small lowercase label over its rows, no
+   card, no glyph. While one of them is the bucket you are in, the others go
+   grey by colour, never by opacity (CLAUDE.md: the accent is never faded
+   through a parent), so a tick's accent keeps its full strength everywhere.
+   On a day with no current bucket nothing greys. */
+[data-layout-buckets='focus'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='focus'] [data-bucket-glyph] {
+  display: none;
+}
+[data-layout-buckets='focus'] [data-bucket-label] {
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+  font-weight: 400;
+}
+[data-layout-buckets='focus'] [data-testid='bucket-card'][data-current='true'] [data-bucket-label] {
+  color: var(--success-text);
+}
+[data-layout-buckets='focus'] [data-testid='bucket-card'][data-current='true'] [data-bucket-label]::after {
+  content: ' · now';
+}
+[data-layout-buckets='focus'] main:has([data-testid='bucket-card'][data-current='true'])
+  [data-testid='bucket-card'][data-current='false'] {
+  --foreground: var(--muted-foreground);
+  color: var(--muted-foreground);
+}
+
+/* rows: 'round' — the tick as a hairline circle that fills with the accent
+   when done. Same button, same 16px hit area; the done row is struck through
+   in the accent. The done title fades with opacity everywhere else, which
+   would fade that lime strike too (CLAUDE.md), so here it greys by colour. */
+[data-layout-rows='round'] [data-testid='item-complete-button'] {
+  border-radius: 9999px;
+  border-width: 1px;
+}
+[data-layout-rows='round'] [data-testid='item-complete-button'][data-checked='false'] {
+  background: transparent;
+}
+[data-layout-rows='round'] [data-testid='item-card'][data-completed='true'] p {
+  opacity: 1;
+  color: var(--muted-foreground);
+  text-decoration-color: var(--success-text);
+}
+
+/* edge: 'tab' — the closed braindump's expand zone draws a `● braindump` pull
+   on the page's left edge instead of the small grip. Same button: a click
+   opens the column, a hover peeks it, exactly as the grip does. */
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip'] {
+  left: 12px;
+  translate: 0 -50%;
+  width: auto;
+  height: auto;
+  gap: 6px;
+  padding: 14px 7px;
+  border: 0;
+  /* Rounded on the left before the 180deg turn, so on the right once drawn:
+     the flat side sits on the window edge. */
+  border-radius: 8px 0 0 8px;
+  background: var(--np-chrome);
+  box-shadow: none;
+  writing-mode: vertical-rl;
+  rotate: 180deg;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+/* The grip's own hover and focus utilities are layered, so this unlayered rule
+   would cancel them; the tab states its own. The zone drops its outline, so
+   the tab's ring is the only focus cue. */
+[data-layout-edge='tab'] [data-testid='sidebar-expand-zone']:is(:hover, :focus-visible)
+  [data-testid='sidebar-expand-grip'] {
+  color: var(--foreground);
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-zone']:focus-visible
+  [data-testid='sidebar-expand-grip'] {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip'] > svg {
+  display: none;
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip']::before {
+  content: '●';
+  color: var(--success-text);
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip']::after {
+  content: 'braindump';
+}
+
+/* skin: 'retro' — Notepad as it first looked: white paper, light grey chrome
+   and a blue caret, and their dark twins. The semantic tokens resolve at
+   :root, so the skin restates them here rather than the paper ramp; the raw
+   lime ramp too, for the few marks that read it directly. The accent is the
+   skin's blue, the way Studio's is — it never dims either. Shell-only, like
+   every layout: menus and dialogs portal out and keep the colour theme.
+   Tokens DERIVED from those (muted, the schedule panes, the drop trays, the
+   shadows a theme re-cuts) were also resolved at :root, so the skin restates
+   each formula as well, or it would inherit the theme's finished colours. */
+[data-layout-skin='retro'] {
+  --np-chrome: #f3f3f3;
+  --canvas: #ffffff;
+  --background: #f3f3f3;
+  --surface-0: #f3f3f3;
+  --surface-1: #f3f3f3;
+  --surface-2: #ffffff;
+  --surface-3: #ebebeb;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --modal: #ffffff;
+  --sidebar: #f3f3f3;
+  --foreground: #1b1b1b;
+  --card-foreground: #1b1b1b;
+  --popover-foreground: #1b1b1b;
+  --sidebar-foreground: #1b1b1b;
+  --secondary-foreground: #5f5f5f;
+  --muted-foreground: #6b6b6b;
+  --border: #e1e1e1;
+  --sidebar-border: #e1e1e1;
+  --input: #cfcfcf;
+  --accent: oklch(0.5 0.15 255 / 6%);
+  --row-selected: #cce4f7;
+  --lime-solid: #005fb8;
+  --lime-ink: #005fb8;
+  --lime-tint: #e5f0fa;
+  --primary: #005fb8;
+  --primary-foreground: #ffffff;
+  --ring: #005fb8;
+  --success: #005fb8;
+  --success-foreground: #ffffff;
+  --success-text: #005fb8;
+  --day-today: #005fb8;
+  --radius: 0.375rem;
+  /* The derived chain, re-cut from the skin's own values (formulas from :root). */
+  --muted: var(--surface-3);
+  --secondary: var(--surface-3);
+  --sidebar-accent: var(--surface-3);
+  --accent-foreground: var(--foreground);
+  --sidebar-primary: var(--lime-solid);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--lime-solid);
+  --priority-low: var(--lime-solid);
+  --priority-low-foreground: var(--primary-foreground);
+  --day-on: var(--secondary-foreground);
+  --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
+  --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
+  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 94%, transparent);
+  --sched-pane-selected: color-mix(in oklab, white 12%, var(--surface-2));
+  --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
+  --sched-rail: color-mix(in oklab, var(--border) 60%, transparent);
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
+  --bkt-tray: color-mix(in oklab, var(--surface-0) 70%, var(--surface-3));
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+  --bkt-block: var(--surface-2);
+  --shadow-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
+  --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
+  --shadow-elev-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
+  --shadow-elev-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
+  color: var(--foreground);
+}
+.dark [data-layout-skin='retro'] {
+  --np-chrome: #202020;
+  --canvas: #272727;
+  --background: #202020;
+  --surface-0: #202020;
+  --surface-1: #202020;
+  --surface-2: #2d2d2d;
+  --surface-3: #333333;
+  --card: #2d2d2d;
+  --popover: #2d2d2d;
+  --modal: #2d2d2d;
+  --sidebar: #202020;
+  --foreground: #f2f2f2;
+  --card-foreground: #f2f2f2;
+  --popover-foreground: #f2f2f2;
+  --sidebar-foreground: #f2f2f2;
+  --secondary-foreground: #b4b4b4;
+  --muted-foreground: #9a9a9a;
+  --border: #3a3a3a;
+  --sidebar-border: #3a3a3a;
+  --input: #4a4a4a;
+  --accent: oklch(1 0 0 / 6%);
+  --row-selected: #264f78;
+  --lime-solid: #60cdff;
+  --lime-ink: #60cdff;
+  --lime-tint: #1d3a4d;
+  --primary: #60cdff;
+  --primary-foreground: #0b2433;
+  --ring: #60cdff;
+  --success: #60cdff;
+  --success-foreground: #0b2433;
+  --success-text: #60cdff;
+  --day-today: #60cdff;
+  /* The derived chain, re-cut from the dark values (formulas from .dark). */
+  --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
+  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  --sched-pane-selected: color-mix(in oklab, white 10%, var(--surface-2));
+  --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
+  --sched-rail: oklch(1 0 0 / 7%);
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
+  --bkt-tray: color-mix(in oklab, var(--canvas) 40%, var(--surface-0));
+  --shadow-elev-sm: inset 0 1px 0 oklch(1 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 35%), 0 4px 10px oklch(0 0 0 / 30%);
+  --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 9%), 0 2px 4px oklch(0 0 0 / 35%), 0 8px 20px oklch(0 0 0 / 38%);
+  --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 8px oklch(0 0 0 / 40%), 0 16px 40px oklch(0 0 0 / 45%);
+  --shadow-elev-bar: inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%), 0 6px 18px -4px oklch(0 0 0 / 45%);
 }

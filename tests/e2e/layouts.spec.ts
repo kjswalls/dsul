@@ -1,0 +1,241 @@
+import { test, expect } from '@playwright/test';
+import { loginTestUser } from './helpers/auth';
+import { createTestTask, cleanupByTitlePrefix, testTitle } from './helpers/api';
+import { getTodayStr } from './helpers/dates';
+import { reloadApp, itemCard, expectCompleted, completeButton } from './helpers/app';
+
+/**
+ * Layouts (lib/layout-themes.ts) move, hide and add whole surfaces, and the
+ * rule that makes that safe is that the pinned verbs survive every one of
+ * them: capture, ticking, the braindump and the item panel. Console is set
+ * through localStorage only — never the Settings row, which would write the
+ * shared test user's user_settings.layout and rearrange every parallel spec.
+ */
+test.describe('Layouts: Console', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'console'));
+    await reloadApp(page);
+  });
+
+  test('moves the braindump right, capture to the bottom, and adds the status line', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'console');
+    await expect(shell).toHaveAttribute('data-layout-buckets', 'headings');
+
+    await expect(page.getByTestId('status-line')).toBeVisible();
+    await expect(page.getByTestId('braindump-pane').getByTestId('braindump')).toBeVisible();
+    await expect(page.getByTestId('dock-bottom').locator('[data-tour="omnibar"] input')).toBeVisible();
+    // The left column is gone, not merely collapsed.
+    await expect(page.getByTestId('sidebar-column')).toHaveCount(0);
+
+    // The status line's switch hides and shows the pane, like Ctrl+[.
+    const toggle = page.getByTestId('status-line-braindump');
+    await toggle.click();
+    await expect(page.getByTestId('braindump-pane')).toHaveAttribute('inert', '');
+    await toggle.click();
+    await expect(page.getByTestId('braindump-pane')).not.toHaveAttribute('inert', '');
+  });
+
+  test('a text tick still completes the item, and the panel still opens', async ({ page }) => {
+    const title = testTitle('console');
+    try {
+      const id = await createTestTask(page, {
+        title,
+        startDate: getTodayStr(),
+        timeBucket: 'morning',
+        isScheduled: true,
+      });
+      await reloadApp(page);
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await expect(completeButton(page, id)).toHaveAttribute('data-checked', 'false');
+
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+      await expect(completeButton(page, id)).toHaveAttribute('data-checked', 'true');
+
+      await itemCard(page, id).getByText(title).click();
+      await expect(page.getByTestId('item-dialog')).toBeVisible();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+});
+
+test.describe('Layouts: Notebook', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notebook'));
+    await reloadApp(page);
+  });
+
+  test('lays the braindump and the day out as a spread, with the pinned controls intact', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'notebook');
+    await expect(shell).toHaveAttribute('data-layout-header', 'masthead');
+
+    const book = page.locator('[data-book]');
+    await expect(book.getByTestId('braindump')).toBeVisible();
+    await expect(book.getByRole('main')).toBeVisible();
+    // The masthead is the capsule without its chrome: navigation still works.
+    await expect(page.getByTestId('header-date')).toBeVisible();
+    await expect(page.getByTestId('header-next')).toBeVisible();
+    // Capture is the page's last line.
+    await expect(page.locator('[data-dock-page] input')).toHaveAttribute('placeholder', 'write a line…');
+  });
+
+  test("the braindump's Display shelf lines up with its title", async ({ page }) => {
+    // The shelf shows only while a display option is off its default, so sort
+    // the braindump by title. An init script, not a one-off write: login's own
+    // init script re-seeds dsul-view on every load, and this one runs after it.
+    await page.addInitScript(() => {
+      const blob = JSON.parse(localStorage.getItem('dsul-view') ?? '{"state":{},"version":1}');
+      blob.state = { ...blob.state, braindumpSortBy: 'title' };
+      localStorage.setItem('dsul-view', JSON.stringify(blob));
+    });
+    await reloadApp(page);
+    // The title loses its inset, so the shelf under it must too, or its line
+    // starts 15px right of the title it sits under.
+    const shelf = page.locator('[data-book]').getByTestId('display-shelf-braindump');
+    await expect(shelf).toBeVisible();
+    await expect(shelf).toHaveCSS('padding-left', '0px');
+  });
+
+  test('the page tabs switch scope, and the ribbon marks today only', async ({ page }) => {
+    await expect(page.getByTestId('page-ribbon')).toBeVisible();
+    const tabs = page.getByTestId('page-tabs');
+    await tabs.getByRole('tab', { name: 'Week' }).click();
+    await expect(tabs.getByRole('tab', { name: 'Week' })).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('[data-dnd-bucket="morning"]')).toHaveCount(0);
+    await tabs.getByRole('tab', { name: 'Day' }).click();
+    await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible();
+
+    await page.getByTestId('header-next').click();
+    await expect(page.getByTestId('page-ribbon')).toHaveCount(0);
+  });
+});
+
+test.describe('Layouts: Notepad', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad'));
+    await reloadApp(page);
+  });
+
+  test('lays the braindump and the day out as one sheet, with tabs, a status bar and the pinned controls', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'notepad');
+    await expect(shell).toHaveAttribute('data-layout-type', 'plex');
+
+    const sheet = page.locator('[data-sheet]');
+    await expect(sheet.getByTestId('braindump')).toBeVisible();
+    await expect(sheet.getByRole('main')).toBeVisible();
+    await expect(page.getByTestId('header-next')).toBeVisible();
+    await expect(page.locator("[data-dock-page='caret'] input")).toHaveAttribute('placeholder', 'write a line…');
+    await expect(page.getByTestId('status-bar-counts')).toBeVisible();
+
+    // The next tab is tomorrow, through the same navigation as the chevrons.
+    const date = page.getByTestId('header-date');
+    const before = await date.getAttribute('data-date');
+    expect(before).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const next = new Date(`${before}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    await page.getByTestId('day-tab-next').click();
+    await expect(date).toHaveAttribute('data-date', next.toISOString().slice(0, 10));
+
+    // The pinned braindump tab closes and opens its column, like Ctrl+[.
+    const column = page.getByTestId('sidebar-column');
+    await page.getByTestId('day-tabs-braindump').click();
+    await expect(column).toHaveAttribute('data-column-state', 'closed');
+    await page.getByTestId('day-tabs-braindump').click();
+    await expect(column).toHaveAttribute('data-column-state', 'open');
+  });
+
+  test('its Markdown style still ticks a `- [ ]` and opens the panel', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad-markdown'));
+    const title = testTitle('notepad');
+    try {
+      const id = await createTestTask(page, {
+        title,
+        startDate: getTodayStr(),
+        timeBucket: 'morning',
+        isScheduled: true,
+      });
+      await reloadApp(page);
+      await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout-rows', 'tasks');
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+      await expect(completeButton(page, id)).toHaveAttribute('data-checked', 'true');
+
+      await itemCard(page, id).getByText(title).click();
+      await expect(page.getByTestId('item-dialog')).toBeVisible();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+
+  test('its Retro style names the days as .txt files in its own colours', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad-retro'));
+    await reloadApp(page);
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout-skin', 'retro');
+    await expect(page.getByTestId('day-tab-current')).toHaveText(/\.txt$/);
+    await expect(page.getByTestId('day-tabs-braindump')).toHaveText('braindump.txt');
+  });
+});
+
+test.describe('Layouts: Writer', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'writer'));
+    await reloadApp(page);
+  });
+
+  test('sets the day as one column with a round tick, and keeps the braindump behind a tab', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'writer');
+    await expect(shell).toHaveAttribute('data-layout-measure', 'narrow');
+    await expect(page.getByTestId('page-count-counts')).toBeVisible();
+    await expect(page.getByTestId('header-next')).toBeVisible();
+
+    // The braindump closes to the edge tab, and the same tab opens it again.
+    const column = page.getByTestId('sidebar-column');
+    await page.keyboard.press('ControlOrMeta+BracketLeft');
+    await expect(column).toHaveAttribute('data-column-state', 'closed');
+    const tab = page.getByRole('button', { name: 'Expand braindump' });
+    await expect(tab).toBeVisible();
+    await tab.click();
+    await expect(column).toHaveAttribute('data-column-state', 'open');
+
+    const title = testTitle('writer');
+    try {
+      const id = await createTestTask(page, {
+        title,
+        startDate: getTodayStr(),
+        timeBucket: 'morning',
+        isScheduled: true,
+      });
+      await reloadApp(page);
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await expect(completeButton(page, id)).toHaveCSS('border-radius', /9999px|50%/);
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+      // The done title greys by colour, not opacity, so the lime strike keeps
+      // its full strength.
+      await expect(itemCard(page, id).getByText(title)).toHaveCSS('opacity', '1');
+      await itemCard(page, id).getByText(title).click();
+      await expect(page.getByTestId('item-dialog')).toBeVisible();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+});

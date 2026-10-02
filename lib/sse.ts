@@ -2,7 +2,7 @@
  * dsul's chat wire format, in one place.
  *
  * Every chat transport speaks the same frames — `data: {"content":"…"}`, an
- * optional `data: {"error":"…"}`, terminated by `data: [DONE]` — so the client
+ * optional `data: {"error":"…","code":"…"}`, terminated by `data: [DONE]` — so the client
  * has exactly ONE parser regardless of which tier answered. Provider-shaped
  * payloads (OpenAI chunks from `/api/chat`, or an OpenClaw gateway's
  * OpenAI-compatible stream) are translated into these frames server-side.
@@ -16,7 +16,15 @@
 
 export interface SseFrame {
   content?: string
+  /** Our copy, never the provider's text. */
   error?: string
+  /**
+   * The machine-readable reason beside `error` (a `ChatErrorCode` from
+   * lib/ai-types.ts), so the client can react to WHY — a rejected key hides
+   * the AI surfaces — without parsing copy. Optional: the OpenClaw paths and
+   * older servers send `error` alone.
+   */
+  code?: string
 }
 
 const DONE = Symbol('sse-done')

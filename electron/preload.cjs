@@ -74,4 +74,12 @@ contextBridge.exposeInMainWorld('dsulDesktop', {
   takeSignInNotice() {
     return ipcRenderer.invoke('dsul:take-sign-in-notice').then((v) => v === true);
   },
+
+  // The Dock or taskbar icon's look (Settings → Look). Anything but 'lime' is Aurora. Added
+  // after version 1 shipped, so the page checks it exists rather than bumping the version.
+  setAppIcon(look) {
+    return ipcRenderer
+      .invoke('dsul:set-app-icon', look === 'lime' ? 'lime' : 'aurora')
+      .then((ok) => ok === true);
+  },
 });

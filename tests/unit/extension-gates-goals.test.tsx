@@ -75,7 +75,7 @@ import GoalPage from '@/app/goal/[id]/page';
 import { DisplayMenu } from '@/components/primitives/display-menu';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { createChatStore } from '@/lib/chat-store';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { seedAI, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
 import { useDayItemsForDates } from '@/hooks/use-day-items';
 import {
   extensionEnabled,
@@ -465,17 +465,24 @@ describe('Goals switched off — the remaining surfaces', () => {
     expect(screen.getByText('Study characters')).toBeInTheDocument();
   });
 
-  it('stops telling Beacon about goals', async () => {
+  it('stops telling the AI about goals', async () => {
     const posted: string[] = [];
     const original = globalThis.fetch;
-    globalThis.fetch = vi.fn(async (_url: unknown, init: { body?: string } = {}) => {
+    globalThis.fetch = vi.fn(async (url: unknown, init: { body?: string } = {}) => {
+      // The plugin path reads its URL and key lazily, once per account.
+      if (url === '/api/agent/chat-url') {
+        return {
+          ok: true,
+          json: async () => ({ chatUrl: 'https://example.test/chat', agentId: null, dsulApiKey: 'k' }),
+        } as never;
+      }
       posted.push(JSON.parse(init.body ?? '{}').context ?? '');
-      return { json: async () => ({ content: 'ok' }) } as never;
+      return { ok: true, json: async () => ({ content: 'ok' }) } as never;
     }) as never;
-    useAISettingsStore.setState({ provider: 'openclaw' } as never);
+    const unseed = seedAI(OPENCLAW_PLUGIN);
 
     const chat = createChatStore({ historyKey: 'k', sessionKey: 's' });
-    chat.setState({ openclawChatUrl: 'https://example.test/chat', hydrated: true });
+    chat.setState({ hydrated: true });
 
     enableExtensions(EXT_GOALS);
     await chat.getState().send('how am I doing');
@@ -484,6 +491,7 @@ describe('Goals switched off — the remaining surfaces', () => {
     await chat.getState().send('how am I doing');
 
     globalThis.fetch = original;
+    unseed();
     // The heading is emitted only when the goals array is non-empty, so its
     // presence and absence is the whole assertion. The rest of the context is
     // byte-identical either way — this removes a section, it does not reshape

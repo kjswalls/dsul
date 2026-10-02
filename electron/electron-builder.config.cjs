@@ -16,9 +16,9 @@ module.exports = {
   productName: 'dsul',
 
   directories: { output: 'release', buildResources: 'build' },
-  // package.json goes in on its own. build/ is not packed except for the tray icons, which the
-  // running app loads.
-  files: ['main.cjs', 'preload.cjs', 'lib/**', 'offline.html', 'build/tray*'],
+  // package.json goes in on its own. build/ is not packed except for the tray icons and the
+  // run-time app icons (lib/app-icon.cjs), which the running app loads.
+  files: ['main.cjs', 'preload.cjs', 'lib/**', 'offline.html', 'build/tray*', 'build/app-icon-*.png'],
 
   // From the first release. Cookie encryption is one-way: never turn it off once it has
   // shipped, or every user's cookie store (their session and the PKCE verifier) is unreadable.

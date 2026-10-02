@@ -263,15 +263,6 @@ export function AppShell() {
             setShowTour(false);
             setTourUserId(null);
           }
-          // Published for the chat surfaces too: Beacon's own first-run Q&A
-          // renders off the same answer, and on a phone its field competes
-          // with the dock's. Seeding it here — the earliest place the answer
-          // exists — means the dock is already standing down by the time the
-          // tour's step 4 switches to the Beacon tab. A "done" answer lowers it
-          // only for ANOTHER account: the tour marks completion before Beacon's
-          // Q&A is answered, and a remount (/ → /settings → /) reads "done" for
-          // the account still mid-Q&A — see chatOnboardingUserId in ui-store.
-          useUIStore.getState().applyChatOnboardingAnswer(uid, needed);
         },
       }),
     []

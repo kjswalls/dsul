@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import { ChevronLeft, Store } from 'lucide-react';
 
+import { cn } from '@/lib/utils';
 import { extensionManifest } from '@/lib/extension-registry';
 import { adoptionLine } from '@/lib/extension-adoption';
 import { useExtensionAdoptionStore } from '@/lib/extension-adoption-store';
@@ -29,9 +30,8 @@ export function ExtensionHero({ slug }: { slug: string }) {
   const stats = useExtensionAdoptionStore((s) => s.stats);
   const load = useExtensionAdoptionStore((s) => s.load);
   useEffect(() => load(), [load]);
-  // Cards in Browse link here with ?from=browse. The crumb already goes back to
-  // the Extensions pane (on whichever tab you used last), but from the store
-  // "back" means the store, so that gets a link of its own at the top.
+  // Cards in Browse link here with ?from=browse. The crumb and the rail both go
+  // back to the store, but only this link returns to the shelf you were on.
   const params = useSearchParams();
   const fromBrowse = params?.get('from') === 'browse';
   const backHref = browseHref(params?.get('shelf'));
@@ -74,12 +74,20 @@ export function ExtensionHero({ slug }: { slug: string }) {
       </blockquote>
 
       {(adoption || !fromBrowse) && (
-        <div className="text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
+        // With no figure to show, the row holds only the phone's link, so a
+        // desktop drops the whole row rather than keep an empty gap.
+        <div
+          className={cn(
+            'text-muted-foreground flex flex-wrap items-center gap-x-4 gap-y-1 text-xs',
+            !adoption && 'md:hidden'
+          )}
+        >
           {adoption && <span className="font-num text-[11px]">{adoption}</span>}
           {!fromBrowse && (
+            // A desktop has Browse in the rail beside this; a phone does not.
             <Link
-              href="/settings/extensions?view=browse"
-              className="hover:text-foreground inline-flex items-center gap-1 transition-colors"
+              href="/settings/extensions"
+              className="hover:text-foreground inline-flex items-center gap-1 transition-colors md:hidden"
             >
               <Store className="size-3.5" aria-hidden />
               Browse all extensions

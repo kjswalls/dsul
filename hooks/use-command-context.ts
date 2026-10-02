@@ -4,8 +4,8 @@ import { useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useTheme } from 'next-themes';
 import { usePlannerStore } from '@/lib/planner-store';
-import { useSidebarStore } from '@/lib/sidebar-store';
-import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { revealChat } from '@/lib/open-chat';
 import { saveSettings } from '@/lib/settings-service';
 import { applyThemeChange } from '@/lib/theme-transition';
 import { useIsMobile } from '@/hooks/use-mobile';
@@ -15,8 +15,10 @@ import type { CommandContext } from '@/lib/commands';
  * Builds the CommandContext — the handful of capabilities a command can't
  * reach on its own via `someStore.getState()`.
  *
- * @param overrides.openChat where "Ask Beacon" should land. The mobile dock
- *   passes its own so the omnibar keeps behaving the way it does today.
+ * @param overrides.openChat where "Ask AI" should land. The mobile dock
+ *   passes its own so the omnibar keeps behaving the way it does today. The
+ *   default is `revealChat` (lib/open-chat.ts), which opens nothing while the
+ *   AI gate says nothing can answer.
  */
 export function useCommandContext(overrides?: { openChat?: () => void }): CommandContext {
   const { theme, resolvedTheme, setTheme } = useTheme();
@@ -24,6 +26,12 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
   const isMobile = useIsMobile();
   const router = useRouter();
   const openChatOverride = overrides?.openChat;
+  // Read here, and not only inside the commands, so the context changes
+  // identity when the gate flips. The palette's AI rows decide `hidden` /
+  // `availableWhen` off the store (CommandContext is deliberately not
+  // widened), and every list memoised on `ctx` must recompute when the answer
+  // arrives, or the palette keeps showing the rows from before it.
+  const { canChat } = useAICapabilities();
 
   return useMemo<CommandContext>(
     () => ({
@@ -43,20 +51,17 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
       openChat:
         openChatOverride ??
         (() => {
-          if (isMobile) {
-            useMobileNavStore.getState().setActiveTab('chat');
-            return;
-          }
-          // ChatPanel mounts inside SidebarDock, which lives in a w-0
-          // overflow-hidden container while the sidebar is collapsed — so
-          // expanding chat alone expands a panel nobody can see.
-          useSidebarStore.getState().setLeftSidebarOpen(true);
-          useSidebarStore.getState().setChatExpanded(true);
+          // revealChat re-reads the gate itself; this is the render's view of
+          // it, so a stale closure can only ever open less, never more. It
+          // reveals the dock too on desktop (revealDock): ChatPanel mounts
+          // inside SidebarDock, which lives in a w-0 overflow-hidden container
+          // while the sidebar is collapsed.
+          if (canChat) revealChat(isMobile);
         }),
       userId,
       isMobile,
       navigate: (href: string) => router.push(href),
     }),
-    [theme, resolvedTheme, setTheme, userId, isMobile, openChatOverride, router]
+    [theme, resolvedTheme, setTheme, userId, isMobile, openChatOverride, router, canChat]
   );
 }

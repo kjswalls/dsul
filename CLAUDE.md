@@ -1,8 +1,8 @@
 # dsul
 
 A personal planning PWA — a day/week schedule grid, a braindump sidebar, recurring
-habits, an end-of-day review, and an AI assistant ("Beacon"). Next.js App Router +
-Supabase, deployed on Vercel.
+habits, an end-of-day review, and an optional AI assistant (bring your own model).
+Next.js App Router + Supabase, deployed on Vercel.
 
 ## Commands
 
@@ -38,9 +38,13 @@ URLs (Figma + Supabase), no secrets, so it works from any machine.
 **`vercel env pull` writes PRODUCTION credentials, so `pnpm dev` talks to prod until
 you run `local-setup.sh`.** Every hot-reload remount re-runs the planner's container
 fan-out against the live project. `local-setup.sh dev` stands up a local stack and
-swaps only the three Supabase keys in `.env.local`, carrying `OPENAI_API_KEY`, the
-VAPID pair and `CRON_SECRET` through untouched. `vercel env pull .env.local` puts
-prod back.
+swaps only the three Supabase keys in `.env.local`, carrying the VAPID pair and
+`CRON_SECRET` through untouched. It keeps a usable `MODEL_KEYS_ENCRYPTION_KEY` and never
+rotates one in place (that would make every sealed model key unreadable); a missing,
+blank or malformed one (e.g. the `""` `vercel env pull` writes for a Sensitive variable)
+is replaced with a fresh key, and the original file is backed up to `.env.local.bak`.
+`.env.test` gets a fresh key on every run, since its database is reset too.
+`vercel env pull .env.local` puts prod back.
 
 The same script covers the e2e suite (`./scripts/local-setup.sh e2e`, writing
 `.env.test` — see `.env.test.example`), or `both` from one stack.
@@ -164,6 +168,41 @@ Read [habit-reminders.md](memory/plans/habit-reminders.md) before touching any o
 copy contract, the midnight clamp and the snooze day-gate all exist because the obvious
 version was wrong.
 
+**AI is bring-your-own, and it fails closed.** dsul ships no model key of its own:
+`process.env.OPENAI_API_KEY` is never read, and `tests/unit/ai-server-boundary.test.ts`
+fails on the literal anywhere under `app/`, `lib/`, `components/` or `hooks/`, comments
+included. Each user connects ONE model in Settings → AI
+([model-connection-panel.tsx](components/settings/model-connection-panel.tsx)): OpenAI,
+Anthropic, Google Gemini, OpenRouter (PKCE sign-in or a key), or any OpenAI-compatible
+https base URL. Four rules are load-bearing:
+
+- **The key is write-only.** It is sealed app-side with AES-256-GCM under
+  `MODEL_KEYS_ENCRYPTION_KEY` ([secret-box.ts](lib/ai-server/secret-box.ts); never
+  encrypt or decrypt in SQL, where a key lands in statement logs) into
+  `model_connections` (migration 053: one row per user, service-role only, like
+  `user_secrets`). No route, store, settings record or log ever carries it back to a
+  browser, not even masked or as a last four. Production and Preview share one database,
+  so they must hold the SAME `MODEL_KEYS_ENCRYPTION_KEY`; a mismatch reads as
+  `key_unreadable` and is never written back.
+- **Server code stays server-side.** Everything that talks to a provider lives in
+  `lib/ai-server/**` and is imported only from `app/api/**` (a boundary test). Session
+  checks live in `app/api/ai/_shared/guard.ts`, because `lib/` may not call
+  `.auth.getUser(`.
+- **One gate, asked, never re-derived.** The client asks `GET /api/ai/connection` once at
+  sign-in; [ai-connection-store.ts](lib/ai-connection-store.ts) holds the answer and is
+  never persisted, and [ai-registry.ts](lib/ai-registry.ts) turns it into capabilities.
+  Every AI surface asks `useAICapabilities()` / `getAICapabilities()` and hides while the
+  answer is unknown or failed. Who answers in chat is a device-local choice changed only
+  through `chooseChatTarget()` ([chat-target.ts](lib/chat-target.ts)), the one path
+  allowed to wipe transcripts.
+- **The AI has no name.** The user-facing noun is "AI"; OpenClaw keeps its own name.
+  `beacon` survives only in permanent ids and stored values (`/settings/beacon`, the
+  `beacon.*` settings ids, the assignee value `'beacon'`, which renders as "AI"); never
+  rename those, and never put "Beacon" in user-visible copy
+  (`tests/unit/no-beacon-copy.test.ts`).
+
+Read [ai-vision.md](memory/plans/ai-vision.md) before touching any of it.
+
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
 sidebar, eod, morning, chat, …). `planner-store.ts` is the big one: it holds `items[]`
 with `tasks`/`habits` projections derived off it.
@@ -176,6 +215,14 @@ with `tasks`/`habits` projections derived off it.
 layout.** The shell is a standalone npm project outside the pnpm workspace (never run pnpm in
 it), and it loads the live do.dsul.app. Read [desktop-app.md](memory/plans/desktop-app.md)
 before touching it, `app/auth/desktop/`, or anything that reads `window.dsulDesktop`.
+
+**`ios/` is the native iPhone app (SwiftUI, iOS 27); `ios/DsulCore` is its Linux-testable
+Swift port of the pure planner logic.** XcodeGen generates the Xcode project from
+`ios/project.yml` (never commit `*.xcodeproj`), and only GitHub's `xcode-27` runner compiles it
+(`.github/workflows/ios.yml`), since cloud sessions can't. A Swift port cites the TS it mirrors:
+changing that TS without the Swift is drift. The iOS checks aren't required, so merge a PR
+touching `ios/` only once they're green. Read [ios-app.md](memory/plans/ios-app.md) before
+touching `ios/`.
 
 ## Database
 
@@ -228,6 +275,12 @@ rather than taking the flag.
   100ms (off under reduced motion), because the untransitioned version flickered at each
   flex gap a sweep crosses. The fade is opacity-only, so it adds no recalc; never widen it
   to other properties.
+- **The desktop app's top 43px is a window-drag band.** On macOS the Electron window has no
+  title bar, and `.titlebar-drag` (first child of `<body>`, rule in [globals.css](app/globals.css))
+  is what the window is dragged by; clicks there never reach the page. Anything interactive or
+  hover-driven above y 43 takes `titlebar-hole`. It is all keyed off `env(titlebar-area-*)` with
+  `0px` fallbacks, so browsers and the PWA never see it. The `-35px` in the sidebar wordmark's
+  padding couples to `MAC_LIGHTS.x` in `electron/lib/window-chrome.cjs` — change one, change both.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)
@@ -299,3 +352,7 @@ third container role (`aspire`), where milestones and check-ins are ordinary ite
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
 anything that writes an item's `startDate` in bulk: a milestone's start date is a target
 date, and the sweep and the carry verbs are excluded from it on purpose.
+[ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
+the capability gate, delegation to OpenClaw, and which earlier decisions step 1
+superseded. Read it before touching `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`,
+`app/api/chat` or the AI settings pane.

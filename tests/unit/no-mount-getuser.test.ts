@@ -16,12 +16,18 @@ import path from 'node:path';
  *     identifyUser before any load).
  *
  * app/api/** is server code, where getUser IS the access check, and is not
- * scanned. The allowlist is for a client page where a server-validated user is
- * the point.
+ * scanned. lib/app-auth.ts is the same server-side access check (the bearer
+ * gate behind /api/app/*, where getUser(jwt) is the revocation check); it lives
+ * in lib/ only so lib/app-api.ts and the app/api/app routes can share it, and
+ * nothing client-side imports it. It is named in SERVER_ONLY rather than
+ * skipped by path, so the exception stays visible and the second test pins it
+ * to keeping its call. The allowlist is for a client page where a
+ * server-validated user is the point.
  */
 const ROOT = path.resolve(__dirname, '../..');
 const SCAN = ['components', 'app', 'lib', 'hooks'];
 const ALLOWED = new Set(['app/connect/page.tsx']);
+const SERVER_ONLY = new Set(['lib/app-auth.ts']);
 
 function walk(dir: string, out: string[]) {
   for (const name of readdirSync(dir)) {
@@ -40,7 +46,10 @@ describe('no mount-time auth.getUser() outside the API', () => {
     expect(files.length).toBeGreaterThan(50);
 
     const offenders = files.filter(
-      (f) => !ALLOWED.has(f) && /\.auth\.getUser\(/.test(readFileSync(path.join(ROOT, f), 'utf8'))
+      (f) =>
+        !ALLOWED.has(f) &&
+        !SERVER_ONLY.has(f) &&
+        /\.auth\.getUser\(/.test(readFileSync(path.join(ROOT, f), 'utf8'))
     );
     expect(
       offenders,
@@ -49,8 +58,8 @@ describe('no mount-time auth.getUser() outside the API', () => {
     ).toEqual([]);
   });
 
-  it('still finds the allowlisted call, so the scan is not vacuous', () => {
-    for (const f of ALLOWED) {
+  it('still finds the allowlisted calls, so the scan is not vacuous', () => {
+    for (const f of [...ALLOWED, ...SERVER_ONLY]) {
       expect(readFileSync(path.join(ROOT, f), 'utf8')).toMatch(/\.auth\.getUser\(/);
     }
   });

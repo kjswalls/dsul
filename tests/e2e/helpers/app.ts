@@ -10,11 +10,15 @@ import { expect, type Locator, type Page } from '@playwright/test';
  * every following assertion raced hydration and the store's first data load. The
  * same dead pair followed every page.reload() in the suite.
  *
- * Silent auth failure — the app renders `<AppShell/>` unconditionally and
- * supabase-provider simply skips store init without a session, and locally
- * NEXT_PUBLIC_DISABLE_AUTH=true short-circuits proxy.ts entirely. So a broken
+ * Silent auth failure — the app rendered `<AppShell/>` unconditionally,
+ * supabase-provider skipped store init without a session, and locally
+ * NEXT_PUBLIC_DISABLE_AUTH=true short-circuited proxy.ts entirely. So a broken
  * session produced a fully-rendered EMPTY planner and ~49 tests failed 10s later
- * on "element not found" instead of once, loudly, on auth.
+ * on "element not found" instead of once, loudly, on auth. A page with no
+ * session now leaves for /login (proxy.ts, and the provider when the gate is
+ * off), but a cookie the decoder throws on still leaves the shell up on its
+ * skeleton (helpers/session.ts), so the readiness contract below still asserts
+ * auth itself.
  */
 
 /** Go to the app and wait until it is genuinely usable. */

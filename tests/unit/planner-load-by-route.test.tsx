@@ -57,6 +57,7 @@ import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 
 const original = {
   initializeStore: usePlannerStore.getState().initializeStore,
@@ -64,6 +65,7 @@ const original = {
   secrets: useChannelSecretsStore.getState().hydrate,
   gateway: useGatewayStore.getState().hydrate,
   nudges: useNudgeStore.getState().hydrate,
+  ai: useAIConnectionStore.getState().hydrate,
 };
 
 /** Stands in for the seven-table fetch, counting the calls it never makes. */
@@ -82,6 +84,7 @@ describe('the item load follows the route', () => {
     useChannelSecretsStore.setState({ hydrate: async () => {} });
     useGatewayStore.setState({ hydrate: async () => {} });
     useNudgeStore.setState({ hydrate: async () => {} });
+    useAIConnectionStore.setState({ hydrate: async () => {} });
     useMorningStore.setState({ settingsHydratedUserId: null });
   });
 
@@ -92,6 +95,7 @@ describe('the item load follows the route', () => {
     useChannelSecretsStore.setState({ hydrate: original.secrets });
     useGatewayStore.setState({ hydrate: original.gateway });
     useNudgeStore.setState({ hydrate: original.nudges });
+    useAIConnectionStore.setState({ hydrate: original.ai });
     useMorningStore.setState({ settingsHydratedUserId: null });
   });
 
@@ -223,14 +227,17 @@ describe('the item load follows the route', () => {
 /**
  * Channel secrets, gateway and dismissed nudges render nothing on the planner,
  * so on a needs-items route they wait for the item load to settle instead of
- * queueing beside it in the cold-start burst. Settings and extensions do not
- * wait: one paints the grid and gates /settings, the other drives grouping.
+ * queueing beside it in the cold-start burst. Settings, extensions and the AI
+ * gate do not wait: one paints the grid and gates /settings, one drives
+ * grouping, and the last decides whether any AI surface may show at all —
+ * every one of them hidden until it answers, so it cannot queue behind items.
  */
 describe('the post-load reads wait for the planner', () => {
   const secrets = vi.fn<(userId: string) => Promise<void>>(async () => {});
   const gateway = vi.fn<(userId: string) => Promise<void>>(async () => {});
   const nudges = vi.fn<(userId: string) => Promise<void>>(async () => {});
   const extensions = vi.fn<(userId: string) => Promise<void>>(async () => {});
+  const ai = vi.fn<(userId: string) => Promise<void>>(async () => {});
   const deferredStubs = [secrets, gateway, nudges];
 
   /** The load, held open until the test settles it. */
@@ -261,13 +268,14 @@ describe('the post-load reads wait for the planner', () => {
     settle = () => {};
     heldLoad.mockClear();
     loadSettings.mockClear();
-    for (const fn of [...deferredStubs, extensions]) fn.mockClear();
+    for (const fn of [...deferredStubs, extensions, ai]) fn.mockClear();
     usePlannerStore.getState().clearStore();
     usePlannerStore.setState({ initializeStore: heldLoad, error: null });
     useExtensionsStore.setState({ hydrate: extensions });
     useChannelSecretsStore.setState({ hydrate: secrets });
     useGatewayStore.setState({ hydrate: gateway });
     useNudgeStore.setState({ hydrate: nudges });
+    useAIConnectionStore.setState({ hydrate: ai });
     useMorningStore.setState({ settingsHydratedUserId: null });
   });
 
@@ -278,6 +286,7 @@ describe('the post-load reads wait for the planner', () => {
     useChannelSecretsStore.setState({ hydrate: original.secrets });
     useGatewayStore.setState({ hydrate: original.gateway });
     useNudgeStore.setState({ hydrate: original.nudges });
+    useAIConnectionStore.setState({ hydrate: original.ai });
     useMorningStore.setState({ settingsHydratedUserId: null });
   });
 
@@ -288,11 +297,14 @@ describe('the post-load reads wait for the planner', () => {
     });
   };
 
-  it('on the planner: settings and extensions in the burst, the other three after it', async () => {
+  it('on the planner: settings, extensions and the AI gate in the burst, the other three after it', async () => {
     renderProvider();
     await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
     await waitFor(() => expect(loadSettings).toHaveBeenCalled());
     expect(extensions).toHaveBeenCalledWith(USER);
+    // The load is still held open: the gate did not wait for it.
+    expect(ai).toHaveBeenCalledTimes(1);
+    expect(ai).toHaveBeenCalledWith(USER);
     for (const fn of deferredStubs) expect(fn).not.toHaveBeenCalled();
 
     await settleLoad();
@@ -300,6 +312,23 @@ describe('the post-load reads wait for the planner', () => {
       expect(fn).toHaveBeenCalledTimes(1);
       expect(fn).toHaveBeenCalledWith(USER);
     }
+    // And the settle does not ask for it a second time.
+    expect(ai).toHaveBeenCalledTimes(1);
+  });
+
+  it('the AI gate is asked on a lean route too, where there is no load at all', async () => {
+    pathname = '/settings/day';
+    renderProvider();
+    await waitFor(() => expect(ai).toHaveBeenCalledWith(USER));
+    expect(heldLoad).not.toHaveBeenCalled();
+  });
+
+  it('a FAILED load does not hold the AI gate back either', async () => {
+    renderProvider();
+    await waitFor(() => expect(heldLoad).toHaveBeenCalledWith(USER));
+    expect(ai).toHaveBeenCalledWith(USER);
+    await settleLoad({ error: 'boom' });
+    expect(ai).toHaveBeenCalledTimes(1);
   });
 
   it('a FAILED load still releases them — the settings rows do not wait on a retry', async () => {
@@ -354,6 +383,8 @@ describe('the post-load reads wait for the planner', () => {
     act(() => emitAuth('SIGNED_IN', { user: { id: 'user-b' } }));
     await waitFor(() => expect(heldLoad).toHaveBeenCalledWith('user-b'));
     const settleB = settle;
+    // The gate is asked for B at once, with A's load still open.
+    expect(ai).toHaveBeenLastCalledWith('user-b');
 
     await act(async () => {
       settleA();

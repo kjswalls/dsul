@@ -22,14 +22,17 @@ import {
   isLightLook,
   lightLookDef,
 } from '@/lib/theme-looks';
+import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
+import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { sessionUserFrom, useSessionUserStore } from '@/lib/session-user-store';
 import { useUIStore } from '@/lib/ui-store';
 import { adoptLocalState, clearUserScopedLocalState } from '@/lib/local-state';
-import { leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
+import { leaveForLoginIfNoSession, leaveForLoginIfSignedOutPage } from '@/lib/signed-out-redirect';
 import { fetchContainersSeeded, fetchTrashedNames, markContainersSeeded } from '@/lib/db';
 import { runFirstRunSeed } from '@/lib/seed-containers';
 import { routeNeedsItems } from '@/lib/route-data';
@@ -166,6 +169,35 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [lightLook, darkLook]);
 
+  // The layout's localStorage mirror. No DOM stamp here: the desktop shell
+  // stamps its own root (lib/layout-themes.ts), which keeps a layout off the
+  // phone without a media query.
+  const layout = useLookStore((s) => s.layout);
+  useEffect(() => {
+    try {
+      if (layout === DEFAULT_LAYOUT) window.localStorage.removeItem(LAYOUT_STORAGE_KEY);
+      else window.localStorage.setItem(LAYOUT_STORAGE_KEY, layout);
+    } catch {
+      // Private mode — the pick still holds for this session.
+    }
+  }, [layout]);
+
+  // The app icon's localStorage mirror. No DOM stamp here either: FaviconSync
+  // owns the tab's links. Written only once the pick is KNOWN (lib/look-store.ts)
+  // and kept even when it is Aurora, because an explicit Aurora is what lets
+  // the desktop bridge tell the shell so on the next load before the server
+  // answers; the untouched fallback is never written.
+  const appIcon = useLookStore((s) => s.appIcon);
+  const appIconKnown = useLookStore((s) => s.appIconKnown);
+  useEffect(() => {
+    if (!appIconKnown) return;
+    try {
+      window.localStorage.setItem(APP_ICON_STORAGE_KEY, appIcon);
+    } catch {
+      // Private mode — the pick still holds for this session.
+    }
+  }, [appIcon, appIconKnown]);
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -230,7 +262,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // unable to tell these values from the localStorage leftovers of whoever
       // used this browser last.
       useMorningStore.getState().applyServerSettings(userId, {
-        morningCheckEnabled: settings.morning_check_enabled ?? true,
+        // Opt-in: a NULL (a row from before the column had a default, or no
+        // row at all) reads as off. Rituals are something a person turns on.
+        morningCheckEnabled: settings.morning_check_enabled ?? false,
         morningCheckTime: settings.morning_check_time ?? '08:00',
         morningCheckDismissedDate: settings.morning_check_dismissed_date ?? null,
         morningAutoAgeEnabled: settings.morning_auto_age_enabled ?? false,
@@ -283,9 +317,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
           theme_palette: 'default',
           theme_light: DEFAULT_LIGHT_LOOK,
           theme_dark: DEFAULT_DARK_LOOK,
+          layout: DEFAULT_LAYOUT,
         });
         useLookStore.getState().setLight(DEFAULT_LIGHT_LOOK);
         useLookStore.getState().setDark(DEFAULT_DARK_LOOK);
+        useLookStore.getState().setLayout(DEFAULT_LAYOUT);
       } else {
         if (isThemePalette(settings.theme_palette)) {
           usePaletteStore.getState().setPalette(settings.theme_palette);
@@ -298,6 +334,15 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         if (isDarkLook(settings.theme_dark)) {
           useLookStore.getState().setDark(settings.theme_dark);
         }
+        if (isLayoutTheme(settings.layout)) {
+          useLookStore.getState().setLayout(settings.layout);
+        }
+      }
+      // Outside the reset on purpose: ?reset-theme recovers a page made
+      // unreadable, and an icon cannot do that, so the pick still applies.
+      // Same null rule as the rest: never chosen leaves this device's pick.
+      if (isAppIcon(settings.app_icon)) {
+        useLookStore.getState().setAppIcon(settings.app_icon);
       }
     };
 
@@ -489,6 +534,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // gates the overdue sweep, and extensions must never be able to fail
       // the data load.
       useExtensionsStore.getState().hydrate(userId);
+      // The AI gate, in the same burst and for the same reason as extensions:
+      // every AI surface stays hidden until it answers (fail closed), so it
+      // must not queue behind the item load, and it must never be able to
+      // fail that load. Its own window absorbs the SIGNED_IN re-emits.
+      void useAIConnectionStore.getState().hydrate(userId);
       // Channel secrets, gateway, dismissed nudges: AFTER the load, not beside
       // it — see hydrateAfterLoad. Where no load runs (a lean route), or it
       // has already settled (a visibility SIGNED_IN, a retry event), there is
@@ -512,9 +562,34 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     hydrateAfterLoadRef.current = hydrateAfterLoad;
 
     // Check current session on mount
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session?.user) adoptUser(session.user);
-    });
+    supabase.auth.getSession().then(
+      ({ data: { session }, error }) => {
+        if (session?.user) adoptUser(session.user);
+        // NOTHING STORED, and nothing will ever say so: supabase-js emits
+        // SIGNED_OUT only for a session it held, so a page that never had one
+        // (the desktop app's first launch, with the server gate not catching
+        // it) sat on PlannerSkeleton for good. See lib/signed-out-redirect.ts.
+        //
+        // `!error` keeps an offline user when getSession RESOLVES. A stored
+        // session whose refresh could not reach Supabase comes back with no
+        // session but WITH an AuthRetryableFetchError, and auth-js keeps it to
+        // retry; sending that user to /login would strand them on a sign-in
+        // form they cannot use, so they stay where they are. That is the
+        // backstop, not the usual road: a real offline launch rejects (below).
+        else if (!session && !error) leaveForLoginIfNoSession();
+      },
+      // A rejection proves nothing about the account, and it is how an offline
+      // launch with an expired session actually ends. auth-js retries the
+      // refresh for up to ~30s, and getSession holds the auth lock while it
+      // waits on it. The subscription below asks for that lock to announce
+      // INITIAL_SESSION, gives up waiting after lockAcquireTimeout (5s) and
+      // steals it, so getSession rejects with "Lock … was released because
+      // another request stole it", about 31s after load (Chromium, a refresh
+      // answering 503). A request from another tab can steal it the same way.
+      // That user still holds a session either way, so this neither bounces
+      // nor clears a cookie; it only stops being unhandled.
+      (err) => console.error('[auth] getSession failed on mount', err)
+    );
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       if (event === 'SIGNED_IN' && session?.user) {
@@ -538,14 +613,18 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
+        // The AI gate: not persisted, and an account switch already clears it
+        // synchronously inside its hydrate. This covers the same gap as the
+        // four above (a sign-out with no sign-in after it), and drops any
+        // answer still in flight for the account that left.
+        useAIConnectionStore.getState().reset();
         useSessionUserStore.getState().clear();
-        // ui-store is a module singleton and outlives the account: a first-run
-        // flag left up here would hand the NEXT account the previous one's
-        // Beacon onboarding (AppShell's watcher also clears it on a "done"
-        // answer for a new account; this covers sign-out with no sign-in).
+        // The retired first-run chat flag; kept inert. ui-store is a module
+        // singleton and outlives the account, so a flag left up here would
+        // carry to the NEXT account.
         useUIStore.getState().setChatOnboardingActive(false);
         // clearStore only resets the planner's DATA. Everything this browser
-        // has persisted ABOUT the account — the Beacon API key and its
+        // has persisted ABOUT the account — the AI settings and the chat
         // transcripts, the canvas filters, the morning decay policy, the
         // planner preference slice — is dropped here, and the ownership stamp
         // with it. Sign-out is not the only path this runs on (see

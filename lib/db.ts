@@ -1012,7 +1012,7 @@ async function withResolvedContainer(
 const REMINDER_WRITE_COLUMNS = ['reminder_time', 'reminder_anchor'] as const;
 
 /** True only for "the database doesn't have a column we asked for". */
-function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
+export function isMissingColumnError(error: { code?: string; message?: string } | null): boolean {
   if (!error) return false;
   if (error.code === '42703' || error.code === 'PGRST204') return true;
   return /column\b.*\bdoes not exist/i.test(error.message ?? '');
@@ -1046,7 +1046,19 @@ async function writeWithoutNotesFallback(
   return true;
 }
 
-export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
+/**
+ * `notify: false` keeps a create off the plugin webhook. The browser's creates
+ * never reach a webhook (there is no service key in a browser, so notifyPlugins
+ * is a no-op there), and the iPhone's capture route passes `false` so a phone
+ * capture stays as silent to OpenClaw as the same capture typed on the web.
+ * The `create` event row is written either way.
+ */
+export async function createItem(
+  userId: string,
+  item: Item,
+  client?: DbClient,
+  opts: { notify?: boolean } = {},
+): Promise<void> {
   const supabase = client ?? createClient();
   const linked = await withResolvedContainer(supabase, userId, item);
   const row = itemToRow(userId, linked) as unknown as Record<string, unknown>;
@@ -1078,10 +1090,12 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
 
   if (error) throw error;
   const dbType = itemDbType(item);
-  notifyItemChange(userId, dbType, {
-    action: 'create',
-    [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
-  });
+  if (opts.notify ?? true) {
+    notifyItemChange(userId, dbType, {
+      action: 'create',
+      [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
+    });
+  }
   recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
 }
 

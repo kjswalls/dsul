@@ -2,6 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { render, cleanup } from '@testing-library/react';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import type { CommandContext } from '@/lib/commands';
+import { useViewStore } from '@/lib/view-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
 
 /**
  * The bare-key claim (memory/plans/organize-console.md, Phase 1).
@@ -107,5 +109,38 @@ describe('the bare-key claim', () => {
 
     root.remove();
     expect(press('n')).toBe(true);
+  });
+});
+
+/**
+ * A matched binding whose command cannot run right now (`availableWhen` false).
+ * It never runs. Whether the browser gets the key depends on whose key it is.
+ */
+describe('a binding whose command cannot run right now', () => {
+  afterEach(() => {
+    cleanup();
+    useViewStore.setState({ scope: 'day', layout: 'buckets' });
+  });
+
+  it('hands a page-level key back to the browser', () => {
+    // ⌘= is page zoom everywhere except a week view with columns to scale.
+    useViewStore.setState({ scope: 'day', layout: 'buckets' });
+    render(<Harness onEdit={() => {}} />);
+    expect(press('=', { metaKey: true })).toBe(false);
+
+    // The control: the same key, where the command can run, is claimed.
+    useViewStore.setState({ scope: 'week', layout: 'schedule' });
+    expect(press('=', { metaKey: true })).toBe(true);
+  });
+
+  it('keeps a chrome-level key from the browser, without running its command', () => {
+    // ⌘] (toggle chat) waits on the AI gate, which starts closed. The key is
+    // Forward in every macOS browser, and the app claims it on every surface,
+    // so it is consumed and does nothing rather than leaving the planner.
+    useSidebarStore.setState({ chatExpanded: false, leftSidebarOpen: false });
+    render(<Harness onEdit={() => {}} />);
+    expect(press(']', { metaKey: true })).toBe(true);
+    expect(useSidebarStore.getState().chatExpanded).toBe(false);
+    expect(useSidebarStore.getState().leftSidebarOpen).toBe(false);
   });
 });

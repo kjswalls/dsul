@@ -6,6 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { isApplePlatform } from '@/lib/commands/keys';
 import { setOnboardingComplete } from '@/lib/user-profile';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
@@ -216,6 +218,13 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   const [desktopSubStep, setDesktopSubStep] = useState<'A' | 'B' | 'C'>('A');
   const [mobileSubStep, setMobileSubStep] = useState<'A' | 'B'>('A');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
+  /**
+   * Whether anything can answer in chat. The tour never walks someone to a
+   * chat surface that is not there: without it, sub-step C is the dock and
+   * step 4 says AI is optional. The flow and its dots are the same either way,
+   * and so is the spotlight target.
+   */
+  const { canChat } = useAICapabilities();
   // Spotlight selector based on current step/sub-step
   const spotlightSelector = (() => {
     if (step === 3) {
@@ -250,11 +259,25 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   // Anchor a card just outside the spotlight target, computed from its live
   // rect — replaces hardcoded left/right offsets that broke when the sidebar
   // width changed. Falls back to null (callers keep a static class) if no rect.
+  // The card sits beside its target on the preferred side, flips when that
+  // side has no room for it, and goes above a target too wide for either —
+  // a layout (lib/layout-themes.ts) can put the braindump at the right edge or
+  // lay the dock across the whole foot of the screen.
   const cardAnchor = (side: 'left' | 'right') => {
     if (!spotlightRect) return undefined;
-    const top = spotlightRect.top + spotlightRect.height / 2;
+    const CARD_W = 288 + 16;
     const iw = typeof window !== 'undefined' ? window.innerWidth : 0;
-    return side === 'right'
+    const ih = typeof window !== 'undefined' ? window.innerHeight : 0;
+    const roomRight = iw - spotlightRect.right - 16;
+    const roomLeft = spotlightRect.left - 16;
+    let place: 'left' | 'right' | 'above' = side;
+    if (place === 'right' && roomRight < CARD_W) place = roomLeft >= CARD_W ? 'left' : 'above';
+    else if (place === 'left' && roomLeft < CARD_W) place = roomRight >= CARD_W ? 'right' : 'above';
+    if (place === 'above') {
+      return { left: '50%', bottom: ih - spotlightRect.top + 16, transform: 'translateX(-50%)' as const };
+    }
+    const top = spotlightRect.top + spotlightRect.height / 2;
+    return place === 'right'
       ? { left: spotlightRect.right + 16, top, transform: 'translateY(-50%)' as const }
       : { right: iw - spotlightRect.left + 16, top, transform: 'translateY(-50%)' as const };
   };
@@ -282,16 +305,19 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
   }, [step]);
 
-  // Auto-expand/collapse chat sidebar based on desktop sub-step C
+  // Auto-expand/collapse chat sidebar based on desktop sub-step C. Expanding
+  // only when chat exists: otherwise C is about the dock, and an armed
+  // `chatExpanded` would spring the panel open later, unasked, the moment a
+  // model is connected.
   useEffect(() => {
     if (step === 3 && !isMobile) {
-      if (desktopSubStep === 'C') {
+      if (desktopSubStep === 'C' && canChat) {
         onExpandChatRef.current?.();
       } else {
         onCollapseChatRef.current?.();
       }
     }
-  }, [step, isMobile, desktopSubStep]);
+  }, [step, isMobile, desktopSubStep, canChat]);
 
   // Switch to tasks tab when reaching mobile sub-step A (step 3)
   useEffect(() => {
@@ -304,12 +330,14 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
   }, [step, isMobile, mobileSubStep]);
 
-  // Switch to chat tab when reaching step 4 on mobile
+  // Switch to chat tab when reaching step 4 on mobile, when there is one. With
+  // nothing to answer the phone has no chat tab (lib/mobile-nav-store.ts), and
+  // the step stays on Today, pointing at the mode card it already lit.
   useEffect(() => {
-    if (step === 4 && isMobile) {
+    if (step === 4 && isMobile && canChat) {
       onSetActiveTabRef.current?.('chat');
     }
-  }, [step, isMobile]);
+  }, [step, isMobile, canChat]);
 
   const advanceWithExit = useCallback((fn: () => void) => {
     setIsExiting(true);
@@ -417,6 +445,30 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   if (!isVisible) return null;
 
   const exitClass = isExiting ? 'animate-out fade-out zoom-out-95 duration-300' : '';
+
+  // Keys as this platform prints them, so a Ctrl user never reads a ⌘. Safe in
+  // render: the tour only mounts on the client, after the completion check.
+  const isMac = isApplePlatform();
+  const launcherKeys = isMac ? '⌘K' : 'Ctrl+K';
+  const askKeys = isMac ? '⌘↵' : 'Ctrl↵';
+
+  /**
+   * Step 4's card. Without anything to answer it says AI is optional and where
+   * to connect one, never that something is missing. With it, how to ask. On
+   * the phone the step has just switched to the chat tab, where the dock's bar
+   * IS the chat field and there is no ⌘↵ to press.
+   */
+  const aiCard = canChat
+    ? {
+        title: 'Your AI is ready',
+        body: isMobile
+          ? 'Type in the bar below to ask about your day.'
+          : `Type ? in the dock, or press ${askKeys}, to ask about your day.`,
+      }
+    : {
+        title: 'Bring your own AI (optional)',
+        body: 'dsul works without AI. If you want help planning, connect a model you already use, or OpenClaw, in Settings.',
+      };
 
   // ─── Step 1: Welcome ────────────────────────────────────────────────────────
   if (step === 1) {
@@ -535,8 +587,9 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
           // Describes the control rather than telling the user to press it: the
           // cutout is sealed while the tour is up (blockTarget below), so an
           // instruction to tap now would be an instruction that does nothing.
-          description:
-            'The mode button in the dock is how you move between Braindump, Today and Beacon.',
+          description: canChat
+            ? 'The mode button in the dock is how you move between Braindump, Today and AI.'
+            : 'The mode button in the dock is how you move between Braindump and Today.',
         },
         B: {
           title: 'Plan your day',
@@ -592,8 +645,15 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         position: 'left-1/2 -translate-x-1/2 top-24',
       },
       C: {
-        title: 'Your AI chat',
-        description: 'Your AI chat lives here — more on that next.',
+        ...(canChat
+          ? {
+              title: 'Your AI chat',
+              description: 'Ask anything here. It knows your tasks, habits and projects.',
+            }
+          : {
+              title: 'Your dock',
+              description: `Add, search and run commands from here. ${launcherKeys} works anywhere.`,
+            }),
         position: 'right-[340px] top-1/2 -translate-y-1/2',
       },
     };
@@ -643,7 +703,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
 
   // ─── Step 4: AI Chat (coach mark) ───────────────────────────────────────────
   if (step === 4) {
-    // Mobile: tooltip card above the dock (chat tab already active via effect)
+    // Mobile: tooltip card above the dock (on the chat tab, via the effect, when
+    // there is one)
     if (isMobile) {
       return (
         <div className="fixed inset-0 z-[100] pointer-events-none">
@@ -653,10 +714,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
             style={MOBILE_CARD_ABOVE_DOCK}
           >
             <div className="bg-card border border-border rounded-xl shadow-xl p-4 flex flex-col gap-3">
-              <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
-              <p className="text-xs text-muted-foreground leading-relaxed">
-                Connect OpenClaw or bring your own API key to use Beacon. Configure anytime in Settings.
-              </p>
+              <p className="text-sm font-medium text-foreground">{aiCard.title}</p>
+              <p className="text-xs text-muted-foreground leading-relaxed">{aiCard.body}</p>
               <div className="flex items-center justify-between">
                 <BackButton onBack={handleBack} />
                 <div className="flex items-center gap-2">
@@ -698,10 +757,8 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
           style={cardAnchor('left')}
         >
           <div className="bg-card border border-border rounded-xl shadow-2xl p-4 w-72 flex flex-col gap-3">
-            <p className="text-sm font-medium text-foreground">Your planning buddy ✨</p>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Connect OpenClaw or bring your own API key to use Beacon. Configure anytime in Settings.
-            </p>
+            <p className="text-sm font-medium text-foreground">{aiCard.title}</p>
+            <p className="text-xs text-muted-foreground leading-relaxed">{aiCard.body}</p>
             <div className="flex items-center justify-between">
               <BackButton onBack={handleBack} />
               <div className="flex items-center gap-2">

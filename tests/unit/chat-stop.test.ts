@@ -27,17 +27,28 @@ vi.mock('@/lib/planner-store', () => ({
 }));
 
 vi.mock('@/lib/ai-settings-store', () => ({
-  // subscribe() too: the module body wires a provider-change listener at import
-  // time to clear per-item threads.
   useAISettingsStore: {
-    getState: () => ({ provider: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini' }),
-    subscribe: () => () => {},
+    getState: () => ({ chatTarget: 'model', systemPrompt: '' }),
+  },
+}));
+
+// The gate says a model is connected, so every send takes /api/chat. `capsFor` is computed into a hoisted
+// holder after the imports: importing the fixture INSIDE this factory would
+// import the very module being mocked, and the factory would wait on itself.
+const gate = vi.hoisted(() => ({ caps: null as unknown }));
+vi.mock('@/lib/ai-connection-store', () => ({
+  getAICapabilities: () => gate.caps,
+  useAIConnectionStore: {
+    getState: () => ({ hydratedUserId: 'seed-user', noteCallFailure: () => {} }),
   },
 }));
 
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
 import { createChatStore } from '@/lib/chat-store';
+import { capsFor, CONNECTED_MODEL } from './helpers/ai-fixtures';
+
+gate.caps = capsFor(CONNECTED_MODEL);
 
 /** A stream that emits one frame, then hangs until the signal aborts it. */
 function hangingStream(signal: AbortSignal, first = 'Half an ans') {

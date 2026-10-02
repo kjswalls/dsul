@@ -10,9 +10,10 @@ import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
-import { useMobileNavStore, MOBILE_TAB_ORDER } from '@/lib/mobile-nav-store';
+import { useMobileNavStore, mobileTabOrder, shownMobileTab } from '@/lib/mobile-nav-store';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 
 /**
@@ -23,7 +24,7 @@ import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
  * bottom-docked input is the first thing the keyboard covers, and a shell that
  * cannot scroll has no way to bring it back. Clamping the column to the VISUAL
  * viewport lands the dock on top of the keyboard instead, for the omnibar and
- * the Beacon composer alike.
+ * the chat composer alike.
  *
  * The 120px floor is what separates a keyboard from a URL bar: Safari's chrome
  * costs the visual viewport ~60–90px whenever it is expanded, and reacting to
@@ -58,7 +59,8 @@ function useKeyboardSafeHeight(): number | null {
  * active surface, and the bottom dock. The three-tab bar is gone — the dock's
  * mode card shows which surface you are on and opens the switcher sheet
  * (components/mobile/mode-switcher-sheet.tsx) to leave it; a swipe still walks
- * MOBILE_TAB_ORDER, Braindump · Today · Chat. Surfaces reuse the desktop
+ * mobileTabOrder, Braindump · Today · Chat, and Chat only while something can
+ * answer (lib/ai-registry.ts). Surfaces reuse the desktop
  * primitives (shared Braindump, DayBuckets/DayList via MobileViewRouter,
  * ChatConversation) rather than the old bespoke panels. Rendered under the
  * shell's single DndContext, so items stay draggable.
@@ -72,10 +74,26 @@ function useKeyboardSafeHeight(): number | null {
  * duplicated by the keyed cross-fade box below, which now carries them alone.
  */
 export const MobileShell = memo(function MobileShell() {
-  const activeTab = useMobileNavStore((s) => s.activeTab);
+  const storedTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
   const router = useRouter();
   const shellHeight = useKeyboardSafeHeight();
+  const { known, canChat } = useAICapabilities();
+
+  /**
+   * The chat tab exists only while something can answer. A tab the user was on
+   * when the capability dropped (a key revoked, OpenClaw unpaired, a sign-in
+   * as someone without AI) renders as Today in the SAME frame — this value —
+   * and the effect below moves the stored tab there once the gate has
+   * actually answered. Not while it is unknown: a session start is not news
+   * that chat went away, and the store's tab is the user's place.
+   */
+  const activeTab = shownMobileTab(storedTab, canChat);
+  useEffect(() => {
+    if (known && !canChat && storedTab === 'chat') {
+      useMobileNavStore.getState().setActiveTab('today');
+    }
+  }, [known, canChat, storedTab]);
 
   // Close any open row swipe-actions when switching tabs.
   useEffect(() => closeAllRowSwipes(), [activeTab]);
@@ -83,15 +101,17 @@ export const MobileShell = memo(function MobileShell() {
   const swipeHandlers = useSwipeable({
     onSwipedLeft: () => {
       if (rowSwipeActive.current) return; // a row swipe is in progress, not a tab swipe
-      const idx = MOBILE_TAB_ORDER.indexOf(activeTab);
-      if (idx < MOBILE_TAB_ORDER.length - 1) {
-        useMobileNavStore.getState().setActiveTab(MOBILE_TAB_ORDER[idx + 1]);
+      const order = mobileTabOrder(canChat);
+      const idx = order.indexOf(activeTab);
+      if (idx < order.length - 1) {
+        useMobileNavStore.getState().setActiveTab(order[idx + 1]);
       }
     },
     onSwipedRight: () => {
       if (rowSwipeActive.current) return;
-      const idx = MOBILE_TAB_ORDER.indexOf(activeTab);
-      if (idx > 0) useMobileNavStore.getState().setActiveTab(MOBILE_TAB_ORDER[idx - 1]);
+      const order = mobileTabOrder(canChat);
+      const idx = order.indexOf(activeTab);
+      if (idx > 0) useMobileNavStore.getState().setActiveTab(order[idx - 1]);
     },
     trackMouse: false,
     delta: 50,
@@ -176,7 +196,7 @@ export const MobileShell = memo(function MobileShell() {
           key={activeTab}
           className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
         >
-          {activeTab === 'chat' && (
+          {activeTab === 'chat' && canChat && (
             <MobileChatPanel
               headerAccessory={userMenu}
               onOpenSettings={() => router.push('/settings/beacon')}

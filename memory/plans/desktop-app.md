@@ -28,8 +28,10 @@ electron/
   preload.cjs                       # contextBridge -> window.dsulDesktop (sandboxed preload, so CJS)
   lib/policy.cjs                    # PURE, zero imports: isAppUrl, carriesAuthCode, externalAllowed,
                                     #   parseDeepLink, checkAuthorizeUrl
+  lib/app-icon.cjs                  # PURE: the run-time icon's looks and file names
   offline.html, README.md ("npm only. Never run pnpm in here."), .gitignore (node_modules/, release/)
-  build/                            # icon.png, tray icons, entitlements.mac.plist, installer.nsh
+  build/                            # icon.png, app-icon-{aurora,lime}.png, tray icons,
+                                    #   entitlements.mac.plist, installer.nsh
 ```
 
 - **It is not a workspace project.** pnpm-workspace.yaml:1-3 lists only `packages/*` and `openclaw-plugin`. So the root `pnpm install` (Vercel; test.yml:44) never pulls in electron-builder's ~200MB app-builder-bin.
@@ -57,9 +59,11 @@ electron/
 - **Size and paint.**
   - Set `minWidth: 900`. Below 768px the mobile shell renders (hooks/use-mobile.ts:3), and below 1180px the item panel overlays the page instead of docking (components/shell/desktop-shell.tsx:216).
   - Take `backgroundColor` from `nativeTheme.shouldUseDarkColors`: `#0e1014` dark or `#fbfaf9` light (app/layout.tsx:68-71). Show the window on `ready-to-show`.
-- **v1 keeps the standard OS frame.** A hidden title bar would put:
-  - the macOS traffic lights on top of the wordmark (components/sidebar/sidebar.tsx:312-315);
-  - the Windows caption buttons over the item panel's close control (components/planner/item-dialog.tsx:3049-3062).
+- **Frame (revised 2026-10-01, after Kirby's first run on a Mac).** v1 shipped with the standard OS frame; v0.1.1 drops the macOS title bar, the way Claude's app does.
+  - macOS: `titleBarStyle: 'hidden'`, traffic lights at `{x: 37, y: 20}` and `titleBarOverlay: {height: 43}` (electron/lib/window-chrome.cjs). The overlay is what defines `env(titlebar-area-*)` for the page, and nothing else does (no browser, no installed PWA, no framed window, not macOS full screen), so every rule the page keys off it falls back to today's layout everywhere else.
+  - The page's top 43px (the shell's 12px gutter plus the sidebar's 31px wordmark row) is a window-drag band: `.titlebar-drag`, the first child of `<body>` (app/globals.css). Anything interactive or hover-driven above y 43 takes `titlebar-hole`. The wordmark moves to 14px past the green light; the full-page routes pad their top to the band.
+  - Windows and Linux keep the native frame: the caption buttons would sit over the canvas card's rounded top-right corner, and their colours cannot follow dsul's theme without a bridge method. Electron ignores drag regions in a framed window, so the page's CSS does nothing there.
+  - Release order: the web half deploys first (it is inert until a shell sets `titleBarOverlay`), then the shell is released. A new shell on an old deployment would have no drag band.
 - **Guards.** Attach them in `app.on('web-contents-created')`, so every webContents has them before its first load.
   - **`will-navigate`, `will-frame-navigate` and `will-redirect`.** `will-frame-navigate` covers subframes; the app has none today.
     - An app URL stays in the window, unless `carriesAuthCode` is true: the path is `/auth/callback`, or the URL has a `code` query parameter.
@@ -116,7 +120,11 @@ Both login paths use PKCE, and the verifier is a cookie on do.dsul.app (lib/supa
 So the code travels back to Electron, and Electron's own cookie jar does the exchange. Only a code crosses into the app, never a token.
 
 **What PKCE does and doesn't protect.**
-- It stops code interception.
+- It stops interception of a Google code. It does NOT stop interception of a
+  magic-link code: GoTrue issues that from the user's latest flow state, which
+  anyone can plant with an unauthenticated `/otp` carrying their own challenge,
+  so whoever receives `dsul://` (or the iPhone's `app.dsul.ios://`) with the
+  code can exchange it (memory/plans/ios-app.md, "Email link").
 - It stops blind injection of an attacker's code, which fails with `bad_code_verifier`.
 - It does NOT stop injection by anyone who can read the authorize URL. The `code_challenge` travels in that URL in plain text (auth-js GoTrueClient.ts:3293-3303), so browser history, sync, or an extension can mint a matching code for their own account.
 
@@ -291,7 +299,7 @@ Three things below narrow that gap: the short pending windows, the code-navigati
 Use electron-builder 26.15.x: not the 27 alpha, and not Forge, which has no NSIS maker. Use electron ^44.
 
 - **Identity (permanent once shipped).** `appId: app.dsul.desktop`, `productName: dsul`. These become the macOS bundle id, the Windows AUMID and the NSIS GUID.
-- **Layout.** `directories: { output: release, buildResources: build }`. `files`: main.cjs, preload.cjs, lib/**, offline.html, build/tray*.
+- **Layout.** `directories: { output: release, buildResources: build }`. `files`: main.cjs, preload.cjs, lib/**, offline.html, build/tray*, build/app-icon-*.png (the run-time icons; without them `createFromPath` is an empty image in the packaged app).
 - **macOS targets.** `dmg` plus `zip`, **arm64 only** in v1. Add x64 once an Intel Mac can test it.
   - **Signing identity.** The JS config sets `identity: process.env.CSC_LINK ? undefined : '-'` and `hardenedRuntime: !!process.env.CSC_LINK`.
     - Without a certificate there is NO automatic ad-hoc fallback (out/options/macOptions.d.ts:23; out/mac/MacTargetHelper.js:37-46).
@@ -355,11 +363,19 @@ Use electron-builder 26.15.x: not the 27 alpha, and not Forge, which has no NSIS
 
 ## App icon
 
-The Wave mark (Kirby's pick, 2026-10-01; the web icons switched in #349). `scripts/app-icon/build.mjs --native <dir>` renders the native files; a copy is in the project's shared folder at `app-logo/icons/`, with a README saying where each goes.
-- **macOS:** `electron/build/icon.png` is `macos/AppIcon-dark.iconset/icon_512x512@2x.png`, the 1024px tile already drawn on Apple's grid (824px rounded tile with a shadow), so the Dock shows a proper squircle. electron-builder derives the .icns from it. A light/dark pair needs Icon Composer on a Mac (Later).
-- **Windows:** `electron/build/icon.ico` is `windows/icon.ico` (16 to 256).
-- **Tray:** `build/tray.png` and `tray@2x.png` are `public/icons/icon-16.png` and `icon-32.png` on Windows; macOS gets `trayTemplate.png` / `trayTemplate@2x.png`, the 3×3 dot grid in black on transparent, so the menu bar tints it.
-- Don't touch public/icons.
+The Aurora mark (Kirby's pick, 2026-10-02; it replaced Wave, which looked dull in the Dock). The plain `node scripts/app-icon/build.mjs` writes this app's icons straight into `electron/build/`; `--native <dir>` adds the other platforms' files, and a copy is in the project's shared folder at `app-logo/icons/`, with a README saying where each goes.
+- **macOS:** `electron/build/icon.png` is the 1024px tile drawn on Apple's grid (824px rounded tile with a shadow), so the Dock shows a proper squircle. electron-builder derives the .icns from it.
+- **Windows:** `electron/build/icon.ico` holds 16 to 256.
+- **Tray:** `build/tray.png` and `tray@2x.png` are the 16 and 32px favicons on Windows; macOS gets `trayTemplate.png` / `trayTemplate@2x.png`, a hand-made dot grid in black on transparent, so the menu bar tints it.
+- `public/icons/` is the web app's, written by the same script. The shell never loads it.
+
+**The run-time icon (Settings → Look → App icon, Aurora or Lime).**
+- The page sends its choice through `window.dsulDesktop.setAppIcon(look)` (preload.cjs) on `dsul:set-app-icon`; main answers only `fromApp`, accepts only a look `lib/app-icon.cjs` knows, and ignores a repeat. The page sends it once settings have hydrated for the signed-in user, never the untouched fallback, so a fresh shell doesn't stamp Aurora over a synced Lime. The bridge stays `version: 1`: `setAppIcon` is optional and the page checks it exists, so an older shell just skips it.
+- Main keeps the look in `userData/app-icon.json` (`{"look":"lime"}`; not secret, so no `0o600`) and reads it in `ready()`, so the next launch starts on it.
+- **macOS:** `app.dock.setIcon` with `build/app-icon-<look>.png`, called before the window is made. It lasts only while the app runs: launch bounces the bundle's Aurora first, and Finder, Launchpad and a Dock tile pinned while the app is closed always show Aurora.
+- **Windows and Linux:** `win.setIcon` with the same PNG, and the window is created with it, so a Lime user's taskbar never shows Aurora. A taskbar button pinned while the app is closed keeps the bundle's Aurora `.ico`.
+- Both PNGs are 512px tiles on Apple's grid, on every platform; there is no run-time `.ico`. The tray stays Aurora (no Lime tray art).
+- Only the setting reaches the shell. The browser tab's day-done Lime (`components/providers/favicon-sync.tsx`) does not: Electron shows no favicon, and a daily swap would be a daily disk write.
 
 ## Testing
 
@@ -412,6 +428,12 @@ The Wave mark (Kirby's pick, 2026-10-01; the web icons switched in #349). `scrip
   - Ctrl+= zooms outside the week views and scales the columns inside them.
   - A Beacon chat link opens in the browser.
   - Dropping an .html file or a link onto the window does not navigate it.
+- **App icon.**
+  - Switching to Lime in Settings → Look changes the Dock and ⌘-Tab icon (Mac) or the window and taskbar icon (Windows) at once.
+  - Lime holds across a quit and cold launch, after the launch bounce shows Aurora.
+  - Switching back restores Aurora.
+  - The offline page can't change the icon.
+  - Whether a pinned Windows taskbar button follows `win.setIcon` **[unverified]**; `setOverlayIcon` is the fallback.
 - **Resilience.**
   - An offline launch shows the offline page and recovers.
   - Sleep and wake.
@@ -458,7 +480,7 @@ Real builds come only from the GitHub runners. This container can't build a dmg.
 6. The release workflow.
 7. The update notice.
 
-Also in v1: the push-row copy, the Wave icons, the CLAUDE.md layout line and the eslint ignore.
+Also in v1: the push-row copy, the app icons, the CLAUDE.md layout line and the eslint ignore.
 
 **Later**
 - macOS signing (only the secrets are needed).
@@ -472,7 +494,7 @@ Also in v1: the push-row copy, the Wave icons, the CLAUDE.md layout line and the
 - Same-origin second windows.
 - The stale-window reload.
 - A shortcut override and a settings UI for it.
-- A custom title bar.
+- A custom title bar on Windows (macOS has one since v0.1.1).
 - Launch at login.
 - Find-in-page.
 - Remembering window size and position.

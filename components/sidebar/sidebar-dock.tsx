@@ -2,6 +2,7 @@
 
 import { useCallback, useRef, useState } from 'react';
 import { ChatPanel } from '@/components/sidebar/chat-panel';
+import { ProposalCard } from '@/components/ai/proposal-card';
 import { DockNotices } from '@/components/sidebar/dock-notices';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { UserCard } from '@/components/sidebar/user-card';
@@ -9,7 +10,10 @@ import { Omnibar } from '@/components/sidebar/omnibar';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { RELAY } from '@/lib/relay-config';
+import { useLayoutDef } from '@/lib/look-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useChatHostCard } from '@/lib/open-chat';
 import { cn } from '@/lib/utils';
 
 /**
@@ -17,8 +21,17 @@ import { cn } from '@/lib/utils';
  * user menu + session history on top and the omnibar (white pill) below.
  * Exact dims from the Figma file (6ZFClj80tMQOCYUhzyuWFL): gray 406×137 r10;
  * top row at y21; omnibar pill 385×48 r10 at y72. Chat has no bar of its own
- * — when summoned from the omnibar (`?` / Ask Beacon / ⌘]) it mounts above the
- * user row and the capsule grows upward, shrinking the Braindump.
+ * — when summoned from the omnibar (`?` / Ask AI / ⌘]) it mounts above the
+ * user row and the capsule grows upward, shrinking the Braindump. It mounts
+ * only while the AI gate says something can answer: a remembered
+ * `chatExpanded` from a session that had a model does not open an empty panel
+ * in one that has none.
+ *
+ * Without chat, the same slot hosts the catch-up card. "Pick things back up"
+ * is computed locally and must work with no AI at all, and its card renders on
+ * the 'chat' surface; with no chat panel to carry it, the dock does, inside a
+ * plain capped box (ScrollArea ignores max-h). The box mounts only while the
+ * card has something to show, so the resting capsule is unchanged.
  *
  * It is also where the app SPEAKS — but from a STRIP above the capsule, not
  * from inside it. That is a placement decision (notices are not part of the
@@ -34,9 +47,46 @@ import { cn } from '@/lib/utils';
  * into the same airspace as the omnibar's suggestion panel, one occupant at a
  * time. See components/sidebar/dock-notices.tsx and
  * memory/plans/notices-in-place.md.
+ *
+ * `placement="bottom"` is the layout slot `capture: 'prompt-bottom'`
+ * (lib/layout-themes.ts): the same dock laid across the foot of the shell, the
+ * omnibar a `>` prompt with the user row beside it rather than above. Nothing
+ * else changes — same notices, same undo strip, same chat (given a fixed share
+ * of the height, since there is no column above it to grow into) — so every
+ * capture path, the toast anchor and the onboarding tour's target come along.
  */
-export function SidebarDock() {
+export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' | 'bottom' } = {}) {
   const chatExpanded = useSidebarStore((s) => s.chatExpanded);
+  const { canChat } = useAICapabilities();
+  const chatOpen = chatExpanded && canChat;
+  // No `known` term, deliberately: while the gate is unknown or its read has
+  // failed every capability is off, and catch-up must still have somewhere to
+  // land. Mutually exclusive with ChatPanel (`!chatOpen`), so the card never
+  // renders twice.
+  //
+  // LATCHED once it shows. The gate can open while the card is up: the first
+  // status read answers, or a failed read is retried on the next tab return
+  // (Supabase re-emits SIGNED_IN, and 'error' has no dedupe window), and that
+  // can happen at any point in the review. The card's home would then be chat,
+  // but the command that asked for it found chat closed and never expanded it,
+  // so unlatched the card would vanish mid-review, and the lines the user had
+  // dropped (ProposalCard's local state) would come back ticked when it
+  // remounted. Latched, it stays where it is until it is done (accepted,
+  // dismissed) or the user opens chat, which then carries it.
+  const hostCard = useChatHostCard();
+  const [hosting, setHosting] = useState(false);
+  const showCatchUpHost = hostCard && !chatOpen && (!canChat || hosting);
+  // State that trails what is on screen, adjusted during render (React's
+  // sanctioned pattern, as in components/zen/zen-stage.tsx), so the flip render
+  // already sees the latch and the card never unmounts for a frame.
+  if (showCatchUpHost !== hosting) setHosting(showCatchUpHost);
+  const bottom = placement === 'bottom';
+  // `capture: 'page-foot'` / `'caret'`: the same dock at the foot of the
+  // braindump's page, its capsule and pill drawn as a bare ruled line or as an
+  // editor's caret (app/globals.css, [data-dock-page]). Same omnibar, so every
+  // mode and shortcut still works.
+  const capture = useLayoutDef().slots.capture;
+  const pageFoot = capture === 'page-foot' || capture === 'caret';
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Relay wakes up while the omnibar input is focused. Driven by the omnibar's
   // own focus (via onFocusChange) rather than the dock's focus-within: the
@@ -57,10 +107,60 @@ export function SidebarDock() {
   // with the notices at all; it moves with chat, and nothing else.
   useToastAnchor(wrapperRef);
 
+  if (bottom) {
+    return (
+      <div
+        ref={wrapperRef}
+        data-testid="dock-bottom"
+        className="relative flex flex-shrink-0 flex-col border-t border-border"
+      >
+        {/* Out of flow, notices and undo alike: everything above this dock
+            is the canvas, whose height the schedule grid fits its hours to
+            (lib/use-fit-hour-px.ts), so a row arriving here must not take
+            height from it. z-[31] clears the item panel, which overlays the
+            row at z-30 below 1180px. */}
+        <div className="absolute inset-x-4 bottom-full z-[31] mb-1.5 flex flex-col gap-1.5 [&>*]:bg-canvas">
+          <DockNotices alwaysVisible />
+          <UndoStrip />
+        </div>
+        <div data-tour="right-sidebar" data-dock-surface className="relative flex flex-col">
+          {chatOpen && (
+            <div className="flex h-[42vh] min-h-0 flex-col border-b border-border px-4 pt-3 pb-2">
+              <ChatPanel focusSignal={1} />
+            </div>
+          )}
+          {/* The catch-up card's home when nothing can answer, as in the
+              column below; capped at chat's own share of the height. */}
+          {showCatchUpHost && (
+            <div
+              data-testid="dock-catch-up-host"
+              className="max-h-[42vh] overflow-y-auto border-b border-border px-4 pt-3 pb-2"
+            >
+              <ProposalCard surface="chat" />
+            </div>
+          )}
+          {/* pr-16 keeps the user row clear of the help button, which is
+              fixed to the window's bottom-right corner (help-menu.tsx). */}
+          <div className="flex items-center gap-3 py-2 pr-16 pl-4">
+            <span aria-hidden className="flex-none font-mono text-sm text-success-text">
+              &gt;
+            </span>
+            <div className="min-w-0 max-w-3xl flex-1">
+              <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
+            </div>
+            <div className="ml-auto flex-none">
+              <UserCard />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={wrapperRef}
-      className={cn('relative flex min-h-0 flex-col', chatExpanded && 'flex-1')}
+      className={cn('relative flex min-h-0 flex-col', chatOpen && 'flex-1')}
     >
       {/* THE STRIP: the app's notices, above the capsule instead of inside it.
           Both children render null when they have nothing to say, so the resting
@@ -87,12 +187,13 @@ export function SidebarDock() {
         // the keyboard: the capsule outlives every row in it and closes over the
         // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
         data-dock-surface
+        data-dock-page={pageFoot ? capture : undefined}
         // No overflow-hidden here: the omnibar's suggestion panel grows upward
         // out of the dock, so clipping the capsule would cut it off. The relay
         // clips itself instead (its own rounded overflow-hidden, below).
         className={cn(
           'relative flex min-h-0 flex-col rounded-[10px] bg-surface-3 px-[10px] pt-[18px] pb-[14px] shadow-[var(--shadow-elev-bar)]',
-          chatExpanded && 'flex-1'
+          chatOpen && 'flex-1'
         )}
       >
         {RELAY.dock && (
@@ -109,16 +210,29 @@ export function SidebarDock() {
             mask="radial-gradient(135% 120% at 50% 62%, black 30%, transparent 100%)"
           />
         )}
-        {chatExpanded && (
+        {chatOpen && (
           <div className="relative z-10 mb-4 flex min-h-0 flex-1 flex-col">
             <ChatPanel focusSignal={1} />
+          </div>
+        )}
+        {showCatchUpHost && (
+          <div
+            data-testid="dock-catch-up-host"
+            className="relative z-10 mb-3 max-h-[50vh] overflow-y-auto"
+          >
+            <ProposalCard surface="chat" />
           </div>
         )}
         <div className="relative z-10">
           <UserCard />
         </div>
         <div className="relative z-10 mt-5">
-          <Omnibar variant="dock" onFocusChange={setFocused} onPulse={pulse} />
+          <Omnibar
+            variant="dock"
+            onFocusChange={setFocused}
+            onPulse={pulse}
+            placeholder={pageFoot ? 'write a line…' : undefined}
+          />
         </div>
       </div>
     </div>
