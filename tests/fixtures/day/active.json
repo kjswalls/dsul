@@ -1,0 +1,1219 @@
+{
+  "isPausedOn": [
+    {
+      "name": "no pausedAt",
+      "date": "2026-08-15",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "pausedUntil alone pauses nothing",
+      "pausedUntil": "2026-09-01",
+      "date": "2026-08-15",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "empty pausedAt",
+      "pausedAt": "",
+      "date": "2026-08-15",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "open-ended, on its first day",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "date": "2026-08-10",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "open-ended, the day before",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "date": "2026-08-09",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "open-ended, months later",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "date": "2027-01-01",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "until is exclusive, the day before it",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "pausedUntil": "2026-09-01",
+      "date": "2026-08-31",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "until is exclusive, on it",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "pausedUntil": "2026-09-01",
+      "date": "2026-09-01",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "until is exclusive, after it",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "pausedUntil": "2026-09-02",
+      "date": "2026-09-03",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "a timestamp until reads as its day",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "pausedUntil": "2026-09-01T00:00:00Z",
+      "date": "2026-09-01",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "a timestamp until, the day before",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "pausedUntil": "2026-09-01T00:00:00Z",
+      "date": "2026-08-31",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "until before the start ends it at once",
+      "pausedAt": "2026-08-10T12:00:00Z",
+      "pausedUntil": "2026-08-05",
+      "date": "2026-08-10",
+      "timeZone": "America/New_York",
+      "expected": false
+    },
+    {
+      "name": "microseconds and +00:00, that day in LA",
+      "pausedAt": "2026-09-30T14:03:22.123456+00:00",
+      "date": "2026-09-30",
+      "timeZone": "America/Los_Angeles",
+      "expected": true
+    },
+    {
+      "name": "microseconds and +00:00, the day before in LA",
+      "pausedAt": "2026-09-30T14:03:22.123456+00:00",
+      "date": "2026-09-29",
+      "timeZone": "America/Los_Angeles",
+      "expected": false
+    },
+    {
+      "name": "whole seconds and +00:00, NY is still the day before",
+      "pausedAt": "2026-08-10T00:00:00+00:00",
+      "date": "2026-08-09",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "one fractional digit and Z",
+      "pausedAt": "2026-09-30T23:30:00.5Z",
+      "date": "2026-09-30",
+      "timeZone": "UTC",
+      "expected": true
+    },
+    {
+      "name": "one fractional digit and Z, Tokyo is a day on",
+      "pausedAt": "2026-09-30T23:30:00.5Z",
+      "date": "2026-09-30",
+      "timeZone": "Asia/Tokyo",
+      "expected": false
+    },
+    {
+      "name": "milliseconds at the last instant, UTC",
+      "pausedAt": "2026-08-10T23:59:59.999Z",
+      "date": "2026-08-10",
+      "timeZone": "UTC",
+      "expected": true
+    },
+    {
+      "name": "milliseconds at the last instant, Tokyo",
+      "pausedAt": "2026-08-10T23:59:59.999Z",
+      "date": "2026-08-10",
+      "timeZone": "Asia/Tokyo",
+      "expected": false
+    },
+    {
+      "name": "+05:30 offset, read in UTC",
+      "pausedAt": "2026-08-11T03:00:00+05:30",
+      "date": "2026-08-10",
+      "timeZone": "UTC",
+      "expected": true
+    },
+    {
+      "name": "+05:30 offset, read in Kolkata",
+      "pausedAt": "2026-08-11T03:00:00+05:30",
+      "date": "2026-08-10",
+      "timeZone": "Asia/Kolkata",
+      "expected": false
+    },
+    {
+      "name": "-07:00 offset, read in UTC",
+      "pausedAt": "2026-08-10T20:00:00-07:00",
+      "date": "2026-08-10",
+      "timeZone": "UTC",
+      "expected": false
+    },
+    {
+      "name": "-07:00 offset, read in LA",
+      "pausedAt": "2026-08-10T20:00:00-07:00",
+      "date": "2026-08-10",
+      "timeZone": "America/Los_Angeles",
+      "expected": true
+    },
+    {
+      "name": "crosses midnight: still the 10th in NY",
+      "pausedAt": "2026-08-11T01:00:00Z",
+      "date": "2026-08-10",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "crosses midnight: already the 11th in Berlin",
+      "pausedAt": "2026-08-11T01:00:00Z",
+      "date": "2026-08-10",
+      "timeZone": "Europe/Berlin",
+      "expected": false
+    },
+    {
+      "name": "a bare date is UTC midnight, so NY starts the day before",
+      "pausedAt": "2026-08-10",
+      "date": "2026-08-09",
+      "timeZone": "America/New_York",
+      "expected": true
+    },
+    {
+      "name": "junk pausedAt pauses nothing",
+      "pausedAt": "not a date",
+      "date": "2026-08-15",
+      "timeZone": "America/New_York",
+      "expected": false
+    }
+  ],
+  "isSeasonActiveOn": [
+    {
+      "name": "manual active ignores its range",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "active",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-09-30"
+      },
+      "date": "2026-08-15",
+      "expected": true
+    },
+    {
+      "name": "manual paused ignores its range",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "paused",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-08-01",
+        "endsOn": "2026-08-31"
+      },
+      "date": "2026-08-15",
+      "expected": false
+    },
+    {
+      "name": "auto with no range is always on",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": []
+      },
+      "date": "2026-08-15",
+      "expected": true
+    },
+    {
+      "name": "auto, before its start",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-08-31"
+      },
+      "date": "2026-05-31",
+      "expected": false
+    },
+    {
+      "name": "auto, on its start (inclusive)",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-08-31"
+      },
+      "date": "2026-06-01",
+      "expected": true
+    },
+    {
+      "name": "auto, on its end (inclusive)",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-08-31"
+      },
+      "date": "2026-08-31",
+      "expected": true
+    },
+    {
+      "name": "auto, after its end",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01",
+        "endsOn": "2026-08-31"
+      },
+      "date": "2026-09-01",
+      "expected": false
+    },
+    {
+      "name": "auto, open start",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "endsOn": "2026-08-31"
+      },
+      "date": "2020-01-01",
+      "expected": true
+    },
+    {
+      "name": "auto, open end",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01"
+      },
+      "date": "2030-01-01",
+      "expected": true
+    },
+    {
+      "name": "auto, inverted range is never on",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-09-01",
+        "endsOn": "2026-08-01"
+      },
+      "date": "2026-08-15",
+      "expected": false
+    },
+    {
+      "name": "auto, a timestamp start reads as its day",
+      "season": {
+        "id": "s",
+        "name": "S",
+        "state": "auto",
+        "itemIds": [],
+        "routineIds": [],
+        "startsOn": "2026-06-01T00:00:00Z"
+      },
+      "date": "2026-06-01",
+      "expected": true
+    }
+  ],
+  "isOpenLoopOn": [
+    {
+      "name": "one-off pending",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "one-off",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "one-off completed",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "one-off",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "one-off cancelled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "one-off",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "repeat none is one-shot: completed",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "none",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "none"
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "repeat none is one-shot: pending",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "none",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "none"
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "recurring task, open",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01"
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "recurring task, done that day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "recurring task, done another day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "completedDates": [
+          "2026-10-01"
+        ]
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "recurring task, skipped that day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "recurring task, completed status is not the truth",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "daily",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "habit, open",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "habit",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "habit, done",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "habit",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "habit, skipped",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "habit",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "counted habit below target",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "3x",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 2
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "counted habit at target",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "3x",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 3
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "counted habit over target",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "3x",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 4
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "counted habit, a count on another day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "3x",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-01": 3
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "habit with no target: any count discharges",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "once",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 1
+        },
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "habit with target 0 reads as 1",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "zero",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 0
+      },
+      "date": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "habit, a zero count is no mark",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000001",
+        "title": "once",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 0
+        },
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "expected": true
+    }
+  ],
+  "worlds": [
+    {
+      "name": "routines and seasons",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000001",
+          "title": "standalone, in nothing",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000002",
+          "title": "in a live standalone routine",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000003",
+          "title": "in a paused routine",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000004",
+          "title": "in a paused routine, ticked on the 12th",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [
+            "2026-08-12"
+          ],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000005",
+          "title": "one-off in a summer season",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-08-12",
+          "timeBucket": "morning"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000006",
+          "title": "in a routine held by a paused season",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000007",
+          "title": "in that routine AND a live one",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000008",
+          "title": "in a routine held by a paused and an active season",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000009",
+          "title": "its own pause",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-08-10T12:00:00Z"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000a",
+          "title": "in a season that starts in September",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000b",
+          "title": "completed, in the paused season",
+          "status": "completed",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-08-12"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000c",
+          "title": "cancelled, in the paused season",
+          "status": "cancelled",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-08-12"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000d",
+          "title": "counted, in the paused routine",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {
+            "2026-08-12": 1,
+            "2026-08-15": 3
+          },
+          "repeatFrequency": "daily",
+          "timesPerDay": 3
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000000e",
+          "title": "recurring, in the paused season, skipped on the 12th",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-08-01",
+          "skippedDates": [
+            "2026-08-12"
+          ]
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000000f",
+          "title": "in a routine paused late on the 10th, NY time",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000010",
+          "title": "in a routine inside a summer season",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000011",
+          "title": "in a season directly and through a paused routine",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-live",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "id": "r-paused",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-00000000000d"
+          ],
+          "pausedAt": "2026-08-10T15:00:00Z",
+          "pausedUntil": "2026-08-20"
+        },
+        {
+          "id": "r-in-paused-season",
+          "name": "Gym",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000007"
+          ]
+        },
+        {
+          "id": "r-two-holders",
+          "name": "Reading",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000008"
+          ]
+        },
+        {
+          "id": "r-late",
+          "name": "Late",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000f"
+          ],
+          "pausedAt": "2026-08-11T03:30:00.250000+00:00"
+        },
+        {
+          "id": "r-summer",
+          "name": "Summer mornings",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000010"
+          ]
+        },
+        {
+          "id": "r-paused-forever",
+          "name": "Shelved",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000011"
+          ],
+          "pausedAt": "2026-01-01T12:00:00Z"
+        }
+      ],
+      "seasons": [
+        {
+          "id": "s-summer",
+          "name": "Summer",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000011"
+          ],
+          "routineIds": [
+            "r-summer"
+          ],
+          "startsOn": "2026-06-01",
+          "endsOn": "2026-08-31"
+        },
+        {
+          "id": "s-paused",
+          "name": "Shelf",
+          "state": "paused",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000b",
+            "00000000-0000-4000-8000-00000000000c",
+            "00000000-0000-4000-8000-00000000000e"
+          ],
+          "routineIds": [
+            "r-in-paused-season",
+            "r-two-holders"
+          ]
+        },
+        {
+          "id": "s-active",
+          "name": "Always",
+          "state": "active",
+          "itemIds": [],
+          "routineIds": [
+            "r-two-holders"
+          ]
+        },
+        {
+          "id": "s-autumn",
+          "name": "Autumn",
+          "state": "auto",
+          "itemIds": [
+            "00000000-0000-4000-8000-00000000000a"
+          ],
+          "routineIds": [],
+          "startsOn": "2026-09-01"
+        }
+      ],
+      "days": [
+        {
+          "date": "2026-08-05",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000e"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000d",
+            "00000000-0000-4000-8000-00000000000f",
+            "00000000-0000-4000-8000-000000000010",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "date": "2026-08-10",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000d",
+            "00000000-0000-4000-8000-00000000000e",
+            "00000000-0000-4000-8000-00000000000f"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000010",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "date": "2026-08-12",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000d",
+            "00000000-0000-4000-8000-00000000000f"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000010",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "date": "2026-08-15",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000e",
+            "00000000-0000-4000-8000-00000000000f"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-000000000010",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "date": "2026-08-25",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000e",
+            "00000000-0000-4000-8000-00000000000f"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-00000000000d",
+            "00000000-0000-4000-8000-000000000010",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "date": "2026-09-01",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000e",
+            "00000000-0000-4000-8000-00000000000f",
+            "00000000-0000-4000-8000-000000000010"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000d",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        },
+        {
+          "date": "2026-09-05",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000005",
+            "00000000-0000-4000-8000-000000000006",
+            "00000000-0000-4000-8000-000000000009",
+            "00000000-0000-4000-8000-00000000000e",
+            "00000000-0000-4000-8000-00000000000f",
+            "00000000-0000-4000-8000-000000000010"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000001",
+            "00000000-0000-4000-8000-000000000002",
+            "00000000-0000-4000-8000-000000000003",
+            "00000000-0000-4000-8000-000000000004",
+            "00000000-0000-4000-8000-000000000007",
+            "00000000-0000-4000-8000-000000000008",
+            "00000000-0000-4000-8000-00000000000a",
+            "00000000-0000-4000-8000-00000000000d",
+            "00000000-0000-4000-8000-000000000011"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Tokyo pauses",
+      "timeZone": "Asia/Tokyo",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000015",
+          "title": "in the Tokyo routine",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000016",
+          "title": "one-off, paused itself",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-09-30",
+          "pausedAt": "2026-09-29T15:30:00.000001+00:00"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-tokyo",
+          "name": "Tokyo",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000015"
+          ],
+          "pausedAt": "2026-09-29T15:30:00.000001+00:00",
+          "pausedUntil": "2026-10-02"
+        }
+      ],
+      "seasons": [],
+      "days": [
+        {
+          "date": "2026-09-29",
+          "inactive": [],
+          "live": [
+            "00000000-0000-4000-8000-000000000015",
+            "00000000-0000-4000-8000-000000000016"
+          ]
+        },
+        {
+          "date": "2026-09-30",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000015",
+            "00000000-0000-4000-8000-000000000016"
+          ],
+          "live": []
+        },
+        {
+          "date": "2026-10-01",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000015",
+            "00000000-0000-4000-8000-000000000016"
+          ],
+          "live": []
+        },
+        {
+          "date": "2026-10-02",
+          "inactive": [
+            "00000000-0000-4000-8000-000000000016"
+          ],
+          "live": [
+            "00000000-0000-4000-8000-000000000015"
+          ]
+        }
+      ]
+    }
+  ]
+}

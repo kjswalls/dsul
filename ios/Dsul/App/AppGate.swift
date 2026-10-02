@@ -1,0 +1,67 @@
+import SwiftUI
+
+/// Which planner the app shows: none on the sign-in screen, the sample after
+/// "Try with sample data", and the signed-in user's own once there is a
+/// session. Keyed on `AuthStore.gateKey`, so a token refresh changes nothing
+/// here, and signing in as someone else builds a new planner rather than
+/// letting the last user's items show for a frame.
+///
+/// RootView and everything under it keep reading `SamplePlanner` from the
+/// environment, as they did when the sample was all there was.
+struct AppGate: View {
+    @Environment(AuthStore.self) private var auth
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var planner: SamplePlanner? = nil
+
+    var body: some View {
+        content
+            .onChange(of: auth.gateKey, initial: true) { _, _ in
+                reconcile()
+            }
+            // Back in front: a fetch, unless the last one is under a minute
+            // old (PlannerSync). RootView moves `today` on the same change.
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { planner?.refreshIfStale() }
+            }
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch auth.state {
+        case .signedOut, .signingIn:
+            SignInView()
+        case .signedIn, .sample:
+            if let planner {
+                RootView()
+                    .environment(planner)
+            } else {
+                // One frame, until `reconcile` has built the planner.
+                Color(.systemBackground)
+                    .ignoresSafeArea()
+            }
+        }
+    }
+
+    /// Builds, keeps or drops the planner to match the auth state.
+    private func reconcile() {
+        switch auth.state {
+        case .signedIn(let session):
+            if let current = planner, current.userId == session.userId { return }
+            planner?.stopSync()
+            let api = APIClient(origin: AppConfig.apiOrigin, tokens: auth, transport: HTTP.live)
+            let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld })
+            if let email = auth.takeWelcome() {
+                live.show(email.isEmpty ? "Signed in" : "Signed in as \(email)", isError: false)
+            }
+            planner = live
+            Task { await live.refresh() }
+        case .sample:
+            if let current = planner, !current.isLive { return }
+            planner?.stopSync()
+            planner = SamplePlanner()
+        case .signedOut, .signingIn:
+            planner?.stopSync()
+            planner = nil
+        }
+    }
+}

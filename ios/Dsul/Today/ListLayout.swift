@@ -1,7 +1,9 @@
+import DsulCore
 import SwiftUI
 
 /// The List layout (G board): filter chips, then one section per routine
 /// (done/total) and per project (coloured dot, count), each collapsible.
+/// Signed in, a pull refreshes it.
 struct ListLayout: View {
     @Environment(SamplePlanner.self) private var planner
     @State private var filter: ListFilter = .all
@@ -19,7 +21,9 @@ struct ListLayout: View {
             }
             if sections.isEmpty {
                 Section {
-                    if filter != .all && planner.count(.all) > 0 {
+                    if !planner.hasLoaded {
+                        PlannerLoadingRow()
+                    } else if filter != .all && planner.count(.all) > 0 {
                         // The day has items; only the chip hides them.
                         Text("Nothing matches this filter")
                             .foregroundStyle(.secondary)
@@ -36,7 +40,7 @@ struct ListLayout: View {
                 Section {
                     if !collapsed.contains(section.id) {
                         ForEach(section.items) { item in
-                            ItemRow(item: item, done: planner.isDone(item),
+                            ItemRow(item: item, done: planner.isDone(item), skipped: planner.isSkipped(item),
                                     isNow: planner.isOnToday && PlannerFormat.isNow(startMin: item.startMin,
                                                                                    durationMin: item.durationMin,
                                                                                    nowMin: nowMin),
@@ -58,6 +62,7 @@ struct ListLayout: View {
             }
         }
         .listStyle(.plain)
+        .modifier(LiveRefresh(planner: planner))
         .onChange(of: planner.dayProjects) { _, projects in
             // A project chip can vanish when the day changes; fall back to All.
             if case .project(let name) = filter, !projects.contains(name) {
@@ -157,5 +162,48 @@ struct FilterChips: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(selected ? .isSelected : [])
+    }
+}
+
+/// Pull to refresh, signed in only: the sample has nothing to fetch. Not on
+/// the Schedule grid, whose scroll geometry the drag spike reads.
+struct LiveRefresh: ViewModifier {
+    var planner: SamplePlanner
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        let live = self.planner
+        if live.isLive {
+            content.refreshable {
+                await live.refresh()
+            }
+        } else {
+            content
+        }
+    }
+}
+
+/// A signed-in day before its first fetch lands: a spinner, or why the fetch
+/// failed and a way to try again.
+struct PlannerLoadingRow: View {
+    @Environment(SamplePlanner.self) private var planner
+
+    var body: some View {
+        if let error = planner.loadError {
+            VStack(alignment: .leading, spacing: 8) {
+                Text(error)
+                    .foregroundStyle(.secondary)
+                Button("Try again") {
+                    let live = self.planner
+                    Task { await live.refresh() }
+                }
+            }
+        } else {
+            HStack(spacing: 10) {
+                ProgressView()
+                Text("Loading your day\u{2026}")
+                    .foregroundStyle(.secondary)
+            }
+        }
     }
 }

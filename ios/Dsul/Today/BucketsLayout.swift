@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The Buckets layout (E and G boards): one card per bucket with its count,
 /// or "Nothing yet" when it's empty. The rule that files each item is
-/// DsulCore's `bucketDayRows`, the port of lib/day-items.ts.
+/// DsulCore's `bucketDayRows`, the port of lib/day-items.ts. Signed in, a pull
+/// refreshes it.
 struct BucketsLayout: View {
     @Environment(SamplePlanner.self) private var planner
     var nowMin: Int
@@ -16,6 +17,11 @@ struct BucketsLayout: View {
         let buckets = planner.buckets()
         ScrollView {
             LazyVStack(spacing: 10) {
+                if !planner.hasLoaded {
+                    PlannerLoadingRow()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.vertical, 6)
+                }
                 ForEach(Self.order, id: \.self) { bucket in
                     BucketCard(bucket: bucket, items: buckets[bucket] ?? [], nowMin: nowMin)
                 }
@@ -23,6 +29,7 @@ struct BucketsLayout: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 8)
         }
+        .modifier(LiveRefresh(planner: planner))
     }
 }
 
@@ -50,7 +57,7 @@ private struct BucketCard: View {
             .accessibilityAddTraits(.isHeader)
 
             ForEach(items) { item in
-                ItemRow(item: item, done: planner.isDone(item),
+                ItemRow(item: item, done: planner.isDone(item), skipped: planner.isSkipped(item),
                         isNow: planner.isOnToday && PlannerFormat.isNow(startMin: item.startMin,
                                                                        durationMin: item.durationMin,
                                                                        nowMin: nowMin),

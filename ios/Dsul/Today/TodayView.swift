@@ -3,7 +3,9 @@ import SwiftUI
 
 /// Today: one day in three layouts, List, Buckets and Schedule (G board).
 /// The title is the day; a tap on it picks another. The layout capsule and
-/// the avatar sit top right. Day only for now: Week comes later.
+/// the avatar sit top right. Day only for now: Week comes later. The
+/// planner's banner ("Signed in as …", a write that didn't save) shows over
+/// the top for a few seconds.
 struct TodayView: View {
     @Environment(SamplePlanner.self) private var planner
     @AppStorage(TodayLayout.storageKey) private var layout: TodayLayout = .list
@@ -12,8 +14,19 @@ struct TodayView: View {
     var body: some View {
         NavigationStack {
             TimelineView(.everyMinute) { context in
-                content(nowMin: Self.minuteOfDay(context.date))
+                content(nowMin: planner.minuteOfDay(context.date))
             }
+            .overlay(alignment: .top) {
+                if let banner = planner.banner {
+                    BannerView(banner: banner) {
+                        planner.dismissBanner(banner.id)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+            }
+            .animation(.snappy, value: planner.banner)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -47,11 +60,6 @@ struct TodayView: View {
         case .schedule:
             ScheduleView(showProbe: showProbe)
         }
-    }
-
-    private static func minuteOfDay(_ date: Date) -> Int {
-        let c = Calendar.current.dateComponents([.hour, .minute], from: date)
-        return (c.hour ?? 0) * 60 + (c.minute ?? 0)
     }
 }
 
@@ -94,31 +102,94 @@ private struct TodayTitle: View {
     }
 }
 
-/// The avatar circle. Until sign-in it holds the debug switches, including
-/// the drag probe the on-device spike reads.
+/// The avatar circle: the account (the email and Sign out), or on the sample
+/// a way back to the sign-in screen, then the drag spike's switches. "Load
+/// 40 blocks" is sample only: its blocks exist nowhere on the server.
 private struct AvatarMenu: View {
     @Binding var showProbe: Bool
 
     @Environment(SamplePlanner.self) private var planner
+    @Environment(AuthStore.self) private var auth
     @AppStorage(TodayLayout.storageKey) private var layout: TodayLayout = .list
 
     var body: some View {
         Menu {
+            if planner.isLive {
+                Section(auth.email ?? "Signed in") {
+                    Button(role: .destructive) {
+                        let store = auth
+                        Task { await store.signOut() }
+                    } label: {
+                        Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                }
+            } else {
+                Section("Sample data") {
+                    Button("Leave sample data", systemImage: "rectangle.portrait.and.arrow.right") {
+                        auth.leaveSample()
+                    }
+                }
+            }
             Section("Drag spike") {
                 Toggle(isOn: $showProbe) {
                     Label("Drag probe", systemImage: "waveform.path.ecg")
                 }
-                Button("Load 40 blocks", systemImage: "square.stack") {
-                    layout = .schedule
-                    planner.stress()
+                if !planner.isLive {
+                    Button("Load 40 blocks", systemImage: "square.stack") {
+                        layout = .schedule
+                        planner.stress()
+                    }
                 }
             }
         } label: {
-            Text("KI")
+            Text(planner.isLive ? AccountFormat.initials(auth.email) : "KI")
                 .font(.caption.weight(.semibold))
                 .frame(width: 30, height: 30)
                 .background(Circle().fill(Color(.tertiarySystemFill)))
         }
         .accessibilityLabel("Account")
+    }
+}
+
+enum AccountFormat {
+    /// "KF" for kirby.fox@…, "KI" for kirby@…: the first letters of the first
+    /// two words of the address's local part, or its first two letters.
+    static func initials(_ email: String?) -> String {
+        guard let email, let local = email.split(separator: "@").first else { return "?" }
+        let words = local.split(whereSeparator: { !$0.isLetter })
+        let letters: [Character]
+        if words.count >= 2 {
+            letters = words.prefix(2).compactMap { $0.first }
+        } else {
+            letters = Array(local.filter { $0.isLetter }.prefix(2))
+        }
+        let text = String(letters).uppercased()
+        return text.isEmpty ? "?" : text
+    }
+}
+
+/// The planner's banner: it goes by itself after a few seconds
+/// (`SamplePlanner.show`), and a tap dismisses it sooner.
+private struct BannerView: View {
+    var banner: PlannerBanner
+    var onDismiss: () -> Void
+
+    var body: some View {
+        Button(action: onDismiss) {
+            HStack(spacing: 8) {
+                Image(systemName: banner.isError ? "exclamationmark.triangle.fill" : "checkmark.circle.fill")
+                    .foregroundStyle(banner.isError ? Color.orange : Color.accentColor)
+                Text(banner.text)
+                    .font(.footnote.weight(.medium))
+                    .foregroundStyle(Color.primary)
+                    .multilineTextAlignment(.leading)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint("Dismisses the message")
     }
 }

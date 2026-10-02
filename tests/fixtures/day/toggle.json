@@ -1,0 +1,610 @@
+{
+  "cases": [
+    {
+      "name": "one-off pending ticks done",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "one-off",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": null
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "one-off completed unticks",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "one-off",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": null
+        }
+      ],
+      "intent": {
+        "done": false
+      }
+    },
+    {
+      "name": "one-off cancelled ticks done",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "one-off",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": null
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "recurring task ticks that date",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "recurring task done that date unticks",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false
+      }
+    },
+    {
+      "name": "recurring task done another date ticks",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "completedDates": [
+          "2026-10-01"
+        ]
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "recurring task skipped is refused",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "daily",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": true,
+      "calls": [],
+      "intent": null
+    },
+    {
+      "name": "recurring task completed status is not the truth",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "daily",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "custom one-off ticks done",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "errand",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": null
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "custom recurring done unticks",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "errand",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "weekdays",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleTaskStatus",
+          "status": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false
+      }
+    },
+    {
+      "name": "habit ticks done",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "done",
+          "count": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "habit done unticks",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "stretch",
+        "streak": 4,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "pending",
+          "count": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false
+      }
+    },
+    {
+      "name": "habit skipped is refused",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": true,
+      "calls": [],
+      "intent": null
+    },
+    {
+      "name": "habit skipped and completed is refused",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": true,
+      "calls": [],
+      "intent": null
+    },
+    {
+      "name": "habit with target 1 is binary",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "once",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 0
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 1
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "done",
+          "count": null,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true
+      }
+    },
+    {
+      "name": "counted habit 0 of 3 steps to 1",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "pending",
+          "count": 1,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false,
+        "count": 1
+      }
+    },
+    {
+      "name": "counted habit 1 of 3 steps to 2",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "pending",
+          "count": 2,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false,
+        "count": 2
+      }
+    },
+    {
+      "name": "counted habit 2 of 3 reaches target",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 2
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "done",
+          "count": 3,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true,
+        "count": 3
+      }
+    },
+    {
+      "name": "counted habit at target unticks to 0",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 3
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "pending",
+          "count": 0,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false,
+        "count": 0
+      }
+    },
+    {
+      "name": "counted habit done without a count unticks to 0",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": true,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "pending",
+          "count": 0,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": false,
+        "count": 0
+      }
+    },
+    {
+      "name": "counted habit at count but not done ticks done",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 3
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": false,
+      "calls": [
+        {
+          "fn": "toggleHabitStatus",
+          "status": "done",
+          "count": 3,
+          "date": "2026-10-02"
+        }
+      ],
+      "intent": {
+        "done": true,
+        "count": 3
+      }
+    },
+    {
+      "name": "counted habit skipped is refused",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000001f5",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {
+          "2026-10-02": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "isRowDone": false,
+      "isRowSkipped": true,
+      "calls": [],
+      "intent": null
+    }
+  ]
+}

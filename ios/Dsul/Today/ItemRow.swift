@@ -1,10 +1,15 @@
+import DsulCore
 import SwiftUI
 
 /// One item row, shared by List and Buckets: a tick circle, the title (struck
-/// through when done), a habit's streak and the time on the right.
+/// through when done), a habit's streak and the time on the right. A skipped
+/// occurrence is a strip instead, with no box to tick.
 struct ItemRow: View {
     var item: SampleItem
     var done: Bool
+    /// Skipped on the day: a tick on it is refused (lib/item-toggle.ts), so
+    /// it gets no checkbox.
+    var skipped: Bool = false
     /// "Now ·" in front of the time while the block is running.
     var isNow: Bool = false
     var onToggle: () -> Void
@@ -12,6 +17,36 @@ struct ItemRow: View {
     private var actionName: String { done ? "Mark not done" : "Mark done" }
 
     var body: some View {
+        if skipped {
+            skippedStrip
+        } else {
+            row
+        }
+    }
+
+    /// Where the box would be, a skip mark; the title dimmed; "Skipped".
+    private var skippedStrip: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "forward.end")
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(.secondary)
+                .frame(width: 30, height: 30)
+            Text(item.title)
+                .foregroundStyle(.secondary)
+                .lineLimit(2)
+            Spacer(minLength: 8)
+            Text("Skipped")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+        }
+        .padding(.vertical, 1)
+        .padding(.trailing, 8)
+        .background(Capsule().fill(Color(.tertiarySystemFill)))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(item.title), skipped"))
+    }
+
+    private var row: some View {
         HStack(spacing: 12) {
             Button(action: onToggle) {
                 TickCircle(done: done, habit: item.isHabit)
@@ -32,7 +67,7 @@ struct ItemRow: View {
                     .foregroundStyle(isNow ? Color.accentColor : Color.secondary)
             }
             if item.isHabit {
-                StreakLabel(streak: item.streak, lit: done)
+                StreakLabel(streak: item.streak ?? 0, lit: done)
             }
         }
         .contentShape(Rectangle())

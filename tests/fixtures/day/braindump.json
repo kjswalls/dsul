@@ -1,0 +1,554 @@
+{
+  "cases": [
+    {
+      "name": "selected day is not today",
+      "today": "2026-10-02",
+      "selectedDate": "2026-10-05",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012d",
+          "title": "unscheduled",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012e",
+          "title": "scheduled, no bucket",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012f",
+          "title": "unscheduled with a bucket",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "timeBucket": "morning"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000130",
+          "title": "unscheduled with a start date",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "startDate": "2026-10-09"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000131",
+          "title": "subtask",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "parentItemId": "00000000-0000-4000-8000-00000000012d"
+        },
+        {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-000000000132",
+          "title": "custom type",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000133",
+          "title": "habit, no bucket, no repeat",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "none"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000134",
+          "title": "habit, no bucket, daily",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000135",
+          "title": "in a routine paused from the 4th",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000136",
+          "title": "paused itself since September",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-09-01T12:00:00Z"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000137",
+          "title": "completed",
+          "status": "completed",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000138",
+          "title": "completed, in a paused routine",
+          "status": "completed",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000139",
+          "title": "empty bucket reads as none",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "timeBucket": ""
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000013a",
+          "title": "isScheduled missing",
+          "status": "pending",
+          "order": 0
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000013b",
+          "title": "habit, a bucket",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "none",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-from-4th",
+          "name": "From the 4th",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000135"
+          ],
+          "pausedAt": "2026-10-04T15:00:00Z"
+        },
+        {
+          "id": "r-shelved",
+          "name": "Shelved",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000138"
+          ],
+          "pausedAt": "2026-09-01T12:00:00Z"
+        }
+      ],
+      "seasons": [],
+      "expected": [
+        "00000000-0000-4000-8000-00000000012d",
+        "00000000-0000-4000-8000-000000000130",
+        "00000000-0000-4000-8000-000000000132",
+        "00000000-0000-4000-8000-000000000135",
+        "00000000-0000-4000-8000-000000000137",
+        "00000000-0000-4000-8000-000000000138",
+        "00000000-0000-4000-8000-000000000139",
+        "00000000-0000-4000-8000-00000000013a",
+        "00000000-0000-4000-8000-000000000133"
+      ],
+      "atSelectedDate": [
+        "00000000-0000-4000-8000-00000000012d",
+        "00000000-0000-4000-8000-000000000130",
+        "00000000-0000-4000-8000-000000000132",
+        "00000000-0000-4000-8000-000000000137",
+        "00000000-0000-4000-8000-000000000138",
+        "00000000-0000-4000-8000-000000000139",
+        "00000000-0000-4000-8000-00000000013a",
+        "00000000-0000-4000-8000-000000000133"
+      ]
+    },
+    {
+      "name": "today inside the pause",
+      "today": "2026-10-05",
+      "selectedDate": "2026-10-02",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012d",
+          "title": "unscheduled",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012e",
+          "title": "scheduled, no bucket",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012f",
+          "title": "unscheduled with a bucket",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "timeBucket": "morning"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000130",
+          "title": "unscheduled with a start date",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "startDate": "2026-10-09"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000131",
+          "title": "subtask",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "parentItemId": "00000000-0000-4000-8000-00000000012d"
+        },
+        {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-000000000132",
+          "title": "custom type",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000133",
+          "title": "habit, no bucket, no repeat",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "none"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000134",
+          "title": "habit, no bucket, daily",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000135",
+          "title": "in a routine paused from the 4th",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000136",
+          "title": "paused itself since September",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-09-01T12:00:00Z"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000137",
+          "title": "completed",
+          "status": "completed",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000138",
+          "title": "completed, in a paused routine",
+          "status": "completed",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000139",
+          "title": "empty bucket reads as none",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "timeBucket": ""
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000013a",
+          "title": "isScheduled missing",
+          "status": "pending",
+          "order": 0
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000013b",
+          "title": "habit, a bucket",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "none",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-from-4th",
+          "name": "From the 4th",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000135"
+          ],
+          "pausedAt": "2026-10-04T15:00:00Z"
+        },
+        {
+          "id": "r-shelved",
+          "name": "Shelved",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000138"
+          ],
+          "pausedAt": "2026-09-01T12:00:00Z"
+        }
+      ],
+      "seasons": [],
+      "expected": [
+        "00000000-0000-4000-8000-00000000012d",
+        "00000000-0000-4000-8000-000000000130",
+        "00000000-0000-4000-8000-000000000132",
+        "00000000-0000-4000-8000-000000000137",
+        "00000000-0000-4000-8000-000000000138",
+        "00000000-0000-4000-8000-000000000139",
+        "00000000-0000-4000-8000-00000000013a",
+        "00000000-0000-4000-8000-000000000133"
+      ],
+      "atSelectedDate": [
+        "00000000-0000-4000-8000-00000000012d",
+        "00000000-0000-4000-8000-000000000130",
+        "00000000-0000-4000-8000-000000000132",
+        "00000000-0000-4000-8000-000000000135",
+        "00000000-0000-4000-8000-000000000137",
+        "00000000-0000-4000-8000-000000000138",
+        "00000000-0000-4000-8000-000000000139",
+        "00000000-0000-4000-8000-00000000013a",
+        "00000000-0000-4000-8000-000000000133"
+      ]
+    },
+    {
+      "name": "selected day is today",
+      "today": "2026-10-02",
+      "selectedDate": "2026-10-02",
+      "timeZone": "America/New_York",
+      "items": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012d",
+          "title": "unscheduled",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012e",
+          "title": "scheduled, no bucket",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000012f",
+          "title": "unscheduled with a bucket",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "timeBucket": "morning"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000130",
+          "title": "unscheduled with a start date",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "startDate": "2026-10-09"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000131",
+          "title": "subtask",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "parentItemId": "00000000-0000-4000-8000-00000000012d"
+        },
+        {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-000000000132",
+          "title": "custom type",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000133",
+          "title": "habit, no bucket, no repeat",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "none"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000134",
+          "title": "habit, no bucket, daily",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000135",
+          "title": "in a routine paused from the 4th",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000136",
+          "title": "paused itself since September",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "pausedAt": "2026-09-01T12:00:00Z"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000137",
+          "title": "completed",
+          "status": "completed",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000138",
+          "title": "completed, in a paused routine",
+          "status": "completed",
+          "isScheduled": false,
+          "order": 0
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000139",
+          "title": "empty bucket reads as none",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "timeBucket": ""
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000013a",
+          "title": "isScheduled missing",
+          "status": "pending",
+          "order": 0
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-00000000013b",
+          "title": "habit, a bucket",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "none",
+          "timeBucket": "evening"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-from-4th",
+          "name": "From the 4th",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000135"
+          ],
+          "pausedAt": "2026-10-04T15:00:00Z"
+        },
+        {
+          "id": "r-shelved",
+          "name": "Shelved",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000138"
+          ],
+          "pausedAt": "2026-09-01T12:00:00Z"
+        }
+      ],
+      "seasons": [],
+      "expected": [
+        "00000000-0000-4000-8000-00000000012d",
+        "00000000-0000-4000-8000-000000000130",
+        "00000000-0000-4000-8000-000000000132",
+        "00000000-0000-4000-8000-000000000135",
+        "00000000-0000-4000-8000-000000000137",
+        "00000000-0000-4000-8000-000000000138",
+        "00000000-0000-4000-8000-000000000139",
+        "00000000-0000-4000-8000-00000000013a",
+        "00000000-0000-4000-8000-000000000133"
+      ],
+      "atSelectedDate": [
+        "00000000-0000-4000-8000-00000000012d",
+        "00000000-0000-4000-8000-000000000130",
+        "00000000-0000-4000-8000-000000000132",
+        "00000000-0000-4000-8000-000000000135",
+        "00000000-0000-4000-8000-000000000137",
+        "00000000-0000-4000-8000-000000000138",
+        "00000000-0000-4000-8000-000000000139",
+        "00000000-0000-4000-8000-00000000013a",
+        "00000000-0000-4000-8000-000000000133"
+      ]
+    }
+  ]
+}
