@@ -309,19 +309,3 @@ export function activityRows(input: {
 
   return rows.sort((a, b) => b.at - a.at).slice(0, MAX_ACTIVITY_ROWS)
 }
-
-/**
- * A row's clock time: "8:02", or "08:02" under the 24-hour setting. No am/pm:
- * every conversation it labels is today's, and the rail is narrow.
- */
-export function clockTime(at: number, timeZone: string, timeFormat: '12h' | '24h'): string {
-  const parts = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour: timeFormat === '24h' ? '2-digit' : 'numeric',
-    minute: '2-digit',
-    hourCycle: timeFormat === '24h' ? 'h23' : 'h12',
-  }).formatToParts(new Date(at))
-  const hour = parts.find((p) => p.type === 'hour')?.value ?? ''
-  const minute = parts.find((p) => p.type === 'minute')?.value ?? ''
-  return `${hour}:${minute}`
-}

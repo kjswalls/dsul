@@ -1,6 +1,7 @@
 import type { ProposalOperation } from './planner-types';
 import { assigneeLabel } from './chat-utils';
 import { CHAT_LIMITS, type ConversationChanges, type ConversationSummary } from './conversation-types';
+import { clockTime } from './format-chat-timestamp';
 
 /**
  * What a conversation changed, as History's second line says it.
@@ -169,7 +170,8 @@ export function historyDay(lastMessageAt: string, now: number, tz: string | null
 /**
  * A History row's time, in the user's zone:
  *   today      "8:02", or "08:02" under the 24-hour setting (mock 5: a
- *              row's time is a glance, so no am/pm)
+ *              row's time is a glance, so no am/pm); the one chat clock,
+ *              lib/format-chat-timestamp.ts clockTime
  *   yesterday  "Tue"
  *   earlier    "Sep 24", plus ", 2025" when it is not this year
  */
@@ -178,14 +180,7 @@ export function historyTime(lastMessageAt: string, now: number, tz: string | nul
   if (!Number.isFinite(t)) return '';
   const at = new Date(t);
   const day = historyDay(lastMessageAt, now, tz);
-  if (day === 'today') {
-    const clock: Intl.DateTimeFormatOptions = hour24
-      ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
-      : { hour: 'numeric', minute: '2-digit', hour12: true };
-    const parts = zoned(tz, clock).formatToParts(at);
-    const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
-    return `${part('hour')}:${part('minute')}`;
-  }
+  if (day === 'today') return clockTime(t, tz, hour24 ? '24h' : '12h');
   if (day === 'yesterday') return zoned(tz, { weekday: 'short' }).format(at);
   const date = zoned(tz, { month: 'short', day: 'numeric' }).format(at);
   const year = zoned(tz, { year: 'numeric' });

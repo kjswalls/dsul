@@ -121,6 +121,7 @@ export function RailHeader({
             type="button"
             onClick={back.onBack}
             data-testid="rail-back"
+            data-rail-back=""
             aria-label={`Back to ${back.label}`}
             className={cn(
               '-ml-1.5 flex items-center gap-0.5 rounded-md py-1 pr-2 pl-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',

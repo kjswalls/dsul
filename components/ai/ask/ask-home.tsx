@@ -1,6 +1,6 @@
 'use client';
 
-import { useContext, useMemo } from 'react';
+import { useContext, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { BoundComposer, ComposerAwakeContext } from '@/components/ai/bound-composer';
 import { OpenerChips } from '@/components/ai/opener-chips';
@@ -16,9 +16,45 @@ import { askNew } from '@/lib/open-chat';
 import { useAgentFreshness } from '@/hooks/use-agent-freshness';
 import { useOpenerContext } from '@/hooks/use-opener-context';
 import type { ComposerBinding } from '@/lib/rail-store';
+import { cn } from '@/lib/utils';
 
 /** Ask home's box: a send starts a new conversation and pushes it (lib/open-chat.ts). */
 const HOME: ComposerBinding = { kind: 'home' };
+
+/**
+ * Whether the box scrolls with more of it out of sight below: its content
+ * taller than it, and not scrolled to the end. Re-read on a scroll, and on any
+ * change of size, the box's own or a section's inside it (a card answered,
+ * "Show N more"), so it never goes stale while the content moves under it.
+ */
+function useScrollsBeneath(ref: RefObject<HTMLElement | null>): boolean {
+  const [beneath, setBeneath] = useState(false);
+  useLayoutEffect(() => {
+    const box = ref.current;
+    if (!box) return;
+    const measure = () => setBeneath(box.scrollHeight - box.scrollTop - box.clientHeight > 1);
+    measure();
+    box.addEventListener('scroll', measure, { passive: true });
+    const sizes = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(measure);
+    sizes?.observe(box);
+    for (const el of Array.from(box.children)) sizes?.observe(el);
+    // Sections come and go with what they have to say.
+    const sections = new MutationObserver((records) => {
+      for (const r of records) {
+        r.addedNodes.forEach((n) => n instanceof Element && sizes?.observe(n));
+        r.removedNodes.forEach((n) => n instanceof Element && sizes?.unobserve(n));
+      }
+      measure();
+    });
+    sections.observe(box, { childList: true });
+    return () => {
+      box.removeEventListener('scroll', measure);
+      sizes?.disconnect();
+      sections.disconnect();
+    };
+  }, [ref]);
+  return beneath;
+}
 
 /**
  * Ask home, the rail's resting view: what Ask shows with nothing pushed.
@@ -46,6 +82,12 @@ const HOME: ComposerBinding = { kind: 'home' };
  *
  * A chip starts a FRESH conversation titled with its label, not its long
  * prompt (`askNew`), and pushes it; the box does the same with what was typed.
+ *
+ * The foot (the chips and the box) stays put while the sections above scroll,
+ * and draws a hairline along its top only while some of them are out of sight
+ * beneath it, so a fifth Needs-you card cut off at the chips reads as "scroll
+ * for more". A rule, never a mask or an opacity fade: either would dim a lime
+ * mark scrolling under it (CLAUDE.md, the lime accent).
  */
 export function AskHome() {
   const items = usePlannerStore((s) => s.items);
@@ -90,9 +132,16 @@ export function AskHome() {
     [items, conversations, now, todayStr, tz]
   );
 
+  const scrollerRef = useRef<HTMLDivElement>(null);
+  const beneath = useScrollsBeneath(scrollerRef);
+
   return (
     <div data-ask-home="" className="flex min-h-0 flex-1 flex-col">
-      <div data-ask-scroller="" className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pt-1 pb-3">
+      <div
+        ref={scrollerRef}
+        data-ask-scroller=""
+        className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pt-1 pb-1"
+      >
         <ProposalCard surface="chat" />
         <div className="flex flex-col gap-0.5">
           <AskGreeting variant="home" />
@@ -105,7 +154,16 @@ export function AskHome() {
         <NeedsYou items={waiting} />
         <AIActivity rows={activity} />
       </div>
-      <div className="flex shrink-0 flex-col gap-2 px-3 pb-3">
+      <div
+        data-ask-foot=""
+        data-scrolls-beneath={beneath ? 'true' : undefined}
+        className={cn(
+          // The rule's 1px is always there, transparent at rest, so it never
+          // moves the chips as it comes and goes.
+          'flex shrink-0 flex-col gap-2 border-t px-3 pt-2 pb-3 transition-colors duration-150',
+          beneath ? 'border-border' : 'border-transparent'
+        )}
+      >
         <OpenerChips
           openers={openers}
           onPick={(opener) => askNew(opener.prompt, { title: opener.label, isMobile: false })}

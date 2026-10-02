@@ -197,7 +197,7 @@ describe('the greeting', () => {
     render(<AskGreeting variant="new-chat" />);
     const el = document.querySelector('[data-ask-greeting="new-chat"]') as HTMLElement;
     expect(el).toHaveTextContent(/^Morning, Kirby$/);
-    expect(el).toHaveClass('font-serif', 'text-2xl');
+    expect(el).toHaveClass('font-serif', 'text-[24px]');
     expect(el.querySelector('svg')).toHaveClass('text-ai');
   });
 });
@@ -529,6 +529,58 @@ describe('the foot', () => {
     render(<AskHome />);
     const chips = within(screen.getByTestId('chat-openers')).getAllByRole('button');
     expect(chips.map((c) => c.textContent)).toEqual(['Plan tomorrow', 'Review today']);
+  });
+
+  it('rules its top only while something scrolls beneath it, with no mask or fade', () => {
+    // jsdom lays nothing out: the box's geometry is set by hand, and a
+    // ResizeObserver that reports on demand stands in for the browser's.
+    const RealRO = globalThis.ResizeObserver;
+    const observers: (() => void)[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      render(<AskHome />);
+      const scroller = home().querySelector('[data-ask-scroller]') as HTMLElement;
+      const foot = home().querySelector('[data-ask-foot]') as HTMLElement;
+      const geometry = { scrollHeight: 300, clientHeight: 400 };
+      for (const key of ['scrollHeight', 'clientHeight'] as const) {
+        Object.defineProperty(scroller, key, { configurable: true, get: () => geometry[key] });
+      }
+      const resized = () => act(() => observers.forEach((fire) => fire()));
+
+      // Everything fits: no rule, but its 1px is there, so the chips never move.
+      resized();
+      expect(foot).not.toHaveAttribute('data-scrolls-beneath');
+      expect(foot).toHaveClass('border-t', 'border-transparent');
+
+      // A fifth card grows the sections past the box: the rule shows.
+      geometry.scrollHeight = 700;
+      resized();
+      expect(foot).toHaveAttribute('data-scrolls-beneath', 'true');
+      expect(foot).toHaveClass('border-t', 'border-border');
+
+      // Scrolled to the end, nothing is beneath it any more; scrolled back, it is.
+      scroller.scrollTop = 300;
+      fireEvent.scroll(scroller);
+      expect(foot).not.toHaveAttribute('data-scrolls-beneath');
+      scroller.scrollTop = 120;
+      fireEvent.scroll(scroller);
+      expect(foot).toHaveAttribute('data-scrolls-beneath', 'true');
+
+      // A rule, never a mask or an opacity: either would dim a lime mark under it.
+      for (const el of [foot, scroller]) {
+        expect(el.className).not.toMatch(/mask|opacity|fade/);
+        expect(el.getAttribute('style') ?? '').not.toMatch(/mask|opacity/);
+      }
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+    }
   });
 });
 

@@ -13,8 +13,7 @@ import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
 import { chatErrorCopy } from '@/lib/chat-errors';
 import { chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
-import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
-import { useTimeFormat } from '@/lib/use-time-format';
+import { clockTime } from '@/lib/format-chat-timestamp';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import type { Answerer } from '@/lib/conversation-types';
 
@@ -180,7 +179,7 @@ const Reply = memo(function Reply({
 }) {
   const { canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
-  const timeFormat = useTimeFormat();
+  const timeFormat = usePlannerStore((s) => s.timeFormat);
   const streaming = m.status === 'streaming';
   const text = m.content ? stripReasoningTags(m.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '') : '';
 
@@ -215,8 +214,9 @@ const Reply = memo(function Reply({
         >
           {m.content && <CopyButton text={m.content} />}
           {m.createdAt > 0 && (
-            <span className="text-2xs text-muted-foreground">
-              {formatChatTimestamp(m.createdAt, timeFormat, userTimezone)}
+            // History's clock and Ask home's: "8:03", never "8:03 AM" beside them.
+            <span data-testid="reply-time" className="text-2xs text-muted-foreground tabular-nums">
+              {clockTime(m.createdAt, userTimezone, timeFormat)}
             </span>
           )}
         </div>

@@ -273,9 +273,14 @@ function SearchResults({ query, surface }: { query: string; surface: AskSurface 
   const current = search.q === query;
 
   let body: React.ReactNode;
+  // A heading over rows only: a search that came to nothing (or failed) says
+  // so on its own line, with no "Results" heading over no results.
+  let headed = true;
   if (current && search.status === 'error') {
+    headed = false;
     body = <p className="px-2 py-6 text-center text-sm text-muted-foreground">{SEARCH_FAILED}</p>;
   } else if (current && search.status === 'done' && search.hits.length === 0) {
+    headed = false;
     body = (
       <p data-testid="history-no-results" className="px-2 py-6 text-center text-sm text-muted-foreground">
         {noMatches(query)}
@@ -297,10 +302,12 @@ function SearchResults({ query, surface }: { query: string; surface: AskSurface 
   }
 
   return (
-    <section aria-labelledby="history-results" data-history-group="results">
-      <h3 id="history-results" className="px-2 pt-3 pb-1 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
-        Results
-      </h3>
+    <section aria-labelledby={headed ? 'history-results' : undefined} data-history-group="results">
+      {headed && (
+        <h3 id="history-results" className="px-2 pt-3 pb-1 text-2xs font-medium tracking-wide text-muted-foreground uppercase">
+          Results
+        </h3>
+      )}
       {body}
     </section>
   );

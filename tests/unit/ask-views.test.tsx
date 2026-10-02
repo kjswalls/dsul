@@ -45,6 +45,8 @@ import {
   type ChatMessage,
 } from '@/lib/conversations-store';
 import { chatErrorCopy } from '@/lib/chat-errors';
+import { clockTime } from '@/lib/format-chat-timestamp';
+import { historyTime } from '@/lib/conversation-summary';
 import type { ConversationSummary, StoredMessage } from '@/lib/conversation-types';
 import type { TaskItem } from '@/lib/planner-types';
 import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
@@ -486,6 +488,46 @@ describe('History', () => {
     }
   });
 
+  // A click on "‹ History", or Enter on it (a button's Enter is that same
+  // click), leaves focus on the button. React keeps that button from the
+  // conversation's header to History's, where it now reads "‹ Ask", so focus
+  // left there would make a second Enter go home instead of back to the row.
+  it.each([
+    ['a row of its groups', false],
+    ['a search result', true],
+  ])('hands focus from the pressed Back to %s, as Escape does', async (_label, search) => {
+    listPage();
+    api.rows.set('c1', ROWS.today);
+    api.answer.thread = (id) => (id === 'c1' ? { ok: true, value: { conversation: ROWS.today, messages: [], hasEarlier: false } } : undefined);
+    api.answer.search = () => ({ ok: true, value: [{ ...ROWS.today, matched: 'title', snippet: null, itemTitle: null }] });
+    push({ kind: 'history' });
+    renderRail();
+    await settle();
+    if (search) {
+      fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'plan' } });
+      await timers(300);
+      await settle();
+    }
+    const opener = () => view().querySelector<HTMLElement>('[data-ask-focus="conv:c1"]') as HTMLElement;
+    act(() => opener().focus());
+    fireEvent.click(opener());
+    await settle();
+    await timers();
+    expect(stack().at(-1)).toMatchObject({ kind: 'conversation', id: 'c1' });
+
+    const backButton = screen.getByTestId('rail-back');
+    expect(backButton).toHaveAccessibleName('Back to History');
+    act(() => backButton.focus());
+    fireEvent.click(backButton);
+    await settle();
+    await timers();
+    expect(stack()).toEqual([expect.objectContaining({ kind: 'history' })]);
+    expect(document.activeElement).toBe(opener());
+    // The same node is still in the header, now the way home: it is not where focus stays.
+    expect(screen.getByTestId('rail-back')).toHaveAccessibleName('Back to Ask');
+    expect(document.activeElement).not.toBe(screen.getByTestId('rail-back'));
+  });
+
   it('says so when there is nothing, and when the list fails, with Try again', async () => {
     let fails = true;
     api.answer.list = () => (fails ? fail(500, 'server') : undefined);
@@ -573,14 +615,35 @@ describe('History', () => {
       expect(line.querySelector('strong')).toHaveTextContent('den');
     });
 
-    it('says when nothing matches', async () => {
+    it('says when nothing matches, with no "Results" heading over no results', async () => {
       push({ kind: 'history' });
       renderRail();
       await settle();
+      const results = () => view().querySelector('[data-history-group="results"]') as HTMLElement;
+      // While it asks, the heading stands over the skeleton rows to come.
       fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'zz' } });
+      expect(within(results()).getByRole('heading', { name: 'Results' })).toBeInTheDocument();
       await timers(300);
       await settle();
       expect(screen.getByTestId('history-no-results')).toHaveTextContent('Nothing matches “zz”.');
+      expect(within(results()).queryByRole('heading')).toBeNull();
+      expect(results()).not.toHaveAttribute('aria-labelledby');
+
+      // Nor over a search that failed.
+      api.answer.search = () => fail(500, 'server');
+      fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'zzz' } });
+      await timers(300);
+      await settle();
+      expect(results()).toHaveTextContent("Couldn't search right now.");
+      expect(within(results()).queryByRole('heading')).toBeNull();
+
+      // And back over rows once there are some.
+      api.answer.search = () => ({ ok: true, value: [{ ...summary({ id: 'c9', title: 'Zzz plans' }), matched: 'title', snippet: null, itemTitle: null }] });
+      fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'zzzz' } });
+      await timers(300);
+      await settle();
+      expect(within(results()).getByRole('heading', { name: 'Results' })).toBeInTheDocument();
+      expect(results()).toHaveAttribute('aria-labelledby', 'history-results');
     });
 
     it('tells a screen reader what a search came to, while focus stays in the field', async () => {
@@ -1059,6 +1122,31 @@ describe('the transcript', () => {
     expect(within(reply).getByRole('button', { name: 'Copied' })).toBeInTheDocument();
   });
 
+  // One clock for every chat time: a reply's reads as History's row and Ask
+  // home's activity row read the same minute ("8:02", never "8:02 AM"), and
+  // follows the 24-hour setting with them.
+  it.each([
+    ['12h', '8:02'],
+    ['24h', '08:02'],
+  ] as const)("times a reply by History's clock, under the %s setting", async (timeFormat, shown) => {
+    act(() => usePlannerStore.setState({ timeFormat }));
+    try {
+      const at = '2026-10-02T08:02:00.000Z';
+      await openSaved(
+        { ...ROW, lastMessageAt: at },
+        stored(
+          { id: 'm1', role: 'user', content: 'Where should we go?', createdAt: at },
+          { id: 'm2', role: 'assistant', content: 'Lisbon.', replyTo: 'm1', createdAt: at }
+        )
+      );
+      expect(screen.getByTestId('reply-time')).toHaveTextContent(new RegExp(`^${shown}$`));
+      expect(historyTime(at, Date.parse(at), 'UTC', timeFormat === '24h')).toBe(shown);
+      expect(clockTime(Date.parse(at), 'UTC', timeFormat)).toBe(shown);
+    } finally {
+      act(() => usePlannerStore.setState({ timeFormat: '12h' }));
+    }
+  });
+
   it('marks where who answers changes', async () => {
     await openSaved(
       ROW,
@@ -1480,6 +1568,28 @@ describe('a new chat', () => {
     expect(Object.keys(useConversationsStore.getState().summaries)).toEqual([]);
   });
 
+  it('offers no History of its own when opened over History, whose "‹ History" is the way there', async () => {
+    push({ kind: 'history' });
+    renderRail();
+    await settle();
+    fireEvent.click(within(view()).getByRole('button', { name: 'New chat' }));
+    await timers();
+    expect(stack().map((v) => v.kind)).toEqual(['history', 'conversation']);
+    expect(screen.getByTestId('rail-back')).toHaveAccessibleName('Back to History');
+    expect(heading()).toHaveTextContent('New chat');
+    expect(within(view()).queryByRole('button', { name: 'History' })).toBeNull();
+    // ✕ still ends the row.
+    expect(screen.getByTestId('rail-close')).toBeInTheDocument();
+    // From Ask home, the same new chat keeps its History.
+    fireEvent.click(screen.getByTestId('rail-back'));
+    fireEvent.click(screen.getByTestId('rail-back'));
+    await timers();
+    fireEvent.click(within(view()).getByRole('button', { name: 'New chat' }));
+    await timers();
+    expect(stack().map((v) => v.kind)).toEqual(['conversation']);
+    expect(within(view()).getByRole('button', { name: 'History' })).toBeInTheDocument();
+  });
+
   it("chips: today's openers at the new chat's count, then \"Help me start…\", by the hour", async () => {
     // Nothing sitting and the afternoon: "Plan my day" and the fallback, so
     // fewer than three, and "Help me start…" still last.
@@ -1505,7 +1615,9 @@ describe('a new chat', () => {
     await timers();
     const greeting = screen.getByTestId('new-chat-empty').querySelector('[data-ask-greeting]') as HTMLElement;
     expect(greeting).toHaveAttribute('data-ask-greeting', 'new-chat');
-    expect(greeting).toHaveClass('font-serif', 'text-2xl', 'flex-col');
+    // The mock's 24px, not text-2xl, which is 22px in this theme (app/globals.css).
+    expect(greeting).toHaveClass('font-serif', 'text-[24px]', 'flex-col');
+    expect(greeting).not.toHaveClass('text-2xl');
     expect(greeting.querySelector('svg')).toHaveClass('text-ai');
     expect(greeting).toHaveTextContent(/^Afternoon(, \S+)?$/);
   });

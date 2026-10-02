@@ -3,7 +3,6 @@ import {
   ACTIVITY_WINDOW_MS,
   MAX_ACTIVITY_ROWS,
   activityRows,
-  clockTime,
   dayEndFromReview,
   dayLoad,
   dayPart,
@@ -14,6 +13,7 @@ import {
   needsYou,
   type DayLoad,
 } from '@/lib/ask-home';
+import { clockTime } from '@/lib/format-chat-timestamp';
 import type { OpenerContext } from '@/lib/ai-openers';
 import type { ConversationSummary } from '@/lib/conversation-types';
 import type { Item } from '@/lib/planner-types';

@@ -42,7 +42,8 @@ export function AskGreeting({
       data-ask-greeting={variant}
       className={cn(
         'flex items-center font-serif text-foreground',
-        home ? 'gap-1.5 text-[15px] leading-snug' : 'flex-col gap-2.5 text-center text-2xl leading-tight',
+        // 24px exactly: this theme's text-2xl is 22px (app/globals.css).
+        home ? 'gap-1.5 text-[15px] leading-snug' : 'flex-col gap-2.5 text-center text-[24px] leading-tight',
         className
       )}
     >

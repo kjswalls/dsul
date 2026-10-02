@@ -4,7 +4,8 @@ import { useId, type ReactNode } from 'react';
 import { Loader2 } from 'lucide-react';
 import { ConversationGlyph } from '@/components/ai/ask/history-view';
 import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
-import { clockTime, type ActivityRow } from '@/lib/ask-home';
+import type { ActivityRow } from '@/lib/ask-home';
+import { clockTime } from '@/lib/format-chat-timestamp';
 import { openConversation, openItemFromAsk } from '@/lib/open-chat';
 import { usePlannerStore } from '@/lib/planner-store';
 import { cn } from '@/lib/utils';
@@ -36,7 +37,6 @@ export function AIActivity({ rows }: { rows: readonly ActivityRow[] }) {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const headingId = useId();
   if (rows.length === 0) return null;
-  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return (
     <section aria-labelledby={headingId} data-testid="ai-activity" className="-mx-2 flex flex-col gap-1">
@@ -68,7 +68,7 @@ export function AIActivity({ rows }: { rows: readonly ActivityRow[] }) {
                 glyph={<ConversationGlyph itemId={row.itemId} done={row.done} />}
                 kind={row.itemId ? 'Item conversation' : 'Conversation'}
                 title={row.title}
-                meta={clockTime(row.at, tz, timeFormat === '24h' ? '24h' : '12h')}
+                meta={clockTime(row.at, userTimezone, timeFormat)}
               />
             )}
           </li>

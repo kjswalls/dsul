@@ -41,7 +41,8 @@ function ownsEscape(el: HTMLElement): boolean {
  *   unsaved  its title plainly, then "+": a first turn on its way, or a
  *            conversation found deleted, has no row to rename or delete
  *   new      "New chat", then History (mocks 3 and 6): the draft has nothing
- *            to keep, and History replaces it (the level rule)
+ *            to keep, and History replaces it (the level rule). Over History
+ *            itself it offers none: "‹ History" is already the way there
  */
 type ConversationHeader = 'saved' | 'unsaved' | 'new';
 
@@ -154,12 +155,17 @@ export function RightRail({
     setTimeout(() => {
       const root = asideRef.current;
       // Only focus that is still lost: a box that took a request, or anything
-      // the user moved to meanwhile, keeps it. The heading counts as lost:
-      // React keeps the header's <h2> from view to view, so a Back pressed on
-      // it (Escape, after a push parked focus there) would otherwise leave
-      // focus there, not on the control that pushed the view.
+      // the user moved to meanwhile, keeps it. The header's heading and its
+      // back control count as lost: React keeps both from view to view, so a
+      // Back pressed on either (Escape on the heading a push parked focus on;
+      // a click or Enter on "‹ History") would otherwise leave focus there, on
+      // a control that now names a different view, not on the one that pushed
+      // the view Back left.
       const active = document.activeElement as HTMLElement | null;
-      const parked = !!active && root?.contains(active) && active.hasAttribute('data-ask-heading');
+      const parked =
+        !!active &&
+        !!root?.contains(active) &&
+        (active.hasAttribute('data-ask-heading') || active.hasAttribute('data-rail-back'));
       if (!root || (active && active !== document.body && !parked)) return;
       const opener = returnTo
         ? Array.from(root.querySelectorAll<HTMLElement>('[data-ask-focus]')).find(
@@ -213,7 +219,9 @@ export function RightRail({
         back={{ label: backTo, onBack: back }}
         title={title}
         heading={conversationHeader === 'saved' ? <ConversationTitleMenu key={id} id={id} title={title} /> : undefined}
-        actions={conversationHeader === 'new' ? <HistoryButton /> : <NewChatButton />}
+        actions={
+          conversationHeader !== 'new' ? <NewChatButton /> : beneath?.kind === 'history' ? undefined : <HistoryButton />
+        }
         onClose={close}
       />
     );
