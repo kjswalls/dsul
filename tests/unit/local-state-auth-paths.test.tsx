@@ -19,9 +19,10 @@ import { render, cleanup, waitFor } from '@testing-library/react';
  *
  * 3 and 4 arrive as a mount with a live session and nothing in memory to
  * compare against, which is exactly what the persisted owner stamp is for. They
- * are asserted on `apiKey` and on the canvas filters because neither is ever
- * written by `hydrateSettings` — so a green assertion means the state was
- * CLEARED, and can't be a server response happening to land on top of it.
+ * are asserted on the AI instructions (`systemPrompt`) and on the canvas
+ * filters because neither is ever written by `hydrateSettings` — so a green
+ * assertion means the state was CLEARED, and can't be a server response
+ * happening to land on top of it.
  *
  * The last two tests are not about paths at all: they pin the ORDER of
  * `adoptUser`, and the fact that a browser refusing to persist still boots.
@@ -77,6 +78,7 @@ import { loadSettings } from '@/lib/settings-service';
 import { SupabaseProvider } from '@/components/providers/supabase-provider';
 import { LOCAL_STATE_OWNER_KEY, localStateOwner } from '@/lib/local-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChatStore } from '@/lib/chat-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
@@ -87,17 +89,27 @@ import { useUIStore } from '@/lib/ui-store';
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
-const SECRET = 'sk-ant-user-a-secret';
+/** Text user A wrote into the AI instructions — disclosive, and never hydrated from the server. */
+const SECRET = 'A private prompt about A';
 
 const original = {
   initializeStore: usePlannerStore.getState().initializeStore,
   extensions: useExtensionsStore.getState().hydrate,
   secrets: useChannelSecretsStore.getState().hydrate,
+  aiHydrate: useAIConnectionStore.getState().hydrate,
+  aiReset: useAIConnectionStore.getState().reset,
 };
 
-/** User A's browser, mid-session: a key, a transcript, filters, a stamp. */
+/**
+ * The AI gate's status GET, stood in at the store boundary like the other
+ * loads: the provider's call is what is under test, not the request.
+ */
+const aiHydrate = vi.fn<(userId: string) => Promise<void>>(async () => {});
+const aiReset = vi.fn<() => void>();
+
+/** User A's browser, mid-session: instructions, a transcript, filters, a stamp. */
 function seedUserAState(owner: string | null) {
-  useAISettingsStore.setState({ apiKey: SECRET });
+  useAISettingsStore.setState({ systemPrompt: SECRET });
   useViewStore.setState({
     canvasFilters: { ...useViewStore.getState().canvasFilters, containers: ['project:A Private'] },
   });
@@ -113,7 +125,7 @@ function seedUserAState(owner: string | null) {
 }
 
 function expectUserAStateGone() {
-  expect(useAISettingsStore.getState().apiKey).toBe('');
+  expect(useAISettingsStore.getState().systemPrompt).toBe('');
   expect(useViewStore.getState().canvasFilters.containers).toEqual([]);
   expect(localStorage.getItem('dsul-chat-history')).toBeNull();
   expect(JSON.stringify(localStorage)).not.toContain(SECRET);
@@ -141,6 +153,9 @@ describe('every path into "the current user changed"', () => {
     usePlannerStore.setState({ initializeStore: async () => {} });
     useExtensionsStore.setState({ hydrate: async () => {} });
     useChannelSecretsStore.setState({ hydrate: async () => {} });
+    aiHydrate.mockClear();
+    aiReset.mockClear();
+    useAIConnectionStore.setState({ hydrate: aiHydrate, reset: aiReset });
     useAISettingsStore.getState().clearUserScopedState();
     useViewStore.getState().clearUserScopedState('all');
     useChatStore.getState().clear();
@@ -153,6 +168,7 @@ describe('every path into "the current user changed"', () => {
     usePlannerStore.setState({ initializeStore: original.initializeStore });
     useExtensionsStore.setState({ hydrate: original.extensions });
     useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useAIConnectionStore.setState({ hydrate: original.aiHydrate, reset: original.aiReset });
   });
 
   it('1 — an explicit sign-out drops the account state and releases the stamp', async () => {
@@ -164,6 +180,32 @@ describe('every path into "the current user changed"', () => {
 
     expectUserAStateGone();
     expect(localStateOwner()).toBeNull();
+  });
+
+  it('1b — a sign-out resets the AI gate, which persists nothing for the clear to reach', async () => {
+    mountSession = { user: { id: USER_A } };
+    await mount();
+    expect(aiHydrate).toHaveBeenCalledWith(USER_A);
+    expect(aiReset).not.toHaveBeenCalled();
+
+    emit('SIGNED_OUT', null);
+
+    // Not a persisted store, so clearUserScopedLocalState never touches it:
+    // without its own reset, the next sign-in on this tab would read the last
+    // account's answer until its own arrived.
+    expect(aiReset).toHaveBeenCalledTimes(1);
+  });
+
+  it('2b — a bare SIGNED_IN for a different user re-asks the AI gate for that user', async () => {
+    mountSession = { user: { id: USER_A } };
+    await mount();
+
+    emit('SIGNED_IN', { user: { id: USER_B } });
+
+    // The store clears itself synchronously on a change of user (its own
+    // test covers that); what the provider owes it is the call.
+    expect(aiHydrate).toHaveBeenLastCalledWith(USER_B);
+    expect(aiReset).not.toHaveBeenCalled();
   });
 
   it('2 — a bare SIGNED_IN for a different user, with no sign-out first', async () => {
@@ -210,7 +252,7 @@ describe('every path into "the current user changed"', () => {
     // broadcasts it across tabs. Neither may cost the user their own settings.
     emit('SIGNED_IN', { user: { id: USER_A } });
 
-    expect(useAISettingsStore.getState().apiKey).toBe(SECRET);
+    expect(useAISettingsStore.getState().systemPrompt).toBe(SECRET);
     expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:A Private']);
     expect(localStorage.getItem('dsul-chat-history')).not.toBeNull();
     expect(localStateOwner()).toBe(USER_A);
@@ -225,18 +267,18 @@ describe('every path into "the current user changed"', () => {
    *
    * So this observes the loads AT THE MOMENT THEY ARE ENTERED. Both are called
    * synchronously from `adoptUser`, so if the adopt is reordered after either
-   * of them, that one sees the previous account's key still in memory and the
-   * stamp still naming the previous account.
+   * of them, that one sees the previous account's instructions still in memory
+   * and the stamp still naming the previous account.
    */
   it('adopts before it loads anything — the one ordering adoptUser depends on', async () => {
     seedUserAState(USER_A);
     mountSession = { user: { id: USER_B } };
 
-    const seen: Record<string, { owner: string | null; apiKey: string }> = {};
+    const seen: Record<string, { owner: string | null; systemPrompt: string }> = {};
     const probe = (name: string) => {
       seen[name] = {
         owner: localStateOwner(),
-        apiKey: useAISettingsStore.getState().apiKey,
+        systemPrompt: useAISettingsStore.getState().systemPrompt,
       };
     };
     usePlannerStore.setState({
@@ -254,8 +296,8 @@ describe('every path into "the current user changed"', () => {
     // Both loads found this browser already adopted for B and already emptied
     // of A. Move `adoptLocalState(userId)` below either call in adoptUser and
     // that call's probe reads USER_A / the secret instead.
-    expect(seen.initializeStore).toEqual({ owner: USER_B, apiKey: '' });
-    expect(seen.loadSettings).toEqual({ owner: USER_B, apiKey: '' });
+    expect(seen.initializeStore).toEqual({ owner: USER_B, systemPrompt: '' });
+    expect(seen.loadSettings).toEqual({ owner: USER_B, systemPrompt: '' });
   });
 
   /**
@@ -298,6 +340,11 @@ describe('every path into "the current user changed"', () => {
         calls.push('secrets');
       },
     });
+    useAIConnectionStore.setState({
+      hydrate: async () => {
+        calls.push('ai');
+      },
+    });
 
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = () => {
@@ -309,10 +356,10 @@ describe('every path into "the current user changed"', () => {
       Storage.prototype.setItem = setItem;
     }
 
-    await waitFor(() => expect(calls.sort()).toEqual(['extensions', 'planner', 'secrets']));
+    await waitFor(() => expect(calls.sort()).toEqual(['ai', 'extensions', 'planner', 'secrets']));
     expect(vi.mocked(loadSettings)).toHaveBeenCalledWith(USER_B);
     // And the part of the clear that does not need storage still happened.
-    expect(useAISettingsStore.getState().apiKey).toBe('');
+    expect(useAISettingsStore.getState().systemPrompt).toBe('');
   });
 });
 
@@ -347,6 +394,7 @@ describe('the session profile the chrome displays', () => {
       },
     });
     useChannelSecretsStore.setState({ hydrate: async () => {} });
+    useAIConnectionStore.setState({ hydrate: aiHydrate, reset: aiReset });
     useSessionUserStore.setState({ user: null });
     useUIStore.setState({ chatOnboardingActive: false });
   });
@@ -356,6 +404,7 @@ describe('the session profile the chrome displays', () => {
     usePlannerStore.setState({ initializeStore: original.initializeStore });
     useExtensionsStore.setState({ hydrate: original.extensions });
     useChannelSecretsStore.setState({ hydrate: original.secrets });
+    useAIConnectionStore.setState({ hydrate: original.aiHydrate, reset: original.aiReset });
   });
 
   it('is populated from the mount session', async () => {
@@ -384,7 +433,7 @@ describe('the session profile the chrome displays', () => {
     });
   });
 
-  it('is cleared on SIGNED_OUT, and so is the Beacon first-run flag', async () => {
+  it('is cleared on SIGNED_OUT, and so is the retired first-run chat flag', async () => {
     mountSession = A;
     await mount();
     useUIStore.getState().setChatOnboardingActive(true);

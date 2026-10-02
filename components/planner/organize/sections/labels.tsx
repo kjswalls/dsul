@@ -449,7 +449,7 @@ export function TypesSection({
             icon={makeIconToken('Target')}
             testPrefix="type"
             autoFocus={creating}
-            hint="Custom types work like tasks — they get their own tab in the add dialog and their own section in Beacon's context."
+            hint="Custom types work like tasks. They get their own tab in the add dialog and their own section in what your AI sees."
             // The store silently no-ops on a bad slug, so the form has to know
             // the same rules — and say them out loud rather than greying a
             // button and leaving the user to guess.
@@ -471,8 +471,8 @@ export function TypesSection({
           <TypeDetail type={selected} onBack={() => onSelect(null)} />
         ) : (
           <SectionWelcome section="types">
-            Custom types work like tasks — they get their own tab in the add dialog and their own
-            section in Beacon&apos;s context.
+            Custom types work like tasks. They get their own tab in the add dialog and their own
+            section in what your AI sees.
           </SectionWelcome>
         )}
       </DetailColumn>

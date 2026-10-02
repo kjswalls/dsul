@@ -5,6 +5,7 @@ import { Sparkles, Loader2, Check, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { describeOperation } from '@/lib/proposal';
 import { cn } from '@/lib/utils';
 
@@ -40,12 +41,18 @@ export function ProposalCard({
   const retry = useProposalStore((s) => s.retry);
   const dismiss = useProposalStore((s) => s.dismiss);
   // Only a model-backed ask has a different answer in it; catch-up is a pure
-  // function of the planner and would return the same five items.
-  // Catch-up is a pure function of the planner and would return the same items;
-  // the model-backed intents can genuinely differ.
-  const canRetry = useProposalStore(
+  // function of the planner and would return the same items.
+  const modelBacked = useProposalStore(
     (s) => s.lastRequest != null && s.lastRequest.intent !== 'catch-up'
   );
+  // And only while something can still answer it. The card outlives the gate:
+  // a key turned down mid-ask (the propose route's 'auth', which marks the
+  // model failing) or 'Who answers' switched Off leaves it on screen, carried
+  // by the dock's host once chat is gone. A retry then reaches no model, and
+  // the store would swap the accurate error for "Connect a model in Settings",
+  // which is wrong for a model that is connected and failing.
+  const { canPropose } = useAICapabilities();
+  const canRetry = modelBacked && canPropose;
   const requestSurface = useProposalStore((s) => s.lastRequest?.surface);
   const refused = useProposalStore((s) => s.refused);
 

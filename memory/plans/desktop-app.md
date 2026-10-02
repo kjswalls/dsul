@@ -357,10 +357,10 @@ Use electron-builder 26.15.x: not the 27 alpha, and not Forge, which has no NSIS
 
 ## App icon
 
-The Wave mark (Kirby's pick, 2026-10-01; the web icons switched in #349). `scripts/app-icon/build.mjs --native <dir>` renders the native files; a copy is in the project's shared folder at `app-logo/icons/`, with a README saying where each goes.
-- **macOS:** `electron/build/icon.png` is `macos/AppIcon-dark.iconset/icon_512x512@2x.png`, the 1024px tile already drawn on Apple's grid (824px rounded tile with a shadow), so the Dock shows a proper squircle. electron-builder derives the .icns from it. A light/dark pair needs Icon Composer on a Mac (Later).
-- **Windows:** `electron/build/icon.ico` is `windows/icon.ico` (16 to 256).
-- **Tray:** `build/tray.png` and `tray@2x.png` are `public/icons/icon-16.png` and `icon-32.png` on Windows; macOS gets `trayTemplate.png` / `trayTemplate@2x.png`, the 3×3 dot grid in black on transparent, so the menu bar tints it.
+The Aurora mark (Kirby's pick, 2026-10-02; it replaced Wave, which looked dull in the Dock). The plain `node scripts/app-icon/build.mjs` writes this app's icons straight into `electron/build/`; `--native <dir>` adds the other platforms' files, and a copy is in the project's shared folder at `app-logo/icons/`, with a README saying where each goes.
+- **macOS:** `electron/build/icon.png` is the 1024px tile drawn on Apple's grid (824px rounded tile with a shadow), so the Dock shows a proper squircle. electron-builder derives the .icns from it.
+- **Windows:** `electron/build/icon.ico` holds 16 to 256.
+- **Tray:** `build/tray.png` and `tray@2x.png` are the 16 and 32px favicons on Windows; macOS gets `trayTemplate.png` / `trayTemplate@2x.png`, a hand-made dot grid in black on transparent, so the menu bar tints it.
 - Don't touch public/icons.
 
 ## Testing
@@ -460,7 +460,7 @@ Real builds come only from the GitHub runners. This container can't build a dmg.
 6. The release workflow.
 7. The update notice.
 
-Also in v1: the push-row copy, the Wave icons, the CLAUDE.md layout line and the eslint ignore.
+Also in v1: the push-row copy, the app icons, the CLAUDE.md layout line and the eslint ignore.
 
 **Later**
 - macOS signing (only the secrets are needed).

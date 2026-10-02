@@ -19,8 +19,9 @@
  * - it is a goal milestone and the target type can't be one;
  * - it sits inside a project block, and the target type can't be ordered into
  *   one (habits);
- * - it is assigned to Beacon and the target type can't be.
+ * - it is assigned to an agent and the target type can't be.
  */
+import { assigneeLabel } from '@/lib/chat-utils';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { firstRepeatDayFrom, isRecurring } from '@/lib/recurrence';
 import type { HabitItem, Item, RepeatFrequency } from '@/lib/planner-types';
@@ -55,7 +56,8 @@ export function conversionBlock(item: Item, toType: string, ctx: ConvertContext)
   }
   if (!to.milestoneEligible && ctx.milestoneIds.has(item.id)) return 'It’s a goal milestone';
   if (!to.orderable && (item as { inProjectBlock?: boolean }).inProjectBlock) return 'It’s in a project block';
-  if (!to.agentAssignable && (item as { assignee?: string }).assignee) return 'It’s assigned to Beacon';
+  const assignee = (item as { assignee?: string }).assignee;
+  if (!to.agentAssignable && assignee) return `It’s assigned to ${assigneeLabel(assignee)}`;
   return null;
 }
 

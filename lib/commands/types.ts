@@ -32,7 +32,7 @@ export const COMMAND_GROUPS: { id: CommandGroupId; heading: string }[] = [
   { id: 'items', heading: 'Items' },
   { id: 'goto', heading: 'Go to' },
   { id: 'view', heading: 'View' },
-  { id: 'rituals', heading: 'Rituals & Beacon' },
+  { id: 'rituals', heading: 'Rituals' },
   { id: 'workspace', heading: 'Workspace' },
   { id: 'settings', heading: 'Settings' },
   { id: 'history', heading: 'History' },
@@ -53,7 +53,11 @@ export interface CommandContext {
     /** Sets next-themes AND persists to user_settings. */
     set: (theme: 'light' | 'dark' | 'system') => void;
   };
-  /** Opens the chat: expands the sidebar dock on desktop, the tab on mobile. */
+  /**
+   * Opens the chat: expands the sidebar dock on desktop, the tab on mobile.
+   * Gated (lib/open-chat.ts): a no-op while nothing can answer, so a command
+   * can never open a surface the AI gate has hidden.
+   */
   openChat: () => void;
   userId: string | null;
   isMobile: boolean;

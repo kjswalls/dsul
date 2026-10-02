@@ -53,10 +53,14 @@ supabase stop       # shut the stack down (frees the RAM)
 ### Notes
 
 - **`.env.local` is merged, never overwritten.** It also carries
-  `OPENAI_API_KEY`, the VAPID pair, `CRON_SECRET` and `KIRBY_USER_ID` — only the
-  three Supabase keys are swapped, every other line is carried through, and the
-  original is backed up to `.env.local.bak`. `.env.test` is fully regenerated
-  (it has nothing else in it), backed up to `.env.test.bak`.
+  `MODEL_KEYS_ENCRYPTION_KEY`, the VAPID pair, `CRON_SECRET` and `KIRBY_USER_ID` —
+  only the three Supabase keys are swapped, every other line is carried through,
+  and the original is backed up to `.env.local.bak`. The one line the script may
+  add is `MODEL_KEYS_ENCRYPTION_KEY`, and only when the file has no usable one: a
+  valid key is never replaced, because a rotated key leaves every sealed model key
+  unreadable. A blank or malformed one (the app refuses it, so it has sealed
+  nothing) is swapped for a fresh key. `.env.test` is fully regenerated (it has nothing else in it, and
+  gets a fresh key each run), backed up to `.env.test.bak`.
 - **Back to production:** `vercel env pull .env.local`.
 - Two separate accounts on purpose: `dev@dsul.test` for development and
   `e2e@dsul.test` for the suite, so the e2e litter-sweep never deletes rows you

@@ -42,9 +42,10 @@ export default async function globalSetup() {
   // 2. Pin every auto-opening surface and view default OFF/deterministic.
   //
   // The old helper only set onboarding_completed, which left two other things
-  // free to appear over an unrelated spec: the morning check is enabled by
-  // default, and the EOD review auto-opens past its configured time (its
-  // "already shown today" guard lives only in localStorage, so a fresh
+  // free to appear over an unrelated spec: the morning check, which was on by
+  // default until migration 054 made rituals opt-in (a reused test account can
+  // still have it on), and the EOD review, which auto-opens past its configured
+  // time (its "already shown today" guard lives only in localStorage, so a fresh
   // Playwright context after 21:00 pops it again). show_completed_tasks must be
   // true or completion assertions can't see their own row; default_view must be
   // 'day' so nothing inherits a leaked Week.

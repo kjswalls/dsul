@@ -1,0 +1,592 @@
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
+
+/**
+ * The AI gate on every desktop and shared surface (design 5.3, "Desktop and
+ * shared"): nothing that talks to an AI renders unless something can answer,
+ * and while the server has not said (unknown) or could not say (error), the
+ * answer is no.
+ *
+ * Four "no chat" states are walked, because each fails closed for a different
+ * reason: the status has not loaded, its read failed, nothing is connected, and
+ * the connected key stopped working. The connected cases then check the same
+ * surfaces come back, named after whoever answers ("AI" for a model, "OpenClaw"
+ * for OpenClaw).
+ *
+ * The gate is the REAL pair of stores, seeded through the shared fixture.
+ */
+
+vi.mock('@/lib/db', () => ({
+  fetchItems: vi.fn(async () => []),
+  fetchProjects: vi.fn(async () => []),
+  fetchHabitGroups: vi.fn(async () => []),
+  fetchItemTypes: vi.fn(async () => []),
+  fetchRoutines: vi.fn(async () => []),
+  fetchSeasons: vi.fn(async () => []),
+  fetchGoals: vi.fn(async () => []),
+}));
+vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
+vi.mock('sonner', () => ({
+  toast: Object.assign(() => 'id', { error: vi.fn(), dismiss: vi.fn() }),
+}));
+vi.mock('@/lib/supabase', () => ({
+  createClient: vi.fn(() => ({
+    auth: {
+      getUser: vi.fn(async () => ({ data: { user: null }, error: null })),
+      signOut: vi.fn(async () => ({ error: null })),
+      onAuthStateChange: vi.fn(() => ({ data: { subscription: { unsubscribe: vi.fn() } } })),
+    },
+  })),
+}));
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn(), refresh: vi.fn(), prefetch: vi.fn() }),
+  usePathname: () => '/',
+  useSearchParams: () => new URLSearchParams(),
+}));
+
+import { Omnibar } from '@/components/sidebar/omnibar';
+import { SidebarDock } from '@/components/sidebar/sidebar-dock';
+import { ProposalCard } from '@/components/ai/proposal-card';
+import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
+import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
+import { proposalCardShowsOn } from '@/lib/open-chat';
+import { getAICapabilities } from '@/lib/ai-connection-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
+import { usePlannerStore } from '@/lib/planner-store';
+import { useChatStore } from '@/lib/chat-store';
+import { useProposalStore, type ProposalStatus, type ProposalSurface } from '@/lib/proposal-store';
+import {
+  seedAI,
+  CONNECTED_MODEL,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+  type SeedAI,
+} from './helpers/ai-fixtures';
+
+/* ── fixtures ────────────────────────────────────────────────────────── */
+
+const FAILING: SeedAI = {
+  ...CONNECTED_MODEL,
+  model: { provider: 'openai', model: 'gpt-4o-mini', status: 'failing', problem: 'key_rejected' },
+};
+
+/** Every way the gate says "no chat". */
+const NO_CHAT: Array<[string, SeedAI | undefined]> = [
+  ['the status has not loaded', undefined],
+  ['the status read failed', { phase: 'error' }],
+  ['nothing is connected', NOTHING_CONNECTED],
+  ['the key stopped working', FAILING],
+];
+
+const desktopCtx: CommandContext = {
+  theme: { resolved: 'light', value: 'light', set: () => {} },
+  openChat: () => {},
+  userId: 'u1',
+  isMobile: false,
+};
+
+const CHAT_COMMANDS = ['rituals.chat', 'rituals.planDay', 'workspace.toggleChat'];
+
+beforeAll(() => {
+  if (!('PointerEvent' in globalThis)) {
+    (globalThis as unknown as { PointerEvent: unknown }).PointerEvent = MouseEvent;
+  }
+  Element.prototype.hasPointerCapture = () => false;
+  Element.prototype.setPointerCapture = () => {};
+  Element.prototype.releasePointerCapture = () => {};
+  Element.prototype.scrollIntoView = () => {};
+  if (!('ResizeObserver' in globalThis)) {
+    (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    };
+  }
+});
+
+let unseed: () => void = () => {};
+const seed = (o?: SeedAI) => {
+  unseed();
+  unseed = seedAI(o);
+};
+
+const addTask = vi.fn();
+const send = vi.fn(async () => {});
+const originalAddTask = usePlannerStore.getState().addTask;
+const originalSend = useChatStore.getState().send;
+
+beforeEach(() => {
+  addTask.mockClear();
+  send.mockClear();
+  // Spied, not stubbed out of existence: the assertion that matters is that
+  // ⌘Enter without chat never files the text as a task.
+  usePlannerStore.setState({ addTask });
+  useChatStore.setState({ send, messages: [], isLoading: false });
+  useSidebarStore.setState({ chatExpanded: false, leftSidebarOpen: true });
+  useProposalStore.getState().dismiss();
+});
+
+afterEach(() => {
+  cleanup();
+  unseed();
+  unseed = () => {};
+  usePlannerStore.setState({ addTask: originalAddTask });
+  useChatStore.setState({ send: originalSend });
+  useProposalStore.getState().dismiss();
+});
+
+/* ── helpers ─────────────────────────────────────────────────────────── */
+
+const scopeFor = (variant: 'dock' | 'launcher') =>
+  document.querySelector(`[data-omnibar-variant="${variant}"]`) as HTMLElement;
+const inputIn = (variant: 'dock' | 'launcher') =>
+  scopeFor(variant).querySelector('[data-testid="omnibar-input"]') as HTMLInputElement;
+
+function renderDock(text?: string) {
+  render(<Omnibar variant="dock" />);
+  const input = inputIn('dock');
+  fireEvent.focus(input);
+  if (text !== undefined) fireEvent.change(input, { target: { value: text } });
+  return input;
+}
+
+const askRow = () => document.querySelector('[data-value="action-chat"]');
+
+function ShortcutHarness() {
+  useCommandShortcuts(desktopCtx);
+  return null;
+}
+
+/** Dispatches ⌘] at the window and reports whether anything claimed it. */
+function pressToggleChat(): boolean {
+  const event = new KeyboardEvent('keydown', {
+    key: ']',
+    metaKey: true,
+    bubbles: true,
+    cancelable: true,
+  });
+  window.dispatchEvent(event);
+  window.dispatchEvent(new KeyboardEvent('keyup', { key: ']', bubbles: true }));
+  return event.defaultPrevented;
+}
+
+/**
+ * The SidebarDock capsule's direct children, top to bottom, by what each one
+ * is. Structure rather than a testid, because the regression this guards (an
+ * unconditional `mb-3` wrapper around a conditional card) leaves the testid
+ * absent and still opens a 12px gap above the user row. The relay ground is a
+ * feature flag (RELAY.dock), so it is dropped rather than required.
+ */
+function capsuleRows(): string[] {
+  const capsule = document.querySelector('[data-dock-surface]');
+  if (!capsule) throw new Error('SidebarDock capsule not rendered');
+  return Array.from(capsule.children)
+    .map((el) => {
+      if (el.getAttribute('aria-hidden') === 'true' && el.classList.contains('pointer-events-none')) {
+        return 'relay';
+      }
+      if (el.getAttribute('data-testid') === 'dock-catch-up-host') return 'catch-up';
+      if (el.querySelector('[aria-label="User menu"]')) return 'user';
+      if (el.querySelector('[data-omnibar-variant="dock"]')) return 'omnibar';
+      return `other: <${el.tagName.toLowerCase()} class="${el.className}">`;
+    })
+    .filter((row) => row !== 'relay');
+}
+
+/* ── no chat ─────────────────────────────────────────────────────────── */
+
+describe.each(NO_CHAT)('with no chat (%s)', (_label, state) => {
+  beforeEach(() => seed(state));
+
+  it('offers no Ask row in the dock', () => {
+    renderDock('foo');
+    expect(askRow()).toBeNull();
+    expect(scopeFor('dock').textContent).not.toMatch(/\bAsk (AI|OpenClaw)\b/);
+    // The add row is still there: the panel is open, the absence is real.
+    expect(screen.getByTestId('omnibar-add-row')).toBeInTheDocument();
+  });
+
+  it('drops the `? chat` hint from the resting panel', () => {
+    renderDock();
+    expect(screen.getByText(/commands/)).toBeInTheDocument();
+    expect(screen.queryByText(/\? chat/)).toBeNull();
+  });
+
+  it('treats `?` as text, not as a chat prefix', () => {
+    renderDock('?foo');
+    expect(screen.queryByText('Chat')).toBeNull();
+    expect(askRow()).toBeNull();
+    // Free text: it can still be filed, prefix and all.
+    expect(screen.getByTestId('omnibar-add-row')).toHaveTextContent('“?foo”');
+  });
+
+  it('keeps the launcher from offering to ask, in its placeholder and its footer', () => {
+    render(<Omnibar variant="launcher" />);
+    expect(inputIn('launcher').getAttribute('placeholder')).toBe(
+      'Search, add a task, or run a command…'
+    );
+    const footer = screen.getByTestId('omnibar-launcher-footer');
+    expect(footer.textContent).not.toMatch(/chat|\bAI\b|OpenClaw|Beacon/);
+    expect(footer).toHaveTextContent('↵ open');
+    expect(askRow()).toBeNull();
+  });
+
+  it('consumes ⌘Enter without opening chat or filing the text as a task', () => {
+    const input = renderDock('plan my day');
+    const notPrevented = fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+
+    // Consumed: had it fallen through, cmdk's root Enter would have run the
+    // highlighted Add row and filed "plan my day" as a task.
+    expect(notPrevented).toBe(false);
+    expect(addTask).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled();
+    expect(useSidebarStore.getState().chatExpanded).toBe(false);
+    // The text stays where it was: nothing happened to it.
+    expect(input.value).toBe('plan my day');
+  });
+
+  it('drops the AI rows from the palette, and keeps catch-up', () => {
+    const ids = matchCommands('', desktopCtx).map((r) => r.command.id);
+    for (const id of CHAT_COMMANDS) expect(ids).not.toContain(id);
+    expect(ids).toContain('rituals.catchUp');
+    expect(ids).toContain('rituals.eod');
+    // Not reachable by name either, old or new.
+    for (const q of ['ask', 'chat', 'beacon', 'plan my day']) {
+      const hits = matchCommands(q, desktopCtx).map((r) => r.command.id);
+      for (const id of CHAT_COMMANDS) expect(hits).not.toContain(id);
+    }
+  });
+
+  it('makes ⌘] inert, and still keeps it from the browser', () => {
+    useSidebarStore.setState({ leftSidebarOpen: false });
+    render(<ShortcutHarness />);
+    // Consumed: ⌘] is Forward in every macOS browser. Handed through, it would
+    // leave the planner whenever there is forward history (/ → /settings →
+    // Back), and it would do that on every page load until the gate's read
+    // lands, for users who do have AI as well.
+    expect(pressToggleChat()).toBe(true);
+    // And inert: nothing opened, nothing toggled.
+    expect(useSidebarStore.getState().chatExpanded).toBe(false);
+    expect(useSidebarStore.getState().leftSidebarOpen).toBe(false);
+  });
+
+  it('mounts no chat panel, even with chat left expanded from an earlier session', () => {
+    useSidebarStore.setState({ chatExpanded: true });
+    render(<SidebarDock />);
+    expect(screen.queryByLabelText('Toggle AI assistant')).toBeNull();
+    expect(screen.queryByPlaceholderText(/Ask anything|Message/)).toBeNull();
+  });
+});
+
+/* ── catch-up without chat ───────────────────────────────────────────── */
+
+describe('catch-up when chat is hidden', () => {
+  it.each([
+    ['unknown', undefined],
+    ['error', { phase: 'error' } as SeedAI],
+    ['nothing connected', NOTHING_CONNECTED],
+  ])('renders its card in the dock while the gate is %s', (_label, state) => {
+    seed(state);
+    render(<SidebarDock />);
+    expect(screen.queryByTestId('proposal-card')).toBeNull();
+
+    act(() => {
+      void useProposalStore.getState().request('catch-up');
+    });
+
+    const host = screen.getByTestId('dock-catch-up-host');
+    expect(host).toContainElement(screen.getByTestId('proposal-card'));
+    // A direct child of the capsule, right above the user row: the chat slot.
+    expect(capsuleRows()).toEqual(['catch-up', 'user', 'omnibar']);
+    // A capped plain box, because ScrollArea ignores max-h.
+    expect(host.className).toMatch(/max-h-\[50vh\]/);
+    expect(host.className).toMatch(/overflow-y-auto/);
+  });
+
+  it.each([
+    ['unknown', undefined],
+    ['error', { phase: 'error' } as SeedAI],
+    ['nothing connected', NOTHING_CONNECTED],
+  ])('takes no space at all while there is nothing to show (%s)', (_label, state) => {
+    seed(state);
+    useSidebarStore.setState({ chatExpanded: true });
+    render(<SidebarDock />);
+    expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+    expect(screen.queryByTestId('proposal-card')).toBeNull();
+    // Not even an empty wrapper: the user row is the capsule's first row,
+    // exactly as in a dock that never had a catch-up slot.
+    expect(capsuleRows()).toEqual(['user', 'omnibar']);
+  });
+
+  it('leaves an item panel’s card to the item panel', () => {
+    seed(NOTHING_CONNECTED);
+    render(<SidebarDock />);
+    act(() => {
+      useProposalStore.setState({
+        status: 'loading',
+        lastRequest: { intent: 'breakdown', itemId: 'abc', surface: 'item:abc' },
+      });
+    });
+    expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+    expect(capsuleRows()).toEqual(['user', 'omnibar']);
+  });
+
+  it('opens the sidebar for the command, since there is no chat to open', () => {
+    seed(NOTHING_CONNECTED);
+    useSidebarStore.setState({ leftSidebarOpen: false });
+    const catchUp = STATIC_COMMANDS.find((c) => c.id === 'rituals.catchUp')!;
+    act(() => catchUp.run(desktopCtx));
+
+    expect(useSidebarStore.getState().leftSidebarOpen).toBe(true);
+    expect(useSidebarStore.getState().chatExpanded).toBe(false);
+    expect(useProposalStore.getState().lastRequest?.intent).toBe('catch-up');
+  });
+
+  /** A catch-up card with lines to review, as the command draws over an overdue planner. */
+  const REVIEW = {
+    id: 'catch-up-1',
+    summary: 'Three things slipped',
+    operations: ['Call the bank', 'File the receipts', 'Water the plants'].map((title) => ({
+      kind: 'create' as const,
+      itemType: 'task',
+      title,
+    })),
+    createdAt: '2026-10-01T00:00:00.000Z',
+  };
+
+  it.each([
+    ['unknown', undefined],
+    ['error', { phase: 'error' } as SeedAI],
+  ])(
+    'keeps the card in the dock when the gate opens mid-review (from %s)',
+    (_label, state) => {
+      seed(state);
+      render(<SidebarDock />);
+      const catchUp = STATIC_COMMANDS.find((c) => c.id === 'rituals.catchUp')!;
+      act(() => catchUp.run(desktopCtx));
+      act(() => {
+        useProposalStore.setState({ status: 'ready', proposal: REVIEW, error: null });
+      });
+      // The user starts reviewing: one line dropped.
+      fireEvent.click(screen.getAllByTestId('proposal-line')[1]);
+      expect(useSidebarStore.getState().chatExpanded).toBe(false);
+
+      // The status read answers (the first one, or a failed one retried on a
+      // tab return): a working model, so chat is now the card's home.
+      act(() => seed(CONNECTED_MODEL));
+      expect(getAICapabilities().canChat).toBe(true);
+
+      // Still in the dock, still once, and the SAME card: the dropped line is
+      // still dropped, which a remount would have lost.
+      const host = screen.getByTestId('dock-catch-up-host');
+      expect(within(host).getByTestId('proposal-card')).toBeInTheDocument();
+      expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+      expect(screen.getAllByTestId('proposal-line')[1]).toHaveAttribute('data-dropped', 'true');
+
+      // Opening chat hands the card over; it never shows twice.
+      act(() => useSidebarStore.getState().setChatExpanded(true));
+      expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+      expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+    }
+  );
+
+  it('lets the latch go once the card is done', () => {
+    seed({ phase: 'error' });
+    render(<SidebarDock />);
+    const catchUp = STATIC_COMMANDS.find((c) => c.id === 'rituals.catchUp')!;
+    act(() => catchUp.run(desktopCtx));
+    act(() => seed(CONNECTED_MODEL));
+    expect(screen.getByTestId('dock-catch-up-host')).toBeInTheDocument();
+
+    act(() => useProposalStore.getState().dismiss());
+    expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+
+    // The next card has chat to go to, so it goes there, not to the dock.
+    act(() => catchUp.run(desktopCtx));
+    expect(useSidebarStore.getState().chatExpanded).toBe(true);
+    expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+  });
+
+  it('uses the chat panel instead when chat is there, so the card never shows twice', () => {
+    seed(CONNECTED_MODEL);
+    useSidebarStore.setState({ leftSidebarOpen: false });
+    render(<SidebarDock />);
+    const catchUp = STATIC_COMMANDS.find((c) => c.id === 'rituals.catchUp')!;
+    act(() => catchUp.run(desktopCtx));
+
+    expect(useSidebarStore.getState().chatExpanded).toBe(true);
+    expect(screen.queryByTestId('dock-catch-up-host')).toBeNull();
+    expect(screen.getAllByTestId('proposal-card')).toHaveLength(1);
+  });
+});
+
+describe('proposalCardShowsOn', () => {
+  it("agrees with ProposalCard's own render rule for every status and surface", () => {
+    const statuses: ProposalStatus[] = ['idle', 'loading', 'ready', 'empty', 'error'];
+    const requests: Array<{ surface: ProposalSurface } | null> = [
+      null,
+      { surface: 'chat' },
+      { surface: 'item:abc' },
+    ];
+    const mounts: ProposalSurface[] = ['chat', 'item:abc'];
+    const proposal = {
+      id: 'p1',
+      summary: 'A lighter Tuesday',
+      operations: [{ kind: 'create' as const, itemType: 'task', title: 'Stretch' }],
+      createdAt: '2026-10-01T00:00:00.000Z',
+    };
+
+    let checked = 0;
+    for (const status of statuses) {
+      for (const req of requests) {
+        for (const surface of mounts) {
+          const state = {
+            status,
+            lastRequest: req ? { intent: 'ask' as const, ...req } : null,
+            proposal: status === 'ready' ? proposal : null,
+            error: status === 'error' ? 'Something went wrong.' : null,
+            emptyMessage: status === 'empty' ? 'Nothing to do.' : null,
+          };
+          useProposalStore.setState(state);
+          const { unmount } = render(<ProposalCard surface={surface} />);
+          const rendered = screen.queryByTestId('proposal-card') !== null;
+          expect(
+            rendered,
+            `${status} × ${req?.surface ?? 'no request'} on ${surface}`
+          ).toBe(proposalCardShowsOn(state, surface));
+          unmount();
+          checked += 1;
+        }
+      }
+    }
+    expect(checked).toBe(statuses.length * requests.length * mounts.length);
+  });
+});
+
+/* ── with chat ───────────────────────────────────────────────────────── */
+
+describe('with a connected model', () => {
+  beforeEach(() => seed(CONNECTED_MODEL));
+
+  it('offers "Ask AI" in the dock, for free text and for `?`', () => {
+    renderDock('foo');
+    expect(askRow()).toHaveTextContent('Ask AI “foo”');
+
+    fireEvent.change(inputIn('dock'), { target: { value: '?what now' } });
+    expect(screen.getByText('Chat')).toBeInTheDocument();
+    expect(askRow()).toHaveTextContent('Ask AI “what now”');
+  });
+
+  it('advertises `? chat` on focus', () => {
+    renderDock();
+    expect(screen.getByText(/\? chat/)).toBeInTheDocument();
+  });
+
+  it('offers to ask in the launcher, in its placeholder and its footer', () => {
+    render(<Omnibar variant="launcher" />);
+    expect(inputIn('launcher').getAttribute('placeholder')).toBe(
+      'Search, add a task, run a command, or ask AI…'
+    );
+    const footer = screen.getByTestId('omnibar-launcher-footer');
+    expect(footer).toHaveTextContent('chat');
+    expect(footer.textContent).toMatch(/↵ AI/);
+  });
+
+  it('sends ⌘Enter to the chat and opens it', () => {
+    const input = renderDock('plan my day');
+    fireEvent.keyDown(input, { key: 'Enter', metaKey: true });
+
+    expect(send).toHaveBeenCalledWith('plan my day');
+    expect(addTask).not.toHaveBeenCalled();
+    expect(useSidebarStore.getState().chatExpanded).toBe(true);
+  });
+
+  it('files a plain Enter as a task, as it always has', () => {
+    // The control for the ⌘Enter cases: this harness DOES see an add when one
+    // happens, so "addTask was not called" above is a real absence.
+    const input = renderDock('plan my day');
+    fireEvent.keyDown(input, { key: 'Enter' });
+    expect(addTask).toHaveBeenCalledWith({ title: 'plan my day' });
+  });
+
+  it('lists the AI rows in the palette, named for no one in particular', () => {
+    const rows = matchCommands('', desktopCtx);
+    const ids = rows.map((r) => r.command.id);
+    for (const id of CHAT_COMMANDS) expect(ids).toContain(id);
+    const ask = rows.find((r) => r.command.id === 'rituals.chat')!;
+    expect(ask.command.label).toBe('Ask AI');
+    // The old name still finds it, as an alias.
+    expect(matchCommands('beacon', desktopCtx).map((r) => r.command.id)).toContain('rituals.chat');
+  });
+
+  it('toggles the chat panel with ⌘]', () => {
+    render(<ShortcutHarness />);
+    expect(pressToggleChat()).toBe(true);
+    expect(useSidebarStore.getState().chatExpanded).toBe(true);
+  });
+
+  it('mounts the chat panel, headed "AI"', () => {
+    useSidebarStore.setState({ chatExpanded: true });
+    render(<SidebarDock />);
+    const header = screen.getByLabelText('Toggle AI assistant');
+    expect(header).toHaveTextContent(/^AI$/);
+    expect(screen.getByPlaceholderText('Ask anything…')).toBeInTheDocument();
+  });
+});
+
+describe('with OpenClaw on the plugin path', () => {
+  beforeEach(() => seed(OPENCLAW_PLUGIN));
+
+  it('names OpenClaw everywhere chat is offered', () => {
+    renderDock('foo');
+    expect(askRow()).toHaveTextContent('Ask OpenClaw “foo”');
+    cleanup();
+
+    render(<Omnibar variant="launcher" />);
+    expect(inputIn('launcher').getAttribute('placeholder')).toBe(
+      'Search, add a task, run a command, or ask OpenClaw…'
+    );
+    expect(screen.getByTestId('omnibar-launcher-footer').textContent).toMatch(/↵ OpenClaw/);
+  });
+
+  it('greets with openers, and offers no plan it cannot make', () => {
+    useSidebarStore.setState({ chatExpanded: true });
+    render(<SidebarDock />);
+
+    expect(screen.getByLabelText('Toggle AI assistant')).toHaveTextContent('OpenClaw · kirby-1');
+    expect(screen.getByTestId('chat-openers').querySelectorAll('button').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('chat-make-plan')).toBeNull();
+    expect(screen.queryByText('Turn this into a plan')).toBeNull();
+  });
+});
+
+/* ── constant across states ──────────────────────────────────────────── */
+
+describe('what does not move with the gate', () => {
+  it('keeps the dock placeholder identical in every state', () => {
+    const seen = new Set<string>();
+    for (const [, state] of [
+      ...NO_CHAT,
+      ['model', CONNECTED_MODEL] as [string, SeedAI],
+      ['openclaw', OPENCLAW_PLUGIN] as [string, SeedAI],
+    ]) {
+      seed(state);
+      const { unmount } = render(<Omnibar variant="dock" />);
+      seen.add(inputIn('dock').getAttribute('placeholder') ?? '');
+      unmount();
+    }
+    expect([...seen]).toEqual(['Add a task or search…']);
+  });
+
+  it('heads the rituals group "Rituals", with or without chat', () => {
+    for (const state of [NOTHING_CONNECTED, CONNECTED_MODEL]) {
+      seed(state);
+      const { unmount } = render(<Omnibar variant="launcher" initialQuery="/" />);
+      expect(screen.getByText('Rituals')).toBeInTheDocument();
+      expect(screen.queryByText(/Rituals &/)).toBeNull();
+      expect(screen.getByText('Pick things back up')).toBeInTheDocument();
+      unmount();
+    }
+  });
+});

@@ -67,6 +67,8 @@ test.describe('Settings page', () => {
     // …and arriving directly works the same way.
     await gotoSettings(page, 'beacon');
     await expect(row(page, 'beacon.provider')).toBeVisible();
+    // The AI pane opens with the model connection, above its rows.
+    await expect(page.getByTestId('model-connection-panel')).toBeVisible();
   });
 
   test('search filters across panes, counts out loud, and keeps rows live', async ({ page }) => {

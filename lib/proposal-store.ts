@@ -6,7 +6,8 @@ import { usePlannerStore } from './planner-store';
 import { inactiveItemIdsOn } from './active';
 import { milestoneItemIds } from './goals';
 import { useAISettingsStore } from './ai-settings-store';
-import { resolveAICapabilities } from './ai-registry';
+import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
+import type { ChatErrorCode } from './ai-types';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
 import type { Proposal } from './planner-types';
 
@@ -232,11 +233,15 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
    * second copy of the fetch that will one day be updated alone.
    */
   async function askModel(promptForModel: string, itemId: string | undefined, token: number): Promise<void> {
-    const { provider } = useAISettingsStore.getState();
-    if (!resolveAICapabilities(provider).canPropose) {
+    // Who proposes is the gate's call (lib/ai-registry.ts): the connected
+    // model, or an OpenClaw GATEWAY. The plugin path has no structured
+    // proposals, and the route never reroutes an OpenClaw user's planner to a
+    // model they did not pick, so there it is null too.
+    const { proposeTarget } = getAICapabilities();
+    if (!proposeTarget) {
       settle(token, {
         status: 'error',
-        error: 'Connect an AI assistant in Settings to ask for a plan.',
+        error: 'Connect a model in Settings to ask for a plan.',
       });
       return;
     }
@@ -250,24 +255,36 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       const res = await fetch('/api/ai/propose', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        // A target and the user's own words. The key, the model and the
+        // system prompt are the server's; this body never carries them.
         body: JSON.stringify({
           prompt: promptForModel,
-          provider,
-          apiKey: useAISettingsStore.getState().apiKey,
-          model: useAISettingsStore.getState().model,
+          target: proposeTarget,
           // Breakdown gets its own system prompt: "propose a plan across the
           // week" and "propose the steps inside this one thing" want opposite
           // instincts, and one prompt trying to do both does neither well.
           mode: itemId ? 'breakdown' : 'plan',
           itemContext: itemId ? describeForBreakdown(ctx, itemId) : buildProposalContext(ctx),
           todayStr: ctx.todayStr,
+          // Appended server-side to the built-in prompt, never in place of it.
+          customInstructions: useAISettingsStore.getState().systemPrompt,
         }),
       });
       // A 500 with no body — a crashed or platform-killed function — makes
       // res.json() throw, and an unhandled SyntaxError would reach the card as
       // "Unexpected end of JSON input".
       const data = await res.json().catch(() => ({}) as Record<string, unknown>);
-      if (!res.ok || data.error) throw new Error((data.error as string) ?? `HTTP ${res.status}`);
+      if (!res.ok || data.error) {
+        // The code says WHY (a rejected key, a connection gone); the gate
+        // re-checks on the ones that change what can answer.
+        if (typeof data.code === 'string' && data.code) {
+          useAIConnectionStore.getState().noteCallFailure(data.code as ChatErrorCode);
+        }
+        // `error` is the route's own copy, never a provider's text.
+        throw new Error(
+          typeof data.error === 'string' && data.error ? data.error : `HTTP ${res.status}`
+        );
+      }
       if (!data.proposal) {
         settle(token, {
           status: 'empty',
@@ -360,6 +377,11 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // of the planner, so a second call returns the same items in the same
       // order. Ask and breakdown both go to a model and can genuinely differ.
       if (!lastRequest || lastRequest.intent === 'catch-up') return;
+      // Nothing can propose any more (the model was disconnected, or chat moved
+      // to OpenClaw's plugin, which has no structured proposals). A retry would
+      // only swap the card being read for "Connect a model" and spend the
+      // rejection it would have carried, so the card stays exactly as it is.
+      if (!getAICapabilities().proposeTarget) return;
 
       const summary = proposal?.summary?.trim();
       // Deduped: a model that keeps offering the same plan would otherwise fill

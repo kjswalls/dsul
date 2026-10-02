@@ -29,8 +29,17 @@ import {
   subPanesOf,
   displayValue,
   valueLabels,
+  CONNECT_PANEL_RECORD_IDS,
+  SHORTCUT_RECORDS,
   type SettingCtx,
 } from '@/lib/settings/manifest';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import {
+  seedAI,
+  CONNECTED_MODEL,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+} from './helpers/ai-fixtures';
 import { OFFICIAL_EXTENSIONS } from '@/lib/extension-registry';
 import { EXTENSION_SETTINGS } from '@/lib/extension-settings';
 import {
@@ -363,18 +372,22 @@ describe('the credential boundary', () => {
      door builds its own hand-written record — so changing one of these `read`s
      to return the token passed every existing test in both. */
 
-  const generatedSecrets = SETTINGS.filter(
-    (r) => r.textVariant === 'secret' && r.id.startsWith('extensions.')
-  );
+  // EVERY secret record, not just the generated ones. The old filter carved
+  // out `beacon.apiKey`, a device-local key the user could read back; that key
+  // is gone from the browser (it is sealed server-side now), so nothing earns
+  // the carve-out and the gateway token is held to the same contract.
+  const generatedSecrets = SETTINGS.filter((r) => r.textVariant === 'secret');
 
-  it('covers every credential every extension declares', () => {
+  it('covers every credential every extension declares, plus the gateway token', () => {
     // Anchors the tests below to the catalog rather than to a number: a new
     // channel with a new token is covered the day it is added.
     const declared = EXTENSION_SETTINGS.flatMap((spec) =>
       spec.secrets.map((field) => `extensions.${spec.slug}.${field.key}`)
     );
     expect(declared.length).toBeGreaterThan(0);
-    expect(generatedSecrets.map((r) => r.id).sort()).toEqual([...declared].sort());
+    expect(generatedSecrets.map((r) => r.id).sort()).toEqual(
+      [...declared, 'beacon.gatewayToken'].sort()
+    );
   });
 
   it('never reads a value back — read() is empty whatever is stored', () => {
@@ -397,7 +410,213 @@ describe('the credential boundary', () => {
   });
 });
 
+describe('the model key never reaches a record', () => {
+  /* The model key is typed into the Connect-a-model panel, sent once, sealed
+     server-side and never sent back. `beacon.apiKey` survives as an INFO record
+     so search still finds it (its hit's "Set up" opens the panel) and deep
+     links still land on the panel, and its read() is a status word. These pin that it can never become the key again. */
+
+  const SENTINEL = 'sk-test-SENTINEL-9876';
+  let cleanup: (() => void) | null = null;
+  afterEach(() => {
+    cleanup?.();
+    cleanup = null;
+    vi.unstubAllGlobals();
+  });
+
+  it('beacon.apiKey and beacon.model are info rows the panel owns', () => {
+    for (const id of ['beacon.apiKey', 'beacon.model']) {
+      const record = settingById(id)!;
+      expect(record, id).toBeDefined();
+      expect(record.control, id).toBe('info');
+      expect(record.advanced, id).toBeFalsy();
+      expect(record.textVariant, id).toBeUndefined();
+      expect(record.placeholder, id).toBeUndefined();
+      expect(CONNECT_PANEL_RECORD_IDS.has(id), id).toBe(true);
+    }
+    // In the pane's own records (search and the empty-room test read these)…
+    const ids = paneRows('beacon').rows.map((r) => r.id);
+    expect(ids).toEqual(expect.arrayContaining(['beacon.apiKey', 'beacon.model']));
+    // …and drawn by the panel, not as flat rows: the shell drops exactly these.
+    const flat = paneRows('beacon').rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id));
+    expect(flat.map((r) => r.id)).toEqual(['beacon.provider', 'beacon.instructions']);
+  });
+
+  it('beacon.apiKey reads only a status word, in every gate state', () => {
+    const allowed = new Set([
+      'Checking…',
+      'Couldn’t check',
+      'Not available on this server',
+      'Not connected',
+      'Stopped working',
+      'Saved (OpenAI)',
+      'Signed in (OpenRouter)',
+    ]);
+    const record = settingById('beacon.apiKey')!;
+    const cases: [Parameters<typeof seedAI>[0], string][] = [
+      [undefined, 'Checking…'],
+      [{ phase: 'error' }, 'Couldn’t check'],
+      [{ ...NOTHING_CONNECTED, available: false }, 'Not available on this server'],
+      [NOTHING_CONNECTED, 'Not connected'],
+      [CONNECTED_MODEL, 'Saved (OpenAI)'],
+      [{ ...CONNECTED_MODEL, model: { provider: 'openrouter', authMethod: 'oauth' } }, 'Signed in (OpenRouter)'],
+      [{ ...CONNECTED_MODEL, model: { status: 'failing', problem: 'key_rejected' } }, 'Stopped working'],
+    ];
+    for (const [seed, expected] of cases) {
+      cleanup?.();
+      cleanup = seedAI(seed);
+      const value = record.read(ctx);
+      expect(value, JSON.stringify(seed)).toBe(expected);
+      expect(allowed.has(String(value))).toBe(true);
+    }
+  });
+
+  it('no record reads back a key that was just connected', async () => {
+    cleanup = seedAI(NOTHING_CONNECTED);
+    const fetchMock = vi.fn(async () =>
+      new Response(
+        JSON.stringify({
+          connection: {
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            baseUrl: null,
+            authMethod: 'key',
+            status: 'ok',
+            problem: null,
+            checkedAt: '2026-10-01T00:00:00.000Z',
+          },
+          models: [{ id: 'gpt-4o-mini', label: 'gpt-4o-mini' }],
+          listed: true,
+        }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } }
+      )
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await useAIConnectionStore.getState().connect({ provider: 'openai', apiKey: SENTINEL });
+    expect(result).toEqual({ ok: true });
+    // The key did go out, once, in the PUT body…
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    // …and nothing in the store or the manifest can answer with it.
+    expect(JSON.stringify(useAIConnectionStore.getState())).not.toContain('SENTINEL');
+    for (const record of SETTINGS) {
+      let value: string | boolean = '';
+      try {
+        value = record.read(ctx);
+      } catch {
+        continue;
+      }
+      const shown = `${String(value)} ${displayValue(record, value)}`;
+      expect(shown, record.id).not.toContain('SENTINEL');
+      expect(shown, record.id).not.toContain('9876');
+      const placeholder =
+        typeof record.placeholder === 'function' ? record.placeholder(ctx) : record.placeholder;
+      expect(placeholder ?? '', record.id).not.toContain('SENTINEL');
+    }
+    expect(settingById('beacon.apiKey')!.read(ctx)).toBe('Saved (OpenAI)');
+    expect(settingById('beacon.model')!.read(ctx)).toBe('gpt-4o-mini');
+  });
+
+  it('no relabelled beacon.* record repeats its own label as a keyword', () => {
+    // The structural rule above, named for these four: `beacon.apiKey` is
+    // labelled "API key" now, and 'api key' was one of its old keywords.
+    expect(settingById('beacon.apiKey')!.keywords).not.toContain('api key');
+    for (const id of ['beacon.provider', 'beacon.instructions', 'beacon.apiKey', 'beacon.model']) {
+      const record = settingById(id)!;
+      expect(record.keywords, id).not.toContain(record.label.toLowerCase());
+    }
+  });
+});
+
+describe('the AI pane', () => {
+  let cleanup: (() => void) | null = null;
+  afterEach(() => {
+    cleanup?.();
+    cleanup = null;
+  });
+
+  it('is called AI, keeps its permanent id, and never says Beacon', () => {
+    const pane = paneById('beacon')!;
+    expect(pane.name).toBe('AI');
+    expect(pane.blurb).toBe('Connect a model and choose who answers.');
+    for (const record of settingsForPane('beacon')) {
+      const copy = [
+        record.label,
+        record.description ?? '',
+        ...(record.options ?? []).map((o) => o.label),
+      ].join(' ');
+      expect(copy, record.id).not.toMatch(/\bBeacon\b/);
+    }
+  });
+
+  it('"Who answers in chat" offers the three choices and waits for the gate', () => {
+    const record = settingById('beacon.provider')!;
+    expect(record.label).toBe('Who answers in chat');
+    expect(record.options!.map((o) => [o.value, o.label])).toEqual([
+      ['model', 'Your model'],
+      ['openclaw', 'OpenClaw'],
+      ['none', 'Off'],
+    ]);
+    expect(record.defaultValue).toBe('model');
+    expect(record.keywords).toContain('beacon');
+    expect(record.advanced).toBeFalsy();
+
+    cleanup = seedAI();
+    expect(record.pending!(ctx)).toBe(true);
+    expect(record.unavailable!(ctx)).toBeNull();
+
+    cleanup();
+    cleanup = seedAI(NOTHING_CONNECTED);
+    expect(record.pending!(ctx)).toBe(false);
+    expect(record.unavailable!(ctx)).toBe('Connect a model or OpenClaw first.');
+
+    cleanup();
+    cleanup = seedAI(CONNECTED_MODEL);
+    expect(record.unavailable!(ctx)).toBeNull();
+
+    cleanup();
+    cleanup = seedAI(OPENCLAW_PLUGIN);
+    expect(record.unavailable!(ctx)).toBeNull();
+    expect(record.read(ctx)).toBe('openclaw');
+  });
+
+  it('the gateway rows are no longer gated on who answers', () => {
+    // Choosing OpenClaw first, then configuring the gateway that makes it
+    // usable, was a chicken-and-egg.
+    cleanup = seedAI({ ...NOTHING_CONNECTED, choice: 'model' });
+    for (const id of ['beacon.gatewayUrl', 'beacon.gatewayToken']) {
+      const reason = settingById(id)!.unavailable?.(ctx) ?? null;
+      expect(reason === null || /database update/.test(reason), `${id}: ${reason}`).toBe(true);
+    }
+  });
+
+  it('the ⌘] row says when it works, and never holds its recorder back', () => {
+    const record = SHORTCUT_RECORDS.find((r) => r.shortcutId === 'toggle_right_sidebar')!;
+    expect(record).toBeDefined();
+    // Said in the description, which is true in every state and locks nothing.
+    expect(record.description).toContain('Works while a model or OpenClaw is connected.');
+
+    // No binding is ever unavailable or pending: either one disables the row
+    // (no recorder, no reset) while its chord still counts as taken in every
+    // other row's conflict check. With nothing connected, that held ⌘] (or the
+    // user's own chord for it) hostage. tests/unit/shortcut-records.test.tsx
+    // renders it.
+    for (const other of SHORTCUT_RECORDS) {
+      expect(other.unavailable, other.id).toBeUndefined();
+      expect(other.pending, other.id).toBeUndefined();
+    }
+  });
+});
+
 describe('settings search', () => {
+  it('finds the model connection by the words people use for it', () => {
+    for (const term of ['api key', 'openai', 'claude', 'gemini', 'openrouter', 'byok']) {
+      const hits = searchSettings(term, ctx).settings.map((h) => h.record.id);
+      expect(hits, term).toContain('beacon.apiKey');
+    }
+    expect(searchSettings('model', ctx).settings.map((h) => h.record.id)).toContain('beacon.model');
+  });
+
   it('splits and lowercases the query — scoreText only lowercases the text', () => {
     expect(queryTerms('  Week  Start ')).toEqual(['week', 'start']);
   });
@@ -681,5 +900,38 @@ describe('the push row in the desktop app', () => {
     // with no push state to give still gets the answer it always got.
     installBridge();
     expect(record.unavailable?.(ctx)).toBeNull();
+  });
+});
+
+describe('settings manifest — layout and its style', () => {
+  // userId null: the writes stop at the store, never reaching saveSettings.
+  const local: SettingCtx = { ...ctx, userId: null };
+  const layout = () => settingById('look.layout')!;
+  const style = () => settingById('look.layoutStyle')!;
+
+  afterEach(async () => {
+    const { useLookStore } = await import('@/lib/look-store');
+    useLookStore.getState().setLayout('classic');
+  });
+
+  it('Layout lists one entry per family, and Style the styles', () => {
+    expect(layout().options?.map((o) => o.value)).toEqual(['classic', 'console', 'notebook', 'notepad']);
+    expect(style().options?.map((o) => o.label)).toEqual(['Quiet', 'Markdown', 'Retro']);
+  });
+
+  it('a style is kept when its family is picked again, and dropped for another family', async () => {
+    const { useLookStore } = await import('@/lib/look-store');
+    layout().write('notepad', local);
+    expect(style().unavailable?.(local)).toBeNull();
+    style().write('notepad-retro', local);
+    expect(useLookStore.getState().layout).toBe('notepad-retro');
+    expect(layout().read(local)).toBe('notepad');
+
+    layout().write('notepad', local);
+    expect(useLookStore.getState().layout).toBe('notepad-retro');
+
+    layout().write('console', local);
+    expect(useLookStore.getState().layout).toBe('console');
+    expect(style().unavailable?.(local)).toMatch(/Only Notepad/);
   });
 });

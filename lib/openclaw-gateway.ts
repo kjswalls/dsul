@@ -34,28 +34,65 @@ export interface GatewayConfig {
 const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, '')
 
 /**
+ * The gateway settings could not be READ, as opposed to not being there.
+ *
+ * The difference matters to the user: "not configured" sends them to Settings
+ * to set up something they already set up, while a failed read is a moment to
+ * try again. Carries no database text: an error's details can echo the row,
+ * and `user_secrets` holds the operator token.
+ */
+export class GatewayConfigReadError extends Error {
+  constructor() {
+    super('Could not read the OpenClaw gateway settings')
+    this.name = 'GatewayConfigReadError'
+    Object.setPrototypeOf(this, new.target.prototype)
+  }
+}
+
+/** The table or column is not there yet (a build ahead of its migration): nothing configured. */
+const MISSING_SCHEMA_CODES = new Set(['42P01', 'PGRST205', '42703', 'PGRST204'])
+
+/**
  * Resolve a user's gateway config, or null when they have not set one up.
  *
  * Uses the service client because `user_secrets` is deliberately unreachable
  * with a user JWT (migration 012) — callers must have already authenticated the
  * user through their session before passing a userId in here.
+ *
+ * A missing row, a missing value or a missing schema is null. Any other failure
+ * to read either table (or to build the service client at all) throws
+ * `GatewayConfigReadError`, never the database's own error.
  */
 export async function getGatewayConfig(userId: string): Promise<GatewayConfig | null> {
-  const service = createServiceClient()
+  type Read<T> = { data: T | null; error: { code?: string } | null }
+  let settingsRes: Read<{ openclaw_gateway_url?: string | null; openclaw_agent_id?: string | null }>
+  let secretsRes: Read<{ openclaw_gateway_token?: string | null }>
+  try {
+    const service = createServiceClient()
+    ;[settingsRes, secretsRes] = await Promise.all([
+      service
+        .from('user_settings')
+        .select('openclaw_gateway_url, openclaw_agent_id')
+        .eq('user_id', userId)
+        .maybeSingle(),
+      service
+        .from('user_secrets')
+        .select('openclaw_gateway_token')
+        .eq('user_id', userId)
+        .maybeSingle(),
+    ])
+  } catch {
+    throw new GatewayConfigReadError()
+  }
 
-  const [{ data: settings }, { data: secrets }] = await Promise.all([
-    service
-      .from('user_settings')
-      .select('openclaw_gateway_url, openclaw_agent_id')
-      .eq('user_id', userId)
-      .maybeSingle(),
-    service
-      .from('user_secrets')
-      .select('openclaw_gateway_token')
-      .eq('user_id', userId)
-      .maybeSingle(),
-  ])
+  const errors = [settingsRes.error, secretsRes.error].filter(
+    (e): e is { code?: string } => e !== null && e !== undefined
+  )
+  if (errors.some((e) => !MISSING_SCHEMA_CODES.has(e.code ?? ''))) throw new GatewayConfigReadError()
+  if (errors.length > 0) return null
 
+  const settings = settingsRes.data
+  const secrets = secretsRes.data
   const baseUrl = settings?.openclaw_gateway_url
   const token = secrets?.openclaw_gateway_token
   if (!baseUrl || !token) return null

@@ -12,7 +12,7 @@
         "required": ["dsulUrl", "apiKey"],
         "properties": {
           "dsulUrl":        { "type": "string", "description": "Base URL of your dsul deployment (e.g. https://dsul.yourdomain.com)" },
-          "apiKey":         { "type": "string", "description": "Your personal dsul API key — generate it in dsul → Settings → AI Assistant → OpenClaw" },
+          "apiKey":         { "type": "string", "description": "Your personal dsul API key. `openclaw dsul-context setup` fills it in after you authorize at dsul's /connect page." },
           "publicUrl":      { "type": "string", "description": "Your gateway's public URL (e.g. https://your-machine.ts.net) — registers …/plugins/dsul/chat with dsul for sidebar chat" },
           "agentId":        { "type": "string", "description": "OpenClaw agent id for dsul sidebar chat (default: main)" },
           "id":             { "type": "string", "description": "Optional alias for agent id if agentId is not set" },

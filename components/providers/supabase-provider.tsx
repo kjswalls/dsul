@@ -24,6 +24,7 @@ import {
 } from '@/lib/theme-looks';
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { useExtensionsStore } from '@/lib/extensions-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { useGatewayStore } from '@/lib/gateway-store';
 import { useNudgeStore } from '@/lib/nudge-store';
@@ -244,7 +245,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // unable to tell these values from the localStorage leftovers of whoever
       // used this browser last.
       useMorningStore.getState().applyServerSettings(userId, {
-        morningCheckEnabled: settings.morning_check_enabled ?? true,
+        // Opt-in: a NULL (a row from before the column had a default, or no
+        // row at all) reads as off. Rituals are something a person turns on.
+        morningCheckEnabled: settings.morning_check_enabled ?? false,
         morningCheckTime: settings.morning_check_time ?? '08:00',
         morningCheckDismissedDate: settings.morning_check_dismissed_date ?? null,
         morningAutoAgeEnabled: settings.morning_auto_age_enabled ?? false,
@@ -508,6 +511,11 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       // gates the overdue sweep, and extensions must never be able to fail
       // the data load.
       useExtensionsStore.getState().hydrate(userId);
+      // The AI gate, in the same burst and for the same reason as extensions:
+      // every AI surface stays hidden until it answers (fail closed), so it
+      // must not queue behind the item load, and it must never be able to
+      // fail that load. Its own window absorbs the SIGNED_IN re-emits.
+      void useAIConnectionStore.getState().hydrate(userId);
       // Channel secrets, gateway, dismissed nudges: AFTER the load, not beside
       // it — see hydrateAfterLoad. Where no load runs (a lean route), or it
       // has already settled (a visibility SIGNED_IN, a retry event), there is
@@ -582,14 +590,18 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         useChannelSecretsStore.getState().reset();
         useGatewayStore.getState().reset();
         useNudgeStore.getState().reset();
+        // The AI gate: not persisted, and an account switch already clears it
+        // synchronously inside its hydrate. This covers the same gap as the
+        // four above (a sign-out with no sign-in after it), and drops any
+        // answer still in flight for the account that left.
+        useAIConnectionStore.getState().reset();
         useSessionUserStore.getState().clear();
-        // ui-store is a module singleton and outlives the account: a first-run
-        // flag left up here would hand the NEXT account the previous one's
-        // Beacon onboarding (AppShell's watcher also clears it on a "done"
-        // answer for a new account; this covers sign-out with no sign-in).
+        // The retired first-run chat flag; kept inert. ui-store is a module
+        // singleton and outlives the account, so a flag left up here would
+        // carry to the NEXT account.
         useUIStore.getState().setChatOnboardingActive(false);
         // clearStore only resets the planner's DATA. Everything this browser
-        // has persisted ABOUT the account — the Beacon API key and its
+        // has persisted ABOUT the account — the AI settings and the chat
         // transcripts, the canvas filters, the morning decay policy, the
         // planner preference slice — is dropped here, and the ownership stamp
         // with it. Sign-out is not the only path this runs on (see

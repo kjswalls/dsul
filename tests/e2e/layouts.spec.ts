@@ -88,6 +88,23 @@ test.describe('Layouts: Notebook', () => {
     await expect(page.locator('[data-dock-page] input')).toHaveAttribute('placeholder', 'write a line…');
   });
 
+  test("the braindump's Display shelf lines up with its title", async ({ page }) => {
+    // The shelf shows only while a display option is off its default, so sort
+    // the braindump by title. An init script, not a one-off write: login's own
+    // init script re-seeds dsul-view on every load, and this one runs after it.
+    await page.addInitScript(() => {
+      const blob = JSON.parse(localStorage.getItem('dsul-view') ?? '{"state":{},"version":1}');
+      blob.state = { ...blob.state, braindumpSortBy: 'title' };
+      localStorage.setItem('dsul-view', JSON.stringify(blob));
+    });
+    await reloadApp(page);
+    // The title loses its inset, so the shelf under it must too, or its line
+    // starts 15px right of the title it sits under.
+    const shelf = page.locator('[data-book]').getByTestId('display-shelf-braindump');
+    await expect(shelf).toBeVisible();
+    await expect(shelf).toHaveCSS('padding-left', '0px');
+  });
+
   test('the page tabs switch scope, and the ribbon marks today only', async ({ page }) => {
     await expect(page.getByTestId('page-ribbon')).toBeVisible();
     const tabs = page.getByTestId('page-tabs');
@@ -99,5 +116,77 @@ test.describe('Layouts: Notebook', () => {
 
     await page.getByTestId('header-next').click();
     await expect(page.getByTestId('page-ribbon')).toHaveCount(0);
+  });
+});
+
+test.describe('Layouts: Notepad', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad'));
+    await reloadApp(page);
+  });
+
+  test('lays the braindump and the day out as one sheet, with tabs, a status bar and the pinned controls', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'notepad');
+    await expect(shell).toHaveAttribute('data-layout-type', 'plex');
+
+    const sheet = page.locator('[data-sheet]');
+    await expect(sheet.getByTestId('braindump')).toBeVisible();
+    await expect(sheet.getByRole('main')).toBeVisible();
+    await expect(page.getByTestId('header-next')).toBeVisible();
+    await expect(page.locator("[data-dock-page='caret'] input")).toHaveAttribute('placeholder', 'write a line…');
+    await expect(page.getByTestId('status-bar-counts')).toBeVisible();
+
+    // The next tab is tomorrow, through the same navigation as the chevrons.
+    const date = page.getByTestId('header-date');
+    const before = await date.getAttribute('data-date');
+    expect(before).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    const next = new Date(`${before}T12:00:00Z`);
+    next.setUTCDate(next.getUTCDate() + 1);
+    await page.getByTestId('day-tab-next').click();
+    await expect(date).toHaveAttribute('data-date', next.toISOString().slice(0, 10));
+
+    // The pinned braindump tab closes and opens its column, like Ctrl+[.
+    const column = page.getByTestId('sidebar-column');
+    await page.getByTestId('day-tabs-braindump').click();
+    await expect(column).toHaveAttribute('data-column-state', 'closed');
+    await page.getByTestId('day-tabs-braindump').click();
+    await expect(column).toHaveAttribute('data-column-state', 'open');
+  });
+
+  test('its Markdown style still ticks a `- [ ]` and opens the panel', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad-markdown'));
+    const title = testTitle('notepad');
+    try {
+      const id = await createTestTask(page, {
+        title,
+        startDate: getTodayStr(),
+        timeBucket: 'morning',
+        isScheduled: true,
+      });
+      await reloadApp(page);
+      await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout-rows', 'tasks');
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+      await expect(completeButton(page, id)).toHaveAttribute('data-checked', 'true');
+
+      await itemCard(page, id).getByText(title).click();
+      await expect(page.getByTestId('item-dialog')).toBeVisible();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+
+  test('its Retro style names the days as .txt files in its own colours', async ({ page }) => {
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'notepad-retro'));
+    await reloadApp(page);
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout-skin', 'retro');
+    await expect(page.getByTestId('day-tab-current')).toHaveText(/\.txt$/);
+    await expect(page.getByTestId('day-tabs-braindump')).toHaveText('braindump.txt');
   });
 });

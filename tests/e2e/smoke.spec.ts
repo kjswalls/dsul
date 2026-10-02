@@ -15,8 +15,8 @@ import {
   itemCard,
   expectCompleted,
   completeButton,
-   
-   
+  omnibar,
+  omnibarPanel,
 } from './helpers/app';
 
 /**
@@ -128,14 +128,118 @@ test.describe('Smoke: core daily loop', () => {
     await expect(page.locator('[data-dnd-bucket="morning"]')).toBeVisible({ timeout: 5_000 });
   });
 
-  test('AI chat surface opens', async ({ page }) => {
-    // Chat has no persistent bar — it's summoned from the omnibar (⌘Enter = Ask Beacon).
-    const omnibar = page.locator('[data-tour="omnibar"] input');
-    await omnibar.click();
-    await omnibar.fill('plan my day');
-    await omnibar.press('ControlOrMeta+Enter');
-    // The chat surface exposes a message input once open.
-    await expect(page.locator('textarea').first()).toBeVisible({ timeout: 5_000 });
+  test('an account with no AI connected is offered none, and ⌘Enter files nothing', async ({
+    page,
+  }) => {
+    // The e2e account has no model connection and no OpenClaw chat transport
+    // (an agent key, but no gateway and no registered chat URL), so the real
+    // GET /api/ai/connection answers "nothing can answer". Waited on across a
+    // reload so what is asserted is the gate's ANSWER, not the fail-closed
+    // moment before it (which would pass for the wrong reason).
+    const answered = page.waitForResponse(
+      (r) => r.url().includes('/api/ai/connection') && r.request().method() === 'GET'
+    );
+    await reloadApp(page);
+    await answered;
+
+    const title = testTitle('smoke-noai');
+    const bar = omnibar(page);
+    try {
+      // The hint row renders only while the bar is EMPTY, so the hint is checked
+      // before anything is typed. `commands` sits in the same row, so its
+      // presence proves the row is up and an absent `? chat` is the gate.
+      await bar.click();
+      await expect(omnibarPanel(page)).toBeVisible();
+      await expect(omnibarPanel(page).getByText('commands', { exact: true })).toBeVisible();
+      await expect(omnibarPanel(page).getByText('? chat')).toHaveCount(0);
+
+      await bar.fill(title);
+      // The panel has rows for the text (add, search), so an absent Ask row is
+      // the gate rather than an empty panel.
+      await expect(omnibarPanel(page).getByTestId('omnibar-add-row')).toContainText(title);
+      await expect(omnibarPanel(page).getByText(/Ask (AI|OpenClaw)/)).toHaveCount(0);
+
+      // ⌘Enter is consumed and does nothing: no chat opens, and it does NOT fall
+      // through to the dock's Enter, which would file the text as a task.
+      await bar.press('ControlOrMeta+Enter');
+      await expect(bar).toHaveValue(title);
+      await expect(page.getByRole('button', { name: 'Toggle AI assistant' })).toHaveCount(0);
+      await expect(page.getByPlaceholder('Ask anything…')).toHaveCount(0);
+
+      // Nothing was filed. Held for a beat first: a fall-through write is a
+      // network round trip, and the claim is that it never happens.
+      await page.waitForTimeout(1_500);
+      const res = await page.request.get(`${BASE_URL}/api/agent/context`, {
+        headers: { Authorization: `Bearer ${apiKey()}` },
+      });
+      // A failed read (bad key, 5xx) has no `items` and would pass the check
+      // below without looking, so the read itself must succeed first.
+      expect(res.ok()).toBe(true);
+      const body = await res.json();
+      expect(Array.isArray(body.items)).toBe(true);
+      const filed = body.items.filter((i: { title?: string }) => i.title === title);
+      expect(filed).toEqual([]);
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+
+  test('with a model connected, ⌘Enter opens chat and the reply renders', async ({ page }) => {
+    // Never a real provider: the gate's answer and the chat stream are both
+    // stubbed in the browser. Installed BEFORE the navigation that reads them —
+    // the gate is read once, at sign-in.
+    await page.route('**/api/ai/connection', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        headers: { 'Cache-Control': 'no-store' },
+        body: JSON.stringify({
+          available: true,
+          model: {
+            provider: 'openai',
+            model: 'gpt-4o-mini',
+            baseUrl: null,
+            authMethod: 'key',
+            status: 'ok',
+            problem: null,
+            checkedAt: '2026-10-01T00:00:00.000Z',
+          },
+          openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+        }),
+      })
+    );
+    await page.route('**/api/chat', (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'text/event-stream',
+        headers: { 'Cache-Control': 'no-store' },
+        body: 'data: {"content":"hi"}\n\ndata: [DONE]\n\n',
+      })
+    );
+    // Waited on across the reload: while the gate is still unknown the omnibar
+    // consumes ⌘Enter and does nothing, so a press that beats the stub's answer
+    // would be swallowed.
+    const answered = page.waitForResponse(
+      (r) => r.url().includes('/api/ai/connection') && r.request().method() === 'GET'
+    );
+    await reloadApp(page);
+    await answered;
+
+    // Chat has no persistent bar: it is summoned from the omnibar (⌘Enter = Ask AI).
+    const bar = omnibar(page);
+    await bar.click();
+    await bar.fill('plan my day');
+    // The Ask row is the gate's answer reaching the omnibar, not just the
+    // response arriving: ⌘Enter is only pressed once it is there. `first()`
+    // because a matching `/chat` command row may sit beside it, gated the same.
+    await expect(omnibarPanel(page).getByText(/Ask AI/).first()).toBeVisible();
+    await bar.press('ControlOrMeta+Enter');
+
+    const chat = page
+      .locator('section')
+      .filter({ has: page.getByRole('button', { name: 'Toggle AI assistant' }) });
+    await expect(chat).toBeVisible({ timeout: 5_000 });
+    await expect(chat.getByText('hi', { exact: true })).toBeVisible({ timeout: 5_000 });
   });
 
   test('scheduled task appears in its bucket', async ({ page }) => {

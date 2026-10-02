@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { Proposal } from '@/lib/planner-types';
 
@@ -56,6 +56,13 @@ vi.mock('@/lib/proposal', () => ({
 }));
 
 import { ProposalCard } from '@/components/ai/proposal-card';
+import {
+  seedAI,
+  CONNECTED_MODEL,
+  NOTHING_CONNECTED,
+  OPENCLAW_PLUGIN,
+  type SeedAI,
+} from './helpers/ai-fixtures';
 
 const op = (title: string) => ({ kind: 'create' as const, itemType: 'task', title });
 
@@ -77,6 +84,21 @@ beforeEach(() => {
   surface = 'chat';
   refused = { count: 0, reasons: [] };
   proposal = makeProposal('one', 'two', 'three');
+  // The gate is real (the shared fixture seeds both of its stores). Retry is
+  // offered only while something can answer it, so every test below that is
+  // not about the gate runs with a working model.
+  seed(CONNECTED_MODEL);
+});
+
+let unseed: () => void = () => {};
+const seed = (o?: SeedAI) => {
+  unseed();
+  unseed = seedAI(o);
+};
+
+afterEach(() => {
+  unseed();
+  unseed = () => {};
 });
 
 const acceptButton = () => screen.getByTestId('proposal-accept') as HTMLButtonElement;
@@ -320,5 +342,47 @@ describe('suggestions that could not be made', () => {
     const note = screen.getByTestId('proposal-refused').textContent ?? '';
     expect(note).not.toMatch(/you |your |invalid|error|failed/i);
     expect(note).toMatch(/couldn.t be made/i);
+  });
+});
+
+describe('retry needs something to answer it', () => {
+  /** Every way the gate can close on a card that is already on screen. */
+  const CLOSED: Array<[string, SeedAI | undefined]> = [
+    [
+      'the key was turned down mid-ask',
+      {
+        ...CONNECTED_MODEL,
+        model: { provider: 'openai', model: 'gpt-4o-mini', status: 'failing', problem: 'key_rejected' },
+      },
+    ],
+    ['"Who answers" is Off', { ...CONNECTED_MODEL, choice: 'none' }],
+    ['the model was disconnected', NOTHING_CONNECTED],
+    // Plugin-path OpenClaw chats but cannot propose (no structured transport).
+    ['only plugin-path OpenClaw is left', OPENCLAW_PLUGIN],
+    ['the status read failed', { phase: 'error' }],
+  ];
+
+  it.each(CLOSED)('hides "Try again" when %s, on every card state', (_label, state) => {
+    seed(state);
+    for (const s of ['ready', 'empty', 'error']) {
+      status = s;
+      for (const i of ['ask', 'breakdown']) {
+        intent = i;
+        const { unmount } = render(<ProposalCard />);
+        // The card itself stays (it can still be accepted or closed)…
+        expect(screen.getByTestId('proposal-card')).toBeInTheDocument();
+        // …but nothing offers a model call that nothing will make.
+        expect(screen.queryByTestId('proposal-retry'), `${s} × ${i}`).toBeNull();
+        unmount();
+      }
+    }
+  });
+
+  it('offers it again with OpenClaw on its gateway, which can propose', () => {
+    seed({ ...OPENCLAW_PLUGIN, openclaw: { gateway: true, agent: true, agentId: 'kirby-1' } });
+    status = 'error';
+    render(<ProposalCard />);
+    fireEvent.click(screen.getByTestId('proposal-retry'));
+    expect(retry).toHaveBeenCalledTimes(1);
   });
 });

@@ -70,6 +70,7 @@ import { ShortcutsPanel } from '@/components/settings/shortcuts-panel';
 import { SettingsShell } from '@/components/settings/settings-shell';
 import { KeyboardShortcutsModal } from '@/components/planner/keyboard-shortcuts-modal';
 import { rejectionFor } from '@/components/settings/keys-control';
+import { seedAI, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 
 const ctx: SettingCtx = { theme: 'system', setTheme: () => {}, userId: 'test-user' };
 
@@ -486,6 +487,36 @@ describe('recording a chord', () => {
     expect(reachedWindow).toBe(false);
   });
 
+  it('keeps the ⌘] row editable with nothing to answer, so its chord can always be moved', () => {
+    // ⌘] toggles a chat panel that exists only while something can answer.
+    // Locking its row then (the old `unavailable`) took the recorder AND the
+    // reset away, while every other row's conflict check still counted the
+    // chord as taken: the user's own chord was held hostage until
+    // "Reset to defaults", which put ⌘] straight back on the locked row.
+    const cleanupAI = seedAI(NOTHING_CONNECTED);
+    try {
+      useKeyboardShortcutsStore.getState().updateShortcut('toggle_right_sidebar', ['mod', 'j']);
+      renderPanel('pane');
+      const row = document.querySelector('[data-setting-row="keys.toggle_right_sidebar"]') as HTMLElement;
+      expect(row.textContent).toContain('Works while a model or OpenClaw is connected.');
+      expect(row.textContent).not.toMatch(/Unavailable/);
+      expect(recorder('toggle_right_sidebar')).not.toBeDisabled();
+      // Off its default, so it offers its own reset.
+      expect(within(row).getByRole('button', { name: /is changed from its default/ })).toBeTruthy();
+
+      // While it holds ⌘J, ⌘J is refused elsewhere…
+      record(recorder('new_task'), 'j', { metaKey: true });
+      expect(useKeyboardShortcutsStore.getState().overrides).not.toHaveProperty('new_task');
+      // …and moving it off frees the chord.
+      record(recorder('toggle_right_sidebar'), 'u', { metaKey: true, altKey: true });
+      const moved = useKeyboardShortcutsStore.getState().overrides['toggle_right_sidebar'];
+      expect(matchesBinding(normalizeBinding(['mod', 'alt', 'u']), moved)).toBe(true);
+      record(recorder('new_task'), 'j', { metaKey: true });
+      expect(useKeyboardShortcutsStore.getState().overrides['new_task']).toEqual(['mod', 'j']);
+    } finally {
+      cleanupAI();
+    }
+  });
 });
 
 describe('why a chord is refused', () => {

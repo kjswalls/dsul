@@ -15,7 +15,10 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
-import { useAISettingsStore, type AIProvider } from '@/lib/ai-settings-store';
+import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { getAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
+import { chooseChatTarget } from '@/lib/chat-target';
+import { PROVIDER_META, type ChatTarget } from '@/lib/ai-types';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import {
   EXT_COMPLETION_CONFETTI,
@@ -43,7 +46,14 @@ import {
   darkLookDef,
   lightLookDef,
 } from '@/lib/theme-looks';
-import { DEFAULT_LAYOUT, LAYOUTS, isLayoutTheme, layoutDef } from '@/lib/layout-themes';
+import {
+  DEFAULT_LAYOUT,
+  LAYOUTS,
+  LAYOUT_FAMILIES,
+  isLayoutTheme,
+  layoutDef,
+  layoutStyles,
+} from '@/lib/layout-themes';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -161,10 +171,12 @@ export const PANES: SettingsPane[] = [
     blurb: 'The moments dsul opens by itself.',
   },
   {
+    // The id stays 'beacon': it is the /settings/beacon route and the pane of
+    // every beacon.* record, all permanent. Only the name the user reads moved.
     id: 'beacon',
-    name: 'Beacon',
+    name: 'AI',
     icon: Sparkles,
-    blurb: 'Which assistant answers you, and what it knows.',
+    blurb: 'Connect a model and choose who answers.',
   },
   {
     id: 'keyboard',
@@ -379,6 +391,7 @@ const morning = () => useMorningStore.getState();
 const eod = () => useEODStore.getState();
 const reminders = () => useReminderStore.getState();
 const ai = () => useAISettingsStore.getState();
+const aiConn = () => useAIConnectionStore.getState();
 const ext = () => useExtensionsStore.getState();
 const channelSecrets = () => useChannelSecretsStore.getState();
 const gateway = () => useGatewayStore.getState();
@@ -602,6 +615,18 @@ const SHORTCUT_KEYWORDS = ['shortcut', 'keybinding', 'hotkey', 'binding', 'rebin
 
 const shortcuts = () => useKeyboardShortcutsStore.getState();
 
+/**
+ * Bindings whose command exists only while something can answer, and the
+ * sentence their row adds to say so.
+ *
+ * ⌘] toggles a chat panel that SidebarDock mounts only when the AI gate says
+ * it can. The sentence is static and true in every state, so the row never
+ * waits on the gate and is never locked by it (see the note in the records).
+ */
+const AI_ONLY_BINDINGS: ReadonlyMap<string, string> = new Map([
+  ['toggle_right_sidebar', 'Works while a model or OpenClaw is connected.'],
+]);
+
 export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((binding) => {
   const label = binding.label;
   const keywords = [
@@ -629,7 +654,9 @@ export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((
     // flat table's lie is one of OMISSION — the row says nothing about where
     // it works — and one sentence in the place people already read fixes it.
     // It is indexed too, which is what makes "week" find the column bindings.
-    description: [binding.description, binding.context].filter(Boolean).join(' ') || undefined,
+    description:
+      [binding.description, binding.context, AI_ONLY_BINDINGS.get(binding.id)].filter(Boolean).join(' ') ||
+      undefined,
     control: 'keys' as const,
     // NOT desktopOnly. The pane would be empty on every phone, and the rail
     // would still advertise it — a dead room, which the manifest test forbids.
@@ -646,6 +673,11 @@ export const SHORTCUT_RECORDS: ShortcutSettingRecord[] = DEFAULT_SHORTCUTS.map((
     defaultValue: encodeKeys(binding.keys),
     display: (value) =>
       formatKeys(decodeKeys(String(value)), isApplePlatform()).join(' ') || 'No shortcut',
+    // Never `unavailable` or `pending`, not even for a binding that is inert
+    // right now (AI_ONLY_BINDINGS). Either one disables the row: no recorder,
+    // no reset. But the chord still counts as taken in every other row's
+    // conflict check, so a locked row would hold its chord hostage. Rebinding
+    // a key is not an AI action. tests/unit/shortcut-records.test.tsx pins it.
   };
 });
 
@@ -821,11 +853,25 @@ export const SETTINGS: SettingRecord[] = [
     desktopOnly: true,
     control: 'enum',
     dbColumn: 'layout',
-    options: LAYOUTS.map((l) => ({ value: l.value, label: l.label })),
-    keywords: ['arrangement', 'structure', 'console', 'classic', 'terminal', 'rearrange', 'move sidebar'],
-    read: () => look().layout,
+    // One entry per family: a layout's styles are picked under Style, below.
+    options: LAYOUT_FAMILIES.map((l) => ({ value: l.value, label: l.label })),
+    keywords: [
+      'arrangement',
+      'structure',
+      'console',
+      'classic',
+      'terminal',
+      'rearrange',
+      'move sidebar',
+      'notebook',
+      'notepad',
+      'text editor',
+    ],
+    read: () => layoutDef(look().layout).family,
     write: (v, ctx) => {
       if (!isLayoutTheme(v)) return;
+      // Picking the family you are already in keeps the style you chose.
+      if (layoutDef(look().layout).family === v) return;
       look().setLayout(v);
       if (ctx.userId) saveSettings(ctx.userId, { layout: v });
       // Offer the colour theme the layout was designed with — offer, never
@@ -857,6 +903,38 @@ export const SETTINGS: SettingRecord[] = [
       });
     },
     defaultValue: DEFAULT_LAYOUT,
+  },
+  {
+    id: 'look.layoutStyle',
+    pane: 'look',
+    label: 'Style',
+    description: 'How the layout is drawn.',
+    desktopOnly: true,
+    // Stated, not hidden, like Tint: the pick stands whatever the layout.
+    unavailable: () =>
+      layoutStyles(layoutDef(look().layout).family).length > 1
+        ? null
+        : 'Only Notepad comes in styles so far.',
+    control: 'enum',
+    // No dbColumn, though it writes user_settings.layout: the column is mirrored
+    // to the control's data-setting, and look.layout already answers to it.
+    // Static options, so they list every styled layout; only Notepad has styles
+    // (tests/unit/layout-themes.test.ts holds that until this learns to filter).
+    options: LAYOUTS.filter((l) => l.styleLabel).map((l) => ({
+      value: l.value,
+      label: l.styleLabel ?? l.label,
+    })),
+    keywords: ['look', 'variant', 'quiet', 'markdown', 'retro', 'notepad', 'text editor'],
+    read: () => {
+      const current = layoutDef(look().layout);
+      return current.styleLabel ? current.value : 'notepad';
+    },
+    write: (v, ctx) => {
+      if (!isLayoutTheme(v)) return;
+      look().setLayout(v);
+      if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+    },
+    defaultValue: 'notepad',
   },
   {
     id: 'look.palette',
@@ -1020,7 +1098,8 @@ export const SETTINGS: SettingRecord[] = [
     keywords: ['overdue', 'past due', 'waiting', 'yesterday', 'sunrise', 'stale', 'backlog'],
     read: () => morning().morningCheckEnabled,
     write: (v) => morning().setMorningCheckEnabled(Boolean(v)),
-    defaultValue: true,
+    // Rituals are opt-in for a new account (migration 054).
+    defaultValue: false,
   },
   {
     id: 'rituals.autoAge',
@@ -1202,28 +1281,44 @@ export const SETTINGS: SettingRecord[] = [
     defaultValue: false,
   },
 
-  /* ── Beacon ───────────────────────────────────────────────────────────── */
+  /* ── AI (pane id 'beacon') ────────────────────────────────────────────
+     The pane's top is ModelConnectionPanel (components/settings/
+     model-connection-panel.tsx), mounted by settings-shell: connecting a model
+     is a form with states, not a row. Two of the records below exist so search
+     and `?focus=` can still reach that form, and the panel owns their anchors
+     (see CONNECT_PANEL_RECORD_IDS). The ids are permanent, so they kept their
+     `beacon.*` names when the AI lost its own. */
   {
     id: 'beacon.provider',
     pane: 'beacon',
-    label: 'Assistant',
-    description: 'Which agent answers you in the sidebar.',
+    label: 'Who answers in chat',
+    description: 'Saved on this device. If your choice isn’t connected, the other one answers.',
     control: 'enum',
     options: [
+      { value: 'model', label: 'Your model' },
       { value: 'openclaw', label: 'OpenClaw' },
-      { value: 'openai', label: 'Beacon (OpenAI)' },
       { value: 'none', label: 'Off' },
     ],
-    keywords: ['ai', 'agent', 'chat', 'llm', 'openclaw', 'beacon'],
-    read: () => ai().provider,
-    write: (v) => ai().setProvider(v as AIProvider),
-    defaultValue: 'openclaw',
+    keywords: ['ai', 'agent', 'assistant', 'chat', 'llm', 'openclaw', 'beacon', 'provider'],
+    // The only user-initiated way to change who answers: it wipes transcripts,
+    // which a raw setter (or a rehydrate) must never do. lib/chat-target.ts.
+    read: () => ai().chatTarget,
+    write: (v) => chooseChatTarget(v as ChatTarget),
+    defaultValue: 'model',
+    // Until the server has said what is connected, "Your model" would read as
+    // a choice that works.
+    pending: () => aiConn().phase === 'unknown',
+    unavailable: () => {
+      const caps = getAICapabilities();
+      if (!caps.known) return null;
+      return caps.modelUsable || caps.openclawUsable ? null : 'Connect a model or OpenClaw first.';
+    },
   },
   {
     id: 'beacon.instructions',
     pane: 'beacon',
     label: 'Custom instructions',
-    description: 'What Beacon should know about how you work. Sent with every message.',
+    description: 'What the AI should know about how you work. Added to every message.',
     control: 'text',
     textVariant: 'multiline',
     placeholder: "I plan in two-hour blocks and I'd rather you were blunt…",
@@ -1243,12 +1338,11 @@ export const SETTINGS: SettingRecord[] = [
     placeholder: 'https://gateway.example.ts.net:8787',
     advanced: true,
     keywords: ['gateway', 'openclaw', 'url', 'host', 'tailscale', 'endpoint', 'transport'],
+    // No longer gated on who answers: the gateway is how OpenClaw BECOMES
+    // something that can answer, so requiring it to be chosen first was a
+    // chicken-and-egg.
     unavailable: () =>
-      !gateway().available
-        ? 'Needs a database update that has not landed here yet.'
-        : ai().provider === 'openclaw'
-          ? null
-          : 'only used by OpenClaw',
+      !gateway().available ? 'Needs a database update that has not landed here yet.' : null,
     read: () => gateway().gatewayUrl,
     write: (v) => gateway().setGatewayUrl(String(v)),
     defaultValue: '',
@@ -1267,47 +1361,52 @@ export const SETTINGS: SettingRecord[] = [
     // groups them and a second level of hiding is what the redesign removed.
     keywords: ['gateway', 'openclaw', 'token', 'secret', 'credential', 'auth', 'bearer'],
     unavailable: () =>
-      !gateway().available
-        ? 'Needs a database update that has not landed here yet.'
-        : ai().provider === 'openclaw'
-          ? null
-          : 'only used by OpenClaw',
+      !gateway().available ? 'Needs a database update that has not landed here yet.' : null,
     read: () => '',
     write: (v) => gateway().setToken(String(v)),
     defaultValue: '',
   },
   {
+    // An INFO row, owned by the Connect-a-model panel: the key is typed into
+    // the panel and sealed server-side, and nothing in the browser can read it
+    // back. Kept as a record so "api key", "openai" or "claude" in search still
+    // finds it, and the hit's "Set up" opens ?focus=beacon.apiKey, which lands
+    // on the form (the panel carries data-setting-alias="beacon.apiKey").
+    // `read()` answers with a status word from a closed set and NEVER a key,
+    // a mask or a last four; tests/unit/settings-manifest.test.ts pins that.
     id: 'beacon.apiKey',
     pane: 'beacon',
-    label: 'OpenAI key',
-    description: 'Stored on this device only, never synced.',
-    control: 'text',
-    // Was selected by `record.id === 'beacon.apiKey'` inside setting-row.
-    textVariant: 'secret',
-    placeholder: 'sk-…',
-    advanced: true,
-    keywords: ['api key', 'token', 'credential', 'openai', 'sk'],
-    unavailable: () => (ai().provider === 'openai' ? null : 'only used by Beacon (OpenAI)'),
-    read: () => ai().apiKey,
-    write: (v) => ai().setApiKey(String(v)),
+    label: 'API key',
+    description: 'Stored encrypted on the server. Never shown again.',
+    control: 'info',
+    // Never 'api key': that is the label, which is indexed already, and the
+    // manifest's own rule forbids restating it.
+    keywords: ['key', 'token', 'byok', 'openai', 'chatgpt', 'anthropic', 'claude', 'gemini', 'openrouter', 'llm'],
+    read: () => {
+      const conn = aiConn();
+      if (conn.phase === 'unknown') return 'Checking…';
+      if (conn.phase === 'error') return 'Couldn’t check';
+      if (!conn.available) return 'Not available on this server';
+      if (!conn.model) return 'Not connected';
+      if (conn.model.status === 'failing') return 'Stopped working';
+      const label = PROVIDER_META[conn.model.provider].label;
+      return conn.model.authMethod === 'oauth' ? `Signed in (${label})` : `Saved (${label})`;
+    },
+    write: () => {},
     defaultValue: '',
   },
   {
+    // Panel-owned too: the picker lives in the panel (components/settings/
+    // model-picker.tsx), anchored by data-setting-alias="beacon.model".
     id: 'beacon.model',
     pane: 'beacon',
     label: 'Model',
-    control: 'enum',
-    advanced: true,
-    options: [
-      { value: 'gpt-4o-mini', label: 'gpt-4o-mini' },
-      { value: 'gpt-4o', label: 'gpt-4o' },
-      { value: 'gpt-4-turbo', label: 'gpt-4-turbo' },
-    ],
-    keywords: ['openai', 'gpt', 'engine'],
-    unavailable: () => (ai().provider === 'openai' ? null : 'only used by Beacon (OpenAI)'),
-    read: () => ai().model,
-    write: (v) => ai().setModel(String(v)),
-    defaultValue: 'gpt-4o-mini',
+    description: 'Which of your provider’s models answers.',
+    control: 'info',
+    keywords: ['gpt', 'claude', 'gemini', 'llama', 'engine', 'free', 'model picker'],
+    read: () => aiConn().model?.model ?? 'None',
+    write: () => {},
+    defaultValue: '',
   },
 
   /* ── Keyboard ─────────────────────────────────────────────────────────────
@@ -1574,6 +1673,14 @@ export const DESTINATIONS: DestinationRecord[] = [
     action: 'ledger',
   },
 ];
+
+/**
+ * Records the Connect-a-model panel draws itself, so the AI pane's flat row
+ * list leaves them out (settings-shell). They stay in SETTINGS so search finds
+ * them, and `?focus=` (which a hit's "Set up" opens) lands on the panel's
+ * `data-setting-alias` anchors.
+ */
+export const CONNECT_PANEL_RECORD_IDS: ReadonlySet<string> = new Set(['beacon.apiKey', 'beacon.model']);
 
 /* ---------------------------------------------------------------- lookups */
 

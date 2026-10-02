@@ -9,7 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * kept verbatim and the rejections are re-composed onto it every time.
  */
 
-const applyProposal = vi.fn(() => 1);
+const applyProposal = vi.fn<(p: { summary: string; operations: unknown[] }) => number>(() => 1);
 
 const parent = {
   type: 'task',
@@ -42,11 +42,24 @@ vi.mock('@/lib/planner-store', () => ({
 
 vi.mock('@/lib/ai-settings-store', () => ({
   useAISettingsStore: {
-    getState: () => ({ provider: 'openai', apiKey: 'sk-test', model: 'gpt-4o-mini' }),
+    getState: () => ({ chatTarget: 'model', systemPrompt: '' }),
   },
 }));
 
+// The gate says a model is connected, so every ask is proposed by the model.
+// The gate says a model is connected. `capsFor` is computed into a hoisted
+// holder after the imports: importing the fixture INSIDE this factory would
+// import the very module being mocked, and the factory would wait on itself.
+const gate = vi.hoisted(() => ({ caps: null as unknown, noteCallFailure: vi.fn() }));
+vi.mock('@/lib/ai-connection-store', () => ({
+  getAICapabilities: () => gate.caps,
+  useAIConnectionStore: { getState: () => ({ noteCallFailure: gate.noteCallFailure }) },
+}));
+
 import { useProposalStore } from '@/lib/proposal-store';
+import { capsFor, CONNECTED_MODEL, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+
+gate.caps = capsFor(CONNECTED_MODEL);
 
 const draft = (summary: string, count = 2) => ({
   summary,
@@ -86,6 +99,8 @@ const reset = () =>
 
 beforeEach(() => {
   applyProposal.mockClear();
+  gate.noteCallFailure.mockClear();
+  gate.caps = capsFor(CONNECTED_MODEL);
   reset();
 });
 
@@ -138,6 +153,26 @@ describe('retry', () => {
     await useProposalStore.getState().request('catch-up');
     await useProposalStore.getState().retry();
     expect(bodies).toHaveLength(0);
+  });
+
+  it('leaves the card exactly as it is once nothing can propose', async () => {
+    const bodies = mockPropose(draft('Plan A'), draft('Plan B'));
+    await useProposalStore.getState().request('ask', 'sort out my week');
+    const before = useProposalStore.getState();
+    expect(before.status).toBe('ready');
+
+    // The model was disconnected (or chat moved to the plugin) while the card was up.
+    gate.caps = capsFor(OPENCLAW_PLUGIN);
+    expect(gate.caps).toMatchObject({ proposeTarget: null });
+    await useProposalStore.getState().retry();
+
+    expect(bodies).toHaveLength(1);
+    const after = useProposalStore.getState();
+    expect(after.status).toBe('ready');
+    expect(after.proposal).toBe(before.proposal);
+    expect(after.error).toBeNull();
+    // Plan A was never turned down: no retry went out to carry it.
+    expect(after.rejected).toEqual([]);
   });
 
   it('refuses when nothing has been asked yet', async () => {
@@ -369,6 +404,52 @@ describe('rejections', () => {
 
     expect(useProposalStore.getState().rejected).toEqual(['The same plan']);
     expect((bodies.at(-1) as { prompt: string }).prompt.match(/^- /gm)).toHaveLength(1);
+  });
+});
+
+describe('the request body', () => {
+  it('names a target and carries no key, model or provider', async () => {
+    const bodies = mockPropose(draft('Plan A'));
+    await useProposalStore.getState().request('ask', 'plan my day');
+
+    expect(Object.keys(bodies[0]).sort()).toEqual(
+      ['customInstructions', 'itemContext', 'mode', 'prompt', 'target', 'todayStr'].sort()
+    );
+    expect(bodies[0]).toMatchObject({ target: 'model', mode: 'plan', customInstructions: '' });
+  });
+
+  it('asks nothing when the gate has no one to propose', async () => {
+    // OpenClaw on the plugin path: chat works, but there is no structured
+    // proposal transport, and the route never reroutes to a model (D14).
+    gate.caps = capsFor(OPENCLAW_PLUGIN);
+    const bodies = mockPropose(draft('Plan A'));
+    await useProposalStore.getState().request('ask', 'plan my day');
+
+    expect(bodies).toHaveLength(0);
+    expect(useProposalStore.getState()).toMatchObject({
+      status: 'error',
+      error: 'Connect a model in Settings to ask for a plan.',
+    });
+  });
+});
+
+describe('a refused call', () => {
+  it("shows the route's own copy and tells the gate why", async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: false,
+        status: 502,
+        json: async () => ({ error: 'Your model provider rejected the key.', code: 'auth' }),
+      }))
+    );
+    await useProposalStore.getState().request('ask', 'x');
+
+    expect(useProposalStore.getState()).toMatchObject({
+      status: 'error',
+      error: 'Your model provider rejected the key.',
+    });
+    expect(gate.noteCallFailure).toHaveBeenCalledWith('auth');
   });
 });
 
