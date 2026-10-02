@@ -46,7 +46,14 @@ import {
   darkLookDef,
   lightLookDef,
 } from '@/lib/theme-looks';
-import { DEFAULT_LAYOUT, LAYOUTS, isLayoutTheme, layoutDef } from '@/lib/layout-themes';
+import {
+  DEFAULT_LAYOUT,
+  LAYOUTS,
+  LAYOUT_FAMILIES,
+  isLayoutTheme,
+  layoutDef,
+  layoutStyles,
+} from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
@@ -847,11 +854,25 @@ export const SETTINGS: SettingRecord[] = [
     desktopOnly: true,
     control: 'enum',
     dbColumn: 'layout',
-    options: LAYOUTS.map((l) => ({ value: l.value, label: l.label })),
-    keywords: ['arrangement', 'structure', 'console', 'classic', 'terminal', 'rearrange', 'move sidebar'],
-    read: () => look().layout,
+    // One entry per family: a layout's styles are picked under Style, below.
+    options: LAYOUT_FAMILIES.map((l) => ({ value: l.value, label: l.label })),
+    keywords: [
+      'arrangement',
+      'structure',
+      'console',
+      'classic',
+      'terminal',
+      'rearrange',
+      'move sidebar',
+      'notebook',
+      'notepad',
+      'text editor',
+    ],
+    read: () => layoutDef(look().layout).family,
     write: (v, ctx) => {
       if (!isLayoutTheme(v)) return;
+      // Picking the family you are already in keeps the style you chose.
+      if (layoutDef(look().layout).family === v) return;
       look().setLayout(v);
       if (ctx.userId) saveSettings(ctx.userId, { layout: v });
       // Offer the colour theme the layout was designed with — offer, never
@@ -883,6 +904,38 @@ export const SETTINGS: SettingRecord[] = [
       });
     },
     defaultValue: DEFAULT_LAYOUT,
+  },
+  {
+    id: 'look.layoutStyle',
+    pane: 'look',
+    label: 'Style',
+    description: 'How the layout is drawn.',
+    desktopOnly: true,
+    // Stated, not hidden, like Tint: the pick stands whatever the layout.
+    unavailable: () =>
+      layoutStyles(layoutDef(look().layout).family).length > 1
+        ? null
+        : 'Only Notepad comes in styles so far.',
+    control: 'enum',
+    // No dbColumn, though it writes user_settings.layout: the column is mirrored
+    // to the control's data-setting, and look.layout already answers to it.
+    // Static options, so they list every styled layout; only Notepad has styles
+    // (tests/unit/layout-themes.test.ts holds that until this learns to filter).
+    options: LAYOUTS.filter((l) => l.styleLabel).map((l) => ({
+      value: l.value,
+      label: l.styleLabel ?? l.label,
+    })),
+    keywords: ['look', 'variant', 'quiet', 'markdown', 'retro', 'notepad', 'text editor'],
+    read: () => {
+      const current = layoutDef(look().layout);
+      return current.styleLabel ? current.value : 'notepad';
+    },
+    write: (v, ctx) => {
+      if (!isLayoutTheme(v)) return;
+      look().setLayout(v);
+      if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+    },
+    defaultValue: 'notepad',
   },
   {
     id: 'look.palette',
