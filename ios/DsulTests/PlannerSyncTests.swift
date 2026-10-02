@@ -83,6 +83,7 @@ actor FakeServer {
             headers[name.lowercased()] = value
         }
         requests.append(Request(route: route, headers: headers, body: request.httpBody))
+        let name = registeredName(route)
         inFlight += 1
         maxInFlight = max(maxInFlight, inFlight)
         defer { inFlight -= 1 }
@@ -90,25 +91,38 @@ actor FakeServer {
             try await Task.sleep(for: delay)
         }
         var waited = 0
-        while closed.contains(route) && waited < 2000 {
+        while closed.contains(name) && waited < 2000 {
             try await Task.sleep(for: .milliseconds(5))
             waited += 1
         }
         var waitedForTicket = 0
-        while gated.contains(route) && (tickets[route] ?? 0) == 0 && waitedForTicket < 2000 {
+        while gated.contains(name) && (tickets[name] ?? 0) == 0 && waitedForTicket < 2000 {
             try await Task.sleep(for: .milliseconds(5))
             waitedForTicket += 1
         }
-        if let left = tickets[route], left > 0 {
-            tickets[route] = left - 1
+        if let left = tickets[name], left > 0 {
+            tickets[name] = left - 1
         }
-        let reply = nextReply(for: route)
+        let reply = nextReply(for: name)
         switch reply {
         case .offline:
             throw URLError(.notConnectedToInternet)
         case .status(let status, let body):
             return HTTPResult(status: status, data: Data(body.utf8))
         }
+    }
+
+    /// The name a test gave `route`: the route itself, or else its path without
+    /// the query, for a request whose query carries something random (the
+    /// nonce in /auth/v1/otp's redirect_to).
+    private func registeredName(_ route: String) -> String {
+        func known(_ name: String) -> Bool {
+            return replies[name] != nil || closed.contains(name) || gated.contains(name)
+        }
+        if known(route) { return route }
+        guard let mark = route.firstIndex(of: "?") else { return route }
+        let bare = String(route[..<mark])
+        return known(bare) ? bare : route
     }
 
     private func nextReply(for route: String) -> Reply {

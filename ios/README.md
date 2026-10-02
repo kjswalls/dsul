@@ -1,7 +1,7 @@
 # dsul for iPhone
 
-A native SwiftUI app (iOS 27). It signs in with Google and shows your own
-day from do.dsul.app; a tick, a drop on an hour and a capture are saved to
+A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
+and shows your own day from do.dsul.app; a tick, a drop on an hour and a capture are saved to
 the server. "Try with sample data" on the sign-in screen opens a made-up day
 instead, which needs no account and whose changes last until the app quits.
 
@@ -15,7 +15,7 @@ adds thoughts to the braindump; its count opens the braindump over Schedule.
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
     `AppConfig` (the server's address).
-  - `Auth/`: Google sign-in, the tokens and the Keychain.
+  - `Auth/`: Google and email-link sign-in, the tokens and the Keychain.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
     changes in order and fetches your day.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
@@ -53,10 +53,23 @@ app asks `https://do.dsul.app/api/app/config` for the Supabase address and its
 public key the first time you tap the button, and a signed-out launch makes
 no network request at all.
 
+**Email me a sign-in link** asks for your address and sends a link; the
+screen then says "Check your email". Open the email on the same iPhone and tap
+the link: Safari (or your mail app's browser) opens a dsul page, asks to open
+dsul, and the app signs you in. Tap Open only if the prompt names dsul. If
+nothing happens, open that page in Safari or tap its Open dsul button.
+
+Send again keeps the same sign-in: if it's refused as too soon, the email
+you already have still works; once a new email goes out, only the newest one
+does. A link is good for an hour. For an address with no dsul account yet,
+open it within about 5 minutes (a slower tap asks for one more link, which
+then works at once).
+
 Before the first sign-in on a phone (once, in the Supabase dashboard):
 1. **Step 0, Auth → URL Configuration:** Site URL `https://do.dsul.app`, and
    Redirect URLs include `https://do.dsul.app/**`. Without it the Google sheet
-   ends on a web page instead of coming back to the app.
+   ends on a web page instead of coming back to the app, and an emailed link
+   opens the web app instead of the phone.
 2. **Auth → Users:** your user should already have a Google identity, or a
    verified Gmail address Google can link to. Otherwise Google signs in to a
    second, empty account.
@@ -84,6 +97,20 @@ The phone talks to production, so it can only sign in once `/auth/ios` and
   goes through whichever Supabase that server's `/api/app/config` names, which
   needs Google set up and that server's `/auth/ios` in its redirect list; a
   local stack from `scripts/local-setup.sh` has neither.
+
+## Checking the email link
+
+The tests can't open Mail or Safari, so these need your iPhone (after Step 0):
+1. Mail, then Safari: tap the link, accept "Open in dsul?", and you're signed
+   in with "Signed in as" your address.
+2. The same, but decline the prompt, then tap Open dsul on the page.
+3. Gmail, with its link browser set to in-app, then Safari, then Chrome. In
+   the in-app browser, "Open in Safari" from its menu should finish it.
+4. Quit dsul first (swipe it away), then tap the link: the app starts and
+   signs in.
+5. Send, then Send again within a minute ("Too many sign-in emails"), then tap
+   the FIRST email's link: it still signs in.
+6. Continue with Google still signs in now that the app owns its link scheme.
 
 ## Trying the drag
 

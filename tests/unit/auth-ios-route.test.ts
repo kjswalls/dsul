@@ -3,17 +3,21 @@ import { describe, expect, it, vi } from 'vitest';
 import { GET } from '@/app/auth/ios/route';
 
 /**
- * /auth/ios — where the iPhone's Google sign-in comes back from Supabase and
- * is handed to the app at app.dsul.ios://auth/callback.
+ * /auth/ios — where the iPhone's Google sign-in and emailed link come back
+ * from Supabase and are handed to the app at app.dsul.ios://auth/callback.
  *
  * A well-formed code in the query is a 302 straight to the scheme, the case
- * ASWebAuthenticationSession is built to catch. Everything else is one
- * constant page, /auth/desktop's pattern, whose script forwards what only the
- * browser can see (an error in the hash). Neither path ever forwards a token
- * or `error_description`.
+ * ASWebAuthenticationSession is built to catch. Everything else, an emailed
+ * link (`via=email`) included, is one constant page, /auth/desktop's pattern,
+ * whose script forwards what only the browser can see (an error in the hash,
+ * the email link's nonce). Neither path ever forwards a token or
+ * `error_description`.
  */
 
 const at = (suffix: string) => GET(new Request(`https://do.dsul.app/auth/ios${suffix}`));
+
+/** A nonce the app would send (`EmailSignIn.makeNonce`): 22 base64url characters. */
+const NONCE = 'AbCdEf-hIjKlMnOp_rStUv';
 
 const scriptOf = (html: string) => {
   const match = /<script>([\s\S]*?)<\/script>/.exec(html);
@@ -125,6 +129,9 @@ describe('/auth/ios page', () => {
         '#access_token=secret&refresh_token=secret',
         '#error=access_denied&error_description=hello',
         '#code=abcdef123456',
+        `?via=email&n=${NONCE}&code=abcdef123456`,
+        `?via=email&n=${NONCE}&error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid`,
+        '?via=email&code=abcdef123456',
       ].map((suffix) => {
         const res = at(suffix);
         expect(res.status, suffix).toBe(200);
@@ -198,5 +205,86 @@ describe('/auth/ios page', () => {
     // And the edge the server refuses, the script refuses too.
     expect(at('?code=' + 'a'.repeat(257)).status).toBe(200);
     expect((await handOff('?code=' + 'a'.repeat(257))).location.replace).not.toHaveBeenCalled();
+  });
+});
+
+describe('/auth/ios for an emailed link', () => {
+  it('always serves the page, never the redirect Google gets', () => {
+    for (const suffix of [
+      `?via=email&n=${NONCE}&code=abcdef123456`,
+      `?via=email&n=${NONCE}&error=access_denied&error_code=otp_expired`,
+    ]) {
+      const res = at(suffix);
+      expect(res.status, suffix).toBe(200);
+      expect(res.headers.get('location'), suffix).toBeNull();
+      expectPrivate(res);
+    }
+    // Google's code, with no `via`, still goes straight to the app.
+    expect(at('?code=abcdef123456').status).toBe(302);
+    expect(at('?via=google&code=abcdef123456').status).toBe(302);
+  });
+
+  it('hands the code to the app with the nonce, and keeps both in the fragment', async () => {
+    const { doc, location, history } = await handOff(`?via=email&n=${NONCE}&code=abcdef123456`);
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith(
+      `app.dsul.ios://auth/callback?code=abcdef123456&n=${NONCE}`,
+    );
+    // Out of the query (history, a server, a Referer), but still there for
+    // "Open in Safari" from another app's browser.
+    expect(history.replaceState).toHaveBeenCalledExactlyOnceWith(
+      null,
+      '',
+      `/auth/ios#via=email&n=${NONCE}&code=abcdef123456`,
+    );
+    expect(history.replaceState.mock.invocationCallOrder[0]).toBeLessThan(
+      location.replace.mock.invocationCallOrder[0],
+    );
+    expect(doc.getElementById('email-help')!.hidden).toBe(false);
+    expect(doc.getElementById('opening')!.hidden).toBe(false);
+  });
+
+  it('opens the same way again from the fragment it left', async () => {
+    const first = await handOff(`?via=email&n=${NONCE}&code=abcdef123456`);
+    const fragment = (first.history.replaceState.mock.calls[0][2] as string).split('#')[1];
+    const again = await handOff('', `#${fragment}`);
+    expect(again.location.replace).toHaveBeenCalledExactlyOnceWith(first.location.replace.mock.calls[0][0]);
+    expect(again.history.replaceState).toHaveBeenCalledExactlyOnceWith(null, '', `/auth/ios#${fragment}`);
+  });
+
+  it('forwards an error code with the nonce, never its description', async () => {
+    const { location, history } = await handOff(
+      `?via=email&n=${NONCE}&error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid`,
+      '#error=access_denied&error_code=otp_expired&error_description=Email+link+is+invalid',
+    );
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith(
+      `app.dsul.ios://auth/callback?error_code=otp_expired&n=${NONCE}`,
+    );
+    expect(history.replaceState).toHaveBeenCalledWith(null, '', `/auth/ios#via=email&n=${NONCE}&error_code=otp_expired`);
+  });
+
+  it('retries the hand-off with the nonce from the Open dsul button', async () => {
+    const { doc, location } = await handOff(`?via=email&n=${NONCE}&code=abcdef123456`);
+    (doc.getElementById('open') as HTMLButtonElement).click();
+    expect(location.replace).toHaveBeenCalledTimes(2);
+    expect(location.replace).toHaveBeenLastCalledWith(`app.dsul.ios://auth/callback?code=abcdef123456&n=${NONCE}`);
+  });
+
+  it.each([
+    ['no nonce', '?via=email&code=abcdef123456'],
+    ['a short nonce', '?via=email&n=AbCdEfGhIjKlMnO&code=abcdef123456'],
+    ['a nonce with markup', '?via=email&n=AbCdEfGhIjKlMnOp%3Cb%3E&code=abcdef123456'],
+    ['a nonce but no code', `?via=email&n=${NONCE}`],
+  ])('forwards nothing with %s, and clears the address bar', async (_, search) => {
+    const { doc, location, history } = await handOff(search);
+    expect(location.replace).not.toHaveBeenCalled();
+    expect(history.replaceState).toHaveBeenCalledExactlyOnceWith(null, '', '/auth/ios');
+    expect(doc.getElementById('opening')!.hidden).toBe(true);
+    expect(doc.getElementById('done')!.hidden).toBe(false);
+  });
+
+  it('keeps the email copy off Google’s hand-off', async () => {
+    const { doc, location } = await handOff('', '#code=abcdef123456');
+    expect(location.replace).toHaveBeenCalledExactlyOnceWith('app.dsul.ios://auth/callback?code=abcdef123456');
+    expect(doc.getElementById('email-help')!.hidden).toBe(true);
   });
 });

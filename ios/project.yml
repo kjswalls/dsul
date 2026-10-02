@@ -33,6 +33,13 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CADisableMinimumFrameDurationOnPhone: true
+        # The emailed sign-in link comes back as app.dsul.ios://auth/callback
+        # (GoTrue.callbackScheme) from Safari or Mail, so the app owns the
+        # scheme. Google's sheet catches the same scheme itself.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.dsul.ios.auth
+            CFBundleURLSchemes:
+              - app.dsul.ios
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.dsul.item-ref
             UTTypeDescription: dsul item reference
