@@ -16,14 +16,18 @@ struct TodayView: View {
             TimelineView(.everyMinute) { context in
                 content(nowMin: planner.minuteOfDay(context.date))
             }
+            // Not while an item's sheet is up: the sheet draws the banner
+            // itself, and at its medium detent this copy would show too.
             .overlay(alignment: .top) {
-                if let banner = planner.banner {
+                if let banner = planner.banner, !planner.isShowingItemSheet {
                     BannerView(banner: banner) {
                         planner.dismissBanner(banner.id)
                     }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    // A move alone: an opacity transition would fade the
+                    // lime check through the banner's own opacity.
+                    .transition(.move(edge: .top))
                 }
             }
             .animation(.snappy, value: planner.banner)
@@ -169,8 +173,9 @@ enum AccountFormat {
 }
 
 /// The planner's banner: it goes by itself after a few seconds
-/// (`SamplePlanner.show`), and a tap dismisses it sooner. Over Today, and over
-/// an item's sheet, which would otherwise hide a write the server refused.
+/// (`SamplePlanner.show`, which also has VoiceOver say it), and a tap
+/// dismisses it sooner. Over Today, or over an item's sheet while one is up,
+/// which would otherwise hide a write the server refused.
 struct BannerView: View {
     var banner: PlannerBanner
     var onDismiss: () -> Void

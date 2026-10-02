@@ -57,6 +57,14 @@ enum RescheduleChoice: Hashable, Sendable {
     case today, nextWeek, pick
 }
 
+/// The sheet's day picker's words: its title, the confirm button's verb
+/// before the day ("Move to Thu, Oct 8"), and a note under the calendar.
+struct DayPickWords: Hashable, Sendable {
+    let title: String
+    let confirmVerb: String
+    let note: String?
+}
+
 /// One property chip: what it says, its symbol, and what VoiceOver says.
 struct SheetChip: Identifiable, Hashable, Sendable {
     /// The web panel's properties, in its order: priority leads, the When
@@ -214,21 +222,74 @@ enum ItemSheetModel {
         }
     }
 
-    /// "For Thu, Oct 8" above the bar when a per-day verb (the tick, Skip,
-    /// Unskip) would act on a day other than today, which the bar's words no
-    /// longer say. Nil on today, for a one-off (whose tick has no day), and
-    /// when no per-day verb is offered.
-    static func dayCaption(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> String? {
+    /// "For Thu, Oct 8" above the bar when the bar holds a per-day verb (the
+    /// tick, Skip, Unskip) that acts on a day other than today, which the
+    /// bar's words no longer say. Asked of the bar, not of what is offered: a
+    /// habit's tick is the title's circle, never a slot, and Pause, Pause
+    /// until and Resume act on today whatever the day, so a bar of those
+    /// alone gets no caption. Nil on today and for a one-off (whose tick has
+    /// no day).
+    static func dayCaption(_ item: SampleItem, _ ctx: VerbContext, bar: [SheetVerb]) -> String? {
         guard ctx.dateStr != ctx.todayStr, item.recurs,
-              offered.contains(where: { $0 == .tick || $0 == .skip || $0 == .unskip })
+              bar.contains(where: { $0 == .tick || $0 == .skip || $0 == .unskip })
         else { return nil }
         return "For " + formatTargetDay(ctx.dateStr)
+    }
+
+    /// "For Wed, Sep 30" under the title when its circle ticks a day other
+    /// than today and the bar doesn't hold the tick, so the bar's caption
+    /// doesn't speak for it: a habit, whose tick is only ever the circle, or
+    /// an item whose bar has given way to Resume. Nil on today, for a one-off
+    /// and with no circle.
+    static func titleDayNote(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID],
+                             bar: [SheetVerb]) -> String? {
+        guard ctx.dateStr != ctx.todayStr, item.recurs, offered.contains(.tick), !bar.contains(.tick)
+        else { return nil }
+        return "For " + formatTargetDay(ctx.dateStr)
+    }
+
+    /// A counted habit's tally on the day beside its title, "1/3", so a tap
+    /// on the circle that counts one without finishing the day still shows.
+    /// The web panel's count (item-dialog.tsx, beside its −/+ stepper): the
+    /// day's stored count, or the target once the day is done with none
+    /// stored. Nil unless the type keeps a per-day tally and the item wants
+    /// more than one a day.
+    static func tally(_ item: SampleItem, on dateStr: String) -> String? {
+        guard caps(item.typeName).dailyCounts, let target = item.timesPerDay, target > 1 else { return nil }
+        let raw = item.dailyCounts[dateStr] ?? 0
+        let count = item.completedDates.contains(dateStr) && raw == 0 ? target : raw
+        return "\(count)/\(target)"
     }
 
     /// The line in place of the bar on a day the item doesn't fall on.
     static func notDueLine(_ ctx: VerbContext) -> String {
         if ctx.dateStr == ctx.todayStr { return "Not due today" }
         return "Not due " + formatTargetDay(ctx.dateStr)
+    }
+
+    // MARK: The day picker
+
+    /// Reschedule's picker is titled with the bar's own word for the verb:
+    /// "Schedule" for an undated item, which then is scheduled for the day
+    /// picked, else "Reschedule", which moves it there.
+    static func rescheduleWords(_ item: SampleItem, _ ctx: VerbContext) -> DayPickWords {
+        let title = barLabel(.reschedule, item, ctx)
+        return DayPickWords(title: title, confirmVerb: title == "Reschedule" ? "Move to" : "Schedule for", note: nil)
+    }
+
+    /// Pause until's picker. The day picked is the day the item is back, not
+    /// its last day off, which the button alone ("Pause until Thu, Oct 8")
+    /// leaves open; the note is the web's own (item-dialog.tsx's picker).
+    static let pauseUntilWords = DayPickWords(
+        title: "Pause until", confirmVerb: "Pause until",
+        note: "It comes back on the day you pick, on its own. Nothing is lost meanwhile.")
+
+    /// What the banner says when Pause until's day is no longer after today:
+    /// the picker was left open across midnight. A pause has to end after
+    /// today, so nothing is written. Nil while the day may still be picked.
+    static func pauseUntilRefusal(_ until: DayString, today: DayString) -> String? {
+        guard until <= today else { return nil }
+        return "That day is no longer after today, so nothing was paused."
     }
 
     // MARK: Header

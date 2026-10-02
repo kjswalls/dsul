@@ -5,7 +5,8 @@ import SwiftUI
 /// pushed from its Subtasks list. Read-only in part 1. From the top:
 /// - the eyebrow, the type and the first routine holding it ("HABIT · MORNING
 ///   ROUTINE");
-/// - the title, with the tick circle when the tick is offered;
+/// - the title, with the tick circle when the tick is offered, a counted
+///   habit's tally ("1/3"), and the day the circle ticks when it isn't today;
 /// - the notes, four lines with Show all when they run longer;
 /// - the item's own pause ("Paused until Oct 8");
 /// - the chips, in the web panel's order (ItemSheetModel.chips), with the
@@ -40,7 +41,12 @@ struct ItemDetail: View {
         } else {
             // The item is gone (a fetch without it): the planner clears the
             // sheet slot, and this frame, before that lands, draws nothing.
+            // The slot knows only the first page, so a pushed subtask's page
+            // takes itself, and any other gone page, off the stack.
             Color.clear
+                .onAppear {
+                    if !isRoot { path.removeAll { planner.item($0) == nil } }
+                }
         }
     }
 
@@ -48,10 +54,10 @@ struct ItemDetail: View {
         let ctx = planner.verbContext(for: item, day: day)
         let offered = planner.offeredVerbs(for: item, day: day)
         let verbs = ItemSheetModel.verbs(item, ctx, offered: offered)
-        let caption = ItemSheetModel.dayCaption(item, ctx, offered: offered)
+        let caption = ItemSheetModel.dayCaption(item, ctx, bar: verbs.bar)
         let showsBar = verbs.notDue || !verbs.bar.isEmpty
         return ScrollView {
-            content(item, ctx, offered: offered)
+            content(item, ctx, offered: offered, bar: verbs.bar)
         }
         // Below the navigation bar, so it never covers Close: a write the
         // server refused says so over the sheet the verb was tapped in.
@@ -116,7 +122,7 @@ struct ItemDetail: View {
 
     // MARK: Content
 
-    private func content(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> some View {
+    private func content(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID], bar: [SheetVerb]) -> some View {
         let typeCaps = caps(item.typeName)
         let routines = planner.routineNames(for: item.id)
         let notes = (item.notes ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -128,7 +134,7 @@ struct ItemDetail: View {
                 .foregroundStyle(.secondary)
                 .textCase(.uppercase)
 
-            titleRow(item, ctx, offered: offered)
+            titleRow(item, ctx, offered: offered, bar: bar)
 
             if !notes.isEmpty {
                 NotesText(text: notes)
@@ -154,11 +160,16 @@ struct ItemDetail: View {
     /// line. The circle draws at the row's size and is hit over at least 44pt
     /// square, the overhang reaching into the margin and the gap before the
     /// title, never over it, so its left edge lines up with the eyebrow's.
-    private func titleRow(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> some View {
+    /// Beside the title, a counted habit's tally ("1/3"), which the circle's
+    /// label already speaks; under it, the day the circle ticks when that
+    /// isn't today and the bar's caption doesn't say so.
+    private func titleRow(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID], bar: [SheetVerb]) -> some View {
         let hit = max(44, circle + 22)
         let inset = (hit - circle) / 2
         // Where a first line's middle sits above its baseline, near enough.
         let lift = circle * 0.35
+        let tally = offered.contains(.tick) ? ItemSheetModel.tally(item, on: ctx.dateStr) : nil
+        let dayNote = ItemSheetModel.titleDayNote(item, ctx, offered: offered, bar: bar)
         return HStack(alignment: .firstTextBaseline, spacing: 12) {
             if offered.contains(.tick) {
                 Button {
@@ -173,10 +184,26 @@ struct ItemDetail: View {
                 .padding(.horizontal, -inset)
                 .accessibilityLabel(Text(ItemSheetModel.spokenLabel(.tick, item, ctx)))
             }
-            Text(item.title)
-                .font(.title2.weight(.semibold))
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityAddTraits(.isHeader)
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(item.title)
+                        .font(.title2.weight(.semibold))
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityAddTraits(.isHeader)
+                    if let tally {
+                        Text(tally)
+                            .font(.subheadline.monospacedDigit())
+                            .foregroundStyle(.secondary)
+                            .fixedSize()
+                            .accessibilityHidden(true)
+                    }
+                }
+                if let dayNote {
+                    Text(dayNote)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -279,6 +306,9 @@ struct ItemDetail: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
+                // As tall as the row, so a tap above or below one line of
+                // title still opens it.
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
             }
             .buttonStyle(RowPressStyle())
@@ -398,8 +428,14 @@ private struct NotesText: View {
                 }
 
             if truncates {
-                Button(expanded ? "Show less" : "Show all") {
+                // Hit over 44pt, though it lays out as one line of text.
+                Button {
                     withAnimation(.snappy) { expanded.toggle() }
+                } label: {
+                    Text(expanded ? "Show less" : "Show all")
+                        .padding(.vertical, 12)
+                        .contentShape(Rectangle())
+                        .padding(.vertical, -12)
                 }
                 .font(.subheadline.weight(.semibold))
                 .tint(Color.primary)

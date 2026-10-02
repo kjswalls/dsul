@@ -8,10 +8,14 @@ import SwiftUI
 ///
 /// Presented by the item sheet itself, not through the planner's sheet slot,
 /// which holds the item sheet and would close it to open this.
+///
+/// Its earliest day can move while it is up (Pause until's, at midnight):
+/// a day picked before then is brought up to it, so the button never names a
+/// day the pause would refuse.
 struct DayPickSheet: View {
-    let title: String
-    /// The confirm button's verb, before the day: "Move to", "Pause until".
-    let confirmVerb: String
+    /// The title, the confirm button's verb before the day ("Move to",
+    /// "Pause until"), and the note under the calendar, if any.
+    let words: DayPickWords
     /// The first day that may be picked; nil for none.
     let earliest: DayString?
     let onPick: (DayString) -> Void
@@ -19,10 +23,9 @@ struct DayPickSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var picked: Date
 
-    init(title: String, confirmVerb: String, initial: DayString, earliest: DayString?,
+    init(words: DayPickWords, initial: DayString, earliest: DayString?,
          onPick: @escaping (DayString) -> Void) {
-        self.title = title
-        self.confirmVerb = confirmVerb
+        self.words = words
         self.earliest = earliest
         self.onPick = onPick
         let start = earliest.map { Swift.max(initial, $0) } ?? initial
@@ -35,17 +38,30 @@ struct DayPickSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                calendar
-                    .datePickerStyle(.graphical)
-                    .labelsHidden()
-                    .padding(.horizontal)
+                VStack(alignment: .leading, spacing: 12) {
+                    calendar
+                        .datePickerStyle(.graphical)
+                        .labelsHidden()
+                    if let note = words.note {
+                        Text(note)
+                            .font(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal)
+            }
+            .onChange(of: earliest) { _, newEarliest in
+                if let newEarliest, pickedDay < newEarliest {
+                    picked = newEarliest.localDate()
+                }
             }
             .safeAreaBar(edge: .bottom) {
                 Button {
                     onPick(pickedDay)
                     dismiss()
                 } label: {
-                    Text(confirmVerb + " " + formatTargetDay(pickedDay.description))
+                    Text(words.confirmVerb + " " + formatTargetDay(pickedDay.description))
                         .font(.body.weight(.semibold))
                         .foregroundStyle(Color(.systemBackground))
                         .frame(maxWidth: .infinity)
@@ -57,7 +73,7 @@ struct DayPickSheet: View {
                 .padding(.horizontal, 16)
                 .padding(.bottom, 8)
             }
-            .navigationTitle(title)
+            .navigationTitle(words.title)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

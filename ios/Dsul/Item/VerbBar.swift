@@ -18,7 +18,8 @@ struct VerbBar: View {
     let item: SampleItem
     let ctx: VerbContext
     let verbs: SheetVerbs
-    /// "For Thu, Oct 8"; nil on today.
+    /// "For Thu, Oct 8" (`ItemSheetModel.dayCaption`); nil on today, and when
+    /// the bar holds no verb that acts on the day.
     let caption: String?
     let onRun: (SheetVerb) -> Void
     let onReschedule: (RescheduleChoice) -> Void

@@ -18,11 +18,7 @@ extension Item {
     /// when the text isn't a time of day the grid can draw.
     var startMin: Int? {
         guard let time = startTime else { return nil }
-        let parts = time.split(separator: ":", omittingEmptySubsequences: false)
-        guard parts.count >= 2, let h = Int(parts[0]), let m = Int(parts[1]),
-              (0..<24).contains(h), (0..<60).contains(m)
-        else { return nil }
-        return h * 60 + m
+        return minutesAfterMidnight(time)
     }
 
     /// The block length: `duration`, or the type's `defaultBlockMinutes`
@@ -59,4 +55,30 @@ extension Item {
         guard let parent = parentItemId else { return false }
         return !parent.isEmpty
     }
+}
+
+/// "HH:mm" as minutes after midnight: `startMin`'s reading of a time. Nil when
+/// the text isn't a time of day the grid can draw.
+func minutesAfterMidnight(_ time: String) -> Int? {
+    let parts = time.split(separator: ":", omittingEmptySubsequences: false)
+    guard parts.count >= 2, let h = Int(parts[0]), let m = Int(parts[1]),
+          (0..<24).contains(h), (0..<60).contains(m)
+    else { return nil }
+    return h * 60 + m
+}
+
+/// `item` put on `date`'s grid at `startMin`, as the web's hour drop writes it
+/// (lib/dnd/handle-drag-end.ts → `scheduleTask`): scheduled, the hour's
+/// bucket, the time, out of any project block, and anchored to the day it was
+/// dropped on. The one placing step: the planner's optimistic drop
+/// (`SamplePlanner.schedule`) and PlannerSync's replay of a drop that landed
+/// both take it, so the two can't drift.
+func placing(_ item: Item, on date: String, startMin: Int) -> Item {
+    var placed = item
+    placed.isScheduled = true
+    placed.timeBucket = DayBucket.owning(minute: startMin).rawValue
+    placed.startTime = minutesToTime(startMin)
+    placed.inProjectBlock = false
+    placed.startDate = date
+    return placed
 }

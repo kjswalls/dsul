@@ -434,9 +434,9 @@ final class DragFlag {
         #expect(planner.braindump.map(\.title) == ["Call the bank"])
     }
 
-    /// A landed write moots a failure in its own slot only: the tick that
-    /// landed says nothing about the carry that didn't, and the carry's
-    /// revert leaves the tick alone.
+    /// A revert puts back the failed write's slot alone: the tick that landed
+    /// says nothing about the carry that didn't, and the carry's revert leaves
+    /// the tick alone.
     @Test func aFailedCarryIsUndoneThoughATickThatLandedCameAfterIt() async {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
@@ -456,9 +456,9 @@ final class DragFlag {
         #expect(posts == 2)
     }
 
-    /// The same slot: the later tick's end state stands, so the earlier
-    /// failure is not put back over it.
-    @Test func aFailedTickIsMootOnceALaterTickOnTheSameDayLands() async {
+    /// The same slot: the later tick that landed is played again on the day
+    /// from before the failed one, so the day ends at the server's 3 of 3.
+    @Test func aFailedTickGivesWayToALaterTickOnTheSameDayThatLanded() async {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
         await server.on(itemRoute(PlannerJSON.water), .offline, .status(200, ok))
@@ -470,6 +470,131 @@ final class DragFlag {
 
         #expect(planner.item(PlannerJSON.water)?.dailyCounts[PlannerJSON.today] == 3)
         #expect(isDone(planner, PlannerJSON.water))
+    }
+
+    /// A carry keeps the time a drop set, so a carry that landed after a drop
+    /// that didn't is played on the item from before the drop: the server
+    /// carried an unscheduled row, which keeps no time and lands on Anytime.
+    @Test func aFailedDropIsUndoneUnderACarryThatLanded() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.bank), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.schedule(PlannerJSON.bank, startMin: 9 * 60)   // never reaches the server
+        planner.move(PlannerJSON.bank, to: "2026-10-02")       // lands
+        #expect(planner.item(PlannerJSON.bank)?.startTime == "09:00")
+        await drain(planner)
+
+        let bank = planner.item(PlannerJSON.bank)
+        #expect(bank?.isScheduled == false)
+        #expect(bank?.startTime == nil)
+        #expect(bank?.timeBucket == "anytime")
+        #expect(bank?.startDate == "2026-10-02")
+        let posts = await server.count(itemRoute(PlannerJSON.bank))
+        #expect(posts == 2)
+    }
+
+    /// A one-off's tick sets its status, which is the whole item's, so two
+    /// failed ticks sent with different days share one slot: the status goes
+    /// back to before the first, not to before the second.
+    @Test func twoFailedTicksOfAOneOffOnDifferentDaysGoBackToTheFirst() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        let planner = await loaded(server)
+        let friday = planner.today.adding(days: 1)
+
+        planner.toggle(PlannerJSON.groceries, on: planner.today)   // done
+        planner.toggle(PlannerJSON.groceries, on: friday)          // not done, from a sheet on Friday
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.groceries)?.status == "pending")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
+    /// The ticks that landed after a one-off's failed tick are played again
+    /// on its status from before it, whatever days they were sent with.
+    @Test func aFailedTickOfAOneOffGivesWayToTicksThatLandedOnAnotherDay() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        let friday = planner.today.adding(days: 1)
+
+        planner.toggle(PlannerJSON.groceries, on: planner.today)   // done, never reaches the server
+        planner.toggle(PlannerJSON.groceries, on: friday)          // not done, lands
+        planner.toggle(PlannerJSON.groceries, on: friday)          // done, lands
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.groceries)?.status == "completed")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 3)
+    }
+
+    /// The route answers 404 for a missing row, so a write on the new item
+    /// that landed proves a capture whose answer was lost did land.
+    @Test func aFailedCaptureStaysOnceALaterWriteOnItLands() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(captureRoute, .offline)
+        await server.setFallback(.status(200, ok))   // the new item's own route
+        let planner = await loaded(server)
+
+        planner.capture("Buy milk")                    // never answered
+        let milk = try #require(planner.items.last)
+        #expect(milk.title == "Buy milk")
+        planner.schedule(milk.id, startMin: 9 * 60)    // lands
+        await drain(planner)
+
+        let kept = planner.item(milk.id)
+        #expect(kept?.isScheduled == true)
+        #expect(kept?.startTime == "09:00")
+        #expect(planner.isScheduled(milk.id))
+        let posts = await server.count(itemRoute(milk.id))
+        #expect(posts == 1)
+    }
+
+    /// A skip leaves the day's tally alone, so a skip that landed after a
+    /// tally step that didn't is played on the tally from before the step.
+    @Test func aFailedTallyStepIsUndoneUnderASkipThatLanded() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.toggle(PlannerJSON.water)                    // 1 of 3 → 2 of 3, never reaches the server
+        planner.skip(PlannerJSON.water, on: planner.today)   // lands
+        #expect(planner.item(PlannerJSON.water)?.dailyCounts[PlannerJSON.today] == 2)
+        await drain(planner)
+
+        let water = planner.item(PlannerJSON.water)
+        #expect(water?.dailyCounts[PlannerJSON.today] == 1)
+        #expect(water?.skippedDates == [PlannerJSON.today])
+        #expect(water?.status == "skipped")
+        let posts = await server.count(itemRoute(PlannerJSON.water))
+        #expect(posts == 2)
+    }
+
+    /// A resume of an item the server never paused writes nothing, so a
+    /// resume that landed after a pause that didn't leaves no pause at all.
+    @Test func aFailedPauseIsUndoneUnderAResumeThatLanded() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(timezone: "America/New_York")), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.pause(PlannerJSON.groceries, until: nil)   // never reaches the server
+        planner.resume(PlannerJSON.groceries)              // lands, and the server writes nothing
+        #expect(planner.item(PlannerJSON.groceries)?.pausedUntil == PlannerJSON.today)
+        await drain(planner)
+
+        let groceries = planner.item(PlannerJSON.groceries)
+        #expect(groceries?.pausedAt == nil)
+        #expect(groceries?.pausedUntil == nil)
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
     }
 
     @Test func aSlotPutsBackItsOwnFieldsAndNoOthers() {
@@ -501,6 +626,11 @@ final class DragFlag {
         #expect(pause.pausedAt == nil)
         #expect(pause.completedDates == [day])
 
+        let status = PlannerSync.WriteSlot.status.restoring(now, from: before)
+        #expect(status.status == "pending")
+        #expect(status.completedDates == [day])
+        #expect(status.dailyCounts[day] == 3)
+
         var moved = before
         moved.startDate = "2026-10-02"
         moved.timeBucket = "evening"
@@ -513,14 +643,25 @@ final class DragFlag {
         #expect(PlannerSync.WriteSlot.create.restoring(now, from: before) == before)
     }
 
+    /// A tick's slot turns on the item it ticks: a one-off's is its status,
+    /// whatever day it was sent with; a habit's or a series' is the day.
     @Test func eachWriteNamesItsSlot() {
         let id = PlannerJSON.groceries
-        #expect(PlannerSync.Write.complete(id: id, date: "2026-10-01", done: true, count: nil).slot == .day("2026-10-01"))
-        #expect(PlannerSync.Write.skip(id: id, date: "2026-10-01", skipped: true).slot == .day("2026-10-01"))
-        #expect(PlannerSync.Write.schedule(id: id, date: "2026-10-01", startTime: "09:00").slot == .placement)
-        #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").slot == .placement)
-        #expect(PlannerSync.Write.pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC").slot == .pause)
-        #expect(PlannerSync.Write.capture(id: id, title: "Buy milk").slot == .create)
+        let oneOff = SampleItem(id: id, title: "Groceries", status: "pending")
+        let series = SampleItem(id: id, title: "Water the plants", status: "pending", repeatFrequency: "daily")
+        let habit = SampleItem(id: id, type: "habit", title: "Water", repeatFrequency: "daily")
+        let tick = PlannerSync.Write.complete(id: id, date: "2026-10-01", done: true, count: nil)
+        #expect(tick.slot(for: oneOff) == .status)
+        #expect(tick.slot(for: series) == .day("2026-10-01"))
+        #expect(tick.slot(for: habit) == .day("2026-10-01"))
+        let skip = PlannerSync.Write.skip(id: id, date: "2026-10-01", skipped: true)
+        #expect(skip.slot(for: series) == .day("2026-10-01"))
+        let drop = PlannerSync.Write.schedule(id: id, date: "2026-10-01", startTime: "09:00")
+        #expect(drop.slot(for: oneOff) == .placement)
+        #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").slot(for: oneOff) == .placement)
+        let pause = PlannerSync.Write.pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC")
+        #expect(pause.slot(for: oneOff) == .pause)
+        #expect(PlannerSync.Write.capture(id: id, title: "Buy milk").slot(for: nil) == .create)
         #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").itemId == id)
     }
 

@@ -19,13 +19,19 @@ import Foundation
 ///   under steady ticking would leave a failed write unchecked.
 /// - **A failed write** shows a banner and refetches once the queue drains,
 ///   and the server's answer replaces the guess. If that refetch fails too,
-///   the fields the write set go back to how they were before it, unless a
-///   later write for the item is queued, or a later write in the same slot
-///   (`WriteSlot`) has landed since.
-/// - **A failure is moot only in its own slot.** Writes are end states of
-///   their own fields: a later tick that landed says nothing about a carry that
-///   failed, so it neither saves the carry's guess from the revert nor is
-///   undone by it.
+///   each failed write's slot (`WriteSlot`) is rebased, unless a write for the
+///   item is still queued: the slot goes back to the item before the earliest
+///   failed write in it, with every write in it that landed after that one
+///   played again on top, in order, through the planner's own steps. So the
+///   slot ends where the server holds it, and every other slot is left as it
+///   is: a tick that landed is never undone by a carry that failed.
+/// - **A landed write doesn't moot a failed one.** Two writes in one slot need
+///   not set the same fields (a carry keeps the time a failed drop set, a skip
+///   leaves the tally a failed tick set, a resume of an item the server never
+///   paused writes nothing), so the later one is replayed, never trusted.
+/// - **A failed capture** takes its item with it, unless a later write on the
+///   item landed: the route answers 404 for a missing row, so any write it
+///   took proves the row is there.
 /// - **No polling and no realtime** (the web has neither): a fetch on sign-in,
 ///   on returning to the app at most once a minute, and on pull to refresh.
 @MainActor
@@ -55,10 +61,16 @@ final class PlannerSync {
             }
         }
 
-        /// The fields this write sets, as a slot.
-        var slot: WriteSlot {
+        /// The fields this write sets, as a slot. `item` is the item before
+        /// it: a tick on a one-off (neither a habit nor recurring) sets the
+        /// item's status, whatever day it was sent with, so it is `.status`,
+        /// never a day.
+        func slot(for item: Item?) -> WriteSlot {
             switch self {
-            case .complete(_, let date, _, _), .skip(_, let date, _):
+            case .complete(_, let date, _, _):
+                if let item, !item.isHabit, !item.recurs { return .status }
+                return .day(date)
+            case .skip(_, let date, _):
                 return .day(date)
             case .schedule, .move:
                 return .placement
@@ -70,13 +82,18 @@ final class PlannerSync {
         }
     }
 
-    /// Which of an item's fields a write sets. Two writes in one slot set the
-    /// same fields to an end state each, so the later one stands; writes in
-    /// different slots never touch each other's fields.
+    /// Which of an item's fields a write sets. Writes in different slots never
+    /// touch each other's fields, so a revert puts back one slot and leaves
+    /// the rest. Writes in one slot need not set the same fields, so a write
+    /// that landed after a failed one in its slot is replayed on the revert,
+    /// not taken as the slot's end state (`revertFailures`).
     enum WriteSlot: Sendable, Hashable {
-        /// One day's tick or skip: that day's completion, skip and tally, and
-        /// the streak and the status snapshot they move.
+        /// One day's tick or skip of a habit or a recurring item: that day's
+        /// completion, skip and tally, and the streak and the status snapshot
+        /// they move.
         case day(String)
+        /// A one-off's tick: its status, which is the whole item's, not a day's.
+        case status
         /// Where the item sits: its day, time, bucket, scheduled flag and block.
         case placement
         /// Its pause window.
@@ -97,6 +114,13 @@ final class PlannerSync {
     private struct SlotKey: Hashable {
         let itemId: UUID
         let slot: WriteSlot
+    }
+
+    /// A write that landed, kept for a revert to replay.
+    private struct Landed {
+        let write: Write
+        let slot: WriteSlot
+        let seq: Int
     }
 
     private enum Outcome {
@@ -132,8 +156,10 @@ final class PlannerSync {
     private var fetching: Task<Void, Never>?
     private var dragWaiter: Task<Void, Never>?
     private var queuedByItem: [UUID: Int] = [:]
-    /// The sequence number of the last write that landed, per item and slot.
-    private var lastSuccessBySlot: [SlotKey: Int] = [:]
+    /// The writes that landed while a failure was held, in order: what a
+    /// revert replays. Writes run in order, so only a failure older than a
+    /// write can need it, and none is kept while no failure is.
+    private var landed: [Landed] = []
     private var failures: [Failure] = []
     private var refetchWhenDrained = false
     private var lastFetchStarted: Date?
@@ -151,17 +177,19 @@ final class PlannerSync {
     // MARK: Writes
 
     /// Queues `write` behind every earlier one. `snapshot` is the item as it
-    /// was before the planner's optimistic step, for the revert.
+    /// was before the planner's optimistic step, for the revert; it also
+    /// decides the write's slot.
     func enqueue(_ write: Write, snapshot: Item?) {
         guard !stopped else { return }
         writeGeneration += 1
         let seq = writeGeneration
+        let slot = write.slot(for: snapshot)
         queuedByItem[write.itemId, default: 0] += 1
         pending += 1
         let previous = tail
         tail = Task { [weak self] in
             await previous?.value
-            await self?.run(write, snapshot: snapshot, seq: seq)
+            await self?.run(write, slot: slot, snapshot: snapshot, seq: seq)
         }
     }
 
@@ -183,16 +211,18 @@ final class PlannerSync {
         dragWaiter = nil
     }
 
-    private func run(_ write: Write, snapshot: Item?, seq: Int) async {
+    private func run(_ write: Write, slot: WriteSlot, snapshot: Item?, seq: Int) async {
         let id = write.itemId
         if !stopped {
             do {
                 try await perform(write)
-                lastSuccessBySlot[SlotKey(itemId: id, slot: write.slot)] = seq
+                if !failures.isEmpty {
+                    landed.append(Landed(write: write, slot: slot, seq: seq))
+                }
             } catch is CancellationError {
                 // Signed out while it was out: nothing to say.
             } catch {
-                failed(write, snapshot: snapshot, seq: seq, error: error)
+                failed(write, slot: slot, snapshot: snapshot, seq: seq, error: error)
             }
         }
         queuedByItem[id, default: 1] -= 1
@@ -217,10 +247,10 @@ final class PlannerSync {
         }
     }
 
-    private func failed(_ write: Write, snapshot: Item?, seq: Int, error: Error) {
+    private func failed(_ write: Write, slot: WriteSlot, snapshot: Item?, seq: Int, error: Error) {
         // Auth already moved to the sign-in screen; this planner is going.
         if (error as? APIError) == .signedOut { return }
-        failures.append(Failure(itemId: write.itemId, slot: write.slot, snapshot: snapshot, seq: seq))
+        failures.append(Failure(itemId: write.itemId, slot: slot, snapshot: snapshot, seq: seq))
         refetchWhenDrained = true
         planner?.show(Self.writeFailureText(error), isError: true)
     }
@@ -323,6 +353,7 @@ final class PlannerSync {
         lastAppliedFetchedAt = payload.fetchedAt
         // The server's answer replaced every guess, failed ones included.
         failures.removeAll()
+        landed.removeAll()
         return .applied
     }
 
@@ -340,27 +371,75 @@ final class PlannerSync {
         }
     }
 
-    /// Each failed slot back to its fields from before the earliest failed
-    /// write in it since the last one in it that landed, unless a write for
-    /// the item is still queued. A failure older than a landed write in the
-    /// same slot is moot: the writes are end states, so the later one stands.
-    /// A landed write in another slot moots nothing, and keeps its own fields
-    /// through the revert. A capture undone takes the item, and every other
-    /// failure on it, with it.
+    /// Rebases each failed slot, unless a write for the item is still queued:
+    /// the item before the earliest failed write in the slot, with every write
+    /// in the slot that landed after that one played on it in order
+    /// (`replaying`), put back over that slot's fields alone. A later failure
+    /// in the slot adds nothing, since the server never took it, and a landed
+    /// write in another slot keeps its own fields. A capture undone takes the
+    /// item, and every other failure on it, with it; it is undone only when no
+    /// later write on the item landed.
     private func revertFailures() {
-        var reverted = Set<SlotKey>()
+        defer {
+            failures.removeAll()
+            landed.removeAll()
+        }
+        guard let planner else { return }
+        let today = planner.today.description
+        let zone = planner.timeZoneID
+        var rebased = Set<SlotKey>()
         var removed = Set<UUID>()
         for failure in failures.sorted(by: { $0.seq < $1.seq }) {
             let id = failure.itemId
             let key = SlotKey(itemId: id, slot: failure.slot)
-            if reverted.contains(key) || removed.contains(id) { continue }
+            if rebased.contains(key) || removed.contains(id) { continue }
             if (queuedByItem[id] ?? 0) > 0 { continue }
-            if (lastSuccessBySlot[key] ?? 0) > failure.seq { continue }
-            planner?.restore(id, slot: failure.slot, from: failure.snapshot)
-            reverted.insert(key)
-            if failure.snapshot == nil { removed.insert(id) }
+            rebased.insert(key)
+            let since = landed.filter { $0.write.itemId == id && $0.seq > failure.seq }
+            guard let snapshot = failure.snapshot else {
+                // A capture.
+                if since.isEmpty {
+                    planner.restore(id, slot: failure.slot, from: nil)
+                    removed.insert(id)
+                }
+                continue
+            }
+            var item = snapshot
+            for later in since where later.slot == failure.slot {
+                item = replaying(later.write, on: item, today: today, timeZone: zone)
+            }
+            planner.restore(id, slot: failure.slot, from: item)
         }
-        failures.removeAll()
+    }
+
+    /// `item` with `write`, which landed, played on it through the planner's
+    /// own optimistic step for that write, so a rebase ends where the server
+    /// holds the item. A pause is resolved against `item`, as the server
+    /// resolved it against its row, on `today` in the write's zone (or
+    /// `timeZone`) at the clock's now; one already satisfied, or refused,
+    /// changes nothing.
+    private func replaying(_ write: Write, on item: Item, today: String, timeZone: String) -> Item {
+        switch write {
+        case .complete(_, let date, let done, let count):
+            guard let day = DayString(date) else { return item }
+            return applying(TickIntent(done: done, count: count), to: item, on: day)
+        case .schedule(_, let date, let startTime):
+            // The phone sent the time as `minutesToTime` wrote it.
+            guard let startMin = minutesAfterMidnight(startTime) else { return item }
+            return placing(item, on: date, startMin: startMin)
+        case .skip(_, let date, let skipped):
+            return skipping(item, on: date, skipped: skipped)
+        case .move(_, let date):
+            return moving(item, to: date)
+        case .pause(_, let paused, let pausedUntil, let zone):
+            let result = resolvePauseWrite(current: item, paused: paused,
+                                           pausedUntil: pausedUntil.map { ColumnWrite.set($0) }, todayStr: today,
+                                           nowISO: toISOString(now()), timeZone: zone ?? timeZone)
+            guard case .patch(let patch) = result, !patch.isEmpty else { return item }
+            return pausing(item, patch: patch)
+        case .capture:
+            return item
+        }
     }
 
     /// A fetch held back by a drag is made again once the hold lets go (the
@@ -408,12 +487,15 @@ extension PlannerSync.WriteSlot {
     /// A day puts back that day's completion, moving the streak back by one
     /// the way the completion moved it (HabitCompletion.swift; a task keeps
     /// none), its skip and its tally, and the status snapshot and day count the
-    /// web writes beside them. A capture is the snapshot whole.
+    /// web writes beside them. A one-off's status is the status alone. A
+    /// capture is the snapshot whole.
     func restoring(_ current: Item, from snapshot: Item) -> Item {
         var next = current
         switch self {
         case .create:
             return snapshot
+        case .status:
+            next.status = snapshot.status
         case .placement:
             next.startDate = snapshot.startDate
             next.startTime = snapshot.startTime

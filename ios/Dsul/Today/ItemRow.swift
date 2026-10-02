@@ -51,7 +51,11 @@ struct ItemRow: View {
             .padding(.vertical, 1)
             .padding(.trailing, 8)
             .background(Capsule().fill(Color(.tertiarySystemFill)))
+            // Drawn 32pt tall, hit over 44pt: the overhang grows the hit
+            // shape and leaves the layout alone.
+            .padding(.vertical, 6)
             .contentShape(Capsule())
+            .padding(.vertical, -6)
         }
         .buttonStyle(PressScaleStyle(scale: 0.98))
         .accessibilityElement(children: .ignore)
@@ -93,7 +97,12 @@ struct ItemRow: View {
                         StreakLabel(streak: item.streak ?? 0, lit: done)
                     }
                 }
+                // A line of title is about 22pt: the hit shape overhangs it
+                // by 11pt each way, the list row's full 44, as the circle's
+                // does, so the row's height and its press fill stay put.
+                .padding(.vertical, 11)
                 .contentShape(Rectangle())
+                .padding(.vertical, -11)
             }
             .buttonStyle(RowPressStyle())
         }

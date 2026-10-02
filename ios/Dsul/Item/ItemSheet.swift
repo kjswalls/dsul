@@ -78,21 +78,39 @@ private struct ItemSheetStack: View {
     }
 
     /// Reschedule starts on the item's own day (or the day the sheet acts
-    /// on, when it has none) and may pick any day, as the web's does. Pause
-    /// until starts, at the earliest, tomorrow: a pause has to end after today.
+    /// on, when it has none) and may pick any day, as the web's does; it is
+    /// titled with the bar's word, Schedule for an undated item. Pause until
+    /// starts, at the earliest, tomorrow: a pause has to end after today. A
+    /// picker left open across midnight may confirm a day that is now today,
+    /// so today is read again when it confirms, and a day no longer after it
+    /// writes nothing and says so in the banner.
     @ViewBuilder
     private func dayPicker(_ pick: DayPick) -> some View {
         switch pick {
         case .reschedule(let itemID):
-            DayPickSheet(title: "Reschedule", confirmVerb: "Move to",
+            DayPickSheet(words: rescheduleWords(itemID),
                          initial: planner.item(itemID)?.day ?? planner.actingDay(day), earliest: nil) { picked in
                 withAnimation(.snappy) { planner.move(itemID, to: picked.description) }
             }
         case .pauseUntil(let itemID):
-            DayPickSheet(title: "Pause until", confirmVerb: "Pause until",
+            DayPickSheet(words: ItemSheetModel.pauseUntilWords,
                          initial: planner.today.adding(days: 1), earliest: planner.today.adding(days: 1)) { picked in
+                planner.refreshToday()
+                if let refusal = ItemSheetModel.pauseUntilRefusal(picked, today: planner.today) {
+                    planner.show(refusal, isError: true)
+                    return
+                }
                 withAnimation(.snappy) { planner.pause(itemID, until: picked.description) }
             }
         }
+    }
+
+    /// Reschedule's words for `itemID` on the sheet's day; a dated item's
+    /// when it is gone, which then moves nothing.
+    private func rescheduleWords(_ itemID: UUID) -> DayPickWords {
+        guard let item = planner.item(itemID) else {
+            return DayPickWords(title: "Reschedule", confirmVerb: "Move to", note: nil)
+        }
+        return ItemSheetModel.rescheduleWords(item, planner.verbContext(for: item, day: day))
     }
 }

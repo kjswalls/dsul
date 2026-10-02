@@ -6,8 +6,8 @@ import Testing
 /// The item sheet's words and slots (ItemSheetModel) and a row's VoiceOver
 /// sentence, on the sample's Thursday 2026-10-01: which verbs sit in the bar
 /// and which behind ⋯, the bar's short words, the "For …" caption and the
-/// "Not due" line, the chips in the web panel's order, the streak chip's week,
-/// and the time ranges.
+/// "Not due" line, the day picker's words, a counted habit's tally, the chips
+/// in the web panel's order, the streak chip's week, and the time ranges.
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -33,7 +33,7 @@ import Testing
     @Test func aOneOffTaskOffersTheTickTomorrowAndReschedule() throws {
         let planner = makePlanner()
         let roadmap = try named(planner, "Draft Q4 roadmap")
-        let (ctx, offered, verbs) = sheet(planner, roadmap)
+        let (ctx, _, verbs) = sheet(planner, roadmap)
 
         #expect(verbs.bar == [.tick, .nextDay, .reschedule])
         #expect(verbs.menu == [.pause, .pauseUntil])
@@ -43,7 +43,7 @@ import Testing
         #expect(ItemSheetModel.barLabel(.nextDay, roadmap, ctx) == "Tomorrow")
         #expect(ItemSheetModel.spokenValue(.nextDay, roadmap, ctx) == "Fri, Oct 2")
         #expect(ItemSheetModel.barLabel(.reschedule, roadmap, ctx) == "Reschedule")
-        #expect(ItemSheetModel.dayCaption(roadmap, ctx, offered: offered) == nil)
+        #expect(ItemSheetModel.dayCaption(roadmap, ctx, bar: verbs.bar) == nil)
     }
 
     @Test func aHabitOffersSkipAndThePauseFamilyAndNothingBehindMore() throws {
@@ -56,11 +56,13 @@ import Testing
         #expect(verbs.menu.isEmpty)
         #expect(ItemSheetModel.barLabel(.skip, journal, ctx) == "Skip today")
         #expect(ItemSheetModel.spokenLabel(.tick, journal, ctx) == "Done today")
-        #expect(ItemSheetModel.dayCaption(journal, ctx, offered: offered) == nil)
+        #expect(ItemSheetModel.dayCaption(journal, ctx, bar: verbs.bar) == nil)
+        #expect(ItemSheetModel.titleDayNote(journal, ctx, offered: offered, bar: verbs.bar) == nil)
     }
 
     /// The bar's words say "today" only on today; off it a caption names the
-    /// day the tick and Skip act on.
+    /// day Skip acts on, and a line under the title the day the habit's
+    /// circle ticks, since the bar doesn't hold the tick.
     @Test func offTodayTheWordTodayGoesAndACaptionNamesTheDay() throws {
         let planner = makePlanner()
         let journal = try named(planner, "Journal")
@@ -69,21 +71,55 @@ import Testing
 
         #expect(verbs.bar == [.skip, .pause, .pauseUntil])
         #expect(ItemSheetModel.barLabel(.skip, journal, ctx) == "Skip")
-        #expect(ItemSheetModel.dayCaption(journal, ctx, offered: offered) == "For Fri, Oct 2")
+        #expect(ItemSheetModel.dayCaption(journal, ctx, bar: verbs.bar) == "For Fri, Oct 2")
+        #expect(ItemSheetModel.titleDayNote(journal, ctx, offered: offered, bar: verbs.bar) == "For Fri, Oct 2")
+    }
+
+    /// The caption follows what the bar holds, not what is offered. Journal
+    /// was done yesterday, so on yesterday there is no Skip, and the bar is
+    /// Pause and Pause until, which act on today: no caption over them. The
+    /// circle still ticks yesterday, and the title says so.
+    @Test func aBarOfDatelessVerbsHasNoCaption() throws {
+        let planner = makePlanner()
+        let journal = try named(planner, "Journal")   // done the three days before today
+        let wednesday = planner.today.adding(days: -1)
+        let (ctx, offered, verbs) = sheet(planner, journal, on: wednesday)
+
+        #expect(ctx.occurrence == .done)
+        #expect(offered.contains(.tick))
+        #expect(verbs.bar == [.pause, .pauseUntil])
+        #expect(ItemSheetModel.dayCaption(journal, ctx, bar: verbs.bar) == nil)
+        #expect(ItemSheetModel.titleDayNote(journal, ctx, offered: offered, bar: verbs.bar) == "For Wed, Sep 30")
+    }
+
+    /// Paused today, the bar is Resume alone, which acts on today whatever
+    /// day the sheet was opened on: no caption over it.
+    @Test func resumeAloneOffTodayHasNoCaption() throws {
+        let planner = makePlanner()
+        var journal = try named(planner, "Journal")
+        journal.pausedAt = "2026-09-30T12:00:00.000Z"
+        journal.pausedUntil = "2026-10-08"
+        let friday = "2026-10-02"
+        let ctx = VerbContext(dateStr: friday, todayStr: "2026-10-01", timeZone: "UTC",
+                              occurrence: occurrenceOn(journal, on: friday, today: "2026-10-01", timeZone: "UTC"))
+        let verbs = ItemSheetModel.verbs(journal, ctx, offered: eligibleVerbs(journal, ctx))
+
+        #expect(verbs.bar == [.resume])
+        #expect(ItemSheetModel.dayCaption(journal, ctx, bar: verbs.bar) == nil)
     }
 
     @Test func aDayTheItemDoesNotFallOnHasANotDueLineInPlaceOfTheBar() throws {
         let planner = makePlanner()
         let weekdays = try named(planner, "Plan tomorrow")
         let saturday = try #require(DayString("2026-10-03"))
-        let (ctx, offered, verbs) = sheet(planner, weekdays, on: saturday)
+        let (ctx, _, verbs) = sheet(planner, weekdays, on: saturday)
 
         #expect(ctx.occurrence == .absent)
         #expect(verbs.notDue)
         #expect(verbs.bar.isEmpty)
         #expect(verbs.menu == [.pause, .pauseUntil])
         #expect(ItemSheetModel.notDueLine(ctx) == "Not due Sat, Oct 3")
-        #expect(ItemSheetModel.dayCaption(weekdays, ctx, offered: offered) == nil)
+        #expect(ItemSheetModel.dayCaption(weekdays, ctx, bar: verbs.bar) == nil)
     }
 
     @Test func aSubtaskIsOfferedTheTickAlone() throws {
@@ -124,6 +160,62 @@ import Testing
         #expect(SheetVerb.pause.slotID == SheetVerb.resume.slotID)
         #expect(SheetVerb.pause.slotID != SheetVerb.pauseUntil.slotID)
         #expect(SheetVerb.pauseUntil.verb == .pause)
+    }
+
+    // MARK: The day picker
+
+    /// Reschedule's picker is titled with the bar's own word: Schedule for an
+    /// undated item, Reschedule for a dated one, each with its verb on the
+    /// button. Pause until's says the day picked is the day it comes back.
+    @Test func theDayPickerUsesTheBarsWord() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let bank = try named(planner, "Call the bank")   // a braindump row, undated
+        let roadmapCtx = planner.verbContext(for: roadmap, on: planner.today)
+        let bankCtx = planner.verbContext(for: bank, on: planner.today)
+
+        #expect(ItemSheetModel.barLabel(.reschedule, bank, bankCtx) == "Schedule")
+        #expect(ItemSheetModel.rescheduleWords(bank, bankCtx)
+                == DayPickWords(title: "Schedule", confirmVerb: "Schedule for", note: nil))
+        #expect(ItemSheetModel.rescheduleWords(roadmap, roadmapCtx)
+                == DayPickWords(title: "Reschedule", confirmVerb: "Move to", note: nil))
+        #expect(ItemSheetModel.pauseUntilWords.note
+                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile.")
+    }
+
+    /// A Pause until picker confirmed after midnight: a day that is now today,
+    /// or before it, is refused with the banner's words; a later one isn't.
+    @Test func pauseUntilRefusesADayNoLongerAfterToday() throws {
+        let today = try #require(DayString("2026-10-02"))
+        #expect(ItemSheetModel.pauseUntilRefusal(today, today: today)
+                == "That day is no longer after today, so nothing was paused.")
+        #expect(ItemSheetModel.pauseUntilRefusal(today.adding(days: -1), today: today) != nil)
+        #expect(ItemSheetModel.pauseUntilRefusal(today.adding(days: 1), today: today) == nil)
+    }
+
+    // MARK: The title
+
+    /// A counted habit's tally beside its title, as the web panel counts it:
+    /// the day's count, or the target once the day is done with none stored.
+    /// None for a habit done once a day or a type that keeps no tally. The
+    /// circle's label says the same count.
+    @Test func aCountedHabitsTallyCountsAsTheWebPanelDoes() throws {
+        let planner = makePlanner()
+        var journal = try named(planner, "Journal")   // done the three days before today
+        let today = planner.today.description
+        #expect(ItemSheetModel.tally(journal, on: today) == nil)
+
+        journal.timesPerDay = 3
+        #expect(ItemSheetModel.tally(journal, on: today) == "0/3")
+        journal.dailyCounts = [today: 1]
+        #expect(ItemSheetModel.tally(journal, on: today) == "1/3")
+        #expect(ItemSheetModel.spokenLabel(.tick, journal, planner.verbContext(for: journal, on: planner.today))
+                == "Count one (1/3)")
+        #expect(ItemSheetModel.tally(journal, on: "2026-09-30") == "3/3")
+
+        var roadmap = try named(planner, "Draft Q4 roadmap")
+        roadmap.timesPerDay = 3
+        #expect(ItemSheetModel.tally(roadmap, on: today) == nil)
     }
 
     // MARK: The header and the chips

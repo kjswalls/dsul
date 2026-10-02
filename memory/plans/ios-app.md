@@ -112,27 +112,46 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   medium and large (large from the start at accessibility text sizes), Close
   and ⋯ in the toolbar, the verbs in a glass capsule in `.safeAreaBar`, and
   the planner's banner over the content under Close, so a refused write says
-  so over the sheet it came from. It stays open after a verb, as the web's
-  panel does, and closes when a fetch no longer has its item (`apply` and
-  `restore` clear the slot).
+  so over the sheet it came from. Today's copy of the banner steps aside
+  while an item's sheet is up, so at the medium detent it shows once, and
+  `show` has VoiceOver say it (an error at high priority), since it is drawn
+  where focus isn't. The sheet stays open after a verb, as the web's panel
+  does, and closes when a fetch no longer has its item (`apply` and
+  `restore` clear the slot). The slot knows only the first page, so a pushed
+  subtask's page whose item a fetch drops takes itself off the stack.
 - **Which day.** `SheetDay` is kept by name and read when a verb is tapped
   (`actingDay`): `.selected` from Today's surfaces, so a sheet acts on the day
   its row was drawn on; `.today` from Search, which has no day (`open` first
   brings `today` up to the clock). The tick, Skip and Unskip act on it; Pause
   and Resume read wall-clock today in the planner's zone. Off today the bar
-  drops " today" from its words and a caption names the day ("For Thu,
-  Oct 8"); on a day a recurring item doesn't fall on (`occurrenceOn` is
-  `absent`) a "Not due Sat, Oct 3" line takes the bar's place.
+  drops " today" from its words, and a caption over it names the day ("For
+  Thu, Oct 8") when it holds a verb that acts on that day (the tick, Skip,
+  Unskip); a bar of Pause, Pause until or Resume alone gets none. When the
+  title's circle ticks that day and the bar doesn't hold the tick (a habit,
+  or a bar given way to Resume), a line under the title names the day
+  instead. On a day a recurring item doesn't fall on (`occurrenceOn` is
+  `absent`) a "Not due" line takes the bar's place. Today lists only what
+  falls on its day, so in practice that is a Search result on one of the
+  item's days off, and the line reads "Not due today"; off today it would
+  name the day ("Not due Sat, Oct 3").
 - **The bar** follows the approved item-conversations table (Round 3), up to
   three slots:
 
   | Item | Bar | ⋯ |
   |---|---|---|
   | Paused today | Resume | – |
+  | Recurring item on a day it doesn't fall on | – ("Not due today" in its place) | Pause, Pause until…, and for a series, Reschedule |
   | Habit | Skip / Unskip today, Pause, Pause until (its tick is the title's circle) | – |
-  | One-off task-like | Done, Tomorrow (Next day when it lands later), Reschedule | Pause, Pause until… |
+  | One-off task-like | Done, Tomorrow (Next day when it lands later), Reschedule (undated: Schedule, and no Tomorrow) | Pause, Pause until… |
   | Recurring task-like | Done today, Skip / Unskip today, Pause | Pause until…, Reschedule |
   | Subtask | Done | – |
+
+  The first two rows come first, whatever the item. ⋯ holds whatever of
+  Pause, Pause until and a series' Reschedule the bar doesn't, so a habit's ⋯
+  is empty, and hidden, except on a day it doesn't fall on. That is the one
+  exception to the design's empty habit ⋯, kept on purpose: with no bar
+  there, ⋯ is the only way to pause it, and the web's `pause` is dateless,
+  never asking whether the day is absent.
 
   Only what `SamplePlanner.offers` allows shows: the web's gate
   (`verbEligible`), the server's own where it asks more (no skip or carry for
@@ -142,9 +161,14 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   becomes its start, so it waits behind ⋯. Reschedule is a menu (Today,
   Next week by Week starts on, Pick a date…); Pick a date and Pause until open
   `DayPickSheet`, nested in the sheet and never the planner's slot, which
-  writes only on its confirm button ("Move to Thu, Oct 8"); Pause until starts
-  tomorrow. The mapping lives in `ItemSheetModel`, pinned by ItemSheetTests,
-  and every verb re-reads its item and asks its gate again before it writes.
+  writes only on its confirm button ("Move to Thu, Oct 8"). Its title is the
+  bar's own word, so an undated item's picker is Schedule ("Schedule for Thu,
+  Oct 8"). Pause until's starts tomorrow and says under the calendar that
+  the item comes back on the day picked; left open across midnight, its
+  earliest day moves up and the pick with it, and a confirm on a day no
+  longer after today writes nothing and says so in the banner. The mapping
+  lives in `ItemSheetModel`, pinned by ItemSheetTests, and every verb
+  re-reads its item and asks its gate again before it writes.
 - **The chips** are read-only in part 1 and follow the web panel's order, each
   only when set, each asked of the registry (`caps`), never the type's name:
   the streak chip first for a type that keeps one (flame, count, this week's
@@ -153,20 +177,27 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   Anytime), times a day (above 1), repeat (`cadenceLabel`), reminder ("After
   I pour my coffee · 8:00 am") | project (with its colour dot), routines,
   seasons. The planner payload gained `weekStartDay` and `timeFormat` for
-  them. Only the item's own pause shows ("Paused until Oct 8").
+  them. Only the item's own pause shows ("Paused until Oct 8"). Beside the
+  title, a counted habit's tally on the day ("1/3", the web panel's count),
+  so a tap on the circle that counts one without finishing the day still
+  shows; VoiceOver hears it in the circle's label ("Count one (1/3)").
 - **Opening, and VoiceOver.** A row is two buttons: the circle, hit over 44pt
   around its 22pt drawing so a near miss still ticks, and the rest, which
-  opens. To VoiceOver it is one element ("Draft Q4 roadmap, 9 to 11 AM",
-  "Done" as its value, the hint "Opens details") whose activation opens, with
-  Mark done as a named action. The skipped strip opens too (the only way to
-  Unskip). A grid block is a button over the drop target; a braindump row
-  opens on a tap gesture, so its long press stays the system drag, and keeps
-  its "Schedule at 9:00" action. Each chip is its own element with a spoken
-  label; the streak chip is one ("Streak 41; this week: 3 done").
+  opens, hit over the row's full 44pt though a line of title is about 22pt.
+  The skipped strip, a braindump row, a subtask's title in the sheet and Show
+  all are hit over 44pt too, without changing their layout. To VoiceOver a
+  row is one element ("Draft Q4 roadmap, 9 to 11 AM", "Done" as its value,
+  the hint "Opens details") whose activation opens, with Mark done as a named
+  action. The skipped strip opens too (the only way to Unskip). A grid block
+  is a button over the drop target; a braindump row opens on a tap gesture,
+  so its long press stays the system drag, and keeps its "Schedule at 9:00"
+  action. Each chip is its own element with a spoken label; the streak chip
+  is one ("Streak 41; this week: 3 done").
 - **Lime.** The sheet sets no tint of its own, because the done tick and
   "Now" are `Color.accentColor`; its text controls tint themselves in the
   label colour, and anything lime presses by scaling (`PressScaleStyle`),
-  never `.plain`'s fade. The banner dropped `.plain` for the same reason.
+  never `.plain`'s fade. The banner dropped `.plain` for the same reason, and
+  slides in without an opacity transition, which would fade its lime check.
 - **The writes.** `POST /api/app/items/:id` takes `skip` (a date and
   `skipped`), `move` (a date, which the phone picks: `nextDayOf`, Today, Next
   week or the picked day) and `pause` (`paused`, an optional exclusive
@@ -177,13 +208,15 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   older server) means `complete` and `schedule`, and the phone hides any verb
   whose write isn't listed, so an app that ships before the deploy never
   offers a write it would be refused. In PlannerSync each write has a slot (a
-  day for `complete` and `skip`, placement for `schedule` and `move`, the
-  pause, a capture): a failed write is moot only if a later one in the same
-  slot landed, and the revert puts back only its own fields.
+  day for a habit's or a recurring item's `complete` and for `skip`, the
+  status for a one-off's `complete`, placement for `schedule` and `move`, the
+  pause, a capture), and a revert rebases only the failed write's slot (Data,
+  below).
 - **Unproven on a device:** the checks in ios/README.md, "Checking the item
   sheet" (a near miss still ticks, a block doesn't swallow a drop, a
-  braindump tap versus long press, each verb, VoiceOver, the largest text
-  size, the lime).
+  braindump tap versus long press, each verb, another day and "Not due", a
+  refused write and VoiceOver hearing its banner, a counted habit's tally,
+  VoiceOver, the largest text size, the lime).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -305,10 +338,23 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   so a drag whose view is torn down mid-flight (and never delivers `.ended`)
   can't hold fetches back for good. A discarded fetch is made again, never
   dropped: after the drain, or after a pause that doubles (0.5s up to 4s)
-  while ticks keep landing under it. A failed write shows a
-  banner and refetches once the queue drains; if that refetch fails too, the
-  item goes back to its copy from before the write unless a later write for it
-  is queued or has landed. A payload for another user is never shown.
+  while ticks keep landing under it. A failed write shows a banner and
+  refetches once the queue drains, and the server's answer replaces every
+  guess. If that refetch fails too, each failed write's slot (`WriteSlot`) is
+  rebased, unless a write for the item is still queued: the slot goes back to
+  the item before the earliest failed write in it, with every write in it
+  that landed after that one played again on top, in order, through the
+  planner's own steps (`replaying`; a pause is resolved again against the
+  rebased item, as the server resolved it against its row). So the slot ends
+  where the server holds it, and every other slot is left as it is: a tick
+  that landed is never undone by a carry that failed. A landed write doesn't
+  moot a failed one in its slot, because two writes there need not set the
+  same fields (a carry keeps the time a failed drop set, a skip leaves the
+  tally a failed tick set, a resume of an item the server never paused writes
+  nothing), so it is replayed, never trusted. A failed capture takes its item
+  with it, unless a later write on the item landed: the route answers 404 for
+  a missing row, so any write it took proves the row is there. A payload for
+  another user is never shown.
 - **The first load shows itself on every layout**: List and Buckets put the
   spinner (or the error and Try again) in the list, and Schedule floats it
   over the grid, since an empty grid alone looks like a free day.

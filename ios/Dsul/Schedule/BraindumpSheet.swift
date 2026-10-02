@@ -119,7 +119,11 @@ private struct BraindumpRow: View {
                 .font(.caption.monospacedDigit())
                 .foregroundStyle(.secondary)
         }
+        // Hit over the list row's full 44pt, not just the line of text, and
+        // laid out as before.
+        .padding(.vertical, 11)
         .contentShape(Rectangle())
+        .padding(.vertical, -11)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("\(item.title), \(item.durationMin) minutes"))
         .accessibilityAddTraits(.isButton)

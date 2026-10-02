@@ -1,3 +1,4 @@
+import Accessibility
 import DsulCore
 import Foundation
 import Observation
@@ -131,6 +132,12 @@ final class SamplePlanner {
     var sheetOverBraindump: PlannerSheet? {
         get { showBraindumpSheet ? activeSheet : nil }
         set { activeSheet = newValue }
+    }
+
+    /// Is an item's sheet up? It draws the banner itself, so Today doesn't.
+    var isShowingItemSheet: Bool {
+        if case .item(_, _)? = activeSheet { return true }
+        return false
     }
 
     /// A test's sample planner, pinned to `todayString`. Pass a `now` on that
@@ -295,10 +302,10 @@ final class SamplePlanner {
 
     /// Puts an item on the selected day's grid at `startMin`: a braindump row
     /// dropped on an hour (or VoiceOver's "Schedule at 9:00"), or a block
-    /// moved. The web's hour drop (lib/dnd/handle-drag-end.ts → `scheduleTask`):
-    /// scheduled, the hour's bucket, the time, out of any project block, and
-    /// anchored to the day it was dropped on. Also ends the drag's hold on
-    /// fetched data: the drop has landed.
+    /// moved. The web's hour drop (`placing`, lib/dnd/handle-drag-end.ts →
+    /// `scheduleTask`): scheduled, the hour's bucket, the time, out of any
+    /// project block, and anchored to the day it was dropped on. Also ends the
+    /// drag's hold on fetched data: the drop has landed.
     func schedule(_ id: UUID, startMin: Int) {
         DragHold.shared.releaseNow()
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
@@ -309,13 +316,7 @@ final class SamplePlanner {
         // the braindump, and a real one almost never is.
         guard !before.isHabit else { return }
         let time = minutesToTime(startMin)
-        var placed = before
-        placed.isScheduled = true
-        placed.timeBucket = DayBucket.owning(minute: startMin).rawValue
-        placed.startTime = time
-        placed.inProjectBlock = false
-        placed.startDate = selectedDayString
-        items[i] = placed
+        items[i] = placing(before, on: selectedDayString, startMin: startMin)
         sync?.enqueue(.schedule(id: id, date: selectedDayString, startTime: time), snapshot: before)
     }
 
@@ -722,11 +723,13 @@ final class SamplePlanner {
         closeSheetIfItsItemIsGone()
     }
 
-    /// Puts back what a write the server never took changed: the fields of
-    /// its `slot`, as they were in `snapshot`, leaving every other field as it
-    /// is now, so undoing a failed carry never undoes a tick that landed. A
-    /// nil snapshot removes the item: a capture that never landed. An item
-    /// that is gone is left gone.
+    /// Puts back what writes the server never took changed: the fields of
+    /// `slot`, as `snapshot` holds them (PlannerSync's rebase: the item before
+    /// the earliest failed write in the slot, with what landed there since
+    /// played on it), leaving every other field as it is now, so undoing a
+    /// failed carry never undoes a tick that landed. A nil snapshot removes
+    /// the item: a capture that never landed. An item that is gone is left
+    /// gone.
     func restore(_ id: UUID, slot: PlannerSync.WriteSlot, from snapshot: SampleItem?) {
         if let snapshot {
             if let i = items.firstIndex(where: { $0.id == id }) {
@@ -749,10 +752,18 @@ final class SamplePlanner {
         if !hasLoaded { loadError = nil }
     }
 
-    /// Shows `text` over Today for five seconds, or until a newer one.
+    /// Shows `text` over Today (or over an item's sheet, while one is up) for
+    /// five seconds, or until a newer one. VoiceOver says it too: the banner
+    /// is drawn where focus isn't, and a refused write is otherwise only a
+    /// slot's label quietly turning back. Said here, once, rather than by
+    /// `BannerView`, which more than one view draws. An error interrupts
+    /// whatever is being said, such as that slot's new label.
     func show(_ text: String, isError: Bool) {
         let shown = PlannerBanner(text, isError: isError)
         banner = shown
+        var spoken = AttributedString(text)
+        if isError { spoken.accessibilitySpeechAnnouncementPriority = .high }
+        AccessibilityNotification.Announcement(spoken).post()
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             self?.dismissBanner(shown.id)

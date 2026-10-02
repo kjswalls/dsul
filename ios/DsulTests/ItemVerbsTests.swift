@@ -428,6 +428,22 @@ import Testing
         #expect(planner.activeSheet == nil)
     }
 
+    /// While an item's sheet is up it draws the banner, and Today leaves it
+    /// to it. The date picker is not an item's sheet.
+    @Test func anItemSheetIsUpOnlyWhileTheSlotHoldsAnItem() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        let planner = await loaded(server)
+        #expect(!planner.isShowingItemSheet)
+
+        planner.activeSheet = .datePicker
+        #expect(!planner.isShowingItemSheet)
+        planner.open(PlannerJSON.groceries, day: .today)
+        #expect(planner.isShowingItemSheet)
+        planner.activeSheet = nil
+        #expect(!planner.isShowingItemSheet)
+    }
+
     // MARK: The clock
 
     /// A stored zone arriving with the first fetch moves today by the planner's
