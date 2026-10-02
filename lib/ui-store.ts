@@ -106,6 +106,14 @@ interface UIStore {
   activeDialog: ActiveDialog | null;
   openDialog: (dialog: ActiveDialog) => void;
   closeDialog: () => void;
+  /**
+   * The item the ⌘K launcher replaced when it opened over the docked item
+   * panel, or null. The launcher takes the one slot, so the item closes as it
+   * always has; this keeps only its id, so a `?` asked from that launcher can
+   * still come back to it ("‹ <item>", lib/open-chat.ts askFromCommandBar).
+   * Cleared by the next openDialog or closeDialog. Nothing else reads it.
+   */
+  displacedItemId: string | null;
 
   /** Shared AlertDialog rendered once in the shell. */
   confirmRequest: ConfirmRequest | null;
@@ -147,8 +155,19 @@ interface UIStore {
 
 export const useUIStore = create<UIStore>()((set, get) => ({
   activeDialog: null,
-  openDialog: (dialog) => set({ activeDialog: dialog }),
-  closeDialog: () => set({ activeDialog: null }),
+  openDialog: (dialog) => {
+    const { activeDialog: prev, displacedItemId } = get();
+    let displaced: string | null = null;
+    if (dialog.type === 'launcher') {
+      // A launcher re-opened over itself (⌘K pressed inside it) is still the
+      // one that replaced the item.
+      if (prev?.type === 'edit-item') displaced = prev.item.id;
+      else if (prev?.type === 'launcher') displaced = displacedItemId;
+    }
+    set({ activeDialog: dialog, displacedItemId: displaced });
+  },
+  closeDialog: () => set({ activeDialog: null, displacedItemId: null }),
+  displacedItemId: null,
 
   confirmRequest: null,
   confirm: (request) => set({ confirmRequest: request }),
@@ -265,3 +284,51 @@ export const openEditFor = (item: Task | HabitItem, itemType: KnownItemType) => 
       : ({ ...item, type: itemType } as Item);
   useUIStore.getState().openDialog({ type: 'edit-item', item: stamped });
 };
+
+// ── Closing the item from outside it ─────────────────────────────────────────
+//
+// Every item close goes through the shell's own close (DesktopShell's
+// handlePanelOpenChange: closeDialog, plus letting go of the one-row selection
+// a plain row click made), and ItemDialog's exits (Back, ✕, Done, Escape,
+// click-away) already do. A close from OUTSIDE the panel (Ctrl+J, `?` in the
+// command bar, "Pick things back up") must not be a bare closeDialog(): that
+// leaves the row's wash latched with nothing open, and leaves a title typed a
+// moment ago to the panel's unmount grace instead of saving it now.
+//
+// Both halves register themselves, so this store imports neither: the open
+// panel registers its synchronous flush, and DesktopShell its close. Each
+// register returns its own unregister, which clears the slot only if it still
+// holds that function (a StrictMode double effect, or a retarget that mounts
+// the next panel before the last one's cleanup, cannot clear the newer one).
+
+let itemPanelFlush: (() => void) | null = null;
+let itemPanelClose: (() => void) | null = null;
+
+/** The open panel's flush (ItemDialog): saves a pending edit synchronously. */
+export function registerItemPanelFlush(fn: () => void): () => void {
+  itemPanelFlush = fn;
+  return () => {
+    if (itemPanelFlush === fn) itemPanelFlush = null;
+  };
+}
+
+/** The shell's close for the docked panel (DesktopShell's handlePanelOpenChange(false)). */
+export function registerItemPanelClose(fn: () => void): () => void {
+  itemPanelClose = fn;
+  return () => {
+    if (itemPanelClose === fn) itemPanelClose = null;
+  };
+}
+
+/**
+ * Close the open item from outside it: flush first (synchronously, so a
+ * caller that reads the planner next, such as the catch-up proposal, sees the
+ * edit), then the shell's close; with no shell registered (Zen, the phone),
+ * closeDialog. A no-op when no item is open.
+ */
+export function closeItemPanel(): void {
+  if (useUIStore.getState().activeDialog?.type !== 'edit-item') return;
+  itemPanelFlush?.();
+  if (itemPanelClose) itemPanelClose();
+  else useUIStore.getState().closeDialog();
+}

@@ -254,7 +254,7 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
   },
   {
     key: 'dsul-sidebar-settings',
-    keeps: ['leftSidebarOpen', 'chatExpanded', 'leftSidebarWidth'],
+    keeps: ['leftSidebarOpen', 'askOpen', 'leftSidebarWidth'],
     inert: ['leftSidebarHoverEnabled'],
     clear: ({ scope }) => useSidebarStore.getState().clearUserScopedState(scope),
   },

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { memo, useState, useEffect, useRef } from 'react';
 import { format, isToday } from 'date-fns';
 import {
   Calendar as CalendarIcon,
@@ -28,6 +28,20 @@ import { goToDate, stepScope } from '@/lib/nav-commands';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys, isApplePlatform } from '@/lib/commands/keys';
+
+/**
+ * The long date's length past which Notebook's masthead (its 28px serif)
+ * needs more than the 450px canvas every other date shortens below. Measured
+ * in Chromium over every date of a year: the masthead's nav row (calendar,
+ * prev, date, next) is at most 360px up to 17 characters ("Wednesday, May
+ * 10"), inside a 450px canvas's content box with room to spare; at 18 it is
+ * already 383 ("Monday, November 6"), past it; and the longest,
+ * "Wednesday, September 13", is 448, which a 520px canvas holds.
+ * app/globals.css ("The header on a narrow canvas") shortens the wide ones
+ * below 520 and leaves every other date to the 450 rule, so "Friday,
+ * October 2" stays whole on Notebook's 514px day beside a docked rail at 1440.
+ */
+export const MASTHEAD_WIDE_DATE_CHARS = 17;
 
 /**
  * Floating header capsule at the top of the canvas (Figma view controls
@@ -58,7 +72,10 @@ function SelectMenu<T extends string>({
           className="inline-flex h-8 items-center gap-1.5 rounded-md px-2.5 text-sm font-medium text-foreground transition-colors hover:bg-accent"
         >
           <Icon className="h-4 w-4" />
-          {current.label}
+          {/* On a narrow canvas the label goes to the screen reader only and
+              the icon carries the control (app/globals.css, "The header on a
+              narrow canvas"). */}
+          <span data-narrow-sr="">{current.label}</span>
           <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
         </button>
       </DropdownMenuTrigger>
@@ -122,7 +139,12 @@ function ZenButton() {
   );
 }
 
-export function HeaderCapsule() {
+/**
+ * The canvas header's capsule: the date and its nav, the view pill, Display.
+ * memo'd, with no props, for the same reason as ViewRouter: a DesktopShell
+ * render for the right column's overlay must not re-render it.
+ */
+export const HeaderCapsule = memo(function HeaderCapsule() {
   const selectedDate = usePlannerStore((s) => s.selectedDate);
   // Type and the canvas filters left with the popover — DisplayMenu reads them
   // from the store itself rather than taking them through here.
@@ -141,6 +163,9 @@ export function HeaderCapsule() {
 
   const goPrevious = () => stepScope(-1);
   const goNext = () => stepScope(1);
+  // Client-only (the server's clock and zone are not the user's), like
+  // everything here that reads the date.
+  const longDate = mounted ? format(selectedDate, 'EEEE, MMMM d') : null;
 
   return (
     // data-header-capsule: the handle the `header: 'masthead'` layout slot
@@ -149,69 +174,89 @@ export function HeaderCapsule() {
       data-header-capsule=""
       className="inline-flex flex-col gap-1 rounded-[10px] bg-surface-3 p-2 shadow-[var(--shadow-elev-bar)]"
     >
-      {/* Row 1 — calendar + date nav */}
-      <div className="flex items-center gap-1 px-1">
-        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-          <PopoverTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="relative h-8 w-8 text-muted-foreground hover:text-foreground"
-              aria-label="Open calendar"
-            >
-              <CalendarIcon className="h-4 w-4" />
-            </Button>
-          </PopoverTrigger>
-          <PopoverContent className="w-auto p-0" align="start">
-            <CalendarComponent
-              mode="single"
-              selected={selectedDate}
-              onSelect={(date) => {
-                if (date) goToDate(date);
-                setCalendarOpen(false);
-              }}
-              initialFocus
-            />
-          </PopoverContent>
-        </Popover>
+      {/* Row 1 — calendar + date nav. The nav is one unit the row never
+          splits; on a canvas too narrow for the date and "Today" side by side,
+          Today wraps under it (and the date takes its short form, app/
+          globals.css, "The header on a narrow canvas"). At any width where
+          they fit this is the one row it always was. */}
+      <div className="flex flex-wrap items-center gap-1 px-1">
+        <div className="flex items-center gap-1">
+          <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-8 w-8 text-muted-foreground hover:text-foreground"
+                aria-label="Open calendar"
+              >
+                <CalendarIcon className="h-4 w-4" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <CalendarComponent
+                mode="single"
+                selected={selectedDate}
+                onSelect={(date) => {
+                  if (date) goToDate(date);
+                  setCalendarOpen(false);
+                }}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={goPrevious}
-          className="h-8 w-6 text-muted-foreground hover:text-foreground"
-          aria-label="Previous"
-          data-testid="header-prev"
-        >
-          <ChevronLeft className="h-4 w-4" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={goPrevious}
+            className="h-8 w-6 text-muted-foreground hover:text-foreground"
+            aria-label="Previous"
+            data-testid="header-prev"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </Button>
 
-        <button
-          onClick={() => setCalendarOpen(true)}
-          title="Open calendar"
-          data-testid="header-date"
-          // The machine-readable selected date. The visible text is a format
-          // string ('EEEE, MMMM d') with no delimiter after the day number, so
-          // asserting on it needs an anchored regex — an unanchored one matches
-          // 'Fri, Aug 15' for a target of 'Friday, August 1', i.e. a 14-day
-          // overshoot reads as success. Also empty before hydration; this
-          // attribute is not.
-          data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
-          className="cursor-pointer rounded-md px-1.5 font-sans text-base font-semibold text-foreground transition-colors hover:bg-accent"
-        >
-          {mounted ? format(selectedDate, 'EEEE, MMMM d') : <span className="inline-block w-44" />}
-        </button>
+          <button
+            onClick={() => setCalendarOpen(true)}
+            title="Open calendar"
+            data-testid="header-date"
+            // The machine-readable selected date. The visible text is a format
+            // string ('EEEE, MMMM d') with no delimiter after the day number, so
+            // asserting on it needs an anchored regex — an unanchored one matches
+            // 'Fri, Aug 15' for a target of 'Friday, August 1', i.e. a 14-day
+            // overshoot reads as success. Also empty before hydration; this
+            // attribute is not.
+            data-date={mounted ? format(selectedDate, 'yyyy-MM-dd') : ''}
+            // The short form a narrow canvas shows instead ("Wed, Sep 30"), drawn
+            // by CSS so the text itself stays the long form; `data-date-wide`
+            // marks a date the masthead shortens sooner (MASTHEAD_WIDE_DATE_CHARS).
+            // nowrap: the date is one line at any width.
+            data-date-short={mounted ? format(selectedDate, 'EEE, MMM d') : undefined}
+            data-date-wide={longDate && longDate.length > MASTHEAD_WIDE_DATE_CHARS ? '' : undefined}
+            // Named by the long form at every width. The short form is CSS
+            // generated content in place of a display:none span, and that is
+            // what a screen reader would otherwise read as the button's name.
+            aria-label={longDate ?? undefined}
+            className="cursor-pointer whitespace-nowrap rounded-md px-1.5 font-sans text-base font-semibold text-foreground transition-colors hover:bg-accent"
+          >
+            {longDate ? (
+              <span data-date-long="">{longDate}</span>
+            ) : (
+              <span className="inline-block w-44" />
+            )}
+          </button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={goNext}
-          className="h-8 w-6 text-muted-foreground hover:text-foreground"
-          aria-label="Next"
-          data-testid="header-next"
-        >
-          <ChevronRight className="h-4 w-4" />
-        </Button>
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={goNext}
+            className="h-8 w-6 text-muted-foreground hover:text-foreground"
+            aria-label="Next"
+            data-testid="header-next"
+          >
+            <ChevronRight className="h-4 w-4" />
+          </Button>
+        </div>
 
         {mounted && !isToday(selectedDate) && (
           <button
@@ -223,7 +268,7 @@ export function HeaderCapsule() {
             <span aria-hidden="true" className="inline-block -scale-x-100 font-mono text-[11px] leading-none">
               ↵
             </span>
-            Today
+            <span data-narrow-sr="">Today</span>
           </button>
         )}
       </div>
@@ -296,4 +341,4 @@ export function HeaderCapsule() {
       />
     </div>
   );
-}
+});

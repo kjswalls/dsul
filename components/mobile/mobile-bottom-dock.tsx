@@ -10,7 +10,13 @@ import { ModeSwitcherSheet } from '@/components/mobile/mode-switcher-sheet';
 import { useToastAnchor } from '@/hooks/use-toast-anchor';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { revealChat, useChatCardSurface, useChatHostCard, useGeneralThreadId } from '@/lib/open-chat';
+import {
+  revealChat,
+  useChatCardHomeShown,
+  useChatCardSurface,
+  useChatHostCard,
+  useGeneralThreadId,
+} from '@/lib/open-chat';
 import { cn } from '@/lib/utils';
 
 /**
@@ -62,16 +68,18 @@ export function MobileBottomDock() {
   const hostCard = useChatHostCard();
   // The catch-up card's surface, or the chat tab's conversation's plan.
   const hostSurface = useChatCardSurface();
+  // Whether that card's own home, the chat tab, is on screen to carry it.
+  const homeShown = useChatCardHomeShown('phone');
   /**
    * Latched once it shows, as on the desktop (components/sidebar/sidebar-dock.tsx
    * says why): when the gate opens mid-review, the card's new home would be a
-   * chat tab the user is not on, so unlatched it would vanish from Today and
-   * come back with every dropped line ticked again. It stays until it is done
-   * or the user goes to the chat tab, which then carries it (`!chatBar`, so it
-   * never renders twice).
+   * chat tab the user is not on, so unlatched it would vanish from Today. It
+   * stays until it is done or the user goes to the chat tab, which then
+   * carries it (`!homeShown`, so it never renders twice), dropped lines and
+   * all: those are the proposal store's, not the card's.
    */
   const [hosting, setHosting] = useState(false);
-  const catchUpHost = hostCard && !chatBar && (!canChat || hosting);
+  const catchUpHost = hostCard && !homeShown && (!canChat || hosting);
   if (catchUpHost !== hosting) setHosting(catchUpHost);
 
   // Arriving on the chat tab puts the caret in the composer, exactly as it did

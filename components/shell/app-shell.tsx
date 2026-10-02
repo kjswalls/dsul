@@ -37,12 +37,11 @@ import { ZenStage } from '@/components/zen/zen-stage';
 import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
-import { HelpMenu } from '@/components/shell/help-menu';
 
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
 import { milestoneItemIds } from '@/lib/goals';
-import { useSidebarStore } from '@/lib/sidebar-store';
+import { useRailStore } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
 import { flushSettings } from '@/lib/settings-service';
@@ -168,7 +167,6 @@ export function AppShell() {
   // they read usePlannerStore.getState() at event time instead — a reactive
   // subscription made every item write re-render the whole app tree, the same
   // failure mode the DragGhost and hovered-item comments below record.
-  const setChatExpanded = useSidebarStore((s) => s.setChatExpanded);
   // The launcher slot is masked out: AppShell never renders it (OmniLauncher
   // subscribes to it itself), so ⌘K must not re-render the shell tree. The
   // mask maps launcher → null, and Object.is(null, null) skips the render
@@ -705,8 +703,12 @@ export function AppShell() {
           // The tour calls handleComplete() before this fires, so navigating
           // away doesn't abandon it. Beacon is the pane the step is about.
           onOpenSettings={() => router.push('/settings/beacon')}
-          onExpandChat={() => setChatExpanded(true)}
-          onCollapseChat={() => setChatExpanded(false)}
+          // The tour shows Ask for its step and puts it back: a summon that
+          // never persists (it sets only `summoned`, which the rail reads as
+          // open), then a park. So it never writes `askOpen`, a choice the user
+          // did not make, and someone who had closed Ask finds it closed again.
+          onExpandChat={() => useRailStore.getState().summon({ persist: false })}
+          onCollapseChat={() => useRailStore.getState().park()}
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
         />
       )}
@@ -724,18 +726,15 @@ export function AppShell() {
 
       <ConfirmDialog />
 
-      {/* Both are AppShell-level siblings rather than DesktopShell children, so
-          without this they float over the Zen room — the help bubble is pinned
-          bottom-right on exactly the platform Zen runs on, and the bulk bar
-          appears over it whenever a selection made before entering is still
-          held. Unmounting the bar also settles Escape: its own window listener
-          would otherwise clear the selection on the SAME keypress that leaves
-          the room, so one press did two things. The selection itself is left
-          alone, and is still there when you come back. */}
+      {/* An AppShell-level sibling rather than a DesktopShell child, so
+          without this it floats over the Zen room: the bulk bar appears over it
+          whenever a selection made before entering is still held. Unmounting
+          the bar also settles Escape: its own window listener would otherwise
+          clear the selection on the SAME keypress that leaves the room, so one
+          press did two things. The selection itself is left alone, and is
+          still there when you come back. (The "?" help bubble is DesktopShell's
+          now, inside <main>, so Zen, which replaces that shell, has none.) */}
       {!zenOpen && !zenMoving && <BulkActionBar />}
-
-      {/* Floating "?" help hub — desktop only, bottom-right corner */}
-      {!zenOpen && !zenMoving && <HelpMenu />}
     </DndContext>
   );
 }

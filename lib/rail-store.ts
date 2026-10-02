@@ -1,7 +1,12 @@
+import { useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useProposalStore } from './proposal-store';
-import { openEditFor } from './ui-store';
+import { openEditFor, useUIStore } from './ui-store';
+import { useSidebarStore } from './sidebar-store';
+import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
+import { useAISettingsStore } from './ai-settings-store';
+import { useViewStore } from './view-store';
 import type { Task } from './planner-types';
 
 /**
@@ -18,9 +23,50 @@ import type { Task } from './planner-types';
  * its level or above. So Back is predictable (it can only go down a level),
  * and a stack can never grow without bound.
  *
- * Client-safe (tests/unit/ai-server-boundary.test.ts). The rail's own half
- * (summon, park, closeRail, railMode, the reserve) lands with the rail column.
+ * THE RAIL. Whether the right column shows at all is one pure rule,
+ * `railMode`, over three stores: the item slot (ui-store), whether the user
+ * keeps Ask open (sidebar-store's persisted `askOpen`) and whether Ask was
+ * summoned this session (`summoned`, here). With nothing to answer the column
+ * is only the item host, exactly today's panel. At or below 1180px Ask is an
+ * overlay, and an overlay never comes up on its own: only an explicit summon
+ * shows it there, never a persisted `askOpen` at boot.
+ *
+ * Client-safe (tests/unit/ai-server-boundary.test.ts).
  */
+
+/** Below this the right column stops compressing the canvas and overlays it (DesktopShell). */
+export const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
+
+/**
+ * What the right column holds back from the canvas while it is shown and
+ * docked: the 420px column plus the 12px gap. The braindump's rendered width
+ * and its sash's growth (lib/sidebar-store.ts) and the bulk bar's place read it.
+ */
+export const RAIL_RESERVE_PX = 432;
+
+export type RailMode = 'item' | 'ask' | 'hidden';
+
+/**
+ * THE visibility rule, pure.
+ *   item    an item is open: the column is its panel, with or without AI
+ *   ask     Ask shows: kept open (or summoned), something answers, and either
+ *           the column docks or Ask was summoned while it overlays
+ *   hidden  nothing to show
+ * `summoned` alone opens Ask only for the tour's non-persisting summon: every
+ * other summon also sets `askOpen`, and closeRail clears both. An overlay
+ * needs `summoned`, so a persisted `askOpen` never raises one at boot.
+ */
+export function railMode(i: {
+  itemOpen: boolean;
+  askOpen: boolean;
+  canChat: boolean;
+  overlays: boolean;
+  summoned: boolean;
+}): RailMode {
+  if (i.itemOpen) return 'item';
+  if ((i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)) return 'ask';
+  return 'hidden';
+}
 
 /** A view pushed over Ask home. `[]` is home. */
 export type AskView =
@@ -72,15 +118,52 @@ export type FocusRequest = { target: 'composer'; binding?: ComposerBinding } | {
 
 interface RailState {
   stacks: Record<AskSurface, AskView[]>;
+  /**
+   * An explicit open this session (Ctrl+J, `?`, Ask AI, a settings button,
+   * catch-up, the tour). It is what lets Ask show as an overlay at or below
+   * 1180px. Memory only, so a reload never brings an overlay up.
+   */
+  summoned: boolean;
   pendingFocus: FocusRequest | null;
+  /**
+   * An item opened FOR its conversation (a History or activity row): its
+   * conversation section consumes this on mount and scrolls the rail body to
+   * it. Every other open lands at the item's top.
+   */
+  pendingReveal: { itemId: string } | null;
   /** Half-typed composer text by `bindingKey`. Memory only. */
   drafts: Record<string, string>;
   /** Which way the last move went, for the slide. */
   lastNav: 'push' | 'back' | null;
+  /**
+   * What the column holds back from the canvas: RAIL_RESERVE_PX while it is
+   * shown and docked (an item or Ask alike), else 0. Published by the column
+   * itself (DesktopShell's RailColumn), read by the braindump (which yields
+   * to it), its sash and the bulk bar.
+   */
+  reservePx: number;
+  /**
+   * The last reserve change was the column's instant first reveal: Ask resting
+   * open, shown when the gate answers at boot, without the slide. The
+   * braindump yields with it in the same frame and without its own
+   * transition, so a launch never slides either column.
+   */
+  reserveInstant: boolean;
+  /**
+   * The column shows as an overlay (at or below 1180px): an opaque card over
+   * a canvas that is inert under it. Published by the column with its
+   * reserve, and only by the desktop column, so it is always false on the
+   * phone. The bulk bar stands down for it rather than floating over the card
+   * and acting on rows nobody can see.
+   */
+  covers: boolean;
 
   /** Push by the level rule. */
   push(surface: AskSurface, view: AskView): void;
-  /** Pop the top. A conversation with `returnTo` re-opens its item if the item still exists. */
+  /**
+   * Pop the top. A conversation with `returnTo` re-opens its item if the item
+   * still exists, and hands it the focus when the focus was the rail's.
+   */
   back(surface: AskSurface): void;
   popToHome(surface: AskSurface): void;
   /** Drop a deleted conversation from both stacks (the views beneath show). */
@@ -95,7 +178,29 @@ interface RailState {
    */
   consumeFocus(target: FocusRequest['target'], binding?: ComposerBinding): boolean;
   setDraft(key: string, text: string): void;
-  /** Sign-out: both stacks home, no focus request, no drafts. */
+  /**
+   * Open Ask: `askOpen` (persisted) and `summoned`. `focus` asks for the box
+   * (an explicit open from the keyboard or a command), `home` pops the desktop
+   * stack first, and `persist: false` (the tour) sets only `summoned`, so a
+   * choice the user did not make is never written. Remembers where focus was,
+   * so closing the rail can hand it back.
+   */
+  summon(o?: { focus?: boolean; home?: boolean; persist?: boolean }): void;
+  /**
+   * Un-summon (an overlay's click-away or Escape, the tour). `askOpen`
+   * untouched. When that hides the rail, focus left in it goes back to where
+   * it was before the summon, as for closeRail.
+   */
+  park(): void;
+  /** Close Ask: `askOpen` and `summoned` both off. The caller closes an item first. */
+  closeRail(): void;
+  setPendingReveal(itemId: string | null): void;
+  /** True exactly once, for the item the pending reveal names. Clears it. */
+  consumeReveal(itemId: string): boolean;
+  /** `instant`: the change lands without the braindump's transition (see reserveInstant). */
+  setReserve(px: number, o?: { instant?: boolean }): void;
+  setCovers(covers: boolean): void;
+  /** Sign-out: both stacks home, not summoned, no focus or reveal request, no drafts. */
   reset(): void;
 }
 
@@ -130,11 +235,12 @@ function dismissLeftCards(before: Record<AskSurface, AskView[]>, after: Record<A
   }
 }
 
-/** Re-open an item by id, as every opener does, if the planner still has it. */
-function reopenItem(itemId: string): void {
+/** Re-open an item by id, as every opener does, if the planner still has it. True when it did. */
+function reopenItem(itemId: string): boolean {
   const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
-  if (!item) return;
+  if (!item) return false;
   openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
+  return true;
 }
 
 export const useRailStore = create<RailState>()((set, get) => {
@@ -147,9 +253,14 @@ export const useRailStore = create<RailState>()((set, get) => {
 
   return {
     stacks: EMPTY_STACKS,
+    summoned: false,
     pendingFocus: null,
+    pendingReveal: null,
     drafts: {},
     lastNav: null,
+    reservePx: 0,
+    reserveInstant: false,
+    covers: false,
 
     push: (surface, view) => {
       const { stacks } = get();
@@ -162,9 +273,15 @@ export const useRailStore = create<RailState>()((set, get) => {
       const stack = stacks[surface];
       const top = stack.at(-1);
       if (!top) return;
+      // Read before the pop: the control that held focus is about to go.
+      const handBack = focusIsInRail();
       setStacks({ ...stacks, [surface]: stack.slice(0, -1) }, 'back');
-      // After the pop, so the item opens over the view that was beneath.
-      if (top.kind === 'conversation' && top.returnTo) reopenItem(top.returnTo.itemId);
+      // After the pop, so the item opens over the view that was beneath. Ask
+      // goes hidden under it, so the item takes the focus the rail held
+      // (ui-store's focusItemPanel), or it would be left on <body>.
+      if (top.kind === 'conversation' && top.returnTo && reopenItem(top.returnTo.itemId) && handBack) {
+        useUIStore.getState().focusItemPanel();
+      }
     },
 
     popToHome: (surface) => {
@@ -231,6 +348,246 @@ export const useRailStore = create<RailState>()((set, get) => {
         return { drafts };
       }),
 
-    reset: () => set({ stacks: EMPTY_STACKS, pendingFocus: null, drafts: {}, lastNav: null }),
+    summon: (o = {}) => {
+      if (railModeNow() !== 'ask') rememberFocus();
+      if (o.persist !== false) useSidebarStore.getState().setAskOpen(true);
+      if (o.home) get().popToHome('desktop');
+      set(o.focus ? { summoned: true, pendingFocus: { target: 'composer' } } : { summoned: true });
+    },
+
+    park: () => {
+      if (!get().summoned) return;
+      const handBack = focusIsInRail();
+      set({ summoned: false });
+      // A docked Ask kept open stays where it is, and so does its record.
+      if (railModeNow() !== 'hidden') return;
+      const el = takeFocusRecord();
+      if (handBack) restoreFocus(el);
+    },
+
+    closeRail: () => {
+      const handBack = focusIsInRail();
+      useSidebarStore.getState().setAskOpen(false);
+      set({ summoned: false });
+      // Taken either way: a record left behind would answer a later, unrelated close.
+      const el = takeFocusRecord();
+      if (handBack) restoreFocus(el);
+    },
+
+    setPendingReveal: (itemId) => set({ pendingReveal: itemId ? { itemId } : null }),
+
+    consumeReveal: (itemId) => {
+      if (get().pendingReveal?.itemId !== itemId) return false;
+      set({ pendingReveal: null });
+      return true;
+    },
+
+    setReserve: (px, o) => {
+      const next = Number.isFinite(px) && px > 0 ? px : 0;
+      if (get().reservePx !== next) set({ reservePx: next, reserveInstant: !!o?.instant });
+    },
+
+    setCovers: (covers) => {
+      if (get().covers !== covers) set({ covers });
+    },
+
+    // `reservePx` (and its `reserveInstant`), like `covers`, is layout, not the
+    // account's: the column that published it is still on screen after a
+    // sign-out.
+    reset: () => {
+      focusBeforeSummon = null;
+      set({ stacks: EMPTY_STACKS, summoned: false, pendingFocus: null, pendingReveal: null, drafts: {}, lastNav: null });
+    },
   };
 });
+
+// ── Focus across a summon ────────────────────────────────────────────────────
+//
+// Closing the rail (Ctrl+J, ✕, an overlay parked) removes the control that
+// held focus, which would drop it to <body> and send the next Tab back to the
+// top of the document. So the rail keeps ONE record of where focus came from:
+// the summon that opens Ask notes what held focus before it, and focus
+// entering the column from outside notes where it came from (noteRailEntry:
+// Ask resting open from boot has no summon to note anything). Closing hands
+// focus back to it when focus was inside the rail (or already lost), and only
+// if it is STILL lost when the hand-back runs: the item panel's own return,
+// or anything the user moved to meanwhile, wins. The record is per showing:
+// a close takes it, and the column hiding by any other path drops it
+// (clearRailFocusRecord), so an old one never answers a later close.
+// Module state, not store state: it is a DOM node, and nothing renders from it.
+
+let focusBeforeSummon: HTMLElement | null = null;
+
+function activeElement(): Element | null {
+  return typeof document === 'undefined' ? null : document.activeElement;
+}
+
+/**
+ * The summon that opens Ask: focus outside the rail is the record; focus lost
+ * to <body> means there is nothing to go back to. Focus already inside the
+ * column (an item open on top) keeps what its entry noted.
+ */
+function rememberFocus(): void {
+  const el = activeElement();
+  if (el && el.closest('[data-rail]')) return;
+  focusBeforeSummon = el && el !== document.body ? (el as HTMLElement) : null;
+}
+
+/**
+ * Focus moved into the column (the item or Ask) from `from`: the column's
+ * focusin, with its relatedTarget. An element outside the column becomes the
+ * record; focus arriving from nowhere (a window regaining focus, a click from
+ * <body>) leaves the record as it is.
+ */
+export function noteRailEntry(from: EventTarget | null): void {
+  if (typeof HTMLElement === 'undefined' || !(from instanceof HTMLElement)) return;
+  if (from === document.body || from.closest('[data-rail]')) return;
+  focusBeforeSummon = from;
+}
+
+/** The column went hidden without a close that took the record (Done, Escape on the item). */
+export function clearRailFocusRecord(): void {
+  focusBeforeSummon = null;
+}
+
+function takeFocusRecord(): HTMLElement | null {
+  const el = focusBeforeSummon;
+  focusBeforeSummon = null;
+  return el;
+}
+
+/** Focus is inside the rail, or lost to <body>: either way the rail's to move. */
+export function focusIsInRail(): boolean {
+  const el = activeElement();
+  return !el || el === document.body || !!el.closest('[data-rail]');
+}
+
+function restoreFocus(el: HTMLElement | null): void {
+  if (!el) return;
+  // Deferred past the commit that hides the rail, as a FocusRequest's focus
+  // is: a Radix layer closing in the same tick hands focus back on its own
+  // setTimeout(0), and would otherwise win. And only onto focus still lost
+  // then (on <body>, or inside the rail): ItemDialog's own return to the row
+  // that opened the item lands in that commit, and must not be overridden by
+  // an element from before an earlier summon.
+  setTimeout(() => {
+    if (!focusIsInRail()) return;
+    if (el.isConnected) el.focus({ preventScroll: true });
+  }, 0);
+}
+
+// ── Reading the rule ─────────────────────────────────────────────────────────
+
+function overlaysNow(): boolean {
+  return typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia(PANEL_OVERLAY_QUERY).matches
+    : false;
+}
+
+function modeFromStores(overlays: boolean): RailMode {
+  return railMode({
+    itemOpen: useUIStore.getState().activeDialog?.type === 'edit-item',
+    askOpen: useSidebarStore.getState().askOpen,
+    canChat: getAICapabilities().canChat,
+    overlays,
+    summoned: useRailStore.getState().summoned,
+  });
+}
+
+/**
+ * railMode read imperatively, for a command deciding what a key or `?` does
+ * (lib/open-chat.ts). Zen replaces the desktop shell and the rail with it, so
+ * nothing shows there whatever the stores say.
+ */
+export function railModeNow(): RailMode {
+  if (useViewStore.getState().zenOpen) return 'hidden';
+  return modeFromStores(overlaysNow());
+}
+
+/** Every store the rule reads, as one subscription. */
+function subscribeRail(onChange: () => void): () => void {
+  const offs = [
+    useUIStore.subscribe(onChange),
+    useSidebarStore.subscribe(onChange),
+    useRailStore.subscribe(onChange),
+    useAIConnectionStore.subscribe(onChange),
+    useAISettingsStore.subscribe(onChange),
+  ];
+  return () => offs.forEach((off) => off());
+}
+
+/**
+ * railMode from the stores, as ONE external-store read: the component
+ * re-renders only when the mode itself changes, never for a push, a draft or
+ * a status recheck. `overlays` is the caller's PANEL_OVERLAY_QUERY reading.
+ */
+export function useRailMode(overlays: boolean): RailMode {
+  return useSyncExternalStore(
+    subscribeRail,
+    () => modeFromStores(overlays),
+    () => 'hidden'
+  );
+}
+
+/**
+ * Whether the column shows as an overlay over the canvas: DesktopShell's one
+ * rail read (`covered`, which makes <main> inert). Constant false while the
+ * column docks (`overlays` false), so a docked open or close, Ctrl+J at any
+ * width above 1180px, never re-renders the shell and the planner it lays out;
+ * the column is its own memo'd component and re-renders alone.
+ */
+export function useRailCovers(overlays: boolean): boolean {
+  return useSyncExternalStore(
+    subscribeRail,
+    () => overlays && modeFromStores(overlays) !== 'hidden',
+    () => false
+  );
+}
+
+function subscribeOverlays(onChange: () => void): () => void {
+  if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return () => {};
+  const mql = window.matchMedia(PANEL_OVERLAY_QUERY);
+  mql.addEventListener('change', onChange);
+  return () => mql.removeEventListener('change', onChange);
+}
+
+/** PANEL_OVERLAY_QUERY as a hook, for a reader outside DesktopShell (the docks). False on the server. */
+export function usePanelOverlays(): boolean {
+  return useSyncExternalStore(subscribeOverlays, overlaysNow, () => false);
+}
+
+// ── Labels ───────────────────────────────────────────────────────────────────
+
+/**
+ * The name a back control shows ("‹ <label>"): the view it goes back to.
+ *   `view`     what is on top: an Ask view, or null for the desktop item in
+ *              ui-store's slot (it goes back to the stack's top)
+ *   `beneath`  the view under it; undefined is Ask home
+ * A conversation asked with `?` over an item (`returnTo`) goes back to that
+ * item, so it names it by its LIVE title while the item exists. Once it is
+ * deleted Back cannot reopen it (`back` checks the same store), so the label
+ * names the view beneath instead and never promises a dead item; so does a
+ * blank title, which has nothing to show. `conversationTitle` names a
+ * conversation beneath (summary or draft title); an unnamed one is a new chat.
+ */
+export function backLabel(
+  view: AskView | null,
+  beneath: AskView | undefined,
+  items: readonly { id: string; title: string }[],
+  conversationTitle: (id: string) => string | null | undefined = () => null
+): string {
+  if (view?.kind === 'conversation' && view.returnTo) {
+    const itemId = view.returnTo.itemId;
+    const title = items.find((i) => i.id === itemId)?.title.trim();
+    if (title) return title;
+  }
+  if (!beneath) return 'Ask';
+  switch (beneath.kind) {
+    case 'history':
+      return 'History';
+    case 'conversation':
+      return conversationTitle(beneath.id)?.trim() || 'New chat';
+    case 'item':
+      return items.find((i) => i.id === beneath.itemId)?.title.trim() || 'Ask';
+  }
+}

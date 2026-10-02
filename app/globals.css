@@ -1388,6 +1388,75 @@ body {
   }
 }
 
+/* ── The day on a narrow canvas ───────────────────────────────────────────
+   Beside a docked right rail the day can be as narrow as ~380px (the braindump
+   yields down to its minimum, lib/sidebar-store.ts renderedSidebarWidth), and
+   nothing in it may be cut off there: cards keep both edges, rows truncate
+   rather than spill, and every header control stays on the canvas. <main> is
+   the `canvas` size container (desktop-shell.tsx), so all of this keys off
+   the day's own width, never the window's. Above each threshold the day is
+   exactly what it was; the 1440 window with no rail is wider than all of
+   them in every layout.
+
+   The day views' scroller. Radix's ScrollArea wraps its content in a
+   `display: table; min-width: 100%` box, and a table is never narrower than
+   its content's min-content width: one row that could not shrink widened the
+   whole column past the viewport, where overflow-x clips it, and every card
+   lost its right edge. As a block the content is the viewport's width and its
+   rows shrink and truncate inside it. Day scope only: the week column views
+   scroll sideways on purpose, and their pinned hour gutter is sticky to that
+   wide box. Wherever the content fits, a table that wide IS a block. */
+[data-view-scope='day'] > [data-slot='scroll-area'] > [data-slot='scroll-area-viewport'] > div {
+  display: block !important;
+}
+
+/* The header on a narrow canvas. The capsule's natural width is ~374-387px
+   (380 in the mono and plain layouts), so it fits a canvas of 450px with its
+   32px gutters; below that it compresses. The pill's three labels and Today's
+   word go to the screen reader only (their icons and aria-labels carry the
+   controls), and the date takes its short form ("Wed, Sep 30", the button's
+   data-date-short). The long text stays in the DOM and the button is named by
+   it (its aria-label), so its name and its text do not change with the width;
+   only what is drawn does. Today wraps under the date row rather than past
+   the edge (header-capsule.tsx), and the header row wraps WeekScale and the
+   notices under the capsule (desktop-shell.tsx). */
+@container canvas (width < 450px) {
+  [data-header-capsule] [data-narrow-sr] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+  [data-header-capsule] [data-date-long] {
+    display: none;
+  }
+  [data-header-capsule] [data-testid='header-date']::after {
+    content: attr(data-date-short);
+  }
+}
+/* The masthead's 28px serif date needs more, but only for a long date. Its
+   nav row (calendar, prev, date, next) is 448px on the longest ones
+   ("Wednesday, September 13"), and the header row adds its px-1 and the
+   canvas container's two 32px gutters: 448 + 8 + 64 = 520. Every date of up
+   to MASTHEAD_WIDE_DATE_CHARS characters fits by 450 (header-capsule.tsx,
+   where `data-date-wide` is set, has the measurements), so only the wide
+   ones shorten here, and "Friday, October 2" (a 330px nav) stays whole on
+   Notebook's 514px day. Today wrapping under the row is the rule above's, at
+   every width. */
+@container canvas (width < 520px) {
+  [data-layout-header='masthead'] [data-header-capsule] [data-date-wide] [data-date-long] {
+    display: none;
+  }
+  [data-layout-header='masthead'] [data-header-capsule] [data-testid='header-date'][data-date-wide]::after {
+    content: attr(data-date-short);
+  }
+}
+
 /* ── Week: the day under the pointer stays, the other six recede ──────────
    Hovering one day column dims the other six. This REPLACES the
    `hover:bg-accent` wash the columns used to take, which read as a second

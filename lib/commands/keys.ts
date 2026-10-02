@@ -155,3 +155,15 @@ export function formatKeys(keys: string[], isMac: boolean): string[] {
     }
   });
 }
+
+/**
+ * A binding as the one short label copy uses: "Ctrl+J" on Windows and Linux,
+ * "⌘J" on a Mac. formatKeys gives the parts; its callers join them two ways
+ * (' + ' in the help menu, ' ' in the tables), and neither is how a sentence
+ * names a key. The rail's ✕ title, the settings copy and the tour all build
+ * theirs here, from the user's CURRENT binding, so a rebinding shows
+ * everywhere at once.
+ */
+export function chordLabel(keys: string[], isMac: boolean): string {
+  return formatKeys(keys, isMac).join(isMac ? '' : '+');
+}

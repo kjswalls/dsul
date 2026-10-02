@@ -1,6 +1,6 @@
 'use client';
 
-import { memo, useCallback, useEffect, useMemo, useRef } from 'react';
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Sidebar } from '@/components/sidebar/sidebar';
 import { ViewRouter } from '@/components/views/view-router';
 import { SeasonNotice } from '@/components/views/season-notice';
@@ -8,28 +8,47 @@ import { DayHeaderNotice } from '@/components/notices/notice-slot';
 import { HeaderCapsule } from '@/components/canvas/header-capsule';
 import { WeekScale } from '@/components/canvas/week-scale';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
-import { useUIStore } from '@/lib/ui-store';
+import { registerItemPanelClose, useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { subscribeClickAway } from '@/lib/click-away';
 import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
 import { useLayoutDef } from '@/lib/look-store';
-import { layoutAttributes } from '@/lib/layout-themes';
+import { canvasHeaderPad, layoutAttributes } from '@/lib/layout-themes';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { BraindumpPane } from '@/components/shell/braindump-pane';
 import { StatusLine } from '@/components/shell/status-line';
 import { PageTabs, Ribbon } from '@/components/shell/page-tabs';
 import { DayTabs } from '@/components/shell/day-tabs';
 import { PageCount, StatusBar } from '@/components/shell/status-bar';
+import { HelpMenu } from '@/components/shell/help-menu';
+import { RightRail } from '@/components/ai/rail/right-rail';
+import { useBackLabel } from '@/components/ai/rail/rail-header';
+import {
+  PANEL_OVERLAY_QUERY,
+  RAIL_RESERVE_PX,
+  clearRailFocusRecord,
+  noteRailEntry,
+  railMode,
+  useRailCovers,
+  useRailStore,
+} from '@/lib/rail-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
 
-/** Below this the panel stops compressing the canvas and overlays it instead. */
-const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
+/**
+ * How long Ask stays painted after it starts leaving the docked column if the
+ * column never reports the end of its ease: its 300ms and a little.
+ */
+const LEAVE_FALLBACK_MS = 400;
 
 /**
- * Desktop layout: sidebar v2 (braindump + chat + omnibar) + canvas panel on
- * the warm backdrop. The views live behind ViewRouter (P5).
+ * Desktop layout: sidebar v2 (braindump + omnibar) + canvas panel + the right
+ * column (RailColumn: the item panel and Ask) on the warm backdrop. The views
+ * live behind ViewRouter (P5).
  *
  * memo'd, and its one dialog read is narrowed to the edit-item payload: this
  * shell owns the docked edit panel and nothing else dialog-shaped, so opening
@@ -78,10 +97,18 @@ export const DesktopShell = memo(function DesktopShell() {
     [editItem]
   );
 
-  // When the panel overlays rather than compresses, the canvas underneath is
-  // covered but still tabbable — so Tab would walk onto blocks and buttons
-  // hidden behind an opaque card. A class can't express that; `inert` can.
+  // When the right column overlays rather than compresses, the canvas
+  // underneath is covered but still tabbable — so Tab would walk onto blocks
+  // and buttons hidden behind an opaque card. A class can't express that;
+  // `inert` can. `covered` is whether it shows as that overlay (an item, or
+  // Ask summoned while overlaid; lib/rail-store.ts railMode): one boolean,
+  // and constant false while the column docks, so neither a push inside the
+  // rail nor a docked open or close (Ctrl+J above 1180px) re-renders this
+  // shell, its braindump and its day. The column re-renders alone; the one
+  // thing out here a docked column changes, Notebook's padding, is CSS
+  // (`data-rail-docked`, below).
   const panelOverlays = useMediaQuery(PANEL_OVERLAY_QUERY);
+  const covered = useRailCovers(panelOverlays);
 
   // With the panel docked, the header row can be wider than <main>, and Tab
   // onto a control past its edge scrolls <main> to show it. This puts <main>
@@ -118,6 +145,11 @@ export const DesktopShell = memo(function DesktopShell() {
   // subscribes separately, while open, so it can flush before it closes.
   useEffect(() => subscribeClickAway(() => useSelectionStore.getState().clear()), []);
 
+  // The shell's close, for an item closed from outside the panel (Ctrl+J, `?`):
+  // lib/ui-store.ts closeItemPanel flushes the panel's edit, then calls this, so
+  // the one-row selection rule above holds there too.
+  useEffect(() => registerItemPanelClose(() => handlePanelOpenChange(false)), [handlePanelOpenChange]);
+
   const sidebarLeft = slots.sidebar === 'left' && <Sidebar />;
   const pages = (
     <>
@@ -133,12 +165,23 @@ export const DesktopShell = memo(function DesktopShell() {
           overflow-hidden, not overflow-clip: a hidden box is still a scroll
           container, so focus can scroll it to show a control the docked item
           panel has pushed past this edge, and useFocusOnlyScroll brings it back
-          (a clip box would leave that focus on a control nobody can see). */}
+          (a clip box would leave that focus on a control nobody can see).
+
+          @container/canvas: the day's own width, for what has to fit in it.
+          The window is no measure of that any more: a docked right rail takes
+          432px of it, and the braindump yields only down to its 280px minimum,
+          so at a 1181px window the day is 381px in Notebook (sidebar-store.ts
+          renderedSidebarWidth has the figures per layout). The header row
+          (below), the header capsule (app/globals.css, "The header on a narrow
+          canvas") and a row's trailing rail (task-row.tsx) compress against it.
+          inline-size only: <main>'s width comes from the flex row, never from
+          what is in it (overflow-hidden already zeroes its minimum), so the
+          containment changes no layout. */}
       <main
         ref={mainRef}
-        inert={panelOverlays && !!panelState}
+        inert={covered}
         className={cn(
-          'relative flex flex-1 flex-col overflow-hidden',
+          '@container/canvas relative flex flex-1 flex-col overflow-hidden',
           // Spread and sheet: the page shares the paper under both panes
           // (app/globals.css, [data-book] / [data-sheet]) rather than being a
           // surface of its own.
@@ -172,13 +215,18 @@ export const DesktopShell = memo(function DesktopShell() {
             the view underneath share an edge, not that the edge is at any
             particular x. WeekScale sits at the far end of the same row, so in
             week scope it lands on the grid's right edge. */}
+        {/* Below a 640px canvas the row wraps, so what does not fit beside the
+            capsule (WeekScale in week scope, a notice) goes under it instead of
+            past <main>'s edge. Above that it is one row, as it always was: a
+            notice that does not fit shrinks and truncates there. */}
         <div
           data-wide={canvasWide ? 'true' : undefined}
           className={cn(
-            'canvas-container flex flex-shrink-0 items-start gap-3 pb-2',
+            'canvas-container flex flex-shrink-0 items-start gap-3 pb-2 @max-[640px]/canvas:flex-wrap',
             // 31px lines the capsule up with the left column's braindump
             // header; with the braindump elsewhere there is nothing to meet.
-            slots.sidebar === 'left' ? 'pt-[31px]' : 'pt-4'
+            // Shared with the rail's header row, which sits on this one.
+            canvasHeaderPad(slots)
           )}
         >
           <HeaderCapsule />
@@ -229,6 +277,9 @@ export const DesktopShell = memo(function DesktopShell() {
           <ViewRouter />
         </div>
 
+        {/* The "?" help hub, in the canvas's own corner (help-menu.tsx has why
+            it is in here and not fixed to the window, and why 10px). */}
+        <HelpMenu className="absolute right-2.5 bottom-2.5 z-30" />
       </main>
     </>
   );
@@ -243,10 +294,11 @@ export const DesktopShell = memo(function DesktopShell() {
         // sash would sit over the right page's first 12px and take its clicks.
         <div data-book="" className="relative flex min-w-0 flex-1 gap-3">
           {pages}
-          {/* Inert with <main> while the item panel overlays: they sit under
-              it then, and must not stay in the tab order. The ribbon hangs
-              12px in from the page's right edge, clear of WeekScale (32px). */}
-          <div inert={panelOverlays && !!panelState} className="contents">
+          {/* Inert with <main> while the right column overlays: they sit
+              under it then, and must not stay in the tab order. The ribbon
+              hangs 12px in from the page's right edge, clear of WeekScale
+              (32px). */}
+          <div inert={covered} className="contents">
             {layout.ornaments.includes('ribbon') && (
               <Ribbon className="absolute top-0 right-3 z-[5]" />
             )}
@@ -266,43 +318,18 @@ export const DesktopShell = memo(function DesktopShell() {
         pages
       )}
 
-      {slots.sidebar === 'pane-right' && <BraindumpPane covered={panelOverlays && !!panelState} />}
+      {slots.sidebar === 'pane-right' && <BraindumpPane covered={covered} />}
 
-      {/* The item panel — a sibling surface on the backdrop, not a layer over
-          the canvas. `flat` drops its card chrome so it reads as the paper
-          plane BELOW <main>, mirroring the braindump column on the left.
-          Opening it narrows <main> (flex-1 recomputes exactly as it does for
-          the braindump collapse), which is the whole argument for going
-          non-modal: the day stays visible, and stays workable, beside the item.
-
-          The width lives out here rather than in ItemDialog so the column can
-          animate both ways while its contents mount and unmount — the surface
-          itself must reach count 0 when closed.
-
-          Under 1180px there is no day left worth compressing (the overlap
-          layout starts wrapping panes below ~200px each), so the column goes
-          back to overlaying: an absolutely-positioned flex child occupies no
-          track, and <main> keeps its full width. -ml-3 eats the flex gap when
-          closed, the same 12px the collapsed sidebar deliberately keeps. */}
-      <div
-        className={cn(
-          // titlebar-hole: the panel scrolls (surface.tsx), so its content passes under
-          // the desktop app's drag band, where it could not be clicked.
-          'titlebar-hole relative flex-shrink-0 overflow-hidden transition-[width] duration-300 ease-out',
-          panelState ? 'w-[420px]' : cn('w-0', plate && '-ml-3'),
-          // Flat and sheet: no gutter to eat, and a hairline seam where the plate's edge was.
-          flatPanel && panelState && 'border-l border-border bg-canvas',
-          // Spread: a loose sheet laid beside the book, clear of its page tabs.
-          spread && panelState && 'ml-12 rounded-[6px] bg-[var(--nb-page)] shadow-[var(--nb-sheet-shadow)]',
-          plate
-            ? 'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
-            : spread
-              ? 'max-[1180px]:absolute max-[1180px]:inset-y-5 max-[1180px]:right-5 max-[1180px]:z-30 max-[1180px]:ml-0'
-              : 'max-[1180px]:absolute max-[1180px]:inset-y-0 max-[1180px]:right-0 max-[1180px]:z-30'
-        )}
-      >
-        <ItemDialog presentation="panel" flat state={panelState} onOpenChange={handlePanelOpenChange} />
-      </div>
+      {/* The right column, a sibling surface on the backdrop, not a layer over
+          the canvas (RailColumn below has the whole story). */}
+      <RailColumn
+        panelState={panelState}
+        onPanelOpenChange={handlePanelOpenChange}
+        overlays={panelOverlays}
+        plate={plate}
+        spread={spread}
+        flatPanel={flatPanel}
+      />
     </>
   );
 
@@ -316,9 +343,13 @@ export const DesktopShell = memo(function DesktopShell() {
         plate
           ? 'gap-3 bg-surface-0 p-3'
           : spread
-            ? // pr-14 holds the page tabs. Only a DOCKED panel takes that room;
-              // an overlaid one (<=1180px) takes no width, so the book keeps it.
-              cn('bg-[var(--nb-desk)] p-5', panelState && !panelOverlays ? 'pr-5' : 'pr-14')
+            ? // pr-14 holds the page tabs. Only a DOCKED rail (an item or Ask)
+              // takes that room; an overlaid one (<=1180px) takes no width, so
+              // the book keeps it. Keyed off the column's own
+              // `data-rail-docked` rather than a store read, so opening and
+              // closing the rail never re-renders this shell; and it holds
+              // while Ask eases out, with the sheet it sits on (RailColumn).
+              'bg-[var(--nb-desk)] p-5 pr-14 has-[[data-rail-docked]]:pr-5'
             : sheet
               ? 'bg-[var(--np-chrome)]'
               : 'bg-canvas',
@@ -337,6 +368,251 @@ export const DesktopShell = memo(function DesktopShell() {
       ) : (
         row
       )}
+    </div>
+  );
+});
+
+/** What the column takes from DesktopShell: the item slot, its close, and the layout. */
+type RailColumnProps = {
+  panelState: ItemDialogState | null;
+  onPanelOpenChange: (open: boolean) => void;
+  overlays: boolean;
+  plate: boolean;
+  spread: boolean;
+  flatPanel: boolean;
+};
+
+/**
+ * The right column: the item panel and Ask, one 420px column
+ * (lib/rail-store.ts railMode). An open item is on top; with nothing open it
+ * is Ask when Ask is kept open and something answers; otherwise it is closed.
+ *
+ * Its own memo'd component because DesktopShell is memo'd so that non-edit UI
+ * changes never re-render the sidebar and the grid, and its children are not.
+ * So the Ask subscriptions (`askOpen`, `summoned`, the stack's top, the gate)
+ * live here, and a push, a Back or a rename re-renders only this column.
+ *
+ * WITH NO AI (no model, the gate unknown, or "Who answers: Off") it is only
+ * the item host: no Ask, no rail header, no box, and the item is today's
+ * panel, Done included. With AI the item wears the rail's header ("‹ Ask",
+ * ✕) and its conversation's box is pinned at the bottom, and Ask stays
+ * mounted underneath it, `hidden` and `inert` (right-rail.tsx has why).
+ *
+ * The width lives out here rather than in ItemDialog so the column can animate
+ * both ways while its contents mount and unmount — the item surface itself
+ * must reach count 0 when closed. Opening it narrows <main> (flex-1 recomputes
+ * exactly as it does for the braindump collapse), which is the whole argument
+ * for going non-modal: the day stays visible, and workable, beside the item.
+ *
+ * Under 1180px there is no day left worth compressing (the overlap layout
+ * starts wrapping panes below ~200px each), so the column overlays instead:
+ * an absolutely-positioned flex child occupies no track, and <main> keeps its
+ * full width (and goes inert, DesktopShell's `covered`). Ask overlays only
+ * when summoned there, never from the persisted `askOpen` at boot, and it
+ * gives the planner back on click-away, on Escape, and when a docked window
+ * narrows past 1180. -ml-3 eats the flex gap when closed, the same 12px the
+ * collapsed sidebar deliberately keeps.
+ */
+export const RailColumn = memo(function RailColumn({
+  panelState,
+  onPanelOpenChange,
+  overlays,
+  plate,
+  spread,
+  flatPanel,
+}: RailColumnProps) {
+  const askOpen = useSidebarStore((s) => s.askOpen);
+  const summoned = useRailStore((s) => s.summoned);
+  const askTop = useRailStore((s) => s.stacks.desktop.at(-1));
+  const { canChat } = useAICapabilities();
+  const mode = railMode({ itemOpen: !!panelState, askOpen, canChat, overlays, summoned });
+  const shown = mode !== 'hidden';
+
+  // Ask LEAVING a docked column: Ctrl+J or ✕ at Ask. It stays painted (and
+  // inert, with none of its listeners) while the column eases shut, then
+  // unmounts, so the close slides it out the way the open slid it in. Left to
+  // unmount in the closing commit, the column eased shut empty, which on the
+  // plate's transparent backdrop reads as Ask vanishing at once; and the
+  // unmount's own work could eat the 300ms ease outright. Not at an overlay,
+  // whose card chrome goes with `shown`, not under reduced motion, where there
+  // is no ease to wait for, and not when an item closes: the item panel's
+  // content leaves at once as it always has (item-dialog.tsx), and Ask was
+  // hidden under it. Derived in render, from the mode it is leaving, so the
+  // view is never unmounted for even one commit.
+  const [shownMode, setShownMode] = useState(mode);
+  const [leaving, setLeaving] = useState(false);
+  if (shownMode !== mode) {
+    setShownMode(mode);
+    setLeaving(shownMode === 'ask' && mode === 'hidden' && !overlays && !prefersReducedMotion());
+  }
+  // The fallback for an ease that never reports its end (a tab in the
+  // background, a width interrupted at the same value).
+  useEffect(() => {
+    if (!leaving) return;
+    const timer = setTimeout(() => setLeaving(false), LEAVE_FALLBACK_MS);
+    return () => clearTimeout(timer);
+  }, [leaving]);
+
+  // Ask stays mounted under an item, so Back finds it as it was.
+  const askMounted = canChat && (askOpen || summoned || leaving);
+  // The item goes back to whatever Ask has on top (the item is ui-store's
+  // slot, not a stack entry), by its live name.
+  const itemBack = useBackLabel(null, askTop);
+
+  // The first reveal from the persisted `askOpen` (the gate answering at
+  // boot) lands at full width without the slide, so a launch does not animate
+  // Ask in every time; every reveal after it, and any summon, slides. The
+  // transition comes back one frame after the column first shows Ask.
+  const [revealed, setRevealed] = useState(false);
+  const instant = !revealed && mode === 'ask' && !summoned;
+  useEffect(() => {
+    if (revealed || mode !== 'ask') return;
+    const frame = requestAnimationFrame(() => setRevealed(true));
+    return () => cancelAnimationFrame(frame);
+  }, [revealed, mode]);
+
+  // What the canvas gives up: the column and its gap while docked, for an item
+  // and for Ask alike. The braindump yields to it (components/sidebar/
+  // sidebar.tsx), its sash caps growth by it, and the bulk bar centres beside
+  // it. A layout effect, so the braindump's yield is published before this
+  // commit paints and the two columns move in the same frame; `instant` with
+  // the column's own instant reveal, so the boot reveal slides neither. With
+  // it, whether the column covers the canvas as an overlay, for the bulk bar,
+  // which stands down then (bulk-action-bar.tsx).
+  useLayoutEffect(() => {
+    const rail = useRailStore.getState();
+    rail.setReserve(shown && !overlays ? RAIL_RESERVE_PX : 0, { instant });
+    rail.setCovers(shown && overlays);
+  }, [shown, overlays, instant]);
+  useEffect(
+    () => () => {
+      const rail = useRailStore.getState();
+      rail.setReserve(0);
+      rail.setCovers(false);
+    },
+    []
+  );
+
+  // The column's dress (the flat seam and fill, the spread's loose sheet, and
+  // Notebook's page-tab padding out on the shell) goes with what is ON it,
+  // not with `shown`: Ask leaving is still painted for the whole ease, and
+  // undressed it sat bare on the desk, the grey chrome or the backdrop for
+  // 300ms. The width eases on `shown`, so the close still starts at once.
+  const dressed = shown || leaving;
+
+  // The rail's focus record (lib/rail-store.ts) is per showing: a close takes
+  // it, and the column hiding any other way (the item's Done or Escape with
+  // Ask closed) drops it, so it never answers a later, unrelated close.
+  useEffect(() => {
+    if (!shown) clearRailFocusRecord();
+  }, [shown]);
+
+  // A docked Ask whose window narrows into overlay goes away: `summoned` is
+  // set by every explicit open, at any width, and would otherwise bring it up
+  // as an overlay over an inert planner (a half-screen snap is 960px). After
+  // the edge only a summon made there shows it. An item on top stays.
+  const wasOverlay = useRef(overlays);
+  useEffect(() => {
+    if (overlays && !wasOverlay.current) useRailStore.getState().park();
+    wasOverlay.current = overlays;
+  }, [overlays]);
+
+  // An overlay is never a resting surface: a click on the covered canvas
+  // (which, inert, lands on the shell's click-away scope) gives the planner
+  // back. An item on top closes through its own subscription as well, so one
+  // click closes the item and does not raise Ask as a second overlay.
+  useEffect(() => {
+    if (!shown || !overlays) return;
+    return subscribeClickAway(() => useRailStore.getState().park());
+  }, [shown, overlays]);
+
+  const railChrome = useMemo(
+    () =>
+      canChat
+        ? {
+            backLabel: itemBack,
+            // Back shows Ask, at an overlay too, where nothing else would.
+            onBack: () => useRailStore.getState().summon(),
+            onCloseRail: () => useRailStore.getState().closeRail(),
+          }
+        : undefined,
+    [canChat, itemBack]
+  );
+
+  return (
+    <div
+      data-rail=""
+      data-tour={canChat ? 'right-sidebar' : undefined}
+      data-instant={instant ? '' : undefined}
+      // Docked and dressed: what Notebook's shell keys its page-tab padding
+      // off (DesktopShell's root, `has-[[data-rail-docked]]`).
+      data-rail-docked={dressed && !overlays ? '' : undefined}
+      // Where focus came from into the column: what closing Ask hands it back
+      // to, when Ask was open from boot and no summon noted anything.
+      onFocus={(e) => noteRailEntry(e.relatedTarget)}
+      // The ease shut has ended: Ask, kept painted for it, can go.
+      onTransitionEnd={(e) => {
+        if (leaving && e.target === e.currentTarget && e.propertyName === 'width') setLeaving(false);
+      }}
+      className={cn(
+        // titlebar-hole: the item panel scrolls (surface.tsx), and so does Ask,
+        // so their content passes under the desktop app's drag band, where it
+        // could not be clicked.
+        'titlebar-hole relative flex-shrink-0 overflow-hidden',
+        // The same ease both ways (Ask is kept painted while it leaves, above),
+        // and none at all under reduced motion, opening or closing. The
+        // plate's -ml-3 eases with the width, so its gutter goes over the
+        // same 300ms instead of snapping 12px at the start of the ease.
+        instant
+          ? 'transition-none'
+          : cn(
+              plate ? 'transition-[width,margin-left]' : 'transition-[width]',
+              'duration-300 ease-out motion-reduce:transition-none'
+            ),
+        shown ? 'w-[420px]' : cn('w-0', plate && '-ml-3'),
+        // Flat and sheet: no gutter to eat, and a hairline seam where the
+        // plate's edge was. box-content, as for the overlaid card below: the
+        // seam is drawn OUTSIDE the 420px the item aside and Ask are sized to,
+        // or they overflowed the column by its 1px and lost their right edge.
+        flatPanel && dressed && 'box-content border-l border-border bg-canvas',
+        // Spread: a loose sheet laid beside the book, clear of its page tabs.
+        // Its ml-12 is dress too, held with the shell's pr-5 while Ask leaves:
+        // the book's edge then eases from where it rests open to 12px short of
+        // where it rests closed, the mirror of the open, which starts 12px
+        // narrower. Snapping both at the start instead threw the book 36px
+        // narrower before the ease began.
+        spread && dressed && 'ml-12 rounded-[6px] bg-[var(--nb-page)] shadow-[var(--nb-sheet-shadow)]',
+        plate
+          ? 'max-[1180px]:absolute max-[1180px]:inset-y-3 max-[1180px]:right-3 max-[1180px]:z-30 max-[1180px]:ml-0'
+          : spread
+            ? 'max-[1180px]:absolute max-[1180px]:inset-y-5 max-[1180px]:right-5 max-[1180px]:z-30 max-[1180px]:ml-0'
+            : 'max-[1180px]:absolute max-[1180px]:inset-y-0 max-[1180px]:right-0 max-[1180px]:z-30',
+        // Overlaid, an opaque card over the canvas, and ONLY while shown: the
+        // positioning above holds when closed too, and a closed column is w-0,
+        // where a border would still draw a 2px sliver and the shadow a streak
+        // down the window's right edge. box-content: the card's 1px border goes
+        // OUTSIDE the 420px its children are sized to (the item aside and Ask
+        // are fixed w-[420px]), or they would overflow by 2px, be clipped on
+        // the right and sit 1px off where the borderless column put them.
+        shown &&
+          plate &&
+          'max-[1180px]:box-content max-[1180px]:rounded-[30px] max-[1180px]:border max-[1180px]:border-border max-[1180px]:bg-canvas max-[1180px]:shadow-[var(--shadow-elev-panel)]',
+        shown && flatPanel && 'max-[1180px]:bg-canvas max-[1180px]:shadow-[var(--shadow-elev-panel)]'
+      )}
+    >
+      {/* The column's direct child: the titlebar hole is what makes the item
+          clickable under the drag band (desktop-panel-titlebar.test.tsx).
+          `flat` drops its card chrome so it reads as the paper plane BELOW
+          <main>, mirroring the braindump column on the left. */}
+      <ItemDialog
+        presentation="panel"
+        flat
+        state={panelState}
+        onOpenChange={onPanelOpenChange}
+        railChrome={railChrome}
+        conversation={canChat ? 'pinned' : 'none'}
+      />
+      {askMounted && <RightRail visible={mode === 'ask'} leaving={leaving} overlays={overlays} />}
     </div>
   );
 });

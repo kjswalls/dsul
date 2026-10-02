@@ -620,9 +620,10 @@ const shortcuts = () => useKeyboardShortcutsStore.getState();
  * Bindings whose command exists only while something can answer, and the
  * sentence their row adds to say so.
  *
- * ⌘] toggles a chat panel that SidebarDock mounts only when the AI gate says
- * it can. The sentence is static and true in every state, so the row never
- * waits on the gate and is never locked by it (see the note in the records).
+ * Ctrl+J opens and closes Ask in the right rail, which exists only while the
+ * AI gate says something can answer. The sentence is static and true in every
+ * state, so the row never waits on the gate and is never locked by it (see the
+ * note in the records).
  */
 const AI_ONLY_BINDINGS: ReadonlyMap<string, string> = new Map([
   ['toggle_right_sidebar', 'Works while a model or OpenClaw is connected.'],

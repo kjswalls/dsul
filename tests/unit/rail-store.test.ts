@@ -1,14 +1,12 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { act, renderHook } from '@testing-library/react';
 
 /**
- * rail-store's stack half (C1): the views beneath the item, the one pending
- * focus request, and the composers' half-typed text. The rail's own half
- * (summon, park, railMode) is C2's and is pinned there.
- *
- * So is the `returnTo` back label ("‹ <the item's live title>", else the view
- * beneath once the item is renamed or deleted): it is RailHeader's, which
- * nothing renders before C2. C2 adds it as a pure `backLabel(view, beneath,
- * items)` and pins it here and in rail-desktop.test.tsx.
+ * rail-store. The stack half (C1): the views beneath the item, the one pending
+ * focus request, and the composers' half-typed text. The rail half (C2): the
+ * one visibility rule (`railMode`), summon / park / closeRail, the reserve,
+ * the reveal request, and the back label (`backLabel`, which RailHeader
+ * renders; rail-desktop.test.tsx pins it on screen).
  */
 
 const planner = vi.hoisted(() => ({ items: [] as { id: string; type: string; title: string }[] }));
@@ -16,9 +14,27 @@ vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: { getState: () => ({ items: planner.items }) },
 }));
 
-import { ASK_LEVEL, bindingKey, useRailStore, type AskView } from '@/lib/rail-store';
+import {
+  ASK_LEVEL,
+  PANEL_OVERLAY_QUERY,
+  RAIL_RESERVE_PX,
+  backLabel,
+  bindingKey,
+  clearRailFocusRecord,
+  noteRailEntry,
+  railMode,
+  railModeNow,
+  usePanelOverlays,
+  useRailMode,
+  useRailCovers,
+  useRailStore,
+  type AskView,
+} from '@/lib/rail-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { useUIStore } from '@/lib/ui-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
+import { useViewStore } from '@/lib/view-store';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 const rail = () => useRailStore.getState();
 const history: AskView = { kind: 'history' };
@@ -224,5 +240,549 @@ describe('reset', () => {
     rail().setDraft('home', 'x');
     rail().reset();
     expect(rail()).toMatchObject({ stacks: { desktop: [], phone: [] }, pendingFocus: null, drafts: {}, lastNav: null });
+  });
+});
+
+/* ── C2: the rail half ──────────────────────────────────────────────────── */
+
+/**
+ * Stands in for the viewport: PANEL_OVERLAY_QUERY matches while `narrow`, and
+ * a flip notifies every listener the way a real MediaQueryList does.
+ */
+const viewport = vi.hoisted(() => ({ narrow: false, listeners: new Set<() => void>() }));
+const realMatchMedia = window.matchMedia;
+function installViewport() {
+  window.matchMedia = ((query: string) =>
+    ({
+      matches: query === PANEL_OVERLAY_QUERY && viewport.narrow,
+      media: query,
+      onchange: null,
+      addEventListener: (_: string, fn: () => void) => viewport.listeners.add(fn),
+      removeEventListener: (_: string, fn: () => void) => viewport.listeners.delete(fn),
+      addListener: () => {},
+      removeListener: () => {},
+      dispatchEvent: () => false,
+    }) as unknown as MediaQueryList) as typeof window.matchMedia;
+}
+function setNarrow(narrow: boolean) {
+  viewport.narrow = narrow;
+  for (const fn of [...viewport.listeners]) fn();
+}
+
+describe('railMode, the one visibility rule', () => {
+  const B = [false, true];
+  const cases = B.flatMap((itemOpen) =>
+    B.flatMap((askOpen) =>
+      B.flatMap((canChat) =>
+        B.flatMap((overlays) => B.map((summoned) => ({ itemOpen, askOpen, canChat, overlays, summoned })))
+      )
+    )
+  );
+
+  it.each(cases.map((c) => [JSON.stringify(c), c]))('%s', (_label, c) => {
+    const i = c as (typeof cases)[number];
+    const expected = i.itemOpen
+      ? 'item'
+      : (i.askOpen || i.summoned) && i.canChat && (!i.overlays || i.summoned)
+        ? 'ask'
+        : 'hidden';
+    expect(railMode(i)).toBe(expected);
+  });
+
+  it('an open item is the column, with or without AI', () => {
+    expect(railMode({ itemOpen: true, askOpen: false, canChat: false, overlays: true, summoned: false })).toBe('item');
+  });
+
+  it('with nothing to answer there is no Ask, whatever was kept or summoned', () => {
+    expect(railMode({ itemOpen: false, askOpen: true, canChat: false, overlays: false, summoned: true })).toBe('hidden');
+  });
+
+  it('never an overlay at boot: a persisted askOpen alone does not raise one', () => {
+    expect(railMode({ itemOpen: false, askOpen: true, canChat: true, overlays: true, summoned: false })).toBe('hidden');
+    expect(railMode({ itemOpen: false, askOpen: true, canChat: true, overlays: false, summoned: false })).toBe('ask');
+  });
+});
+
+describe('summon, park, closeRail', () => {
+  let unseed: () => void = () => {};
+  beforeEach(() => {
+    installViewport();
+    setNarrow(false);
+    unseed = seedAI(CONNECTED_MODEL);
+    useSidebarStore.setState({ askOpen: true });
+    useViewStore.setState({ zenOpen: false, zenMoving: false });
+  });
+  afterEach(() => {
+    unseed();
+    window.matchMedia = realMatchMedia;
+    viewport.listeners.clear();
+    useSidebarStore.setState({ askOpen: true });
+  });
+
+  it('Ask rests open when docked, from the persisted askOpen alone', () => {
+    expect(rail().summoned).toBe(false);
+    expect(railModeNow()).toBe('ask');
+  });
+
+  it('summon keeps Ask open (persisted) and summoned; closeRail turns both off', () => {
+    useSidebarStore.setState({ askOpen: false });
+    expect(railModeNow()).toBe('hidden');
+    rail().summon();
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(rail().summoned).toBe(true);
+    expect(railModeNow()).toBe('ask');
+    // No focus request unless asked for.
+    expect(rail().pendingFocus).toBeNull();
+
+    rail().closeRail();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(rail().summoned).toBe(false);
+    expect(railModeNow()).toBe('hidden');
+  });
+
+  it("summon({persist:false}) (the tour) shows Ask without writing askOpen, and park() hides it again", () => {
+    useSidebarStore.setState({ askOpen: false });
+    rail().summon({ persist: false });
+    expect(railModeNow()).toBe('ask');
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    rail().park();
+    expect(railModeNow()).toBe('hidden');
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  it('park leaves a docked Ask the user keeps open where it is', () => {
+    rail().summon();
+    rail().park();
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(railModeNow()).toBe('ask');
+  });
+
+  it('summon({focus}) asks for the box; summon({home}) pops the desktop stack', () => {
+    rail().push('desktop', history);
+    rail().push('phone', history);
+    rail().summon({ focus: true, home: true });
+    expect(rail().pendingFocus).toEqual({ target: 'composer' });
+    expect(rail().stacks).toEqual({ desktop: [], phone: [history] });
+  });
+
+  it('at or below 1180px Ask shows only when summoned there, and a park gives the planner back', () => {
+    setNarrow(true);
+    // Kept open, but not summoned this session: no overlay.
+    expect(railModeNow()).toBe('hidden');
+    rail().summon({ focus: true });
+    expect(railModeNow()).toBe('ask');
+    rail().park();
+    expect(railModeNow()).toBe('hidden');
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+  });
+
+  it('an item open on top is the column at every width', () => {
+    useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+    expect(railModeNow()).toBe('item');
+    setNarrow(true);
+    expect(railModeNow()).toBe('item');
+  });
+
+  it('with nothing to answer the column is only ever the item', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    rail().summon();
+    expect(railModeNow()).toBe('hidden');
+  });
+
+  it('Zen replaces the shell, so nothing shows there whatever the stores say', () => {
+    useViewStore.setState({ zenOpen: true });
+    expect(railModeNow()).toBe('hidden');
+  });
+
+  describe('focus across a summon', () => {
+    function mount() {
+      const outside = document.createElement('input');
+      const column = document.createElement('div');
+      column.setAttribute('data-rail', '');
+      const box = document.createElement('textarea');
+      column.appendChild(box);
+      document.body.append(outside, column);
+      return { outside, box, done: () => { outside.remove(); column.remove(); } };
+    }
+
+    it('closing hands focus back to what held it before the summon that opened Ask', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, box, done } = mount();
+      outside.focus();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().closeRail();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.activeElement).toBe(outside);
+      done();
+    });
+
+    it('a summon while Ask already shows does not move the target', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, box, done } = mount();
+      const other = document.createElement('button');
+      document.body.appendChild(other);
+      outside.focus();
+      rail().summon();
+      other.focus();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().closeRail();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.activeElement).toBe(outside);
+      other.remove();
+      done();
+    });
+
+    it('leaves focus that is already outside the rail where it is', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, done } = mount();
+      const elsewhere = document.createElement('button');
+      document.body.appendChild(elsewhere);
+      outside.focus();
+      rail().summon();
+      elsewhere.focus();
+      rail().closeRail();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(document.activeElement).toBe(elsewhere);
+      elsewhere.remove();
+      done();
+    });
+
+    const tick = () => new Promise((r) => setTimeout(r, 0));
+
+    it('yields to a return that lands before it: the item panel handing focus to its row', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, box, done } = mount();
+      const row = document.createElement('button');
+      document.body.appendChild(row);
+      outside.focus();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().closeRail();
+      // ItemDialog's restore runs in the commit, before the hand-back's timer.
+      row.focus();
+      await tick();
+      expect(document.activeElement).toBe(row);
+      row.remove();
+      done();
+    });
+
+    it('never answers a later close with a record from an earlier open', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, box, done } = mount();
+      const canvas = document.createElement('button');
+      document.body.appendChild(canvas);
+      // Opened from `outside`, closed while focus was elsewhere: nothing handed back…
+      outside.focus();
+      rail().summon({ focus: true });
+      canvas.focus();
+      rail().closeRail();
+      await tick();
+      // …then opened from nowhere, and closed from inside the rail.
+      canvas.blur();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).not.toBe(outside);
+      canvas.remove();
+      done();
+    });
+
+    it('spends the record on a close that hands nothing back', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, box, done } = mount();
+      const canvas = document.createElement('button');
+      document.body.appendChild(canvas);
+      outside.focus();
+      rail().summon({ focus: true });
+      canvas.focus();
+      rail().closeRail();
+      await tick();
+      // Shown again from inside the column (an item's Back): no summon notes
+      // anything, so a record kept from before would answer this close.
+      box.focus();
+      rail().summon();
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).toBe(box);
+      canvas.remove();
+      done();
+    });
+
+    it('a summon from <body> drops an older record', async () => {
+      const { outside, box, done } = mount();
+      outside.focus();
+      noteRailEntry(outside);
+      useSidebarStore.setState({ askOpen: false });
+      outside.blur();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).not.toBe(outside);
+      done();
+    });
+
+    it('notes where focus came from into the rail, for an Ask open from boot', async () => {
+      const { outside, box, done } = mount();
+      // No summon: Ask rests open. Focus enters the box from `outside`.
+      outside.focus();
+      noteRailEntry(outside);
+      box.focus();
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).toBe(outside);
+      done();
+    });
+
+    it('ignores an entry from nowhere or from inside the rail', async () => {
+      const { outside, box, done } = mount();
+      noteRailEntry(outside);
+      noteRailEntry(null);
+      noteRailEntry(document.body);
+      noteRailEntry(box);
+      box.focus();
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).toBe(outside);
+      done();
+    });
+
+    it('forgets the record once the column hides by another path', async () => {
+      const { outside, box, done } = mount();
+      noteRailEntry(outside);
+      clearRailFocusRecord();
+      box.focus();
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).toBe(box);
+      done();
+    });
+
+    it('parking an overlay hands focus back as closing does', async () => {
+      setNarrow(true);
+      const { outside, box, done } = mount();
+      outside.focus();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().park();
+      await tick();
+      expect(document.activeElement).toBe(outside);
+      done();
+    });
+
+    it('a park that leaves a docked Ask showing moves nothing, and keeps the record', async () => {
+      useSidebarStore.setState({ askOpen: false });
+      const { outside, box, done } = mount();
+      outside.focus();
+      rail().summon({ focus: true });
+      box.focus();
+      rail().park();
+      await tick();
+      expect(document.activeElement).toBe(box);
+      rail().closeRail();
+      await tick();
+      expect(document.activeElement).toBe(outside);
+      done();
+    });
+
+    it('Back onto the item a "?" was asked over gives it the focus the rail held', () => {
+      planner.items = [{ id: 'i1', type: 'task', title: 'Book the dentist' }];
+      const { outside, box, done } = mount();
+      const token = () => useUIStore.getState().itemPanelFocusToken;
+
+      rail().push('desktop', conv('c1', { returnTo: { itemId: 'i1' } }));
+      box.focus();
+      const before = token();
+      rail().back('desktop');
+      expect(token()).toBe(before + 1);
+
+      // From the canvas, it is the canvas's focus: left alone.
+      useUIStore.setState({ activeDialog: null });
+      rail().push('desktop', conv('c1', { returnTo: { itemId: 'i1' } }));
+      outside.focus();
+      rail().back('desktop');
+      expect(token()).toBe(before + 1);
+      done();
+    });
+  });
+
+  describe('the hooks', () => {
+    it('useRailCovers never re-renders a docked reader: not for an open, a close, a push or a draft', () => {
+      // DesktopShell's one rail read. Docked, a Ctrl+J opens and closes the
+      // column; the shell, its braindump and its day must not hear of it.
+      let renders = 0;
+      useSidebarStore.setState({ askOpen: false });
+      const { result } = renderHook(() => {
+        renders += 1;
+        return useRailCovers(false);
+      });
+      expect(result.current).toBe(false);
+      const base = renders;
+
+      act(() => {
+        rail().summon();
+        rail().push('desktop', history);
+        rail().setDraft('home', 'typing');
+        rail().setReserve(RAIL_RESERVE_PX);
+      });
+      act(() => useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } }));
+      act(() => {
+        useUIStore.setState({ activeDialog: null });
+        rail().closeRail();
+      });
+      expect(result.current).toBe(false);
+      expect(renders).toBe(base);
+    });
+
+    it('useRailCovers is the overlay showing, and re-renders only when that flips', () => {
+      let renders = 0;
+      useSidebarStore.setState({ askOpen: false });
+      const { result } = renderHook(() => {
+        renders += 1;
+        return useRailCovers(true);
+      });
+      expect(result.current).toBe(false);
+      act(() => {
+        rail().push('desktop', history);
+        rail().setDraft('home', 'typing');
+      });
+      act(() => rail().summon());
+      expect(result.current).toBe(true);
+      const shown = renders;
+      // Still covering: an item over Ask is a different mode, not a different answer.
+      act(() => useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } }));
+      expect(result.current).toBe(true);
+      expect(renders).toBe(shown);
+      act(() => {
+        useUIStore.setState({ activeDialog: null });
+        rail().park();
+      });
+      expect(result.current).toBe(false);
+    });
+
+    it('useRailMode follows the stores and the overlay reading it is given', () => {
+      const { result, rerender } = renderHook(({ overlays }) => useRailMode(overlays), {
+        initialProps: { overlays: false },
+      });
+      expect(result.current).toBe('ask');
+      rerender({ overlays: true });
+      expect(result.current).toBe('hidden');
+      act(() => rail().summon());
+      expect(result.current).toBe('ask');
+      act(() => useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } }));
+      expect(result.current).toBe('item');
+    });
+
+    it('usePanelOverlays follows the query', () => {
+      const { result } = renderHook(() => usePanelOverlays());
+      expect(result.current).toBe(false);
+      act(() => setNarrow(true));
+      expect(result.current).toBe(true);
+    });
+  });
+});
+
+describe('the reserve, the reveal request, reset', () => {
+  it('reservePx is a non-negative width, and a sign-out leaves it (it is layout)', () => {
+    rail().setReserve(RAIL_RESERVE_PX);
+    expect(rail().reservePx).toBe(432);
+    rail().reset();
+    expect(rail().reservePx).toBe(432);
+    rail().setReserve(Number.NaN);
+    expect(rail().reservePx).toBe(0);
+    rail().setReserve(-5);
+    expect(rail().reservePx).toBe(0);
+  });
+
+  it('reserveInstant says how the last reserve change came, and only a change sets it', () => {
+    rail().setReserve(0);
+    rail().setReserve(RAIL_RESERVE_PX, { instant: true });
+    expect(rail()).toMatchObject({ reservePx: 432, reserveInstant: true });
+    // The column re-publishing the same reserve once its transition is back is
+    // no change, so it leaves the boot reveal's flag as it was.
+    rail().setReserve(RAIL_RESERVE_PX);
+    expect(rail().reserveInstant).toBe(true);
+    rail().setReserve(0);
+    expect(rail()).toMatchObject({ reservePx: 0, reserveInstant: false });
+    rail().setReserve(RAIL_RESERVE_PX);
+    expect(rail()).toMatchObject({ reservePx: 432, reserveInstant: false });
+    rail().setReserve(0);
+  });
+
+  it('covers is what the column publishes, and a sign-out leaves it (it is layout)', () => {
+    expect(rail().covers).toBe(false);
+    rail().setCovers(true);
+    expect(rail().covers).toBe(true);
+    rail().reset();
+    expect(rail().covers).toBe(true);
+    rail().setCovers(false);
+    expect(rail().covers).toBe(false);
+  });
+
+  it('pendingReveal is consumed once, by the item it names', () => {
+    rail().setPendingReveal('i1');
+    expect(rail().consumeReveal('i2')).toBe(false);
+    expect(rail().consumeReveal('i1')).toBe(true);
+    expect(rail().consumeReveal('i1')).toBe(false);
+  });
+
+  it('reset also un-summons and drops a reveal', () => {
+    rail().summon({ persist: false });
+    rail().setPendingReveal('i1');
+    rail().reset();
+    expect(rail()).toMatchObject({ summoned: false, pendingReveal: null, pendingFocus: null });
+  });
+});
+
+describe('backLabel', () => {
+  const items = [{ id: 'i1', title: 'Book the dentist' }];
+  const titles: Record<string, string> = { c1: 'Plan my day' };
+  const title = (id: string) => titles[id];
+
+  it('names the view beneath: Ask over home, History over History, the title over a conversation', () => {
+    expect(backLabel(null, undefined, items, title)).toBe('Ask');
+    expect(backLabel(null, history, items, title)).toBe('History');
+    expect(backLabel(null, conv('c1'), items, title)).toBe('Plan my day');
+    expect(backLabel(conv('c2'), history, items, title)).toBe('History');
+    expect(backLabel(history, undefined, items, title)).toBe('Ask');
+  });
+
+  it('a conversation nobody has named yet is a new chat', () => {
+    expect(backLabel(null, conv('draft'), items, title)).toBe('New chat');
+    expect(backLabel(null, conv('c1'), items)).toBe('New chat');
+  });
+
+  it("a conversation asked over an item names the item, by its LIVE title", () => {
+    const asked = conv('c2', { returnTo: { itemId: 'i1' } });
+    expect(backLabel(asked, undefined, items, title)).toBe('Book the dentist');
+    // Renamed: the new title, read from the store, not a copy taken at the ask.
+    expect(backLabel(asked, history, [{ id: 'i1', title: 'Book the hygienist' }], title)).toBe('Book the hygienist');
+  });
+
+  it('falls back to the view beneath once that item is deleted, so it never promises a dead item', () => {
+    const asked = conv('c2', { returnTo: { itemId: 'i1' } });
+    expect(backLabel(asked, undefined, [], title)).toBe('Ask');
+    expect(backLabel(asked, history, [], title)).toBe('History');
+    // A blank title is no name to go back to either.
+    expect(backLabel(asked, undefined, [{ id: 'i1', title: '  ' }], title)).toBe('Ask');
+  });
+
+  it('agrees with back(): the label names the item exactly when Back would reopen it', () => {
+    const asked = conv('c2', { returnTo: { itemId: 'i1' } });
+    for (const present of [true, false]) {
+      planner.items = present ? [{ id: 'i1', type: 'task', title: 'Book the dentist' }] : [];
+      useUIStore.setState({ activeDialog: null });
+      rail().reset();
+      rail().push('desktop', asked);
+      const label = backLabel(asked, undefined, planner.items, title);
+      rail().back('desktop');
+      const reopened = useUIStore.getState().activeDialog?.type === 'edit-item';
+      expect(reopened).toBe(present);
+      expect(label).toBe(present ? 'Book the dentist' : 'Ask');
+    }
   });
 });

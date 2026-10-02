@@ -59,7 +59,7 @@ import { usePlannerStore } from '../planner-store';
 import { useViewStore } from '../view-store';
 import { EMPTY_VIEW_FILTERS, isEmptyFilters } from '../filters';
 import { containerRef, namesOfKind } from '../container-registry';
-import { useUIStore, openAddDialog, openBulkAdd, openNewContainer } from '../ui-store';
+import { useUIStore, closeItemPanel, openAddDialog, openBulkAdd, openNewContainer } from '../ui-store';
 import {
   goalsEnabled,
   groupByOptionsFor,
@@ -75,7 +75,8 @@ import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
 import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
-import { askNew, revealChat } from '../open-chat';
+import { askNew, revealChat, toggleRail } from '../open-chat';
+import { railModeNow, useRailStore } from '../rail-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
 import { getItemTypeConfig } from '../item-registry';
@@ -566,8 +567,8 @@ export const STATIC_COMMANDS: Command[] = [
       const inactive = inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons });
       return selectOverdue(items, todayStr, inactive).length > 0;
     },
-    // Reveal the surface BEFORE poking its state — the same guard openChat,
-    // Open braindump and focusOmnibar already use. The rule outlived the
+    // Reveal the surface BEFORE poking its state — the same guard Open
+    // braindump and focusOmnibar already use. The rule outlived the
     // reason: this used to switch mobile to Today, because the past-due pill
     // was mounted on that tab alone. The surface is a line in the dock now
     // (components/sidebar/dock-notices.tsx), which mobile mounts on every tab,
@@ -854,8 +855,20 @@ export const STATIC_COMMANDS: Command[] = [
     // on a provider being reachable. So it is never gated: with no chat to open,
     // the card renders in the dock's catch-up host instead (SidebarDock on
     // desktop, hence revealing it; the phone's dock is always on screen).
+    //
+    // With chat, the card's one home is Ask home (lib/open-chat.ts
+    // useChatCardHomeShown), so the item on top is closed and the stack popped
+    // to home first, and the card lands where it is seen. The close goes
+    // through the one flushing close BEFORE the request, because `request`
+    // builds the catch-up proposal at once from the planner store, and a title
+    // typed a moment ago must already be in it.
     run: (ctx) => {
-      if (!revealChat(ctx.isMobile) && !ctx.isMobile) revealDock();
+      if (getAICapabilities().canChat) closeItemPanel();
+      if (revealChat(ctx.isMobile)) {
+        useRailStore.getState().popToHome(ctx.isMobile ? 'phone' : 'desktop');
+      } else if (!ctx.isMobile) {
+        revealDock();
+      }
       useProposalStore.getState().request('catch-up');
     },
   },
@@ -886,29 +899,27 @@ export const STATIC_COMMANDS: Command[] = [
   /* ── Workspace ──────────────────────────────────────────────────────── */
   {
     id: 'workspace.toggleChat',
-    label: 'Toggle chat panel',
+    label: 'Open or close Ask',
     group: 'workspace',
     icon: MessageSquare,
-    keywords: 'chat panel sidebar hide show',
+    keywords: 'chat panel sidebar hide show ask rail right panel history',
+    // The shortcut id is FROZEN (commands.test.ts): it is the key a rebinding
+    // is stored under, so it keeps its pre-rail name. Only the default moved,
+    // from ⌘] (Forward in every Mac browser) to Ctrl+J, ⌘J on a Mac ('meta'
+    // folds to the platform's primary modifier, lib/commands/keys.ts).
     shortcut: {
       id: 'toggle_right_sidebar',
-      keys: ['meta', ']'],
+      keys: ['meta', 'j'],
       allowInInput: true,
-      context: 'Desktop only — nothing on mobile reads the sidebar.',
+      context: 'Desktop only. On the phone, Ask is a tab.',
     },
-    // Nothing in the mobile tree consumes sidebar-store. And with nothing to
-    // answer there is no panel to toggle: SidebarDock mounts chat only when the
-    // AI gate says it can (`availableWhen` is what the ⌘] runner checks).
+    // The phone's Ask is a tab, not the rail. And with nothing to answer there
+    // is no Ask to open: the rail is only the item's panel then, and the chord
+    // stays consumed and inert (`availableWhen`; hooks/use-command-shortcuts.ts),
+    // so the browser's own Ctrl+J never opens either.
     hidden: (ctx) => ctx.isMobile || !getAICapabilities().canChat,
     availableWhen: () => getAICapabilities().canChat,
-    run: () => {
-      const sidebar = useSidebarStore.getState();
-      // Opening chat while the sidebar is collapsed would expand a panel
-      // inside a w-0 overflow-hidden column: nothing appears, and the state
-      // silently desyncs from what the user last saw.
-      if (!sidebar.chatExpanded) revealDock();
-      sidebar.toggleChat();
-    },
+    run: () => toggleRail(),
   },
   {
     id: 'workspace.toggleSidebar',
@@ -931,22 +942,26 @@ export const STATIC_COMMANDS: Command[] = [
   },
   {
     id: 'workspace.focusItemPanel',
-    label: 'Focus item panel',
-    description: 'Move focus into the open item panel',
+    label: 'Focus right panel',
+    description: "Move focus into the open item, or into Ask's box",
     group: 'workspace',
     icon: PanelLeft,
-    keywords: 'item panel inspector focus edit details',
+    keywords: 'item panel inspector focus edit details ask rail right',
     shortcut: {
       id: 'focus_item_panel',
       keys: ['meta', '\\'],
       allowInInput: true,
-      context: 'Only while an item panel is open.',
+      context: 'While an item panel is open, or Ask is showing.',
     },
-    // Hidden for the same reason toggleSidebar is: with no panel open the row
-    // would be a trapdoor that appears to do nothing. The binding is the point,
-    // and it still shows up in the shortcuts modal.
+    // Hidden for the same reason toggleSidebar is: with nothing open on the
+    // right the row would be a trapdoor that appears to do nothing. The binding
+    // is the point, and it still shows up in the shortcuts modal.
     hidden: true,
-    run: () => useUIStore.getState().focusItemPanel(),
+    run: () => {
+      const ui = useUIStore.getState();
+      if (ui.activeDialog?.type === 'edit-item') ui.focusItemPanel();
+      else if (railModeNow() === 'ask') useRailStore.getState().focusComposer();
+    },
   },
   {
     id: 'workspace.focusOmnibar',

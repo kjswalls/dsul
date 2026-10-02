@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo } from 'react';
 import { Sparkles, Loader2, Check, RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
@@ -61,7 +61,10 @@ export function ProposalCard({
 
   /**
    * Lines the user has ticked off, by index, tagged with the proposal they
-   * belong to.
+   * belong to. In the store, not here: this card remounts mid-review (a host
+   * handing it to Ask home, a view coming back after an item), and a second
+   * mount may hold it hidden, so every mount reads the one selection
+   * (lib/proposal-store.ts `selection`).
    *
    * All-in by default: the card is an offer, and making someone opt into each
    * line one at a time would turn one tap into six. Dropping the one line that
@@ -73,10 +76,8 @@ export function ProposalCard({
    * where a dropped one used to be — and an effect would reset it a render
    * late, after a paint showing the previous card's ticks on the new one.
    */
-  const [selection, setSelection] = useState<{
-    proposalId: string | null;
-    dropped: ReadonlySet<number>;
-  }>(() => ({ proposalId: null, dropped: NONE_DROPPED }));
+  const selection = useProposalStore((s) => s.selection);
+  const toggle = useProposalStore((s) => s.toggleDropped);
 
   const dropped = selection.proposalId === (proposal?.id ?? null) ? selection.dropped : NONE_DROPPED;
 
@@ -105,12 +106,6 @@ export function ProposalCard({
       if (store.lastRequest?.surface === surface) store.dismiss();
     };
   }, [surface]);
-
-  const toggle = (index: number) => {
-    const next = new Set(dropped);
-    if (!next.delete(index)) next.add(index);
-    setSelection({ proposalId: proposal?.id ?? null, dropped: next });
-  };
 
   const lines = useMemo(() => {
     if (!proposal) return [];

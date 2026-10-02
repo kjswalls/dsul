@@ -221,8 +221,9 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   /**
    * Whether anything can answer in chat. The tour never walks someone to a
    * chat surface that is not there: without it, sub-step C is the dock and
-   * step 4 says AI is optional. The flow and its dots are the same either way,
-   * and so is the spotlight target.
+   * step 4 says AI is optional. The flow and its dots are the same either way;
+   * the spotlight is Ask's column (`right-sidebar`, which exists only while
+   * something answers) with AI, and the capture dock (`dock`) without.
    */
   const { canChat } = useAICapabilities();
   // Spotlight selector based on current step/sub-step
@@ -231,7 +232,9 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
       if (!isMobile) {
         if (desktopSubStep === 'A') return '[data-tour="left-sidebar"]';
         if (desktopSubStep === 'B') return '[data-tour="timeline"]';
-        if (desktopSubStep === 'C') return '[data-tour="right-sidebar"]';
+        if (desktopSubStep === 'C') {
+          return canChat ? '[data-tour="right-sidebar"]' : '[data-tour="dock"]';
+        }
       } else {
         // Every mobile step spotlights the DOCK'S MODE CARD, not a per-surface
         // target. The three-tab bar these steps used to point at is gone; its
@@ -246,7 +249,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
     if (step === 4) {
       if (isMobile) return '[data-tour="mode-card"]';
-      return '[data-tour="right-sidebar"]';
+      return canChat ? '[data-tour="right-sidebar"]' : '[data-tour="dock"]';
     }
     return null;
   })();
@@ -305,10 +308,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
   }, [step]);
 
-  // Auto-expand/collapse chat sidebar based on desktop sub-step C. Expanding
-  // only when chat exists: otherwise C is about the dock, and an armed
-  // `chatExpanded` would spring the panel open later, unasked, the moment a
-  // model is connected.
+  // Show Ask for desktop sub-step C, and put it back after. Only when chat
+  // exists: otherwise C is about the dock. The shell wires these to a summon
+  // that never persists and a park (app-shell.tsx), so the tour never writes
+  // the user's `askOpen`, and nothing is left armed to spring open later.
   useEffect(() => {
     if (step === 3 && !isMobile) {
       if (desktopSubStep === 'C' && canChat) {

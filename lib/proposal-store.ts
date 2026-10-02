@@ -76,7 +76,22 @@ interface ProposalStore {
    * were being thrown away at the one point where somebody could read them.
    */
   refused: { count: number; reasons: string[] };
+  /**
+   * The lines the USER has ticked off the card, by index, tagged with the
+   * proposal they belong to (ProposalCard has why the id travels with them).
+   *
+   * Here rather than in the card because the card remounts while the user is
+   * still reviewing it: a catch-up host hands it to Ask home when the gate
+   * opens mid-review, an item opened over a conversation and Back remount its
+   * view, and Ask kept mounted under an overlay holds a second copy of the
+   * catch-up card beside the dock's. Local state would come back all-ticked
+   * in each of those, and Accept would then apply the very lines the user had
+   * dropped.
+   */
+  selection: { proposalId: string | null; dropped: ReadonlySet<number> };
 
+  /** Tick a line off the current card, or back on. */
+  toggleDropped: (index: number) => void;
   /**
    * `itemId` asks about that item (a breakdown); `conversationId` says which
    * conversation asked, so the card answers there and what it changes is
@@ -204,9 +219,13 @@ const cleared = (): Partial<ProposalStore> => ({
   lastRequest: null,
   rejected: [],
   refused: NOTHING_REFUSED,
+  selection: NO_SELECTION,
 });
 
 const NOTHING_REFUSED = { count: 0, reasons: [] as string[] };
+
+/** Every line in: the card is an offer, and a new one starts all-ticked. */
+const NO_SELECTION: ProposalStore['selection'] = { proposalId: null, dropped: new Set<number>() };
 
 /**
  * The conversation an accepted card counts against: the `conv:` card's own,
@@ -360,6 +379,15 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     lastRequest: null,
     rejected: [],
     refused: NOTHING_REFUSED,
+    selection: NO_SELECTION,
+
+    toggleDropped: (index) => {
+      const { proposal, selection } = get();
+      const proposalId = proposal?.id ?? null;
+      const next = new Set(selection.proposalId === proposalId ? selection.dropped : NO_SELECTION.dropped);
+      if (!next.delete(index)) next.add(index);
+      set({ selection: { proposalId, dropped: next } });
+    },
 
     request: async (intent, prompt, itemId, o) => {
       const token = claim();
@@ -374,6 +402,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         emptyMessage: null,
         proposal: null,
         refused: NOTHING_REFUSED,
+        selection: NO_SELECTION,
         // The original ask, kept verbatim so retries decorate it rather than
         // stacking on each other's decoration.
         lastRequest: { intent, prompt, itemId, surface },
@@ -435,6 +464,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         emptyMessage: null,
         proposal: null,
         refused: NOTHING_REFUSED,
+        selection: NO_SELECTION,
         rejected: nextRejected,
       });
       await askModel(

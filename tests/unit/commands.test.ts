@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import {
   STATIC_COMMANDS,
+  chordLabel,
   findCommand,
   formatKeys,
   matchCommands,
@@ -14,9 +15,12 @@ import {
 } from '@/lib/commands';
 import { DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { getActionLog, usePlannerStore } from '@/lib/planner-store';
-import { useUIStore } from '@/lib/ui-store';
+import { registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
+import { useRailStore } from '@/lib/rail-store';
+import { useSidebarStore } from '@/lib/sidebar-store';
+import { useProposalStore } from '@/lib/proposal-store';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
-import { CONNECTED_MODEL, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The palette's load-bearing invariants: every rendered row has a unique cmdk
@@ -733,5 +737,134 @@ describe('key matching', () => {
   it('labels ctrl and meta as the platform modifier, matching what they match', () => {
     expect(formatKeys(['ctrl', 'z'], true)).toEqual(['⌘', 'Z']);
     expect(formatKeys(['meta', 'z'], false)).toEqual(['Ctrl', 'Z']);
+  });
+});
+
+describe('chordLabel', () => {
+  it('names a binding the way a sentence does: "Ctrl+J" off a Mac, "⌘J" on one', () => {
+    expect(chordLabel(['meta', 'j'], PC)).toBe('Ctrl+J');
+    expect(chordLabel(['meta', 'j'], MAC)).toBe('⌘J');
+    // Modifier-first whatever order the binding was stored in (a recorder sorts it).
+    expect(chordLabel(['j', 'mod'], PC)).toBe('Ctrl+J');
+    expect(chordLabel(['k', 'mod', 'shift'], PC)).toBe('Ctrl+Shift+K');
+    expect(chordLabel(['k', 'mod', 'shift'], MAC)).toBe('⌘⇧K');
+  });
+});
+
+/* ── the right rail (AI step 2a, C2) ────────────────────────────────────── */
+
+describe('the right rail', () => {
+  let unseed: () => void = () => {};
+  const toggle = () => commandById('workspace.toggleChat');
+  const binding = () => toggle().shortcut!;
+
+  beforeEach(() => {
+    unseed = seedAI(CONNECTED_MODEL);
+    seedStore([]);
+    useRailStore.getState().reset();
+    useSidebarStore.setState({ askOpen: false, leftSidebarOpen: false });
+    useUIStore.setState({ activeDialog: null, displacedItemId: null });
+    useProposalStore.setState({ status: 'idle', lastRequest: null });
+  });
+  afterEach(() => {
+    unseed();
+    useProposalStore.setState({ status: 'idle', lastRequest: null });
+  });
+
+  describe('Ctrl+J (toggle_right_sidebar, re-defaulted)', () => {
+    it('keeps its frozen id and is now Ctrl+J, ⌘J on a Mac', () => {
+      expect(binding().id).toBe('toggle_right_sidebar');
+      expect(binding().keys).toEqual(['meta', 'j']);
+      expect(binding().allowInInput).toBe(true);
+      expect(matchesBinding(pressedKeys(keyEvent('j', { ctrl: true }), PC), binding().keys)).toBe(true);
+      expect(matchesBinding(pressedKeys(keyEvent('j', { meta: true }), MAC), binding().keys)).toBe(true);
+      // ⌘] is the browser's Forward again.
+      expect(matchesBinding(pressedKeys(keyEvent(']', { meta: true }), MAC), binding().keys)).toBe(false);
+      expect(toggle().label).toBe('Open or close Ask');
+    });
+
+    it('runs toggleRail: opens Ask, then closes it', () => {
+      toggle().run(ctx);
+      expect(useSidebarStore.getState().askOpen).toBe(true);
+      expect(useRailStore.getState().summoned).toBe(true);
+      toggle().run(ctx);
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      expect(useRailStore.getState().summoned).toBe(false);
+    });
+
+    it('is unavailable, and hidden, with nothing to answer', () => {
+      unseed();
+      unseed = seedAI(NOTHING_CONNECTED);
+      expect(toggle().availableWhen!(ctx)).toBe(false);
+      expect((toggle().hidden as (c: CommandContext) => boolean)(ctx)).toBe(true);
+    });
+  });
+
+  describe('Ctrl+\\ (focus_item_panel, retargeted)', () => {
+    const focus = () => commandById('workspace.focusItemPanel');
+
+    it('keeps its id and keys, and says where it works', () => {
+      expect(focus().shortcut).toMatchObject({ id: 'focus_item_panel', keys: ['meta', '\\'] });
+      expect(focus().shortcut!.context).toContain('item panel is open');
+      expect(focus().shortcut!.context).toContain('Ask');
+    });
+
+    it('an item open: into the item', () => {
+      useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+      const before = useUIStore.getState().itemPanelFocusToken;
+      focus().run(ctx);
+      expect(useUIStore.getState().itemPanelFocusToken).toBe(before + 1);
+      expect(useRailStore.getState().pendingFocus).toBeNull();
+    });
+
+    it("Ask showing: into Ask's box", () => {
+      useSidebarStore.setState({ askOpen: true });
+      const before = useUIStore.getState().itemPanelFocusToken;
+      focus().run(ctx);
+      expect(useRailStore.getState().pendingFocus).toEqual({ target: 'composer' });
+      expect(useUIStore.getState().itemPanelFocusToken).toBe(before);
+    });
+
+    it('neither: nothing', () => {
+      const before = useUIStore.getState().itemPanelFocusToken;
+      focus().run(ctx);
+      expect(useRailStore.getState().pendingFocus).toBeNull();
+      expect(useUIStore.getState().itemPanelFocusToken).toBe(before);
+    });
+  });
+
+  describe('"Pick things back up"', () => {
+    const catchUp = () => commandById('rituals.catchUp');
+
+    it('with chat: flushes and closes the item, opens Ask at home, then asks, so the card lands where it is seen', () => {
+      const order: string[] = [];
+      const off = registerItemPanelFlush(() => order.push('flush'));
+      const unsub = useProposalStore.subscribe((s, prev) => {
+        if (s.lastRequest !== prev.lastRequest) order.push('request');
+      });
+      useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+      useRailStore.getState().push('desktop', { kind: 'history' });
+
+      catchUp().run(ctx);
+
+      expect(order).toEqual(['flush', 'request']);
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(useRailStore.getState().stacks.desktop).toEqual([]);
+      expect(useSidebarStore.getState().askOpen).toBe(true);
+      expect(useProposalStore.getState().lastRequest).toMatchObject({ intent: 'catch-up', surface: 'chat' });
+      unsub();
+      off();
+    });
+
+    it('with nothing to answer: the item stays, the dock is revealed, and the card still comes', () => {
+      unseed();
+      unseed = seedAI(NOTHING_CONNECTED);
+      useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id: 'i1' } as never } });
+      catchUp().run(ctx);
+      expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+      expect(useSidebarStore.getState().leftSidebarOpen).toBe(true);
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      expect(useProposalStore.getState().lastRequest).toMatchObject({ intent: 'catch-up' });
+    });
   });
 });

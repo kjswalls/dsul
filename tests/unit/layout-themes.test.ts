@@ -14,6 +14,7 @@ import {
   layoutAttributes,
   layoutDef,
   layoutStyles,
+  railHeaderRowOffset,
   type LayoutSlot,
 } from '@/lib/layout-themes';
 import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
@@ -139,6 +140,18 @@ describe('layouts — drawn somewhere', () => {
     for (const slot of STRUCTURAL) expect(shellTsx, slot).toContain(`slots.${slot}`);
     expect(shellTsx).toContain('layoutAttributes(layout)');
     for (const o of LAYOUT_ORNAMENTS) expect(shellTsx, o).toContain(`'${o}'`);
+  });
+
+  it("puts the rail header's row on the date's line for every header", () => {
+    // The capsule's date row sits under the capsule's own p-2; every other
+    // header zeroes that padding, so the row starts at the top with it.
+    expect(railHeaderRowOffset({ header: 'capsule' })).toBe('mt-2');
+    for (const header of LAYOUT_SLOTS.header.filter((h) => h !== 'capsule')) {
+      expect(railHeaderRowOffset({ header }), header).toBe('mt-0');
+      expect(globalsCss, header).toMatch(
+        new RegExp(`\\[data-layout-header='${header}'\\] \\[data-header-capsule\\] \\{\\s*padding: 0;`)
+      );
+    }
   });
 
   it('?reset-theme clears the layout too', () => {

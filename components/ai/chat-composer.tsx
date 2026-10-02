@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
-import { chatAssistantName, chatPlaceholder } from '@/lib/chat-utils';
+import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
 import { cn } from '@/lib/utils';
 
 /** Auto-grow ceiling, past which the field scrolls instead of pushing further. */
@@ -27,6 +27,19 @@ interface ChatComposerProps {
   touch?: boolean;
   /** Increment to focus the field (a tab activating, a panel expanding). */
   focusSignal?: number;
+  /**
+   * The text, held by the caller (BoundComposer keeps it in rail-store, so a
+   * half-typed message outlives the view it was typed in). Absent: the field
+   * keeps its own.
+   */
+  value?: string;
+  onValueChange?: (text: string) => void;
+  /**
+   * False while the field is mounted where nobody can see it (BoundComposer's
+   * ComposerAwakeContext: Ask hidden under an item). A hidden field measures
+   * 0px tall, so the auto-grow waits, and measures again the moment it shows.
+   */
+  awake?: boolean;
 }
 
 /**
@@ -54,12 +67,20 @@ function boundThreadId(s: ConversationsState, binding: ComposerBinding): string 
  * `target`), never after the device's stored choice, which may not be usable.
  *
  * One component rather than two because the behaviour — Enter sends, Shift+Enter
- * newlines, auto-grow to a ceiling, disabled mid-stream, cleared and refocused
- * on send — is the contract, and the mobile redesign moved the phone's copy of
+ * newlines, auto-grow to a ceiling, busy mid-stream, cleared and refocused on
+ * send — is the contract, and the mobile redesign moved the phone's copy of
  * it from the foot of the conversation into the dock. Two implementations would
  * have drifted on the first of those rules that got fixed in one place.
  */
-export function ChatComposer({ variant, binding, touch, focusSignal }: ChatComposerProps) {
+export function ChatComposer({
+  variant,
+  binding,
+  touch,
+  focusSignal,
+  value,
+  onValueChange,
+  awake = true,
+}: ChatComposerProps) {
   const threadId = useConversationsStore((s) => boundThreadId(s, binding));
   // Busy from the moment a send starts (before an item's conversation is even
   // known) until the reply has finished arriving.
@@ -68,11 +89,17 @@ export function ChatComposer({ variant, binding, touch, focusSignal }: ChatCompo
   );
   const { target } = useAICapabilities();
 
-  const [input, setInput] = useState('');
+  const [ownInput, setOwnInput] = useState('');
+  const input = value ?? ownInput;
+  const setInput = (text: string) => {
+    if (value === undefined) setOwnInput(text);
+    else onValueChange?.(text);
+  };
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const displayName = chatAssistantName(target);
-  const placeholder = chatPlaceholder(target);
+  // A box bound to an item says so: it looks like every other box.
+  const placeholder = binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target);
   const hasText = input.trim().length > 0;
 
   useEffect(() => {
@@ -81,12 +108,20 @@ export function ChatComposer({ variant, binding, touch, focusSignal }: ChatCompo
     }
   }, [focusSignal]);
 
+  // Auto-grow, measured while the field can be: a field with no box (hidden,
+  // or an ancestor display:none) reads scrollHeight 0, and writing that down
+  // would leave a 0px field behind once it shows. So a hidden field keeps no
+  // inline height (rows=1 governs), and showing it measures again.
   useEffect(() => {
     const ta = textareaRef.current;
-    if (!ta) return;
+    if (!ta || !awake) return;
     ta.style.height = 'auto';
+    if (ta.scrollHeight === 0) {
+      ta.style.height = '';
+      return;
+    }
     ta.style.height = Math.min(ta.scrollHeight, MAX_HEIGHT_PX) + 'px';
-  }, [input]);
+  }, [input, awake]);
 
   const handleSend = () => {
     const text = input.trim();
@@ -197,7 +232,13 @@ export function ChatComposer({ variant, binding, touch, focusSignal }: ChatCompo
         // the tray is the surface here, so the base's dark:bg-input/30 shows as
         // a second, lighter box inside it.
         className="min-h-0 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
-        disabled={isLoading}
+        // Read-only mid-reply, not disabled: disabling a focused field drops
+        // focus to <body>, where the next keystroke fires a bare-key shortcut,
+        // and a disabled field cannot take the focus a send hands to the
+        // conversation it pushed. handleSend already refuses while busy. (The
+        // phone's dock bar stays disabled: its contract is pinned for C5.)
+        readOnly={isLoading}
+        aria-busy={isLoading || undefined}
       />
       <div className="flex items-center justify-between px-2 pb-2">
         <Button

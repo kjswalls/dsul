@@ -346,7 +346,7 @@ describe('what a user change deliberately keeps', () => {
     useSidebarStore.setState({
       leftSidebarWidth: 640,
       leftSidebarOpen: false,
-      chatExpanded: true,
+      askOpen: false,
       leftSidebarHoverEnabled: true,
     });
 
@@ -355,7 +355,8 @@ describe('what a user change deliberately keeps', () => {
     const sidebar = useSidebarStore.getState();
     expect(sidebar.leftSidebarWidth).toBe(640);
     expect(sidebar.leftSidebarOpen).toBe(false);
-    expect(sidebar.chatExpanded).toBe(true);
+    // Whether Ask rests open is chrome too: a closed rail stays closed.
+    expect(sidebar.askOpen).toBe(false);
     // The one field that IS an account preference (it round-trips through
     // saveSettings) goes back to its default on a known change of user.
     expect(sidebar.leftSidebarHoverEnabled).toBe(false);

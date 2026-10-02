@@ -359,7 +359,7 @@ describe('the catch-up host in the phone dock', () => {
 describe('the item panel', () => {
   const renderSections = (item: TaskItem = TASK) => {
     usePlannerStore.setState({ items: [item] });
-    return render(<ItemDetailSections item={item} withThread />);
+    return render(<ItemDetailSections item={item} conversation="inline" />);
   };
 
   it('has no thread, no breakdown and no assignment while the gate is unknown', () => {

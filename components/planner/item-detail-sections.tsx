@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ArrowUp, Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -13,18 +12,11 @@ import {
   recordAgentReply,
   type ItemEvent,
 } from '@/lib/db';
-import {
-  resolveConversationId,
-  useConversationsStore,
-  type ChatMessage,
-  type ConversationsState,
-} from '@/lib/conversations-store';
-import { sendFrom } from '@/lib/open-chat';
-import { chatErrorCopy } from '@/lib/chat-errors';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
 import { ProposalCard } from '@/components/ai/proposal-card';
+import { ItemConversation } from '@/components/ai/item-conversation';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -802,167 +794,23 @@ function HeatmapSection({ item }: { item: Item }) {
   );
 }
 
-// ── Per-item thread ──────────────────────────────────────────────────────────
-
-/** One empty transcript, so a selector for an item nobody has chatted about is stable. */
-const NO_MESSAGES: ChatMessage[] = [];
-
-/**
- * The item's one conversation as the store holds it now: the saved one it is
- * indexed to, else the draft on its way to its first save, else one found gone
- * (deleted elsewhere), which stays on screen until the next send starts afresh.
- */
-function itemThreadId(s: ConversationsState, itemId: string): string | null {
-  const known = s.itemIndex[itemId];
-  if (typeof known === 'string') return resolveConversationId(known);
-  let gone: string | null = null;
-  for (const t of Object.values(s.threads)) {
-    if (t.itemId !== itemId || t.saved) continue;
-    if (t.load !== 'gone') return t.id;
-    gone = t.id;
-  }
-  return gone;
-}
-
-export function ItemThread({ item, className }: { item: Item; className?: string }) {
-  // The item's one saved conversation (lib/conversations-store.ts): the same
-  // on every device, kept until the user deletes it.
-  const threadId = useConversationsStore((s) => itemThreadId(s, item.id));
-  const messages = useConversationsStore((s) => (threadId ? s.threads[threadId]?.messages : undefined) ?? NO_MESSAGES);
-  const isTyping = useConversationsStore((s) => !!(threadId && s.threads[threadId]?.typing));
-  // Busy from the send's first instant (before the item's conversation is even
-  // known) until the reply has finished arriving.
-  const isLoading = useConversationsStore(
-    (s) => !!s.sending[`item:${item.id}`] || !!(threadId && s.threads[threadId]?.streaming)
-  );
-  const { canChat, target } = useAICapabilities();
-  const [draft, setDraft] = useState('');
-  const listRef = useRef<HTMLDivElement>(null);
-  const prevCount = useRef(0);
-
-  // Find the item's conversation and fetch its transcript, only while
-  // something can answer (the thread is not shown otherwise).
-  useEffect(() => {
-    if (!canChat) return;
-    let live = true;
-    const store = useConversationsStore.getState();
-    void store.resolveItemThread(item.id).then((id) => {
-      if (live) void useConversationsStore.getState().openThread(id);
-    });
-    return () => {
-      live = false;
-    };
-  }, [canChat, item.id]);
-
-  // Scroll ONLY the thread's own list, and only on new messages — never on
-  // the initial load. scrollIntoView would scroll every ancestor too,
-  // yanking the edit panel (or the page) down to the thread on open.
-  useEffect(() => {
-    const el = listRef.current;
-    const prev = prevCount.current;
-    prevCount.current = messages.length;
-    if (!el || prev === 0 || messages.length <= prev) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, isTyping]);
-
-  const handleSend = () => {
-    const text = draft.trim();
-    if (!text || isLoading) return;
-    setDraft('');
-    void sendFrom({ kind: 'item', itemId: item.id }, text);
-  };
-
-  // After every hook: a thread with nothing to answer it is a field that sends
-  // nowhere. Every mount (the panel's stack, /item/[id]) is gated by this.
-  if (!canChat) return null;
-
-  const placeholder =
-    target === 'openclaw' ? 'Ask OpenClaw about this item…' : 'Ask about this item…';
-
-  return (
-    <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
-      <SectionLabel>Thread</SectionLabel>
-      {messages.length > 0 && (
-        <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
-          {messages.map((m, i) => {
-            const next = messages[i + 1];
-            // "Not saved" once per turn: under its reply, or under the question
-            // when no reply came.
-            const notSaved = m.sync === 'unsaved' && !(next?.sync === 'unsaved' && next.replyTo === m.id);
-            return (
-              <div
-                key={m.id}
-                className={cn('flex max-w-[92%] flex-col gap-0.5', m.role === 'user' ? 'self-end items-end' : 'self-start')}
-              >
-                <div
-                  className={cn(
-                    'rounded-md px-2.5 py-1.5 text-xs leading-relaxed whitespace-pre-wrap',
-                    m.role === 'user' ? 'bg-secondary text-foreground' : 'bg-warning/10 text-foreground'
-                  )}
-                >
-                  {m.content || (m.status === 'streaming' ? '…' : '')}
-                  {/* A failed reply's words are ours, by its code (lib/chat-errors.ts). */}
-                  {m.status === 'error' && (
-                    <span
-                      data-testid="chat-error-note"
-                      className={cn('block text-muted-foreground', m.content && 'mt-1')}
-                    >
-                      {chatErrorCopy(m.errorCode, m.answerer)}
-                    </span>
-                  )}
-                </div>
-                {notSaved && (
-                  <span data-testid="chat-not-saved" className="text-muted-foreground text-[10px]">
-                    Not saved
-                  </span>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
-      <div className="border-input flex items-center gap-1.5 rounded-md border px-2 py-1">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={placeholder}
-          data-sub-input
-          data-testid="item-thread-input"
-          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' || e.shiftKey) return;
-            e.preventDefault();
-            handleSend();
-          }}
-        />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          disabled={!draft.trim() || isLoading}
-          onClick={handleSend}
-          aria-label="Send"
-        >
-          <ArrowUp className="size-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // ── The stack ────────────────────────────────────────────────────────────────
 
-/** Subtasks + agent + activity, gated by the type's capability config.
- *  The thread is exported separately so the page can column it. */
+/** Subtasks + agent + activity, gated by the type's capability config, then
+ *  the item's conversation (components/ai/item-conversation.tsx) in the shape
+ *  its host asks for. /item/[id] mounts that conversation itself, as its own
+ *  column, and passes nothing here. */
 export function ItemDetailSections({
   item,
-  withThread,
+  conversation = 'none',
   // Clearing folds Activity into a footer disclosure (ClearingFooter), so the
   // body stack omits it to avoid rendering the same feed twice.
   withActivity = true,
 }: {
   item: Item;
-  withThread?: boolean;
+  /** ItemDialog's `conversation` prop: 'pinned' and 'transcript' draw the
+   *  transcript only (the box is the host's), 'inline' brings its own box. */
+  conversation?: 'pinned' | 'transcript' | 'inline' | 'none';
   withActivity?: boolean;
 }) {
   const config = getItemTypeConfig(itemTypeName(item));
@@ -979,7 +827,10 @@ export function ItemDetailSections({
       {config.agentAssignable && <AgentSection item={item} />}
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {withActivity && <ActivitySection itemId={item.id} />}
-      {withThread && <ItemThread item={item} />}
+      {/* Keyed by item: the panel retargets in place, and a message count
+          carried over from the last item would read as new messages here and
+          scroll the rail body to the bottom of a different conversation. */}
+      {conversation !== 'none' && <ItemConversation key={item.id} item={item} mode={conversation} />}
     </div>
   );
 }

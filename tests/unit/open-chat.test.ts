@@ -2,9 +2,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook } from '@testing-library/react';
 
 /**
- * lib/open-chat.ts: the one place that decides where a composer's text goes.
- * C1 form: the old single-thread panels bind to `generalThreadId()`, and the
- * command bar and "Plan my day" send into it.
+ * lib/open-chat.ts: the one place that decides where a composer's text goes,
+ * and how Ask is opened. C2: Ask lives in the right rail on desktop (revealChat
+ * summons it, Ctrl+J toggles it, a fresh conversation is pushed on its stack).
+ * The phone's chat tab is still the general conversation until C5.
+ * The command bar's routing is tests/unit/command-bar-ask.test.ts.
  */
 
 vi.mock('@/lib/planner-store', () => ({
@@ -23,7 +25,6 @@ vi.mock('@/lib/planner-store', () => ({
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
 import {
-  askFromCommandBar,
   askNew,
   bindingKey,
   generalThreadId,
@@ -31,6 +32,11 @@ import {
   resolveSendTarget,
   revealChat,
   sendFrom,
+  toggleRail,
+  useAskHomeShown,
+  useChatCardHomeShown,
+  useChatCardSurface,
+  useChatHostCard,
   useGeneralThreadId,
 } from '@/lib/open-chat';
 import {
@@ -42,6 +48,9 @@ import {
 import { useRailStore } from '@/lib/rail-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
+import { registerItemPanelClose, registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
+import { useViewStore } from '@/lib/view-store';
+import { useProposalStore } from '@/lib/proposal-store';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
@@ -59,8 +68,10 @@ beforeEach(() => {
   unseed = seedAI(CONNECTED_MODEL);
   clearChatState();
   resetGeneralThread();
-  useSidebarStore.getState().setChatExpanded(false);
+  useSidebarStore.setState({ askOpen: false });
   useMobileNavStore.getState().setActiveTab('today');
+  useUIStore.setState({ activeDialog: null, displacedItemId: null });
+  useViewStore.setState({ zenOpen: false, zenMoving: false });
 });
 
 afterEach(async () => {
@@ -69,18 +80,108 @@ afterEach(async () => {
   unseed = () => {};
 });
 
+/** An item in the slot, as a row click leaves it. */
+function openItem(id = 'i1') {
+  useUIStore.setState({ activeDialog: { type: 'edit-item', item: { id, title: 'Book the dentist' } as never } });
+}
+
 describe('revealChat', () => {
-  it('opens chat only when something can answer', () => {
+  it('summons Ask on desktop: kept open, summoned, and its box asked for', () => {
     expect(revealChat(false)).toBe(true);
-    expect(useSidebarStore.getState().chatExpanded).toBe(true);
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(rail().summoned).toBe(true);
+    expect(rail().pendingFocus).toEqual({ target: 'composer' });
+    expect(useMobileNavStore.getState().activeTab).toBe('today');
+  });
+
+  it('opens the chat tab on the phone, and touches no rail', () => {
     expect(revealChat(true)).toBe(true);
     expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(rail().summoned).toBe(false);
+  });
 
+  it('leaves Zen first: the rail is the desktop shell, which Zen replaces', () => {
+    useViewStore.setState({ zenOpen: true });
+    revealChat(false);
+    expect(useViewStore.getState().zenOpen).toBe(false);
+  });
+
+  it('leaves an item on top where it is, with Ask under it', () => {
+    openItem();
+    revealChat(false);
+    expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+  });
+
+  it('opens nothing when nothing can answer', () => {
     unseed();
     unseed = seedAI(NOTHING_CONNECTED);
-    useSidebarStore.getState().setChatExpanded(false);
     expect(revealChat(false)).toBe(false);
-    expect(useSidebarStore.getState().chatExpanded).toBe(false);
+    expect(revealChat(true)).toBe(false);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(rail().summoned).toBe(false);
+    expect(useMobileNavStore.getState().activeTab).toBe('today');
+  });
+});
+
+describe('toggleRail (Ctrl+J)', () => {
+  it('opens a hidden rail with its box focused, and closes a shown one', () => {
+    toggleRail();
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(rail().pendingFocus).toEqual({ target: 'composer' });
+
+    toggleRail();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(rail().summoned).toBe(false);
+  });
+
+  it('closes Ask that rests open from a previous session (never summoned in this one)', () => {
+    useSidebarStore.setState({ askOpen: true });
+    toggleRail();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  it('with an item on top: the one flushing close, then the rail', () => {
+    const calls: string[] = [];
+    const offFlush = registerItemPanelFlush(() => calls.push('flush'));
+    const offClose = registerItemPanelClose(() => {
+      calls.push('close');
+      useUIStore.getState().closeDialog();
+    });
+    useSidebarStore.setState({ askOpen: true });
+    openItem();
+    toggleRail();
+    expect(calls).toEqual(['flush', 'close']);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    offFlush();
+    offClose();
+  });
+
+  it('an item open while Ask is closed: Ctrl+J closes the item (the column is showing)', () => {
+    openItem();
+    toggleRail();
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  it('in Zen: leaves Zen and opens Ask, whatever the stores say', () => {
+    useSidebarStore.setState({ askOpen: true });
+    useViewStore.setState({ zenOpen: true });
+    toggleRail();
+    expect(useViewStore.getState().zenOpen).toBe(false);
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(rail().summoned).toBe(true);
+  });
+
+  it('is inert with nothing to answer', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    openItem();
+    toggleRail();
+    expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(rail().summoned).toBe(false);
   });
 });
 
@@ -222,6 +323,52 @@ describe('sendFrom', () => {
     expect(tx.inputs).toHaveLength(0);
     expect(store().sending).toEqual({});
   });
+
+  describe("a push hands focus to the new conversation's box", () => {
+    function railWithBox() {
+      const column = document.createElement('div');
+      column.setAttribute('data-rail', '');
+      const box = document.createElement('textarea');
+      column.appendChild(box);
+      const outside = document.createElement('button');
+      document.body.append(column, outside);
+      return { box, outside, done: () => { column.remove(); outside.remove(); } };
+    }
+    const pushedId = () => (rail().stacks.desktop.at(-1) as { id: string }).id;
+
+    it('when the box that sent is in the rail', async () => {
+      const { box, done } = railWithBox();
+      box.focus();
+      await sendFrom({ kind: 'home' }, 'hello');
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'conversation', id: pushedId() } });
+      done();
+    });
+
+    it('when a summon asked for the box and nothing took it yet', async () => {
+      const { outside, done } = railWithBox();
+      outside.focus();
+      rail().focusComposer();
+      await sendFrom({ kind: 'home' }, 'hello');
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'conversation', id: pushedId() } });
+      done();
+    });
+
+    it('when asked outright (the command bar), even after a box took the summon', async () => {
+      const { outside, done } = railWithBox();
+      outside.focus();
+      await sendFrom({ kind: 'home' }, 'hello', { focus: true });
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'conversation', id: pushedId() } });
+      done();
+    });
+
+    it('never from a control outside the rail that did not ask', async () => {
+      const { outside, done } = railWithBox();
+      outside.focus();
+      await sendFrom({ kind: 'home' }, 'hello');
+      expect(rail().pendingFocus).toBeNull();
+      done();
+    });
+  });
 });
 
 describe('generalThreadId (C1–C4)', () => {
@@ -282,21 +429,49 @@ describe('generalThreadId (C1–C4)', () => {
   });
 });
 
-describe('askNew (C1)', () => {
-  it('starts a fresh, titled conversation and makes it the one the panel shows', async () => {
+describe('askNew', () => {
+  it('desktop: a fresh, titled conversation, pushed on the rail with its box asked for', async () => {
     const before = generalThreadId();
     askNew('Plan my day', { title: 'Plan my day', isMobile: false });
+    const top = rail().stacks.desktop.at(-1) as { kind: string; id: string };
+    expect(top.kind).toBe('conversation');
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'draft', id: top.id } });
+    expect(useSidebarStore.getState().askOpen).toBe(true);
     await new Promise((r) => setTimeout(r, 0));
     await conversationsSettled();
 
+    expect(tx.inputs[0]).toMatchObject({ conversationId: top.id, message: 'Plan my day' });
+    expect(api.turns[0].body.create).toEqual({ itemId: null, title: 'Plan my day' });
+    // The rail's conversation, not the phone's general one.
+    expect(generalThreadId()).toBe(before);
+
+    // Always fresh: a second ask replaces it at its level.
+    askNew('Plan my day', { title: 'Plan my day', isMobile: false });
+    const next = rail().stacks.desktop.at(-1) as { id: string };
+    expect(next.id).not.toBe(top.id);
+    expect(rail().stacks.desktop).toHaveLength(1);
+  });
+
+  it('desktop: closes an item on top through the one flushing close, so the answer is seen', () => {
+    const calls: string[] = [];
+    const off = registerItemPanelFlush(() => calls.push('flush'));
+    openItem();
+    askNew('Plan my day', { title: 'Plan my day', isMobile: false });
+    expect(calls).toEqual(['flush']);
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    off();
+  });
+
+  it('phone (until C5): the fresh conversation becomes the one the chat tab shows', async () => {
+    const before = generalThreadId();
+    askNew('Plan my day', { title: 'Plan my day', isMobile: true });
+    await new Promise((r) => setTimeout(r, 0));
+    await conversationsSettled();
     const id = generalThreadId();
     expect(id).not.toBe(before);
-    expect(useSidebarStore.getState().chatExpanded).toBe(true);
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(rail().stacks).toEqual({ desktop: [], phone: [] });
     expect(tx.inputs[0]).toMatchObject({ conversationId: id, message: 'Plan my day' });
-    expect(api.turns[0].body.create).toEqual({ itemId: null, title: 'Plan my day' });
-
-    askNew('Plan my day', { title: 'Plan my day', isMobile: false });
-    expect(generalThreadId()).not.toBe(id);
   });
 
   it('does nothing with nothing to answer', () => {
@@ -308,26 +483,93 @@ describe('askNew (C1)', () => {
   });
 });
 
-describe('askFromCommandBar (C1)', () => {
-  it('an empty ask only opens chat', () => {
-    askFromCommandBar('   ', false);
-    expect(useSidebarStore.getState().chatExpanded).toBe(true);
-    expect(tx.inputs).toHaveLength(0);
+describe("chat's card and where it is hosted", () => {
+  function card(surface: string | null, status = 'ready') {
+    useProposalStore.setState({
+      status: status as never,
+      lastRequest: surface === null ? null : ({ intent: 'ask', surface } as never),
+    });
+  }
+  afterEach(() => useProposalStore.setState({ status: 'idle', lastRequest: null }));
+
+  it('the catch-up card and every conversation plan are chat-hosted; an item card never is', () => {
+    const host = () => renderHook(() => [useChatHostCard(), useChatCardSurface()] as const).result.current;
+    card('chat');
+    expect(host()).toEqual([true, 'chat']);
+    card('conv:abc');
+    expect(host()).toEqual([true, 'conv:abc']);
+    card('item:i1');
+    expect(host()).toEqual([false, 'chat']);
+    // "Nothing left to apply": no request to match, shown once, on 'chat'.
+    card(null, 'empty');
+    expect(host()).toEqual([true, 'chat']);
+    card('conv:abc', 'idle');
+    expect(host()[0]).toBe(false);
   });
 
-  it('opens chat as today, then sends into the general conversation', async () => {
-    askFromCommandBar('how is my week?', true);
-    expect(useMobileNavStore.getState().activeTab).toBe('chat');
-    await new Promise((r) => setTimeout(r, 0));
-    await conversationsSettled();
-    expect(tx.inputs[0]).toMatchObject({ conversationId: generalThreadId(), message: 'how is my week?' });
+  describe('desktop', () => {
+    it('Ask home is shown while the rail shows Ask with nothing pushed', () => {
+      useSidebarStore.setState({ askOpen: true });
+      const { result } = renderHook(() => useAskHomeShown('desktop'));
+      expect(result.current).toBe(true);
+      act(() => rail().push('desktop', { kind: 'history' }));
+      expect(result.current).toBe(false);
+      act(() => rail().popToHome('desktop'));
+      act(() => openItem());
+      expect(result.current).toBe(false);
+    });
+
+    it("the catch-up card's home is Ask home; a plan's home is its conversation, on top", () => {
+      useSidebarStore.setState({ askOpen: true });
+      const { result } = renderHook(() => useChatCardHomeShown('desktop'));
+      card('chat');
+      expect(result.current).toBe(true);
+
+      act(() => card('conv:c1'));
+      expect(result.current).toBe(false);
+      act(() => rail().push('desktop', { kind: 'conversation', id: 'c1' }));
+      expect(result.current).toBe(true);
+      // Another conversation on top is not this card's home.
+      act(() => rail().push('desktop', { kind: 'conversation', id: 'c2' }));
+      expect(result.current).toBe(false);
+    });
+
+    it('nothing is ever "home" while the gate is closed, so the dock keeps either card', () => {
+      useSidebarStore.setState({ askOpen: true });
+      rail().push('desktop', { kind: 'conversation', id: 'c1' });
+      card('conv:c1');
+      const { result } = renderHook(() => [useChatCardHomeShown('desktop'), useChatHostCard()] as const);
+      expect(result.current).toEqual([true, true]);
+      act(() => {
+        unseed();
+        unseed = seedAI(NOTHING_CONNECTED);
+      });
+      expect(result.current).toEqual([false, true]);
+      act(() => card('chat'));
+      expect(result.current).toEqual([false, true]);
+    });
   });
 
-  it('with nothing to answer, opens nothing and sends nothing', () => {
-    unseed();
-    unseed = seedAI(NOTHING_CONNECTED);
-    askFromCommandBar('hello', false);
-    expect(useSidebarStore.getState().chatExpanded).toBe(false);
-    expect(tx.inputs).toHaveLength(0);
+  describe('phone', () => {
+    it('Ask home is the chat tab, at home, while something answers', () => {
+      const { result } = renderHook(() => [useAskHomeShown('phone'), useChatCardHomeShown('phone')] as const);
+      card('chat');
+      expect(result.current).toEqual([false, false]);
+      act(() => useMobileNavStore.getState().setActiveTab('chat'));
+      expect(result.current).toEqual([true, true]);
+      // The shell shows Today for a chat tab that cannot answer: no home then.
+      act(() => {
+        unseed();
+        unseed = seedAI(NOTHING_CONNECTED);
+      });
+      expect(result.current).toEqual([false, false]);
+    });
+
+    it('(until C5) the chat tab carries a conversation plan too', () => {
+      useMobileNavStore.getState().setActiveTab('chat');
+      card(`conv:${generalThreadId()}`);
+      const { result } = renderHook(() => useChatCardHomeShown('phone'));
+      expect(result.current).toBe(true);
+    });
   });
 });

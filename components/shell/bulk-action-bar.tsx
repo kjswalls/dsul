@@ -9,6 +9,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
+import { useRailStore } from '@/lib/rail-store';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { isRecurring, isCompletedOnDate, toDateStr } from '@/lib/recurrence';
 import type { Item } from '@/lib/planner-types';
@@ -31,6 +32,17 @@ function isItemDone(item: Item, dateStr: string): boolean {
   return item.status === getItemTypeConfig(itemTypeName(item)).doneStatus;
 }
 
+/**
+ * The bar's place while the right rail is docked: centred on the space left of
+ * the column (the window less its reserve), and no wider than that space less
+ * the same 16px a side the phone's cap keeps. Never the canvas's own width:
+ * beside a docked rail the day can be 380px, and a bar capped to it hid its
+ * last actions behind its sideways scroll (at 1280 the full row is ~590px).
+ */
+function besideRail(reservePx: number): { left: string; maxWidth: string } {
+  return { left: `calc(50% - ${reservePx / 2}px)`, maxWidth: `calc(100vw - ${reservePx + 32}px)` };
+}
+
 export function BulkActionBar() {
   const selectedIds = useSelectionStore((s) => s.selectedIds);
   const clear = useSelectionStore((s) => s.clear);
@@ -45,6 +57,19 @@ export function BulkActionBar() {
   const moveTasksToDate = usePlannerStore((s) => s.moveTasksToDate);
   const unscheduleTasks = usePlannerStore((s) => s.unscheduleTasks);
   const confirm = useUIStore((s) => s.confirm);
+  // What the docked right column holds back from the canvas (0 while it is
+  // hidden or overlaid, and always on the phone). While it holds anything the
+  // bar moves left by half of it (besideRail), so it never sits on the rail's
+  // box. Centring on the window would put the full row of actions under the
+  // rail at 1280.
+  const reservePx = useRailStore((s) => s.reservePx);
+  // The column overlays the canvas (at or below 1180px, an item or a
+  // summoned Ask): the canvas under it is inert, and centred on the window the
+  // bar sat on the overlay's card, over Ask's box, with live actions for rows
+  // nobody could see. It stands down instead, and the selection stays: the
+  // bar is back when the overlay goes. Shifting it aside would not do: beside
+  // a 432px card the full row of actions does not fit below ~1060px.
+  const covered = useRailStore((s) => s.covers);
 
   const [dateOpen, setDateOpen] = useState(false);
 
@@ -68,10 +93,13 @@ export function BulkActionBar() {
   //   - an open confirm dialog owns Escape (cancelling a delete must not also
   //     clear what was about to be deleted).
   //   - a focused text field owns its own Escape (omnibar, inputs).
+  //   - an overlaid right column owns it: Escape gives the planner back from
+  //     it, and the selection the bar stood down for must still be there.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
       if (useUIStore.getState().confirmRequest) return;
+      if (useRailStore.getState().covers) return;
       const el = document.activeElement as HTMLElement | null;
       const tag = el?.tagName.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || tag === 'select' || el?.isContentEditable) return;
@@ -119,7 +147,7 @@ export function BulkActionBar() {
   // Only a genuine MULTI-selection (>=2) raises the bar. A plain click selects
   // exactly one row (and opens it in the edit pane, which is the single-item
   // action surface), so a >=1 threshold would pop the bar on every normal click.
-  if (count < 2) return null;
+  if (count < 2 || covered) return null;
 
   const ids = selected.map((i) => i.id);
 
@@ -142,6 +170,7 @@ export function BulkActionBar() {
       role="toolbar"
       aria-label="Bulk actions"
       data-testid="bulk-action-bar"
+      style={reservePx ? besideRail(reservePx) : undefined}
       className={cn(
         'fixed bottom-20 left-1/2 z-40 -translate-x-1/2 md:bottom-6',
         'flex items-center gap-1 rounded-full border border-border bg-card p-1 pl-3 shadow-soft-lg',

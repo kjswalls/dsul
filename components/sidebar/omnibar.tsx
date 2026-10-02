@@ -120,9 +120,10 @@ function PanelShell({ isLauncher, children }: { isLauncher: boolean; children: R
  *   both are mounted.
  * @param initialQuery seeds the input on mount (launcher only) — e.g. the `/`
  *   binding opens the launcher already in command mode.
- * @param onAskBeacon overrides where "Ask AI" opens the chat. Desktop
- *   grows the sidebar dock (default); mobile switches to the Chat tab. Either
- *   way the omnibar only calls it while the AI gate says something answers.
+ * @param onAskBeacon overrides where "Ask AI" opens the chat. By default it
+ *   summons Ask in the right rail on desktop, and switches to the Chat tab on
+ *   mobile. Either way the omnibar only calls it while the AI gate says
+ *   something answers.
  * @param onFocusChange reports the input's focus state to the parent (the dock
  *   drives its ambient relay from this — a stable signal, unlike container
  *   focus-within which sticks when a menu returns focus or a child unmounts).
@@ -598,15 +599,16 @@ export function Omnibar({
     // Read fresh, not from the render: the gate can drop (a key rejected
     // mid-session) between the render that drew a row and the keypress on it.
     if (!getAICapabilities().canChat) return;
-    // lib/open-chat.ts opens chat (the sidebar on desktop, the chat tab on the
-    // phone) and decides which conversation. Nothing opens it first: from C2
-    // that route reads whether Ask was already showing before it reveals it.
+    // lib/open-chat.ts opens chat (Ask in the right rail on desktop, the chat
+    // tab on the phone) and decides which conversation. Nothing opens it
+    // first: that route reads whether Ask was already showing before it
+    // reveals it.
     askFromCommandBar(chatText, ctx.isMobile);
     useCommandUsageStore.getState().record('rituals.chat');
     closeAndClear();
     inputRef.current?.blur();
-    // Chat opens in the sidebar (not a dialog), so the launcher is still active
-    // — close it so the modal doesn't sit over the conversation.
+    // Ask opens in the right rail (not a dialog), so the launcher is still
+    // active — close it so the modal doesn't sit over the conversation.
     closeLauncher();
   };
 
