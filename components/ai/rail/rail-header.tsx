@@ -48,6 +48,38 @@ export function useBackLabel(view: AskView | null, beneath: AskView | undefined)
 }
 
 /**
+ * How a conversation's header reads, in the rail and on the phone's Ask tab
+ * alike (one rule, so the two never drift):
+ *   saved    its title is the ⌄ menu (Rename, Star, Delete), then "+"
+ *   unsaved  its title plainly, then "+": a first turn on its way, or a
+ *            conversation found deleted, has no row to rename or delete
+ *   new      "New chat", then History (mocks 3 and 6): the draft has nothing
+ *            to keep, and History replaces it (the level rule). Over History
+ *            itself it offers none: "‹ History" is already the way there
+ */
+export type ConversationHeader = 'saved' | 'unsaved' | 'new';
+
+/** The header a conversation on top reads with; null when the top is not a conversation. */
+export function useConversationHeader(top: AskView | null | undefined): ConversationHeader | null {
+  return useConversationsStore((s): ConversationHeader | null => {
+    if (top?.kind !== 'conversation') return null;
+    const id = resolveConversationId(top.id);
+    if (s.summaries[id]) return 'saved';
+    const t = s.threads[id];
+    return t && (t.messages.length > 0 || t.load === 'gone' || t.saved) ? 'unsaved' : 'new';
+  });
+}
+
+/** What a conversation's header offers beside its title, by ConversationHeader's rule. Pure. */
+export function conversationHeaderAction(
+  header: ConversationHeader | null,
+  beneath: AskView | undefined
+): 'new-chat' | 'history' | null {
+  if (header !== 'new') return 'new-chat';
+  return beneath?.kind === 'history' ? null : 'history';
+}
+
+/**
  * The rail's header row, the same for every view, the item included:
  * "‹ <the view beneath>", the view's heading, then ✕.
  *

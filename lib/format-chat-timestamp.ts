@@ -26,16 +26,3 @@ export function clockTime(at: number, timeZone: string | null | undefined, timeF
   const minute = parts.find((p) => p.type === 'minute')?.value ?? ''
   return `${hour}:${minute}`
 }
-
-/**
- * Format a chat message timestamp in the user's preferred time zone and 12h/24h style.
- * Uses DB `user_settings.timezone` when hydrated into the planner store; otherwise the browser zone.
- * `timeFormatPattern` is lib/use-time-format.ts's ('h:mm a' or 'HH:mm'); the clock is clockTime's.
- */
-export function formatChatTimestamp(
-  timestampMs: number,
-  timeFormatPattern: string,
-  userTimezone: string | null | undefined
-): string {
-  return clockTime(timestampMs, userTimezone, timeFormatPattern.includes('a') ? '12h' : '24h')
-}

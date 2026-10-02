@@ -7,7 +7,12 @@ import { ConversationView } from '@/components/ai/ask/conversation-view';
 import { ConversationTitleMenu } from '@/components/ai/ask/conversation-title-menu';
 import { HistoryView } from '@/components/ai/ask/history-view';
 import { NewChatButton } from '@/components/ai/ask/new-chat-empty';
-import { useBackLabel, useConversationTitle } from '@/components/ai/rail/rail-header';
+import {
+  conversationHeaderAction,
+  useBackLabel,
+  useConversationHeader,
+  useConversationTitle,
+} from '@/components/ai/rail/rail-header';
 import { ItemDialog, type ItemDialogState } from '@/components/planner/item-dialog';
 import { SurfaceHeader } from '@/components/primitives/surface-header';
 import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
@@ -23,13 +28,6 @@ function viewKeyOf(view: AskView | undefined): string {
   if (view.kind === 'item') return `item:${view.itemId}`;
   return 'history';
 }
-
-/**
- * How a conversation's header reads (the rail's rule, components/ai/rail/
- * right-rail.tsx): `saved`, its title is the ⌄ menu, then "+"; `unsaved`, its
- * title plainly, then "+"; `new`, "New chat", then History.
- */
-type ConversationHeader = 'saved' | 'unsaved' | 'new';
 
 const back = () => useRailStore.getState().back('phone');
 
@@ -47,8 +45,9 @@ function leaveItem(itemId: string): void {
  *  - HEADER. At home: "Ask", then History (the clock; gone while saving is
  *    off, with nothing to list), "+" and the user menu. Pushed: "‹ <the view
  *    beneath>", the view's title (a saved conversation's is its ⌄ menu), "+"
- *    (History instead on a new chat) and the user menu. No ✕: the tab is the
- *    way out.
+ *    (History instead on a new chat, and neither on one over History, whose
+ *    "‹ History" is the way there: the rail's rule, rail-header.tsx) and the
+ *    user menu. No ✕: the tab is the way out.
  *  - BODY, by the top of the stack: Ask home; History; a conversation with no
  *    box of its own (the dock's bar is this tab's one box, bound to what is
  *    on top: lib/open-chat.ts usePhoneComposerBinding); an item.
@@ -75,13 +74,8 @@ export function AskTab({ headerAccessory }: { headerAccessory?: ReactNode }) {
   const lastNav = useRailStore((s) => s.lastNav);
   const backTo = useBackLabel(top ?? null, beneath);
   const conversationTitle = useConversationTitle(top?.kind === 'conversation' ? top.id : null);
-  const conversationHeader = useConversationsStore((s): ConversationHeader | null => {
-    if (top?.kind !== 'conversation') return null;
-    const id = resolveConversationId(top.id);
-    if (s.summaries[id]) return 'saved';
-    const t = s.threads[id];
-    return t && (t.messages.length > 0 || t.load === 'gone' || t.saved) ? 'unsaved' : 'new';
-  });
+  // The rail's rule for a conversation's header (rail-header.tsx), not a copy of it.
+  const conversationHeader = useConversationHeader(top);
   const itemTitle = usePlannerStore((s) =>
     top?.kind === 'item' ? (s.items.find((i) => i.id === top.itemId)?.title ?? '') : ''
   );
@@ -121,11 +115,13 @@ export function AskTab({ headerAccessory }: { headerAccessory?: ReactNode }) {
     if (useRailStore.getState().pendingFocus) return;
     const returnTo = useRailStore.getState().lastNav === 'back' ? was?.returnFocus : undefined;
     setTimeout(() => {
-      // Only focus that is still lost, parked on the heading React kept from
-      // view to view, or still in the box being let go: anything the user
-      // moved to meanwhile keeps it.
+      // Only focus that is still lost, parked on the heading or the "‹" React
+      // kept from view to view (a Back tapped on "‹ History" leaves focus on
+      // what now reads "‹ Ask", as in the rail), or still in the box being
+      // let go: anything the user moved to meanwhile keeps it.
       const now = document.activeElement as HTMLElement | null;
-      const parked = !!now && root.contains(now) && now.hasAttribute('data-ask-heading');
+      const parked =
+        !!now && root.contains(now) && (now.hasAttribute('data-ask-heading') || now.hasAttribute('data-rail-back'));
       if (now && now !== document.body && !parked && now !== box) return;
       const opener = returnTo
         ? Array.from(root.querySelectorAll<HTMLElement>('[data-ask-focus]')).find(
@@ -158,6 +154,7 @@ export function AskTab({ headerAccessory }: { headerAccessory?: ReactNode }) {
   } else if (top.kind === 'conversation') {
     const id = resolveConversationId(top.id);
     const title = conversationHeader === 'new' ? 'New chat' : (conversationTitle ?? 'New chat');
+    const action = conversationHeaderAction(conversationHeader, beneath);
     header = (
       <SurfaceHeader
         icon={<BackButton label={backTo} titled />}
@@ -168,7 +165,7 @@ export function AskTab({ headerAccessory }: { headerAccessory?: ReactNode }) {
         }
         className="mx-[10px]"
       >
-        {conversationHeader === 'new' ? <PhoneHistoryButton /> : <NewChatButton surface="phone" />}
+        {action === 'new-chat' ? <NewChatButton surface="phone" /> : action === 'history' ? <PhoneHistoryButton /> : null}
         {headerAccessory}
       </SurfaceHeader>
     );
@@ -233,6 +230,7 @@ function BackButton({ label, titled = false }: { label: string; titled?: boolean
       type="button"
       onClick={back}
       data-testid="ask-back"
+      data-rail-back=""
       aria-label={`Back to ${label}`}
       className={cn(
         '-ml-1.5 flex items-center gap-0.5 rounded-md py-1 pr-2 pl-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',

@@ -510,15 +510,22 @@ export function ChatTranscript({ id }: { id: string }) {
     return () => el.removeEventListener('scrollend', ended);
   }, []);
 
-  /** "Jump to latest": the bottom, and the box, when the pill (about to go) held focus. */
+  /**
+   * "Jump to latest": the bottom, and the box, when the pill (about to go)
+   * held focus. The phone's conversation has no box of its own (the dock's is
+   * its box, and stays disabled while a reply streams, which is when this
+   * mostly shows), so there the log takes the focus, as the last "Load
+   * earlier" hands it, rather than dropping it to <body>.
+   */
   const jumpToLatest = (e: React.MouseEvent<HTMLButtonElement>) => {
     const hadFocus = e.currentTarget === document.activeElement;
     toBottom(!prefersReducedMotion());
     if (!hadFocus) return;
-    scrollRef.current
+    const log = scrollRef.current;
+    const box = log
       ?.closest('[data-ask-conversation]')
-      ?.querySelector<HTMLTextAreaElement>('[data-ask-composer] textarea')
-      ?.focus({ preventScroll: true });
+      ?.querySelector<HTMLTextAreaElement>('[data-ask-composer] textarea');
+    (box ?? log)?.focus({ preventScroll: true });
   };
 
   const loadEarlier = async (e: React.MouseEvent<HTMLButtonElement>) => {

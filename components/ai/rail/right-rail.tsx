@@ -7,7 +7,13 @@ import { ConversationTitleMenu } from '@/components/ai/ask/conversation-title-me
 import { HistoryButton, HistoryView } from '@/components/ai/ask/history-view';
 import { NewChatButton } from '@/components/ai/ask/new-chat-empty';
 import { ComposerAwakeContext } from '@/components/ai/bound-composer';
-import { RailHeader, useBackLabel, useConversationTitle } from '@/components/ai/rail/rail-header';
+import {
+  RailHeader,
+  conversationHeaderAction,
+  useBackLabel,
+  useConversationHeader,
+  useConversationTitle,
+} from '@/components/ai/rail/rail-header';
 import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { focusIsInRail, useRailStore, type AskView } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
@@ -34,17 +40,6 @@ function ownsEscape(el: HTMLElement): boolean {
   if (el instanceof HTMLInputElement && el.hasAttribute('data-ask-search')) return el.value !== '';
   return !(el instanceof HTMLTextAreaElement && el.closest('[data-ask-composer]') && !el.value.trim());
 }
-
-/**
- * How a conversation's header reads:
- *   saved    its title is the ⌄ menu (Rename, Star, Delete), then "+"
- *   unsaved  its title plainly, then "+": a first turn on its way, or a
- *            conversation found deleted, has no row to rename or delete
- *   new      "New chat", then History (mocks 3 and 6): the draft has nothing
- *            to keep, and History replaces it (the level rule). Over History
- *            itself it offers none: "‹ History" is already the way there
- */
-type ConversationHeader = 'saved' | 'unsaved' | 'new';
 
 /**
  * A control Back handed focus to, kept in sight inside its own scroller
@@ -110,13 +105,8 @@ export function RightRail({
   const lastNav = useRailStore((s) => s.lastNav);
   const backTo = useBackLabel(top ?? null, beneath);
   const conversationTitle = useConversationTitle(top?.kind === 'conversation' ? top.id : null);
-  const conversationHeader = useConversationsStore((s): ConversationHeader | null => {
-    if (top?.kind !== 'conversation') return null;
-    const id = resolveConversationId(top.id);
-    if (s.summaries[id]) return 'saved';
-    const t = s.threads[id];
-    return t && (t.messages.length > 0 || t.load === 'gone' || t.saved) ? 'unsaved' : 'new';
-  });
+  // How a conversation's header reads (rail-header.tsx, the phone's rule too).
+  const conversationHeader = useConversationHeader(top);
   const asideRef = useRef<HTMLElement>(null);
   const viewKey = viewKeyOf(top);
 
@@ -214,14 +204,13 @@ export function RightRail({
   } else if (top.kind === 'conversation') {
     const id = resolveConversationId(top.id);
     const title = conversationHeader === 'new' ? 'New chat' : (conversationTitle ?? 'New chat');
+    const action = conversationHeaderAction(conversationHeader, beneath);
     header = (
       <RailHeader
         back={{ label: backTo, onBack: back }}
         title={title}
         heading={conversationHeader === 'saved' ? <ConversationTitleMenu key={id} id={id} title={title} /> : undefined}
-        actions={
-          conversationHeader !== 'new' ? <NewChatButton /> : beneath?.kind === 'history' ? undefined : <HistoryButton />
-        }
+        actions={action === 'new-chat' ? <NewChatButton /> : action === 'history' ? <HistoryButton /> : undefined}
         onClose={close}
       />
     );

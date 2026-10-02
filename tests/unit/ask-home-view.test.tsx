@@ -490,10 +490,11 @@ describe('With AI activity', () => {
     expect(useRailStore.getState().stacks.desktop).toEqual([]);
   });
 
-  it('reads the time on the 24-hour clock under that setting', () => {
+  // The phone's Ask tab is the same home: the same clock (clockTime) on its rows.
+  it.each(['rail', 'mobile'] as const)('reads the time on the 24-hour clock under that setting (%s)', (variant) => {
     usePlannerStore.setState({ timeFormat: '24h' });
     setConversations(summary({ id: 'c1', title: 'Plan for today', lastMessageAt: '2026-10-02T08:02:00.000Z' }));
-    render(<AskHome />);
+    render(<AskHome variant={variant} />);
     expect(activity()[0]).toHaveTextContent(/08:02$/);
   });
 
@@ -531,7 +532,9 @@ describe('the foot', () => {
     expect(chips.map((c) => c.textContent)).toEqual(['Plan tomorrow', 'Review today']);
   });
 
-  it('rules its top only while something scrolls beneath it, with no mask or fade', () => {
+  // Both homes: the rail's foot (chips and box) and the phone's (chips only;
+  // the dock's bar is its box) keep the same scroll cue.
+  it.each(['rail', 'mobile'] as const)('rules its top only while something scrolls beneath it, with no mask or fade (%s)', (variant) => {
     // jsdom lays nothing out: the box's geometry is set by hand, and a
     // ResizeObserver that reports on demand stands in for the browser's.
     const RealRO = globalThis.ResizeObserver;
@@ -545,7 +548,7 @@ describe('the foot', () => {
       disconnect() {}
     } as unknown as typeof ResizeObserver;
     try {
-      render(<AskHome />);
+      render(<AskHome variant={variant} />);
       const scroller = home().querySelector('[data-ask-scroller]') as HTMLElement;
       const foot = home().querySelector('[data-ask-foot]') as HTMLElement;
       const geometry = { scrollHeight: 300, clientHeight: 400 };

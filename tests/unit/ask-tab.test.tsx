@@ -273,12 +273,74 @@ describe('one stack under one capsule', () => {
     await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'History' })));
   });
 
+  // The rail's rule (rail-header.tsx conversationHeaderAction): a new chat's
+  // History is how to reach History, so over History it offers none.
+  it('a new chat over History offers no History of its own, nor "+"; from Ask home it has History', async () => {
+    renderShell();
+    const tabRoot = () => document.querySelector('[data-ask-tab]') as HTMLElement;
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(phone().map((v) => v.kind)).toEqual(['history', 'conversation']);
+    expect(back()).toHaveAccessibleName('Back to History');
+    expect(within(tabRoot()).getByText('New chat')).toBeInTheDocument();
+    expect(within(tabRoot()).queryByRole('button', { name: 'History' })).toBeNull();
+    expect(within(tabRoot()).queryByRole('button', { name: 'New chat' })).toBeNull();
+    // The user menu still ends the capsule.
+    expect(within(tabRoot()).getByRole('button', { name: 'User menu' })).toBeInTheDocument();
+
+    fireEvent.click(back());
+    fireEvent.click(back());
+    expect(phone()).toEqual([]);
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(phone().map((v) => v.kind)).toEqual(['conversation']);
+    expect(within(tabRoot()).getByRole('button', { name: 'History' })).toBeInTheDocument();
+  });
+
+  // A tap or Enter on "‹ History" leaves focus on that button, and React keeps
+  // it into History's capsule, where it reads "‹ Ask": focus left there would
+  // send a second press home. As in the rail, it goes to what pushed the view.
+  it('hands focus from the pressed "‹" to the control that pushed the view, not the "‹" React kept', async () => {
+    renderShell();
+    fireEvent.click(screen.getByRole('button', { name: 'History' }));
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    expect(phone()).toMatchObject([{ kind: 'history' }, { kind: 'conversation', returnFocus: 'new-chat' }]);
+    await waitFor(() => expect(document.activeElement).toBe(dockInput()));
+
+    const pressed = back();
+    act(() => pressed.focus());
+    fireEvent.click(pressed);
+    expect(phone()).toEqual([{ kind: 'history', returnFocus: 'history' }]);
+    // The same node, now the way home.
+    expect(back()).toBe(pressed);
+    expect(back()).toHaveAccessibleName('Back to Ask');
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByRole('button', { name: 'New chat' })));
+    expect(document.activeElement).not.toBe(back());
+  });
+
   it("a saved conversation's title is its ⌄ menu, with + beside it", () => {
     seedConversation('c1');
     renderShell([{ kind: 'conversation', id: 'c1' }]);
     expect(screen.getByTestId('conversation-title-menu')).toHaveTextContent('What is open');
     expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument();
     expect(screen.getByText('Two items are open.')).toBeInTheDocument();
+  });
+
+  // The conversation's box is the dock's (disabled while a reply streams), so
+  // "Jump to latest" hands the focus it held to the log, never to <body>.
+  it('"Jump to latest" pressed with focus on it leaves focus in the conversation', () => {
+    seedConversation('c1');
+    renderShell([{ kind: 'conversation', id: 'c1' }]);
+    const log = screen.getByTestId('chat-transcript');
+    Object.defineProperty(log, 'scrollHeight', { value: 1000, configurable: true });
+    Object.defineProperty(log, 'clientHeight', { value: 300, configurable: true });
+    log.scrollTop = 100;
+    fireEvent.scroll(log);
+    log.scrollTo = vi.fn() as never;
+    const pill = screen.getByTestId('chat-jump-latest');
+    act(() => pill.focus());
+    fireEvent.click(pill);
+    expect(screen.queryByTestId('chat-jump-latest')).toBeNull();
+    expect(document.activeElement).toBe(log);
   });
 
   it('keeps the stack and every draft through a trip to Today', () => {
