@@ -57,11 +57,13 @@ no network request at all.
 screen then says "Check your email". Open the email on the same iPhone and tap
 the link: Safari (or your mail app's browser) opens a dsul page, asks to open
 dsul, and the app signs you in. Tap Open only if the prompt names dsul. If
-nothing happens, open that page in Safari or tap its Open dsul button. Send
-again reuses the same sign-in, so either email's link works; the link is
-good for an hour, and for an address with no dsul account yet, open it
-within about 5 minutes (a slower tap asks for one more link, which then
-works at once).
+nothing happens, open that page in Safari or tap its Open dsul button.
+
+Send again keeps the same sign-in: if it's refused as too soon, the email
+you already have still works; once a new email goes out, only the newest one
+does. A link is good for an hour. For an address with no dsul account yet,
+open it within about 5 minutes (a slower tap asks for one more link, which
+then works at once).
 
 Before the first sign-in on a phone (once, in the Supabase dashboard):
 1. **Step 0, Auth → URL Configuration:** Site URL `https://do.dsul.app`, and

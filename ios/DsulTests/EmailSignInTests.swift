@@ -187,6 +187,44 @@ private func redirectTo(_ request: FakeServer.Request?) -> String? {
         #expect(exchanged.isEmpty)
     }
 
+    @Test func anAddressGoTrueRefusesLeavesTheEarlierSignInWorking() async throws {
+        let server = await makeServer()
+        await server.on(EmailJSON.otpRoute, .status(200, "{}"),
+                        .status(400, "{\"code\":\"email_address_not_authorized\",\"message\":\"Email address not authorized\"}"))
+        let store = InMemoryTokenStore()
+        let auth = makeAuth(server, store: store)
+        await auth.sendEmailLink(to: EmailJSON.address)
+        let first = try #require(store.pendingEmail)
+        auth.useDifferentEmail()
+
+        await auth.sendEmailLink(to: "you@example.com")
+
+        #expect(auth.message == "dsul can't email that address yet.")
+        #expect(store.pendingEmail == first)
+        await auth.handleOpenURL(emailCallback(nonce: first.nonce))
+        #expect(auth.isSignedIn)
+        let exchanged = await exchanges(server)
+        #expect(exchanged.count == 1)
+        #expect(bodyJSON(exchanged.first)?["code_verifier"] as? String == first.verifier)
+    }
+
+    @Test func aSendToAnotherAddressThatMayHaveLandedKeepsItsRecord() async throws {
+        let server = await makeServer()
+        await server.on(EmailJSON.otpRoute, .status(200, "{}"), .offline)
+        let store = InMemoryTokenStore()
+        let auth = makeAuth(server, store: store)
+        await auth.sendEmailLink(to: EmailJSON.address)
+        let first = try #require(store.pendingEmail)
+        auth.useDifferentEmail()
+
+        await auth.sendEmailLink(to: "you@example.com")
+
+        #expect(auth.message == "Couldn't send the link. Check your connection and try again.")
+        let kept = try #require(store.pendingEmail)
+        #expect(kept.email == "you@example.com")
+        #expect(kept.nonce != first.nonce)
+    }
+
     @Test func eachSendFailureSaysWhatHappened() {
         let cases: [(Error, String)] = [
             (AuthError.send(status: 429, code: "over_email_send_rate_limit"),
@@ -462,7 +500,7 @@ private func redirectTo(_ request: FakeServer.Request?) -> String? {
         #expect(AuthStore.googleMessage(for: AuthError.exchange(status: 500, code: nil)) == "Couldn't sign in. Try again.")
     }
 
-    @Test func signingInWithGoogleEndsAnEmailSignInAndSigningOutForgetsIt() async throws {
+    @Test func signingInWithGoogleEndsAnEmailSignInSoItsLinkMovesNothingLater() async throws {
         let server = await makeServer()
         await server.on(AuthJSON.logoutRoute, .status(204, ""))
         let store = InMemoryTokenStore()
@@ -477,7 +515,6 @@ private func redirectTo(_ request: FakeServer.Request?) -> String? {
         #expect(auth.emailSent == nil)
 
         await auth.signOut()
-        #expect(auth.emailSent == nil)
         // The email's link has nothing left to finish.
         await auth.handleOpenURL(emailCallback(nonce: record.nonce))
         #expect(auth.state == .signedOut)

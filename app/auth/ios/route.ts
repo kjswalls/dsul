@@ -16,7 +16,8 @@ import { createHash } from 'node:crypto';
  * keeps both in the fragment rather than dropping them, so an in-app browser
  * that won't open the app can still "Open in Safari". The fragment never
  * reaches a server or a Referer, and the code is useless without the verifier
- * in the phone's Keychain.
+ * of the user's latest flow state, normally the one in the phone's Keychain
+ * (memory/plans/ios-app.md, "Email link", on the residual risk).
  *
  * THE COMMON CASE IS A 302. A well-formed `?code` (or an error code) in the
  * query answers with a redirect straight to the scheme: a plain HTTP redirect

@@ -206,7 +206,8 @@ final class AuthStore {
             message = "That doesn't look like an email address."
             return
         }
-        let record = EmailSignIn.forSend(to: email, existing: storedPending(), now: self.now())
+        let previous = storedPending()
+        let record = EmailSignIn.forSend(to: email, existing: previous, now: self.now())
         keepPending(record)
         isSendingEmail = true
         message = nil
@@ -226,7 +227,13 @@ final class AuthStore {
         isSendingEmail = false
         guard state == .signedOut, pending == record else { return }
         if let failure {
-            // The record stays: GoTrue may have stored its flow state anyway.
+            // GoTrue refused this address outright: no email went out and no
+            // flow state was stored, so an earlier sign-in to another address
+            // is put back and its email still works. After any other failure
+            // the new record stays, since the request may have landed.
+            if let previous, !previous.matches(email: email), Self.isRefusal(failure) {
+                keepPending(previous)
+            }
             message = Self.sendMessage(for: failure)
         } else {
             emailSent = email
@@ -439,6 +446,13 @@ final class AuthStore {
         let fresh = try await configStore.reload()
         guard let retry = build(fresh) else { throw AuthError.failed }
         return try await self.transport(retry)
+    }
+
+    /// A send GoTrue refused for the address itself (a 4xx other than "too
+    /// soon"), before it stored anything.
+    private static func isRefusal(_ error: Error) -> Bool {
+        guard let authError = error as? AuthError, case .send(let status, _) = authError else { return false }
+        return (400..<500).contains(status) && status != 429
     }
 
     // MARK: Copy
