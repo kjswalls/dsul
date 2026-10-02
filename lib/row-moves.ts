@@ -11,6 +11,8 @@
  * - Recurring items. `startDate` is the series anchor, and there is no
  *   per-occurrence date override, so either verb would rewrite the whole series
  *   (the issue #187 note in eod-review.tsx). Their row answer is "Skip today".
+ *   Reschedule is the exception (`canReschedule`): picking a day on purpose
+ *   moves the series start, which is what the item panel's date field does.
  * - Done or cancelled items: there is nothing left to put off.
  * - Tasks inside a project block. Neither verb clears `inProjectBlock`, and the
  *   untimed lists skip in-block tasks, so the item would land nowhere visible.
@@ -62,6 +64,23 @@ export function canMoveToNextDay(
   if (itemType !== 'task') return false;
   if (!getItemTypeConfig(typeNameOf(it, itemType)).dateAddressable) return false;
   if (isRecurring(it) || it.inProjectBlock) return false;
+  return isOpenOn(it, dateStr);
+}
+
+/**
+ * The Reschedule picker's gate: the carry's, except a recurring task may take
+ * it too. A picked day becomes the series start, and that day always shows as
+ * an occurrence (`anchoredSeriesOn`), so the move lands where the person put it.
+ */
+export function canReschedule(
+  item: Item | Movable,
+  itemType: 'task' | 'habit',
+  dateStr: string,
+): boolean {
+  const it = item as Movable;
+  if (itemType !== 'task') return false;
+  if (!getItemTypeConfig(typeNameOf(it, itemType)).dateAddressable) return false;
+  if (it.inProjectBlock) return false;
   return isOpenOn(it, dateStr);
 }
 

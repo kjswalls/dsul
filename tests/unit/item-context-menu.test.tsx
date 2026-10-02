@@ -166,7 +166,7 @@ describe('the item right-click menu', () => {
     expect(itemById('daily').completedDates).toEqual([ROW_DAY]);
   });
 
-  it('keeps the carries off a recurring task and offers them on a dated one-off', () => {
+  it('keeps the carries off a recurring task (Reschedule stays) and offers them on a dated one-off', () => {
     render(
       <>
         <LiveRow id="daily" />
@@ -175,7 +175,8 @@ describe('the item right-click menu', () => {
     );
     const series = rightClick(cardOf('daily'));
     expect(within(series).queryByTestId('item-menu-next-day')).toBeNull();
-    expect(within(series).queryByTestId('item-menu-reschedule')).toBeNull();
+    // Reschedule moves the series start, so a recurring task keeps it.
+    expect(within(series).getByTestId('item-menu-reschedule')).toBeTruthy();
     expect(within(series).getByTestId('item-menu-skip')).toBeTruthy();
     fireEvent.keyDown(series, { key: 'Escape' });
 

@@ -10,7 +10,7 @@ import { ItemContextMenu } from '@/components/planner/item-context-menu';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
 import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
-import { canMoveToNextDay, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
@@ -230,9 +230,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const nextDay = nextDayTarget(dateStr, todayStr);
   const canNextDay = !inBraindump && canMoveToNextDay(item, itemType, dateStr);
   const canBraindump = !inBraindump && canSendToBraindump(item, itemType, dateStr, milestoneIds);
-  // Reschedule is the next-day carry's gate with the day left open — and, unlike
-  // the carry, it is offered in the braindump too, where it reads "Schedule".
-  const canReschedule = canMoveToNextDay(item, itemType, dateStr);
+  // Reschedule is the next-day carry's gate with the day left open, and recurring
+  // tasks may take it (the picked day becomes the series start). Unlike the
+  // carry it is offered in the braindump too, where it reads "Schedule".
+  const canReschedule = canRescheduleItem(item, itemType, dateStr);
   // The calendar is open: pins the hover cluster visible, or the trigger would
   // fade out from under the picker as the pointer crosses onto it.
   const [picking, setPicking] = useState(false);
@@ -786,9 +787,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                     <RowControlDivider />
                   </>
                 )}
-                {/* Put it off: the next day, or back to the braindump. Never on a
-                    recurring row (Skip today is its answer), and gated in one
-                    place — lib/row-moves.ts — so the blocks and the sheet agree. */}
+                {/* Put it off: the next day, a picked day, or back to the
+                    braindump. The carry and the braindump never take a recurring
+                    row (Skip today is its answer); Reschedule does, moving the
+                    series start. Gated in one place, lib/row-moves.ts, so the
+                    blocks and the sheet agree. */}
                 {canNextDay && (
                   <RowControl
                     icon={Redo2}
@@ -875,48 +878,40 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             </Button>
           )}
 
-          {/* Braindump (sidebar) schedule — the row's way onto a day without a
-              drag. Same reveal as the delete beside it, pinned while the calendar
-              is open; -my-1 neutralizes its 20px for the reason the delete's note gives. */}
-          {inBraindump && !isMobile && canReschedule && (
+          {/* Braindump (sidebar) controls: Schedule (the row's way onto a day
+              without a drag) and Delete, in the same capsule the planner rows
+              use, so the two read at one spacing. Revealed on hover, pinned
+              while the calendar is open.
+              -my-1.5 is a height neutralizer, not spacing: the 24px capsule
+              would be the tallest thing in a braindump row (the rail it would
+              otherwise sit beside is gated off here), so it would set the line
+              box and make every sidebar row looser than the body's. Flexbox sizes
+              the line from items' OUTER hypothetical heights, so cancelling the
+              row's own py-1.5 drops this to 12px and the 17px title takes the
+              measurement back, exactly as it does in the body. The capsule still
+              draws at its full 24px and overhangs the padding. Coupled to the
+              row's py-1.5 above, like DAY_DOTS_HIT in pills.tsx. */}
+          {inBraindump && !isMobile && (
             <span
               className={cn(
-                '-my-1 flex opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
+                '-my-1.5 flex flex-shrink-0 opacity-0 transition-opacity group-hover:opacity-100 group-has-[:focus-visible]:opacity-100',
                 picking && 'opacity-100'
               )}
             >
-              <RescheduleControl
-                open={picking}
-                onOpenChange={setPicking}
-                todayStr={todayStr}
-                onPick={(day) => moveTaskToDate(item.id, day)}
-                testId="item-reschedule-button"
-                popoverTestId="item-reschedule-popover"
-              />
+              <RowControlGroup>
+                {canReschedule && (
+                  <RescheduleControl
+                    open={picking}
+                    onOpenChange={setPicking}
+                    todayStr={todayStr}
+                    onPick={(day) => moveTaskToDate(item.id, day)}
+                    testId="item-reschedule-button"
+                    popoverTestId="item-reschedule-popover"
+                  />
+                )}
+                <RowControl icon={Trash2} label="Delete" testId="item-delete-button" destructive onClick={handleDelete} />
+              </RowControlGroup>
             </span>
-          )}
-          {/* Braindump (sidebar) delete — inline, since braindump rows carry no
-              tag or pills to sit beside.
-              -my-1.5 is a height neutralizer, not spacing: this 24px button was
-              the tallest thing in a braindump row (the rail it would otherwise
-              sit beside is gated off here), so it set the line box and made every
-              sidebar row 36px against the body's 29px — the same list at a looser
-              pitch. Flexbox sizes the line from items' OUTER hypothetical heights,
-              so cancelling the row's own py-1.5 drops this to 12px and the 17px
-              title takes the measurement back, exactly as it does in the body.
-              The button still draws at its full 24px and overhangs the padding.
-              Coupled to the row's py-1.5 above, like DAY_DOTS_HIT in pills.tsx. */}
-          {inBraindump && !isMobile && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="-my-1.5 h-6 w-6 text-muted-foreground opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-              onClick={handleDelete}
-              aria-label="Delete"
-              data-testid="item-delete-button"
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
           )}
 
           {!compact && !inBraindump && (

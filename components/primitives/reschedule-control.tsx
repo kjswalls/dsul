@@ -12,8 +12,8 @@ import { parseDay } from '@/lib/collections';
  * RowControl that opens a calendar. One component for every surface that
  * offers it (day rows, schedule blocks, braindump rows, console member rows),
  * so the picker can't drift between them. WHICH items may take it is the
- * next-day verb's gate (lib/row-moves.ts `canMoveToNextDay`) with the day left
- * open; callers ask that, this only renders.
+ * `canReschedule` (lib/row-moves.ts): the next-day verb's gate with the day left
+ * open, plus recurring tasks; callers ask that, this only renders.
  *
  * Controlled, because every host reveals its controls on hover: the host keeps
  * the capsule pinned visible while `open`, or the trigger would fade out from
