@@ -6,12 +6,9 @@ import { Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
-import {
-  fetchItemEvents,
-  getItemEventsAvailable,
-  recordAgentReply,
-  type ItemEvent,
-} from '@/lib/db';
+import { fetchItemEvents, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
+import { answerAgentQuestion } from '@/lib/agent-question';
+import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
@@ -377,109 +374,28 @@ function AgentSection({ item }: { item: Item }) {
   );
 }
 
-/** Shared empty list, so a render with no options allocates nothing. */
-const NO_OPTIONS: string[] = [];
-
 /**
  * The answer half of `blocked`.
  *
  * Without this the agent can ask a question and nobody can answer it — the loop
- * is open at exactly the point where a human is needed. Sending does two
- * things: it writes the reply to the item's activity trail, which is where the
- * agent reads it back from, and it flips the status to `queued` so the next
- * scheduled run picks the work up again. The flip is the load-bearing half; a
- * reply that did not re-queue would look answered and never move.
+ * is open at exactly the point where a human is needed. The options and the
+ * answer are shared with Ask home's Needs-you card: which options belong to the
+ * question on screen, and why they are tagged to it, is hooks/use-agent-
+ * question.ts; what an answer writes (the reply on the trail, then the flip
+ * back to `queued`, the load-bearing half) is lib/agent-question.ts.
  */
 function AgentReply({ item }: { item: TaskItem }) {
-  const updateTask = usePlannerStore((s) => s.updateTask);
   const [text, setText] = useState('');
-  /**
-   * The fetched options, TAGGED with the item and question they belong to.
-   *
-   * Derived during render rather than reset by an effect, for the reason the
-   * proposal card learned the same way: an effect resets a render late, so the
-   * panel paints the previous item's buttons once before clearing them — and
-   * this panel is REUSED across items (the dialog re-seeds on id change without
-   * unmounting), so that frame has the new item's id already bound to the old
-   * item's answers.
-   */
-  const optionsKey = `${item.id}\u0000${(item.aiResult ?? '').trim()}`;
-  const [fetched, setFetched] = useState<{ key: string; options: string[] }>(() => ({
-    key: '',
-    options: NO_OPTIONS,
-  }));
-  const options = fetched.key === optionsKey ? fetched.options : NO_OPTIONS;
-
-  /**
-   * The tappable answers, if the agent offered any FOR THE QUESTION ON SCREEN.
-   *
-   * Fetched here rather than lifted from the Activity section below: this only
-   * renders while `aiStatus` is `blocked`, so the query is rare, and the two
-   * sections are independent by design (Activity is collapsible and may never
-   * be opened).
-   *
-   * Two things this has to get right, both of which it got wrong first:
-   *
-   * 1. CLEAR BEFORE FETCHING. The detail panel is REUSED across items — the
-   *    dialog re-seeds on id change without unmounting — so leaving the old
-   *    options up during the round-trip meant opening blocked item B while A
-   *    was on screen showed A's buttons with B's id already bound. A tap in
-   *    that window filed A's answer against B and re-queued B unanswered.
-   *
-   * 2. MATCH THE QUESTION, not just "the newest event". The question the user
-   *    reads comes from `aiResult`, which `dsul_report_progress` can also
-   *    set — and that path writes no `agent_question` event. So an agent that
-   *    asked with options, then asked again through the old tool, left the new
-   *    question on screen above the OLD question's buttons. Comparing the
-   *    payload against `aiResult` ties the two together, and incidentally
-   *    handles a lost event (no match, no buttons) and a truncated feed the
-   *    same safe way.
-   */
-  useEffect(() => {
-    let cancelled = false;
-    if (!getItemEventsAvailable()) return;
-
-    fetchItemEvents(item.id)
-      .then((events) => {
-        if (cancelled) return;
-        const question = events.find((e) => e.action === 'agent_question');
-        if (!question) return;
-
-        // Is this the question currently being asked?
-        const asked = typeof question.payload?.question === 'string' ? question.payload.question : '';
-        if (asked.trim() !== (item.aiResult ?? '').trim()) return;
-
-        // Still open? A reply recorded AFTER it means the user already answered,
-        // and re-offering the choices would invite a duplicate answer.
-        const answeredSince = events.find((e) => e.action === 'agent_reply');
-        if (answeredSince && answeredSince.createdAt > question.createdAt) return;
-
-        const raw = Array.isArray(question.payload?.options)
-          ? (question.payload.options as unknown[])
-          : [];
-        setFetched({
-          key: optionsKey,
-          options: raw.filter((o): o is string => typeof o === 'string' && o.trim().length > 0),
-        });
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [item.id, item.aiResult, optionsKey]);
+  const { options, clear } = useAgentQuestion(item);
 
   const answer = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    recordAgentReply(item.id, itemTypeName(item), trimmed);
-    updateTask(item.id, { aiStatus: 'queued' });
+    if (!answerAgentQuestion(item, value)) return;
     setText('');
     // The question is answered; the buttons would otherwise sit there inviting
     // a second reply to a queued item. (In the app the status flip unmounts
     // this whole section — but that is the CALLER's behaviour, not this
     // component's, and it should not be load-bearing here.)
-    setFetched({ key: '', options: NO_OPTIONS });
+    clear();
   };
 
   const send = () => answer(text);

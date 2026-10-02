@@ -120,6 +120,8 @@ describe('the AI server boundary', () => {
     'lib/conversation-summary.ts',
     'lib/rail-store.ts',
     'lib/plan-prompt.ts',
+    'lib/ask-home.ts',
+    'lib/agent-question.ts',
   ])('%s is client-safe: no Node builtin, no server module', (rel) => {
     const file = FILES.find((f) => f.rel === rel);
     expect(file, `${rel} exists`).toBeDefined();
