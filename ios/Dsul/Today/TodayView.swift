@@ -169,8 +169,9 @@ enum AccountFormat {
 }
 
 /// The planner's banner: it goes by itself after a few seconds
-/// (`SamplePlanner.show`), and a tap dismisses it sooner.
-private struct BannerView: View {
+/// (`SamplePlanner.show`), and a tap dismisses it sooner. Over Today, and over
+/// an item's sheet, which would otherwise hide a write the server refused.
+struct BannerView: View {
     var banner: PlannerBanner
     var onDismiss: () -> Void
 
@@ -189,7 +190,8 @@ private struct BannerView: View {
             .padding(.vertical, 10)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Not `.plain`, whose press fades the lime tick.
+        .buttonStyle(PressScaleStyle(scale: 0.97))
         .accessibilityHint("Dismisses the message")
     }
 }

@@ -1,0 +1,2184 @@
+{
+  "skip": [
+    {
+      "name": "habit skip on an open day",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": true
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit skip on a done day takes the completion and a streak day",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 3,
+        "status": "done",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": true
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit skip on a day already skipped",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "skipped",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit skip on a day both skipped and completed",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 3,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit unskip",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "skipped",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": false
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "pending",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit unskip on a day both skipped and completed",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 3,
+        "status": "skipped",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": false
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "pending",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit unskip on a day not skipped still clears its completion",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 3,
+        "status": "done",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "pending",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "habit skip on a past day",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 1,
+        "status": "pending",
+        "completedDates": [
+          "2026-09-30"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-09-30",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 0,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-09-30"
+          ],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-09-30",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "date": "2026-09-30",
+            "skipped": true
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {},
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "counted habit skip keeps its tally",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 2
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3,
+        "currentDayCount": 2
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000386",
+          "title": "water x3",
+          "streak": 0,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {
+            "2026-10-02": 2
+          },
+          "repeatFrequency": "daily",
+          "timesPerDay": 3,
+          "currentDayCount": 2
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": true
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {
+                "2026-10-02": 2
+              },
+              "currentDayCount": 2
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "counted habit skip with no stored day count",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000386",
+          "title": "water x3",
+          "streak": 0,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {
+            "2026-10-02": 1
+          },
+          "repeatFrequency": "daily",
+          "timesPerDay": 3,
+          "currentDayCount": 0
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": true
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {
+                "2026-10-02": 1
+              },
+              "currentDayCount": 0
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "counted habit skip on a done day",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000386",
+        "title": "water x3",
+        "streak": 5,
+        "status": "done",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 3
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3,
+        "currentDayCount": 3
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000386",
+          "title": "water x3",
+          "streak": 4,
+          "status": "skipped",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ],
+          "dailyCounts": {
+            "2026-10-02": 3
+          },
+          "repeatFrequency": "daily",
+          "timesPerDay": 3,
+          "currentDayCount": 3
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "date": "2026-10-02",
+            "skipped": true
+          },
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000386",
+            "type": "habit",
+            "updates": {
+              "status": "skipped",
+              "dailyCounts": {
+                "2026-10-02": 3
+              },
+              "currentDayCount": 3
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "recurring task skip",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "skippedDates": [
+            "2026-10-02"
+          ]
+        },
+        "calls": [
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-10-02",
+            "skipped": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "recurring task done, then skipped",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "completedDates": [
+          "2026-10-01",
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "completedDates": [
+            "2026-10-01"
+          ],
+          "skippedDates": [
+            "2026-10-02"
+          ]
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-10-02",
+            "skipped": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "recurring task unskip",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "skippedDates": []
+        },
+        "calls": [
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-10-02",
+            "skipped": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "recurring task skip on a day already skipped writes nothing",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "skippedDates": [
+            "2026-10-02"
+          ]
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "recurring task unskip on a day not skipped writes nothing",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning"
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "recurring task unskip leaves a completion alone",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "skippedDates": [],
+          "completedDates": [
+            "2026-10-02"
+          ]
+        },
+        "calls": [
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-10-02",
+            "skipped": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "recurring task skip on a past day",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "completedDates": [
+          "2026-09-30"
+        ]
+      },
+      "date": "2026-09-30",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-09-30"
+          ]
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-09-30",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "date": "2026-09-30",
+            "skipped": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "custom recurring skip",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000003a2",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-0000000003a2",
+          "title": "post office",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-09-01",
+          "timeBucket": "afternoon",
+          "repeatFrequency": "weekdays",
+          "skippedDates": [
+            "2026-10-02"
+          ]
+        },
+        "calls": [
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-0000000003a2",
+            "type": "errand",
+            "date": "2026-10-02",
+            "skipped": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "custom recurring done, then skipped",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000003a2",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-0000000003a2",
+          "title": "post office",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-09-01",
+          "timeBucket": "afternoon",
+          "repeatFrequency": "weekdays",
+          "completedDates": [],
+          "skippedDates": [
+            "2026-10-02"
+          ]
+        },
+        "calls": [
+          {
+            "fn": "setItemCompletion",
+            "id": "00000000-0000-4000-8000-0000000003a2",
+            "type": "errand",
+            "date": "2026-10-02",
+            "completed": false
+          },
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-0000000003a2",
+            "type": "errand",
+            "date": "2026-10-02",
+            "skipped": true
+          }
+        ]
+      }
+    },
+    {
+      "name": "custom recurring unskip",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000003a2",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "date": "2026-10-02",
+      "skipped": false,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-0000000003a2",
+          "title": "post office",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-09-01",
+          "timeBucket": "afternoon",
+          "repeatFrequency": "weekdays",
+          "skippedDates": []
+        },
+        "calls": [
+          {
+            "fn": "setItemSkip",
+            "id": "00000000-0000-4000-8000-0000000003a2",
+            "type": "errand",
+            "date": "2026-10-02",
+            "skipped": false
+          }
+        ]
+      }
+    },
+    {
+      "name": "a one-off is not skippable",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": false,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "morning"
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "repeat none is not skippable",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "repeatFrequency": "none"
+      },
+      "date": "2026-10-02",
+      "skipped": true,
+      "gate": false,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "morning",
+          "repeatFrequency": "none"
+        },
+        "calls": []
+      }
+    }
+  ],
+  "move": [
+    {
+      "name": "one-off to tomorrow keeps its bucket",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "date": "2026-10-03",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-03",
+          "timeBucket": "morning"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "startDate": "2026-10-03",
+              "timeBucket": "morning"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a missing bucket lands in anytime",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "date": "2026-10-03",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-03",
+          "timeBucket": "anytime"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "startDate": "2026-10-03",
+              "timeBucket": "anytime"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "start time, duration and the scheduled flag are kept",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon",
+        "startTime": "14:00",
+        "duration": 45
+      },
+      "date": "2026-10-05",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-05",
+          "timeBucket": "afternoon",
+          "startTime": "14:00",
+          "duration": 45
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "startDate": "2026-10-05",
+              "timeBucket": "afternoon"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "an undated task gets a day and anytime",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "date": "2026-10-02",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "anytime"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "startDate": "2026-10-02",
+              "timeBucket": "anytime"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "an overdue one-off comes to today",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-28",
+        "timeBucket": "morning"
+      },
+      "date": "2026-10-02",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "morning"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "startDate": "2026-10-02",
+              "timeBucket": "morning"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "custom one-off",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000003a2",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon"
+      },
+      "date": "2026-10-03",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-0000000003a2",
+          "title": "post office",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-03",
+          "timeBucket": "afternoon"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-0000000003a2",
+            "type": "errand",
+            "updates": {
+              "startDate": "2026-10-03",
+              "timeBucket": "afternoon"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "a habit is not moved",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "date": "2026-10-03",
+      "gate": false,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        "calls": []
+      }
+    }
+  ],
+  "pause": [
+    {
+      "name": "pause a habit",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-02T15:00:00.000Z"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedAt": "2026-10-02T15:00:00.000Z",
+              "pausedUntil": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause a habit until next week",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "paused": true,
+      "pausedUntil": "2026-10-09",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": "2026-10-09"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedAt": "2026-10-02T15:00:00.000Z",
+              "pausedUntil": "2026-10-09"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause a one-off",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "morning",
+          "pausedAt": "2026-10-02T15:00:00.000Z"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "pausedAt": "2026-10-02T15:00:00.000Z",
+              "pausedUntil": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause a custom item until a day",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000003a2",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon"
+      },
+      "paused": true,
+      "pausedUntil": "2026-10-05",
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "custom",
+          "customType": "errand",
+          "id": "00000000-0000-4000-8000-0000000003a2",
+          "title": "post office",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "afternoon",
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": "2026-10-05"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-0000000003a2",
+            "type": "errand",
+            "updates": {
+              "pausedAt": "2026-10-02T15:00:00.000Z",
+              "pausedUntil": "2026-10-05"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause a recurring task",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000038e",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-00000000038e",
+          "title": "water plants",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "repeatFrequency": "daily",
+          "startDate": "2026-09-01",
+          "timeBucket": "morning",
+          "pausedAt": "2026-10-02T15:00:00.000Z"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-00000000038e",
+            "type": "task",
+            "updates": {
+              "pausedAt": "2026-10-02T15:00:00.000Z",
+              "pausedUntil": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pausing after a pause ended restamps it and clears the end",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-01T12:00:00Z",
+        "pausedUntil": "2026-09-20"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-02T15:00:00.000Z"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedAt": "2026-10-02T15:00:00.000Z",
+              "pausedUntil": null
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pausing what is already paused writes nothing",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-09-20T15:00:00Z"
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "resume",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "paused": false,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-09-20T15:00:00Z",
+          "pausedUntil": "2026-10-02"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedUntil": "2026-10-02"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "resume a pause with an end date",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-09"
+      },
+      "paused": false,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-09-20T15:00:00Z",
+          "pausedUntil": "2026-10-02"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedUntil": "2026-10-02"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "resume a paused one-off",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "paused": false,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "morning",
+          "pausedAt": "2026-09-20T15:00:00Z",
+          "pausedUntil": "2026-10-02"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000398",
+            "type": "task",
+            "updates": {
+              "pausedUntil": "2026-10-02"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "resuming what is live writes nothing",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "paused": false,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "resuming after the pause already ended writes nothing",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-01"
+      },
+      "paused": false,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-09-20T15:00:00Z",
+          "pausedUntil": "2026-10-01"
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "a subtask is not pausable",
+      "now": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000398",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "parentItemId": "00000000-0000-4000-8000-0000000003e7"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": false,
+      "expected": {
+        "item": {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000398",
+          "title": "buy milk",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02",
+          "timeBucket": "morning",
+          "parentItemId": "00000000-0000-4000-8000-0000000003e7"
+        },
+        "calls": []
+      }
+    },
+    {
+      "name": "resume late in the evening reads today in the user zone",
+      "now": "2026-10-03T05:30:00.000Z",
+      "timeZone": "America/Los_Angeles",
+      "todayStr": "2026-10-02",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "paused": false,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-09-20T15:00:00Z",
+          "pausedUntil": "2026-10-02"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedUntil": "2026-10-02"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "pause stamps the instant, whatever the zone",
+      "now": "2026-10-02T16:00:00.000Z",
+      "timeZone": "Asia/Tokyo",
+      "todayStr": "2026-10-03",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000385",
+        "title": "stretch",
+        "streak": 2,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "paused": true,
+      "pausedUntil": null,
+      "gate": true,
+      "expected": {
+        "item": {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000385",
+          "title": "stretch",
+          "streak": 2,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily",
+          "pausedAt": "2026-10-02T16:00:00.000Z"
+        },
+        "calls": [
+          {
+            "fn": "updateItem",
+            "id": "00000000-0000-4000-8000-000000000385",
+            "type": "habit",
+            "updates": {
+              "pausedAt": "2026-10-02T16:00:00.000Z",
+              "pausedUntil": null
+            }
+          }
+        ]
+      }
+    }
+  ]
+}

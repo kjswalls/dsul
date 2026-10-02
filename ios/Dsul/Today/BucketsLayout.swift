@@ -3,8 +3,8 @@ import SwiftUI
 
 /// The Buckets layout (E and G boards): one card per bucket with its count,
 /// or "Nothing yet" when it's empty. The rule that files each item is
-/// DsulCore's `bucketDayRows`, the port of lib/day-items.ts. Signed in, a pull
-/// refreshes it.
+/// DsulCore's `bucketDayRows`, the port of lib/day-items.ts. Rows tick and
+/// open as on List. Signed in, a pull refreshes it.
 struct BucketsLayout: View {
     @Environment(SamplePlanner.self) private var planner
     var nowMin: Int
@@ -63,7 +63,8 @@ private struct BucketCard: View {
                                                                        nowMin: nowMin),
                         onToggle: {
                             withAnimation(.snappy) { planner.toggle(item.id) }
-                        })
+                        },
+                        onOpen: { planner.open(item.id, day: .selected) })
             }
         }
         .padding(14)

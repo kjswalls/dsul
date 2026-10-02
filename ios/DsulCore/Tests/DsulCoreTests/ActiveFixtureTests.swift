@@ -196,6 +196,26 @@ private func ids(_ set: Set<UUID>) -> [String] {
         #expect(parseTimestamp(s) == nil)
     }
 
+    /// `toISOString` writes what JavaScript's does: UTC, milliseconds, `Z`, and
+    /// nothing below the millisecond.
+    @Test func writesTheWebsStamp() throws {
+        let cases: [(String, String)] = [
+            ("2026-10-02T15:00:00Z", "2026-10-02T15:00:00.000Z"),
+            ("2026-08-11T03:00:00+05:30", "2026-08-10T21:30:00.000Z"),
+            ("2026-09-30T14:03:22.123456+00:00", "2026-09-30T14:03:22.123Z"),
+            ("2026-12-31T23:59:59.5Z", "2026-12-31T23:59:59.500Z"),
+        ]
+        for (stamp, expected) in cases {
+            let at = try #require(parseTimestamp(stamp), "\(stamp)")
+            #expect(toISOString(at) == expected, "\(stamp)")
+        }
+        #expect(toISOString(Date(timeIntervalSince1970: 0.0009)) == "1970-01-01T00:00:00.000Z")
+        // What it writes, `parseTimestamp` reads back, to the millisecond.
+        let now = Date(timeIntervalSince1970: 1_790_000_000.25)
+        let back = try #require(parseTimestamp(toISOString(now)))
+        #expect(abs(back.timeIntervalSince(now)) < 0.001)
+    }
+
     @Test func anUnknownZoneIsNoPause() {
         let paused = PauseWindow(pausedAt: "2026-08-10T12:00:00Z")
         #expect(!isPausedOn(paused, on: DayString("2026-08-15")!, timeZone: "Bogus/Zone"))

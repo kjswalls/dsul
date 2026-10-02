@@ -52,9 +52,9 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { openEditFor } from '@/lib/ui-store';
 import { milestoneItemIds } from '@/lib/goals';
-import { isRecurring, toDateStr } from '@/lib/recurrence';
+import { toDateStr } from '@/lib/recurrence';
 import { addDaysStr, weekStartOf, type OccurrenceState } from '@/lib/container-schedule';
-import { ITEM_VERBS, isDoneOn, isSkippedOn, type VerbContext, type VerbId } from '@/lib/item-verbs';
+import { ITEM_VERBS, drawnState, isDoneOn, type VerbContext, type VerbId } from '@/lib/item-verbs';
 import { STATIC_COMMANDS, type Command } from '@/lib/commands';
 import { parseDay } from '@/lib/collections';
 import { cn } from '@/lib/utils';
@@ -340,18 +340,6 @@ function SingleBody({
       <Row icon={<Trash2 className="size-3.5" />} label="Delete…" destructive testId="item-menu-delete" onSelect={run('delete')} />
     </>
   );
-}
-
-/**
- * What "drawn on this day" says about an item there, for the per-day verbs.
- * A one-off has no per-day state; a recurring item's day is what was recorded,
- * else due from today on and merely open before it (never "missed").
- */
-function drawnState(item: Item, dateStr: string, todayStr: string): OccurrenceState | undefined {
-  if (!isRecurring(item as { repeatFrequency?: string })) return undefined;
-  if (isDoneOn(item, dateStr)) return 'done';
-  if (isSkippedOn(item, dateStr)) return 'skipped';
-  return dateStr >= todayStr ? 'due' : 'open';
 }
 
 /* ── properties: the Edit menu's own lists ─────────────────────────────── */

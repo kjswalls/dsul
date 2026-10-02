@@ -19,31 +19,84 @@ import Foundation
 ///   under steady ticking would leave a failed write unchecked.
 /// - **A failed write** shows a banner and refetches once the queue drains,
 ///   and the server's answer replaces the guess. If that refetch fails too,
-///   the item goes back to its copy from before the write, unless a later
-///   write for it is queued or has landed since.
+///   the fields the write set go back to how they were before it, unless a
+///   later write for the item is queued, or a later write in the same slot
+///   (`WriteSlot`) has landed since.
+/// - **A failure is moot only in its own slot.** Writes are end states of
+///   their own fields: a later tick that landed says nothing about a carry that
+///   failed, so it neither saves the carry's guess from the revert nor is
+///   undone by it.
 /// - **No polling and no realtime** (the web has neither): a fetch on sign-in,
 ///   on returning to the app at most once a minute, and on pull to refresh.
 @MainActor
 final class PlannerSync {
-    /// The three things the phone writes, each an intent (lib/app-api.ts).
+    /// What the phone writes, each an intent (lib/app-api.ts): capture, and
+    /// the item writes POST /api/app/items/:id takes, named by its `action`
+    /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
+    /// Reschedule, Pause/Pause until/Resume).
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
         case capture(id: UUID, title: String)
+        /// `skipped` true skips the occurrence on `date`, false unskips it.
+        case skip(id: UUID, date: String, skipped: Bool)
+        /// The day to carry the item to.
+        case move(id: UUID, date: String)
+        /// `pausedUntil` is the exclusive resume day, with `paused` only; nil
+        /// is no end. `timeZone` is the zone the phone read today in, which the
+        /// server uses only when the account stores none.
+        case pause(id: UUID, paused: Bool, pausedUntil: String?, timeZone: String?)
 
         var itemId: UUID {
             switch self {
-            case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _):
+            case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
+                 .move(let id, _), .pause(let id, _, _, _):
                 return id
+            }
+        }
+
+        /// The fields this write sets, as a slot.
+        var slot: WriteSlot {
+            switch self {
+            case .complete(_, let date, _, _), .skip(_, let date, _):
+                return .day(date)
+            case .schedule, .move:
+                return .placement
+            case .pause:
+                return .pause
+            case .capture:
+                return .create
             }
         }
     }
 
+    /// Which of an item's fields a write sets. Two writes in one slot set the
+    /// same fields to an end state each, so the later one stands; writes in
+    /// different slots never touch each other's fields.
+    enum WriteSlot: Sendable, Hashable {
+        /// One day's tick or skip: that day's completion, skip and tally, and
+        /// the streak and the status snapshot they move.
+        case day(String)
+        /// Where the item sits: its day, time, bucket, scheduled flag and block.
+        case placement
+        /// Its pause window.
+        case pause
+        /// The item itself: a capture.
+        case create
+    }
+
     private struct Failure {
         let itemId: UUID
+        let slot: WriteSlot
         /// The item before the write; nil for a capture (it didn't exist).
         let snapshot: Item?
         let seq: Int
+    }
+
+    /// One slot of one item.
+    private struct SlotKey: Hashable {
+        let itemId: UUID
+        let slot: WriteSlot
     }
 
     private enum Outcome {
@@ -79,7 +132,8 @@ final class PlannerSync {
     private var fetching: Task<Void, Never>?
     private var dragWaiter: Task<Void, Never>?
     private var queuedByItem: [UUID: Int] = [:]
-    private var lastSuccessByItem: [UUID: Int] = [:]
+    /// The sequence number of the last write that landed, per item and slot.
+    private var lastSuccessBySlot: [SlotKey: Int] = [:]
     private var failures: [Failure] = []
     private var refetchWhenDrained = false
     private var lastFetchStarted: Date?
@@ -134,7 +188,7 @@ final class PlannerSync {
         if !stopped {
             do {
                 try await perform(write)
-                lastSuccessByItem[id] = seq
+                lastSuccessBySlot[SlotKey(itemId: id, slot: write.slot)] = seq
             } catch is CancellationError {
                 // Signed out while it was out: nothing to say.
             } catch {
@@ -154,13 +208,19 @@ final class PlannerSync {
             try await api.schedule(id: id, date: date, startTime: startTime)
         case .capture(let id, let title):
             try await api.capture(id: id, title: title)
+        case .skip(let id, let date, let skipped):
+            try await api.skip(id: id, date: date, skipped: skipped)
+        case .move(let id, let date):
+            try await api.move(id: id, date: date)
+        case .pause(let id, let paused, let pausedUntil, let timeZone):
+            try await api.pause(id: id, paused: paused, pausedUntil: pausedUntil, timeZone: timeZone)
         }
     }
 
     private func failed(_ write: Write, snapshot: Item?, seq: Int, error: Error) {
         // Auth already moved to the sign-in screen; this planner is going.
         if (error as? APIError) == .signedOut { return }
-        failures.append(Failure(itemId: write.itemId, snapshot: snapshot, seq: seq))
+        failures.append(Failure(itemId: write.itemId, slot: write.slot, snapshot: snapshot, seq: seq))
         refetchWhenDrained = true
         planner?.show(Self.writeFailureText(error), isError: true)
     }
@@ -280,19 +340,25 @@ final class PlannerSync {
         }
     }
 
-    /// Each failed item back to its copy from before the earliest failed write
-    /// since its last write that landed, unless a write for it is still
-    /// queued. A failure older than a landed write is moot: the writes are
-    /// end states, so the later one stands.
+    /// Each failed slot back to its fields from before the earliest failed
+    /// write in it since the last one in it that landed, unless a write for
+    /// the item is still queued. A failure older than a landed write in the
+    /// same slot is moot: the writes are end states, so the later one stands.
+    /// A landed write in another slot moots nothing, and keeps its own fields
+    /// through the revert. A capture undone takes the item, and every other
+    /// failure on it, with it.
     private func revertFailures() {
-        var reverted = Set<UUID>()
+        var reverted = Set<SlotKey>()
+        var removed = Set<UUID>()
         for failure in failures.sorted(by: { $0.seq < $1.seq }) {
             let id = failure.itemId
-            if reverted.contains(id) { continue }
+            let key = SlotKey(itemId: id, slot: failure.slot)
+            if reverted.contains(key) || removed.contains(id) { continue }
             if (queuedByItem[id] ?? 0) > 0 { continue }
-            if (lastSuccessByItem[id] ?? 0) > failure.seq { continue }
-            planner?.restore(id, to: failure.snapshot)
-            reverted.insert(id)
+            if (lastSuccessBySlot[key] ?? 0) > failure.seq { continue }
+            planner?.restore(id, slot: failure.slot, from: failure.snapshot)
+            reverted.insert(key)
+            if failure.snapshot == nil { removed.insert(id) }
         }
         failures.removeAll()
     }
@@ -331,5 +397,54 @@ final class PlannerSync {
             return "Couldn't reach dsul. Pull down to try again."
         }
         return "Couldn't load your day. Pull down to try again."
+    }
+}
+
+extension PlannerSync.WriteSlot {
+    /// `current` with this slot's fields as they were in `snapshot`, and every
+    /// other field as it is now: what a revert puts back for a write the server
+    /// never took, so it can't take a landed write in another slot with it.
+    ///
+    /// A day puts back that day's completion, moving the streak back by one
+    /// the way the completion moved it (HabitCompletion.swift; a task keeps
+    /// none), its skip and its tally, and the status snapshot and day count the
+    /// web writes beside them. A capture is the snapshot whole.
+    func restoring(_ current: Item, from snapshot: Item) -> Item {
+        var next = current
+        switch self {
+        case .create:
+            return snapshot
+        case .placement:
+            next.startDate = snapshot.startDate
+            next.startTime = snapshot.startTime
+            next.timeBucket = snapshot.timeBucket
+            next.isScheduled = snapshot.isScheduled
+            next.inProjectBlock = snapshot.inProjectBlock
+        case .pause:
+            next.pausedAt = snapshot.pausedAt
+            next.pausedUntil = snapshot.pausedUntil
+        case .day(let date):
+            let wasDone = snapshot.completedDates.contains(date)
+            if current.completedDates.contains(date) != wasDone {
+                if wasDone {
+                    next.completedDates.append(date)
+                } else {
+                    next.completedDates.removeAll { $0 == date }
+                }
+                if current.isHabit {
+                    let streak = current.streak ?? 0
+                    next.streak = wasDone ? streak + 1 : max(0, streak - 1)
+                }
+            }
+            if snapshot.skippedDates.contains(date) {
+                if !current.skippedDates.contains(date) { next.skippedDates.append(date) }
+            } else {
+                next.skippedDates.removeAll { $0 == date }
+            }
+            next.dailyCounts[date] = snapshot.dailyCounts[date]
+            next.status = snapshot.status
+            next.currentDayCount = snapshot.currentDayCount
+        }
+        return next
     }
 }

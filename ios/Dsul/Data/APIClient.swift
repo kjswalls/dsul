@@ -65,12 +65,14 @@ enum APIError: Error, Equatable, Sendable {
     case badResponse
 }
 
-/// The app's three verbs and one read on /api/app (lib/app-api.ts), with a
-/// Supabase access token as the bearer.
+/// The app's writes and one read on /api/app (lib/app-api.ts), with a
+/// Supabase access token as the bearer: capture, and the item writes (tick,
+/// braindump row to an hour, skip, move, pause).
 ///
-/// Writes are intents, never arrays: a tick sends the date and the end state,
-/// never `completedDates`, because the phone reads a 400-day window and an
-/// array written back from a window deletes what the window didn't show.
+/// Writes are intents, never arrays: a tick or a skip sends the date and the
+/// end state, never `completedDates` or `skippedDates`, because the phone reads
+/// a 400-day window and an array written back from a window deletes what the
+/// window didn't show.
 @MainActor
 final class APIClient {
     private let origin: URL
@@ -103,6 +105,26 @@ final class APIClient {
     /// POST /api/app/items/:id `schedule`: a braindump row dropped on an hour.
     func schedule(id: UUID, date: String, startTime: String) async throws {
         let body = ScheduleBody(date: date, startTime: startTime)
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/items/:id `skip`: Skip today (`skipped` true) or Unskip
+    /// today on `date`.
+    func skip(id: UUID, date: String, skipped: Bool) async throws {
+        let body = SkipBody(date: date, skipped: skipped)
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/items/:id `move`: Tomorrow or Reschedule, to `date`.
+    func move(id: UUID, date: String) async throws {
+        let body = MoveBody(date: date)
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/items/:id `pause`: Pause (until `pausedUntil`, or with no
+    /// end when nil) or Resume, with the zone the phone read today in.
+    func pause(id: UUID, paused: Bool, pausedUntil: String?, timeZone: String?) async throws {
+        let body = PauseBody(paused: paused, pausedUntil: pausedUntil, timeZone: timeZone)
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
     }
 
@@ -204,4 +226,27 @@ private struct ScheduleBody: Encodable {
 private struct CaptureBody: Encodable {
     var id: String
     var title: String
+}
+
+/// `{"action":"skip","date":…,"skipped":…}`.
+private struct SkipBody: Encodable {
+    var action = "skip"
+    var date: String
+    var skipped: Bool
+}
+
+/// `{"action":"move","date":…}`.
+private struct MoveBody: Encodable {
+    var action = "move"
+    var date: String
+}
+
+/// `{"action":"pause","paused":…,"pausedUntil"?:…,"timeZone"?:…}`. A nil key
+/// is left out, not sent as null: the route's schema takes a day or a zone,
+/// or nothing.
+private struct PauseBody: Encodable {
+    var action = "pause"
+    var paused: Bool
+    var pausedUntil: String?
+    var timeZone: String?
 }

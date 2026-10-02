@@ -44,4 +44,19 @@ extension Item {
     var done: Bool {
         return status == caps(typeName).doneStatus
     }
+
+    /// Repeats (lib/recurrence.ts `isRecurring` over the repeat fields): done,
+    /// skipped and ticked per date. False for a one-off, which is done once,
+    /// by its status.
+    var recurs: Bool {
+        return isRecurring(RepeatRule(frequency: repeatFrequency, days: repeatDays, monthDay: repeatMonthDay))
+    }
+
+    /// A subtask: `parentItemId` set (JavaScript's truthiness, so "" is none).
+    /// It shows only inside its parent, and is never skipped, carried or
+    /// paused on its own.
+    var isSubtask: Bool {
+        guard let parent = parentItemId else { return false }
+        return !parent.isEmpty
+    }
 }

@@ -1,7 +1,8 @@
 import DsulCore
 import SwiftUI
 
-/// The braindump as a sheet over the Schedule grid. Rows drag onto an hour.
+/// The braindump as a sheet over the Schedule grid. Rows drag onto an hour
+/// (a long press lifts one); a tap opens the row's sheet, stacked on this one.
 ///
 /// At .large the sheet dims what is behind it, and a dimmed grid can't take a
 /// drop, so a drag that starts at .large drops the sheet to .medium at once,
@@ -17,8 +18,12 @@ struct BraindumpSheet: View {
     var body: some View {
         NavigationStack {
             List(planner.braindump) { item in
+                // A tap, not a Button: the long press that lifts the row for
+                // the drag stays the system's alone.
                 BraindumpRow(item: item)
+                    .onTapGesture { planner.open(item.id, day: .selected) }
                     .draggable(containerItemID: item.id)
+                    .accessibilityAction { planner.open(item.id, day: .selected) }
                     .accessibilityAction(named: "Schedule at 9:00") {
                         planner.schedule(item.id, startMin: 9 * 60)
                     }
@@ -101,6 +106,8 @@ struct BraindumpSheet: View {
 /// @Sendable and can't read a main-actor static.
 private let braindumpSheetSpace = "braindump-sheet"
 
+/// A captured thought and its length. One VoiceOver element, a button whose
+/// activation opens the sheet; the list adds "Schedule at 9:00".
 private struct BraindumpRow: View {
     var item: SampleItem
 
@@ -113,5 +120,9 @@ private struct BraindumpRow: View {
                 .foregroundStyle(.secondary)
         }
         .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text("\(item.title), \(item.durationMin) minutes"))
+        .accessibilityAddTraits(.isButton)
+        .accessibilityHint("Opens details")
     }
 }

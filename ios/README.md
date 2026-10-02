@@ -1,7 +1,8 @@
 # dsul for iPhone
 
 A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
-and shows your own day from do.dsul.app; a tick, a drop on an hour and a capture are saved to
+and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture
+and the item sheet's Skip, move (Tomorrow, Reschedule) and Pause are saved to
 the server. "Try with sample data" on the sign-in screen opens a made-up day
 instead, which needs no account and whose changes last until the app quits.
 
@@ -12,6 +13,12 @@ right switches them: tap for the next, swipe along it to step, long-press for
 the menu. Tap the title to pick another day. The capture bar above the tab bar
 adds thoughts to the braindump; its count opens the braindump over Schedule.
 
+Tap an item anywhere (a row, a block on the grid, a braindump row, a search
+result) to open its sheet: what it is, read-only for now (its notes, its
+streak, its chips), and its verbs in a bar along the bottom (tick, Skip,
+Tomorrow, Reschedule, Pause, Pause until, Resume, whichever apply). A tap on
+a row's circle still just ticks it.
+
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
     `AppConfig` (the server's address).
@@ -19,10 +26,13 @@ adds thoughts to the braindump; its count opens the braindump over Schedule.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
     changes in order and fetches your day.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
+  - `Item/`: the item sheet. `ItemSheetModel` decides what it says and
+    offers, apart from the views, so the hosted tests pin it.
 - `DsulCore/` is a Swift package with the planner logic ported from the web
   app: which items show on a day, the braindump, routine grouping, what a
-  tick means, and the sign-in requests. It has no UI, so `swift test` runs it
-  on Linux as well as macOS.
+  tick means, the item sheet's verbs (when each is offered, what it writes)
+  and the words its chips say, and the sign-in requests. It has no UI, so
+  `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
   `Dsul.xcodeproj` from it; the generated project is never committed.
 
@@ -135,6 +145,46 @@ The spike passes if:
 
 If 1 or 2 fails, the next version swaps the system drag for a custom one (see
 memory/plans/ios-app.md).
+
+## Checking the item sheet
+
+The hosted tests pin what the sheet says and what each verb writes, but not
+how it feels. Check on the iPhone, signed in once the server's `skip`, `move`
+and `pause` writes are deployed (an older server's verbs simply don't show),
+or on the sample:
+
+1. **Opening.** A row on List and on Buckets, a block on Schedule, a braindump
+   row (the item's sheet stacks on the braindump sheet) and a Search result
+   each open the sheet. Swipe it down, or tap Close, and you are back where
+   you were.
+2. **The circle still ticks.** On a row, tap a few points outside the circle,
+   toward the title or above it: it ticks, it doesn't open the sheet. A tap on
+   the title opens it.
+3. **Drag still works.** Long-press a braindump row: it lifts and drags as
+   before; a quick tap opens it instead. Drop a braindump row onto an hour
+   that already has a block: it lands, the block didn't swallow the drop.
+4. **Each verb.** On a one-off task: Done, Tomorrow (the row moves to
+   tomorrow), Reschedule → Today, Next week, Pick a date… (the picker names
+   the day on its button; Cancel changes nothing), and ⋯ → Pause until…,
+   whose picker starts tomorrow. On a habit: the title's circle ticks, Skip
+   today turns into Unskip today in the same place, Pause turns into Resume.
+   The sheet stays open after each.
+5. **Another day.** Pick tomorrow on Today and open a habit: the bar says Skip,
+   not Skip today, under "For" and that day. Open a weekday habit on a
+   Saturday: "Not due" and the day in place of the bar.
+6. **A refused write.** Its banner shows over the sheet, under Close, and goes
+   by itself.
+7. **VoiceOver.** A row is one element: it reads the title and the time, the
+   hint "Opens details", and the rotor's Actions has Mark done. Each chip reads
+   as its own element ("Time: 9:00 to 11:00 am"), the streak chip as one
+   ("Streak 41; this week: 3 done"), and each bar slot by its full name ("Mark
+   done"; "Move to tomorrow" with its day).
+8. **Larger text.** At the largest accessibility size the sheet opens full
+   height, the chips wrap (two lines each), and the bar's words stop growing;
+   a long press on a slot shows it large.
+9. **Lime.** The done tick, in the sheet and on the rows, stays full lime when
+   pressed and in dark mode. The sheet's buttons (Close, ⋯, Show all, the
+   bar's slots) are in the label colour, not lime.
 
 ## Rules
 

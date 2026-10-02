@@ -1,0 +1,375 @@
+{
+  "nextDayTarget": [
+    {
+      "name": "a row on today goes to tomorrow",
+      "rowDateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "expected": "2026-10-03"
+    },
+    {
+      "name": "a future row goes to its next day",
+      "rowDateStr": "2026-10-08",
+      "todayStr": "2026-10-02",
+      "expected": "2026-10-09"
+    },
+    {
+      "name": "an overdue row goes to real tomorrow, not its next day",
+      "rowDateStr": "2026-09-28",
+      "todayStr": "2026-10-02",
+      "expected": "2026-10-03"
+    },
+    {
+      "name": "month end",
+      "rowDateStr": "2026-10-31",
+      "todayStr": "2026-10-31",
+      "expected": "2026-11-01"
+    },
+    {
+      "name": "year end",
+      "rowDateStr": "2026-12-31",
+      "todayStr": "2026-12-30",
+      "expected": "2027-01-01"
+    },
+    {
+      "name": "into a leap day",
+      "rowDateStr": "2028-02-28",
+      "todayStr": "2028-02-28",
+      "expected": "2028-02-29"
+    },
+    {
+      "name": "past February in a common year",
+      "rowDateStr": "2027-02-28",
+      "todayStr": "2027-02-01",
+      "expected": "2027-03-01"
+    },
+    {
+      "name": "across a DST change",
+      "rowDateStr": "2026-11-01",
+      "todayStr": "2026-11-01",
+      "expected": "2026-11-02"
+    }
+  ],
+  "nextDayLabel": [
+    {
+      "name": "tomorrow",
+      "target": "2026-10-03",
+      "todayStr": "2026-10-02",
+      "expected": "Move to tomorrow"
+    },
+    {
+      "name": "the day after tomorrow",
+      "target": "2026-10-04",
+      "todayStr": "2026-10-02",
+      "expected": "Move to next day"
+    },
+    {
+      "name": "today itself",
+      "target": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "expected": "Move to next day"
+    },
+    {
+      "name": "tomorrow across a month",
+      "target": "2026-11-01",
+      "todayStr": "2026-10-31",
+      "expected": "Move to tomorrow"
+    }
+  ],
+  "formatTargetDay": [
+    {
+      "name": "a Thursday",
+      "dateStr": "2026-10-08",
+      "expected": "Thu, Oct 8"
+    },
+    {
+      "name": "a Saturday",
+      "dateStr": "2026-10-03",
+      "expected": "Sat, Oct 3"
+    },
+    {
+      "name": "new year",
+      "dateStr": "2027-01-01",
+      "expected": "Fri, Jan 1"
+    },
+    {
+      "name": "a leap day",
+      "dateStr": "2028-02-29",
+      "expected": "Tue, Feb 29"
+    },
+    {
+      "name": "US DST starts",
+      "dateStr": "2026-03-08",
+      "expected": "Sun, Mar 8"
+    },
+    {
+      "name": "US DST ends",
+      "dateStr": "2026-11-01",
+      "expected": "Sun, Nov 1"
+    },
+    {
+      "name": "the last day of the year",
+      "dateStr": "2026-12-31",
+      "expected": "Thu, Dec 31"
+    }
+  ],
+  "canMoveToNextDay": [
+    {
+      "name": "one-off pending",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "one-off completed",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "one-off cancelled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "one-off in a project block",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "inProjectBlock": true
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "one-off undated",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "repeat none is a one-off",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "repeatFrequency": "none"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "recurring task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "repeatFrequency": "daily"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "recurring task done that day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "repeatFrequency": "daily",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "subtask is not refused here",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "parentItemId": "00000000-0000-4000-8000-00000000031f"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "paused one-off is not refused here",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "custom one-off",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000002be",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "custom one-off completed",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000002be",
+        "title": "post office",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "custom recurring",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000002be",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "repeatFrequency": "weekdays"
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "custom item shaped as the server builds it",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000002be",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "repeatFrequency": "none",
+        "inProjectBlock": false,
+        "completedDates": []
+      },
+      "kind": "task",
+      "dateStr": "2026-10-02",
+      "expected": true
+    },
+    {
+      "name": "habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002bf",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "kind": "habit",
+      "dateStr": "2026-10-02",
+      "expected": false
+    },
+    {
+      "name": "a task asked about as a habit",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002bd",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "kind": "habit",
+      "dateStr": "2026-10-02",
+      "expected": false
+    }
+  ]
+}

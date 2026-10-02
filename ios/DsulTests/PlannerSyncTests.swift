@@ -1,8 +1,9 @@
+import DsulCore
 import Foundation
 import Testing
 @testable import Dsul
 
-// MARK: - Shared fakes (AuthStoreTests uses them too)
+// MARK: - Shared fakes (AuthStoreTests and ItemVerbsTests use them too)
 
 /// The signed-in user every fake planner belongs to.
 let testUserID = UUID(uuidString: "6f0c1d2e-3a4b-4c5d-8e9f-0a1b2c3d4e5f")!
@@ -185,36 +186,82 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 
 /// GET /api/app/planner bodies (lib/app-api.ts), on Thursday 2026-10-01:
 /// a one-off task on the day, a habit counted three times a day (once so
-/// far), a habit skipped today, and a braindump thought. No stored timezone
-/// unless one is given, so the pinned day stays put.
+/// far), a habit skipped today, and a braindump thought; `extra` adds rows
+/// (`plants`, `bags`, `reading`) and `omitting` drops some. No stored timezone
+/// unless one is given, so the pinned day stays put. `writes` is the current
+/// server's list unless a test plays an older server (nil).
 enum PlannerJSON {
     static let today = "2026-10-01"
+    /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
+    /// UTC-12 to UTC+11, so the simulator's zone can't move the day.
+    static let noon = Date(timeIntervalSince1970: 1_790_856_000)
     static let groceries = UUID(uuidString: "0d000000-0000-4000-8000-000000000001")!
     static let water = UUID(uuidString: "0d000000-0000-4000-8000-000000000002")!
     static let stretch = UUID(uuidString: "0d000000-0000-4000-8000-000000000003")!
     static let bank = UUID(uuidString: "0d000000-0000-4000-8000-000000000004")!
+    static let plants = UUID(uuidString: "0d000000-0000-4000-8000-000000000005")!
+    static let bags = UUID(uuidString: "0d000000-0000-4000-8000-000000000006")!
+    static let reading = UUID(uuidString: "0d000000-0000-4000-8000-000000000007")!
+
+    /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`).
+    static let allWrites = ["complete", "schedule", "skip", "move", "pause"]
+
+    /// A task that repeats daily from September, on the morning.
+    static var plantsJSON: String {
+        return "{\"id\":\"\(lowerID(plants))\",\"type\":\"task\",\"title\":\"Water the plants\","
+            + "\"status\":\"pending\",\"startDate\":\"2026-09-01\",\"timeBucket\":\"morning\","
+            + "\"isScheduled\":true,\"repeatFrequency\":\"daily\",\"order\":3,"
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
+    /// A subtask of Groceries.
+    static var bagsJSON: String {
+        return "{\"id\":\"\(lowerID(bags))\",\"type\":\"task\",\"title\":\"Bring the bags\",\"status\":\"pending\","
+            + "\"isScheduled\":false,\"order\":4,\"parentItemId\":\"\(lowerID(groceries))\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
+    /// A daily habit paused since September 20, with no end.
+    static var readingJSON: String {
+        return "{\"id\":\"\(lowerID(reading))\",\"type\":\"habit\",\"title\":\"Read\",\"status\":\"pending\","
+            + "\"timeBucket\":\"evening\",\"repeatFrequency\":\"daily\",\"streak\":5,"
+            + "\"pausedAt\":\"2026-09-20T15:00:00+00:00\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
 
     static func payload(userId: UUID = testUserID, fetchedAt: String = "fetch-1", groceriesDone: Bool = false,
-                        timezone: String? = nil) -> String {
+                        timezone: String? = nil, writes: [String]? = PlannerJSON.allWrites,
+                        omitting: Set<UUID> = [], extra: [String] = []) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
-        let items: [String] = [
+        let groceriesRow: String =
             "{\"id\":\"\(lowerID(groceries))\",\"type\":\"task\",\"title\":\"Groceries\",\"status\":\"\(status)\","
                 + "\"startDate\":\"\(today)\",\"timeBucket\":\"anytime\",\"isScheduled\":true,\"order\":1,"
-                + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}",
+                + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        let waterRow: String =
             "{\"id\":\"\(lowerID(water))\",\"type\":\"habit\",\"title\":\"Water\",\"status\":\"pending\","
                 + "\"timeBucket\":\"anytime\",\"repeatFrequency\":\"daily\",\"timesPerDay\":3,\"streak\":2,"
-                + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{\"\(today)\":1}}",
+                + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{\"\(today)\":1}}"
+        let stretchRow: String =
             "{\"id\":\"\(lowerID(stretch))\",\"type\":\"habit\",\"title\":\"Stretch\",\"status\":\"skipped\","
                 + "\"timeBucket\":\"morning\",\"repeatFrequency\":\"daily\",\"streak\":0,"
-                + "\"completedDates\":[],\"skippedDates\":[\"\(today)\"],\"dailyCounts\":{}}",
+                + "\"completedDates\":[],\"skippedDates\":[\"\(today)\"],\"dailyCounts\":{}}"
+        let bankRow: String =
             "{\"id\":\"\(lowerID(bank))\",\"type\":\"task\",\"title\":\"Call the bank\",\"status\":\"pending\","
-                + "\"isScheduled\":false,\"order\":2,\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}",
-        ]
-        return "{\"v\":1,\"userId\":\"\(lowerID(userId))\",\"fetchedAt\":\"\(fetchedAt)\","
-            + "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true},"
-            + "\"items\":[" + items.joined(separator: ",") + "],"
-            + "\"projects\":[],\"routines\":[],\"seasons\":[]}"
+                + "\"isScheduled\":false,\"order\":2,\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        let rows: [(UUID, String)] = [(groceries, groceriesRow), (water, waterRow), (stretch, stretchRow),
+                                      (bank, bankRow)]
+        let kept: [String] = rows.filter { !omitting.contains($0.0) }.map { $0.1 }
+        let items: [String] = kept + extra
+        var json = "{\"v\":1,\"userId\":\"\(lowerID(userId))\",\"fetchedAt\":\"\(fetchedAt)\","
+        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true},"
+        if let writes {
+            let quoted: [String] = writes.map { "\"\($0)\"" }
+            json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
+        }
+        json += "\"items\":[" + items.joined(separator: ",") + "],"
+        json += "\"projects\":[],\"routines\":[],\"seasons\":[]}"
+        return json
     }
 }
 
@@ -225,13 +272,17 @@ func itemRoute(_ id: UUID) -> String {
     return "POST /api/app/items/" + lowerID(id)
 }
 
-/// A signed-in planner talking to `server`, its day pinned to 2026-10-01.
+/// A signed-in planner talking to `server`, its day pinned to 2026-10-01 and
+/// its clock to noon UTC that day (`PlannerJSON.noon`), so a stored zone
+/// arriving with a fetch, or a pause, reads the same day.
 @MainActor
 func makeLivePlanner(_ server: FakeServer, tokens: FakeTokens? = nil,
-                     isDragging: @escaping @MainActor () -> Bool = { false }) -> SamplePlanner {
+                     isDragging: @escaping @MainActor () -> Bool = { false },
+                     now: @escaping () -> Date = { PlannerJSON.noon }) -> SamplePlanner {
     let source: FakeTokens = tokens ?? FakeTokens()
     let api = APIClient(origin: URL(string: "https://dsul.test")!, tokens: source, transport: server.transport)
-    return SamplePlanner(userId: testUserID, api: api, isDragging: isDragging, todayString: PlannerJSON.today)
+    return SamplePlanner(userId: testUserID, api: api, isDragging: isDragging, todayString: PlannerJSON.today,
+                         now: now)
 }
 
 /// Whether a drag is on, for a planner's `isDragging`.
@@ -381,6 +432,96 @@ final class DragFlag {
         await drain(planner)
         #expect(!planner.braindump.contains { $0.title == "Buy milk" })
         #expect(planner.braindump.map(\.title) == ["Call the bank"])
+    }
+
+    /// A landed write moots a failure in its own slot only: the tick that
+    /// landed says nothing about the carry that didn't, and the carry's
+    /// revert leaves the tick alone.
+    @Test func aFailedCarryIsUndoneThoughATickThatLandedCameAfterIt() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.move(PlannerJSON.groceries, to: "2026-10-02")   // never reaches the server
+        planner.toggle(PlannerJSON.groceries)                  // lands
+        #expect(planner.item(PlannerJSON.groceries)?.startDate == "2026-10-02")
+        await drain(planner)
+
+        let groceries = planner.item(PlannerJSON.groceries)
+        #expect(groceries?.startDate == PlannerJSON.today)
+        #expect(groceries?.status == "completed")
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
+    /// The same slot: the later tick's end state stands, so the earlier
+    /// failure is not put back over it.
+    @Test func aFailedTickIsMootOnceALaterTickOnTheSameDayLands() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.toggle(PlannerJSON.water)   // 1 of 3 → 2 of 3, never reaches the server
+        planner.toggle(PlannerJSON.water)   // 2 of 3 → 3 of 3, done, lands
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.water)?.dailyCounts[PlannerJSON.today] == 3)
+        #expect(isDone(planner, PlannerJSON.water))
+    }
+
+    @Test func aSlotPutsBackItsOwnFieldsAndNoOthers() {
+        let day = "2026-10-01"
+        let before = SampleItem(id: PlannerJSON.water, type: "habit", title: "Water", status: "pending",
+                                startDate: nil, timeBucket: "anytime", repeatFrequency: "daily", streak: 2,
+                                currentDayCount: 1, dailyCounts: [day: 1])
+        var now = before
+        now.status = "done"
+        now.completedDates = [day]
+        now.streak = 3
+        now.dailyCounts[day] = 3
+        now.currentDayCount = 3
+        now.pausedAt = "2026-10-01T12:00:00.000Z"
+
+        let day1 = PlannerSync.WriteSlot.day(day).restoring(now, from: before)
+        #expect(day1.completedDates.isEmpty)
+        #expect(day1.streak == 2)
+        #expect(day1.status == "pending")
+        #expect(day1.dailyCounts[day] == 1)
+        #expect(day1.currentDayCount == 1)
+        #expect(day1.pausedAt == "2026-10-01T12:00:00.000Z")   // another slot's field
+
+        let otherDay = PlannerSync.WriteSlot.day("2026-09-30").restoring(now, from: before)
+        #expect(otherDay.completedDates == [day])
+        #expect(otherDay.streak == 3)
+
+        let pause = PlannerSync.WriteSlot.pause.restoring(now, from: before)
+        #expect(pause.pausedAt == nil)
+        #expect(pause.completedDates == [day])
+
+        var moved = before
+        moved.startDate = "2026-10-02"
+        moved.timeBucket = "evening"
+        moved.status = "done"
+        let placement = PlannerSync.WriteSlot.placement.restoring(moved, from: before)
+        #expect(placement.startDate == nil)
+        #expect(placement.timeBucket == "anytime")
+        #expect(placement.status == "done")
+
+        #expect(PlannerSync.WriteSlot.create.restoring(now, from: before) == before)
+    }
+
+    @Test func eachWriteNamesItsSlot() {
+        let id = PlannerJSON.groceries
+        #expect(PlannerSync.Write.complete(id: id, date: "2026-10-01", done: true, count: nil).slot == .day("2026-10-01"))
+        #expect(PlannerSync.Write.skip(id: id, date: "2026-10-01", skipped: true).slot == .day("2026-10-01"))
+        #expect(PlannerSync.Write.schedule(id: id, date: "2026-10-01", startTime: "09:00").slot == .placement)
+        #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").slot == .placement)
+        #expect(PlannerSync.Write.pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC").slot == .pause)
+        #expect(PlannerSync.Write.capture(id: id, title: "Buy milk").slot == .create)
+        #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").itemId == id)
     }
 
     @Test func aCaptureSendsItsOwnIdLowercase() async {
