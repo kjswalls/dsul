@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useSyncExternalStore } from 'react';
 import { addDays, format, startOfWeek } from 'date-fns';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -14,6 +14,8 @@ import type { SlotVariant } from '@/lib/layout-themes';
 import { cn } from '@/lib/utils';
 
 type TabsVariant = Exclude<SlotVariant<'tabs'>, 'none'>;
+
+const noSubscribe = () => () => {};
 
 const WEEK_STARTS = { sunday: 0, monday: 1, saturday: 6 } as const;
 
@@ -59,8 +61,7 @@ export function DayTabs({ variant, className }: { variant: TabsVariant; classNam
   const searchKeys = useShortcutKeys('system_search');
   // Dates and the platform are the client's: nothing date-shaped renders on the
   // server, so the first client render matches it.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(noSubscribe, () => true, () => false);
 
   const week = scope === 'week';
   const anchor = week ? startOfWeek(selectedDate, { weekStartsOn: WEEK_STARTS[weekStartDay] ?? 0 }) : selectedDate;
