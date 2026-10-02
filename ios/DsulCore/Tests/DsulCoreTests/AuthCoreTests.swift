@@ -63,14 +63,14 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
     #if canImport(CryptoKit)
     @Test func theChallengeMatchesRFC7636AppendixB() {
         let challenge = PKCE.challenge(for: appendixVerifier) { Data(SHA256.hash(data: $0)) }
-        #expect(challenge == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGHjhRWVz0")
+        #expect(challenge == "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM")
     }
     #endif
 }
 
 @Suite struct GoTrueRequestTests {
     @Test func theAuthorizeURLAsksGoogleWithAnS256Challenge() throws {
-        let url = try #require(GoTrue.authorizeURL(config: config, codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGHjhRWVz0"))
+        let url = try #require(GoTrue.authorizeURL(config: config, codeChallenge: "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"))
         let c = try #require(URLComponents(url: url, resolvingAgainstBaseURL: false))
         #expect(c.scheme == "https")
         #expect(c.host == "ref.supabase.co")
@@ -78,7 +78,7 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
         #expect(queryItems(url) == [
             "provider": "google",
             "redirect_to": "https://do.dsul.app/auth/ios",
-            "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGHjhRWVz0",
+            "code_challenge": "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM",
             "code_challenge_method": "s256",
         ])
         // The redirect is fully encoded, so no platform reads it as part of the path.
