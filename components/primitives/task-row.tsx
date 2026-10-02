@@ -440,32 +440,38 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
             {item.title}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            data-testid="item-unskip-button"
-            className={cn(
-              // Tight padding pulled back out with a matching negative margin:
-              // the label lands on the rail's right edge (the duration column's
-              // right-aligned figures), and the hover wash keeps a hairline of
-              // the row's own padding beside it. has-[>svg] is overridden too —
-              // the base size adds 10px there, which is what pushed it inboard.
-              'gap-1 px-1.5 text-xs text-muted-foreground hover:text-foreground has-[>svg]:px-1.5',
-              // The only control on the strip, and on touch it sits inside a row
-              // whose own tap opens the edit dialog — 24px is too fine a target
-              // to aim at with a thumb. On desktop the negative block margin lets
-              // the 24px target overhang the padding, so the strip is no taller
-              // than the rows around it.
-              isMobile ? 'h-8 px-3 has-[>svg]:px-3' : '-my-1 -mr-1.5 h-6'
-            )}
-            onClick={(e) => {
-              e.stopPropagation();
-              setSkipped(false);
-            }}
-          >
-            <Undo2 className="h-3 w-3" />
-            Unskip
-          </Button>
+          {isMobile ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              data-testid="item-unskip-button"
+              // Touch keeps the worded button: there is no hover to answer an
+              // icon's tooltip, and the row's own tap opens the edit dialog, so
+              // the only control on the strip needs a label and a thumb-sized
+              // (32px) target.
+              className="h-8 gap-1 px-3 text-xs text-muted-foreground hover:text-foreground has-[>svg]:px-3"
+              onClick={(e) => {
+                e.stopPropagation();
+                setSkipped(false);
+              }}
+            >
+              <Undo2 className="h-3 w-3" />
+              Unskip
+            </Button>
+          ) : (
+            // The same ghost icon control as the row's hover cluster, so it
+            // shares their size, ink and tooltip. Its right edge lands on the
+            // rail's right edge (the duration column), and the negative block
+            // margin keeps its 20px box from making the strip taller than the
+            // rows around it.
+            <RowControl
+              icon={Undo2}
+              label="Unskip"
+              testId="item-unskip-button"
+              className="-my-0.5"
+              onClick={() => setSkipped(false)}
+            />
+          )}
         </div>
       </ItemContextMenu>
     );
