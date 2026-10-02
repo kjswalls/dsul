@@ -11,6 +11,7 @@ const {
   app,
   BrowserWindow,
   Menu,
+  MenuItem,
   Tray,
   globalShortcut,
   ipcMain,
@@ -18,12 +19,26 @@ const {
   nativeTheme,
   net,
   powerMonitor,
+  screen,
   session,
   shell,
+  WebContentsView,
 } = require('electron');
 const policy = require('./lib/policy.cjs');
-const { windowChrome } = require('./lib/window-chrome.cjs');
+const { TITLE_BAND_PX, windowChrome, macLights, nextZoomLevel } = require('./lib/window-chrome.cjs');
+const findBar = require('./lib/find-bar.cjs');
+const windowState = require('./lib/window-state.cjs');
+const {
+  LOGIN_ITEM_ID,
+  NOT_OFFERED,
+  loginItemQuery,
+  loginItemView,
+  loginItemRequest,
+  showLoginItemsPane,
+} = require('./lib/login-item.cjs');
 
+// Also names the Windows Run value for Open at login, which build/installer.nsh deletes by this
+// name (as ${APP_ID}) on uninstall.
 const APP_ID = 'app.dsul.desktop';
 const IS_MAC = process.platform === 'darwin';
 const SHORTCUT = 'CommandOrControl+Shift+Space';
@@ -31,6 +46,14 @@ const UPDATE_EVERY_MS = 24 * 60 * 60 * 1000;
 // The "Signed in as" toast is for the sign-in that just happened, not one the page never got
 // round to asking about.
 const NOTICE_MS = 5 * 60 * 1000;
+// A drag or a resize reports every frame; the window's place is written once it has settled.
+const STATE_SAVE_MS = 500;
+// System Settings > General > Login Items, where macOS asks the user to allow a login item.
+// SMAppService.openSystemSettingsLoginItems() opens it too, but Electron has no binding for it.
+const LOGIN_ITEMS_PANE = 'x-apple.systempreferences:com.apple.LoginItems-Settings.extension';
+// Open at login is read again when its box may be about to show, but not more often than this:
+// on macOS each read is a call into the system's login item service.
+const LOGIN_REREAD_MS = 500;
 
 // Where the window points. Only a dev build honours DSUL_URL, and a dev server on localhost
 // talks to PRODUCTION Supabase until scripts/local-setup.sh dev has run.
@@ -40,15 +63,18 @@ const START_ORIGIN = new URL(START_URL).origin;
 const SUPABASE_ORIGINS = app.isPackaged
   ? [policy.SUPABASE_ORIGIN]
   : [policy.SUPABASE_ORIGIN, process.env.DSUL_SUPABASE_URL || 'http://127.0.0.1:54321'];
-// The offline page goes in as a data: URL, not loadFile. With the grantFileProtocolExtraPrivileges
-// fuse off, file:// can't read inside app.asar, so a packaged loadFile fails with
-// ERR_FILE_NOT_FOUND; the fuse stays off.
-const OFFLINE_URL = `data:text/html;charset=utf-8;base64,${fs
-  .readFileSync(path.join(__dirname, 'offline.html'))
-  .toString('base64')}`;
+// The offline page and the find bar go in as data: URLs, not loadFile. With the
+// grantFileProtocolExtraPrivileges fuse off, file:// can't read inside app.asar, so a packaged
+// loadFile fails with ERR_FILE_NOT_FOUND; the fuse stays off.
+const dataUrl = (file) =>
+  `data:text/html;charset=utf-8;base64,${fs.readFileSync(path.join(__dirname, file)).toString('base64')}`;
+const OFFLINE_URL = dataUrl('offline.html');
+const FIND_URL = dataUrl('find-bar.html');
 
 let win = null;
 let tray = null;
+let trayMenu = null;
+let loginReadAt = 0;
 let isQuitting = false;
 let shortcutRegistered = false;
 let update = null; // { version, url } once GitHub has a newer release
@@ -57,12 +83,35 @@ let signInNoticeUntil = 0;
 const seenCodes = new Set();
 const queuedLinks = [];
 
+// The window's size and place (lib/window-state.cjs). lastState is the state last written or
+// opened with, and savedText its text, so an unchanged window writes nothing. openedAs is what
+// the window was created at and what it reported straight after, so the difference is never
+// saved as a move. Nothing is saved until the window has first been shown, so the restore's own
+// resize and maximize never count as the user's, and nothing while the shell has it hidden
+// (parked): its place was written as it closed.
+let shown = false;
+let openMaximized = false;
+let lastState = null;
+let savedText = '';
+let openedAs = null;
+let stateTimer = null;
+let parked = false;
+
 // A capture press is held here until the page in the window says it is listening. Readiness
 // belongs to one document, so it resets whenever the main frame commits a new one, and a press
 // made while a navigation is in flight waits for whichever document survives it.
 let pendingCapture = false;
 let captureReady = false;
 let inflight = 0;
+
+// The find bar (see "Find in page"). It is made, hidden, once the page first stops loading, and
+// kept after that.
+let findView = null;
+let findReady = false; // its page has loaded, so it can be shown and sent to
+let findOpen = false;
+let findText = '';
+let findSession = 0; // the request id of the findInPage call that started the shown search
+let findMatch = null; // the active match's selectionArea, which the bar steps aside for
 
 // While the window shows the offline page, main keeps trying the app on this schedule, repeating
 // the last step. The page's own retry is the `online` event, which never fires if the machine
@@ -137,6 +186,8 @@ function start() {
   app.on('activate', reveal);
   app.on('before-quit', () => {
     isQuitting = true;
+    // The window still exists here; the quit closes it next.
+    saveState();
     session.defaultSession.cookies.flushStore().catch(() => {});
   });
   app.on('will-quit', () => globalShortcut.unregisterAll());
@@ -189,13 +240,13 @@ function backgroundColor() {
 }
 
 function createWindow() {
+  // Where it was last left, fitted to the displays connected now.
+  const { maximized, ...bounds } = openingPlacement();
+  openMaximized = maximized;
   win = new BrowserWindow({
-    width: 1280,
-    height: 860,
-    // Below 768px the mobile shell renders and below 1180px the item panel overlays the page;
-    // 900 keeps the desktop layout.
-    minWidth: 900,
-    minHeight: 600,
+    ...bounds,
+    minWidth: windowState.MIN_SIZE.width,
+    minHeight: windowState.MIN_SIZE.height,
     show: false,
     title: 'dsul',
     backgroundColor: backgroundColor(),
@@ -213,37 +264,60 @@ function createWindow() {
       additionalArguments: [`--dsul-shell-version=${app.getVersion()}`],
     },
   });
+  if ('x' in bounds) openedAs = { asked: bounds, got: win.getBounds() };
 
-  let shown = false;
-  const showOnce = () => {
-    if (shown || win.isDestroyed()) return;
-    shown = true;
-    win.show();
-  };
-  win.once('ready-to-show', showOnce);
+  win.once('ready-to-show', firstShow);
   // A slow network can hold the first paint for a long time; an empty window in the theme's
   // colour beats no window at all.
-  setTimeout(showOnce, 4000);
+  setTimeout(firstShow, 4000);
 
+  // In full screen the buttons live in the menu-bar strip, where placeLights leaves them alone,
+  // so they are placed again on the way out. This is registered before the close handler's own
+  // once('leave-full-screen'), so they are placed before a closing window hides.
+  win.on('leave-full-screen', () => placeLights(true));
+  // The find bar keeps clear of the band, which full screen takes away. These pass the new state
+  // rather than trust isFullScreen() to read it yet.
+  win.on('enter-full-screen', () => placeFind(true));
+  win.on('leave-full-screen', () => placeFind(false));
   win.on('close', (event) => {
     if (isQuitting) return;
     event.preventDefault();
+    // Closed to the tray or Dock, the window comes back with nothing found and no find bar. This
+    // runs while it is still on screen and key, so the page takes the keyboard back from the bar
+    // first. Never on 'hide', which on macOS means only that the window is out of sight.
+    closeFind();
     // macOS keeps a hidden fullscreen window's Space, empty and black, and the next reveal can
-    // land in it. So the window leaves fullscreen first and hides once it has.
+    // land in it. So the window leaves fullscreen first and hides once it has. It is parked from
+    // the start, so a quit during the animation can't save a frame from the middle of it.
     if (IS_MAC && win.isFullScreen()) {
-      win.once('leave-full-screen', () => win.hide());
+      parked = true;
+      win.once('leave-full-screen', park);
       win.setFullScreen(false);
     } else {
-      win.hide();
+      park();
     }
   });
-  // Hiding instead of closing must not hold up a Windows shutdown or log-off.
+  // Hiding instead of closing must not hold up a Windows shutdown or log-off. Electron ends the
+  // process as soon as this returns, before any quit event, so the window's place is saved here.
   win.on('session-end', () => {
     isQuitting = true;
+    saveState();
+  });
+  for (const name of ['resize', 'move', 'maximize', 'unmaximize']) win.on(name, saveStateSoon);
+  win.contentView.on('bounds-changed', () => {
+    // A resize reflows the page, so the match the bar stepped aside for has moved. As Chrome's
+    // does, the bar goes back to its corner until the next step.
+    findMatch = null;
+    placeFind();
   });
   nativeTheme.on('updated', () => {
     if (!win.isDestroyed()) win.setBackgroundColor(backgroundColor());
+    if (findContents()) findView.setBackgroundColor(findBackground());
   });
+  // Coming back to dsul is a cheap moment to catch an Open at login change made in System
+  // Settings or Task Manager, before the tray menu next opens.
+  win.on('focus', () => refreshLoginItem());
+  win.on('focus', keepKeysOffClosedBar);
 
   const contents = win.webContents;
   contents.on('did-start-navigation', (details) => {
@@ -253,7 +327,19 @@ function createWindow() {
     inflight = Math.max(0, inflight - 1);
     captureReady = false;
     // An error page never fires did-navigate, so an app URL here means the app is back.
-    if (isApp(url)) stopOfflineRetry();
+    if (isApp(url)) {
+      // A launch at login usually beats the network, so its update check fails and the next is a
+      // day away: coming back from the offline page checks again. Before stopOfflineRetry, which
+      // clears the count.
+      if (offlineTries > 0) checkForUpdate();
+      stopOfflineRetry();
+    }
+    // A new document, the offline page included, has nothing the bar was finding.
+    closeFind();
+    // Each document comes in at its own zoom: Chromium keeps one per host, saved across launches,
+    // and the offline page has its own, normally 100%. Electron has applied it by the time this
+    // fires. Last, so a throw here can't skip the bookkeeping above.
+    placeLights();
   });
   contents.on('did-fail-provisional-load', (_event, code, _description, _url, isMainFrame) => {
     if (!isMainFrame) return;
@@ -268,6 +354,9 @@ function createWindow() {
     inflight = 0;
     deliverCapture();
   });
+  // The find bar is made, hidden, once the page has had its turn, so the first Ctrl/⌘ F shows it
+  // at once rather than after a new renderer has started (ensureFindView).
+  contents.once('did-stop-loading', ensureFindView);
   contents.on('did-fail-load', (_event, code, _description, url, isMainFrame) => {
     if (!isMainFrame || code === -3 || url.startsWith('data:')) return;
     captureReady = false;
@@ -280,6 +369,7 @@ function createWindow() {
   contents.on('render-process-gone', (_event, details) => {
     if (details.reason === 'clean-exit') return;
     captureReady = false;
+    closeFind();
     const now = Date.now();
     while (crashes.length && now - crashes[0] > 60_000) crashes.shift();
     crashes.push(now);
@@ -288,6 +378,7 @@ function createWindow() {
     if (crashes.length <= 3) contents.reload();
   });
   contents.on('context-menu', (_event, params) => showContextMenu(contents, params));
+  contents.on('found-in-page', onFoundInPage);
 
   load(contents, START_URL);
 }
@@ -306,15 +397,163 @@ function reveal() {
 // own, and either of those would cancel it.
 function bringForward() {
   if (!win || win.isDestroyed()) return;
-  if (win.isMinimized()) win.restore();
-  win.show();
+  if (!shown) {
+    // A deep link, a second launch or the shortcut can come before the first paint.
+    firstShow();
+  } else {
+    const wasParked = parked;
+    parked = false;
+    if (win.isMinimized()) win.restore();
+    // Only a window the shell hid is ever moved here; one the user can see stays where it is.
+    if (wasParked) refitWindow();
+    win.show();
+  }
   win.focus();
   // A global shortcut fires while another app is frontmost; macOS won't hand over focus without
   // this.
   if (IS_MAC) app.focus({ steal: true });
 }
 
-// The offline page is the only data: URL the window ever shows.
+// The window's first appearance, from ready-to-show, the 4s fallback or an early bringForward,
+// whichever comes first.
+function firstShow() {
+  if (shown || !win || win.isDestroyed()) return;
+  parked = false;
+  // A hidden window that is maximized appears already maximized, so no frame at its smaller size
+  // shows first: one SW_SHOWMAXIMIZED on Windows, and on macOS a zoom before it is ordered in.
+  // show() then focuses it; on macOS maximize() orders it in without focus, and on Windows it
+  // already activates it.
+  if (openMaximized) win.maximize();
+  win.show();
+  // Set after the show, so the restore's own maximize and resize are never saved as the user's.
+  shown = true;
+}
+
+// Saves the window's place while it is still on screen, then hides it to the tray or Dock.
+// Nothing more is saved until it is shown again: macOS answers for a hidden window from AppKit's
+// idea of it, and its 'hide' event also fires whenever the window is merely covered, so neither
+// is a time to read it. The full-screen close parks early, so the save here unparks first.
+function park() {
+  parked = false;
+  saveState();
+  parked = true;
+  win.hide();
+}
+
+// ── Page zoom and the traffic lights ─────────────────────────────────────────
+
+// macOS: the traffic lights follow page zoom (lib/window-chrome.cjs macLights). Electron keeps
+// their position through its own redraws (focus, resize, theme), so this runs only where the zoom
+// can have changed: a new document, a View menu zoom, and leaving full screen. Every other zoom
+// source must come through zoomPage or call this, or the buttons wait for the next navigation.
+function placeLights(leavingFullScreen = false) {
+  if (!IS_MAC || !win || win.isDestroyed()) return;
+  // In full screen the buttons are in the menu-bar strip, and moving them there makes them jump.
+  // Leaving full screen skips the check rather than trust isFullScreen() to read false yet;
+  // Electron redraws the buttons at that moment itself, so moving them then is no riskier.
+  if (!leavingFullScreen && win.isFullScreen()) return;
+  const want = macLights(win.webContents.getZoomFactor());
+  const now = win.getWindowButtonPosition();
+  if (now && now.x === want.x && now.y === want.y) return;
+  win.setWindowButtonPosition(want);
+}
+
+// The View menu's zoom items. They zoom the window's own page and nothing else, and only while
+// that window has focus: a view inside it can hold the keyboard focus (the find bar), and a zoom
+// that went there would be saved under that view's URL and never reach the page. The roles these
+// replace zoomed whatever had focus, without main hearing of it.
+function zoomPage(focusedWindow, action) {
+  if (!win || win.isDestroyed() || focusedWindow !== win) return;
+  const contents = win.webContents;
+  contents.zoomLevel = nextZoomLevel(contents.zoomLevel, action);
+  placeLights();
+}
+
+// ── Window size and place ────────────────────────────────────────────────────
+
+const stateFile = () => path.join(app.getPath('userData'), 'window-state.json');
+const displayAreas = () =>
+  windowState.displayAreas(screen.getAllDisplays(), screen.getPrimaryDisplay());
+
+// Where the window opens. The screen module only answers after `ready`, which is when
+// createWindow runs.
+function openingPlacement() {
+  let saved = null;
+  try {
+    saved = windowState.parseWindowState(fs.readFileSync(stateFile(), 'utf8'));
+  } catch {
+    // No file yet: the first launch, or a new profile.
+  }
+  const { workAreas, primary } = displayAreas();
+  const placement = windowState.placeWindow(saved, workAreas, primary);
+  const { maximized, ...bounds } = placement;
+  // Without a display to measure, the placement has no position and there is nothing to keep.
+  if ('x' in bounds) {
+    lastState = { bounds, maximized };
+    const text = windowState.serializeWindowState(lastState);
+    // A window that opens where it was saved rewrites nothing until it moves.
+    if (saved && windowState.serializeWindowState(saved) === text) savedText = text;
+  }
+  return placement;
+}
+
+function saveStateSoon() {
+  if (!shown || parked) return;
+  clearTimeout(stateTimer);
+  stateTimer = setTimeout(saveState, STATE_SAVE_MS);
+}
+
+function saveState() {
+  clearTimeout(stateTimer);
+  stateTimer = null;
+  if (!shown || parked || !win || win.isDestroyed()) return;
+  const next = windowState.windowStateToSave(
+    {
+      bounds: win.getBounds(),
+      normalBounds: win.getNormalBounds(),
+      maximized: win.isMaximized(),
+      minimized: win.isMinimized(),
+      fullScreen: win.isFullScreen(),
+    },
+    lastState,
+    process.platform,
+    openedAs,
+  );
+  if (!next) return;
+  lastState = next;
+  const text = windowState.serializeWindowState(next);
+  if (text === savedText) return;
+  // Synchronous, because a Windows log-off ends the process the moment its handler returns. A
+  // write cut short by a crash leaves a file parseWindowState refuses, which costs one launch its
+  // place.
+  try {
+    fs.writeFileSync(stateFile(), text);
+    savedText = text;
+  } catch {
+    // A full or read-only disk costs the next launch its place, nothing more.
+  }
+}
+
+// A window can sit hidden in the tray for days, and the display it was on can go meanwhile. One
+// whose top band is out of reach on every display now is placed again by the launch rule; any
+// other is left exactly where it is. A maximized window is left to the OS.
+function refitWindow() {
+  if (!win.isNormal()) return;
+  const { workAreas, primary } = displayAreas();
+  const now = win.getBounds();
+  if (windowState.grabbable(now, workAreas)) return;
+  const { maximized, ...bounds } = windowState.placeWindow(
+    { bounds: now, maximized: false },
+    workAreas,
+    primary,
+  );
+  if (!('x' in bounds)) return;
+  win.setBounds(bounds);
+  if (maximized) win.maximize();
+}
+
+// The offline page is the only data: URL the window's page ever shows. (The find bar is one too,
+// in a webContents of its own.)
 function onOfflinePage(contents) {
   return contents.getURL().startsWith('data:');
 }
@@ -362,26 +601,231 @@ function showContextMenu(contents, params) {
 }
 
 function installMenu() {
+  // A menu click passes the window that had focus; zoomPage acts only when that is dsul's own.
+  const zoom = (action) => (_item, focusedWindow) => zoomPage(focusedWindow, action);
   const view = {
     label: 'View',
     submenu: [
       // The app hands Ctrl/⌘ +, − and 0 back to the browser outside the week views, so these
-      // are what zoom the page there.
-      { role: 'resetZoom' },
-      { role: 'zoomIn' },
-      // zoomIn's own accelerator is Plus, which needs Shift on most keyboards.
-      { role: 'zoomIn', accelerator: 'CommandOrControl+=', visible: false, acceleratorWorksWhenHidden: true },
-      { role: 'zoomOut' },
+      // are what zoom the page there. Not the zoom roles: a role zooms without main hearing of it,
+      // and on a Mac the traffic lights follow the zoom (zoomPage). The labels, accelerators and
+      // step are the roles' own.
+      { label: 'Actual Size', accelerator: 'CommandOrControl+0', click: zoom('reset') },
+      { label: 'Zoom In', accelerator: 'CommandOrControl+Plus', click: zoom('in') },
+      // Zoom In's own accelerator is Plus, which needs Shift on most keyboards.
+      {
+        label: 'Zoom In',
+        accelerator: 'CommandOrControl+=',
+        visible: false,
+        acceleratorWorksWhenHidden: true,
+        click: zoom('in'),
+      },
+      { label: 'Zoom Out', accelerator: 'CommandOrControl+-', click: zoom('out') },
       { type: 'separator' },
       { role: 'togglefullscreen' },
       ...(app.isPackaged ? [] : [{ type: 'separator' }, { role: 'reload' }, { role: 'toggleDevTools' }]),
     ],
   };
-  // macOS needs the Edit roles, or ⌘C/V/X/A stop working in text fields.
+  // macOS needs the Edit roles, or ⌘C/V/X/A stop working in text fields. Find goes right after
+  // Select All, where AppKit puts it: the role builds its usual items, and Find is added to them
+  // rather than the whole menu being spelled out.
+  const edit = new MenuItem({ role: 'editMenu' });
+  const actions = { open: openFind, next: () => stepFind(true), previous: () => stepFind(false) };
+  const find = findBar
+    .findMenu(process.platform)
+    .map(({ action, ...item }) => new MenuItem({ ...item, click: () => actions[action]() }));
+  const place = findBar.findMenuPlace(edit.submenu.items);
+  let at = place.at;
+  if (place.separator) edit.submenu.insert(at++, new MenuItem({ type: 'separator' }));
+  if (IS_MAC) edit.submenu.insert(at, new MenuItem({ label: 'Find', submenu: find }));
+  else for (const item of find) edit.submenu.insert(at++, item);
   const template = IS_MAC
-    ? [{ role: 'appMenu' }, { role: 'editMenu' }, view, { role: 'windowMenu' }]
-    : [{ role: 'fileMenu' }, { role: 'editMenu' }, view];
+    ? [{ role: 'appMenu' }, edit, view, { role: 'windowMenu' }]
+    : [{ role: 'fileMenu' }, edit, view];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// ── Find in page ─────────────────────────────────────────────────────────────
+
+// Chromium's find bar is browser UI, so Electron has none. dsul's is a small page of its own
+// (find-bar.html) in a view over the window's top-right corner, never part of do.dsul.app:
+// Chromium's find counts the text in <input> values, so a bar in the page would find its own
+// query, and it would need the bridge to reach findInPage. It opens from the Edit menu (Ctrl/⌘ F):
+// a menu accelerator fires only for a key the page left alone, on macOS and Windows alike, so the
+// settings search and the Organize filter keep their own Ctrl/⌘ F. Never before-input-event,
+// which comes before the page.
+
+function findContents() {
+  return findView && !findView.webContents.isDestroyed() ? findView.webContents : null;
+}
+
+// harden() runs while the view is being constructed, before findView is set, so its guards ask
+// this when an event comes rather than at creation.
+function isFindBar(contents) {
+  return !!findView && contents === findView.webContents;
+}
+
+function findBackground() {
+  return nativeTheme.shouldUseDarkColors ? findBar.FIND_BAR_BG.dark : findBar.FIND_BAR_BG.light;
+}
+
+// Makes the bar, hidden, or reloads one whose renderer has gone. Its page is a data: URL, so the
+// load is quick, but it is a new renderer: findReady says when it can be shown and sent to.
+function ensureFindView() {
+  if (!win || win.isDestroyed()) return;
+  const existing = findContents();
+  if (existing) {
+    // A bar whose renderer has gone loads again on the next Ctrl/⌘ F, not on its own. Not
+    // isCrashed(), which is false after a clean exit.
+    if (!findReady && !existing.isLoading()) load(existing, FIND_URL);
+    return;
+  }
+  findView = new WebContentsView({
+    webPreferences: {
+      preload: path.join(__dirname, 'find-preload.cjs'),
+      contextIsolation: true,
+      sandbox: true,
+      nodeIntegration: false,
+      navigateOnDragDrop: false,
+      spellcheck: false,
+    },
+  });
+  findView.setBackgroundColor(findBackground());
+  findView.setBorderRadius(findBar.FIND_BAR.radius);
+  findView.setVisible(false);
+  const contents = findView.webContents;
+  contents.on('focus', keepKeysOffClosedBar);
+  contents.on('did-finish-load', () => {
+    findReady = true;
+    // Asked for while it loaded: shown already (openFind), and now filled and searched.
+    if (findOpen) showFind(true);
+  });
+  contents.on('render-process-gone', (_event, details) => {
+    findReady = false;
+    if (details.reason === 'clean-exit') return;
+    // A dead bar can't say it had the keyboard, so an open one hands it to the page if the
+    // window has it. A hidden one moves nothing: focusing the page brings a Mac window forward.
+    const wasOpen = findOpen;
+    closeFind();
+    if (wasOpen && win && !win.isDestroyed() && win.isFocused()) win.webContents.focus();
+  });
+  contents.on('context-menu', (_event, params) => showContextMenu(contents, params));
+  win.contentView.addChildView(findView);
+  load(contents, FIND_URL);
+}
+
+// A closed bar never keeps the keyboard. Made as the window first comes to the front, the hidden
+// bar can be handed the focus (about one launch in two under Linux), and then nothing typed would
+// reach the page until a click. Off Mac the focus also stays in a child view when the window comes
+// back, so the window's own focus asks too. Checked once the focus change has finished, which a
+// call from inside it doesn't undo, and only while the window has focus: focusing the page would
+// bring a window that hasn't to the front.
+function keepKeysOffClosedBar() {
+  setTimeout(() => {
+    const bar = findContents();
+    if (findOpen || !bar || !bar.isFocused() || !win || win.isDestroyed() || !win.isFocused()) return;
+    win.webContents.focus();
+  }, 0);
+}
+
+// The bar hangs from the top-right corner, below the macOS band unless the window is full screen,
+// and steps aside for the active match. `fullScreen` comes from the full-screen events; everyone
+// else asks the window.
+function placeFind(fullScreen) {
+  if (!findView || !win || win.isDestroyed()) return;
+  const full = typeof fullScreen === 'boolean' ? fullScreen : win.isFullScreen();
+  const bounds = findBar.barBounds(win.contentView.getBounds(), IS_MAC && !full ? TITLE_BAND_PX : 0);
+  findView.setBounds(findBar.avoidMatch(bounds, findMatch));
+}
+
+// Edit > Find. Asked for again while open, it selects the bar's text.
+function openFind() {
+  if (!win || win.isDestroyed() || !win.isVisible()) return;
+  const contents = win.webContents;
+  // Nothing to search on the offline page or in a crashed renderer.
+  if (onOfflinePage(contents) || contents.isCrashed()) return;
+  const opening = !findOpen;
+  findOpen = true;
+  ensureFindView();
+  if (findReady) {
+    showFind(opening);
+    return;
+  }
+  // Its page is still loading (the first press beat it, or its renderer had gone). The bar takes
+  // the keyboard now anyway, so what is typed meanwhile is lost rather than reaching the page's
+  // own one-key shortcuts (n opens Add, Backspace deletes the hovered item). did-finish-load
+  // fills it.
+  placeFind();
+  findView.setVisible(true);
+  findView.webContents.focus();
+}
+
+// `search`: newly opened, so it searches again for what it shows, as Chrome's does. Already
+// open, the current match stays where it is.
+function showFind(search) {
+  placeFind();
+  findView.setVisible(true);
+  findView.webContents.focus();
+  findView.webContents.send('dsul-find:show', findText);
+  if (search) startFind(findText);
+}
+
+function startFind(text) {
+  findText = text;
+  const contents = win.webContents;
+  if (!text) {
+    findSession = 0;
+    findMatch = null;
+    contents.stopFindInPage('clearSelection');
+    placeFind();
+    sendFindCount({ text: '', none: false });
+    return;
+  }
+  // Electron's findNext: true is Chromium's new_session: a new search, not the next match.
+  findSession = contents.findInPage(text, { findNext: true });
+}
+
+// Find Next and Previous: Ctrl/⌘ G and Shift, F3 on Windows, Enter and Shift+Enter in the bar.
+// With the bar closed, they open it on the last search.
+function stepFind(forward) {
+  if (!findOpen) {
+    openFind();
+    return;
+  }
+  if (!findText || !win || win.isDestroyed()) return;
+  win.webContents.findInPage(findText, { forward, findNext: false });
+}
+
+// Every close, the person's Esc and × included, ends with nothing selected. keepSelection (Chrome's
+// Esc) would select the match, or focus the field, button or link it is in, and then the next key
+// typed would replace a matched title in a field that autosaves. activateSelection would also
+// click it. If the bar had the keyboard, the page takes it back first, while the bar still holds
+// it: hiding a view doesn't move the focus anywhere. Never in a hidden window, because focusing
+// the page brings a Mac window forward.
+function closeFind() {
+  if (!findOpen) return;
+  findOpen = false;
+  findSession = 0;
+  findMatch = null;
+  const bar = findContents();
+  const hadFocus = !!bar && bar.isFocused();
+  if (win && !win.isDestroyed()) {
+    if (!win.webContents.isCrashed()) win.webContents.stopFindInPage('clearSelection');
+    if (hadFocus && win.isVisible()) win.webContents.focus();
+  }
+  if (bar) findView.setVisible(false);
+}
+
+function onFoundInPage(_event, result) {
+  if (!findOpen || !findBar.isCurrentReply(result, findSession)) return;
+  findMatch = result.selectionArea || null;
+  placeFind();
+  sendFindCount(findBar.countLabel(result));
+}
+
+function sendFindCount(label) {
+  const contents = findContents();
+  if (contents && findReady) contents.send('dsul-find:count', label);
 }
 
 // ── Guards ───────────────────────────────────────────────────────────────────
@@ -397,15 +841,25 @@ function harden(contents) {
     if (!event.isMainFrame) guardSubframe(event);
   });
   contents.on('will-attach-webview', (event) => event.preventDefault());
+  // The app never moves or resizes its own window. A page that did (window.moveTo, resizeTo)
+  // would have its doing saved and brought back at every launch.
+  contents.on('content-bounds-updated', (event) => event.preventDefault());
   contents.setWindowOpenHandler(({ url }) => {
     // A same-origin new window (⌘-click, middle-click) does nothing in v1: a load in the main
-    // window would tear down the store and the undo stack.
-    if (!isApp(url)) openOutside(url);
+    // window would tear down the store and the undo stack. The find bar has no links; whatever
+    // asks from there opens nothing.
+    if (!isApp(url) && !isFindBar(contents)) openOutside(url);
     return { action: 'deny' };
   });
 }
 
 function guardNavigation(event, contents) {
+  // The find bar never navigates. Without this an app URL would pass below, and the offline
+  // retry would load the app into the bar.
+  if (isFindBar(contents)) {
+    event.preventDefault();
+    return;
+  }
   const url = event.url;
   if (isApp(url) && !policy.carriesAuthCode(url)) return;
   event.preventDefault();
@@ -499,6 +953,30 @@ function registerIpc() {
     signInNoticeUntil = 0;
     return live;
   });
+
+  // The find bar's three messages (find-preload.cjs).
+  ipcMain.on('dsul-find:query', (event, text) => {
+    if (fromFindBar(event) && findOpen) startFind(findBar.cleanQuery(text));
+  });
+  ipcMain.on('dsul-find:step', (event, forward) => {
+    if (fromFindBar(event) && findOpen) stepFind(forward !== false);
+  });
+  ipcMain.on('dsul-find:close', (event) => {
+    if (fromFindBar(event)) closeFind();
+  });
+}
+
+// The find bar's channels answer only the bar's own page, as fromApp keeps the bridge to the app's.
+function fromFindBar(event) {
+  if (!findView || event.sender !== findView.webContents) return false;
+  const frame = event.senderFrame;
+  const main = event.sender.mainFrame;
+  return (
+    !!frame &&
+    frame.processId === main.processId &&
+    frame.routingId === main.routingId &&
+    frame.url === FIND_URL
+  );
 }
 
 // ── Sign-in handoff ──────────────────────────────────────────────────────────
@@ -574,6 +1052,11 @@ function handleDeepLink(raw) {
 function capture() {
   pendingCapture = true;
   reveal();
+  // The launcher opens in the page, so the page takes the keyboard, wherever it was: a Mac
+  // window coming forward can hand it back to the bar. reveal is bringing the window forward
+  // already, so this can't pull a hidden one into view.
+  closeFind();
+  if (win && !win.isDestroyed()) win.webContents.focus();
   deliverCapture();
 }
 
@@ -603,6 +1086,10 @@ function createTray() {
   tray.setToolTip('dsul');
   // On Windows a left click is the usual way back to a tray app; the menu is on right click.
   if (!IS_MAC) tray.on('click', reveal);
+  // Both OSes read the menu's ticks as it opens, and the pointer reaches the icon before any
+  // click that opens it, so this is when Open at login is read again. Electron emits it on macOS
+  // and Windows (on Windows ahead of the click, which is queued behind it).
+  tray.on('mouse-enter', () => refreshLoginItem());
   refreshTrayMenu();
 }
 
@@ -622,8 +1109,85 @@ function refreshTrayMenu() {
       { label: `Update available (${update.version})`, click: () => openOutside(url) },
     );
   }
-  items.push({ type: 'separator' }, { label: 'Quit', click: () => app.quit() });
-  tray.setContextMenu(Menu.buildFromTemplate(items));
+  // With nothing to offer (a dev build, Linux), the two separators fold into one.
+  items.push(
+    { type: 'separator' },
+    ...loginMenuItems(readLoginItem()),
+    { type: 'separator' },
+    { label: 'Quit', click: () => app.quit() },
+  );
+  trayMenu = Menu.buildFromTemplate(items);
+  tray.setContextMenu(trayMenu);
+}
+
+// ── Open at login ────────────────────────────────────────────────────────────
+
+// lib/login-item.cjs says what each platform's reading means, and why it is read back rather than
+// remembered. Any throw means no box, never a tray menu that fails to build.
+function readLoginItem() {
+  loginReadAt = Date.now();
+  try {
+    const settings = app.getLoginItemSettings(loginItemQuery(process.platform, process.execPath));
+    return loginItemView(process.platform, settings, {
+      packaged: app.isPackaged,
+      // A macOS-only call, so IS_MAC must stay ahead of it.
+      inApplications: IS_MAC && app.isInApplicationsFolder(),
+    });
+  } catch {
+    return NOT_OFFERED;
+  }
+}
+
+// The tray's Open at login entry. syncLoginItem finds the box by its id.
+function loginMenuItems(view) {
+  if (!view.offered) return [];
+  const items = [
+    {
+      id: LOGIN_ITEM_ID,
+      label: 'Open at login',
+      type: 'checkbox',
+      checked: view.checked,
+      enabled: view.enabled,
+      // Electron flips a checkbox before calling its click, so item.checked is the opposite of
+      // what the box showed: what the user asked for, even if the tick had gone stale.
+      click: (item) => setLoginItem(item.checked),
+    },
+  ];
+  if (view.note) items.push({ label: view.note, enabled: false });
+  return items;
+}
+
+// Reads the setting again when the box may be about to show, unless it was read moments ago.
+function refreshLoginItem() {
+  if (Date.now() - loginReadAt < LOGIN_REREAD_MS) return;
+  syncLoginItem(readLoginItem());
+}
+
+// A menu reads its items' ticks as it opens, so changing the existing box is enough. The menu is
+// never rebuilt for this: on macOS that could pull an open menu out from under the user. A
+// reading that failed keeps the last good tick rather than clearing it.
+function syncLoginItem(view) {
+  if (!view.offered || !trayMenu) return;
+  const box = trayMenu.getMenuItemById(LOGIN_ITEM_ID);
+  if (box) box.checked = view.checked;
+}
+
+function setLoginItem(open) {
+  if (!app.isPackaged) return;
+  try {
+    app.setLoginItemSettings(loginItemRequest(process.platform, open, APP_ID));
+  } catch {
+    // Read back below either way.
+  }
+  // Electron reports no failure, so the box shows what the OS reads back, not what was asked.
+  const view = readLoginItem();
+  syncLoginItem(view);
+  if (showLoginItemsPane(process.platform, open, view)) openLoginItemsPane();
+}
+
+function openLoginItemsPane() {
+  // A fixed URL, never one from a page, so it skips openOutside's scheme check.
+  shell.openExternal(LOGIN_ITEMS_PANE).catch(() => {});
 }
 
 // ── Updates ──────────────────────────────────────────────────────────────────
