@@ -120,7 +120,11 @@ Both login paths use PKCE, and the verifier is a cookie on do.dsul.app (lib/supa
 So the code travels back to Electron, and Electron's own cookie jar does the exchange. Only a code crosses into the app, never a token.
 
 **What PKCE does and doesn't protect.**
-- It stops code interception.
+- It stops interception of a Google code. It does NOT stop interception of a
+  magic-link code: GoTrue issues that from the user's latest flow state, which
+  anyone can plant with an unauthenticated `/otp` carrying their own challenge,
+  so whoever receives `dsul://` (or the iPhone's `app.dsul.ios://`) with the
+  code can exchange it (memory/plans/ios-app.md, "Email link").
 - It stops blind injection of an attacker's code, which fails with `bad_code_verifier`.
 - It does NOT stop injection by anyone who can read the authorize URL. The `code_challenge` travels in that URL in plain text (auth-js GoTrueClient.ts:3293-3303), so browser history, sync, or an extension can mint a matching code for their own account.
 

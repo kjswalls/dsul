@@ -1,13 +1,22 @@
 import { createHash } from 'node:crypto';
 
 /**
- * Where the iPhone app's Google sign-in is handed back to the app.
+ * Where the iPhone app's sign-in is handed back to the app: Google, and the
+ * emailed link.
  *
  * The app opens Supabase's /authorize inside ASWebAuthenticationSession with
  * `redirect_to` set here, and holds its own PKCE verifier. This route exchanges
  * nothing. It forwards the code to app.dsul.ios://auth/callback, which the
  * auth session catches and returns to the app, and the app exchanges the code
  * with GoTrue itself (memory/plans/ios-app.md).
+ *
+ * AN EMAILED LINK (`?via=email&n=…`, from GoTrue's /verify in whatever browser
+ * the mail app uses) ALWAYS GETS THE PAGE. Its script forwards the code with
+ * the nonce `n`, which the app matches against the sign-in it started, and
+ * keeps both in the fragment rather than dropping them, so an in-app browser
+ * that won't open the app can still "Open in Safari". The fragment never
+ * reaches a server or a Referer, and the code is useless without the verifier
+ * in the phone's Keychain.
  *
  * THE COMMON CASE IS A 302. A well-formed `?code` (or an error code) in the
  * query answers with a redirect straight to the scheme: a plain HTTP redirect
@@ -31,16 +40,20 @@ const SCHEME_CALLBACK = 'app.dsul.ios://auth/callback';
 const CODE = /^[A-Za-z0-9._~-]{8,256}$/;
 const ERROR_CODE = /^[a-z_]{1,64}$/;
 
-// The script's two shapes are the constants above, spelled again because the
-// script is a string: the route test runs both and checks they agree.
+// The script's code and error shapes are the constants above, spelled again
+// because the script is a string: the route test runs both and checks they
+// agree.
 // The forwarded error code prefers `error_code` (otp_expired,
 // flow_state_expired) and falls back to `error` (access_denied), because older
 // GoTrue builds put an HTTP status in `error_code`. The address bar is cleared
-// before the hand-off, so the code does not stay in history.
+// before the hand-off, so the code does not stay in history; an emailed link's
+// moves to the fragment instead (see above). The nonce's shape is the app's
+// (`parseEmailCallback`, ios/DsulCore AuthCore.swift).
 const SCRIPT = `
 (function () {
   var CODE = /^[A-Za-z0-9._~-]{8,256}$/;
   var ERROR_CODE = /^[a-z_]{1,64}$/;
+  var NONCE = /^[A-Za-z0-9_-]{16,64}$/;
   var query = new URLSearchParams(location.search);
   var hash = new URLSearchParams(location.hash.slice(1));
 
@@ -52,15 +65,21 @@ const SCRIPT = `
     return null;
   }
 
+  var email = pick('via', /^email$/) !== null;
+  var nonce = email ? pick('n', NONCE) : null;
   var code = pick('code', CODE);
   var error = code ? null : pick('error_code', ERROR_CODE) || pick('error', ERROR_CODE);
-  var target = code
-    ? 'app.dsul.ios://auth/callback?code=' + encodeURIComponent(code)
+  var item = code
+    ? 'code=' + encodeURIComponent(code)
     : error
-      ? 'app.dsul.ios://auth/callback?error_code=' + encodeURIComponent(error)
+      ? 'error_code=' + encodeURIComponent(error)
       : null;
+  if (email && !nonce) item = null;
+  var target = item ? 'app.dsul.ios://auth/callback?' + item + (email ? '&n=' + nonce : '') : null;
 
-  history.replaceState(null, '', location.pathname);
+  history.replaceState(null, '', location.pathname + (email && item ? '#via=email&n=' + nonce + '&' + item : ''));
+
+  if (email) document.getElementById('email-help').hidden = false;
 
   if (!target) {
     document.getElementById('opening').hidden = true;
@@ -159,6 +178,7 @@ const PAGE = `<!doctype html>
   <div id="opening">
     <h1>Opening dsul…</h1>
     <p class="muted">If your iPhone asks, let it open dsul.</p>
+    <p class="muted aside" id="email-help" hidden>Tap Open only if the prompt names dsul. Nothing happened? Open this page in Safari.</p>
     <button id="open" type="button">Open dsul</button>
     <p class="muted aside">Opened this somewhere else? Go back to the dsul app on your iPhone and sign in from there.</p>
   </div>
@@ -198,7 +218,9 @@ function callbackTarget(search: URLSearchParams): string | null {
 }
 
 export function GET(request: Request): Response {
-  const target = callbackTarget(new URL(request.url).searchParams);
+  const search = new URL(request.url).searchParams;
+  // An emailed link always gets the page (see above); Google's code gets the 302.
+  const target = search.get('via') === 'email' ? null : callbackTarget(search);
   if (target) {
     return new Response(null, {
       status: 302,

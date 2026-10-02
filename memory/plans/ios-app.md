@@ -111,9 +111,9 @@ and the PR would stall.
   `redirect_to` is `https://do.dsul.app/auth/ios` (covered by Step 0's
   `https://do.dsul.app/**`), which 302s a well-formed `?code` or
   `?error_code` to `app.dsul.ios://auth/callback`; the session catches its own
-  scheme, so the app registers no URL type. Fallback if that hop fails on a
-  device: allow-list `app.dsul.ios://auth/callback` and redirect to it
-  directly.
+  scheme (the app registers it too since the email link, below). Fallback if
+  that hop fails on a device: allow-list `app.dsul.ios://auth/callback` and
+  redirect to it directly.
 - **Nothing secret in `ios/`.** The Supabase URL and anon key come from
   `GET /api/app/config` on the first sign-in tap, cached in UserDefaults per
   origin and fetched again once if the gateway refuses the key. A signed-out
@@ -132,9 +132,54 @@ and the PR would stall.
   token, inside GoTrue's reuse window (about 10s, from memory).
 - **Sign-out is `scope=local`**, so the web and the desktop stay signed in.
   The local wipe comes first, whatever the call does.
-- Email link, Sign in with Apple and universal links wait for a later PR
-  (the email link carries every unverified piece: the Safari/Gmail hand-off,
-  a persisted verifier, `.onOpenURL`).
+- Sign in with Apple and universal links wait for a later PR; the email link
+  is the next section.
+
+## Email link
+"Email me a sign-in link" under Google: the link only. A typed 6-digit code
+needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
+- **The send.** `POST /auth/v1/otp?redirect_to=https://do.dsul.app/auth/ios?via=email&n=<nonce>`
+  with `{email, code_challenge, code_challenge_method: "s256"}`; `create_user`
+  is GoTrue's default (true), as the web's login form sends. The phone keeps
+  an `EmailSignIn` record (address, verifier, nonce, last send) in its own
+  Keychain item, saved BEFORE the request, because the link may be opened
+  after a quit. ONE verifier and nonce per sign-in, reused by every resend to
+  the same address: GoTrue commits a magic-link flow state with the request's
+  challenge before its 60-second resend check, and a tap exchanges the user's
+  LATEST flow state, so a fresh verifier on a resend (even a 429'd one) would
+  orphan the earlier email. A record lives an hour after its last send.
+- **The hop.** GoTrue's /verify 303s to `/auth/ios?via=email&n=…&code=…`
+  (keeping redirect_to's query; errors go in query and fragment). With
+  `via=email` the route always serves its page, never the 302: the script
+  forwards `app.dsul.ios://auth/callback?code=…&n=…` and rewrites the address
+  to `#via=email&n=…&code=…`, so an in-app browser's "Open in Safari" still
+  carries it. It depends on the Site URL or `https://do.dsul.app/**` allowing
+  the redirect (Step 0); otherwise GoTrue falls back to the Site URL and the
+  phone never hears back.
+- **The app** registers `app.dsul.ios` (project.yml), and DsulApp's
+  `onOpenURL` hands the URL to `AuthStore.handleOpenURL`, which drops anything
+  that isn't the email shape, arrives signed in or mid-sign-in, or lacks the
+  pending record's nonce, before it changes anything. A matched link leaves
+  the sample. "Signed in as" shows the session's address, never the typed one.
+  A failed exchange keeps the record (GoTrue keeps the flow state), and a
+  second delivery during the exchange meets `.signingIn`.
+- **First-time addresses** with Confirm email on get a signup flow state that
+  expires 5 minutes after the SEND, so a slow tap answers flow_state_expired;
+  the copy asks for one more link, which then signs straight in (the address
+  is confirmed by then).
+- **Residual risk: a custom scheme isn't owned.** Another installed app that
+  declares `app.dsul.ios` could receive an email code, and PKCE doesn't save
+  it: GoTrue binds a magic-link code to the user's latest flow state, which
+  anyone can plant with an unauthenticated `/otp` (even a 429'd one) carrying
+  their own challenge. Fine on Kirby's own phone; universal links (Associated
+  Domains plus an AASA file on do.dsul.app, which need a paid team) are a
+  precondition for any wider distribution, and the page's copy meanwhile says
+  to tap Open only if the prompt names dsul. The same holds for `dsul://` on
+  the Mac.
+- **Unproven on a device:** Mail and Safari (prompt accepted, then declined
+  and the button), Gmail with each link browser, a cold launch, the older
+  email after a refused resend, and Google still caught by its sheet now that
+  the app owns the scheme. ios/README.md lists the checks.
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
@@ -248,8 +293,8 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, item detail, sign-in with Apple and by
-email link (universal links), skip/unskip, unschedule, resize and moving
+from the bar to the braindump sheet, item detail, sign-in with Apple,
+universal links (the email link uses the custom scheme), skip/unskip, unschedule, resize and moving
 existing blocks from the phone, the overdue tray, sinking completed rows,
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
 timezone from the phone, notifications, Focus as a Live Activity, a

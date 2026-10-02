@@ -34,7 +34,8 @@ enum AppConfig {
     }
 
     /// GoTrue's `redirect_to` for Google: app/auth/ios/route.ts on the same
-    /// origin, which 302s the code on to `app.dsul.ios://auth/callback`.
+    /// origin, which 302s the code on to `app.dsul.ios://auth/callback`. The
+    /// emailed link adds `?via=email&n=…` to it (`GoTrue.emailRedirect`).
     /// Production's is `GoTrue.redirectTo`, covered by the Supabase allow-list's
     /// `https://do.dsul.app/**`.
     static var authRedirect: String {

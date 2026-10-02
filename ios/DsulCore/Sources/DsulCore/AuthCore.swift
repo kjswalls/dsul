@@ -11,6 +11,12 @@ import FoundationNetworking
 // code to `app.dsul.ios://auth/callback?code=…`, and the app exchanges it with
 // the verifier it kept in memory.
 //
+// An emailed link takes the same road from GoTrue's /verify, with
+// `?via=email&n=…` on the redirect: the app asks for it with `otpRequest`,
+// keeps the verifier in an `EmailSignIn` record (the Keychain, since the link
+// may be opened after the app was quit), and the page hands the code back
+// with the record's nonce, which `parseEmailCallback` reads.
+//
 // What lives here is pure: the PKCE strings, the URLs and requests, the token
 // response, expiry, how a failed refresh is read, and the callback check. The
 // SHA-256 (CryptoKit), the Keychain and the auth session stay in the app.
@@ -287,6 +293,13 @@ public enum AuthCallback: Sendable, Hashable {
 /// `code=^[A-Za-z0-9._~-]{8,256}$` or `error_code=^[a-z_]{1,64}$`. Values are
 /// read raw, so a percent-encoded character never passes. Anything else is nil.
 public func parseCallback(_ url: URL) -> AuthCallback? {
+    guard let query = callbackQuery(url), !query.contains("&") else { return nil }
+    return callbackItem(query[...])
+}
+
+/// The raw query of `app.dsul.ios://auth/callback?…`, after the checks both
+/// callbacks share; nil for any other URL.
+private func callbackQuery(_ url: URL) -> String? {
     guard let c = URLComponents(url: url, resolvingAgainstBaseURL: false),
           c.scheme?.lowercased() == GoTrue.callbackScheme,
           c.host?.lowercased() == "auth",
@@ -294,8 +307,13 @@ public func parseCallback(_ url: URL) -> AuthCallback? {
           c.user == nil, c.password == nil, c.port == nil, c.fragment == nil,
           let query = c.percentEncodedQuery
     else { return nil }
-    let pair = query.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
-    guard pair.count == 2, !query.contains("&") else { return nil }
+    return query
+}
+
+/// One `name=value` item that is a well-formed code or error code.
+private func callbackItem(_ item: Substring) -> AuthCallback? {
+    let pair = item.split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+    guard pair.count == 2 else { return nil }
     let name = String(pair[0])
     let value = String(pair[1])
     switch name {
@@ -323,4 +341,159 @@ private func isCallbackErrorCode(_ s: String) -> Bool {
     let bytes = Array(s.utf8)
     guard bytes.count >= 1 && bytes.count <= 64 else { return false }
     return bytes.allSatisfy { b in (b >= 97 && b <= 122) || b == 95 }
+}
+
+// MARK: - The email link
+
+extension GoTrue {
+    /// `redirect_to` for an emailed link: the Google redirect with
+    /// `via=email`, which makes app/auth/ios/route.ts serve its page (never the
+    /// 302), and the record's nonce, which the page hands back with the code.
+    /// GoTrue keeps this query and adds `code` (or the error) to it.
+    public static func emailRedirect(from authRedirect: String, nonce: String) -> String {
+        return authRedirect + "?via=email&n=" + nonce
+    }
+
+    /// POST /auth/v1/otp?redirect_to=… `{email, code_challenge,
+    /// code_challenge_method}`: GoTrue emails a link whose code only this
+    /// challenge's verifier can exchange (a Magic Link, or Confirm signup for an
+    /// address with no confirmed user). `create_user` is left to GoTrue's
+    /// default, true, exactly what the web's login form sends.
+    public static func otpRequest(config: GoTrueConfig, email: String, codeChallenge: String,
+                                  redirectTo: String) -> URLRequest? {
+        guard let url = goTrueURL(config, "otp", [("redirect_to", redirectTo)]) else { return nil }
+        return jsonRequest(url, config: config, body: [
+            "email": email,
+            "code_challenge": codeChallenge,
+            "code_challenge_method": "s256",
+        ])
+    }
+
+    /// A GoTrue error body's code: `code` (API version 2024-01-01, a string;
+    /// older bodies put the HTTP status there as a number), else `error_code`.
+    public static func errorCode(in body: Data) -> String? {
+        guard let object = try? JSONSerialization.jsonObject(with: body, options: []),
+              let json = object as? [String: Any]
+        else { return nil }
+        if let code = json["code"] as? String, !code.isEmpty { return code }
+        if let code = json["error_code"] as? String, !code.isEmpty { return code }
+        return nil
+    }
+}
+
+/// A sign-in by email that this phone started and hasn't finished. It is kept
+/// (the Keychain) from before the request until the link signs in, so the
+/// link still works after the app was quit.
+///
+/// ONE verifier and nonce for the whole sign-in, reused by every resend to the
+/// same address: GoTrue stores a flow state with the request's challenge
+/// before its 60-second resend check, and a tapped link is exchanged against
+/// the user's LATEST flow state, so a fresh verifier on a resend (even one
+/// GoTrue refuses with a 429) would leave the earlier email's link unusable.
+public struct EmailSignIn: Codable, Sendable, Hashable {
+    /// The address, as `normalizedEmail` returns it.
+    public var email: String
+    /// The PKCE verifier whose challenge every send carried.
+    public var verifier: String
+    /// Rides in `redirect_to` and comes back with the code. A callback from any
+    /// other send, page or app doesn't carry it, so it moves nothing.
+    public var nonce: String
+    /// The latest send.
+    public var sentAt: Date
+
+    /// How long after the latest send its link is taken (the desktop app's 60
+    /// minutes). GoTrue's own limits are shorter for a first-time address: its
+    /// signup code lasts 5 minutes from the send.
+    public static let window: TimeInterval = 3600
+    /// A `sentAt` this far ahead of the clock still counts (a clock set back).
+    public static let skew: TimeInterval = 60
+
+    public init(email: String, verifier: String, nonce: String, sentAt: Date) {
+        self.email = email
+        self.verifier = verifier
+        self.nonce = nonce
+        self.sentAt = sentAt
+    }
+
+    /// A fresh record: a new verifier and nonce.
+    public static func start(email: String, now: Date) -> EmailSignIn {
+        return EmailSignIn(email: email, verifier: PKCE.makeVerifier(), nonce: makeNonce(), sentAt: now)
+    }
+
+    /// The record a send to `email` uses: the live one for that address, its
+    /// verifier and nonce kept and `sentAt` moved to now, or a fresh one.
+    public static func forSend(to email: String, existing: EmailSignIn?, now: Date) -> EmailSignIn {
+        if var reused = existing, reused.isLive(now: now), reused.matches(email: email) {
+            reused.sentAt = now
+            return reused
+        }
+        return start(email: email, now: now)
+    }
+
+    /// 16 random bytes, base64url: 22 characters.
+    public static func makeNonce() -> String {
+        var generator = SystemRandomNumberGenerator()
+        var bytes: [UInt8] = []
+        bytes.reserveCapacity(16)
+        for _ in 0..<16 { bytes.append(UInt8.random(in: UInt8.min...UInt8.max, using: &generator)) }
+        return base64URLEncode(Data(bytes))
+    }
+
+    public func isLive(now: Date) -> Bool {
+        return sentAt <= now.addingTimeInterval(Self.skew) && now < sentAt.addingTimeInterval(Self.window)
+    }
+
+    public func matches(email other: String) -> Bool {
+        return email.lowercased() == other.lowercased()
+    }
+}
+
+/// The address as GoTrue keeps it (trimmed and lowercased), or nil when it
+/// can't be one: a single "@" with something before it, a domain with a dot
+/// inside it, no spaces or control characters, at most 254 bytes. GoTrue
+/// checks the rest.
+public func normalizedEmail(_ raw: String) -> String? {
+    let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmed.isEmpty, trimmed.utf8.count <= 254 else { return nil }
+    let refused = CharacterSet.whitespacesAndNewlines.union(.controlCharacters)
+    guard !trimmed.unicodeScalars.contains(where: { refused.contains($0) }) else { return nil }
+    let parts = trimmed.split(separator: "@", omittingEmptySubsequences: false)
+    guard parts.count == 2, !parts[0].isEmpty else { return nil }
+    let labels = parts[1].split(separator: ".", omittingEmptySubsequences: false)
+    guard labels.count >= 2, labels.allSatisfy({ !$0.isEmpty }) else { return nil }
+    return trimmed.lowercased()
+}
+
+/// What an emailed link brought back: the code or error, and the nonce of
+/// the send it answers.
+public struct EmailCallback: Sendable, Hashable {
+    public var result: AuthCallback
+    public var nonce: String
+
+    public init(result: AuthCallback, nonce: String) {
+        self.result = result
+        self.nonce = nonce
+    }
+}
+
+/// `app.dsul.ios://auth/callback?code=…&n=…` or `?error_code=…&n=…`, exactly
+/// as the /auth/ios page writes it for an emailed link: those two items in
+/// that order, `n` matching `^[A-Za-z0-9_-]{16,64}$`, and every other check
+/// `parseCallback` makes. Anything else is nil, a Google callback included.
+public func parseEmailCallback(_ url: URL) -> EmailCallback? {
+    guard let query = callbackQuery(url) else { return nil }
+    let items = query.split(separator: "&", omittingEmptySubsequences: false)
+    guard items.count == 2, let result = callbackItem(items[0]) else { return nil }
+    let nonce = items[1].split(separator: "=", maxSplits: 1, omittingEmptySubsequences: false)
+    guard nonce.count == 2, String(nonce[0]) == "n", isNonce(String(nonce[1])) else { return nil }
+    return EmailCallback(result: result, nonce: String(nonce[1]))
+}
+
+/// `^[A-Za-z0-9_-]{16,64}$`.
+private func isNonce(_ s: String) -> Bool {
+    let bytes = Array(s.utf8)
+    guard bytes.count >= 16 && bytes.count <= 64 else { return false }
+    return bytes.allSatisfy { b in
+        (b >= 65 && b <= 90) || (b >= 97 && b <= 122) || (b >= 48 && b <= 57) || b == 95 || b == 45
+    }
 }

@@ -239,3 +239,168 @@ private func jsonBody(_ request: URLRequest?) -> [String: String]? {
         #expect(parse("app.dsul.ios://auth/callback?error_code=\(String(repeating: "e", count: 65))") == nil)
     }
 }
+
+@Suite struct EmailLinkRequestTests {
+    private let nonce = "AbCdEfGhIjKlMnOpQrStUv"
+
+    @Test func theRedirectAsksForThePageAndCarriesTheNonce() {
+        #expect(GoTrue.emailRedirect(from: "https://do.dsul.app/auth/ios", nonce: nonce)
+            == "https://do.dsul.app/auth/ios?via=email&n=AbCdEfGhIjKlMnOpQrStUv")
+    }
+
+    @Test func theSendAsksForALinkBoundToTheChallenge() throws {
+        let redirect = GoTrue.emailRedirect(from: GoTrue.redirectTo, nonce: nonce)
+        let request = try #require(GoTrue.otpRequest(config: config, email: "me@example.com",
+                                                     codeChallenge: "challenge-1", redirectTo: redirect))
+        #expect(request.httpMethod == "POST")
+        #expect(request.value(forHTTPHeaderField: "apikey") == "anon-key")
+        #expect(request.value(forHTTPHeaderField: "Content-Type") == "application/json")
+        #expect(request.value(forHTTPHeaderField: "X-Supabase-Api-Version") == "2024-01-01")
+        #expect(request.value(forHTTPHeaderField: "Authorization") == nil)
+        #expect(request.url?.path == "/auth/v1/otp")
+        // redirect_to rides in the query, where GoTrue reads it, whole.
+        #expect(queryItems(request.url) == ["redirect_to": redirect])
+        let c = try #require(request.url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) })
+        #expect(c.percentEncodedQuery == "redirect_to=https%3A%2F%2Fdo.dsul.app%2Fauth%2Fios%3Fvia%3Demail%26n%3D" + nonce)
+        // create_user is left to GoTrue's default, as the web sends it.
+        #expect(jsonBody(request) == [
+            "email": "me@example.com",
+            "code_challenge": "challenge-1",
+            "code_challenge_method": "s256",
+        ])
+    }
+
+    @Test func anErrorBodysCodeIsRead() {
+        func code(_ json: String) -> String? { GoTrue.errorCode(in: Data(json.utf8)) }
+        #expect(code(#"{"code":"over_email_send_rate_limit","message":"x"}"#) == "over_email_send_rate_limit")
+        // Without the API version header GoTrue puts the status in `code`.
+        #expect(code(#"{"code":429,"error_code":"over_email_send_rate_limit","msg":"x"}"#) == "over_email_send_rate_limit")
+        #expect(code(#"{"error_code":"flow_state_expired"}"#) == "flow_state_expired")
+        #expect(code(#"{"code":"","error_code":"otp_expired"}"#) == "otp_expired")
+        #expect(code(#"{"message":"x"}"#) == nil)
+        #expect(code("<html>Bad gateway</html>") == nil)
+        #expect(code("") == nil)
+    }
+}
+
+@Suite struct EmailSignInTests {
+    private let sent = Date(timeIntervalSince1970: 1_790_000_000)
+
+    @Test func aFreshRecordHasItsOwnVerifierAndNonce() {
+        let a = EmailSignIn.start(email: "me@example.com", now: sent)
+        let b = EmailSignIn.start(email: "me@example.com", now: sent)
+        #expect(a.verifier.count == 43)
+        #expect(a.nonce.count == 22)
+        #expect(a.verifier != b.verifier)
+        #expect(a.nonce != b.nonce)
+        #expect(a.sentAt == sent)
+        let allowed = Set("ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_")
+        #expect(a.nonce.allSatisfy { allowed.contains($0) })
+    }
+
+    @Test func itIsLiveForAnHourAfterTheLatestSend() {
+        let r = EmailSignIn(email: "me@example.com", verifier: "v", nonce: "n", sentAt: sent)
+        #expect(r.isLive(now: sent))
+        #expect(r.isLive(now: sent.addingTimeInterval(3599)))
+        #expect(!r.isLive(now: sent.addingTimeInterval(3600)))
+        // A clock set back a little still counts; a send from the future doesn't.
+        #expect(r.isLive(now: sent.addingTimeInterval(-60)))
+        #expect(!r.isLive(now: sent.addingTimeInterval(-61)))
+    }
+
+    @Test func aResendToTheSameAddressKeepsTheVerifierAndNonce() {
+        let first = EmailSignIn.start(email: "me@example.com", now: sent)
+        let later = sent.addingTimeInterval(120)
+        let again = EmailSignIn.forSend(to: "ME@example.com", existing: first, now: later)
+        #expect(again.verifier == first.verifier)
+        #expect(again.nonce == first.nonce)
+        #expect(again.email == first.email)
+        #expect(again.sentAt == later)
+    }
+
+    @Test func anotherAddressOrALapsedRecordStartsAfresh() {
+        let first = EmailSignIn.start(email: "me@example.com", now: sent)
+        let other = EmailSignIn.forSend(to: "you@example.com", existing: first, now: sent)
+        #expect(other.verifier != first.verifier)
+        #expect(other.nonce != first.nonce)
+        #expect(other.email == "you@example.com")
+        let lapsed = EmailSignIn.forSend(to: "me@example.com", existing: first, now: sent.addingTimeInterval(3600))
+        #expect(lapsed.verifier != first.verifier)
+        let none = EmailSignIn.forSend(to: "me@example.com", existing: nil, now: sent)
+        #expect(none.email == "me@example.com")
+    }
+
+    @Test func itRoundTripsThroughItsBlob() throws {
+        let r = EmailSignIn(email: "me@example.com", verifier: "verifier", nonce: "nonce", sentAt: sent)
+        let blob = try JSONEncoder().encode(r)
+        #expect(try JSONDecoder().decode(EmailSignIn.self, from: blob) == r)
+    }
+
+    @Test func anAddressIsTrimmedAndLowercasedAsGoTrueKeepsIt() {
+        #expect(normalizedEmail("  Me@Example.COM\n") == "me@example.com")
+        #expect(normalizedEmail("first.last+dsul@mail.example.co.uk") == "first.last+dsul@mail.example.co.uk")
+    }
+
+    @Test(arguments: [
+        "", "   ", "me", "me@", "@example.com", "me@example", "me@@example.com", "me@ex@ample.com",
+        "me@example.", "me@.example.com", "me@example..com", "m e@example.com", "me@exa\tmple.com",
+        "me@example.com\u{0}",
+    ])
+    func somethingThatCannotBeAnAddressIsRefused(_ raw: String) {
+        #expect(normalizedEmail(raw) == nil)
+    }
+
+    @Test func aVeryLongAddressIsRefused() {
+        let local = String(repeating: "a", count: 243)
+        #expect(normalizedEmail(local + "@example.com") == nil)   // 255 bytes
+        #expect(normalizedEmail(String(local.dropFirst()) + "@example.com") != nil)   // 254
+    }
+}
+
+@Suite struct EmailCallbackTests {
+    private let nonce = "AbCdEfGhIjKlMnOpQrStUv"
+
+    private func parse(_ s: String) -> EmailCallback? {
+        guard let url = URL(string: s) else { return nil }
+        return parseEmailCallback(url)
+    }
+
+    @Test func aCodeComesBackWithItsNonce() {
+        #expect(parse("app.dsul.ios://auth/callback?code=abc123-_.~XYZ&n=\(nonce)")
+            == EmailCallback(result: .code("abc123-_.~XYZ"), nonce: nonce))
+    }
+
+    @Test func anErrorComesBackWithItsNonce() {
+        #expect(parse("app.dsul.ios://auth/callback?error_code=otp_expired&n=\(nonce)")
+            == EmailCallback(result: .error("otp_expired"), nonce: nonce))
+    }
+
+    @Test func googlesParserRefusesTheEmailShapeAndThisOneRefusesGoogles() {
+        let email = URL(string: "app.dsul.ios://auth/callback?code=abcdefgh&n=\(nonce)")!
+        #expect(parseCallback(email) == nil)
+        let google = URL(string: "app.dsul.ios://auth/callback?code=abcdefgh")!
+        #expect(parseEmailCallback(google) == nil)
+    }
+
+    @Test(arguments: [
+        "app.dsul.ios://auth/callback?n=AbCdEfGhIjKlMnOpQrStUv&code=abcdefgh",  // the page's order only
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnO",  // 15 characters
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=" + String(repeating: "a", count: 65),
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnOp.rStUv",
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnOp%41rStUv",
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=",
+        "app.dsul.ios://auth/callback?code=abcdefgh&nonce=AbCdEfGhIjKlMnOpQrStUv",
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnOpQrStUv&x=1",
+        "app.dsul.ios://auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnOpQrStUv#frag",
+        "app.dsul.ios://auth/callback?code=abcdefg&n=AbCdEfGhIjKlMnOpQrStUv",  // 7-character code
+        "app.dsul.ios://auth/callback?error_code=Otp_Expired&n=AbCdEfGhIjKlMnOpQrStUv",
+        "app.dsul.ios://auth/callback?error=access_denied&n=AbCdEfGhIjKlMnOpQrStUv",
+        "app.dsul.ios://auth/callback?access_token=abcdefgh&n=AbCdEfGhIjKlMnOpQrStUv",
+        "app.dsul.ios://auth/other?code=abcdefgh&n=AbCdEfGhIjKlMnOpQrStUv",
+        "dsul://auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnOpQrStUv",
+        "app.dsul.ios://me@auth/callback?code=abcdefgh&n=AbCdEfGhIjKlMnOpQrStUv",
+    ])
+    func anythingElseIsRefused(_ s: String) {
+        #expect(parse(s) == nil)
+    }
+}
