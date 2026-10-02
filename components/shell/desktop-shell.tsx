@@ -15,7 +15,7 @@ import { useCanvasWide } from '@/lib/view-store';
 import { useMediaQuery } from '@/hooks/use-media-query';
 import { useFocusOnlyScroll } from '@/hooks/use-focus-only-scroll';
 import { useLayoutDef } from '@/lib/look-store';
-import { canvasHeaderPad, layoutAttributes } from '@/lib/layout-themes';
+import { canvasHeaderPad, layoutAttributes, railHeaderRowOffset } from '@/lib/layout-themes';
 import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { BraindumpPane } from '@/components/shell/braindump-pane';
 import { StatusLine } from '@/components/shell/status-line';
@@ -24,6 +24,7 @@ import { DayTabs } from '@/components/shell/day-tabs';
 import { PageCount, StatusBar } from '@/components/shell/status-bar';
 import { HelpMenu } from '@/components/shell/help-menu';
 import { RightRail } from '@/components/ai/rail/right-rail';
+import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { useBackLabel } from '@/components/ai/rail/rail-header';
 import {
   PANEL_OVERLAY_QUERY,
@@ -251,6 +252,11 @@ export const DesktopShell = memo(function DesktopShell() {
               so in day scope these two share the row with room to spare. */}
           <DayHeaderNotice className="mt-2 h-8 min-w-0 max-w-[280px]" />
           <WeekScale className="ml-auto" />
+          {/* The Ask button, while Ask is closed: the row's far end, on the
+              date's line, past WeekScale in the week views (which hold the
+              far end themselves). It gives way to everything else here
+              (ask-opener.tsx has the rules). */}
+          <AskOpener rowOffset={railHeaderRowOffset(slots)} className={canvasWide ? undefined : 'ml-auto'} />
         </div>
 
         {/* The waiting bar used to sit here, and its "50px in flow, forever"

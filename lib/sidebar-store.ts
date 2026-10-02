@@ -120,12 +120,24 @@ export function clampSidebarGrowth(
   return Math.min(free, Math.max(from, clampSidebarWidth(candidate, viewportWidth, reservePx)))
 }
 
+/**
+ * Whether Ask rests open in the right rail for someone who has never chosen:
+ * the store's default, and what the v3 migration gives every older record.
+ * Kirby's call (2026-10-02): Ask starts CLOSED, with the Ask button
+ * (components/ai/rail/ask-opener.tsx) on the canvas's header row to open it.
+ * Flipping this one constant makes it start open instead. Either way the
+ * user's own choice wins from then on: Ctrl+J, the Ask button and the rail's
+ * ✕ write `askOpen`, and it persists.
+ */
+export const ASK_OPEN_DEFAULT = false
+
 interface SidebarState {
   // Open/closed state
   leftSidebarOpen: boolean
   /**
-   * Ask rests open in the right rail (the user keeps it there). Ctrl+J and the
-   * rail's ✕ close it, and it stays closed until opened again. It is chrome
+   * Ask rests open in the right rail (the user keeps it there). Ctrl+J, the
+   * Ask button and the rail's ✕ open and close it, and it stays as left
+   * (ASK_OPEN_DEFAULT until the first choice). It is chrome
    * for this browser, like the width: never synced, never cleared. Whether Ask
    * actually SHOWS is rail-store's `railMode`, which also needs something to
    * answer, and, at or below 1180px, an explicit summon this session.
@@ -178,7 +190,7 @@ export const useSidebarStore = create<SidebarState>()(
   persist(
     (set) => ({
       leftSidebarOpen: true,
-      askOpen: true,
+      askOpen: ASK_OPEN_DEFAULT,
       leftSidebarHovered: false,
       ...USER_SCOPED_DEFAULTS,
       leftSidebarWidth: SIDEBAR_DEFAULT_WIDTH,
@@ -215,12 +227,12 @@ export const useSidebarStore = create<SidebarState>()(
         // v1 → v2 turned the right sidebar into the in-sidebar chat panel.
         // v1/v2 → v3: the left-dock chat is gone. `askOpen` is a NEW surface, so
         // the old `chatExpanded` (or v1's `rightSidebarOpen`) is not mapped onto
-        // it: everyone starts with Ask open, the approved resting state of the
-        // rail. The width is carried over; merge() clamps it, as it always has.
+        // it: everyone starts at ASK_OPEN_DEFAULT, as a new browser does. The
+        // width is carried over; merge() clamps it, as it always has.
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {
           leftSidebarOpen: (state.leftSidebarOpen as boolean) ?? true,
-          askOpen: true,
+          askOpen: ASK_OPEN_DEFAULT,
           leftSidebarHoverEnabled: (state.leftSidebarHoverEnabled as boolean) ?? false,
           leftSidebarWidth: state.leftSidebarWidth as number | undefined,
         };

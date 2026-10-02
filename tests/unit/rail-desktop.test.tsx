@@ -90,6 +90,7 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useLookStore } from '@/lib/look-store';
+import { useViewStore } from '@/lib/view-store';
 import { LAYOUTS } from '@/lib/layout-themes';
 import { useProposalStore } from '@/lib/proposal-store';
 import { chatTransport } from '@/lib/chat-transport';
@@ -1368,6 +1369,90 @@ describe('the column', () => {
     expect(column()).toHaveAttribute('data-tour', 'right-sidebar');
     act(() => seed(NOTHING_CONNECTED));
     expect(column()).not.toHaveAttribute('data-tour');
+  });
+});
+
+/* ── the Ask button ──────────────────────────────────────────────────── */
+
+describe('the Ask button', () => {
+  // Ask starts closed (sidebar-store ASK_OPEN_DEFAULT).
+  beforeEach(() => useSidebarStore.setState({ askOpen: false }));
+  afterEach(() => useViewStore.setState({ scope: 'day' }));
+
+  const opener = () => document.querySelector<HTMLButtonElement>('[data-ask-opener]') as HTMLButtonElement;
+  /** Its pill: the header row's child, the thing that hides. */
+  const pill = () => opener().parentElement as HTMLElement;
+  /** A pointer's click: the button takes focus, then the click. */
+  const clickOpener = () => {
+    act(() => opener().focus());
+    fireEvent.click(opener());
+  };
+
+  it("ends the canvas's header row, on the date's line: the far end in a day, past WeekScale in a week", () => {
+    renderShell();
+    const headerRow = main().querySelector('.canvas-container') as HTMLElement;
+    expect(headerRow.lastElementChild).toBe(pill());
+    expect(pill()).toHaveAttribute('data-ask-opener-pill');
+    // The rail header's own offset (Classic's capsule: its p-2), so Ask's row lands where it was.
+    expect(pill()).toHaveClass('mt-2', 'ml-auto');
+    act(() => useViewStore.setState({ scope: 'week', layout: 'buckets' }));
+    expect(headerRow).toHaveAttribute('data-wide', 'true');
+    // WeekScale holds the far end there; two auto margins would split the room between them.
+    expect(pill()).not.toHaveClass('ml-auto');
+    act(() => useLookStore.setState({ layout: 'notepad' }));
+    expect(pill()).toHaveClass('mt-0');
+  });
+
+  it('opens Ask with its box focused, as Ctrl+J does, and hides while the column shows', async () => {
+    renderShell();
+    expect(askView()).toBeNull();
+    clickOpener();
+    await timers();
+    expect(useSidebarStore.getState().askOpen).toBe(true);
+    expect(askView()).not.toHaveAttribute('hidden');
+    expect(document.activeElement).toBe(askBox());
+    expect(pill()).toHaveAttribute('hidden');
+    // Kept mounted, so the hand-back has somewhere to land.
+    expect(opener().isConnected).toBe(true);
+  });
+
+  it('takes focus back when Ask closes by ✕ or by Ctrl+J from inside it', async () => {
+    renderShell();
+    clickOpener();
+    await timers();
+    expect(document.activeElement).toBe(askBox());
+    const close = within(askView() as HTMLElement).getByTestId('rail-close');
+    act(() => close.focus());
+    fireEvent.click(close);
+    await timers();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(pill()).not.toHaveAttribute('hidden');
+    expect(document.activeElement).toBe(opener());
+
+    // Enter on it (a button's Enter is its click), then Ctrl+J from the box.
+    fireEvent.click(opener());
+    await timers();
+    expect(document.activeElement).toBe(askBox());
+    pressCtrlJHere();
+    await timers();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(document.activeElement).toBe(opener());
+  });
+
+  it('hides while an item is open, and is back when the item and the rail close', async () => {
+    renderShell();
+    openFromRow('a');
+    expect(pill()).toHaveAttribute('hidden');
+    fireEvent.click(screen.getByTestId('item-dialog-close'));
+    await timers();
+    expect(itemOpen()).toBe(false);
+    expect(pill()).not.toHaveAttribute('hidden');
+  });
+
+  it('is not there with no AI: the column is only the item panel then', () => {
+    seed(NOTHING_CONNECTED);
+    renderShell();
+    expect(opener()).toBeNull();
   });
 });
 
