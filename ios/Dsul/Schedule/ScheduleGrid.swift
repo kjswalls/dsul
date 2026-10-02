@@ -3,7 +3,10 @@ import SwiftUI
 
 /// A 24-hour timeline: hour rows, the day's blocks, and the drop ghost.
 /// The drop target is the 24-hour content inside the ScrollView, not the
-/// ScrollView, so drop locations are already in content space.
+/// ScrollView, so drop locations are already in content space. A tap on a
+/// block opens its item's sheet, acting on the selected day; the blocks are
+/// plain buttons with no drop handling of their own, so a drop over one still
+/// lands on the grid.
 struct ScheduleGrid: View {
     @Binding var position: ScrollPosition
 
@@ -20,11 +23,20 @@ struct ScheduleGrid: View {
                 hourRows
                 ForEach(planner.scheduled) { item in
                     if let start = item.startMin {
-                        BlockView(title: item.title, time: minutesToTime(start), ghost: false)
-                            .frame(height: max(18, CGFloat(item.durationMin) * pxPerMin - 2))
-                            .padding(.leading, gutter)
-                            .padding(.trailing, 12)
-                            .offset(y: CGFloat(start) * pxPerMin + 1)
+                        // `scheduled` hands back copies drawn at the block's
+                        // time; the sheet reads the stored item by its id.
+                        Button {
+                            planner.open(item.id, day: .selected)
+                        } label: {
+                            BlockView(title: item.title, time: minutesToTime(start), ghost: false)
+                        }
+                        .buttonStyle(PressScaleStyle(scale: 0.97))
+                        .accessibilityLabel(Text(blockLabel(item, start: start)))
+                        .accessibilityHint("Opens details")
+                        .frame(height: max(18, CGFloat(item.durationMin) * pxPerMin - 2))
+                        .padding(.leading, gutter)
+                        .padding(.trailing, 12)
+                        .offset(y: CGFloat(start) * pxPerMin + 1)
                     }
                 }
                 if let start = drag.ghostStartMin {
@@ -73,6 +85,12 @@ struct ScheduleGrid: View {
         .onAppear {
             position.scrollTo(y: 8 * hourPx)
         }
+    }
+
+    /// "Draft Q4 roadmap, 9 to 11 AM": the block's title and its drawn time.
+    private func blockLabel(_ item: SampleItem, start: Int) -> String {
+        let time = PlannerFormat.spokenRowTime(startMin: start, durationMin: item.durationMin) ?? ""
+        return time.isEmpty ? item.title : "\(item.title), \(time)"
     }
 
     private var hourRows: some View {

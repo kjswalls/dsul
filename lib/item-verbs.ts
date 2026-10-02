@@ -5,6 +5,7 @@ import { streaksEnabled } from './extension-gates';
 import { getItemTypeConfig, isPausable, isSkippable, itemTypeName } from './item-registry';
 import { toggleRowDone, toggleTaskDone } from './item-toggle';
 import { isCompletedOnDate, isRecurring } from './recurrence';
+import { occursOn } from './reminders/due';
 import { canMoveToNextDay, canReschedule, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from './row-moves';
 import type { OccurrenceState } from './container-schedule';
 import type { HabitItem, Item, Task } from './planner-types';
@@ -107,6 +108,35 @@ export function isDoneOn(item: Item, dateStr: string): boolean {
 /** Skips are per-DATE on every type that has them (`skippedDates`). */
 export function isSkippedOn(item: Item, dateStr: string): boolean {
   return (item.skippedDates ?? []).includes(dateStr);
+}
+
+/**
+ * What "drawn on this day" says about an item there, for the per-day verbs.
+ * A one-off has no per-day state; a recurring item's day is what was recorded,
+ * else due from today on and merely open before it (never "missed").
+ */
+export function drawnState(item: Item, dateStr: string, todayStr: string): OccurrenceState | undefined {
+  if (!isRecurring(item as { repeatFrequency?: string })) return undefined;
+  if (isDoneOn(item, dateStr)) return 'done';
+  if (isSkippedOn(item, dateStr)) return 'skipped';
+  return dateStr >= todayStr ? 'due' : 'open';
+}
+
+/**
+ * `drawnState` for a caller that was not handed the day by a schedule — the
+ * phone's item sheet, opened on whatever day is selected: it first asks
+ * whether the item falls on the day at all (lib/reminders/due.ts `occursOn`),
+ * so a weekday habit opened on a Saturday answers `'absent'` rather than due.
+ * Undefined for a one-off, as with `drawnState`.
+ */
+export function occurrenceOn(
+  item: Item,
+  dateStr: string,
+  todayStr: string,
+  tz: string
+): OccurrenceState | 'absent' | undefined {
+  if (!isRecurring(item as { repeatFrequency?: string })) return undefined;
+  return occursOn(item, dateStr, tz) ? drawnState(item, dateStr, todayStr) : 'absent';
 }
 
 /** A recurring item whose caller knows it does not fall on the day. */
@@ -246,7 +276,7 @@ const resume: ItemVerb = {
  * `reschedule`. Lands on the day after the later of its own day and today, so
  * an overdue carry never lands in the past.
  */
-function nextDayOf(item: Item, ctx: VerbContext): string {
+export function nextDayOf(item: Item, ctx: VerbContext): string {
   return nextDayTarget(rowDateOf(item, ctx), ctx.todayStr);
 }
 

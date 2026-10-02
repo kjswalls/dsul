@@ -3,7 +3,8 @@ import SwiftUI
 
 /// The List layout (G board): filter chips, then one section per routine
 /// (done/total) and per project (coloured dot, count), each collapsible.
-/// Signed in, a pull refreshes it.
+/// A row's circle ticks it on the selected day; the rest of the row opens its
+/// sheet, acting on that day. Signed in, a pull refreshes it.
 struct ListLayout: View {
     @Environment(SamplePlanner.self) private var planner
     @State private var filter: ListFilter = .all
@@ -44,7 +45,8 @@ struct ListLayout: View {
                                     isNow: planner.isOnToday && PlannerFormat.isNow(startMin: item.startMin,
                                                                                    durationMin: item.durationMin,
                                                                                    nowMin: nowMin),
-                                    onToggle: { toggle(item.id) })
+                                    onToggle: { toggle(item.id) },
+                                    onOpen: { planner.open(item.id, day: .selected) })
                         }
                     }
                 } header: {

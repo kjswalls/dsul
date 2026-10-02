@@ -33,12 +33,12 @@ import {
   validateParentItemId,
 } from './db'
 import { resolvePauseWrite, type Pausable } from './active'
+import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause'
 import {
   getItemTypeConfig,
   isCheckinEligible,
   isCollectible,
   isMilestoneEligible,
-  isPausable,
   itemTypeName,
 } from './item-registry'
 import { toDateStr } from './recurrence'
@@ -175,22 +175,9 @@ async function userTimezone(client: DbClient, userId: string): Promise<string> {
   return (data?.timezone as string | undefined) ?? 'UTC'
 }
 
-/**
- * The two fields isPausable/isCollectible actually read, wearing an Item's
- * shape so the REGISTRY stays the authority.
- *
- * Re-deriving "subtasks aren't collectible" from a raw row here would be a
- * second copy of a rule the registry already owns, and the copies would drift
- * the first time a capability changes. The cast is narrow on purpose — these
- * predicates touch `type`, `customType` and `parentItemId`, nothing else.
- */
-function capabilityShape(row: { type: string; parent_item_id?: string | null }): Item {
-  const parentItemId = row.parent_item_id ?? undefined
-  if (row.type === 'task' || row.type === 'habit') {
-    return { type: row.type, parentItemId } as unknown as Item
-  }
-  return { type: 'custom', customType: row.type, parentItemId } as unknown as Item
-}
+// capabilityShape — a raw row wearing an Item's shape for the registry's
+// predicates — lives in lib/item-pause.ts, beside the pause gate the iPhone
+// app's route shares with pausePatchForItem below.
 
 interface MemberRow {
   id: string
@@ -395,7 +382,7 @@ async function pausePatchForItem(
   if (!data) return { error: 'Not found' }
 
   const row = data as MemberRow & { paused_at: string | null; paused_until: string | null }
-  if (!isPausable(capabilityShape(row))) {
+  if (!isPausableRow(row)) {
     return {
       error:
         'this item cannot be paused — subtasks surface only inside their parent ' +
@@ -403,15 +390,10 @@ async function pausePatchForItem(
     }
   }
 
+  // The resolution is shared with the iPhone app's `pause` intent
+  // (lib/item-pause.ts); only the reads around it are this door's own.
   const tz = await userTimezone(client, userId)
-  const now = new Date()
-  const resolved = resolvePauseWrite(
-    { pausedAt: row.paused_at ?? undefined, pausedUntil: row.paused_until ?? undefined },
-    req,
-    toDateStr(now, tz),
-    now.toISOString(),
-    tz,
-  )
+  const resolved = resolveItemPause(row, req, tz, new Date())
   return 'reason' in resolved ? { error: resolved.reason } : { patch: resolved.patch }
 }
 

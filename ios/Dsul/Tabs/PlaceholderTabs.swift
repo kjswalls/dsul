@@ -23,6 +23,8 @@ struct OrganizeView: View {
     }
 }
 
+/// Every item by title, subtasks included. A tap opens the item's sheet
+/// acting on TODAY: Search has no day of its own to act on.
 struct SearchView: View {
     @Environment(SamplePlanner.self) private var planner
     @State private var query = ""
@@ -36,8 +38,16 @@ struct SearchView: View {
     var body: some View {
         NavigationStack {
             List(results) { item in
-                Text(item.title)
+                Button {
+                    planner.open(item.id, day: .today)
+                } label: {
+                    Text(item.title)
+                }
+                .accessibilityHint("Opens details")
             }
+            // A Button's title takes the tint, and the accent is lime, which
+            // is a mark, never text.
+            .tint(Color.primary)
             .navigationTitle("Search")
             .searchable(text: $query)
         }

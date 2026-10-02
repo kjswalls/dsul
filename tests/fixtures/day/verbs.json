@@ -1,0 +1,2778 @@
+{
+  "cases": [
+    {
+      "name": "habit, due today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit, done today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 3,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "done",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Undo today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit, skipped today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "skipped",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "skipped",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": true,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "unskip",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit, skipped and completed today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "done",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Undo today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": true,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "unskip",
+        "pause"
+      ]
+    },
+    {
+      "name": "counted habit, nothing counted",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025a",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Count one (0/3)"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "counted habit, 1 of 3",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025a",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Count one (1/3)"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "counted habit, done",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025a",
+        "title": "water x3",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-02": 3
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "done",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Undo today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "weekday habit on a Saturday is absent",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025b",
+        "title": "standup",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekdays"
+      },
+      "dateStr": "2026-10-03",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "absent",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to next day",
+          "detail": "Sun, Oct 4",
+          "target": "2026-10-04"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "pause"
+      ]
+    },
+    {
+      "name": "habit on a past open day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-09-30",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "open",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit done on a past day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-09-30"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-09-30",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "done",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Undo today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit on a future day is due",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-03",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to next day",
+          "detail": "Sun, Oct 4",
+          "target": "2026-10-04"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit on a past day, occurrence unknown",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-09-30",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit paused, open-ended",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025c",
+        "title": "journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": true,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "resume"
+      ]
+    },
+    {
+      "name": "habit paused until next week",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025c",
+        "title": "journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-08"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": true,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "resume"
+      ]
+    },
+    {
+      "name": "habit whose pause ends today is live",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025c",
+        "title": "journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-02"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit paused tonight, New York",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025c",
+        "title": "journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-10-03T02:00:00Z"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": true,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "resume"
+      ]
+    },
+    {
+      "name": "habit paused tonight, read in UTC",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025c",
+        "title": "journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "pausedAt": "2026-10-03T02:00:00Z"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "UTC",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit with repeat none is one-shot",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025d",
+        "title": "once",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "none"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit with repeat none, done",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025d",
+        "title": "once",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "none"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark not done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "habit with no repeat frequency is one-shot",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000025d",
+        "title": "once",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "recurring task, due today",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task, done today",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "done",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Undo today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task, skipped today",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "skipped",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": true,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "unskip",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task, a past open day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-09-30",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "open",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task, before its start is absent",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-10-05",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "absent",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to next day",
+          "detail": "Tue, Oct 6",
+          "target": "2026-10-06"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task, off its custom days is absent",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "custom",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "repeatDays": [
+          1,
+          3
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "absent",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task with no start date is absent",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "absent",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task, cancelled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "recurring task, paused",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": true,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "resume",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "recurring task in a project block",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000262",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause"
+      ]
+    },
+    {
+      "name": "one-off, today",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off, completed",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark not done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "one-off, cancelled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "cancelled",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "pause"
+      ]
+    },
+    {
+      "name": "one-off, overdue",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-28",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off, drawn on a past day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-29",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-09-29",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off, next week",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-08",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-08",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to next day",
+          "detail": "Fri, Oct 9",
+          "target": "2026-10-09"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off, undated",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off, in a project block",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "inProjectBlock": true
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "one-off, paused",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": true,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "resume",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off, repeat none",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "repeatFrequency": "none"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "one-off ignores an absent occurrence",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026c",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "absent",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026d",
+        "title": "oat milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "parentItemId": "00000000-0000-4000-8000-00000000026c"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "subtask, completed",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000026d",
+        "title": "oat milk",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "morning",
+        "parentItemId": "00000000-0000-4000-8000-00000000026c"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark not done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": false,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick"
+      ]
+    },
+    {
+      "name": "custom one-off",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": true,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "nextDay",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "custom one-off, completed",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "timeBucket": "afternoon"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark not done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause"
+      ]
+    },
+    {
+      "name": "custom one-off, undated",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": null,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Mark done"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Schedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "custom recurring, due",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "custom recurring, done",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays",
+        "completedDates": [
+          "2026-10-02"
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "done",
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Undo today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "tick",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "custom recurring, skipped",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays",
+        "skippedDates": [
+          "2026-10-02"
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "skipped",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": true,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "unskip",
+        "pause",
+        "reschedule"
+      ]
+    },
+    {
+      "name": "custom recurring on a Saturday is absent",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000276",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "afternoon",
+        "repeatFrequency": "weekdays"
+      },
+      "dateStr": "2026-10-03",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "absent",
+      "verbs": {
+        "tick": {
+          "eligible": false,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": false,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": true,
+          "label": "Reschedule"
+        }
+      },
+      "eligible": [
+        "pause",
+        "reschedule"
+      ]
+    }
+  ]
+}

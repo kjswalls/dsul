@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { isPausedOn, resolvePauseWrite } from '@/lib/active';
 import { withTrashedMembersKept } from '@/lib/agent-api';
+import { capabilityShape, isPausableRow, resolveItemPause } from '@/lib/item-pause';
 import {
   TaskUpdateSchema,
   HabitUpdateSchema,
@@ -119,6 +120,53 @@ describe('resolvePauseWrite — resuming', () => {
 describe('resolvePauseWrite — nothing asked', () => {
   it('returns an empty patch when neither key is present', () => {
     expect(resolve(PAUSED, {})).toEqual({ patch: {} });
+  });
+});
+
+describe('the item pause both server doors share (lib/item-pause.ts)', () => {
+  // The agent API's PATCH and the iPhone app's `pause` intent each read the
+  // row and the zone their own way, then resolve through this, so the two
+  // cannot answer the same request against the same row differently.
+  const ROW = { type: 'task', parent_item_id: null, paused_at: null, paused_until: null };
+  const PAUSED_ROW = { ...ROW, paused_at: PAUSED.pausedAt };
+  const at = new Date(NOW);
+
+  it('reads the snake_case row as the resolver reads an item', () => {
+    expect(resolveItemPause(ROW, { paused: true }, TZ, at)).toEqual(resolve(LIVE, { paused: true }));
+    expect(resolveItemPause(PAUSED_ROW, { paused: true }, TZ, at)).toEqual({ patch: {} });
+    expect(resolveItemPause(PAUSED_ROW, { paused: false }, TZ, at)).toEqual({ patch: { pausedUntil: TODAY } });
+    expect(resolveItemPause(ROW, { paused: true, pausedUntil: TODAY }, TZ, at)).toHaveProperty('reason');
+  });
+
+  it('takes today and the stamp off the one instant, in the zone it is given', () => {
+    // 03:00 UTC on Aug 11 is still Aug 10 in Los Angeles.
+    const late = new Date('2026-08-11T03:00:00.000Z');
+    expect(resolveItemPause(PAUSED_ROW, { paused: false }, 'America/Los_Angeles', late)).toEqual({
+      patch: { pausedUntil: '2026-08-10' },
+    });
+    expect(resolveItemPause(PAUSED_ROW, { paused: false }, 'UTC', late)).toEqual({
+      patch: { pausedUntil: '2026-08-11' },
+    });
+    expect(resolveItemPause(ROW, { paused: true }, 'America/Los_Angeles', late)).toEqual({
+      patch: { pausedAt: late.toISOString(), pausedUntil: undefined },
+    });
+  });
+
+  it.each([
+    ['a task', { type: 'task' }, true],
+    ['a habit', { type: 'habit' }, true],
+    ['a custom type, by its slug', { type: 'book' }, true],
+    ['a subtask', { type: 'task', parent_item_id: '11111111-1111-4111-8111-111111111111' }, false],
+  ])('asks the registry whether %s may pause', (_, row, pausable) => {
+    expect(isPausableRow(row)).toBe(pausable);
+  });
+
+  it('puts a custom slug in the envelope the registry reads', () => {
+    expect(capabilityShape({ type: 'book', parent_item_id: null })).toEqual({
+      type: 'custom',
+      customType: 'book',
+      parentItemId: undefined,
+    });
   });
 });
 

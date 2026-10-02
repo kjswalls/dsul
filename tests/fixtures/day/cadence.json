@@ -1,0 +1,223 @@
+{
+  "cases": [
+    {
+      "name": "daily habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002ef",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "expected": "Daily"
+    },
+    {
+      "name": "weekdays",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002f0",
+        "title": "standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "weekdays",
+        "startDate": "2026-09-01"
+      },
+      "expected": "Weekdays"
+    },
+    {
+      "name": "weekends",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f1",
+        "title": "long run",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekends"
+      },
+      "expected": "Weekends"
+    },
+    {
+      "name": "monthly on a day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000002f2",
+        "title": "rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 12,
+        "startDate": "2026-09-12"
+      },
+      "expected": "Monthly · 12"
+    },
+    {
+      "name": "monthly with no day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f3",
+        "title": "review",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "monthly"
+      },
+      "expected": "Monthly"
+    },
+    {
+      "name": "custom days are sorted",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f4",
+        "title": "gym",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          5,
+          1,
+          3
+        ]
+      },
+      "expected": "Mon, Wed, Fri"
+    },
+    {
+      "name": "custom, one day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f5",
+        "title": "church",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0
+        ]
+      },
+      "expected": "Sun"
+    },
+    {
+      "name": "custom, all seven days",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f6",
+        "title": "meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          6,
+          5,
+          4,
+          3,
+          2,
+          1,
+          0
+        ]
+      },
+      "expected": "Daily"
+    },
+    {
+      "name": "custom, no days",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f7",
+        "title": "empty",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": []
+      },
+      "expected": "Custom days"
+    },
+    {
+      "name": "custom, days missing",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f8",
+        "title": "missing",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom"
+      },
+      "expected": "Custom days"
+    },
+    {
+      "name": "legacy weekly is its own word",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002f9",
+        "title": "legacy",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          2
+        ]
+      },
+      "expected": "weekly"
+    },
+    {
+      "name": "an unknown frequency is its own word",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000002fa",
+        "title": "agent",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "fortnightly"
+      },
+      "expected": "fortnightly"
+    },
+    {
+      "name": "custom type, custom days",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000002fb",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          2,
+          4
+        ],
+        "startDate": "2026-09-01"
+      },
+      "expected": "Tue, Thu"
+    }
+  ]
+}

@@ -1,0 +1,305 @@
+{
+  "types": [
+    {
+      "name": "task",
+      "label": "Task",
+      "doneStatus": "completed",
+      "skipStatus": null,
+      "defaultFrequency": "none",
+      "defaultBlockMinutes": 30,
+      "dateAnchored": true,
+      "dateAddressable": true,
+      "skippable": true,
+      "pausable": true,
+      "remindable": true,
+      "collectible": true,
+      "braindumpEligible": true,
+      "subtasks": true,
+      "streakCounter": false,
+      "dailyCounts": false,
+      "hasPriority": true
+    },
+    {
+      "name": "habit",
+      "label": "Habit",
+      "doneStatus": "done",
+      "skipStatus": "skipped",
+      "defaultFrequency": "daily",
+      "defaultBlockMinutes": 30,
+      "dateAnchored": false,
+      "dateAddressable": false,
+      "skippable": true,
+      "pausable": true,
+      "remindable": true,
+      "collectible": true,
+      "braindumpEligible": false,
+      "subtasks": false,
+      "streakCounter": true,
+      "dailyCounts": true,
+      "hasPriority": false
+    },
+    {
+      "name": "errand",
+      "label": "Errand",
+      "doneStatus": "completed",
+      "skipStatus": null,
+      "defaultFrequency": "none",
+      "defaultBlockMinutes": 30,
+      "dateAnchored": true,
+      "dateAddressable": true,
+      "skippable": true,
+      "pausable": true,
+      "remindable": true,
+      "collectible": true,
+      "braindumpEligible": true,
+      "subtasks": true,
+      "streakCounter": false,
+      "dailyCounts": false,
+      "hasPriority": true
+    },
+    {
+      "name": "side-quest",
+      "label": "Side-quest",
+      "doneStatus": "completed",
+      "skipStatus": null,
+      "defaultFrequency": "none",
+      "defaultBlockMinutes": 30,
+      "dateAnchored": true,
+      "dateAddressable": true,
+      "skippable": true,
+      "pausable": true,
+      "remindable": true,
+      "collectible": true,
+      "braindumpEligible": true,
+      "subtasks": true,
+      "streakCounter": false,
+      "dailyCounts": false,
+      "hasPriority": true
+    },
+    {
+      "name": "book_club",
+      "label": "Book_club",
+      "doneStatus": "completed",
+      "skipStatus": null,
+      "defaultFrequency": "none",
+      "defaultBlockMinutes": 30,
+      "dateAnchored": true,
+      "dateAddressable": true,
+      "skippable": true,
+      "pausable": true,
+      "remindable": true,
+      "collectible": true,
+      "braindumpEligible": true,
+      "subtasks": true,
+      "streakCounter": false,
+      "dailyCounts": false,
+      "hasPriority": true
+    },
+    {
+      "name": "x",
+      "label": "X",
+      "doneStatus": "completed",
+      "skipStatus": null,
+      "defaultFrequency": "none",
+      "defaultBlockMinutes": 30,
+      "dateAnchored": true,
+      "dateAddressable": true,
+      "skippable": true,
+      "pausable": true,
+      "remindable": true,
+      "collectible": true,
+      "braindumpEligible": true,
+      "subtasks": true,
+      "streakCounter": false,
+      "dailyCounts": false,
+      "hasPriority": true
+    }
+  ],
+  "items": [
+    {
+      "name": "one-off task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000353",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "isSkippable": false,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "task with repeat none",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000353",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "none"
+      },
+      "isSkippable": false,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "recurring task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000354",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01"
+      },
+      "isSkippable": true,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000355",
+        "title": "oat milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000353"
+      },
+      "isSkippable": false,
+      "isPausable": false,
+      "isRemindable": false,
+      "isCollectible": false
+    },
+    {
+      "name": "recurring subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000356",
+        "title": "rinse",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "parentItemId": "00000000-0000-4000-8000-000000000354"
+      },
+      "isSkippable": true,
+      "isPausable": false,
+      "isRemindable": false,
+      "isCollectible": false
+    },
+    {
+      "name": "habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000357",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "isSkippable": true,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "habit with repeat none",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000357",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "none"
+      },
+      "isSkippable": false,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "habit with no repeat frequency",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000357",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {}
+      },
+      "isSkippable": false,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "custom one-off",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000358",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "isSkippable": false,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "custom recurring",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000359",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "weekdays"
+      },
+      "isSkippable": true,
+      "isPausable": true,
+      "isRemindable": true,
+      "isCollectible": true
+    },
+    {
+      "name": "custom subtask",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000035a",
+        "title": "stamps",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000358"
+      },
+      "isSkippable": false,
+      "isPausable": false,
+      "isRemindable": false,
+      "isCollectible": false
+    }
+  ]
+}

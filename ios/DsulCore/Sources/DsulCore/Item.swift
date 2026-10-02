@@ -2,9 +2,9 @@ import Foundation
 
 // The planner's data as GET /api/app/planner serves it: the web app's camelCase
 // `Item` (packages/types/src/schemas.ts `ItemSchema`, built by `itemFromRow` in
-// lib/db.ts), its containers, and the two settings Today reads. The route's
-// shape is pinned by tests/fixtures/app/planner-response.json, which
-// PlannerPayloadTests decodes.
+// lib/db.ts), its containers, the settings the phone reads, and the writes the
+// server takes. The route's shape is pinned by
+// tests/fixtures/app/planner-response.json, which PlannerPayloadTests decodes.
 //
 // Decoding is lenient on purpose. One bad value in a strict decode fails the
 // whole payload, and a blank app is a worse answer than a missing row:
@@ -41,12 +41,24 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     public var pausedAt: String?
     /// The day the pause ends, exclusive (yyyy-MM-dd).
     public var pausedUntil: String?
+    /// Free text, newlines kept; nil when empty on the web (a null column).
+    public var notes: String?
+    /// 'low' | 'medium' | 'high' on task-shaped types; habits have none.
+    public var priority: String?
+    /// The daily cue's time, "HH:mm".
+    public var reminderTime: String?
+    /// The cue's implementation intention ("I pour my coffee"), read as
+    /// "After I pour my coffee".
+    public var reminderAnchor: String?
     /// Minutes.
     public var duration: Int?
     public var order: Int?
     public var repeatMonthDay: Int?
     public var streak: Int?
     public var timesPerDay: Int?
+    /// A habit's tally for its current day, as the store last wrote it. The
+    /// per-date truth is `dailyCounts`.
+    public var currentDayCount: Int?
     public var isScheduled: Bool?
     public var inProjectBlock: Bool?
     public var repeatDays: [Int]?
@@ -68,11 +80,16 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         parentItemId: String? = nil,
         pausedAt: String? = nil,
         pausedUntil: String? = nil,
+        notes: String? = nil,
+        priority: String? = nil,
+        reminderTime: String? = nil,
+        reminderAnchor: String? = nil,
         duration: Int? = nil,
         order: Int? = nil,
         repeatMonthDay: Int? = nil,
         streak: Int? = nil,
         timesPerDay: Int? = nil,
+        currentDayCount: Int? = nil,
         isScheduled: Bool? = nil,
         inProjectBlock: Bool? = nil,
         repeatDays: [Int]? = nil,
@@ -93,11 +110,16 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.parentItemId = parentItemId
         self.pausedAt = pausedAt
         self.pausedUntil = pausedUntil
+        self.notes = notes
+        self.priority = priority
+        self.reminderTime = reminderTime
+        self.reminderAnchor = reminderAnchor
         self.duration = duration
         self.order = order
         self.repeatMonthDay = repeatMonthDay
         self.streak = streak
         self.timesPerDay = timesPerDay
+        self.currentDayCount = currentDayCount
         self.isScheduled = isScheduled
         self.inProjectBlock = inProjectBlock
         self.repeatDays = repeatDays
@@ -124,7 +146,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     enum CodingKeys: String, CodingKey {
         case id, type, customType, title, status, startDate, startTime, timeBucket
         case repeatFrequency, project, parentItemId, pausedAt, pausedUntil
-        case duration, order, repeatMonthDay, streak, timesPerDay
+        case notes, priority, reminderTime, reminderAnchor
+        case duration, order, repeatMonthDay, streak, timesPerDay, currentDayCount
         case isScheduled, inProjectBlock, repeatDays, completedDates, skippedDates, dailyCounts
     }
 
@@ -149,11 +172,16 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.parentItemId = c.lenientString(.parentItemId)
         self.pausedAt = c.lenientString(.pausedAt)
         self.pausedUntil = c.lenientString(.pausedUntil)
+        self.notes = c.lenientString(.notes)
+        self.priority = c.lenientString(.priority)
+        self.reminderTime = c.lenientString(.reminderTime)
+        self.reminderAnchor = c.lenientString(.reminderAnchor)
         self.duration = c.lenientInt(.duration)
         self.order = c.lenientInt(.order)
         self.repeatMonthDay = c.lenientInt(.repeatMonthDay)
         self.streak = c.lenientInt(.streak)
         self.timesPerDay = c.lenientInt(.timesPerDay)
+        self.currentDayCount = c.lenientInt(.currentDayCount)
         self.isScheduled = c.lenientBool(.isScheduled)
         self.inProjectBlock = c.lenientBool(.inProjectBlock)
         self.repeatDays = c.lenientInts(.repeatDays)
@@ -307,15 +335,28 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     /// The App icon pick; nil when never chosen, or from a server older than
     /// the field. An unknown slug reads as Aurora (`AppIcon(stored:)`).
     public var appIcon: AppIcon?
+    /// Week starts on. Sunday, the web's default, when missing (a server older
+    /// than the field) or not one of the three.
+    public var weekStartDay: WeekStartDay
+    /// 12h or 24h clock. 12h, the web's default, when missing or unknown.
+    public var timeFormat: TimeFormat
 
-    public init(timezone: String? = nil, showCompletedTasks: Bool = true, appIcon: AppIcon? = nil) {
+    public init(
+        timezone: String? = nil,
+        showCompletedTasks: Bool = true,
+        appIcon: AppIcon? = nil,
+        weekStartDay: WeekStartDay = .sunday,
+        timeFormat: TimeFormat = .twelveHour
+    ) {
         self.timezone = timezone
         self.showCompletedTasks = showCompletedTasks
         self.appIcon = appIcon
+        self.weekStartDay = weekStartDay
+        self.timeFormat = timeFormat
     }
 
     enum CodingKeys: String, CodingKey {
-        case timezone, showCompletedTasks, appIcon
+        case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat
     }
 
     public init(from decoder: Decoder) throws {
@@ -323,6 +364,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.timezone = c.lenientString(.timezone)
         self.showCompletedTasks = c.lenientBool(.showCompletedTasks) ?? true
         self.appIcon = AppIcon(stored: c.lenientString(.appIcon))
+        self.weekStartDay = c.lenientString(.weekStartDay).flatMap { WeekStartDay(rawValue: $0) } ?? .sunday
+        self.timeFormat = c.lenientString(.timeFormat).flatMap { TimeFormat(rawValue: $0) } ?? .twelveHour
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -330,6 +373,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         try c.encodeIfPresent(timezone, forKey: .timezone)
         try c.encode(showCompletedTasks, forKey: .showCompletedTasks)
         try c.encodeIfPresent(appIcon?.rawValue, forKey: .appIcon)
+        try c.encode(weekStartDay.rawValue, forKey: .weekStartDay)
+        try c.encode(timeFormat.rawValue, forKey: .timeFormat)
     }
 }
 
@@ -343,6 +388,11 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     public var projects: [Project]
     public var routines: [Routine]
     public var seasons: [Season]
+    /// The `action`s POST /api/app/items/:id takes (`ITEM_WRITES`), e.g.
+    /// ["complete", "schedule", "skip", "move", "pause"]. Nil from a server
+    /// older than the list, which takes "complete" and "schedule" only; the
+    /// app hides any verb whose write isn't listed.
+    public var writes: [String]?
     /// Item rows that couldn't be read and were left out.
     public var droppedItems: Int
 
@@ -355,6 +405,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         projects: [Project] = [],
         routines: [Routine] = [],
         seasons: [Season] = [],
+        writes: [String]? = nil,
         droppedItems: Int = 0
     ) {
         self.v = v
@@ -365,11 +416,12 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.projects = projects
         self.routines = routines
         self.seasons = seasons
+        self.writes = writes
         self.droppedItems = droppedItems
     }
 
     enum CodingKeys: String, CodingKey {
-        case v, userId, fetchedAt, settings, items, projects, routines, seasons
+        case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -390,6 +442,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.projects = c.lossyArray(Project.self, .projects).values
         self.routines = c.lossyArray(Routine.self, .routines).values
         self.seasons = c.lossyArray(Season.self, .seasons).values
+        self.writes = c.lenientStrings(.writes)
     }
 }
 

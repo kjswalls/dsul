@@ -58,6 +58,9 @@ private struct RawItems: Decodable, Sendable {
         let raw = try JSONDecoder().decode(RawItems.self, from: data)
         #expect(p.v == 1)
         #expect(p.settings.appIcon == .lime)
+        #expect(p.settings.weekStartDay == .monday)
+        #expect(p.settings.timeFormat == .twentyFourHour)
+        #expect(p.writes == ["complete", "schedule", "skip", "move", "pause"])
         #expect(p.droppedItems == 0)
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
@@ -90,6 +93,8 @@ private struct RawItems: Decodable, Sendable {
         #expect(parseTimestamp(paused.pausedAt ?? "") != nil)
         // A routine inside a season.
         #expect(p.routines.contains { r in p.seasons.contains { $0.routineIds.contains(r.id) } })
+        // A subtask names its parent by the parent's lowercase id.
+        #expect(p.items.contains { $0.id.uuidString.lowercased() == subtask.parentItemId })
         // A bucket the enum doesn't name stays text, and Today leaves it out.
         let noon = try #require(p.items.first { $0.timeBucket == "noon" })
         if let start = noon.startDate, let date = DayString(start) {
@@ -99,6 +104,34 @@ private struct RawItems: Decodable, Sendable {
             )
             #expect(!flattenDayRows(day).contains { $0.id == noon.id })
         }
+    }
+
+    /// The item sheet's fields, on the rows the route's test gives them.
+    @Test func theSheetsFieldsReadAsTheWebWroteThem() throws {
+        let p = try JSONDecoder().decode(PlannerPayload.self, from: try fixtureData())
+        func row(_ title: String) throws -> Item {
+            return try #require(p.items.first { $0.title == title }, "no \(title)")
+        }
+
+        let plants = try row("Water the plants")
+        #expect(plants.priority == "low")
+        #expect(plants.notes == nil)
+
+        let bank = try row("Call the bank")
+        #expect(bank.priority == "high")
+        #expect(bank.notes == "Ask about the wire fee.\nHave the card ready.")
+        #expect(bank.reminderTime == "14:15")
+        #expect(bank.reminderAnchor == nil)
+
+        let meditate = try row("Meditate")
+        #expect(meditate.notes == "Ten minutes, eyes closed.")
+        #expect(meditate.reminderTime == "06:30")
+        #expect(meditate.reminderAnchor == "I pour my coffee")
+        #expect(meditate.priority == nil)
+
+        let water = try row("Drink water")
+        #expect(water.currentDayCount == 3)
+        #expect(water.reminderTime == nil)
     }
 
     @Test func theWholePipelineRunsOverTheResponse() throws {
@@ -181,6 +214,47 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.showCompletedTasks)
         // A server older than the field: the pick is unknown, not Aurora.
         #expect(p.settings.appIcon == nil)
+        // ... the week starts on Sunday, the clock is 12h, and it takes the
+        // two writes it always took.
+        #expect(p.settings.weekStartDay == .sunday)
+        #expect(p.settings.timeFormat == .twelveHour)
+        #expect(p.writes == nil)
+    }
+
+    @Test func theWeekAndTheClockAreReadLeniently() throws {
+        func settings(_ value: String) throws -> PlannerSettings {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":\(value),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).settings
+        }
+        let monday = try settings(#"{"weekStartDay":"monday","timeFormat":"24h"}"#)
+        #expect(monday.weekStartDay == .monday)
+        #expect(monday.timeFormat == .twentyFourHour)
+        #expect(try settings(#"{"weekStartDay":"saturday"}"#).weekStartDay == .saturday)
+        // Unknown values and wrong types read as the web's defaults.
+        let odd = try settings(#"{"weekStartDay":"tuesday","timeFormat":"12"}"#)
+        #expect(odd.weekStartDay == .sunday)
+        #expect(odd.timeFormat == .twelveHour)
+        let wrong = try settings(#"{"weekStartDay":1,"timeFormat":null}"#)
+        #expect(wrong.weekStartDay == .sunday)
+        #expect(wrong.timeFormat == .twelveHour)
+    }
+
+    @Test func theWritesListIsReadLeniently() throws {
+        func writes(_ value: String) throws -> [String]? {
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{},"writes":\(value),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).writes
+        }
+        #expect(try writes(#"["complete","schedule","skip"]"#) == ["complete", "schedule", "skip"])
+        #expect(try writes("null") == nil)
+        #expect(try writes(#""complete""#) == nil)
+        // A bad element is skipped, as in every other list.
+        #expect(try writes(#"["complete",7,"move"]"#) == ["complete", "move"])
     }
 
     @Test func theAppIconPickIsReadLeniently() throws {
@@ -231,10 +305,21 @@ private struct RawItems: Decodable, Sendable {
     @Test func anItemRoundTrips() throws {
         let item = Item(
             id: UUID(uuidString: "00000000-0000-4000-8000-000000000001")!, type: "custom", customType: "errand",
-            title: "Stamps", status: "pending", startDate: "2026-10-02", repeatDays: [1, 3],
+            title: "Stamps", status: "pending", startDate: "2026-10-02",
+            notes: "Two books.\nFirst class.", priority: "medium", reminderTime: "09:15", reminderAnchor: "I park",
+            currentDayCount: 1, repeatDays: [1, 3],
             completedDates: ["2026-10-01"], dailyCounts: ["2026-10-02": 1]
         )
         let data = try JSONEncoder().encode(item)
         #expect(try JSONDecoder().decode(Item.self, from: data) == item)
+    }
+
+    @Test func theSettingsRoundTrip() throws {
+        let settings = PlannerSettings(
+            timezone: "Europe/Paris", showCompletedTasks: false, appIcon: .lime,
+            weekStartDay: .saturday, timeFormat: .twentyFourHour
+        )
+        let data = try JSONEncoder().encode(settings)
+        #expect(try JSONDecoder().decode(PlannerSettings.self, from: data) == settings)
     }
 }

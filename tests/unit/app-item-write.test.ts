@@ -1,7 +1,7 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
- * POST /api/app/items/:id — the iPhone's two verbs on an item.
+ * POST /api/app/items/:id — the iPhone's verbs on an item.
  *
  * `complete` has to do exactly what the web's tick does for the same row, and
  * the three kinds of row do three different things (lib/item-toggle.ts and the
@@ -14,12 +14,25 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  *
  * `schedule` is the web's drop of a braindump row onto an hour.
  *
+ * `skip` is the store's setItemSkipped: on a habit, toggleHabitStatus to
+ * skipped or pending (the completion cleared either way, the skip RPC only on
+ * a change, the status snapshot); on a task-like row, the two per-date RPCs and
+ * nothing else. `move` is moveTaskToDate, behind lib/row-moves.ts's Reschedule gate.
+ * `pause` is setItemPaused, resolved by lib/item-pause.ts in the user's zone.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
 const USER = '6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b';
 const ITEM = '0b7e4a52-9c1d-4f3e-8a2b-5d6c7e8f9a0b';
+const PARENT = '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a';
 const DATE = '2026-10-02';
+const TOMORROW = '2026-10-03';
+/**
+ * 8pm on Oct 2 in Los Angeles, the stored zone, and already Oct 3 in UTC: a
+ * pause resolved in the wrong zone writes the wrong day.
+ */
+const NOW = '2026-10-03T03:00:00.000Z';
 
 type Result = { data?: unknown; error?: unknown; count?: number | null };
 interface Query {
@@ -115,23 +128,49 @@ async function runAfter() {
 const HABIT = {
   id: ITEM,
   type: 'habit',
+  parent_item_id: null,
   repeat_frequency: 'daily',
+  status: 'pending',
+  start_date: null,
+  time_bucket: 'morning',
+  in_project_block: null,
   skipped_dates: ['2026-09-30'],
   daily_counts: { '2026-10-01': 3 },
   current_day_count: 1,
+  paused_at: null,
+  paused_until: null,
 };
 const RECURRING_TASK = {
   id: ITEM,
   type: 'task',
+  parent_item_id: null,
   repeat_frequency: 'weekdays',
-  skipped_dates: [],
+  status: 'pending',
+  start_date: '2026-09-01',
+  time_bucket: 'afternoon',
+  in_project_block: false,
+  skipped_dates: [] as string[],
   daily_counts: null,
   current_day_count: null,
+  paused_at: null,
+  paused_until: null,
 };
-const ONE_OFF = { ...RECURRING_TASK, repeat_frequency: null };
+const ONE_OFF = { ...RECURRING_TASK, repeat_frequency: null, start_date: DATE };
+/** Paused since Sep 30 with no end: the ordinary "paused indefinitely" row. */
+const PAUSED = { ...ONE_OFF, paused_at: '2026-09-30T14:03:22.123456+00:00' };
 
 let row: Record<string, unknown> | null;
 let updateResult: Result;
+let settingsResult: Result;
+
+beforeAll(() => {
+  vi.useFakeTimers({ toFake: ['Date'] });
+  vi.setSystemTime(new Date(NOW));
+});
+
+afterAll(() => {
+  vi.useRealTimers();
+});
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -140,10 +179,12 @@ beforeEach(() => {
   queries = [];
   row = HABIT;
   updateResult = { data: null, error: null };
+  settingsResult = { data: { timezone: 'America/Los_Angeles' }, error: null };
   rpc = vi.fn(async () => ({ data: null, error: null }));
   h.reportLiveCompletion.mockResolvedValue({ ok: true, skipped: true });
   respond = (q) => {
     if (q.table === 'item_events') return { data: null, error: null };
+    if (q.table === 'user_settings') return settingsResult;
     if (q.table !== 'items') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
     if (op(q) === 'update') return updateResult;
     return { data: row, error: null };
@@ -160,8 +201,12 @@ describe('reading the row first', () => {
     await write({ action: 'complete', date: DATE, done: true });
     const read = queries[0];
     expect(read.table).toBe('items');
+    // Never completed_dates: no intent decides on it, and it grows without bound.
     expect(called(read, 'select')).toEqual([
-      ['id, type, repeat_frequency, skipped_dates, daily_counts, current_day_count'],
+      [
+        'id, type, parent_item_id, repeat_frequency, status, start_date, time_bucket, in_project_block, ' +
+          'skipped_dates, daily_counts, current_day_count, paused_at, paused_until',
+      ],
     ]);
     expect(read.calls).toEqual(
       expect.arrayContaining([
@@ -172,16 +217,25 @@ describe('reading the row first', () => {
     );
   });
 
-  it('404s another user’s id, invisible under RLS, and writes nothing', async () => {
-    // Load-bearing: set_item_completion filters on id and type only, so
-    // without this read a foreign id would be a silent no-op answered 200.
+  it.each([
+    ['complete', { action: 'complete', date: DATE, done: true }],
+    ['schedule', { action: 'schedule', date: DATE, startTime: '09:15' }],
+    ['skip', { action: 'skip', date: DATE, skipped: true }],
+    ['move', { action: 'move', date: TOMORROW }],
+    ['pause', { action: 'pause', paused: true }],
+  ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
+    // Load-bearing: set_item_completion, set_item_skip and updateItem filter
+    // on id and type only, so without this read a foreign (or deleted) id
+    // would be a silent no-op answered 200.
     row = null;
-    const res = await write({ action: 'complete', date: DATE, done: true });
+    const res = await write(body);
     expect(res.status).toBe(404);
     expect(await res.json()).toEqual({ error: 'not_found' });
     expect(rpc).not.toHaveBeenCalled();
     expect(writes('items', 'update')).toEqual([]);
     expect(h.after).not.toHaveBeenCalled();
+    // Nothing past the row: not even the pause's zone.
+    expect(queries.map((q) => q.table)).toEqual(['items']);
   });
 
   it('404s an id that is not a uuid without asking the database', async () => {
@@ -419,11 +473,454 @@ describe('schedule', () => {
   });
 });
 
+describe('skip, on a habit', () => {
+  // HABIT is skipped on Sep 30 and open on DATE.
+  const completion = (date: string) => [
+    'set_item_completion',
+    { item_id: ITEM, item_type: 'habit', date_str: date, completed: false, adjust_streak: true },
+  ];
+  const skipRpc = (date: string, skipped: boolean) => [
+    'set_item_skip',
+    { item_id: ITEM, item_type: 'habit', date_str: date, skipped },
+  ];
+
+  it('clears the day’s completion, skips it, then writes the status snapshot', async () => {
+    const res = await write({ action: 'skip', date: DATE, skipped: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // Completion first: a failure between the two leaves the day open,
+    // never skipped-and-done.
+    expect(rpc.mock.calls).toEqual([completion(DATE), skipRpc(DATE, true)]);
+    // toggleHabitStatus's companion update, without the client's dailyCounts
+    // the web sends along: the stored map is left exactly as it is.
+    expect(writes('items', 'update')).toEqual([{ status: 'skipped', current_day_count: 1 }]);
+    await settle();
+    expect(writes('item_events', 'insert')).toEqual([
+      {
+        item_id: ITEM,
+        item_type: 'habit',
+        action: 'update',
+        payload: { status: 'skipped', currentDayCount: 1 },
+      },
+    ]);
+  });
+
+  it('tells a live stake the day is not done, once the completion has landed', async () => {
+    // A skip on a day already posted to Beeminder retracts the datapoint, as
+    // the browser's own set_item_completion reports it.
+    await write({ action: 'skip', date: DATE, skipped: true });
+    expect(h.after).toHaveBeenCalledTimes(1);
+    const [completed, skipped] = rpc.mock.invocationCallOrder;
+    const reported = h.after.mock.invocationCallOrder[0];
+    expect(completed).toBeLessThan(reported);
+    expect(reported).toBeLessThan(skipped);
+    expect(h.reportLiveCompletion).not.toHaveBeenCalled();
+    await runAfter();
+    expect(h.reportLiveCompletion).toHaveBeenCalledExactlyOnceWith(h.serviceClient, {
+      userId: USER,
+      itemId: ITEM,
+      dateStr: DATE,
+      completed: false,
+    });
+  });
+
+  it('on a day already skipped, still clears the completion and the status, without a second skip', async () => {
+    expect((await write({ action: 'skip', date: '2026-09-30', skipped: true })).status).toBe(200);
+    expect(rpc.mock.calls).toEqual([completion('2026-09-30')]);
+    expect(writes('items', 'update')).toEqual([{ status: 'skipped', current_day_count: 1 }]);
+  });
+
+  it('unskips: clears the completion, lifts the skip, and sets the status back to pending', async () => {
+    expect((await write({ action: 'skip', date: '2026-09-30', skipped: false })).status).toBe(200);
+    expect(rpc.mock.calls).toEqual([completion('2026-09-30'), skipRpc('2026-09-30', false)]);
+    expect(writes('items', 'update')).toEqual([{ status: 'pending', current_day_count: 1 }]);
+    await runAfter();
+    expect(h.reportLiveCompletion.mock.calls[0][1]).toMatchObject({ dateStr: '2026-09-30', completed: false });
+  });
+
+  it('unskipping a day never skipped is toggleHabitStatus(pending): it unticks, and lifts nothing', async () => {
+    await write({ action: 'skip', date: DATE, skipped: false });
+    expect(rpc.mock.calls).toEqual([completion(DATE)]);
+    expect(writes('items', 'update')).toEqual([{ status: 'pending', current_day_count: 1 }]);
+  });
+
+  it('starts the tally at 0 when the row has none', async () => {
+    row = { ...HABIT, current_day_count: null, daily_counts: null };
+    await write({ action: 'skip', date: DATE, skipped: true });
+    expect(writes('items', 'update')).toEqual([{ status: 'skipped', current_day_count: 0 }]);
+  });
+
+  it('reads a NULL frequency as the habit default, daily, so the habit can still skip', async () => {
+    row = { ...HABIT, repeat_frequency: null };
+    expect((await write({ action: 'skip', date: DATE, skipped: true })).status).toBe(200);
+    expect(rpc.mock.calls).toEqual([completion(DATE), skipRpc(DATE, true)]);
+  });
+});
+
+describe('skip, on a recurring task', () => {
+  beforeEach(() => {
+    row = RECURRING_TASK;
+  });
+
+  it('clears the completion, then skips: no status, no update, no event', async () => {
+    const res = await write({ action: 'skip', date: DATE, skipped: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(rpc.mock.calls).toEqual([
+      [
+        'set_item_completion',
+        { item_id: ITEM, item_type: 'task', date_str: DATE, completed: false, adjust_streak: true },
+      ],
+      ['set_item_skip', { item_id: ITEM, item_type: 'task', date_str: DATE, skipped: true }],
+    ]);
+    await settle();
+    // `pending|completed|cancelled` has no skip in it, and is a contract.
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+    await runAfter();
+    expect(h.reportLiveCompletion).toHaveBeenCalledExactlyOnceWith(h.serviceClient, {
+      userId: USER,
+      itemId: ITEM,
+      dateStr: DATE,
+      completed: false,
+    });
+  });
+
+  it('unskips with the skip RPC alone', async () => {
+    row = { ...RECURRING_TASK, skipped_dates: [DATE] };
+    expect((await write({ action: 'skip', date: DATE, skipped: false })).status).toBe(200);
+    expect(rpc.mock.calls).toEqual([
+      ['set_item_skip', { item_id: ITEM, item_type: 'task', date_str: DATE, skipped: false }],
+    ]);
+    expect(writes('items', 'update')).toEqual([]);
+    expect(h.after).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['a skip of a day already skipped', [DATE], true],
+    ['an unskip of a day never skipped', [], false],
+  ])('writes nothing for %s', async (_, skippedDates, skipped) => {
+    row = { ...RECURRING_TASK, skipped_dates: skippedDates };
+    const res = await write({ action: 'skip', date: DATE, skipped });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(h.after).not.toHaveBeenCalled();
+  });
+
+  it('skips a custom type by its stored slug', async () => {
+    row = { ...RECURRING_TASK, type: 'book' };
+    await write({ action: 'skip', date: DATE, skipped: true });
+    expect(rpc.mock.calls.map(([, args]) => (args as { item_type: string }).item_type)).toEqual(['book', 'book']);
+  });
+
+  it('a completion that fails stops there: no report, no skip', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    rpc.mockResolvedValueOnce({ data: null, error: { code: '57014', message: 'timeout' } });
+    expect((await write({ action: 'skip', date: DATE, skipped: true })).status).toBe(500);
+    expect(rpc.mock.calls.map(([name]) => name)).toEqual(['set_item_completion']);
+    expect(h.after).not.toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('a skip that fails after the completion landed still reports the day as not done', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    rpc
+      .mockResolvedValueOnce({ data: null, error: null })
+      .mockResolvedValueOnce({ data: null, error: { code: '57014', message: 'timeout' } });
+    expect((await write({ action: 'skip', date: DATE, skipped: true })).status).toBe(500);
+    await runAfter();
+    expect(h.reportLiveCompletion.mock.calls[0][1]).toMatchObject({ completed: false });
+    spy.mockRestore();
+  });
+});
+
+describe('skip, refused', () => {
+  it.each([
+    ['a one-off task', ONE_OFF],
+    ['a one-off custom type', { ...ONE_OFF, type: 'book' }],
+    ['a subtask', { ...RECURRING_TASK, parent_item_id: PARENT }],
+  ])('400s %s, which has no occurrence of its own to skip, and writes nothing', async (_, r) => {
+    row = r;
+    const res = await write({ action: 'skip', date: DATE, skipped: true });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_skippable' });
+    expect(rpc).not.toHaveBeenCalled();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(h.after).not.toHaveBeenCalled();
+  });
+});
+
+describe('move', () => {
+  beforeEach(() => {
+    row = ONE_OFF;
+  });
+
+  it('writes moveTaskToDate’s two fields, keeping the bucket and the time', async () => {
+    const res = await write({ action: 'move', date: TOMORROW });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // Not isScheduled, not startTime: the carry is not the date chip.
+    expect(writes('items', 'update')).toEqual([{ start_date: TOMORROW, time_bucket: 'afternoon' }]);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(h.after).not.toHaveBeenCalled();
+    await settle();
+    expect(writes('item_events', 'insert')).toEqual([
+      {
+        item_id: ITEM,
+        item_type: 'task',
+        action: 'update',
+        payload: { startDate: TOMORROW, timeBucket: 'afternoon' },
+      },
+    ]);
+  });
+
+  it('files an undated, unbucketed row under anytime, so a day view lists it', async () => {
+    row = { ...ONE_OFF, start_date: null, time_bucket: null };
+    await write({ action: 'move', date: TOMORROW });
+    expect(writes('items', 'update')).toEqual([{ start_date: TOMORROW, time_bucket: 'anytime' }]);
+  });
+
+  it('reads a task’s NULL frequency as its type’s default, one-shot, so it moves', async () => {
+    expect(ONE_OFF.repeat_frequency).toBeNull();
+    expect((await write({ action: 'move', date: TOMORROW })).status).toBe(200);
+  });
+
+  it('moves a custom type by its stored slug', async () => {
+    row = { ...ONE_OFF, type: 'book' };
+    expect((await write({ action: 'move', date: TOMORROW })).status).toBe(200);
+    const update = queries.find((q) => op(q) === 'update')!;
+    expect(update.calls).toContainEqual(['eq', ['type', 'book']]);
+  });
+
+  it('never asks a one-off about its completed dates', async () => {
+    await write({ action: 'move', date: TOMORROW });
+    expect(queries.filter((q) => called(q, 'contains').length > 0)).toEqual([]);
+  });
+
+  describe('a recurring task (Reschedule, lib/row-moves.ts canReschedule)', () => {
+    /** Whether the series' own day is done, as the one-date read answers it. */
+    let doneOnStart: boolean;
+    beforeEach(() => {
+      row = RECURRING_TASK;
+      doneOnStart = false;
+      const base = respond;
+      respond = (q) =>
+        q.table === 'items' && called(q, 'contains').length > 0
+          ? { data: doneOnStart ? { id: ITEM } : null, error: null }
+          : base(q);
+    });
+
+    it('moves its series start to the picked day, keeping its bucket', async () => {
+      const res = await write({ action: 'move', date: TOMORROW });
+      expect(res.status).toBe(200);
+      expect(writes('items', 'update')).toEqual([{ start_date: TOMORROW, time_bucket: 'afternoon' }]);
+    });
+
+    it('asks about its own start day alone, as the user, never reading the column', async () => {
+      await write({ action: 'move', date: TOMORROW });
+      const asked = queries.filter((q) => called(q, 'contains').length > 0);
+      expect(asked).toHaveLength(1);
+      expect(called(asked[0], 'select')).toEqual([['id']]);
+      expect(asked[0].calls).toEqual(
+        expect.arrayContaining([
+          ['eq', ['id', ITEM]],
+          ['eq', ['user_id', USER]],
+          ['contains', ['completed_dates', [RECURRING_TASK.start_date]]],
+        ]),
+      );
+    });
+
+    it('moves a recurring custom type by its stored slug', async () => {
+      row = { ...RECURRING_TASK, type: 'book' };
+      expect((await write({ action: 'move', date: TOMORROW })).status).toBe(200);
+    });
+
+    it('409s a series whose own day is done, as the web gate refuses it', async () => {
+      doneOnStart = true;
+      const res = await write({ action: 'move', date: TOMORROW });
+      expect(res.status).toBe(409);
+      expect(await res.json()).toEqual({ error: 'not_movable' });
+      expect(writes('items', 'update')).toEqual([]);
+    });
+
+    it.each([
+      ['inside its project block', { in_project_block: true }],
+      ['cancelled', { status: 'cancelled' }],
+      ['a subtask', { parent_item_id: PARENT }],
+    ])('409s one %s and writes nothing', async (_, over) => {
+      row = { ...RECURRING_TASK, ...over };
+      expect((await write({ action: 'move', date: TOMORROW })).status).toBe(409);
+      expect(writes('items', 'update')).toEqual([]);
+    });
+  });
+
+  it.each([
+    ['a habit', HABIT],
+    ['a habit with a NULL frequency', { ...HABIT, repeat_frequency: null }],
+    ['a task inside its project block', { ...ONE_OFF, in_project_block: true }],
+    ['a completed task', { ...ONE_OFF, status: 'completed' }],
+    ['a cancelled task', { ...ONE_OFF, status: 'cancelled' }],
+    ['a subtask', { ...ONE_OFF, parent_item_id: PARENT }],
+  ])('409s %s and writes nothing', async (_, r) => {
+    row = r;
+    const res = await write({ action: 'move', date: TOMORROW });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'not_movable' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+});
+
+describe('pause', () => {
+  beforeEach(() => {
+    row = ONE_OFF;
+  });
+
+  it('pauses from now, with no end, and records the web’s event', async () => {
+    const res = await write({ action: 'pause', paused: true });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    // The pause columns and nothing else: status, dates and bucket stay put,
+    // so a resume finds the item where it was.
+    expect(writes('items', 'update')).toEqual([{ paused_at: NOW, paused_until: null }]);
+    expect(rpc).not.toHaveBeenCalled();
+    await settle();
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'task', action: 'update', payload: { pausedAt: NOW, pausedUntil: null } },
+    ]);
+  });
+
+  it('pauses until a day, which is live again on that day', async () => {
+    await write({ action: 'pause', paused: true, pausedUntil: '2026-10-09' });
+    expect(writes('items', 'update')).toEqual([{ paused_at: NOW, paused_until: '2026-10-09' }]);
+  });
+
+  it('takes Oct 3 as a resume day: already today in UTC, but tomorrow where the user is', async () => {
+    expect((await write({ action: 'pause', paused: true, pausedUntil: TOMORROW })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ paused_at: NOW, paused_until: TOMORROW }]);
+  });
+
+  it.each([DATE, '2026-09-30'])('409s a resume day of %s, which is not after today, and writes nothing', async (until) => {
+    const res = await write({ action: 'pause', paused: true, pausedUntil: until });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'pause_refused' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('resumes as of today in the user’s zone, keeping the interval on the row', async () => {
+    row = PAUSED;
+    await write({ action: 'pause', paused: false });
+    expect(writes('items', 'update')).toEqual([{ paused_until: DATE }]);
+  });
+
+  it('moves the end of a pause already running, and leaves its start', async () => {
+    row = PAUSED;
+    await write({ action: 'pause', paused: true, pausedUntil: '2026-10-20' });
+    expect(writes('items', 'update')).toEqual([{ paused_until: '2026-10-20' }]);
+  });
+
+  it.each([
+    ['a resume of a live item', ONE_OFF, { paused: false }],
+    // Restamping would drag the interval's start forward and un-hide the days between.
+    ['a pause of a paused item', PAUSED, { paused: true }],
+  ])('writes nothing for %s', async (_, r, verb) => {
+    row = r;
+    const res = await write({ action: 'pause', ...verb });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('pauses again, from now, an item whose last pause has ended', async () => {
+    row = { ...ONE_OFF, paused_at: '2026-09-01T09:00:00+00:00', paused_until: '2026-09-15' };
+    await write({ action: 'pause', paused: true });
+    expect(writes('items', 'update')).toEqual([{ paused_at: NOW, paused_until: null }]);
+  });
+
+  it.each([
+    ['a habit', HABIT, 'habit'],
+    ['a custom type', { ...ONE_OFF, type: 'book' }, 'book'],
+  ])('pauses %s by its stored slug', async (_, r, slug) => {
+    row = r;
+    expect((await write({ action: 'pause', paused: true })).status).toBe(200);
+    const update = queries.find((q) => op(q) === 'update')!;
+    expect(called(update, 'update')).toEqual([[{ paused_at: NOW, paused_until: null }]]);
+    expect(update.calls).toContainEqual(['eq', ['type', slug]]);
+  });
+
+  it('400s a subtask, which follows its parent, before reading anything else', async () => {
+    row = { ...ONE_OFF, parent_item_id: PARENT };
+    const res = await write({ action: 'pause', paused: true });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_pausable' });
+    expect(queries.map((q) => q.table)).toEqual(['items']);
+  });
+});
+
+describe('pause: the zone "today" is read in', () => {
+  beforeEach(() => {
+    row = PAUSED;
+  });
+
+  /** The day a resume writes, which is today in the zone the route chose. */
+  async function resumeDay(extra: Record<string, unknown> = {}) {
+    expect((await write({ action: 'pause', paused: false, ...extra })).status).toBe(200);
+    return writes('items', 'update')[0]?.paused_until;
+  }
+
+  it('reads the user’s stored zone, by its one column, as the user', async () => {
+    expect(await resumeDay()).toBe(DATE);
+    const settings = queries.filter((q) => q.table === 'user_settings');
+    expect(settings).toHaveLength(1);
+    expect(called(settings[0], 'select')).toEqual([['timezone']]);
+    expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
+  });
+
+  it('prefers the stored zone to the device’s', async () => {
+    expect(await resumeDay({ timeZone: 'Asia/Tokyo' })).toBe(DATE);
+  });
+
+  it.each([
+    ['no settings row', { data: null, error: null }],
+    ['no stored zone', { data: { timezone: null }, error: null }],
+    ['a blank stored zone', { data: { timezone: '  ' }, error: null }],
+    ['a stored zone Intl does not know', { data: { timezone: 'Mars/Olympus' }, error: null }],
+  ])('falls back to the device’s zone with %s', async (_, result) => {
+    settingsResult = result;
+    expect(await resumeDay({ timeZone: 'America/New_York' })).toBe(DATE);
+  });
+
+  it('falls back to UTC with neither', async () => {
+    settingsResult = { data: { timezone: null }, error: null };
+    expect(await resumeDay()).toBe(TOMORROW);
+  });
+
+  it('passes over a device zone Intl does not know', async () => {
+    settingsResult = { data: null, error: null };
+    expect(await resumeDay({ timeZone: 'Not/AZone' })).toBe(TOMORROW);
+  });
+
+  it('answers a failed settings read as an error, and writes nothing', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    settingsResult = { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } };
+    const res = await write({ action: 'pause', paused: false, timeZone: 'America/New_York' });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    settingsResult = { data: null, error: { code: 'PGRST303', message: 'JWT expired' } };
+    expect((await write({ action: 'pause', paused: false })).status).toBe(401);
+    expect(writes('items', 'update')).toEqual([]);
+    spy.mockRestore();
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
     ['no action', { date: DATE, done: true }],
-    ['an unknown action', { action: 'skip', date: DATE }],
+    ['an action that never existed', { action: 'explode', date: DATE }],
     ['a date that is not on the calendar', { action: 'complete', date: '2026-02-31', done: true }],
     ['a date in another shape', { action: 'complete', date: '2026-10-2', done: true }],
     ['no date', { action: 'complete', done: true }],
@@ -434,6 +931,16 @@ describe('validation', () => {
     ['24:00', { action: 'schedule', date: DATE, startTime: '24:00' }],
     ['a time without minutes', { action: 'schedule', date: DATE, startTime: '9' }],
     ['a schedule with no date', { action: 'schedule', startTime: '09:15' }],
+    ['a skip with no skipped', { action: 'skip', date: DATE }],
+    ['skipped as a string', { action: 'skip', date: DATE, skipped: 'true' }],
+    ['a skip with no date', { action: 'skip', skipped: true }],
+    ['a move with no date', { action: 'move' }],
+    ['a move to a day not on the calendar', { action: 'move', date: '2026-09-31' }],
+    ['a pause with no paused', { action: 'pause' }],
+    ['a resume with a resume day', { action: 'pause', paused: false, pausedUntil: '2026-10-09' }],
+    ['a null resume day', { action: 'pause', paused: true, pausedUntil: null }],
+    ['a resume day in another shape', { action: 'pause', paused: true, pausedUntil: 'Oct 9' }],
+    ['a zone that is not a string', { action: 'pause', paused: true, timeZone: 5 }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -478,12 +985,17 @@ describe('failures', () => {
 });
 
 describe('webhooks', () => {
-  it('none of it reaches OpenClaw, as none of the browser’s ticks do', async () => {
+  it('none of it reaches OpenClaw, as none of the browser’s writes do', async () => {
     for (const [r, body] of [
       [HABIT, { action: 'complete', date: DATE, done: true, count: 1 }],
       [RECURRING_TASK, { action: 'complete', date: DATE, done: true }],
       [ONE_OFF, { action: 'complete', date: DATE, done: true }],
       [ONE_OFF, { action: 'schedule', date: DATE, startTime: '09:15' }],
+      [HABIT, { action: 'skip', date: DATE, skipped: true }],
+      [RECURRING_TASK, { action: 'skip', date: DATE, skipped: true }],
+      [ONE_OFF, { action: 'move', date: TOMORROW }],
+      [ONE_OFF, { action: 'pause', paused: true }],
+      [PAUSED, { action: 'pause', paused: false }],
     ] as const) {
       row = r;
       expect((await write(body)).status).toBe(200);

@@ -1,0 +1,134 @@
+{
+  "membershipSummary": [
+    {
+      "name": "none",
+      "names": [],
+      "expected": null
+    },
+    {
+      "name": "one",
+      "names": [
+        "Wind down"
+      ],
+      "expected": "Wind down"
+    },
+    {
+      "name": "two",
+      "names": [
+        "Wind down",
+        "Morning"
+      ],
+      "expected": "Wind down +1"
+    },
+    {
+      "name": "three",
+      "names": [
+        "Wind down",
+        "Morning",
+        "Gym"
+      ],
+      "expected": "Wind down +2"
+    }
+  ],
+  "formatCueTime": [
+    {
+      "name": "midnight, 12h",
+      "hhmm": "00:00",
+      "timeFormat": "12h",
+      "expected": "12:00 am"
+    },
+    {
+      "name": "midnight, 24h",
+      "hhmm": "00:00",
+      "timeFormat": "24h",
+      "expected": "00:00"
+    },
+    {
+      "name": "half past midnight, 12h",
+      "hhmm": "00:30",
+      "timeFormat": "12h",
+      "expected": "12:30 am"
+    },
+    {
+      "name": "half past midnight, 24h",
+      "hhmm": "00:30",
+      "timeFormat": "24h",
+      "expected": "00:30"
+    },
+    {
+      "name": "morning, 12h",
+      "hhmm": "07:05",
+      "timeFormat": "12h",
+      "expected": "7:05 am"
+    },
+    {
+      "name": "morning, 24h",
+      "hhmm": "07:05",
+      "timeFormat": "24h",
+      "expected": "07:05"
+    },
+    {
+      "name": "noon, 12h",
+      "hhmm": "12:00",
+      "timeFormat": "12h",
+      "expected": "12:00 pm"
+    },
+    {
+      "name": "noon, 24h",
+      "hhmm": "12:00",
+      "timeFormat": "24h",
+      "expected": "12:00"
+    },
+    {
+      "name": "afternoon, 12h",
+      "hhmm": "13:45",
+      "timeFormat": "12h",
+      "expected": "1:45 pm"
+    },
+    {
+      "name": "afternoon, 24h",
+      "hhmm": "13:45",
+      "timeFormat": "24h",
+      "expected": "13:45"
+    },
+    {
+      "name": "last minute, 12h",
+      "hhmm": "23:59",
+      "timeFormat": "12h",
+      "expected": "11:59 pm"
+    },
+    {
+      "name": "last minute, 24h",
+      "hhmm": "23:59",
+      "timeFormat": "24h",
+      "expected": "23:59"
+    }
+  ],
+  "formatDay": [
+    {
+      "name": "first of a month",
+      "dateStr": "2026-09-01",
+      "expected": "Sep 1"
+    },
+    {
+      "name": "two-digit day",
+      "dateStr": "2026-10-18",
+      "expected": "Oct 18"
+    },
+    {
+      "name": "December",
+      "dateStr": "2026-12-31",
+      "expected": "Dec 31"
+    },
+    {
+      "name": "a timestamp reads as its day",
+      "dateStr": "2026-09-01T00:00:00Z",
+      "expected": "Sep 1"
+    },
+    {
+      "name": "junk comes back as it was",
+      "dateStr": "not a date",
+      "expected": "not a date"
+    }
+  ]
+}

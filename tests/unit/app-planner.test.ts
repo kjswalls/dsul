@@ -21,6 +21,8 @@ import path from 'path';
  * Postgres timestamptz with microseconds and `+00:00`, a free-text bucket the
  * app has no case for ('noon'), a NULL repeat_frequency, a habit whose
  * container is only in the frozen `group` column, a custom type, a subtask.
+ * And what the item sheet shows: notes with a line break, priorities, a
+ * reminder with an anchor and one without.
  */
 
 const FIXTURE = path.resolve(__dirname, '../fixtures/app/planner-response.json');
@@ -152,7 +154,7 @@ const ITEM_ROWS = [
     type: 'task',
     title: 'Water the plants',
     status: 'pending',
-    priority: null,
+    priority: 'low',
     project: null,
     start_date: '2026-09-01',
     repeat_frequency: 'custom',
@@ -167,12 +169,15 @@ const ITEM_ROWS = [
     order: 0,
   },
   {
-    // A one-off task, timed today.
+    // A one-off task, timed today, with notes and a reminder at a clock time.
     ...rowBase(4),
     type: 'task',
     title: 'Call the bank',
     status: 'pending',
     priority: 'high',
+    notes: 'Ask about the wire fee.\nHave the card ready.',
+    reminder_time: '14:15',
+    reminder_anchor: null,
     project: 'Admin',
     project_id: PROJECT_ADMIN,
     start_date: '2026-10-02',
@@ -263,11 +268,14 @@ const ITEM_ROWS = [
     order: 7,
   },
   {
-    // A routine member, done today.
+    // A routine member, done today, cued after something rather than at a time.
     ...rowBase(11),
     type: 'habit',
     title: 'Meditate',
     status: 'done',
+    notes: 'Ten minutes, eyes closed.',
+    reminder_time: '06:30',
+    reminder_anchor: 'I pour my coffee',
     project: null,
     group: null,
     streak: 12,
@@ -389,6 +397,8 @@ const BUNDLE = {
 const SETTINGS_ROW = {
   timezone: 'America/Los_Angeles',
   show_completed_tasks: true,
+  week_start_day: 'monday',
+  time_format: '24h',
   app_icon: 'lime',
   openclaw_api_key: `dsul_${'ab'.repeat(32)}`,
   openclaw_webhook_url: 'https://hooks.example.com',
@@ -465,12 +475,21 @@ describe('the payload fixture shared with DsulCore', () => {
 
   it('has the documented top-level shape', () => {
     expect(Object.keys(generated).sort()).toEqual(
-      ['fetchedAt', 'items', 'projects', 'routines', 'seasons', 'settings', 'userId', 'v'].sort(),
+      ['fetchedAt', 'items', 'projects', 'routines', 'seasons', 'settings', 'userId', 'v', 'writes'].sort(),
     );
     expect(generated.v).toBe(1);
     expect(generated.userId).toBe(USER);
     expect(generated.fetchedAt).toBe(NOW);
-    expect(generated.settings).toEqual({ timezone: 'America/Los_Angeles', showCompletedTasks: true, appIcon: 'lime' });
+    expect(generated.settings).toEqual({
+      timezone: 'America/Los_Angeles',
+      showCompletedTasks: true,
+      weekStartDay: 'monday',
+      timeFormat: '24h',
+      appIcon: 'lime',
+    });
+    // The intents the item route takes. Additive: an older server sends no
+    // list, which the phone reads as ['complete', 'schedule'].
+    expect(generated.writes).toEqual(['complete', 'schedule', 'skip', 'move', 'pause']);
   });
 
   it('carries every case the Swift decoder has to meet', () => {
@@ -493,8 +512,24 @@ describe('the payload fixture shared with DsulCore', () => {
       repeatDays: [1, 4],
       skippedDates: ['2026-10-01'],
     });
-    expect(byTitle('Call the bank')).toMatchObject({ type: 'task', status: 'pending', startTime: '14:30' });
+    expect(byTitle('Call the bank')).toMatchObject({
+      type: 'task',
+      status: 'pending',
+      startTime: '14:30',
+      priority: 'high',
+      notes: 'Ask about the wire fee.\nHave the card ready.',
+      reminderTime: '14:15',
+    });
     expect(byTitle('Call the bank')).not.toHaveProperty('repeatFrequency');
+    expect(byTitle('Call the bank')).not.toHaveProperty('reminderAnchor');
+    expect(byTitle('Water the plants')).toMatchObject({ priority: 'low' });
+    expect(byTitle('Buy stamps')).not.toHaveProperty('priority');
+    expect(byTitle('Buy stamps')).not.toHaveProperty('notes');
+    expect(byTitle('Meditate')).toMatchObject({
+      notes: 'Ten minutes, eyes closed.',
+      reminderTime: '06:30',
+      reminderAnchor: 'I pour my coffee',
+    });
     // The custom-type envelope: the slug travels as customType.
     expect(byTitle('Read Dune')).toMatchObject({ type: 'custom', customType: 'book', isScheduled: false });
     expect(byTitle('Find the account number')).toMatchObject({ parentItemId: id(4) });
@@ -531,7 +566,10 @@ describe('GET /api/app/planner', () => {
 
     const settings = queries.filter((q) => q.table === 'user_settings');
     expect(settings).toHaveLength(1);
-    expect(settings[0].calls).toContainEqual(['select', ['timezone, show_completed_tasks, app_icon']]);
+    expect(settings[0].calls).toContainEqual([
+      'select',
+      ['timezone, show_completed_tasks, week_start_day, time_format, app_icon'],
+    ]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
     // Nothing else is read: no per-table burst on top of the RPC.
     expect(queries.map((q) => q.table)).toEqual(['user_settings']);
@@ -540,7 +578,24 @@ describe('GET /api/app/planner', () => {
   it('falls back to the web’s defaults when there is no settings row', async () => {
     respondWith({ user_settings: { data: null, error: null } });
     const body = await (await get()).json();
-    expect(body.settings).toEqual({ timezone: null, showCompletedTasks: true, appIcon: null });
+    expect(body.settings).toEqual({
+      timezone: null,
+      showCompletedTasks: true,
+      weekStartDay: 'sunday',
+      timeFormat: '12h',
+      appIcon: null,
+    });
+  });
+
+  it('answers a week start or time format the app has no case for as the default', async () => {
+    respondWith({ user_settings: { data: { ...SETTINGS_ROW, week_start_day: 'friday', time_format: '12' }, error: null } });
+    const settings = (await (await get()).json()).settings;
+    expect(settings.weekStartDay).toBe('sunday');
+    expect(settings.timeFormat).toBe('12h');
+    respondWith({ user_settings: { data: { ...SETTINGS_ROW, week_start_day: 'saturday', time_format: null }, error: null } });
+    const again = (await (await get()).json()).settings;
+    expect(again.weekStartDay).toBe('saturday');
+    expect(again.timeFormat).toBe('12h');
   });
 
   it('reads the settings again without app_icon on a database without migration 056', async () => {
@@ -549,13 +604,25 @@ describe('GET /api/app/planner', () => {
       const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
       return columns.includes('app_icon')
         ? { data: null, error: { code: '42703', message: 'column user_settings.app_icon does not exist' } }
-        : { data: { timezone: 'Europe/Paris', show_completed_tasks: false }, error: null };
+        : {
+            data: { timezone: 'Europe/Paris', show_completed_tasks: false, week_start_day: 'monday', time_format: '24h' },
+            error: null,
+          };
     };
     const res = await get();
     expect(res.status).toBe(200);
-    expect((await res.json()).settings).toEqual({ timezone: 'Europe/Paris', showCompletedTasks: false, appIcon: null });
+    expect((await res.json()).settings).toEqual({
+      timezone: 'Europe/Paris',
+      showCompletedTasks: false,
+      weekStartDay: 'monday',
+      timeFormat: '24h',
+      appIcon: null,
+    });
     const selects = queries.filter((q) => q.table === 'user_settings').map((q) => q.calls.find(([m]) => m === 'select')?.[1][0]);
-    expect(selects).toEqual(['timezone, show_completed_tasks, app_icon', 'timezone, show_completed_tasks']);
+    expect(selects).toEqual([
+      'timezone, show_completed_tasks, week_start_day, time_format, app_icon',
+      'timezone, show_completed_tasks, week_start_day, time_format',
+    ]);
   });
 
   it('answers app_icon as the web reads it: null stays unchosen, an unknown slug is Aurora', async () => {
