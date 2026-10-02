@@ -5,8 +5,11 @@ import { usePathname, useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { getDesktopBridge, type DsulDesktop } from '@/lib/desktop';
+import { useLookStore } from '@/lib/look-store';
+import { useMorningStore } from '@/lib/morning-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
+import { settingsBelongToUser } from '@/lib/settings/hydration';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { isSignedOutPath } from '@/lib/signed-out-redirect';
 import { openQuickCapture } from '@/lib/ui-store';
@@ -128,6 +131,30 @@ function DesktopBridgeLive({ bridge }: { bridge: DsulDesktop }) {
     noticeShown.current = true;
     toast(`Signed in as ${email}`);
   }, [noticeWanted, email]);
+
+  // The Dock / taskbar icon follows the SETTING, never the tab's day-done
+  // Lime (components/providers/favicon-sync.tsx): main writes the pick to disk
+  // for the next launch, and a daily flip would be a daily write for a mark
+  // that is mostly looked at while the app is closed.
+  //
+  // Two waits before telling main anything. The settings must be this
+  // account's (lib/settings/hydration.ts), or a previous account's server
+  // value, still in the store, would decide the icon (a column never written
+  // keeps this device's pick, as layout does); and the pick must be a real one, not the untouched
+  // fallback, or a fresh profile would overwrite the Lime main saved last time
+  // with an Aurora nobody chose. Main ignores a repeat, so StrictMode's second
+  // run costs nothing.
+  const appIcon = useLookStore((s) => s.appIcon);
+  const appIconKnown = useLookStore((s) => s.appIconKnown);
+  const plannerUserId = usePlannerStore((s) => s.userId);
+  const settingsUserId = useMorningStore((s) => s.settingsHydratedUserId);
+  const settingsReady = settingsBelongToUser(plannerUserId, settingsUserId);
+  useEffect(() => {
+    if (!settingsReady || !appIconKnown) return;
+    // Optional on the contract: a shell built before it has no such member.
+    if (typeof bridge.setAppIcon !== 'function') return;
+    bridge.setAppIcon(appIcon).catch(() => {});
+  }, [bridge, appIcon, appIconKnown, settingsReady]);
 
   return null;
 }

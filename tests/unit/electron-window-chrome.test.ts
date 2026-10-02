@@ -101,6 +101,16 @@ describe('electron/lib/window-chrome.cjs', () => {
     expect(line).toContain(`h-[max(2rem,min(${TITLE_BAND_PX}px,env(titlebar-area-height,0px)))]`);
     expect(line).toContain(`pl-[max(1rem,calc(env(titlebar-area-x,0px)_-_${MAC_LIGHTS.x - 14}px))]`);
     expect(line).toContain('className="titlebar-hole rounded-[3px]');
+    // Notepad's day tabs are the window's top row instead: at least as tall as the band,
+    // starting 14px past the lights, and every control in the strip a hole.
+    const tabs = read('components/shell/day-tabs.tsx');
+    expect(tabs).toContain(`pl-[max(0.75rem,calc(env(titlebar-area-x,0px)_-_${MAC_LIGHTS.x - 14}px))]`);
+    expect(44).toBeGreaterThanOrEqual(TITLE_BAND_PX);
+    expect(tabs).toContain("'flex h-11 flex-shrink-0");
+    expect(tabs).toMatch(/const TAB =\s*'titlebar-hole /);
+    const buttons = tabs.split('<button').slice(1).map((b) => b.split('</button>')[0]);
+    expect(buttons.length).toBeGreaterThanOrEqual(4);
+    for (const button of buttons) expect(button).toMatch(/className=\{cn\(TAB,|titlebar-hole/);
   });
 
   it('lets the offline page be dragged, except by its link', () => {

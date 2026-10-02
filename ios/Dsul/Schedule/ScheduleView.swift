@@ -17,9 +17,25 @@ struct ScheduleView: View {
         @Bindable var planner = planner
         ScheduleGrid(position: $position)
             .environment(drag)
+            // Signed in, before the first fetch lands: the spinner, or why it
+            // failed with a retry. The grid has no pull to refresh (its drag
+            // owns the gestures), and an empty grid alone reads as a day with
+            // nothing planned. The sample starts loaded, so it never shows.
+            .overlay(alignment: .top) {
+                if !planner.hasLoaded {
+                    PlannerLoadingRow()
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                        .padding(.horizontal, 12)
+                        .padding(.top, 4)
+                }
+            }
             .overlay(alignment: .top) {
                 if showProbe {
-                    DragProbeHUD(detent: detent, onStress: { planner.stress() })
+                    // "Load 40 blocks" is sample only: its blocks exist nowhere
+                    // on the server.
+                    DragProbeHUD(detent: detent, onStress: planner.isLive ? nil : { planner.stress() })
                         .environment(drag)
                         .padding(.horizontal, 12)
                 }
@@ -43,6 +59,9 @@ struct ScheduleView: View {
             }
             .onDisappear {
                 autoscroller.stop()
+                // A drag cut off by the layout switching away never ends on
+                // its own; let its hold on fetched data go.
+                if drag.phase != "idle" { drag.reset() }
             }
     }
 

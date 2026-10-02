@@ -33,6 +33,13 @@ targets:
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
         CADisableMinimumFrameDurationOnPhone: true
+        # The emailed sign-in link comes back as app.dsul.ios://auth/callback
+        # (GoTrue.callbackScheme) from Safari or Mail, so the app owns the
+        # scheme. Google's sheet catches the same scheme itself.
+        CFBundleURLTypes:
+          - CFBundleURLName: app.dsul.ios.auth
+            CFBundleURLSchemes:
+              - app.dsul.ios
         UTExportedTypeDeclarations:
           - UTTypeIdentifier: app.dsul.item-ref
             UTTypeDescription: dsul item reference
@@ -44,6 +51,9 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.dsul.ios
         TARGETED_DEVICE_FAMILY: "1"
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # Lime, the second App icon (lib/app-icons.ts); AppIconSwitcher.swift
+        # swaps to it when the user picks Lime on the web.
+        ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES: AppIcon-Lime
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
         CODE_SIGN_STYLE: Automatic
   DsulTests:

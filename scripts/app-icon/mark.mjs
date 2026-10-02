@@ -1,51 +1,41 @@
-// dsul's app mark: "Wave", a 4×4 patch of the RelayField with the ripple's crest lit along the
-// diagonal. Tiles are drawn the way components/primitives/relay-field.tsx bakes its dark sprite
-// (a halo, a dim outer square and a bright core, blended additively on the navy ground), with
-// the dots enlarged so they read at icon size. The light version paints the same relays as ink
-// on paper, with no halo, like the field's light sprite.
+// dsul's app mark: "Aurora", a 4×4 patch of the RelayField with the ripple's crest lit along the
+// diagonal and a band of lime-to-teal light behind the crest. Tiles are drawn the way
+// components/primitives/relay-field.tsx bakes its dark sprite (a halo, a dim outer square and a
+// bright core, blended additively on a dark ground), with the relay colours pushed brighter
+// and the dots enlarged so the icon still reads in a dock full of other apps.
 //
 // Returns SVG strings. The halos use `mix-blend-mode: plus-lighter`, which librsvg, sharp and
 // Figma don't render, so rasterise in Chromium (build.mjs does).
 
-// The field's dark-mode relay palette (globals.css `.dark`).
-const DARK = {
-  P: 'oklch(0.87 0.19 125)', // --primary (lime-solid)
-  L: 'oklch(0.76 0.13 125)', // --accent-8 lime
-  O: 'oklch(0.66 0.1 55)', //   --afternoon orange
-  H: 'oklch(0.72 0.1 85)', //   --accent-6 honey
-  T: 'oklch(0.66 0.09 190)', // --accent-2 teal
-  I: 'oklch(0.64 0.11 265)', // --accent-3 indigo
-  M: 'oklch(0.66 0.1 140)', //  --accent-1 moss
-};
-// The same hues a step deeper, so they hold against near-white paper (lime most of all).
-const LIGHT = {
-  P: 'oklch(0.8 0.2 128)',
-  L: 'oklch(0.72 0.17 128)',
-  O: 'oklch(0.7 0.13 50)',
-  H: 'oklch(0.76 0.13 85)',
-  T: 'oklch(0.64 0.1 195)',
-  I: 'oklch(0.58 0.13 268)',
-  M: 'oklch(0.62 0.12 145)',
+// The field's dark-mode relay hues (globals.css `.dark`), lighter and more saturated.
+const AURORA = {
+  P: 'oklch(0.95 0.22 128)', // lime-solid
+  L: 'oklch(0.9 0.21 132)', //  lime
+  O: 'oklch(0.78 0.18 48)', //  afternoon orange
+  H: 'oklch(0.88 0.16 90)', //  honey
+  T: 'oklch(0.84 0.14 195)', // teal
+  I: 'oklch(0.72 0.18 272)', // indigo
+  M: 'oklch(0.85 0.19 150)', // moss
 };
 const WHITE = 'oklch(1 0 0)';
-const NAVY = 'oklch(0.173 0.009 264)'; // --paper-0, dark
-const NAVY_LIFT = 'oklch(0.215 0.012 264)';
-const PAPER = 'oklch(0.985 0.002 90)';
-const PAPER_EDGE = 'oklch(0.955 0.004 90)';
+// Ground: a diagonal from a blue-slate corner to near-black.
+const GROUND = ['oklch(0.21 0.02 250)', 'oklch(0.12 0.012 264)'];
+// The light band along the crest: lime in the middle, teal at its ends.
+const GLOW = { mid: 'oklch(0.75 0.2 128)', end: 'oklch(0.7 0.13 195)', midAlpha: 0.95, endAlpha: 0.42 };
 
 /** n×n tiles as [colorKey, intensity 0–1], row-major. */
 function grid(colors, level) {
   return colors.flatMap((row, y) => row.map((k, x) => [k, level(x + y)]));
 }
-// The crest runs bottom-left to top-right (x + y === 3); its neighbours glow at 0.42.
+// The crest runs bottom-left to top-right (x + y === 3); its neighbours glow at 0.6.
 const WAVE = grid(
   [['L', 'M', 'H', 'T'], ['M', 'O', 'P', 'L'], ['H', 'P', 'L', 'M'], ['I', 'L', 'M', 'T']],
-  (s) => (s === 3 ? 1 : s === 2 || s === 4 ? 0.42 : 0.14),
+  (s) => (s === 3 ? 1 : s === 2 || s === 4 ? 0.6 : 0.26),
 );
-// 16px has room for three dots across, so the favicon is the 3×3 middle of the same crest.
+// Under ~20px there is room for three dots across, so it is the 3×3 middle of the same crest.
 const WAVE_SMALL = grid(
   [['M', 'H', 'T'], ['O', 'P', 'L'], ['L', 'I', 'M']],
-  (s) => (s === 2 ? 1 : s === 1 || s === 3 ? 0.4 : 0.14),
+  (s) => (s === 2 ? 1 : s === 1 || s === 3 ? 0.6 : 0.26),
 );
 
 const f = (v) => +v.toFixed(2);
@@ -56,70 +46,174 @@ function rr(x, y, s, r, fill, op) {
 /**
  * @param {number} size  canvas px
  * @param {object} o
- * @param {'dark'|'light'|'mono'} [o.theme]  mono = white tiles on transparent (Android themed / iOS tinted layer)
+ * @param {'color'|'mono'} [o.theme]  mono = white tiles on transparent (Android themed / iOS tinted layer)
  * @param {'rounded'|'square'|'none'} [o.ground]  rounded tile, full-bleed square (the OS masks it), or transparent
  * @param {number} [o.span]  fraction of the canvas the dots span (big sizes only); 0.62 by default
+ * @param {boolean} [o.dots]  false draws the ground and glow alone (Android's background layer)
  */
-export function waveSVG(size, { theme = 'dark', ground = 'rounded', span = 0.62 } = {}) {
-  const light = theme === 'light';
+export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.62, dots = true } = {}) {
   const mono = theme === 'mono';
-  const C = light ? LIGHT : DARK;
-  const color = (k) => (mono ? WHITE : C[k]);
-  const smallSize = size <= 32;
-  let defs = `<radialGradient id="g" cx="50%" cy="45%" r="70%"><stop offset="0" stop-color="${light ? PAPER : smallSize ? NAVY : NAVY_LIFT}"/><stop offset="1" stop-color="${light ? (smallSize ? PAPER : PAPER_EDGE) : NAVY}"/></radialGradient>`;
-  const bg =
-    ground === 'none' || mono
-      ? ''
-      : `<rect width="${size}" height="${size}"${ground === 'rounded' ? ` rx="${f(size * (size <= 16 ? 0.14 : 0.225))}"` : ''} fill="url(#g)"/>`;
+  const color = (k) => (mono ? WHITE : AURORA[k]);
+  const small = size <= 32;
+  // Ids carry the variant, so two of these SVGs inline on one page don't share gradients.
+  const id = `a${size}${ground}${theme}${dots ? '' : 'b'}`;
+  const rx = ground === 'rounded' ? ` rx="${f(size * (size <= 16 ? 0.22 : 0.225))}"` : '';
+  let defs = '';
+  let bg = '';
+  if (ground !== 'none' && !mono) {
+    defs += `<linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${GROUND[0]}"/><stop offset="1" stop-color="${GROUND[1]}"/></linearGradient>`;
+    bg = `<rect width="${size}" height="${size}"${rx} fill="url(#${id}g)"/>`;
+    // The glow band. A favicon skips it: at 16 or 32px it only muddies the ground.
+    if (!small) {
+      const c = size / 2;
+      defs +=
+        `<radialGradient id="${id}gl"><stop offset="0" stop-color="${GLOW.mid}" stop-opacity="${GLOW.midAlpha}"/>` +
+        `<stop offset="0.5" stop-color="${GLOW.end}" stop-opacity="${GLOW.endAlpha}"/><stop offset="1" stop-color="${GLOW.end}" stop-opacity="0"/></radialGradient>` +
+        `<clipPath id="${id}cp"><rect width="${size}" height="${size}"${rx}/></clipPath>`;
+      // Clipped outside the rotation, so the band's ends meet the tile's own edge.
+      bg += `<g clip-path="url(#${id}cp)"><ellipse cx="${c}" cy="${c}" rx="${f(size * 0.62)}" ry="${f(size * 0.3)}" transform="rotate(-45 ${c} ${c})" fill="url(#${id}gl)"/></g>`;
+    }
+  }
   let body = '';
 
-  if (smallSize) {
-    // Pixel-snapped cores, no halo: a one-pixel glow reads as mud.
-    const tiles = size <= 16 ? WAVE_SMALL : WAVE;
+  if (!dots) {
+    // ground and glow only
+  } else if (small) {
+    // Pixel-snapped cores with air between them, no halo: a one-pixel glow reads as mud.
+    // 16px → 2px dots, 2px gaps; 32px → 4px dots, 3px gaps.
+    const tiles = size <= 20 ? WAVE_SMALL : WAVE;
     const n = Math.sqrt(tiles.length);
-    let g = size <= 16 ? 1 : 2;
-    const margin = size <= 16 ? 2 : 3;
-    let core = Math.min(Math.floor((size - 2 * margin - (n - 1) * g) / n), Math.round(size * 0.3));
-    // Centre on whole pixels: an odd n moves by the core, an even n only by the gap.
-    if ((size - (n * core + (n - 1) * g)) % 2) {
-      if (n % 2) core += size - (n * (core + 1) + (n - 1) * g) >= 2 ? 1 : -1;
-      else g += size - (n * core + (n - 1) * (g + 1)) >= 2 ? 1 : -1;
-    }
-    const off = (size - (n * core + (n - 1) * g)) / 2;
+    const core = Math.max(1, Math.round(size / 8));
+    const g = Math.max(1, Math.round((size * 3) / 32));
+    const off = Math.floor((size - (n * core + (n - 1) * g)) / 2);
     const r = Math.max(0.5, core * 0.26);
     tiles.forEach(([k, a], i) => {
       const x = off + (i % n) * (core + g);
       const y = off + Math.floor(i / n) * (core + g);
-      body += rr(x, y, core, r, color(k), light ? 0.16 + 0.84 * a : 0.3 + 0.7 * a);
+      body += rr(x, y, core, r, color(k), 0.22 + 0.78 * a);
     });
   } else {
     // Big dots: cores 0.101 of the canvas (at the default span), outer square and halo in
-    // proportion, additive on dark.
+    // proportion, additive on the dark ground.
     const n = 4;
     const core = 0.101 * size * (span / 0.62);
     const p = (span * size - core) / (n - 1);
     const outer = Math.min(0.95 * p, 1.5 * core);
     const halo = 3 * core;
     const c0 = (size - span * size) / 2 + core / 2;
-    if (!light && !mono) {
+    if (!mono) {
       for (const k of new Set(WAVE.map((t) => t[0]))) {
-        defs += `<radialGradient id="h${k}"><stop offset="0" stop-color="${C[k]}" stop-opacity="0.34"/><stop offset="0.55" stop-color="${C[k]}" stop-opacity="0.09"/><stop offset="1" stop-color="${C[k]}" stop-opacity="0"/></radialGradient>`;
+        defs += `<radialGradient id="${id}h${k}"><stop offset="0" stop-color="${AURORA[k]}" stop-opacity="0.6"/><stop offset="0.55" stop-color="${AURORA[k]}" stop-opacity="0.17"/><stop offset="1" stop-color="${AURORA[k]}" stop-opacity="0"/></radialGradient>`;
       }
     }
     WAVE.forEach(([k, a], i) => {
       const cx = c0 + (i % n) * p;
       const cy = c0 + Math.floor(i / n) * p;
-      const square = rr(cx - outer / 2, cy - outer / 2, outer, outer * 0.19, color(k), light ? 0.14 : 0.16);
-      const dot = rr(cx - core / 2, cy - core / 2, core, core * 0.26, color(k), light || mono ? 1 : 0.9);
+      const square = rr(cx - outer / 2, cy - outer / 2, outer, outer * 0.19, color(k), 0.16);
+      const dot = rr(cx - core / 2, cy - core / 2, core, core * 0.26, color(k), 1);
       if (mono) body += `<g opacity="${(0.2 + 0.8 * a).toFixed(3)}">${dot}</g>`;
-      else if (light) body += `<g opacity="${(0.1 + 0.9 * a).toFixed(3)}">${square}${dot}</g>`;
       else
         body +=
           `<g style="mix-blend-mode:plus-lighter" opacity="${(0.06 + 0.94 * a).toFixed(3)}">` +
-          `<rect x="${f(cx - halo / 2)}" y="${f(cy - halo / 2)}" width="${f(halo)}" height="${f(halo)}" fill="url(#h${k})"/>` +
+          `<rect x="${f(cx - halo / 2)}" y="${f(cy - halo / 2)}" width="${f(halo)}" height="${f(halo)}" fill="url(#${id}h${k})"/>` +
           `${square}${dot}</g>`;
     });
     body = `<g style="isolation:isolate">${body}</g>`;
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><defs>${defs}</defs>${bg}${body}</svg>`;
+}
+
+// ── Lime ─────────────────────────────────────────────────────────────────────
+// The second look: dsul's lime as the ground and the same Wave in dark ink, crest at full
+// strength. No halo, no glow and no additive blend, so any SVG renderer draws it the same, but
+// build.mjs still rasterises it in Chromium alongside Aurora. Ids start with `l`, Aurora's with
+// `a`, so the two never share a gradient inline on one page.
+const LIME_INK = 'oklch(0.2 0.03 264)';
+const LIME_GROUND = ['oklch(0.93 0.2 122)', 'oklch(0.82 0.21 132)'];
+// Crest, its neighbours, the rest: ink on lime needs a darker floor than light on dark does.
+const LIME_LEVELS = [1, 0.42, 0.16];
+const limeLevel = (n, s) => {
+  const mid = n - 1; // the crest's x + y
+  return s === mid ? LIME_LEVELS[0] : Math.abs(s - mid) === 1 ? LIME_LEVELS[1] : LIME_LEVELS[2];
+};
+
+// Small sizes: one dot per tile, no outer square. 16 and 32 are the browser tab's and get the
+// roomy spacing (smaller dots, wider gaps, wider margins); any other small size gets dots and
+// gaps in proportion to the canvas, shrunk until the grid fits inside the tile.
+function limeSmallTiles(size, { roomy = 1, mono = false } = {}) {
+  if (size < 6) throw new Error(`limeSVG: ${size}px is too small for a 3×3 grid`);
+  const n = size <= 20 ? 3 : 4;
+  let core;
+  let g;
+  if (size === 16) [core, g] = roomy ? [2, 2] : [3, 1];
+  else if (size === 32) [core, g] = roomy ? [4, 3] : [5, 2];
+  else {
+    core = Math.max(1, Math.round(size / 8));
+    g = Math.max(1, Math.round((size * 3) / 32));
+    while (n * core + (n - 1) * g > size - 2 && g > 1) g -= 1;
+    while (n * core + (n - 1) * g > size - 2 && core > 1) core -= 1;
+  }
+  const off = Math.floor((size - (n * core + (n - 1) * g)) / 2);
+  const r = Math.max(0.5, core * 0.26);
+  let body = '';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      body += rr(off + x * (core + g), off + y * (core + g), core, r, mono ? WHITE : LIME_INK, 0.18 + 0.82 * limeLevel(n, x + y));
+    }
+  }
+  return body;
+}
+
+/**
+ * The Lime look, with auroraSVG's options (no `dots`: Lime has no separate background layer).
+ * @param {number} size  canvas px
+ * @param {object} o
+ * @param {'color'|'mono'} [o.theme]  mono = white tiles on transparent (the iOS tinted layer)
+ * @param {'rounded'|'square'|'none'} [o.ground]
+ * @param {number} [o.span]  fraction of the canvas the dots span (big sizes only); 0.62 by default
+ */
+export function limeSVG(size, { theme = 'color', ground = 'rounded', span = 0.62 } = {}) {
+  const mono = theme === 'mono';
+  const id = `l${size}${ground}${theme}`;
+  const rx = ground === 'rounded' ? ` rx="${f(size * (size <= 16 ? 0.22 : 0.225))}"` : '';
+  let defs = '';
+  let bg = '';
+  if (ground !== 'none' && !mono) {
+    defs += `<linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${LIME_GROUND[0]}"/><stop offset="1" stop-color="${LIME_GROUND[1]}"/></linearGradient>`;
+    bg = `<rect width="${size}" height="${size}"${rx} fill="url(#${id}g)"/>`;
+  }
+  let body = '';
+  if (size <= 32) {
+    body = limeSmallTiles(size, { mono, roomy: 0 });
+  } else {
+    // Aurora's big-dot geometry, without the halo: a faint outer square and a solid core.
+    const n = 4;
+    const core = 0.101 * size * (span / 0.62);
+    const p = (span * size - core) / (n - 1);
+    const outer = Math.min(0.95 * p, 1.5 * core);
+    const c0 = (size - span * size) / 2 + core / 2;
+    for (let i = 0; i < n * n; i++) {
+      const a = limeLevel(n, (i % n) + Math.floor(i / n));
+      const cx = c0 + (i % n) * p;
+      const cy = c0 + Math.floor(i / n) * p;
+      const dot = rr(cx - core / 2, cy - core / 2, core, core * 0.26, mono ? WHITE : LIME_INK, 1);
+      if (mono) body += `<g opacity="${(0.2 + 0.8 * a).toFixed(3)}">${dot}</g>`;
+      else body += `<g opacity="${(0.06 + 0.94 * a).toFixed(3)}">${rr(cx - outer / 2, cy - outer / 2, outer, outer * 0.19, LIME_INK, 0.16)}${dot}</g>`;
+    }
+  }
+  // <defs> is always emitted, even empty, so build.mjs can slip a ground in ahead of it.
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><defs>${defs}</defs>${bg}${body}</svg>`;
+}
+
+/**
+ * The Lime browser-tab icon: a rounded lime tile with roomy ink dots, at 16 or 32px (any other
+ * size is limeSVG's small renderer). `roomy: 0` packs the dots bigger and closer.
+ */
+export function limeFavicon(size, { roomy = 1 } = {}) {
+  const id = `lf${size}${roomy}`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${LIME_GROUND[0]}"/><stop offset="1" stop-color="${LIME_GROUND[1]}"/></linearGradient></defs>` +
+    `<rect width="${size}" height="${size}" rx="${f(size * (size <= 16 ? 0.22 : 0.225))}" fill="url(#${id})"/>${limeSmallTiles(size, { roomy })}</svg>`
+  );
 }

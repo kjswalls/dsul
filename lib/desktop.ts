@@ -20,6 +20,15 @@ export interface DsulDesktop {
   armEmailSignIn(): Promise<void>;
   /** True once after a desktop sign-in handoff completed, then false. */
   takeSignInNotice(): Promise<boolean>;
+  /**
+   * Swaps the Dock / taskbar icon to the picked look (lib/app-icons.ts) and
+   * remembers it for the next launch. False when main refused it.
+   *
+   * Optional, and `version` stays 1: a shell built before it simply lacks the
+   * member, and bumping the version would make every older shell's bridge
+   * unreadable, sign-in and quick capture included. Feature-detect it.
+   */
+  setAppIcon?(look: 'aurora' | 'lime'): Promise<boolean>;
 }
 
 /**

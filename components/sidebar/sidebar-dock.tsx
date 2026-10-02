@@ -81,10 +81,12 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
   // already sees the latch and the card never unmounts for a frame.
   if (showCatchUpHost !== hosting) setHosting(showCatchUpHost);
   const bottom = placement === 'bottom';
-  // `capture: 'page-foot'`: the same dock at the foot of the braindump's page,
-  // its capsule and pill drawn as a bare ruled line (app/globals.css,
-  // [data-dock-page]). Same omnibar, so every mode and shortcut still works.
-  const pageFoot = useLayoutDef().slots.capture === 'page-foot';
+  // `capture: 'page-foot'` / `'caret'`: the same dock at the foot of the
+  // braindump's page, its capsule and pill drawn as a bare ruled line or as an
+  // editor's caret (app/globals.css, [data-dock-page]). Same omnibar, so every
+  // mode and shortcut still works.
+  const capture = useLayoutDef().slots.capture;
+  const pageFoot = capture === 'page-foot' || capture === 'caret';
   const wrapperRef = useRef<HTMLDivElement>(null);
   // Relay wakes up while the omnibar input is focused. Driven by the omnibar's
   // own focus (via onFocusChange) rather than the dock's focus-within: the
@@ -185,7 +187,7 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
         // the keyboard: the capsule outlives every row in it and closes over the
         // gap the row leaves. See useDismissWithFocus in components/ai/morning-check.tsx.
         data-dock-surface
-        data-dock-page={pageFoot ? '' : undefined}
+        data-dock-page={pageFoot ? capture : undefined}
         // No overflow-hidden here: the omnibar's suggestion panel grows upward
         // out of the dock, so clipping the capsule would cut it off. The relay
         // clips itself instead (its own rounded overflow-hidden, below).

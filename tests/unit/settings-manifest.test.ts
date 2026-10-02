@@ -296,6 +296,12 @@ describe('settings manifest — persistence contract', () => {
     expect(record?.dbColumn).toBe('show_completed_tasks');
   });
 
+  it('look.appIcon is a permanent id on the app_icon column', () => {
+    // The desktop shell and a second browser learn the pick only from
+    // user_settings.app_icon (migration 056), so the record must name it.
+    expect(settingById('look.appIcon')?.dbColumn).toBe('app_icon');
+  });
+
   it('records that name a DB column use snake_case', () => {
     for (const s of SETTINGS) {
       if (!s.dbColumn) continue;
@@ -900,5 +906,38 @@ describe('the push row in the desktop app', () => {
     // with no push state to give still gets the answer it always got.
     installBridge();
     expect(record.unavailable?.(ctx)).toBeNull();
+  });
+});
+
+describe('settings manifest — layout and its style', () => {
+  // userId null: the writes stop at the store, never reaching saveSettings.
+  const local: SettingCtx = { ...ctx, userId: null };
+  const layout = () => settingById('look.layout')!;
+  const style = () => settingById('look.layoutStyle')!;
+
+  afterEach(async () => {
+    const { useLookStore } = await import('@/lib/look-store');
+    useLookStore.getState().setLayout('classic');
+  });
+
+  it('Layout lists one entry per family, and Style the styles', () => {
+    expect(layout().options?.map((o) => o.value)).toEqual(['classic', 'console', 'notebook', 'notepad', 'writer']);
+    expect(style().options?.map((o) => o.label)).toEqual(['Quiet', 'Markdown', 'Retro']);
+  });
+
+  it('a style is kept when its family is picked again, and dropped for another family', async () => {
+    const { useLookStore } = await import('@/lib/look-store');
+    layout().write('notepad', local);
+    expect(style().unavailable?.(local)).toBeNull();
+    style().write('notepad-retro', local);
+    expect(useLookStore.getState().layout).toBe('notepad-retro');
+    expect(layout().read(local)).toBe('notepad');
+
+    layout().write('notepad', local);
+    expect(useLookStore.getState().layout).toBe('notepad-retro');
+
+    layout().write('console', local);
+    expect(useLookStore.getState().layout).toBe('console');
+    expect(style().unavailable?.(local)).toMatch(/Only Notepad/);
   });
 });

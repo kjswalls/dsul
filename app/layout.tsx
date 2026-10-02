@@ -1,10 +1,11 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
+import { DM_Mono, Geist, IBM_Plex_Mono, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
+import { FaviconSync } from '@/components/providers/favicon-sync'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -30,6 +31,21 @@ const jetbrainsMono = JetBrains_Mono({
   variable: '--font-jetbrains-mono',
   preload: false,
 })
+// Notepad's face (lib/layout-themes.ts, `type: 'plex'`); same terms as the theme faces.
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-plex-mono',
+  preload: false,
+})
+// Writer's face (`type: 'dm'`), Light for the page and Regular for its labels.
+const dmMono = DM_Mono({
+  subsets: ['latin'],
+  weight: ['300', '400', '500'],
+  variable: '--font-dm-mono',
+  preload: false,
+})
 
 export const metadata: Metadata = {
   title: 'dsul — Do Stuff Unlimited',
@@ -42,13 +58,12 @@ export const metadata: Metadata = {
     title: 'dsul',
   },
   icons: {
-    // The Wave mark (scripts/app-icon). Tabs follow the system theme; /favicon.ico is the
-    // dark one for anything that asks for it by name.
+    // The Aurora mark (scripts/app-icon). One dark tile for light and dark tab bars alike.
+    // FaviconSync swaps these hrefs to their /icons/lime/ twins for a Lime pick
+    // or a finished day; the apple-touch icon stays Aurora.
     icon: [
-      { url: '/icons/icon-16.png', sizes: '16x16', type: 'image/png', media: '(prefers-color-scheme: dark)' },
-      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png', media: '(prefers-color-scheme: dark)' },
-      { url: '/icons/icon-16-light.png', sizes: '16x16', type: 'image/png', media: '(prefers-color-scheme: light)' },
-      { url: '/icons/icon-32-light.png', sizes: '32x32', type: 'image/png', media: '(prefers-color-scheme: light)' },
+      { url: '/icons/icon-16.png', sizes: '16x16', type: 'image/png' },
+      { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
       { url: '/icons/icon-192.png', sizes: '192x192', type: 'image/png' },
       { url: '/icons/icon-512.png', sizes: '512x512', type: 'image/png' },
     ],
@@ -79,7 +94,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} font-sans antialiased`}
+        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} ${plexMono.variable} ${dmMono.variable} font-sans antialiased`}
       >
         {/* The macOS desktop app's window-drag band; 0px tall everywhere else. FIRST in
             <body>, always: see .titlebar-drag in globals.css. */}
@@ -140,9 +155,12 @@ export default function RootLayout({
             {/* Route-level, not shell-level, because its whole job is to notice
                 that you have LEFT the shell. See the component. */}
             <ConsoleSlotGuard />
-            {/* Nothing in a browser; the desktop app's quick capture and
-                sign-in notice. See the component. */}
+            {/* Nothing in a browser; the desktop app's quick capture,
+                sign-in notice and Dock icon. See the component. */}
             <DesktopBridge />
+            {/* The tab's icon: the picked one, or Lime once today is done.
+                See the component. */}
+            <FaviconSync />
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement

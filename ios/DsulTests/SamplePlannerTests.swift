@@ -42,14 +42,24 @@ import Testing
         #expect(planner.scheduled.count == count)
     }
 
-    @Test func captureAddsToTheTopAndIgnoresBlanks() {
+    /// The web's `addTask` appends (`order = tasks.length`), and the braindump
+    /// is in stored order, so a capture lands at the end.
+    @Test func captureAddsToTheEndAndIgnoresBlanks() {
         let planner = makePlanner()
         let count = planner.braindump.count
         planner.capture("  New thought ")
         planner.capture("   ")
         #expect(planner.braindump.count == count + 1)
-        #expect(planner.braindump[0].title == "New thought")
-        #expect(planner.braindump[0].day == nil)
+        #expect(planner.braindump.last?.title == "New thought")
+        #expect(planner.braindump.last?.day == nil)
+    }
+
+    @Test func theSampleIsLoadedAndNeverSyncs() {
+        let planner = makePlanner()
+        #expect(!planner.isLive)
+        #expect(planner.hasLoaded)
+        #expect(planner.sync == nil)
+        #expect(planner.userId == nil)
     }
 
     @Test func stressFillsTheDayToFortyBlocks() {

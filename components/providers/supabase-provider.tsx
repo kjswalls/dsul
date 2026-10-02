@@ -23,6 +23,7 @@ import {
   lightLookDef,
 } from '@/lib/theme-looks';
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
+import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
@@ -181,6 +182,22 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     }
   }, [layout]);
 
+  // The app icon's localStorage mirror. No DOM stamp here either: FaviconSync
+  // owns the tab's links. Written only once the pick is KNOWN (lib/look-store.ts)
+  // and kept even when it is Aurora, because an explicit Aurora is what lets
+  // the desktop bridge tell the shell so on the next load before the server
+  // answers; the untouched fallback is never written.
+  const appIcon = useLookStore((s) => s.appIcon);
+  const appIconKnown = useLookStore((s) => s.appIconKnown);
+  useEffect(() => {
+    if (!appIconKnown) return;
+    try {
+      window.localStorage.setItem(APP_ICON_STORAGE_KEY, appIcon);
+    } catch {
+      // Private mode — the pick still holds for this session.
+    }
+  }, [appIcon, appIconKnown]);
+
   useEffect(() => {
     const supabase = createClient();
 
@@ -320,6 +337,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         if (isLayoutTheme(settings.layout)) {
           useLookStore.getState().setLayout(settings.layout);
         }
+      }
+      // Outside the reset on purpose: ?reset-theme recovers a page made
+      // unreadable, and an icon cannot do that, so the pick still applies.
+      // Same null rule as the rest: never chosen leaves this device's pick.
+      if (isAppIcon(settings.app_icon)) {
+        useLookStore.getState().setAppIcon(settings.app_icon);
       }
     };
 
