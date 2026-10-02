@@ -25,7 +25,7 @@ vi.mock('@/lib/planner-store', () => ({
 }));
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
-import { askFromCommandBar, generalThreadId, resetGeneralThread } from '@/lib/open-chat';
+import { askFromCommandBar } from '@/lib/open-chat';
 import {
   clearChatState,
   configureConversations,
@@ -69,7 +69,6 @@ beforeEach(() => {
   configureConversations({ api: api.api, transport: tx.transport });
   unseed = seedAI(CONNECTED_MODEL);
   clearChatState();
-  resetGeneralThread();
   planner.items = [DENTIST];
   useSidebarStore.setState({ askOpen: true });
   useMobileNavStore.getState().setActiveTab('today');
@@ -272,12 +271,40 @@ describe('otherwise', () => {
   });
 });
 
-describe('the phone (until C5)', () => {
-  it('opens the chat tab and continues the conversation it shows', async () => {
+describe('the phone (C5): the same routes, on the Ask tab\'s stack', () => {
+  const phoneTop = () => rail().stacks.phone.at(-1);
+
+  it('from Today: opens the Ask tab and asks in a NEW conversation, pushed, its box asked for', async () => {
+    // A conversation left on the stack while the tab was away is not continued.
+    rail().push('phone', { kind: 'conversation', id: 'old' });
     askFromCommandBar('how is my week?', true);
     expect(useMobileNavStore.getState().activeTab).toBe('chat');
     await settle();
-    expect(tx.inputs[0]).toMatchObject({ conversationId: generalThreadId(), message: 'how is my week?' });
-    expect(rail().stacks).toEqual({ desktop: [], phone: [] });
+    const view = phoneTop() as Extract<AskView, { kind: 'conversation' }>;
+    expect(view.kind).toBe('conversation');
+    expect(view.id).not.toBe('old');
+    expect(tx.inputs[0]).toMatchObject({ conversationId: view.id, message: 'how is my week?' });
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'conversation', id: view.id } });
+    expect(rail().stacks.desktop).toEqual([]);
+    // Nothing of the desktop's: no drawer read, no rail opened.
+    expect(calls).toEqual([]);
+  });
+
+  it('an item pushed over Ask, on screen: a new conversation that goes back to it', async () => {
+    useMobileNavStore.getState().setActiveTab('chat');
+    rail().push('phone', { kind: 'item', itemId: 'i1' });
+    askFromCommandBar('what first?', true);
+    await settle();
+    expect(phoneTop()).toMatchObject({ kind: 'conversation', returnTo: { itemId: 'i1' } });
+    expect(tx.inputs[0]).toMatchObject({ message: 'what first?' });
+  });
+
+  it('a conversation on screen: continues it', async () => {
+    useMobileNavStore.getState().setActiveTab('chat');
+    rail().push('phone', { kind: 'conversation', id: 'c1' });
+    askFromCommandBar('and then?', true);
+    await settle();
+    expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id: 'c1' }]);
+    expect(tx.inputs[0]).toMatchObject({ conversationId: 'c1', message: 'and then?' });
   });
 });

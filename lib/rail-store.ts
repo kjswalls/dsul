@@ -2,12 +2,12 @@ import { useSyncExternalStore } from 'react';
 import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useProposalStore } from './proposal-store';
-import { openEditFor, useUIStore } from './ui-store';
+import { openEditFor, setEditItemInterceptor, useUIStore } from './ui-store';
 import { useSidebarStore } from './sidebar-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { useViewStore } from './view-store';
-import type { Task } from './planner-types';
+import type { Item, Task } from './planner-types';
 
 /**
  * rail-store.ts — what Ask shows under the item: a stack of views per surface,
@@ -30,6 +30,10 @@ import type { Task } from './planner-types';
  * is only the item host, exactly today's panel. At or below 1180px Ask is an
  * overlay, and an overlay never comes up on its own: only an explicit summon
  * shows it there, never a persisted `askOpen` at boot.
+ *
+ * THE PHONE. Its Ask tab shows `stacks.phone`, the same views, and there an
+ * item is a view too (`{kind:'item'}`): while the tab is mounted every
+ * `openEditFor` pushes over Ask instead of opening the drawer.
  *
  * Client-safe (tests/unit/ai-server-boundary.test.ts).
  */
@@ -168,6 +172,14 @@ interface RailState {
    * and acting on rows nobody can see.
    */
   covers: boolean;
+  /**
+   * How many phone Ask tabs are mounted (components/mobile/ask-tab.tsx): above
+   * zero, an item opened anywhere is pushed over Ask rather than opening the
+   * drawer (the openEditFor interceptor at the foot of this file, installed by
+   * the first host and removed by the last). A counter, not a flag, so
+   * StrictMode's mount, unmount, mount leaves it right.
+   */
+  phoneAskHosts: number;
 
   /** Push by the level rule. */
   push(surface: AskSurface, view: AskView): void;
@@ -213,6 +225,8 @@ interface RailState {
   /** `instant`: the change lands without the braindump's transition (see reserveInstant). */
   setReserve(px: number, o?: { instant?: boolean }): void;
   setCovers(covers: boolean): void;
+  /** The phone's Ask tab mounting: counts it, installs the item interceptor, and returns its own release (once). */
+  hostPhoneAsk(): () => void;
   /** Sign-out: both stacks home, not summoned, no focus or reveal request, no drafts. */
   reset(): void;
 }
@@ -274,6 +288,7 @@ export const useRailStore = create<RailState>()((set, get) => {
     reservePx: 0,
     reserveInstant: false,
     covers: false,
+    phoneAskHosts: 0,
 
     push: (surface, view) => {
       const { stacks } = get();
@@ -419,9 +434,22 @@ export const useRailStore = create<RailState>()((set, get) => {
       if (get().covers !== covers) set({ covers });
     },
 
+    hostPhoneAsk: () => {
+      set((s) => ({ phoneAskHosts: s.phoneAskHosts + 1 }));
+      setEditItemInterceptor(pushItemOverAsk);
+      let released = false;
+      return () => {
+        if (released) return;
+        released = true;
+        set((s) => ({ phoneAskHosts: Math.max(0, s.phoneAskHosts - 1) }));
+        if (get().phoneAskHosts === 0) setEditItemInterceptor(null);
+      };
+    },
+
     // `reservePx` (and its `reserveInstant`), like `covers`, is layout, not the
     // account's: the column that published it is still on screen after a
-    // sign-out.
+    // sign-out. So is `phoneAskHosts`: the tab that counted itself is still
+    // mounted.
     reset: () => {
       focusBeforeSummon = null;
       set({ stacks: EMPTY_STACKS, summoned: false, pendingFocus: null, pendingReveal: null, drafts: {}, lastNav: null });
@@ -582,6 +610,44 @@ function subscribeOverlays(onChange: () => void): () => void {
 /** PANEL_OVERLAY_QUERY as a hook, for a reader outside DesktopShell (the docks). False on the server. */
 export function usePanelOverlays(): boolean {
   return useSyncExternalStore(subscribeOverlays, overlaysNow, () => false);
+}
+
+// ── The phone ────────────────────────────────────────────────────────────────
+
+/**
+ * Whether arriving on the phone's Ask tab puts the caret in the dock's box:
+ * only where typing is the point, a conversation (a new chat's draft
+ * included) or an item. Ask home and History are full of tap targets, and on
+ * Android a deferred programmatic focus raises the keyboard over them. The
+ * mode sheet's focus return asks the same question (mode-switcher-sheet.tsx).
+ */
+export function phoneArrivalFocuses(stack: readonly AskView[]): boolean {
+  const top = stack.at(-1);
+  return top?.kind === 'conversation' || top?.kind === 'item';
+}
+
+/** The Ask control that holds focus, by its `data-ask-focus` key, if one does. */
+function askFocusKey(): string | undefined {
+  const el = activeElement();
+  return el?.closest<HTMLElement>('[data-ask-focus]')?.dataset.askFocus || undefined;
+}
+
+/**
+ * An item opened while the phone's Ask tab is mounted (a Needs-you title, an
+ * activity row, Back to the item a `?` was asked over, or any other opener)
+ * is pushed over Ask, `{kind:'item'}`, rather than opening the drawer; Today
+ * and Braindump, which never mount the tab, keep the drawer exactly as it is.
+ * The control that opened it is kept as its `returnFocus`, as every Ask push
+ * keeps its opener. Installed in ui-store's slot while a tab is hosted
+ * (`hostPhoneAsk`), not when this module loads: nothing outside the phone's
+ * Ask tab ever runs through it.
+ */
+function pushItemOverAsk(item: Item): boolean {
+  const rail = useRailStore.getState();
+  if (rail.phoneAskHosts <= 0) return false;
+  const opener = askFocusKey();
+  rail.push('phone', opener ? { kind: 'item', itemId: item.id, returnFocus: opener } : { kind: 'item', itemId: item.id });
+  return true;
 }
 
 // ── Labels ───────────────────────────────────────────────────────────────────

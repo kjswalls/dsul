@@ -4,7 +4,7 @@ import { createContext, useContext, useEffect, useRef } from 'react';
 import { ChatComposer } from '@/components/ai/chat-composer';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { chatAssistantLabel } from '@/lib/chat-utils';
-import { bindingKey, useRailStore, type ComposerBinding } from '@/lib/rail-store';
+import { bindingKey, useRailStore, type AskSurface, type ComposerBinding } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -17,10 +17,10 @@ import { cn } from '@/lib/utils';
 export const ComposerAwakeContext = createContext(true);
 
 /**
- * The box under every Ask view and the item's conversation: ChatComposer, bound
- * to where its text goes (lib/open-chat.ts `sendFrom` decides what a binding
- * means), with three things every rail composer needs and the phone's dock bar
- * does not:
+ * The box under every Ask view and the item's conversation, and the phone's
+ * dock bar on the Ask tab: ChatComposer, bound to where its text goes
+ * (lib/open-chat.ts `sendFrom` decides what a binding means), with three
+ * things every Ask composer needs:
  *
  *  - ITS TEXT LIVES IN rail-store (`drafts`, by binding key), so a half-typed
  *    message survives the view unmounting: a push, a Back, an item opened over
@@ -39,16 +39,29 @@ export const ComposerAwakeContext = createContext(true);
  * Enter-to-submit onto the whole aside, and the composer leaves an IME's
  * commit Enter alone on purpose (chat-composer.tsx), so without it that Enter
  * would save and close the item.
+ *
+ * The phone's dock (`variant="dock"`, `surface="phone"`) sets the static
+ * label itself (`label={false}`): it sits under the bar, clear of the mode
+ * card beside it.
  */
 export function BoundComposer({
   binding,
   className,
   placeholder,
+  variant = 'panel',
+  surface,
+  label = true,
 }: {
   binding: ComposerBinding;
   className?: string;
   /** The box's own wording, where the default would mislead ("Reply…" under a conversation). */
   placeholder?: string;
+  /** ChatComposer's shape: the rail's tray, or the phone dock's pill. */
+  variant?: 'panel' | 'dock';
+  /** The Ask stack a send that starts a conversation pushes it on. Absent: the desktop rail's. */
+  surface?: AskSurface;
+  /** The static model label under the box (AnswererLabel). */
+  label?: boolean;
 }) {
   const key = bindingKey(binding);
   const text = useRailStore((s) => s.drafts[key] ?? '');
@@ -87,14 +100,15 @@ export function BoundComposer({
       }}
     >
       <ChatComposer
-        variant="panel"
+        variant={variant}
         binding={binding}
+        surface={surface}
         value={text}
         onValueChange={(next) => useRailStore.getState().setDraft(key, next)}
         awake={awake}
         placeholder={placeholder}
       />
-      <AnswererLabel className="px-2" />
+      {label && <AnswererLabel className="px-2" />}
     </div>
   );
 }

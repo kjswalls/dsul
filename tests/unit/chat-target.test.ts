@@ -6,9 +6,9 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * It used to wipe every transcript (the global thread and every item thread,
  * in memory and on disk). Conversations are the account's now, kept until the
  * user's own Delete, so `chooseChatTarget` (lib/chat-target.ts) only sets the
- * choice, drops the cached plugin transport, takes both Ask stacks home and
- * starts a fresh general conversation: the next ask is a new conversation with
- * the new answerer, and the old one is still there to continue.
+ * choice, drops the cached plugin transport and takes both Ask stacks home:
+ * the next ask is a new conversation with the new answerer, and the old one is
+ * still there to continue.
  *
  * It stays the ONE road: rehydrating the stored choice, a raw setState and
  * clearUserScopedState never act at all (they used to wipe transcripts nobody
@@ -34,7 +34,6 @@ vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }
 import { chatTransport, resetPluginTransport } from '@/lib/chat-transport';
 import { chooseChatTarget } from '@/lib/chat-target';
 import { clearChatState, configureConversations, conversationsSettled, useConversationsStore } from '@/lib/conversations-store';
-import { generalThreadId } from '@/lib/open-chat';
 import { useRailStore } from '@/lib/rail-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { seedAI, CONNECTED_MODEL, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
@@ -62,10 +61,7 @@ afterEach(async () => {
   configureConversations({ transport: chatTransport });
 });
 
-/**
- * Two saved conversations, one shown on each surface's stack, and the general
- * conversation's id read once (so a re-mint is visible).
- */
+/** Two saved conversations, one shown on each surface's stack. */
 async function seedConversations() {
   unseed = seedAI(CONNECTED_MODEL);
   const a = store().newDraft();
@@ -76,8 +72,7 @@ async function seedConversations() {
   rail().push('desktop', { kind: 'history' });
   rail().push('desktop', { kind: 'conversation', id: a });
   rail().push('phone', { kind: 'conversation', id: b });
-  const general = generalThreadId();
-  return { a, b, general };
+  return { a, b };
 }
 
 function expectKept(a: string, b: string) {
@@ -90,7 +85,7 @@ function expectKept(a: string, b: string) {
 
 describe('roads that must NOT act', () => {
   it('(a) a rehydrate that brings back a different stored target', async () => {
-    const { a, b, general } = await seedConversations();
+    const { a, b } = await seedConversations();
     localStorage.setItem(
       'dsul-ai-settings',
       JSON.stringify({
@@ -105,25 +100,23 @@ describe('roads that must NOT act', () => {
     expectKept(a, b);
     expect(rail().stacks.desktop).toHaveLength(2);
     expect(rail().stacks.phone).toHaveLength(1);
-    expect(generalThreadId()).toBe(general);
   });
 
   it('(b) a raw setState of the target', async () => {
-    const { a, b, general } = await seedConversations();
+    const { a, b } = await seedConversations();
     useAISettingsStore.setState({ chatTarget: 'none' });
     expectKept(a, b);
     expect(rail().stacks.desktop).toHaveLength(2);
-    expect(generalThreadId()).toBe(general);
+    expect(rail().stacks.phone).toHaveLength(1);
   });
 
   it('(b) clearUserScopedState', async () => {
-    const { a, b, general } = await seedConversations();
+    const { a, b } = await seedConversations();
     useAISettingsStore.setState({ chatTarget: 'openclaw' });
     useAISettingsStore.getState().clearUserScopedState();
     expect(useAISettingsStore.getState().chatTarget).toBe('model');
     expectKept(a, b);
     expect(rail().stacks.phone).toHaveLength(1);
-    expect(generalThreadId()).toBe(general);
   });
 });
 
@@ -154,14 +147,10 @@ describe('chooseChatTarget', () => {
     expectKept(a, b);
   });
 
-  it('(c) takes both Ask stacks home and re-mints the general conversation', async () => {
-    const { general } = await seedConversations();
+  it('(c) takes both Ask stacks home, so the next ask is a new conversation', async () => {
+    await seedConversations();
     chooseChatTarget('openclaw');
     expect(rail().stacks).toEqual({ desktop: [], phone: [] });
-    const next = generalThreadId();
-    expect(next).not.toBe(general);
-    // A fresh id with no row: its first send creates it.
-    expect(store().threads[next]).toBeUndefined();
   });
 
   it('(c) resets the plugin transport cache', async () => {
@@ -183,7 +172,7 @@ describe('chooseChatTarget', () => {
     expect(store().threads[id]?.messages.map((m) => m.content)).toEqual(['one', 'ok', 'two', 'ok', 'three', 'ok']);
   });
 
-  it('(d) the same value is a no-op: stacks, general conversation and cache kept', async () => {
+  it('(d) the same value is a no-op: stacks and cache kept', async () => {
     unseed = seedAI(OPENCLAW_PLUGIN);
     configureConversations({ transport: chatTransport });
     const chatUrlReads = stubPlugin();
@@ -192,11 +181,11 @@ describe('chooseChatTarget', () => {
     expect(chatUrlReads()).toBe(1);
 
     rail().push('desktop', { kind: 'conversation', id });
-    const general = generalThreadId();
+    rail().push('phone', { kind: 'conversation', id });
     chooseChatTarget('openclaw');
 
     expect(rail().stacks.desktop).toEqual([{ kind: 'conversation', id }]);
-    expect(generalThreadId()).toBe(general);
+    expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id }]);
     await store().send(id, 'two');
     expect(chatUrlReads()).toBe(1);
     expect(api.removes).toEqual([]);

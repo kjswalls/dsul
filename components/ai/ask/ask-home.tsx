@@ -88,8 +88,12 @@ function useScrollsBeneath(ref: RefObject<HTMLElement | null>): boolean {
  * beneath it, so a fifth Needs-you card cut off at the chips reads as "scroll
  * for more". A rule, never a mask or an opacity fade: either would dim a lime
  * mark scrolling under it (CLAUDE.md, the lime accent).
+ *
+ * `variant="mobile"` is the phone's Ask tab: the same home, pushing on the
+ * phone's stack, with no box of its own (the dock's bar is the tab's box).
  */
-export function AskHome() {
+export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
+  const phone = variant === 'mobile';
   const items = usePlannerStore((s) => s.items);
   const summaries = useConversationsStore((s) => s.summaries);
   const list = useConversationsStore((s) => s.list);
@@ -152,7 +156,7 @@ export function AskHome() {
           )}
         </div>
         <NeedsYou items={waiting} />
-        <AIActivity rows={activity} />
+        <AIActivity rows={activity} surface={phone ? 'phone' : 'desktop'} />
       </div>
       <div
         data-ask-foot=""
@@ -166,10 +170,10 @@ export function AskHome() {
       >
         <OpenerChips
           openers={openers}
-          onPick={(opener) => askNew(opener.prompt, { title: opener.label, isMobile: false })}
+          onPick={(opener) => askNew(opener.prompt, { title: opener.label, isMobile: phone })}
           className="px-2"
         />
-        <BoundComposer binding={HOME} />
+        {!phone && <BoundComposer binding={HOME} />}
       </div>
     </div>
   );

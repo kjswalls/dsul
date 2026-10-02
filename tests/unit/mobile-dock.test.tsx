@@ -55,7 +55,7 @@ import {
   conversationsSettled,
   useConversationsStore,
 } from '@/lib/conversations-store';
-import { generalThreadId } from '@/lib/open-chat';
+import { useRailStore } from '@/lib/rail-store';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
 
@@ -107,6 +107,7 @@ afterAll(() => {
 let unseed: () => void = () => {};
 beforeEach(() => {
   useMobileNavStore.setState({ activeTab: 'today' });
+  useRailStore.getState().reset();
   unseed = seedAI(CONNECTED_MODEL);
   document.documentElement.style.removeProperty('--toast-bottom');
 });
@@ -124,21 +125,22 @@ describe('the mode card', () => {
     expect(card()).toHaveAttribute('aria-label', 'Surface: Today. Change surface.');
   });
 
-  it('follows the active surface, and names chat after whoever answers', () => {
+  it('follows the active surface, and calls the chat surface Ask', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
     expect(card()).toHaveAttribute('data-surface', 'chat');
-    expect(card()).toHaveAttribute('aria-label', 'Surface: AI. Change surface.');
+    expect(card()).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
   });
 
-  it('calls the chat surface OpenClaw when OpenClaw is the one answering', () => {
+  it('calls it Ask whoever answers: the label under the bar names the answerer (D11)', () => {
     unseed();
     unseed = seedAI(OPENCLAW_PLUGIN);
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
-    expect(card()).toHaveAttribute('aria-label', 'Surface: OpenClaw. Change surface.');
+    expect(card()).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('OpenClaw · kirby-1');
   });
 
   it('never says it is on a chat tab that cannot answer', () => {
@@ -177,7 +179,10 @@ describe('the switcher sheet', () => {
     for (const tab of ['braindump', 'today', 'chat']) {
       expect(document.querySelector(`[data-tour="tab-${tab}"]`)).not.toBeNull();
     }
-    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('AI');
+    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('Ask');
+    expect(screen.getByTestId('mode-switcher-sheet')).toHaveTextContent(
+      'Switch between the Braindump, Today and Ask surfaces.'
+    );
   });
 
   it('lists only the surfaces that exist when nothing can answer', async () => {
@@ -275,7 +280,7 @@ describe('the omnibar in the dock', () => {
     expect(document.querySelector('[data-dock-surface]')?.className).not.toContain('w-fit');
   });
 
-  it('names the field after whoever is answering', () => {
+  it('names the field after whoever is answering, and says who that is under it', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
@@ -283,6 +288,12 @@ describe('the omnibar in the dock', () => {
       'placeholder',
       'Ask anything…'
     );
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+  });
+
+  it('shows no answerer label off the Ask tab', () => {
+    render(<MobileBottomDock />);
+    expect(screen.queryByTestId('answerer-label')).toBeNull();
   });
 });
 
@@ -314,9 +325,11 @@ describe('the chat composer in the dock', () => {
 
     fireEvent.keyDown(input(), { key: 'Enter' });
     await act(() => flush());
-    // Into the chat tab's one (general) conversation.
+    // At Ask home: a new conversation, pushed on the phone's stack.
     expect(transport.inputs.map((i) => i.message)).toEqual(['plan my afternoon']);
-    expect(transport.inputs[0].conversationId).toBe(generalThreadId());
+    const top = useRailStore.getState().stacks.phone.at(-1);
+    expect(top).toEqual({ kind: 'conversation', id: transport.inputs[0].conversationId });
+    expect(useRailStore.getState().stacks.desktop).toEqual([]);
     expect(input().value).toBe('');
   });
 
@@ -335,7 +348,9 @@ describe('the chat composer in the dock', () => {
     // A reply still arriving in the conversation the dock is bound to.
     const reply = hangs();
     transport.next = reply.run;
-    void useConversationsStore.getState().send(generalThreadId(), 'earlier');
+    const id = useConversationsStore.getState().newDraft();
+    useRailStore.getState().push('phone', { kind: 'conversation', id });
+    void useConversationsStore.getState().send(id, 'earlier');
     render(<MobileBottomDock />);
 
     fireEvent.change(input(), { target: { value: '   ' } });
@@ -357,6 +372,51 @@ describe('the chat composer in the dock', () => {
 
     fireEvent.change(input(), { target: { value: 'hi' } });
     expect(screen.getByRole('button', { name: 'Send' })).toBeInTheDocument();
+  });
+
+  it("follows the top of the phone's stack: the binding, its wording, and its own half-typed text", () => {
+    const rail = () => useRailStore.getState();
+    render(<MobileBottomDock />);
+    fireEvent.change(input(), { target: { value: 'for home' } });
+
+    const id = useConversationsStore.getState().newDraft();
+    act(() => rail().push('phone', { kind: 'conversation', id }));
+    // A new chat has nothing to reply to yet.
+    expect(input()).toHaveAttribute('placeholder', 'Ask anything…');
+    expect(input().value).toBe('');
+    fireEvent.change(input(), { target: { value: 'for the chat' } });
+
+    act(() => rail().push('phone', { kind: 'item', itemId: 'i1' }));
+    expect(input()).toHaveAttribute('placeholder', 'Ask about this item…');
+    expect(input().value).toBe('');
+
+    act(() => rail().back('phone'));
+    expect(input().value).toBe('for the chat');
+    act(() => rail().back('phone'));
+    expect(input().value).toBe('for home');
+    expect(input()).toHaveAttribute('placeholder', 'Ask anything…');
+  });
+
+  it('keeps every draft through a trip to Today, which swaps the bar for the omnibar', () => {
+    const id = useConversationsStore.getState().newDraft();
+    useRailStore.getState().push('phone', { kind: 'conversation', id });
+    render(<MobileBottomDock />);
+    fireEvent.change(input(), { target: { value: 'half a thought' } });
+
+    act(() => useMobileNavStore.setState({ activeTab: 'today' }));
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+    act(() => useMobileNavStore.setState({ activeTab: 'chat' }));
+    expect(input().value).toBe('half a thought');
+    expect(useRailStore.getState().stacks.phone).toEqual([{ kind: 'conversation', id }]);
+  });
+
+  it("says Reply… under a conversation that has something to reply to", async () => {
+    const id = useConversationsStore.getState().newDraft();
+    await useConversationsStore.getState().send(id, 'earlier');
+    useRailStore.getState().push('phone', { kind: 'conversation', id });
+    render(<MobileBottomDock />);
+    expect(input()).toHaveAttribute('placeholder', 'Reply…');
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
   });
 });
 

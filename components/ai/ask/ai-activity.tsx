@@ -7,6 +7,7 @@ import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
 import type { ActivityRow } from '@/lib/ask-home';
 import { clockTime } from '@/lib/format-chat-timestamp';
 import { openConversation, openItemFromAsk } from '@/lib/open-chat';
+import type { AskSurface } from '@/lib/rail-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { cn } from '@/lib/utils';
 
@@ -32,7 +33,7 @@ type AgentRowState = Extract<ActivityRow, { kind: 'agent' }>['state'];
  * right-hand side already words ("back", "Gone quiet", "Couldn't finish") is
  * said once, by that prefix.
  */
-export function AIActivity({ rows }: { rows: readonly ActivityRow[] }) {
+export function AIActivity({ rows, surface = 'desktop' }: { rows: readonly ActivityRow[]; surface?: AskSurface }) {
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const headingId = useId();
@@ -61,7 +62,7 @@ export function AIActivity({ rows }: { rows: readonly ActivityRow[] }) {
               <ActivityButton
                 focusKey={`conv:${row.conversationId}`}
                 onClick={() =>
-                  openConversation(row.conversationId, false, { returnFocus: `conv:${row.conversationId}` })
+                  openConversation(row.conversationId, surface === 'phone', { returnFocus: `conv:${row.conversationId}` })
                 }
                 // Lucide's, as History draws them: a text "☐" fell back to
                 // each layout's face, about 6px in the monospace ones.

@@ -23,6 +23,10 @@ import {
  * be testing the mock. So is the conversation: the real conversations store,
  * with its HTTP API and its transport faked (configureConversations), and the
  * transcript seeded as a loaded thread.
+ *
+ * C5 retired the old chat panel (chat-conversation.tsx) with the phone's
+ * general conversation, so these run against the view both shells now show a
+ * conversation in: Ask's ConversationView over ChatTranscript.
  */
 
 /** OpenClaw through the user's own gateway: chats AND proposes. */
@@ -64,6 +68,15 @@ vi.mock('@/lib/proposal-store', () => {
     // this out with no spinner visible anywhere on screen.
     lastRequest: { surface: proposalSurface },
     dismiss: vi.fn(),
+    // What a ProposalCard mount reads before its idle return.
+    proposal: null,
+    error: null,
+    emptyMessage: null,
+    refused: null,
+    accept: vi.fn(),
+    retry: vi.fn(),
+    selection: { proposalId: null, dropped: new Set<number>() },
+    toggleDropped: vi.fn(),
   });
   return {
     useProposalStore: Object.assign((sel: (s: unknown) => unknown) => sel(state()), { getState: state }),
@@ -81,7 +94,7 @@ vi.mock('react-markdown', () => ({
 }));
 vi.mock('remark-gfm', () => ({ default: () => {} }));
 
-import { ChatConversation } from '@/components/ai/chat-conversation';
+import { ConversationView } from '@/components/ai/ask/conversation-view';
 import {
   clearChatState,
   configureConversations,
@@ -92,6 +105,7 @@ import {
 import { chatTransport } from '@/lib/chat-transport';
 import { chatErrorCopy } from '@/lib/chat-errors';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
+import { useRailStore } from '@/lib/rail-store';
 import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
 
 const PLAN_BUTTON = 'chat-make-plan';
@@ -165,20 +179,20 @@ afterEach(async () => {
   configureConversations({ transport: chatTransport });
 });
 
-const renderChat = () => render(<ChatConversation variant="desktop" conversationId={CONV} />);
+const renderChat = () => render(<ConversationView id={CONV} />);
 
 describe('conversation openers', () => {
-  it('offers something to say when the transcript is empty', () => {
+  it('offers something to say when the transcript is empty', async () => {
     renderChat();
-    const openers = screen.getByTestId('chat-openers');
+    const openers = await screen.findByTestId('chat-openers');
     expect(openers.querySelectorAll('button').length).toBeGreaterThan(0);
   });
 
-  it('sends the full prompt, not the short chip label', async () => {
-    // The chip has to fit a narrow sidebar; the prompt does not, and the
+  it('sends the full prompt, not the short chip label, as a new conversation titled with the label', async () => {
+    // The chip has to fit a narrow column; the prompt does not, and the
     // difference is most of what makes the answer good.
     renderChat();
-    const first = screen.getByTestId('chat-openers').querySelector('button')!;
+    const first = (await screen.findByTestId('chat-openers')).querySelector('button')!;
     const label = first.textContent ?? '';
     fireEvent.click(first);
     await flush();
@@ -186,9 +200,13 @@ describe('conversation openers', () => {
     expect(transport.inputs).toHaveLength(1);
     const sent = transport.inputs[0].message;
     expect(sent.length).toBeGreaterThan(label.length);
-    // Into THIS conversation, as its first turn.
-    expect(transport.inputs[0].conversationId).toBe(CONV);
-    expect(useConversationsStore.getState().threads[CONV]?.messages[0]?.content).toBe(sent);
+    // Always a fresh conversation (askNew), pushed on the rail and named by
+    // the chip, never by its long prompt.
+    const id = transport.inputs[0].conversationId;
+    expect(id).not.toBe(CONV);
+    expect(useRailStore.getState().stacks.desktop.at(-1)).toEqual({ kind: 'conversation', id });
+    expect(useConversationsStore.getState().threads[id]?.draftTitle).toBe(label);
+    expect(useConversationsStore.getState().threads[id]?.messages[0]?.content).toBe(sent);
   });
 
   it('disappears once there is a conversation to look at', () => {
@@ -197,34 +215,41 @@ describe('conversation openers', () => {
     expect(screen.queryByTestId('chat-openers')).toBeNull();
   });
 
-  it('stays hidden when nothing can answer', () => {
-    // An opener whose answer leads nowhere is worse than a blank box.
-    seed(NOTHING_CONNECTED);
+  it('sends nothing when nothing can answer', async () => {
+    // The view mounts only behind the gate (the rail and the Ask tab hide while
+    // nothing answers: rail-desktop and ai-gating-mobile-item tests), so this
+    // is the floor under that: a chip on screen as the gate closes leads
+    // nowhere rather than into a conversation nobody can answer.
     renderChat();
-    expect(screen.queryByTestId('chat-openers')).toBeNull();
+    const first = (await screen.findByTestId('chat-openers')).querySelector('button')!;
+    seed(NOTHING_CONNECTED);
+    fireEvent.click(first);
+    await flush();
+    expect(transport.inputs).toHaveLength(0);
+    expect(useRailStore.getState().stacks.desktop).toEqual([]);
   });
 
-  it('shows for OpenClaw plugin chat, which can answer but not propose', () => {
+  it('shows for OpenClaw plugin chat, which can answer but not propose', async () => {
     // An opener is a plain send(), so it needs chat, not a proposal transport.
     // Gating it on proposing stripped the openers from plugin users.
     seed(OPENCLAW_PLUGIN);
     renderChat();
-    expect(screen.getByTestId('chat-openers').querySelectorAll('button').length).toBeGreaterThan(0);
+    expect((await screen.findByTestId('chat-openers')).querySelectorAll('button').length).toBeGreaterThan(0);
   });
 });
 
 describe('the empty state', () => {
   it('invites a question when a model answers, and never asks for a key', () => {
     renderChat();
-    expect(screen.getByText('Ask anything')).toBeInTheDocument();
+    expect(screen.getByText('How can I help?')).toBeInTheDocument();
     expect(screen.queryByText(/API key/i)).toBeNull();
     expect(screen.getByPlaceholderText('Ask anything…')).toBeInTheDocument();
   });
 
-  it('names OpenClaw when OpenClaw answers', () => {
+  it('names OpenClaw in the box when OpenClaw answers', () => {
     seed(OPENCLAW_PLUGIN);
     renderChat();
-    expect(screen.getByText('OpenClaw is ready')).toBeInTheDocument();
+    expect(screen.getByText('How can I help?')).toBeInTheDocument();
     expect(screen.getByPlaceholderText('Message OpenClaw…')).toBeInTheDocument();
   });
 });
@@ -423,7 +448,7 @@ describe('interrupting a reply', () => {
   it('offers a stop button while a reply is streaming, and it stops THIS conversation', async () => {
     const turn = hangs('partial');
     transport.next = turn.run;
-    setThread([]);
+    // A new chat: its box is the one the first turn is sent from.
     renderChat();
     const input = screen.getByPlaceholderText('Ask anything…');
     fireEvent.change(input, { target: { value: 'a' } });

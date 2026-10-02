@@ -7,13 +7,13 @@ import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown'
 import { MobileHeader } from '@/components/mobile/mobile-header';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
-import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
+import { AskTab } from '@/components/mobile/ask-tab';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { useMobileNavStore, mobileTabOrder, shownMobileTab } from '@/lib/mobile-nav-store';
-import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useRailStore } from '@/lib/rail-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
 
 /**
@@ -59,11 +59,11 @@ function useKeyboardSafeHeight(): number | null {
  * active surface, and the bottom dock. The three-tab bar is gone — the dock's
  * mode card shows which surface you are on and opens the switcher sheet
  * (components/mobile/mode-switcher-sheet.tsx) to leave it; a swipe still walks
- * mobileTabOrder, Braindump · Today · Chat, and Chat only while something can
- * answer (lib/ai-registry.ts). Surfaces reuse the desktop
- * primitives (shared Braindump, DayBuckets/DayList via MobileViewRouter,
- * ChatConversation) rather than the old bespoke panels. Rendered under the
- * shell's single DndContext, so items stay draggable.
+ * mobileTabOrder, Braindump · Today · Ask, and Ask only while something can
+ * answer (lib/ai-registry.ts). Surfaces reuse the desktop primitives (shared
+ * Braindump, DayBuckets/DayList via MobileViewRouter, the rail's Ask views via
+ * AskTab) rather than the old bespoke panels. Rendered under the shell's
+ * single DndContext, so items stay draggable.
  *
  * Content sits directly on the paper backdrop. The rounded `bg-canvas` panel it
  * used to float in — the mobile echo of the desktop canvas — is gone; on paper
@@ -76,7 +76,6 @@ function useKeyboardSafeHeight(): number | null {
 export const MobileShell = memo(function MobileShell() {
   const storedTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
-  const router = useRouter();
   const shellHeight = useKeyboardSafeHeight();
   const { known, canChat } = useAICapabilities();
 
@@ -109,6 +108,15 @@ export const MobileShell = memo(function MobileShell() {
     },
     onSwipedRight: () => {
       if (rowSwipeActive.current) return;
+      // Inside Ask, a swipe right is back before it is a tab change: a
+      // conversation or an item pops to what it was opened from, and only Ask
+      // home walks left to Today — the iOS edge-swipe, and the one gesture the
+      // capsule's ‹ answers on a screen with no hardware back.
+      const rail = useRailStore.getState();
+      if (activeTab === 'chat' && rail.stacks.phone.length > 0) {
+        rail.back('phone');
+        return;
+      }
       const order = mobileTabOrder(canChat);
       const idx = order.indexOf(activeTab);
       if (idx > 0) useMobileNavStore.getState().setActiveTab(order[idx - 1]);
@@ -196,12 +204,7 @@ export const MobileShell = memo(function MobileShell() {
           key={activeTab}
           className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
         >
-          {activeTab === 'chat' && canChat && (
-            <MobileChatPanel
-              headerAccessory={userMenu}
-              onOpenSettings={() => router.push('/settings/beacon')}
-            />
-          )}
+          {activeTab === 'chat' && canChat && <AskTab headerAccessory={userMenu} />}
 
           {/* No Scope Rail under it any more — the rail is retired (#229) and
               its two jobs live on the group headers' pause switch and in the

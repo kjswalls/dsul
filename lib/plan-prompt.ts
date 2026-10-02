@@ -5,9 +5,9 @@ import { stripReasoningTags } from './chat-utils';
  * the proposal path, so a conversation can end in a card you tap rather than
  * in changes you then go and make by hand.
  *
- * Moved unchanged out of components/ai/chat-conversation.tsx (its `askForPlan`)
- * so every conversation surface builds the same prompt, and a test can pin it
- * without rendering one. Pure and client-safe.
+ * Moved unchanged out of the old chat panel (chat-conversation.tsx's
+ * `askForPlan`, since deleted) so every conversation surface builds the same
+ * prompt, and a test can pin it without rendering one. Pure and client-safe.
  *
  * It sends the EXCHANGE, not the reply alone: what makes a plan worth proposing
  * is usually in the reply ("push the two writing ones to Thursday"), and a

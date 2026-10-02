@@ -5,8 +5,9 @@ import { act, renderHook } from '@testing-library/react';
  * lib/open-chat.ts: the one place that decides where a composer's text goes,
  * and how Ask is opened. C2: Ask lives in the right rail on desktop (revealChat
  * summons it, Ctrl+J toggles it, a fresh conversation is pushed on its stack).
- * The phone's chat tab is still the general conversation until C5.
- * The command bar's routing is tests/unit/command-bar-ask.test.ts.
+ * C5: the phone's Ask tab shows the same stack (`stacks.phone`), so every open
+ * pushes there too. The command bar's routing is
+ * tests/unit/command-bar-ask.test.ts; the tab itself, tests/unit/ask-tab.test.tsx.
  */
 
 const planner = vi.hoisted(() => ({ items: [] as unknown[] }));
@@ -28,11 +29,9 @@ vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }
 import {
   askNew,
   bindingKey,
-  generalThreadId,
   newChat,
   openConversation,
   openHistory,
-  resetGeneralThread,
   resolveSendTarget,
   revealChat,
   sendFrom,
@@ -41,7 +40,7 @@ import {
   useChatCardHomeShown,
   useChatCardSurface,
   useChatHostCard,
-  useGeneralThreadId,
+  usePhoneComposerBinding,
 } from '@/lib/open-chat';
 import {
   clearChatState,
@@ -55,7 +54,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { registerItemPanelClose, registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 const store = () => useConversationsStore.getState();
@@ -71,7 +70,6 @@ beforeEach(() => {
   configureConversations({ api: api.api, transport: tx.transport });
   unseed = seedAI(CONNECTED_MODEL);
   clearChatState();
-  resetGeneralThread();
   useSidebarStore.setState({ askOpen: false });
   useMobileNavStore.getState().setActiveTab('today');
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
@@ -99,9 +97,10 @@ describe('revealChat', () => {
     expect(useMobileNavStore.getState().activeTab).toBe('today');
   });
 
-  it('opens the chat tab on the phone, and touches no rail', () => {
+  it("opens the Ask tab on the phone with the dock's box asked for, and touches no rail", () => {
     expect(revealChat(true)).toBe(true);
     expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(rail().pendingFocus).toEqual({ target: 'composer' });
     expect(useSidebarStore.getState().askOpen).toBe(false);
     expect(rail().summoned).toBe(false);
   });
@@ -313,7 +312,7 @@ describe('sendFrom', () => {
     });
 
     it('never reads a conversation that has no row yet', async () => {
-      await sendFrom({ kind: 'conversation', id: generalThreadId() }, 'hello');
+      await sendFrom({ kind: 'conversation', id: store().newDraft() }, 'hello');
       await conversationsSettled();
       expect(api.api.thread).not.toHaveBeenCalled();
       expect(tx.inputs).toHaveLength(1);
@@ -376,67 +375,8 @@ describe('sendFrom', () => {
   });
 });
 
-describe('generalThreadId (C1–C4)', () => {
-  it('is one id until something ends it, and its first send creates it', async () => {
-    const id = generalThreadId();
-    expect(generalThreadId()).toBe(id);
-    // Read without a store write: a render may call it.
-    expect(store().threads[id]).toBeUndefined();
-
-    await sendFrom({ kind: 'conversation', id }, 'hello');
-    await conversationsSettled();
-    expect(api.turns[0]).toMatchObject({ id, body: { create: { itemId: null, title: 'hello' } } });
-    expect(generalThreadId()).toBe(id);
-  });
-
-  it('is re-minted by a reset (sign-out, account switch), a delete, a 404, and resetGeneralThread', async () => {
-    const seen = new Set<string>();
-    const next = () => {
-      const id = generalThreadId();
-      expect(seen.has(id)).toBe(false);
-      seen.add(id);
-      return id;
-    };
-
-    next();
-    clearChatState();
-
-    let id = next();
-    await sendFrom({ kind: 'conversation', id }, 'one');
-    await conversationsSettled();
-    await store().remove(id);
-
-    id = next();
-    await sendFrom({ kind: 'conversation', id }, 'two');
-    await conversationsSettled();
-    api.rows.delete(id);
-    await sendFrom({ kind: 'conversation', id }, 'three');
-    await conversationsSettled();
-    expect(store().threads[id].load).toBe('gone');
-
-    // The next send, the 404's "send creates": into the fresh one.
-    id = next();
-    await sendFrom({ kind: 'conversation', id }, 'four');
-    await conversationsSettled();
-    expect(api.turns.at(-1)).toMatchObject({ id, body: { create: { title: 'four' } } });
-
-    resetGeneralThread();
-    next();
-  });
-
-  it('re-renders a reader when it is re-minted', () => {
-    const { result } = renderHook(() => useGeneralThreadId());
-    const first = result.current;
-    expect(first).toBe(generalThreadId());
-    act(() => resetGeneralThread());
-    expect(result.current).not.toBe(first);
-    expect(result.current).toBe(generalThreadId());
-  });
-});
-
 describe('askNew', () => {
   it('desktop: a fresh, titled conversation, pushed on the rail with its box asked for', async () => {
-    const before = generalThreadId();
     askNew('Plan my day', { title: 'Plan my day', isMobile: false });
     const top = rail().stacks.desktop.at(-1) as { kind: string; id: string };
     expect(top.kind).toBe('conversation');
@@ -447,8 +387,7 @@ describe('askNew', () => {
 
     expect(tx.inputs[0]).toMatchObject({ conversationId: top.id, message: 'Plan my day' });
     expect(api.turns[0].body.create).toEqual({ itemId: null, title: 'Plan my day' });
-    // The rail's conversation, not the phone's general one.
-    expect(generalThreadId()).toBe(before);
+    expect(rail().stacks.phone).toEqual([]);
 
     // Always fresh: a second ask replaces it at its level.
     askNew('Plan my day', { title: 'Plan my day', isMobile: false });
@@ -467,16 +406,24 @@ describe('askNew', () => {
     off();
   });
 
-  it('phone (until C5): the fresh conversation becomes the one the chat tab shows', async () => {
-    const before = generalThreadId();
+  it("phone: the same, on the Ask tab's stack, replacing an item pushed there (the level rule)", async () => {
+    const calls: string[] = [];
+    const off = registerItemPanelFlush(() => calls.push('flush'));
+    rail().push('phone', { kind: 'item', itemId: 'i1' });
     askNew('Plan my day', { title: 'Plan my day', isMobile: true });
+    const top = rail().stacks.phone.at(-1) as { kind: string; id: string };
+    expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id: top.id }]);
+    expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'draft', id: top.id } });
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    // The drawer is the desktop's: nothing to close on the phone, no rail touched.
+    expect(calls).toEqual([]);
+    expect(rail().stacks.desktop).toEqual([]);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
     await new Promise((r) => setTimeout(r, 0));
     await conversationsSettled();
-    const id = generalThreadId();
-    expect(id).not.toBe(before);
-    expect(useMobileNavStore.getState().activeTab).toBe('chat');
-    expect(rail().stacks).toEqual({ desktop: [], phone: [] });
-    expect(tx.inputs[0]).toMatchObject({ conversationId: id, message: 'Plan my day' });
+    expect(tx.inputs[0]).toMatchObject({ conversationId: top.id, message: 'Plan my day' });
+    expect(api.turns[0].body.create).toEqual({ itemId: null, title: 'Plan my day' });
+    off();
   });
 
   it('does nothing with nothing to answer', () => {
@@ -570,12 +517,75 @@ describe("chat's card and where it is hosted", () => {
       expect(result.current).toEqual([false, false]);
     });
 
-    it('(until C5) the chat tab carries a conversation plan too', () => {
-      useMobileNavStore.getState().setActiveTab('chat');
-      card(`conv:${generalThreadId()}`);
+    it("a plan's home is its conversation, on top of the phone's stack, on the Ask tab", () => {
+      card('conv:c1');
       const { result } = renderHook(() => useChatCardHomeShown('phone'));
+      act(() => rail().push('phone', { kind: 'conversation', id: 'c1' }));
+      expect(result.current).toBe(false);
+      act(() => useMobileNavStore.getState().setActiveTab('chat'));
+      expect(result.current).toBe(true);
+      // An item over it is not its home; nor is the desktop's stack.
+      act(() => rail().push('phone', { kind: 'item', itemId: 'i1' }));
+      expect(result.current).toBe(false);
+      act(() => {
+        rail().back('phone');
+        rail().push('desktop', { kind: 'conversation', id: 'c2' });
+      });
       expect(result.current).toBe(true);
     });
+  });
+});
+
+describe("usePhoneComposerBinding (C5): the dock's box follows the phone's stack", () => {
+  it('home and History start a conversation; a conversation replies once something is said; an item asks about it', () => {
+    const { result } = renderHook(() => usePhoneComposerBinding());
+    expect(result.current).toEqual({ binding: { kind: 'home' }, placeholder: 'Ask anything…' });
+    const home = result.current;
+    act(() => rail().push('phone', { kind: 'history' }));
+    expect(result.current).toBe(home);
+
+    // A new chat's draft has nothing to reply to yet.
+    let id = '';
+    act(() => {
+      id = store().newDraft();
+      rail().push('phone', { kind: 'conversation', id });
+    });
+    expect(result.current).toEqual({ binding: { kind: 'conversation', id }, placeholder: 'Ask anything…' });
+    act(() => useConversationsStore.setState((s) => ({ summaries: { ...s.summaries, [id]: summary({ id }) } })));
+    expect(result.current).toEqual({ binding: { kind: 'conversation', id }, placeholder: 'Reply…' });
+
+    act(() => rail().push('phone', { kind: 'item', itemId: 'i1' }));
+    expect(result.current).toEqual({ binding: { kind: 'item', itemId: 'i1' }, placeholder: 'Ask about this item…' });
+    // The desktop's stack is not the phone's box.
+    act(() => rail().push('desktop', { kind: 'conversation', id: 'c9' }));
+    expect(result.current.binding).toEqual({ kind: 'item', itemId: 'i1' });
+  });
+
+  it('a conversation deleted elsewhere sends to a new one, as home does', () => {
+    useConversationsStore.setState((s) => ({
+      threads: { ...s.threads, c1: { ...s.threads.c1, load: 'gone', messages: [] } as never },
+    }));
+    rail().push('phone', { kind: 'conversation', id: 'c1' });
+    const { result } = renderHook(() => usePhoneComposerBinding());
+    expect(result.current).toEqual({ binding: { kind: 'home' }, placeholder: 'Ask anything…' });
+  });
+
+  it("says OpenClaw's name when OpenClaw answers", () => {
+    unseed();
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    const { result } = renderHook(() => usePhoneComposerBinding());
+    expect(result.current.placeholder).toBe('Message OpenClaw…');
+    act(() => rail().push('phone', { kind: 'item', itemId: 'i1' }));
+    expect(result.current.placeholder).toBe('Ask OpenClaw about this item…');
+  });
+
+  it('is one object per view, so the box never re-binds for an unrelated render', () => {
+    const { result, rerender } = renderHook(() => usePhoneComposerBinding());
+    act(() => rail().push('phone', { kind: 'item', itemId: 'i1' }));
+    const first = result.current;
+    rerender();
+    act(() => rail().setDraft('item:i1', 'half typed'));
+    expect(result.current).toBe(first);
   });
 });
 
@@ -697,13 +707,25 @@ describe('openConversation (C4)', () => {
     expect(rail().stacks.desktop).toEqual([{ kind: 'conversation', id: 'c4' }]);
   });
 
-  it("on the phone, until C5: becomes the chat tab's conversation (nothing shows the phone stack yet)", () => {
+  it("on the phone: pushes on the Ask tab's stack, and opens it with nothing asked of the box", () => {
     seedSummaries(summary({ id: 'c5' }));
+    rail().push('phone', { kind: 'history' });
     openConversation('c5', true, { returnFocus: 'conv:c5' });
     expect(useMobileNavStore.getState().activeTab).toBe('chat');
-    expect(generalThreadId()).toBe('c5');
-    expect(rail().stacks.phone).toEqual([]);
+    expect(rail().stacks.phone).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c5', returnFocus: 'conv:c5' }]);
     expect(rail().stacks.desktop).toEqual([]);
+    expect(rail().pendingFocus).toBeNull();
+    expect(useUIStore.getState().activeDialog).toBeNull();
+  });
+
+  it("on the phone: an item's conversation pushes its item, revealed on the Conversation section, never the drawer", () => {
+    planner.items = [{ id: 'i1', type: 'task', title: 'Book the dentist', status: 'pending' }];
+    seedSummaries(summary({ id: 'c6', itemId: 'i1' }));
+    rail().push('phone', { kind: 'history' });
+    openConversation('c6', true, { returnFocus: 'conv:c6' });
+    expect(rail().stacks.phone).toEqual([{ kind: 'history' }, { kind: 'item', itemId: 'i1', returnFocus: 'conv:c6' }]);
+    expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+    expect(useUIStore.getState().activeDialog).toBeNull();
   });
 
   it('from anywhere on desktop: closes an item on top, shows Ask, and pushes', () => {
