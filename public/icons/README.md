@@ -3,8 +3,8 @@
 The mark is **Aurora**: a 4×4 patch of the RelayField with the ripple's crest lit along the
 diagonal, in the field's dark-mode relay colours pushed brighter
 (`components/primitives/relay-field.tsx`, the `.dark` accents in `app/globals.css`), on a dark
-ground with a band of lime-to-teal light behind the crest. There is one version, and it is
-dark in light and dark mode alike. The 16 and 32px favicons are small dots with room between
+ground with a band of lime-to-teal light behind the crest. There is one colour version, dark
+in light and dark mode alike, plus mono layers for iOS tinted and Android themed icons. The 16 and 32px favicons are small dots with room between
 them and no glow; at 16px it is the 3×3 middle of the crest.
 
 Everything here is generated. Edit `scripts/app-icon/mark.mjs`, then run

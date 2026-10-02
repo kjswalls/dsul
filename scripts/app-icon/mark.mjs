@@ -55,21 +55,23 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
   const mono = theme === 'mono';
   const color = (k) => (mono ? WHITE : AURORA[k]);
   const small = size <= 32;
+  // Ids carry the variant, so two of these SVGs inline on one page don't share gradients.
+  const id = `a${size}${ground}${theme}${dots ? '' : 'b'}`;
   const rx = ground === 'rounded' ? ` rx="${f(size * (size <= 16 ? 0.22 : 0.225))}"` : '';
   let defs = '';
   let bg = '';
   if (ground !== 'none' && !mono) {
-    defs += `<linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${GROUND[0]}"/><stop offset="1" stop-color="${GROUND[1]}"/></linearGradient>`;
-    bg = `<rect width="${size}" height="${size}"${rx} fill="url(#g)"/>`;
+    defs += `<linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${GROUND[0]}"/><stop offset="1" stop-color="${GROUND[1]}"/></linearGradient>`;
+    bg = `<rect width="${size}" height="${size}"${rx} fill="url(#${id}g)"/>`;
     // The glow band. A favicon skips it: at 16 or 32px it only muddies the ground.
     if (!small) {
       const c = size / 2;
       defs +=
-        `<radialGradient id="gl"><stop offset="0" stop-color="${GLOW.mid}" stop-opacity="${GLOW.midAlpha}"/>` +
+        `<radialGradient id="${id}gl"><stop offset="0" stop-color="${GLOW.mid}" stop-opacity="${GLOW.midAlpha}"/>` +
         `<stop offset="0.5" stop-color="${GLOW.end}" stop-opacity="${GLOW.endAlpha}"/><stop offset="1" stop-color="${GLOW.end}" stop-opacity="0"/></radialGradient>` +
-        `<clipPath id="cp"><rect width="${size}" height="${size}"${rx}/></clipPath>`;
+        `<clipPath id="${id}cp"><rect width="${size}" height="${size}"${rx}/></clipPath>`;
       // Clipped outside the rotation, so the band's ends meet the tile's own edge.
-      bg += `<g clip-path="url(#cp)"><ellipse cx="${c}" cy="${c}" rx="${f(size * 0.62)}" ry="${f(size * 0.3)}" transform="rotate(-45 ${c} ${c})" fill="url(#gl)"/></g>`;
+      bg += `<g clip-path="url(#${id}cp)"><ellipse cx="${c}" cy="${c}" rx="${f(size * 0.62)}" ry="${f(size * 0.3)}" transform="rotate(-45 ${c} ${c})" fill="url(#${id}gl)"/></g>`;
     }
   }
   let body = '';
@@ -101,7 +103,7 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
     const c0 = (size - span * size) / 2 + core / 2;
     if (!mono) {
       for (const k of new Set(WAVE.map((t) => t[0]))) {
-        defs += `<radialGradient id="h${k}"><stop offset="0" stop-color="${AURORA[k]}" stop-opacity="0.6"/><stop offset="0.55" stop-color="${AURORA[k]}" stop-opacity="0.17"/><stop offset="1" stop-color="${AURORA[k]}" stop-opacity="0"/></radialGradient>`;
+        defs += `<radialGradient id="${id}h${k}"><stop offset="0" stop-color="${AURORA[k]}" stop-opacity="0.6"/><stop offset="0.55" stop-color="${AURORA[k]}" stop-opacity="0.17"/><stop offset="1" stop-color="${AURORA[k]}" stop-opacity="0"/></radialGradient>`;
       }
     }
     WAVE.forEach(([k, a], i) => {
@@ -113,7 +115,7 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
       else
         body +=
           `<g style="mix-blend-mode:plus-lighter" opacity="${(0.06 + 0.94 * a).toFixed(3)}">` +
-          `<rect x="${f(cx - halo / 2)}" y="${f(cy - halo / 2)}" width="${f(halo)}" height="${f(halo)}" fill="url(#h${k})"/>` +
+          `<rect x="${f(cx - halo / 2)}" y="${f(cy - halo / 2)}" width="${f(halo)}" height="${f(halo)}" fill="url(#${id}h${k})"/>` +
           `${square}${dot}</g>`;
     });
     body = `<g style="isolation:isolate">${body}</g>`;
