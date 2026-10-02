@@ -47,6 +47,7 @@ import {
   lightLookDef,
 } from '@/lib/theme-looks';
 import { DEFAULT_LAYOUT, LAYOUTS, isLayoutTheme, layoutDef } from '@/lib/layout-themes';
+import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -909,6 +910,27 @@ export const SETTINGS: SettingRecord[] = [
       if (ctx.userId) saveSettings(ctx.userId, { theme_palette: v });
     },
     defaultValue: 'default',
+  },
+  {
+    // Permanent id: the settings row, a search hit and the app_icon column all
+    // answer to it.
+    id: 'look.appIcon',
+    pane: 'look',
+    label: 'App icon',
+    description: "The icon in your browser tab and the desktop app's Dock and taskbar.",
+    control: 'enum',
+    dbColumn: 'app_icon',
+    options: APP_ICONS.map((i) => ({ value: i.value, label: i.label })),
+    keywords: ['icon', 'favicon', 'dock', 'taskbar', 'logo', 'lime', 'aurora'],
+    read: () => look().appIcon,
+    // Same pairing as look.layout: the store setter is local state only, so
+    // the Supabase write rides here.
+    write: (v, ctx) => {
+      if (!isAppIcon(v)) return;
+      look().setAppIcon(v);
+      if (ctx.userId) saveSettings(ctx.userId, { app_icon: v });
+    },
+    defaultValue: DEFAULT_APP_ICON,
   },
   {
     id: 'look.typeface',

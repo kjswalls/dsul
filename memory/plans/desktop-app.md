@@ -28,8 +28,10 @@ electron/
   preload.cjs                       # contextBridge -> window.dsulDesktop (sandboxed preload, so CJS)
   lib/policy.cjs                    # PURE, zero imports: isAppUrl, carriesAuthCode, externalAllowed,
                                     #   parseDeepLink, checkAuthorizeUrl
+  lib/app-icon.cjs                  # PURE: the run-time icon's looks and file names
   offline.html, README.md ("npm only. Never run pnpm in here."), .gitignore (node_modules/, release/)
-  build/                            # icon.png, tray icons, entitlements.mac.plist, installer.nsh
+  build/                            # icon.png, app-icon-{aurora,lime}.png, tray icons,
+                                    #   entitlements.mac.plist, installer.nsh
 ```
 
 - **It is not a workspace project.** pnpm-workspace.yaml:1-3 lists only `packages/*` and `openclaw-plugin`. So the root `pnpm install` (Vercel; test.yml:44) never pulls in electron-builder's ~200MB app-builder-bin.
@@ -293,7 +295,7 @@ Three things below narrow that gap: the short pending windows, the code-navigati
 Use electron-builder 26.15.x: not the 27 alpha, and not Forge, which has no NSIS maker. Use electron ^44.
 
 - **Identity (permanent once shipped).** `appId: app.dsul.desktop`, `productName: dsul`. These become the macOS bundle id, the Windows AUMID and the NSIS GUID.
-- **Layout.** `directories: { output: release, buildResources: build }`. `files`: main.cjs, preload.cjs, lib/**, offline.html, build/tray*.
+- **Layout.** `directories: { output: release, buildResources: build }`. `files`: main.cjs, preload.cjs, lib/**, offline.html, build/tray*, build/app-icon-*.png (the run-time icons; without them `createFromPath` is an empty image in the packaged app).
 - **macOS targets.** `dmg` plus `zip`, **arm64 only** in v1. Add x64 once an Intel Mac can test it.
   - **Signing identity.** The JS config sets `identity: process.env.CSC_LINK ? undefined : '-'` and `hardenedRuntime: !!process.env.CSC_LINK`.
     - Without a certificate there is NO automatic ad-hoc fallback (out/options/macOptions.d.ts:23; out/mac/MacTargetHelper.js:37-46).
@@ -361,7 +363,15 @@ The Aurora mark (Kirby's pick, 2026-10-02; it replaced Wave, which looked dull i
 - **macOS:** `electron/build/icon.png` is the 1024px tile drawn on Apple's grid (824px rounded tile with a shadow), so the Dock shows a proper squircle. electron-builder derives the .icns from it.
 - **Windows:** `electron/build/icon.ico` holds 16 to 256.
 - **Tray:** `build/tray.png` and `tray@2x.png` are the 16 and 32px favicons on Windows; macOS gets `trayTemplate.png` / `trayTemplate@2x.png`, a hand-made dot grid in black on transparent, so the menu bar tints it.
-- Don't touch public/icons.
+- `public/icons/` is the web app's, written by the same script. The shell never loads it.
+
+**The run-time icon (Settings → Look → App icon, Aurora or Lime).**
+- The page sends its choice through `window.dsulDesktop.setAppIcon(look)` (preload.cjs) on `dsul:set-app-icon`; main answers only `fromApp`, accepts only a look `lib/app-icon.cjs` knows, and ignores a repeat. The page sends it once settings have hydrated for the signed-in user, never the untouched fallback, so a fresh shell doesn't stamp Aurora over a synced Lime. The bridge stays `version: 1`: `setAppIcon` is optional and the page checks it exists, so an older shell just skips it.
+- Main keeps the look in `userData/app-icon.json` (`{"look":"lime"}`; not secret, so no `0o600`) and reads it in `ready()`, so the next launch starts on it.
+- **macOS:** `app.dock.setIcon` with `build/app-icon-<look>.png`, called before the window is made. It lasts only while the app runs: launch bounces the bundle's Aurora first, and Finder, Launchpad and a Dock tile pinned while the app is closed always show Aurora.
+- **Windows and Linux:** `win.setIcon` with the same PNG, and the window is created with it, so a Lime user's taskbar never shows Aurora. A taskbar button pinned while the app is closed keeps the bundle's Aurora `.ico`.
+- Both PNGs are 512px tiles on Apple's grid, on every platform; there is no run-time `.ico`. The tray stays Aurora (no Lime tray art).
+- Only the setting reaches the shell. The browser tab's day-done Lime (`components/providers/favicon-sync.tsx`) does not: Electron shows no favicon, and a daily swap would be a daily disk write.
 
 ## Testing
 
@@ -414,6 +424,12 @@ The Aurora mark (Kirby's pick, 2026-10-02; it replaced Wave, which looked dull i
   - Ctrl+= zooms outside the week views and scales the columns inside them.
   - A Beacon chat link opens in the browser.
   - Dropping an .html file or a link onto the window does not navigate it.
+- **App icon.**
+  - Switching to Lime in Settings → Look changes the Dock and ⌘-Tab icon (Mac) or the window and taskbar icon (Windows) at once.
+  - Lime holds across a quit and cold launch, after the launch bounce shows Aurora.
+  - Switching back restores Aurora.
+  - The offline page can't change the icon.
+  - Whether a pinned Windows taskbar button follows `win.setIcon` **[unverified]**; `setOverlayIcon` is the fallback.
 - **Resilience.**
   - An offline launch shows the offline page and recovers.
   - Sleep and wake.

@@ -1,18 +1,30 @@
-// Rasterises the Aurora mark (mark.mjs) into the icon files. Chromium does the drawing because
-// the halos use mix-blend-mode: plus-lighter, which other SVG renderers ignore.
+// Rasterises the two looks in mark.mjs, Aurora and Lime, into the icon files. Chromium does the
+// drawing because Aurora's halos use mix-blend-mode: plus-lighter, which other SVG renderers
+// ignore.
 //
 //   node scripts/app-icon/build.mjs                  → public/icons/*, public/favicon.ico, the
 //                                                      desktop app's icons (electron/build) and the
-//                                                      iPhone app's icon set (ios/)
+//                                                      iPhone app's icon sets (ios/)
+//   node scripts/app-icon/build.mjs --lime-only      → only the Lime files: public/icons/lime/*,
+//                                                      electron/build/app-icon-lime.png and ios/'s
+//                                                      AppIcon-Lime set
 //   node scripts/app-icon/build.mjs --native <dir>   → also macOS iconset, Android and SVG masters
 // Run from the repo root.
+//
+// Aurora is the bundle icon everywhere (what Finder, the installer and a fresh install show).
+// Lime is the look a user can pick in Settings → Look: the browser tab swaps to /icons/lime/
+// (components/providers/favicon-sync.tsx), the desktop shell swaps its Dock or window icon at
+// run time from electron/build/app-icon-*.png (electron/lib/app-icon.cjs), and the iPhone app
+// carries AppIcon-Lime as an alternate icon.
 import { chromium } from '@playwright/test';
 import { mkdirSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
-import { auroraSVG } from './mark.mjs';
+import { auroraSVG, limeFavicon, limeSVG } from './mark.mjs';
 
 const nativeAt = process.argv.indexOf('--native');
 const nativeDir = nativeAt > -1 ? process.argv[nativeAt + 1] : null;
+// Leaves every Aurora file alone, so a Lime tweak can't churn the shipped icons.
+const limeOnly = process.argv.includes('--lime-only');
 
 // CHROMIUM_PATH points at a Chromium other than Playwright's own download, if you need one.
 const browser = await chromium.launch(process.env.CHROMIUM_PATH ? { executablePath: process.env.CHROMIUM_PATH } : {});
@@ -57,6 +69,7 @@ async function icoOf(sizes) {
 
 // ── Web app ───────────────────────────────────────────────────────────────────
 const pub = 'public/icons';
+if (!limeOnly) {
 // Browser tabs: one dark tile for light and dark tab bars alike.
 for (const s of [16, 32]) write(`${pub}/icon-${s}.png`, await png(auroraSVG(s), s));
 // iOS home screen: a full-bleed square the phone rounds itself.
@@ -66,35 +79,69 @@ write(`${pub}/icon-180.png`, await png(auroraSVG(180, { ground: 'square' }), 180
 // precaches everything in public/.)
 for (const s of [192, 512]) write(`${pub}/icon-${s}.png`, await png(auroraSVG(s, { ground: 'square', span: 0.52 }), s));
 write('public/favicon.ico', await icoOf([16, 32, 48]));
+}
+// Lime: the same file names under lime/, because FaviconSync swaps only the /icons/ prefix.
+// Just the tab (16, 32) and manifest (192, 512) sizes: a home-screen icon is fixed at install,
+// so there is no lime icon-180, favicon.ico or manifest, and the service worker precaches all
+// of public/.
+for (const s of [16, 32]) write(`${pub}/lime/icon-${s}.png`, await png(limeFavicon(s), s));
+for (const s of [192, 512]) write(`${pub}/lime/icon-${s}.png`, await png(limeSVG(s, { ground: 'square', span: 0.52 }), s));
 
 // macOS: Apple's grid puts an 824px rounded tile inside the 1024 canvas, with a shadow.
-async function macTile(s) {
+async function macTile(s, svg = auroraSVG) {
   const body = Math.round((s * 824) / 1024);
-  return png(auroraSVG(body), body, { pad: (s - body) / 2, shadow: s >= 64 });
+  return png(svg(body), body, { pad: (s - body) / 2, shadow: s >= 64 });
 }
 
 // ── Desktop app (electron/build) ────────────────────────────────────────────────
 // electron-builder makes the .icns from the 1024 PNG and uses the .ico for Windows. The tray
-// keeps its monochrome template on macOS; Windows shows the colour one.
-write('electron/build/icon.png', await macTile(1024));
-write('electron/build/icon.ico', await icoOf([16, 24, 32, 48, 64, 128, 256]));
-write('electron/build/tray.png', await png(auroraSVG(16), 16));
-write('electron/build/tray@2x.png', await png(auroraSVG(32), 32));
+// keeps its monochrome template on macOS; Windows shows the colour one. These stay Aurora.
+if (!limeOnly) {
+  write('electron/build/icon.png', await macTile(1024));
+  write('electron/build/icon.ico', await icoOf([16, 24, 32, 48, 64, 128, 256]));
+  write('electron/build/tray.png', await png(auroraSVG(16), 16));
+  write('electron/build/tray@2x.png', await png(auroraSVG(32), 32));
+}
+// The run-time icons the shell swaps between (main.cjs applyAppIcon): a 512 PNG of each look on
+// Apple's grid, on every platform. The Dock takes it as is; Windows and Linux scale it for the
+// window and taskbar.
+if (!limeOnly) write('electron/build/app-icon-aurora.png', await macTile(512));
+write('electron/build/app-icon-lime.png', await macTile(512, limeSVG));
 
 // ── iPhone app (ios/) ─────────────────────────────────────────────────────────
 // iOS 18+: the default, dark and tinted appearances, each a 1024 full-bleed square. Aurora is
 // a dark icon, so the default and dark are the same picture.
 const iosSet = 'ios/Dsul/Resources/Assets.xcassets/AppIcon.appiconset';
-{
+if (!limeOnly) {
   const full = await png(auroraSVG(1024, { ground: 'square' }), 1024);
   write(`${iosSet}/AppIcon-1024-light.png`, full);
   write(`${iosSet}/AppIcon-1024-dark.png`, full);
   const tinted = auroraSVG(1024, { theme: 'mono' }).replace('<defs>', '<rect width="1024" height="1024" fill="black"/><defs>');
   write(`${iosSet}/AppIcon-1024-tinted.png`, await png(tinted, 1024));
 }
+// The alternate icon, for setAlternateIconName('AppIcon-Lime'). Lime is light, but iOS's dark
+// appearance is the same picture, as Aurora's is: the ground is the look. The folder is wholly
+// generated, Contents.json included.
+const limeSet = 'ios/Dsul/Resources/Assets.xcassets/AppIcon-Lime.appiconset';
+{
+  const full = await png(limeSVG(1024, { ground: 'square' }), 1024);
+  write(`${limeSet}/AppIcon-Lime-1024-light.png`, full);
+  write(`${limeSet}/AppIcon-Lime-1024-dark.png`, full);
+  const tinted = limeSVG(1024, { theme: 'mono' }).replace('<defs>', '<rect width="1024" height="1024" fill="black"/><defs>');
+  write(`${limeSet}/AppIcon-Lime-1024-tinted.png`, await png(tinted, 1024));
+  const image = (look, appearance) => ({
+    ...(appearance ? { appearances: [{ appearance: 'luminosity', value: appearance }] } : {}),
+    filename: `AppIcon-Lime-1024-${look}.png`,
+    idiom: 'universal',
+    platform: 'ios',
+    size: '1024x1024',
+  });
+  const contents = { images: [image('light'), image('dark', 'dark'), image('tinted', 'tinted')], info: { author: 'xcode', version: 1 } };
+  write(`${limeSet}/Contents.json`, `${JSON.stringify(contents, null, 2)}\n`);
+}
 
 // ── Other native files ────────────────────────────────────────────────────────
-if (nativeDir) {
+if (nativeDir && !limeOnly) {
   const out = (p) => join(nativeDir, p);
   const macSizes = { 16: ['16x16'], 32: ['16x16@2x', '32x32'], 64: ['32x32@2x'], 128: ['128x128'], 256: ['128x128@2x', '256x256'], 512: ['256x256@2x', '512x512'], 1024: ['512x512@2x'] };
   for (const [s, names] of Object.entries(macSizes)) {

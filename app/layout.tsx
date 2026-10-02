@@ -5,6 +5,7 @@ import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
+import { FaviconSync } from '@/components/providers/favicon-sync'
 import { Toaster } from '@/components/ui/sonner'
 import './globals.css'
 
@@ -43,6 +44,8 @@ export const metadata: Metadata = {
   },
   icons: {
     // The Aurora mark (scripts/app-icon). One dark tile for light and dark tab bars alike.
+    // FaviconSync swaps these hrefs to their /icons/lime/ twins for a Lime pick
+    // or a finished day; the apple-touch icon stays Aurora.
     icon: [
       { url: '/icons/icon-16.png', sizes: '16x16', type: 'image/png' },
       { url: '/icons/icon-32.png', sizes: '32x32', type: 'image/png' },
@@ -137,9 +140,12 @@ export default function RootLayout({
             {/* Route-level, not shell-level, because its whole job is to notice
                 that you have LEFT the shell. See the component. */}
             <ConsoleSlotGuard />
-            {/* Nothing in a browser; the desktop app's quick capture and
-                sign-in notice. See the component. */}
+            {/* Nothing in a browser; the desktop app's quick capture,
+                sign-in notice and Dock icon. See the component. */}
             <DesktopBridge />
+            {/* The tab's icon: the picked one, or Lime once today is done.
+                See the component. */}
+            <FaviconSync />
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement
