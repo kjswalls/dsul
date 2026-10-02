@@ -369,6 +369,15 @@ export const DRAFT_KEYS = [
 const TYPED_KEYS: readonly string[] = ['title', 'notes', 'reminderAnchor'];
 
 /**
+ * The draft's container as the item's `project`. 'none' is the chip's "No
+ * project": every type may be unfiled since #344, habits included, and written
+ * as-is it would file the item under a project literally called "none".
+ */
+export function projectFromDraft(container: string): string | undefined {
+  return container === 'none' ? undefined : container;
+}
+
+/**
  * The store payload for the draft fields named in `keys`, and nothing else.
  *
  * Scoping the write is what makes a non-modal surface safe: the canvas behind
@@ -384,7 +393,7 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
   if (wants('title')) updates.title = d.title.trim();
   if (wants('notes')) updates.notes = d.notes.trim() || undefined;
   if (wants('priority')) updates.priority = d.priority === 'none' ? undefined : d.priority;
-  if (wants('container')) updates.project = d.container === 'none' ? undefined : d.container;
+  if (wants('container')) updates.project = projectFromDraft(d.container);
   // Save date as yyyy-MM-dd string to avoid timezone issues
   if (wants('startDate'))
     updates.startDate = d.startDate ? format(d.startDate, 'yyyy-MM-dd') : undefined;
@@ -412,7 +421,7 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
   if (wants('title')) updates.title = d.title.trim();
   if (wants('notes')) updates.notes = d.notes.trim() || undefined;
   // `project`, not `group` — one CLASSIFY kind since 039.
-  if (wants('container')) updates.project = d.container;
+  if (wants('container')) updates.project = projectFromDraft(d.container);
   if (wants('timesPerDay')) updates.timesPerDay = parseInt(d.timesPerDay) || 1;
   if (wants('startTime')) updates.startTime = d.startTime || undefined;
   if (wants('duration')) updates.duration = d.duration ? parseInt(d.duration) : undefined;
@@ -1010,7 +1019,7 @@ function ItemDialogInner({
         title: d.title.trim(),
         notes: d.notes.trim() || undefined,
         priority: d.priority === 'none' ? undefined : d.priority,
-        project: d.container === 'none' ? undefined : d.container,
+        project: projectFromDraft(d.container),
         // A new repeating item starts on its first repeat day. The date here was
         // seeded from the day the add opened on, not picked, and a task's start
         // date is itself an occurrence (anchoredSeriesOn): "Gym, Mondays" made
@@ -1042,7 +1051,7 @@ function ItemDialogInner({
       addHabit({
         title: d.title.trim(),
         notes: d.notes.trim() || undefined,
-        project: d.container,
+        project: projectFromDraft(d.container),
         timeBucket: d.timeBucket === 'none' ? 'anytime' : d.timeBucket,
         startTime: d.startTime || undefined,
         duration: d.duration ? parseInt(d.duration) : undefined,

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DRAFT_KEYS,
   habitUpdatesFromDraft,
+  projectFromDraft,
   taskUpdatesFromDraft,
   type ItemDraft,
 } from '@/components/planner/item-dialog';
@@ -131,5 +132,17 @@ describe('panel writes are scoped to what was touched', () => {
       startTime: undefined,
       repeatFrequency: undefined,
     });
+  });
+
+  it('clears a habit\'s project rather than filing it under "none"', () => {
+    // Habits may be unfiled since #344, so their chip offers "No project" too.
+    // The key must still be present: the habit row mapper turns a present,
+    // empty project into NULL for both `project` and the frozen `"group"`.
+    const unfiled = habitUpdatesFromDraft({ ...draft, container: 'none' }, ['container']);
+    expect(unfiled).toEqual({ project: undefined });
+    expect('project' in unfiled).toBe(true);
+    // The add path files a new item with the same helper.
+    expect(projectFromDraft('none')).toBeUndefined();
+    expect(projectFromDraft('Work')).toBe('Work');
   });
 });
