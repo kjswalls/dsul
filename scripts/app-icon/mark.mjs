@@ -122,3 +122,98 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
   }
   return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><defs>${defs}</defs>${bg}${body}</svg>`;
 }
+
+// ── Lime ─────────────────────────────────────────────────────────────────────
+// The second look: dsul's lime as the ground and the same Wave in dark ink, crest at full
+// strength. No halo, no glow and no additive blend, so any SVG renderer draws it the same, but
+// build.mjs still rasterises it in Chromium alongside Aurora. Ids start with `l`, Aurora's with
+// `a`, so the two never share a gradient inline on one page.
+const LIME_INK = 'oklch(0.2 0.03 264)';
+const LIME_GROUND = ['oklch(0.93 0.2 122)', 'oklch(0.82 0.21 132)'];
+// Crest, its neighbours, the rest: ink on lime needs a darker floor than light on dark does.
+const LIME_LEVELS = [1, 0.42, 0.16];
+const limeLevel = (n, s) => {
+  const mid = n - 1; // the crest's x + y
+  return s === mid ? LIME_LEVELS[0] : Math.abs(s - mid) === 1 ? LIME_LEVELS[1] : LIME_LEVELS[2];
+};
+
+// Small sizes: one dot per tile, no outer square. 16 and 32 are the browser tab's and get the
+// roomy spacing (smaller dots, wider gaps, wider margins); any other small size gets dots and
+// gaps in proportion to the canvas, shrunk until the grid fits inside the tile.
+function limeSmallTiles(size, { roomy = 1, mono = false } = {}) {
+  if (size < 6) throw new Error(`limeSVG: ${size}px is too small for a 3×3 grid`);
+  const n = size <= 20 ? 3 : 4;
+  let core;
+  let g;
+  if (size === 16) [core, g] = roomy ? [2, 2] : [3, 1];
+  else if (size === 32) [core, g] = roomy ? [4, 3] : [5, 2];
+  else {
+    core = Math.max(1, Math.round(size / 8));
+    g = Math.max(1, Math.round((size * 3) / 32));
+    while (n * core + (n - 1) * g > size - 2 && g > 1) g -= 1;
+    while (n * core + (n - 1) * g > size - 2 && core > 1) core -= 1;
+  }
+  const off = Math.floor((size - (n * core + (n - 1) * g)) / 2);
+  const r = Math.max(0.5, core * 0.26);
+  let body = '';
+  for (let y = 0; y < n; y++) {
+    for (let x = 0; x < n; x++) {
+      body += rr(off + x * (core + g), off + y * (core + g), core, r, mono ? WHITE : LIME_INK, 0.18 + 0.82 * limeLevel(n, x + y));
+    }
+  }
+  return body;
+}
+
+/**
+ * The Lime look, with auroraSVG's options (no `dots`: Lime has no separate background layer).
+ * @param {number} size  canvas px
+ * @param {object} o
+ * @param {'color'|'mono'} [o.theme]  mono = white tiles on transparent (the iOS tinted layer)
+ * @param {'rounded'|'square'|'none'} [o.ground]
+ * @param {number} [o.span]  fraction of the canvas the dots span (big sizes only); 0.62 by default
+ */
+export function limeSVG(size, { theme = 'color', ground = 'rounded', span = 0.62 } = {}) {
+  const mono = theme === 'mono';
+  const id = `l${size}${ground}${theme}`;
+  const rx = ground === 'rounded' ? ` rx="${f(size * (size <= 16 ? 0.22 : 0.225))}"` : '';
+  let defs = '';
+  let bg = '';
+  if (ground !== 'none' && !mono) {
+    defs += `<linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${LIME_GROUND[0]}"/><stop offset="1" stop-color="${LIME_GROUND[1]}"/></linearGradient>`;
+    bg = `<rect width="${size}" height="${size}"${rx} fill="url(#${id}g)"/>`;
+  }
+  let body = '';
+  if (size <= 32) {
+    body = limeSmallTiles(size, { mono, roomy: 0 });
+  } else {
+    // Aurora's big-dot geometry, without the halo: a faint outer square and a solid core.
+    const n = 4;
+    const core = 0.101 * size * (span / 0.62);
+    const p = (span * size - core) / (n - 1);
+    const outer = Math.min(0.95 * p, 1.5 * core);
+    const c0 = (size - span * size) / 2 + core / 2;
+    for (let i = 0; i < n * n; i++) {
+      const a = limeLevel(n, (i % n) + Math.floor(i / n));
+      const cx = c0 + (i % n) * p;
+      const cy = c0 + Math.floor(i / n) * p;
+      const dot = rr(cx - core / 2, cy - core / 2, core, core * 0.26, mono ? WHITE : LIME_INK, 1);
+      if (mono) body += `<g opacity="${(0.2 + 0.8 * a).toFixed(3)}">${dot}</g>`;
+      else body += `<g opacity="${(0.06 + 0.94 * a).toFixed(3)}">${rr(cx - outer / 2, cy - outer / 2, outer, outer * 0.19, LIME_INK, 0.16)}${dot}</g>`;
+    }
+  }
+  // <defs> is always emitted, even empty, so build.mjs can slip a ground in ahead of it.
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}"><defs>${defs}</defs>${bg}${body}</svg>`;
+}
+
+/**
+ * The Lime browser-tab icon: a rounded lime tile with roomy ink dots, at 16 or 32px (any other
+ * size is limeSVG's small renderer). `roomy: 0` packs the dots bigger and closer.
+ */
+export function limeFavicon(size, { roomy = 1 } = {}) {
+  const id = `lf${size}${roomy}`;
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">` +
+    `<defs><linearGradient id="${id}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${LIME_GROUND[0]}"/><stop offset="1" stop-color="${LIME_GROUND[1]}"/></linearGradient></defs>` +
+    `<rect width="${size}" height="${size}" rx="${f(size * (size <= 16 ? 0.22 : 0.225))}" fill="url(#${id})"/>${limeSmallTiles(size, { roomy })}</svg>`
+  );
+}

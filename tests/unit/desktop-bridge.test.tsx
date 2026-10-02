@@ -59,8 +59,12 @@ vi.mock('@/lib/supabase', () => ({
 }));
 
 import { DesktopBridge } from '@/components/providers/desktop-bridge';
+import { FaviconSync } from '@/components/providers/favicon-sync';
 import { OmniLauncher } from '@/components/shell/omni-launcher';
 import type { DsulDesktop } from '@/lib/desktop';
+import { useLookStore } from '@/lib/look-store';
+import { useMorningStore } from '@/lib/morning-store';
+import { toDateStr } from '@/lib/recurrence';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -353,5 +357,107 @@ describe('the "Signed in as" notice', () => {
     render(<DesktopBridge />);
     await act(async () => {});
     expect(toast).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * The Dock / taskbar icon follows the SETTING (lib/app-icons.ts) and nothing
+ * else: not the tab's day-done Lime, not the untouched fallback, and not a
+ * value that might still be the last account's.
+ */
+describe('the app icon', () => {
+  const hydrated = () => act(() => useMorningStore.setState({ settingsHydratedUserId: 'u1' }));
+
+  beforeEach(() => {
+    useMorningStore.setState({ settingsHydratedUserId: null });
+    useLookStore.setState({ appIcon: 'aurora', appIconKnown: false });
+    usePlannerStore.setState({ items: [], routines: [], seasons: [] } as never);
+  });
+
+  afterEach(() => {
+    useMorningStore.setState({ settingsHydratedUserId: null });
+    usePlannerStore.setState({ items: [], userTimezone: null } as never);
+    document.head.querySelectorAll('link[rel="icon"]').forEach((l) => l.remove());
+  });
+
+  it('tells the shell the pick once settings are this account’s, and again on change', () => {
+    const setAppIcon = vi.fn(async () => true);
+    installBridge({ setAppIcon });
+    useLookStore.setState({ appIcon: 'lime', appIconKnown: true });
+    render(<DesktopBridge />);
+    // Before hydration the pick may be a shared browser's last account's.
+    expect(setAppIcon).not.toHaveBeenCalled();
+
+    hydrated();
+    expect(setAppIcon).toHaveBeenLastCalledWith('lime');
+
+    act(() => useLookStore.getState().setAppIcon('aurora'));
+    expect(setAppIcon).toHaveBeenLastCalledWith('aurora');
+  });
+
+  it('never sends the untouched fallback', () => {
+    const setAppIcon = vi.fn(async () => true);
+    installBridge({ setAppIcon });
+    render(<DesktopBridge />);
+    hydrated();
+    // Aurora here is only the default: sending it would overwrite the Lime the
+    // shell saved last time with a value nobody chose.
+    expect(setAppIcon).not.toHaveBeenCalled();
+  });
+
+  it('is not moved by a cleared day — that Lime is the tab’s alone', () => {
+    const link = document.createElement('link');
+    link.rel = 'icon';
+    link.setAttribute('href', '/icons/icon-32.png');
+    document.head.appendChild(link);
+    const setAppIcon = vi.fn(async () => true);
+    installBridge({ setAppIcon });
+    useLookStore.setState({ appIcon: 'aurora', appIconKnown: true });
+    // Beside the tab's own swapper, as the root layout mounts them.
+    render(
+      <>
+        <DesktopBridge />
+        <FaviconSync />
+      </>
+    );
+    hydrated();
+    act(() =>
+      usePlannerStore.setState({
+        items: [
+          {
+            type: 'habit', id: 'h', title: 'H', project: 'G', streak: 1, status: 'pending',
+            completedDates: [toDateStr(new Date(), 'UTC')], skippedDates: [],
+            dailyCounts: {}, repeatFrequency: 'daily',
+          },
+        ],
+        userTimezone: 'UTC',
+      } as never)
+    );
+    // The tab did turn Lime, so the day really was cleared…
+    expect(document.head.querySelector('link[rel="icon"]')?.getAttribute('href')).toBe(
+      '/icons/lime/icon-32.png'
+    );
+    // …and the shell heard only the setting.
+    expect(setAppIcon).toHaveBeenCalledTimes(1);
+    expect(setAppIcon).toHaveBeenCalledWith('aurora');
+    expect(setAppIcon).not.toHaveBeenCalledWith('lime');
+  });
+
+  it('skips a shell built before setAppIcon existed', () => {
+    useLookStore.setState({ appIcon: 'lime', appIconKnown: true });
+    const { bridge } = installBridge();
+    expect('setAppIcon' in bridge).toBe(false);
+    render(<DesktopBridge />);
+    expect(() => hydrated()).not.toThrow();
+  });
+
+  it('swallows a refusal from main', async () => {
+    const setAppIcon = vi.fn(async () => Promise.reject(new Error('refused')));
+    installBridge({ setAppIcon });
+    useLookStore.setState({ appIcon: 'lime', appIconKnown: true });
+    render(<DesktopBridge />);
+    hydrated();
+    await act(async () => {});
+    expect(setAppIcon).toHaveBeenCalledWith('lime');
   });
 });

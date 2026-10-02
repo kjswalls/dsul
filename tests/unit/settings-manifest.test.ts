@@ -296,6 +296,12 @@ describe('settings manifest — persistence contract', () => {
     expect(record?.dbColumn).toBe('show_completed_tasks');
   });
 
+  it('look.appIcon is a permanent id on the app_icon column', () => {
+    // The desktop shell and a second browser learn the pick only from
+    // user_settings.app_icon (migration 056), so the record must name it.
+    expect(settingById('look.appIcon')?.dbColumn).toBe('app_icon');
+  });
+
   it('records that name a DB column use snake_case', () => {
     for (const s of SETTINGS) {
       if (!s.dbColumn) continue;
