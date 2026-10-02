@@ -109,6 +109,20 @@ describe('the Extensions pane is the store', () => {
     ).toBe('true');
   });
 
+  it('widens the whole page around the store, so it stays centred', () => {
+    renderShell();
+    const main = document.querySelector('main')!;
+    expect(main.className).toContain('mx-auto');
+    expect(main.className).toContain('max-w-[1320px]');
+    // The store takes the full column; nothing caps it at 600px.
+    expect(screen.getByTestId('extension-browse').closest('.md\\:max-w-\\[600px\\]')).toBeNull();
+  });
+
+  it('keeps an extension’s own page at the usual width', () => {
+    renderShell(extensionPaneId(EXT_HABIT_HEATMAP));
+    expect(document.querySelector('main')!.className).toContain('max-w-[880px]');
+  });
+
   it('keeps the search box in the 600px column', () => {
     renderShell();
     expect(screen.getByTestId('settings-search').closest('.md\\:max-w-\\[600px\\]')).toBeTruthy();

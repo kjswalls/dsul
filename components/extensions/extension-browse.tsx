@@ -35,8 +35,9 @@ export function browseHref(filter: string | null | undefined): string {
  * own extensions sit beside it in the rail (extension-rail-list.tsx), so the
  * list and the store are one place. The settings shell owns everything around
  * it — the hydration gate, the type-mode stamp, the search box (which already
- * finds extensions by name and by their settings) — and widens its column for
- * it, because a shelf of cards needs more than the 600px a column of rows does.
+ * finds extensions by name and by their settings) — and widens the whole page
+ * for it, because a shelf of cards needs more than the 600px a column of rows
+ * does.
  *
  * Every card links to the extension's own pane with `?from=browse`, which is
  * what puts a "Back to Browse" link at the top of that pane. No card holds a
@@ -153,7 +154,7 @@ export function ExtensionBrowse({ ctx }: { ctx: SettingCtx }) {
               </h2>
               <span className="text-muted-foreground text-xs">{shelf.blurb}</span>
             </header>
-            <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3.5">
+            <div className="grid gap-3.5 sm:grid-cols-2 lg:grid-cols-3">
               {extensions.map((extension) => (
                 <StoreCard
                   key={extension.slug}
