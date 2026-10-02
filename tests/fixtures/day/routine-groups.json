@@ -1,0 +1,439 @@
+{
+  "cases": [
+    {
+      "name": "an item in two routines goes to the first",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000191",
+          "title": "meds",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000192",
+          "title": "stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000193",
+          "title": "inbox",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000194",
+          "title": "standup",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000195",
+          "title": "draft",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000196",
+          "title": "read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000194",
+            "00000000-0000-4000-8000-000000000192",
+            "00000000-0000-4000-8000-000000000191"
+          ]
+        },
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000196",
+            "00000000-0000-4000-8000-000000000192"
+          ]
+        },
+        {
+          "id": "r-empty",
+          "name": "Not today",
+          "itemIds": [
+            "00000000-0000-4000-8000-0000000003e7"
+          ]
+        }
+      ],
+      "expected": {
+        "groups": [
+          {
+            "routineId": "r-morning",
+            "itemIds": [
+              "00000000-0000-4000-8000-000000000194",
+              "00000000-0000-4000-8000-000000000192",
+              "00000000-0000-4000-8000-000000000191"
+            ]
+          },
+          {
+            "routineId": "r-evening",
+            "itemIds": [
+              "00000000-0000-4000-8000-000000000196"
+            ]
+          }
+        ],
+        "loose": [
+          "00000000-0000-4000-8000-000000000193",
+          "00000000-0000-4000-8000-000000000195"
+        ]
+      }
+    },
+    {
+      "name": "store order decides the claim",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000191",
+          "title": "meds",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000192",
+          "title": "stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000193",
+          "title": "inbox",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000194",
+          "title": "standup",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000195",
+          "title": "draft",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000196",
+          "title": "read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000196",
+            "00000000-0000-4000-8000-000000000192"
+          ]
+        },
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000194",
+            "00000000-0000-4000-8000-000000000192",
+            "00000000-0000-4000-8000-000000000191"
+          ]
+        },
+        {
+          "id": "r-empty",
+          "name": "Not today",
+          "itemIds": [
+            "00000000-0000-4000-8000-0000000003e7"
+          ]
+        }
+      ],
+      "expected": {
+        "groups": [
+          {
+            "routineId": "r-evening",
+            "itemIds": [
+              "00000000-0000-4000-8000-000000000196",
+              "00000000-0000-4000-8000-000000000192"
+            ]
+          },
+          {
+            "routineId": "r-morning",
+            "itemIds": [
+              "00000000-0000-4000-8000-000000000194",
+              "00000000-0000-4000-8000-000000000191"
+            ]
+          }
+        ],
+        "loose": [
+          "00000000-0000-4000-8000-000000000193",
+          "00000000-0000-4000-8000-000000000195"
+        ]
+      }
+    },
+    {
+      "name": "two routines may share a name",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000191",
+          "title": "meds",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000192",
+          "title": "stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000193",
+          "title": "inbox",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000194",
+          "title": "standup",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000195",
+          "title": "draft",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000196",
+          "title": "read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000194",
+            "00000000-0000-4000-8000-000000000192",
+            "00000000-0000-4000-8000-000000000191"
+          ]
+        },
+        {
+          "id": "r-twin",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000195"
+          ]
+        }
+      ],
+      "expected": {
+        "groups": [
+          {
+            "routineId": "r-morning",
+            "itemIds": [
+              "00000000-0000-4000-8000-000000000194",
+              "00000000-0000-4000-8000-000000000192",
+              "00000000-0000-4000-8000-000000000191"
+            ]
+          },
+          {
+            "routineId": "r-twin",
+            "itemIds": [
+              "00000000-0000-4000-8000-000000000195"
+            ]
+          }
+        ],
+        "loose": [
+          "00000000-0000-4000-8000-000000000193",
+          "00000000-0000-4000-8000-000000000196"
+        ]
+      }
+    },
+    {
+      "name": "no routines: everything is loose",
+      "items": [
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000191",
+          "title": "meds",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000192",
+          "title": "stretch",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000193",
+          "title": "inbox",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000194",
+          "title": "standup",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000195",
+          "title": "draft",
+          "status": "pending",
+          "isScheduled": true,
+          "order": 0,
+          "startDate": "2026-10-02"
+        },
+        {
+          "type": "habit",
+          "id": "00000000-0000-4000-8000-000000000196",
+          "title": "read",
+          "streak": 0,
+          "status": "pending",
+          "completedDates": [],
+          "skippedDates": [],
+          "dailyCounts": {},
+          "repeatFrequency": "daily"
+        }
+      ],
+      "routines": [],
+      "expected": {
+        "groups": [],
+        "loose": [
+          "00000000-0000-4000-8000-000000000191",
+          "00000000-0000-4000-8000-000000000192",
+          "00000000-0000-4000-8000-000000000193",
+          "00000000-0000-4000-8000-000000000194",
+          "00000000-0000-4000-8000-000000000195",
+          "00000000-0000-4000-8000-000000000196"
+        ]
+      }
+    },
+    {
+      "name": "no rows",
+      "items": [],
+      "routines": [
+        {
+          "id": "r-morning",
+          "name": "Morning",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000194",
+            "00000000-0000-4000-8000-000000000192",
+            "00000000-0000-4000-8000-000000000191"
+          ]
+        },
+        {
+          "id": "r-evening",
+          "name": "Evening",
+          "itemIds": [
+            "00000000-0000-4000-8000-000000000196",
+            "00000000-0000-4000-8000-000000000192"
+          ]
+        }
+      ],
+      "expected": {
+        "groups": [],
+        "loose": []
+      }
+    }
+  ]
+}

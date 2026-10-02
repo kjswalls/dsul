@@ -44,12 +44,29 @@ struct RootView: View {
             PlannerSheetContent(sheet: sheet)
                 .environment(planner)
         }
-        // Today moves at midnight and when the app comes back to the front.
+        // Today moves at midnight in the user's stored zone (the device's
+        // when there is none) and when the app comes back to the front.
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { planner.refreshToday() }
         }
         .onReceive(NotificationCenter.default.publisher(for: .NSCalendarDayChanged)
             .receive(on: DispatchQueue.main)) { _ in
+            planner.refreshToday()
+        }
+        // Keyed on the planner, so a new one (sign-in, the sample) gets its
+        // own check.
+        .task(id: ObjectIdentifier(planner)) {
+            await keepTodayCurrent()
+        }
+    }
+
+    /// `NSCalendarDayChanged` fires at the DEVICE's midnight, but the user's
+    /// day turns at their stored zone's, which can be any hour here. A check
+    /// a minute covers it: `refreshToday` does nothing until the day changes.
+    /// Ends when the view goes or the planner changes (the task is cancelled
+    /// and the sleep throws).
+    private func keepTodayCurrent() async {
+        while (try? await Task.sleep(for: .seconds(60))) != nil {
             planner.refreshToday()
         }
     }

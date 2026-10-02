@@ -1046,7 +1046,19 @@ async function writeWithoutNotesFallback(
   return true;
 }
 
-export async function createItem(userId: string, item: Item, client?: DbClient): Promise<void> {
+/**
+ * `notify: false` keeps a create off the plugin webhook. The browser's creates
+ * never reach a webhook (there is no service key in a browser, so notifyPlugins
+ * is a no-op there), and the iPhone's capture route passes `false` so a phone
+ * capture stays as silent to OpenClaw as the same capture typed on the web.
+ * The `create` event row is written either way.
+ */
+export async function createItem(
+  userId: string,
+  item: Item,
+  client?: DbClient,
+  opts: { notify?: boolean } = {},
+): Promise<void> {
   const supabase = client ?? createClient();
   const linked = await withResolvedContainer(supabase, userId, item);
   const row = itemToRow(userId, linked) as unknown as Record<string, unknown>;
@@ -1078,10 +1090,12 @@ export async function createItem(userId: string, item: Item, client?: DbClient):
 
   if (error) throw error;
   const dbType = itemDbType(item);
-  notifyItemChange(userId, dbType, {
-    action: 'create',
-    [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
-  });
+  if (opts.notify ?? true) {
+    notifyItemChange(userId, dbType, {
+      action: 'create',
+      [getItemTypeConfig(dbType).webhookPayloadKey]: legacyPayload(item),
+    });
+  }
   recordItemEvent(item.id, dbType, 'create', { title: item.title }, userId, client);
 }
 

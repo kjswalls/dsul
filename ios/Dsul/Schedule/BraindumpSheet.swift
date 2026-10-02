@@ -41,6 +41,7 @@ struct BraindumpSheet: View {
                         withAnimation(.snappy) { detent = .medium }
                     }
                 case .active:
+                    drag.noteMove()
                     // The location is in the list's space; above the sheet's own
                     // top (not just the list's, which sits under the nav bar)
                     // means the finger has left the sheet.
@@ -87,6 +88,12 @@ struct BraindumpSheet: View {
         .presentationBackgroundInteraction(.enabled(upThrough: .medium))
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled()
+        // Closed or swapped out mid-drag (Close, or the layout capsule, tapped
+        // with a second finger): `.ended` never reaches a list that is gone,
+        // so the drag's hold on fetched data is let go here.
+        .onDisappear {
+            if drag.phase != "idle" { drag.reset() }
+        }
     }
 }
 

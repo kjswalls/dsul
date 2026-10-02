@@ -1,0 +1,499 @@
+import Foundation
+
+// The planner's data as GET /api/app/planner serves it: the web app's camelCase
+// `Item` (packages/types/src/schemas.ts `ItemSchema`, built by `itemFromRow` in
+// lib/db.ts), its containers, and the two settings Today reads. The route's
+// shape is pinned by tests/fixtures/app/planner-response.json, which
+// PlannerPayloadTests decodes.
+//
+// Decoding is lenient on purpose. One bad value in a strict decode fails the
+// whole payload, and a blank app is a worse answer than a missing row:
+// - items decode one at a time; a row without a uuid id, a type or a title is
+//   dropped and counted in `PlannerPayload.droppedItems`;
+// - free-text columns (`type`, `status`, `timeBucket`, `startTime`,
+//   `repeatFrequency`) stay `String`, because the agent API can write values
+//   the enums don't name, and the web reads an unknown one as "matches nothing";
+// - a number may arrive as a Double and is truncated to an Int;
+// - a null or missing array is empty, and a bad element in it is skipped;
+// - `pausedAt` stays a string, parsed in Active.swift (`parseTimestamp`), so no
+//   `dateDecodingStrategy` is involved and Linux and Darwin agree.
+
+/// One item: a task, a habit, or a user-defined type. The web's union is
+/// discriminated on `type` ('task' | 'habit' | 'custom', with the custom slug
+/// in `customType`); here it is one struct and the rules ask `typeName` or
+/// `isHabit`, as lib/item-registry.ts has them ask the registry.
+public struct Item: Codable, Sendable, Hashable, Identifiable {
+    public var id: UUID
+    public var type: String
+    public var customType: String?
+    public var title: String
+    public var status: String?
+    /// yyyy-MM-dd (task-like only; a habit is never date-anchored).
+    public var startDate: String?
+    /// "HH:mm".
+    public var startTime: String?
+    public var timeBucket: String?
+    public var repeatFrequency: String?
+    /// The container's NAME, which is what the web displays and matches on.
+    public var project: String?
+    public var parentItemId: String?
+    /// The instant a pause began, as Postgres wrote it.
+    public var pausedAt: String?
+    /// The day the pause ends, exclusive (yyyy-MM-dd).
+    public var pausedUntil: String?
+    /// Minutes.
+    public var duration: Int?
+    public var order: Int?
+    public var repeatMonthDay: Int?
+    public var streak: Int?
+    public var timesPerDay: Int?
+    public var isScheduled: Bool?
+    public var inProjectBlock: Bool?
+    public var repeatDays: [Int]?
+    public var completedDates: [String]
+    public var skippedDates: [String]
+    public var dailyCounts: [String: Int]
+
+    public init(
+        id: UUID,
+        type: String = "task",
+        customType: String? = nil,
+        title: String,
+        status: String? = nil,
+        startDate: String? = nil,
+        startTime: String? = nil,
+        timeBucket: String? = nil,
+        repeatFrequency: String? = nil,
+        project: String? = nil,
+        parentItemId: String? = nil,
+        pausedAt: String? = nil,
+        pausedUntil: String? = nil,
+        duration: Int? = nil,
+        order: Int? = nil,
+        repeatMonthDay: Int? = nil,
+        streak: Int? = nil,
+        timesPerDay: Int? = nil,
+        isScheduled: Bool? = nil,
+        inProjectBlock: Bool? = nil,
+        repeatDays: [Int]? = nil,
+        completedDates: [String] = [],
+        skippedDates: [String] = [],
+        dailyCounts: [String: Int] = [:]
+    ) {
+        self.id = id
+        self.type = type
+        self.customType = customType
+        self.title = title
+        self.status = status
+        self.startDate = startDate
+        self.startTime = startTime
+        self.timeBucket = timeBucket
+        self.repeatFrequency = repeatFrequency
+        self.project = project
+        self.parentItemId = parentItemId
+        self.pausedAt = pausedAt
+        self.pausedUntil = pausedUntil
+        self.duration = duration
+        self.order = order
+        self.repeatMonthDay = repeatMonthDay
+        self.streak = streak
+        self.timesPerDay = timesPerDay
+        self.isScheduled = isScheduled
+        self.inProjectBlock = inProjectBlock
+        self.repeatDays = repeatDays
+        self.completedDates = completedDates
+        self.skippedDates = skippedDates
+        self.dailyCounts = dailyCounts
+    }
+
+    /// lib/item-registry.ts `itemTypeName`: the name the registry answers for,
+    /// the custom slug rather than 'custom'.
+    public var typeName: String {
+        if type == "custom" { return customType ?? "custom" }
+        return type
+    }
+
+    public var isHabit: Bool { type == "habit" }
+
+    /// The repeat fields as Recurrence.swift reads them. Internal, so it can't
+    /// collide with an app-side accessor.
+    var rule: RepeatRule {
+        RepeatRule(frequency: repeatFrequency, days: repeatDays, monthDay: repeatMonthDay)
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, type, customType, title, status, startDate, startTime, timeBucket
+        case repeatFrequency, project, parentItemId, pausedAt, pausedUntil
+        case duration, order, repeatMonthDay, streak, timesPerDay
+        case isScheduled, inProjectBlock, repeatDays, completedDates, skippedDates, dailyCounts
+    }
+
+    /// Throws only for what makes a row meaningless: no uuid id, no type, no
+    /// title. Everything else degrades to nil or empty.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let rawId = try c.decode(String.self, forKey: .id)
+        guard let id = UUID(uuidString: rawId) else {
+            throw DecodingError.dataCorruptedError(forKey: .id, in: c, debugDescription: "not a uuid: \(rawId)")
+        }
+        self.id = id
+        self.type = try c.decode(String.self, forKey: .type)
+        self.title = try c.decode(String.self, forKey: .title)
+        self.customType = c.lenientString(.customType)
+        self.status = c.lenientString(.status)
+        self.startDate = c.lenientString(.startDate)
+        self.startTime = c.lenientString(.startTime)
+        self.timeBucket = c.lenientString(.timeBucket)
+        self.repeatFrequency = c.lenientString(.repeatFrequency)
+        self.project = c.lenientString(.project)
+        self.parentItemId = c.lenientString(.parentItemId)
+        self.pausedAt = c.lenientString(.pausedAt)
+        self.pausedUntil = c.lenientString(.pausedUntil)
+        self.duration = c.lenientInt(.duration)
+        self.order = c.lenientInt(.order)
+        self.repeatMonthDay = c.lenientInt(.repeatMonthDay)
+        self.streak = c.lenientInt(.streak)
+        self.timesPerDay = c.lenientInt(.timesPerDay)
+        self.isScheduled = c.lenientBool(.isScheduled)
+        self.inProjectBlock = c.lenientBool(.inProjectBlock)
+        self.repeatDays = c.lenientInts(.repeatDays)
+        self.completedDates = c.lenientStrings(.completedDates) ?? []
+        self.skippedDates = c.lenientStrings(.skippedDates) ?? []
+        self.dailyCounts = c.lenientCounts(.dailyCounts)
+    }
+}
+
+/// packages/types `ProjectSchema`, the fields a recurring time block reads.
+public struct Project: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    public var repeatFrequency: String?
+    public var repeatDays: [Int]?
+    public var repeatMonthDay: Int?
+    public var timeBucket: String?
+    public var startTime: String?
+    public var duration: Int?
+
+    public init(
+        id: String,
+        name: String,
+        repeatFrequency: String? = nil,
+        repeatDays: [Int]? = nil,
+        repeatMonthDay: Int? = nil,
+        timeBucket: String? = nil,
+        startTime: String? = nil,
+        duration: Int? = nil
+    ) {
+        self.id = id
+        self.name = name
+        self.repeatFrequency = repeatFrequency
+        self.repeatDays = repeatDays
+        self.repeatMonthDay = repeatMonthDay
+        self.timeBucket = timeBucket
+        self.startTime = startTime
+        self.duration = duration
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.repeatFrequency = c.lenientString(.repeatFrequency)
+        self.repeatDays = c.lenientInts(.repeatDays)
+        self.repeatMonthDay = c.lenientInt(.repeatMonthDay)
+        self.timeBucket = c.lenientString(.timeBucket)
+        self.startTime = c.lenientString(.startTime)
+        self.duration = c.lenientInt(.duration)
+    }
+}
+
+/// packages/types `RoutineSchema`: things done regularly, in order. `itemIds`
+/// is the routine's own sequence (routine_items.sort_order).
+public struct Routine: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    public var sortOrder: Int?
+    public var pausedAt: String?
+    public var pausedUntil: String?
+    public var itemIds: [UUID]
+
+    public init(
+        id: String,
+        name: String,
+        sortOrder: Int? = nil,
+        pausedAt: String? = nil,
+        pausedUntil: String? = nil,
+        itemIds: [UUID] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.sortOrder = sortOrder
+        self.pausedAt = pausedAt
+        self.pausedUntil = pausedUntil
+        self.itemIds = itemIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, sortOrder, pausedAt, pausedUntil, itemIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.sortOrder = c.lenientInt(.sortOrder)
+        self.pausedAt = c.lenientString(.pausedAt)
+        self.pausedUntil = c.lenientString(.pausedUntil)
+        self.itemIds = (c.lenientStrings(.itemIds) ?? []).compactMap { UUID(uuidString: $0) }
+    }
+}
+
+/// packages/types `SeasonSchema`: a period of life. `state` stays a string;
+/// anything but 'active' or 'paused' follows the dates, as the web reads it.
+public struct Season: Codable, Sendable, Hashable, Identifiable {
+    public var id: String
+    public var name: String
+    public var state: String
+    public var startsOn: String?
+    public var endsOn: String?
+    public var itemIds: [UUID]
+    public var routineIds: [String]
+
+    public init(
+        id: String,
+        name: String,
+        state: String = "auto",
+        startsOn: String? = nil,
+        endsOn: String? = nil,
+        itemIds: [UUID] = [],
+        routineIds: [String] = []
+    ) {
+        self.id = id
+        self.name = name
+        self.state = state
+        self.startsOn = startsOn
+        self.endsOn = endsOn
+        self.itemIds = itemIds
+        self.routineIds = routineIds
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, state, startsOn, endsOn, itemIds, routineIds
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.id = try c.decode(String.self, forKey: .id)
+        self.name = try c.decode(String.self, forKey: .name)
+        self.state = c.lenientString(.state) ?? "auto"
+        self.startsOn = c.lenientString(.startsOn)
+        self.endsOn = c.lenientString(.endsOn)
+        self.itemIds = (c.lenientStrings(.itemIds) ?? []).compactMap { UUID(uuidString: $0) }
+        self.routineIds = c.lenientStrings(.routineIds) ?? []
+    }
+}
+
+/// The two `user_settings` columns Today reads. `timezone` is the stored value
+/// untrimmed; the caller applies `timezone?.trim() || device`
+/// (components/supabase-provider.tsx, lib/planner-store.ts).
+public struct PlannerSettings: Codable, Sendable, Hashable {
+    public var timezone: String?
+    /// Defaults to true, as the web's store does when the row has none.
+    public var showCompletedTasks: Bool
+
+    public init(timezone: String? = nil, showCompletedTasks: Bool = true) {
+        self.timezone = timezone
+        self.showCompletedTasks = showCompletedTasks
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case timezone, showCompletedTasks
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.timezone = c.lenientString(.timezone)
+        self.showCompletedTasks = c.lenientBool(.showCompletedTasks) ?? true
+    }
+}
+
+/// GET /api/app/planner (lib/app-api.ts), version 1.
+public struct PlannerPayload: Decodable, Sendable, Hashable {
+    public var v: Int
+    public var userId: UUID
+    public var fetchedAt: String
+    public var settings: PlannerSettings
+    public var items: [Item]
+    public var projects: [Project]
+    public var routines: [Routine]
+    public var seasons: [Season]
+    /// Item rows that couldn't be read and were left out.
+    public var droppedItems: Int
+
+    public init(
+        v: Int = 1,
+        userId: UUID,
+        fetchedAt: String,
+        settings: PlannerSettings = PlannerSettings(),
+        items: [Item] = [],
+        projects: [Project] = [],
+        routines: [Routine] = [],
+        seasons: [Season] = [],
+        droppedItems: Int = 0
+    ) {
+        self.v = v
+        self.userId = userId
+        self.fetchedAt = fetchedAt
+        self.settings = settings
+        self.items = items
+        self.projects = projects
+        self.routines = routines
+        self.seasons = seasons
+        self.droppedItems = droppedItems
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case v, userId, fetchedAt, settings, items, projects, routines, seasons
+    }
+
+    /// The envelope is strict (a payload with no user can't be trusted to be
+    /// this user's); its arrays are not.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        self.v = c.lenientInt(.v) ?? 1
+        let rawUser = try c.decode(String.self, forKey: .userId)
+        guard let userId = UUID(uuidString: rawUser) else {
+            throw DecodingError.dataCorruptedError(forKey: .userId, in: c, debugDescription: "not a uuid: \(rawUser)")
+        }
+        self.userId = userId
+        self.fetchedAt = try c.decode(String.self, forKey: .fetchedAt)
+        self.settings = (try? c.decodeIfPresent(PlannerSettings.self, forKey: .settings)) ?? PlannerSettings()
+        let items: (values: [Item], dropped: Int) = c.lossyArray(Item.self, .items)
+        self.items = items.values
+        self.droppedItems = items.dropped
+        self.projects = c.lossyArray(Project.self, .projects).values
+        self.routines = c.lossyArray(Routine.self, .routines).values
+        self.seasons = c.lossyArray(Season.self, .seasons).values
+    }
+}
+
+// MARK: - Lenient decoding
+
+/// Decodes anything and keeps nothing: steps an unkeyed container past an
+/// element that failed to decode as what it should have been.
+private struct Skip: Decodable {
+    init(from decoder: Decoder) throws {}
+}
+
+extension UnkeyedDecodingContainer {
+    /// Steps past the current element, whatever it is. A failed `decode` leaves
+    /// the container where it was, so a lossy loop must call this or spin. A
+    /// null goes through `decodeNil`, which some decoders require. False when
+    /// even that can't move on, and the loop has to stop.
+    fileprivate mutating func skipElement() -> Bool {
+        if let isNull = try? decodeNil(), isNull { return true }
+        return (try? decode(Skip.self)) != nil
+    }
+}
+
+/// Any JSON object key.
+private struct AnyKey: CodingKey {
+    var stringValue: String
+    var intValue: Int?
+    init?(stringValue: String) {
+        self.stringValue = stringValue
+        self.intValue = nil
+    }
+    init?(intValue: Int) {
+        self.stringValue = String(intValue)
+        self.intValue = intValue
+    }
+}
+
+/// A JSON number as an Int: whole numbers as they are, others truncated toward
+/// zero. Nil for anything that isn't a finite number in range.
+private func truncatedInt(_ d: Double) -> Int? {
+    guard d.isFinite, abs(d) < 9.0e15 else { return nil }
+    return Int(d)
+}
+
+extension KeyedDecodingContainer {
+    // `try?` flattens: each of these is nil for a missing key, a null and a
+    // value of the wrong type alike.
+    fileprivate func lenientString(_ key: Key) -> String? {
+        return try? decodeIfPresent(String.self, forKey: key)
+    }
+
+    fileprivate func lenientBool(_ key: Key) -> Bool? {
+        return try? decodeIfPresent(Bool.self, forKey: key)
+    }
+
+    fileprivate func lenientInt(_ key: Key) -> Int? {
+        if let whole = try? decodeIfPresent(Int.self, forKey: key) { return whole }
+        if let real = try? decodeIfPresent(Double.self, forKey: key) { return truncatedInt(real) }
+        return nil
+    }
+
+    /// Nil when the key is missing, null or not an array; otherwise the
+    /// elements that are strings.
+    fileprivate func lenientStrings(_ key: Key) -> [String]? {
+        guard var list = try? nestedUnkeyedContainer(forKey: key) else { return nil }
+        var out: [String] = []
+        while !list.isAtEnd {
+            if let s = try? list.decode(String.self) {
+                out.append(s)
+            } else if !list.skipElement() {
+                break
+            }
+        }
+        return out
+    }
+
+    /// Nil when the key is missing, null or not an array; otherwise the
+    /// elements that are numbers, truncated.
+    fileprivate func lenientInts(_ key: Key) -> [Int]? {
+        guard var list = try? nestedUnkeyedContainer(forKey: key) else { return nil }
+        var out: [Int] = []
+        while !list.isAtEnd {
+            if let i = try? list.decode(Int.self) {
+                out.append(i)
+            } else if let d = try? list.decode(Double.self) {
+                if let i = truncatedInt(d) { out.append(i) }
+            } else if !list.skipElement() {
+                break
+            }
+        }
+        return out
+    }
+
+    /// `dailyCounts`: a date → count map, keeping the entries that are numbers.
+    fileprivate func lenientCounts(_ key: Key) -> [String: Int] {
+        guard let map = try? nestedContainer(keyedBy: AnyKey.self, forKey: key) else { return [:] }
+        var out: [String: Int] = [:]
+        for k in map.allKeys {
+            if let i = map.lenientInt(k) { out[k.stringValue] = i }
+        }
+        return out
+    }
+
+    /// Each element decoded on its own; one that fails is skipped and counted.
+    /// A missing, null or non-array value is an empty list.
+    fileprivate func lossyArray<T: Decodable>(_ type: T.Type, _ key: Key) -> (values: [T], dropped: Int) {
+        guard var list = try? nestedUnkeyedContainer(forKey: key) else { return ([], 0) }
+        var values: [T] = []
+        var dropped = 0
+        while !list.isAtEnd {
+            if let value = try? list.decode(T.self) {
+                values.append(value)
+            } else {
+                dropped += 1
+                if !list.skipElement() { break }
+            }
+        }
+        return (values, dropped)
+    }
+}

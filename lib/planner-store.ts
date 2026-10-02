@@ -28,7 +28,9 @@ import type {
   GoalRole,
   Proposal,
 } from './planner-types';
-import { PRIORITY_LABELS, TIME_BUCKET_RANGES } from './planner-types';
+import { PRIORITY_LABELS } from './planner-types';
+// The time → bucket rules live in a plain module so a route can share them.
+import { autoCorrectBucket } from './time-bucket';
 import { validateProposalOperations } from './proposal';
 import {
   addDaysToDateStr,
@@ -583,7 +585,7 @@ interface PlannerStore {
 // view). This is NOT the pinned external projection: db.ts fetchTasks and the
 // context response keep type === 'task' exactly. Runtime objects retain their
 // type/customType keys (projections filter, never map).
-const projectItems = (items: Item[]) => ({
+export const projectItems = (items: Item[]) => ({
   items,
   // Subtasks (parentItemId set) live inside their parent's detail surface and
   // are deliberately EXCLUDED from the tasks projection — braindump, buckets,
@@ -1520,27 +1522,6 @@ const forgetFailedContainer = (
   const entry = entryId ? actionLog.find((a) => a.id === entryId) : undefined;
   if (entry) entry.label = label;
 };
-
-// Get appropriate bucket for a given time
-const getBucketForTime = (time: string): TimeBucket => {
-  const hour = parseInt(time.split(':')[0]);
-  if (hour >= TIME_BUCKET_RANGES.morning.start && hour < TIME_BUCKET_RANGES.morning.end) {
-    return 'morning';
-  } else if (hour >= TIME_BUCKET_RANGES.afternoon.start && hour < TIME_BUCKET_RANGES.afternoon.end) {
-    return 'afternoon';
-  } else if (hour >= TIME_BUCKET_RANGES.evening.start || hour < 5) {
-    return 'evening';
-  }
-  return 'anytime';
-};
-
-// A concrete start time overrides a mismatched bucket ('anytime' is exempt).
-// Single home for the auto-correct rule that used to be copied six times.
-const autoCorrectBucket = (
-  time: string | undefined,
-  bucket: TimeBucket | undefined,
-): TimeBucket | undefined =>
-  time && bucket && bucket !== 'anytime' ? getBucketForTime(time) : bucket;
 
 // Per-type diff for undo/redo db sync — fields come from the schema-derived
 // registry lists, so a new schema field can never silently drop out of sync.

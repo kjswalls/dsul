@@ -1,0 +1,318 @@
+import CryptoKit
+import DsulCore
+import Foundation
+import Observation
+
+/// A signed-in session (DsulCore AuthCore.swift), named for the app.
+typealias AuthSession = DsulCore.Session
+
+/// Where the app is: the sign-in screen (or a sign-in under way), the
+/// signed-in user's planner, or the sample planner.
+enum AuthState: Equatable, Sendable {
+    case signedOut
+    case signingIn
+    case signedIn(AuthSession)
+    case sample
+}
+
+enum AuthError: Error, Equatable, Sendable {
+    /// No session, or GoTrue says it can never refresh again.
+    case signedOut
+    /// Auth couldn't be reached; the tokens are kept and tried again later.
+    case unavailable
+    /// The sign-in didn't complete (a callback that didn't parse, a refused
+    /// exchange).
+    case failed
+    /// Google or GoTrue sent an error code back (never its description).
+    case provider(String)
+}
+
+/// Sign-in, the tokens and their refresh: Supabase Auth (GoTrue) spoken
+/// directly, with the pure half in DsulCore's AuthCore.swift.
+///
+/// - Google only, through the authorization-code flow with PKCE (S256). The
+///   verifier is made here, held in memory for one attempt and dropped after
+///   it, whether the exchange worked or not.
+/// - Tokens are saved BEFORE the app counts itself signed in, and every
+///   refreshed pair before it is handed out. A failed save keeps the pair in
+///   memory and tries the save again on the next token request.
+/// - One refresh at a time (`refreshTask`): refresh tokens rotate, and two
+///   refreshes with one token would revoke the session. Only a GoTrue verdict
+///   that the session is gone signs out (`classifyRefreshFailure`, which is how
+///   a global sign-out on the web arrives); a 5xx, a 429 or no network keeps
+///   the tokens and retries with the SAME refresh token, inside GoTrue's reuse
+///   window (about 10 seconds, from memory).
+/// - Sign-out is `scope=local`: GoTrue's default is global, which would sign
+///   the web and the desktop app out too. The local wipe happens first and
+///   whatever the call does.
+@Observable @MainActor
+final class AuthStore {
+    private(set) var state: AuthState
+    /// Why the sign-in screen is showing: a failed sign-in, or a session that
+    /// ended. Nil on a plain first launch and after a cancel.
+    private(set) var message: String? = nil
+
+    private let tokenStore: any TokenStore
+    private let configStore: SupabaseConfigStore
+    private let transport: Transport
+    private let now: @Sendable () -> Date
+    private let sleep: @Sendable (Duration) async throws -> Void
+    @ObservationIgnored private var refreshTask: Task<AuthSession, Error>? = nil
+    /// A refreshed or new session the token store couldn't keep yet.
+    @ObservationIgnored private var unsaved: AuthSession? = nil
+    /// The email of an interactive sign-in, until the app has said "Signed in
+    /// as …" once.
+    @ObservationIgnored private var welcome: String? = nil
+
+    /// The waits between refresh attempts that failed for want of a server:
+    /// three tries within about three seconds, well inside the reuse window.
+    static let refreshRetryDelays: [Duration] = [.seconds(1), .seconds(2)]
+
+    init(tokenStore: any TokenStore, configStore: SupabaseConfigStore, transport: @escaping Transport,
+         now: @escaping @Sendable () -> Date = { Date() },
+         sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in try await Task.sleep(for: duration) }) {
+        self.tokenStore = tokenStore
+        self.configStore = configStore
+        self.transport = transport
+        self.now = now
+        self.sleep = sleep
+        if let saved = tokenStore.load() {
+            state = .signedIn(saved)
+        } else {
+            state = .signedOut
+        }
+    }
+
+    /// The app's store: the Keychain, the production origin (or a Debug
+    /// override) and URLSession. As a test host the app keeps tokens in
+    /// memory, so the hosted tests never read a Keychain a developer signed
+    /// in to on the same simulator.
+    static func makeLive() -> AuthStore {
+        let defaults = UserDefaults.standard
+        let store: any TokenStore
+        if ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] != nil {
+            store = InMemoryTokenStore()
+        } else {
+            store = KeychainTokenStore(defaults: defaults)
+        }
+        let config = SupabaseConfigStore(origin: AppConfig.apiOrigin, defaults: defaults, transport: HTTP.live)
+        return AuthStore(tokenStore: store, configStore: config, transport: HTTP.live)
+    }
+
+    var session: AuthSession? {
+        if case .signedIn(let session) = state { return session }
+        return nil
+    }
+
+    var isSignedIn: Bool { session != nil }
+    var email: String? { session?.email }
+
+    /// What AppGate keys the planner on: one per user, one for the sample,
+    /// none on the sign-in screen. A token refresh doesn't change it.
+    var gateKey: String {
+        switch state {
+        case .signedOut, .signingIn:
+            return "signed-out"
+        case .sample:
+            return "sample"
+        case .signedIn(let session):
+            return "user:" + session.userId.uuidString
+        }
+    }
+
+    // MARK: Signing in
+
+    /// Google in the auth session, then the code exchanged for tokens. The
+    /// view passes the session's `authenticate`, which must throw
+    /// `CancellationError` when the user closes the sheet: a cancel is silent.
+    func signInWithGoogle(authenticate: @MainActor (URL) async throws -> URL) async {
+        guard state == .signedOut else { return }
+        state = .signingIn
+        message = nil
+        do {
+            let config = try await configStore.config()
+            let verifier = PKCE.makeVerifier()
+            let challenge = PKCE.challenge(for: verifier) { data in Data(SHA256.hash(data: data)) }
+            guard let url = GoTrue.authorizeURL(config: config, codeChallenge: challenge,
+                                                redirectTo: AppConfig.authRedirect)
+            else { throw AuthError.failed }
+            let callback = try await authenticate(url)
+            guard let parsed = parseCallback(callback) else { throw AuthError.failed }
+            let code: String
+            switch parsed {
+            case .code(let value):
+                code = value
+            case .error(let value):
+                throw AuthError.provider(value)
+            }
+            let session = try await exchange(code: code, verifier: verifier)
+            persist(session)
+            welcome = session.email ?? ""
+            state = .signedIn(session)
+        } catch is CancellationError {
+            state = .signedOut
+        } catch {
+            state = .signedOut
+            message = Self.message(for: error)
+        }
+    }
+
+    /// POST /auth/v1/token?grant_type=pkce. Not retried: a code is good once.
+    private func exchange(code: String, verifier: String) async throws -> AuthSession {
+        let result = try await goTrue { config in
+            GoTrue.exchangeRequest(config: config, authCode: code, codeVerifier: verifier)
+        }
+        guard result.isSuccess else { throw AuthError.failed }
+        return try AuthSession.decode(result.data, receivedAt: self.now())
+    }
+
+    /// The email to show once ("Signed in as …"), after an interactive sign-in.
+    func takeWelcome() -> String? {
+        let email = welcome
+        welcome = nil
+        return email
+    }
+
+    func enterSample() {
+        guard state == .signedOut else { return }
+        message = nil
+        state = .sample
+    }
+
+    func leaveSample() {
+        guard state == .sample else { return }
+        state = .signedOut
+    }
+
+    // MARK: Tokens
+
+    func accessToken() async throws -> String {
+        return try await accessToken(rejecting: nil)
+    }
+
+    private func refreshed(from current: AuthSession) async throws -> AuthSession {
+        if let running = refreshTask {
+            return try await running.value
+        }
+        let task = Task<AuthSession, Error> { try await self.performRefresh(current) }
+        refreshTask = task
+        defer {
+            if refreshTask == task { refreshTask = nil }
+        }
+        return try await task.value
+    }
+
+    /// POST /auth/v1/token?grant_type=refresh_token, retried on anything but a
+    /// verdict, always with the same refresh token.
+    private func performRefresh(_ current: AuthSession) async throws -> AuthSession {
+        var attempt = 0
+        while true {
+            var result: HTTPResult? = nil
+            do {
+                result = try await goTrue { config in
+                    GoTrue.refreshRequest(config: config, refreshToken: current.refreshToken)
+                }
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                result = nil  // offline, or the config couldn't be fetched: try again
+            }
+            // Signed out (or switched) while the request was out: never revive it.
+            guard session?.userId == current.userId else { throw AuthError.signedOut }
+            if let result {
+                if result.isSuccess {
+                    let fresh = try AuthSession.decode(result.data, receivedAt: self.now())
+                    persist(fresh)
+                    state = .signedIn(fresh)
+                    return fresh
+                }
+                if classifyRefreshFailure(status: result.status, body: result.data) == .signedOut {
+                    endSession(message: "You were signed out. Sign in again to see your day.")
+                    throw AuthError.signedOut
+                }
+            }
+            if attempt >= Self.refreshRetryDelays.count { throw AuthError.unavailable }
+            try await self.sleep(Self.refreshRetryDelays[attempt])
+            attempt += 1
+        }
+    }
+
+    private func persist(_ session: AuthSession) {
+        do {
+            try tokenStore.save(session)
+            unsaved = nil
+        } catch {
+            unsaved = session
+        }
+    }
+
+    private func retryUnsavedSave() {
+        guard let pending = unsaved else { return }
+        guard session?.userId == pending.userId else {
+            unsaved = nil
+            return
+        }
+        persist(pending)
+    }
+
+    // MARK: Signing out
+
+    /// Ends this phone's session only. The wipe comes first, so a failed or
+    /// slow call can't leave the app signed in.
+    func signOut() async {
+        guard let ending = session else {
+            leaveSample()
+            return
+        }
+        refreshTask?.cancel()
+        refreshTask = nil
+        endSession(message: nil)
+        _ = try? await goTrue { config in
+            GoTrue.logoutRequest(config: config, accessToken: ending.accessToken)
+        }
+    }
+
+    private func endSession(message: String?) {
+        tokenStore.clear()
+        unsaved = nil
+        welcome = nil
+        state = .signedOut
+        self.message = message
+    }
+
+    // MARK: GoTrue
+
+    /// Sends one GoTrue request built from the config. If the gateway refuses
+    /// the cached anon key (rotated since), the config is fetched again and the
+    /// request rebuilt and sent once more.
+    private func goTrue(_ build: (GoTrueConfig) -> URLRequest?) async throws -> HTTPResult {
+        let config = try await configStore.config()
+        guard let request = build(config) else { throw AuthError.failed }
+        let result = try await self.transport(request)
+        guard SupabaseConfigStore.isAPIKeyRejected(result) else { return result }
+        let fresh = try await configStore.reload()
+        guard let retry = build(fresh) else { throw AuthError.failed }
+        return try await self.transport(retry)
+    }
+
+    private static func message(for error: Error) -> String {
+        if let authError = error as? AuthError, case .provider(let code) = authError {
+            if code == "access_denied" { return "Google sign-in was cancelled." }
+            return "Google couldn't sign you in (\(code)). Try again."
+        }
+        if error is URLError || (error as? AuthError) == .unavailable {
+            return "Couldn't reach dsul. Check your connection and try again."
+        }
+        return "Couldn't sign in. Try again."
+    }
+}
+
+extension AuthStore: AccessTokenSource {
+    func accessToken(rejecting rejected: String?) async throws -> String {
+        retryUnsavedSave()
+        guard let current = session else { throw AuthError.signedOut }
+        let wasRejected = rejected != nil && rejected == current.accessToken
+        if !wasRejected && !current.needsRefresh(now: self.now()) { return current.accessToken }
+        return try await refreshed(from: current).accessToken
+    }
+}
