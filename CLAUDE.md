@@ -214,7 +214,10 @@ with `tasks`/`habits` projections derived off it.
 **`electron/` is the desktop app's shell; `components/shell/desktop-shell.tsx` is the web
 layout.** The shell is a standalone npm project outside the pnpm workspace (never run pnpm in
 it), and it loads the live do.dsul.app. Read [desktop-app.md](memory/plans/desktop-app.md)
-before touching it, `app/auth/desktop/`, or anything that reads `window.dsulDesktop`.
+before touching it, `app/auth/desktop/`, or anything that reads `window.dsulDesktop`. The
+shell's find bar (Ctrl/⌘ F) is an Edit-menu accelerator, which fires only for a key the page
+leaves unhandled: a web handler that preventDefaults Ctrl/⌘ F or G (the settings search, the
+Organize filter) keeps the key there, exactly as in a browser.
 
 **`ios/` is the native iPhone app (SwiftUI, iOS 27); `ios/DsulCore` is its Linux-testable
 Swift port of the pure planner logic.** XcodeGen generates the Xcode project from
@@ -281,6 +284,10 @@ rather than taking the flag.
   hover-driven above y 43 takes `titlebar-hole`. It is all keyed off `env(titlebar-area-*)` with
   `0px` fallbacks, so browsers and the PWA never see it. The `-35px` in the sidebar wordmark's
   padding couples to `MAC_LIGHTS.x` in `electron/lib/window-chrome.cjs` — change one, change both.
+  On a Mac the buttons follow page zoom (`macLights`: x and the row's midline scale, and y stops
+  at 27 inside the fixed 43pt overlay), and env() is window points over the zoom, so the band's
+  offsets stay subtractions from env(), never fixed lefts. The View menu's zoom items are click
+  handlers that zoom the page, never roles: a role zooms without main hearing of it.
 - **`canvas-container` caps the canvas at 1100px**, which is why seven week columns never
   fit on any monitor. The week COLUMN views opt out with `data-wide="true"`; every
   `canvas-container` on the page must flip together (header capsule, past-due bar, grid)

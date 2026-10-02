@@ -1,7 +1,7 @@
 {
   "name": "dsul-desktop",
   "productName": "dsul",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "dsul for macOS and Windows: an Electron shell over https://do.dsul.app",
   "author": "Kirby Walls",
