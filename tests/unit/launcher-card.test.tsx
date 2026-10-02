@@ -45,6 +45,7 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { Omnibar } from '@/components/sidebar/omnibar';
+import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED } from './helpers/ai-fixtures';
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
@@ -63,7 +64,12 @@ beforeAll(() => {
   }
 });
 
-afterEach(cleanup);
+let unseed: (() => void) | null = null;
+afterEach(() => {
+  cleanup();
+  unseed?.();
+  unseed = null;
+});
 
 const scopeFor = (variant: 'dock' | 'launcher') =>
   document.querySelector(`[data-omnibar-variant="${variant}"]`) as HTMLElement;
@@ -86,6 +92,9 @@ describe('the ⌘K launcher renders as one card', () => {
     // The dock's panel is closed at rest; focus opens it so its own Add / Ask rows
     // render. Even then the tile, footer, and pill must be absent — the helper
     // short-circuits to null off `variant`, and the tile/footer are isLauncher-gated.
+    // Seeded connected so the panel carries its `? chat` hint, the sanity check
+    // below; the case after this one covers the account with nothing connected.
+    unseed = seedAI(CONNECTED_MODEL);
     render(<Omnibar variant="dock" />);
     fireEvent.focus(screen.getByTestId('omnibar-input'));
     const scope = scopeFor('dock');
@@ -93,6 +102,22 @@ describe('the ⌘K launcher renders as one card', () => {
     // Sanity: the panel is actually open (the resting hint row is showing), so the
     // absence below is a real "not rendered", not "nothing rendered yet".
     expect(screen.getByText(/\? chat/)).toBeInTheDocument();
+
+    expect(scope.querySelector('[data-testid="omnibar-launcher-tile"]')).toBeNull();
+    expect(scope.querySelector('[data-testid="omnibar-launcher-footer"]')).toBeNull();
+    expect(scope.querySelectorAll('[data-testid="omnibar-enter-pill"]').length).toBe(0);
+  });
+
+  it('keeps the dock bare with nothing connected, too', () => {
+    // No chat, so no `? chat` in the hint row; `commands` is the sanity check
+    // that the panel really is open.
+    unseed = seedAI(NOTHING_CONNECTED);
+    render(<Omnibar variant="dock" />);
+    fireEvent.focus(screen.getByTestId('omnibar-input'));
+    const scope = scopeFor('dock');
+
+    expect(screen.getByText(/commands/)).toBeInTheDocument();
+    expect(screen.queryByText(/\? chat/)).toBeNull();
 
     expect(scope.querySelector('[data-testid="omnibar-launcher-tile"]')).toBeNull();
     expect(scope.querySelector('[data-testid="omnibar-launcher-footer"]')).toBeNull();

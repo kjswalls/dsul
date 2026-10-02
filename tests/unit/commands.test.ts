@@ -16,6 +16,7 @@ import { DEFAULT_SHORTCUTS } from '@/lib/keyboard-shortcuts-store';
 import { getActionLog, usePlannerStore } from '@/lib/planner-store';
 import { useUIStore } from '@/lib/ui-store';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
+import { CONNECTED_MODEL, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The palette's load-bearing invariants: every rendered row has a unique cmdk
@@ -266,14 +267,23 @@ describe('matchCommands', () => {
   });
 
   it('omits commands hidden for the current platform', () => {
-    const mobile = matchCommands('', { ...ctx, isMobile: true }).map((r) => r.command.id);
-    expect(mobile).not.toContain('view.scopeWeek');
-    expect(mobile).not.toContain('workspace.toggleChat');
+    // Chat connected, so the AI gate is not what hides the chat toggle: with
+    // nothing to answer it is hidden on desktop too, and the mobile half of
+    // this case would pass whether or not the platform rule existed.
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      const mobile = matchCommands('', { ...ctx, isMobile: true }).map((r) => r.command.id);
+      expect(mobile).not.toContain('view.scopeWeek');
+      expect(mobile).not.toContain('workspace.toggleChat');
 
-    const desktop = matchCommands('', ctx).map((r) => r.command.id);
-    expect(desktop).not.toContain('goto.todayTab');
-    // Never a row on either platform — it would hide the palette itself.
-    expect(desktop).not.toContain('workspace.toggleSidebar');
+      const desktop = matchCommands('', ctx).map((r) => r.command.id);
+      expect(desktop).toContain('workspace.toggleChat');
+      expect(desktop).not.toContain('goto.todayTab');
+      // Never a row on either platform — it would hide the palette itself.
+      expect(desktop).not.toContain('workspace.toggleSidebar');
+    } finally {
+      unseed();
+    }
   });
 });
 

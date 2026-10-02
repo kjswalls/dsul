@@ -14,11 +14,13 @@ import {
 import { BandSquare } from '@/components/planner/item-bands';
 import { usePlannerStore } from '@/lib/planner-store';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 
 /**
  * The item page — stage 3 of the surface (dialog → panel → page,
  * memory/plans/item-surface-growth.md). A deep-linkable route for when the
- * item IS the work: its fields, subtasks on the left, the thread on the right.
+ * item IS the work: its fields, subtasks on the left, the thread on the right
+ * (when something can answer in it; otherwise one column).
  *
  * THE FIELDS EDIT IN PLACE (Kirby, 2026-09-27). The page used to read the
  * properties out as static bands with an Edit button that opened the panel
@@ -54,6 +56,8 @@ export default function ItemPage() {
   const item = usePlannerStore((s) => s.items.find((i) => i.id === id));
   const userId = usePlannerStore((s) => s.userId);
   const isLoading = usePlannerStore((s) => s.isLoading);
+  // The thread column exists only while something can answer in it.
+  const { canChat } = useAICapabilities();
 
   /* Keyed on the id alone. The editor re-reads the live item from the store on
      every render; a fresh payload per write would read as a RETARGET and
@@ -129,9 +133,17 @@ export default function ItemPage() {
         />
       </div>
 
-      <div className="grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)]">
+      {/* Two columns only with a thread to fill the second: an empty 340px
+          rail beside the subtasks would be a column for a feature that is off. */}
+      <div
+        className={
+          canChat
+            ? 'grid items-start gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,340px)]'
+            : 'grid items-start gap-8'
+        }
+      >
         <ItemDetailSections item={item} />
-        <ItemThread item={item} className="lg:border-border lg:border-l lg:pl-6" />
+        {canChat && <ItemThread item={item} className="lg:border-border lg:border-l lg:pl-6" />}
       </div>
     </main>
   );

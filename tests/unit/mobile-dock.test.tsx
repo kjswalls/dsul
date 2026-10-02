@@ -47,9 +47,8 @@ vi.mock('next/navigation', () => ({
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useChatStore } from '@/lib/chat-store';
-import { useUIStore } from '@/lib/ui-store';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
 /** Where the stubbed layout puts the dock's top edge, in a 800px-tall viewport. */
 const DOCK_TOP = 724;
@@ -91,13 +90,21 @@ afterAll(() => {
   Element.prototype.getBoundingClientRect = realGetBoundingClientRect;
 });
 
+/**
+ * A connected model by default: most of this file is about the chat tab and
+ * the routes to it, which exist only while something can answer. The cases
+ * about the gate itself re-seed.
+ */
+let unseed: () => void = () => {};
 beforeEach(() => {
   useMobileNavStore.setState({ activeTab: 'today' });
-  useAISettingsStore.setState({ provider: 'openclaw' });
-  useUIStore.setState({ chatOnboardingActive: false });
+  unseed = seedAI(CONNECTED_MODEL);
   document.documentElement.style.removeProperty('--toast-bottom');
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  unseed();
+});
 
 const card = () => screen.getByTestId('mobile-mode-card');
 
@@ -108,13 +115,34 @@ describe('the mode card', () => {
     expect(card()).toHaveAttribute('aria-label', 'Surface: Today. Change surface.');
   });
 
-  it('follows the active surface, and names chat after the provider', () => {
+  it('follows the active surface, and names chat after whoever answers', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
-    useAISettingsStore.setState({ provider: 'anthropic' });
     render(<MobileBottomDock />);
 
     expect(card()).toHaveAttribute('data-surface', 'chat');
-    expect(card()).toHaveAttribute('aria-label', 'Surface: Beacon. Change surface.');
+    expect(card()).toHaveAttribute('aria-label', 'Surface: AI. Change surface.');
+  });
+
+  it('calls the chat surface OpenClaw when OpenClaw is the one answering', () => {
+    unseed();
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileBottomDock />);
+
+    expect(card()).toHaveAttribute('aria-label', 'Surface: OpenClaw. Change surface.');
+  });
+
+  it('never says it is on a chat tab that cannot answer', () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    useMobileNavStore.setState({ activeTab: 'chat' });
+    render(<MobileBottomDock />);
+
+    // The shell shows Today for this stored tab in the same frame; the card
+    // and the bar agree with what is on screen, not with the stale store.
+    expect(card()).toHaveAttribute('data-surface', 'today');
+    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
+    expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
   });
 
   it('carries no lime: the glyph alone says where you are', () => {
@@ -140,6 +168,19 @@ describe('the switcher sheet', () => {
     for (const tab of ['braindump', 'today', 'chat']) {
       expect(document.querySelector(`[data-tour="tab-${tab}"]`)).not.toBeNull();
     }
+    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('AI');
+  });
+
+  it('lists only the surfaces that exist when nothing can answer', async () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    render(<MobileBottomDock />);
+    fireEvent.click(card());
+
+    await waitFor(() => {
+      expect(document.querySelectorAll('[data-tour^="tab-"]')).toHaveLength(2);
+    });
+    expect(screen.queryByTestId('mode-option-chat')).toBeNull();
   });
 
   it('marks the surface you are on', async () => {
@@ -172,17 +213,37 @@ describe('the omnibar in the dock', () => {
   /** Focus is what opens the results panel. */
   const openPanel = () => fireEvent.focus(screen.getByTestId('omnibar-input'));
 
-  it('keeps both routes to Beacon that a phone still has', async () => {
+  it('keeps both routes to chat that a phone still has', async () => {
     render(<MobileBottomDock />);
     openPanel();
 
-    // The row is the only route from typed text to Beacon on a phone — there is
+    // The row is the only route from typed text to chat on a phone — there is
     // no ⌘Enter, and the mode card carries no query. The hint beside it is the
     // only mention of the `?` prefix anywhere on the screen, so it earns its
     // place here more than it does on desktop, not less; the dock is the same
     // Omnibar desktop mounts and takes nothing off it.
-    expect(await screen.findByText(/Ask Beacon/)).toBeInTheDocument();
+    expect(await screen.findByText(/Ask AI/)).toBeInTheDocument();
     expect(screen.getByText(/\? chat/)).toBeInTheDocument();
+  });
+
+  it('offers neither route while nothing can answer', async () => {
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    render(<MobileBottomDock />);
+    openPanel();
+
+    // The hint row renders only while the bar is EMPTY, so the hint is checked
+    // before anything is typed. `commands` sits in the same row, so its presence
+    // proves the row is up and an absent `? chat` is the gate.
+    expect(await screen.findByText(/commands/)).toBeInTheDocument();
+    expect(screen.queryByText(/\? chat/)).toBeNull();
+
+    fireEvent.change(screen.getByTestId('omnibar-input'), { target: { value: 'plan my day' } });
+
+    // Something renders for the typed text (the add row), so an absent Ask row
+    // is the gate, not an empty panel.
+    await waitFor(() => expect(screen.queryAllByText(/plan my day/).length).toBeGreaterThan(0));
+    expect(screen.queryByText(/Ask AI|Ask OpenClaw/)).toBeNull();
   });
 
   it('is the same panel desktop gets', async () => {
@@ -192,7 +253,7 @@ describe('the omnibar in the dock', () => {
     expect(await screen.findByText(/\? chat/)).toBeInTheDocument();
   });
 
-  it('hands the bar to Beacon on the chat tab', () => {
+  it('hands the bar to the chat composer on the chat tab', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
     render(<MobileBottomDock />);
 
@@ -205,27 +266,13 @@ describe('the omnibar in the dock', () => {
     expect(document.querySelector('[data-dock-surface]')?.className).not.toContain('w-fit');
   });
 
-  it('stands down for the first-run Q&A, which brings its own field', () => {
-    useMobileNavStore.setState({ activeTab: 'chat' });
-    useUIStore.setState({ chatOnboardingActive: true });
-    render(<MobileBottomDock />);
-
-    // ChatConversation hands this state to OnboardingChat, textarea and all. A
-    // composer here would be the second field on the tab AND the one holding
-    // the caret, so the onboarding answer would land in the chat transcript and
-    // the question would never be answered.
-    expect(screen.queryByTestId('chat-dock-input')).toBeNull();
-    expect(screen.getByTestId('omnibar-input')).toBeInTheDocument();
-  });
-
   it('names the field after whoever is answering', () => {
     useMobileNavStore.setState({ activeTab: 'chat' });
-    useAISettingsStore.setState({ provider: 'anthropic' });
     render(<MobileBottomDock />);
 
     expect(screen.getByTestId('chat-dock-input')).toHaveAttribute(
       'placeholder',
-      'Message Beacon…'
+      'Ask anything…'
     );
   });
 });

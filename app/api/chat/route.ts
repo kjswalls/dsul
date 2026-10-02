@@ -1,223 +1,209 @@
-import { NextRequest } from 'next/server'
-import OpenAI from 'openai'
-import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt'
-import { createClient } from '@/lib/supabase-server'
+import { NextResponse } from 'next/server'
+import { isSameOrigin, NO_STORE, readJson, requireSessionUser } from '@/app/api/ai/_shared/guard'
+import type { ChatErrorCode } from '@/lib/ai-types'
 import {
   clipText,
-  framedPlannerContext,
+  composeChatSystem,
   MAX_CHAT_CONTEXT_CHARS,
-  resolveModel,
+  MAX_OUTPUT_TOKENS,
   sanitizeChatMessages,
-  SERVER_KEY_MAX_OUTPUT_TOKENS,
-  serverKeySystemPrompt,
 } from '@/lib/ai-limits'
 import {
   chatSessionKey,
+  GatewayConfigReadError,
   getGatewayConfig,
   itemSessionKey,
   streamGatewayChat,
+  type GatewayConfig,
 } from '@/lib/openclaw-gateway'
+import { SSE_HEADERS } from '@/lib/sse'
+import { AiDbError, openModelConnection, setConnectionStatus, type Opened } from '@/lib/ai-server/connections'
+import {
+  httpStatusFor,
+  logProviderError,
+  toChatErrorCode,
+  toProviderError,
+  USER_MESSAGES,
+} from '@/lib/ai-server/errors'
+import { getAdapter } from '@/lib/ai-server/providers'
+import { anySignal, deltasToSse } from '@/lib/ai-server/stream'
 
-const COMING_SOON_MESSAGE =
-  'This provider is coming soon! For now, add an OpenAI API key in Settings → Beacon.'
+/**
+ * POST /api/chat: one chat turn, streamed as dsul's own SSE frames
+ * (`{content}` deltas, at most one `{error, code}`, then `[DONE]`).
+ *
+ * Two answerers, both the user's own: the model they connected in Settings, or
+ * their OpenClaw gateway. dsul has no key of its own, so there is no fallback
+ * and nothing here reads one from the environment. Which answers is the body's
+ * `target`; the key, the model and the base URL come from the server-side
+ * connection, never from the body.
+ *
+ * Every failure before a stream exists answers JSON `{error, code}` with our
+ * own copy. A provider's text, a database error and the key never reach the
+ * response or the logs.
+ */
 
-const MOCK_RESPONSE =
-  "Hi! I'm your dsul AI assistant. (AI not configured — add your OpenAI API key in Settings → Beacon to enable me.)"
-
-function streamText(text: string, encoder: TextEncoder) {
-  return new ReadableStream({
-    async start(controller) {
-      for (const char of text) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: char })}\n\n`))
-        await new Promise((r) => setTimeout(r, 18))
-      }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
-    },
-  })
-}
-
-const SSE_HEADERS = { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' }
-
-function streamChars(text: string, delayMs = 18): ReadableStream {
-  const encoder = new TextEncoder()
-  return new ReadableStream({
-    async start(controller) {
-      for (const char of text) {
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content: char })}\n\n`))
-        await new Promise((r) => setTimeout(r, delayMs))
-      }
-      controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      controller.close()
-    },
-  })
-}
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 /**
  * Our own deadline, inside `maxDuration`, so a hung upstream ends in an error
- * frame rather than a platform-killed stream. The OpenAI SDK defaults to ten
- * minutes with retries.
+ * frame rather than a platform-killed stream.
  */
 const CHAT_TIMEOUT_MS = 50_000
-export const maxDuration = 60
 
-export async function POST(req: NextRequest) {
-  let body: Record<string, unknown>
-  try {
-    body = await req.json()
-  } catch {
-    return new Response(streamChars('That request could not be read.', 0), { headers: SSE_HEADERS })
+/** 40 turns of 8k characters plus 60k of context, in UTF-8, with room to spare. */
+const MAX_BODY_BYTES = 2_000_000
+
+const NOT_CONNECTED_MODEL = 'Connect a model in Settings to chat.'
+const NOT_CONNECTED_GATEWAY = 'Connect your OpenClaw gateway in Settings to chat.'
+
+function jsonChatError(
+  status: number,
+  error: string,
+  code: ChatErrorCode,
+  extra?: Record<string, unknown>
+): NextResponse {
+  return NextResponse.json({ ...extra, error, code }, { status, headers: NO_STORE })
+}
+
+const STREAM_HEADERS = { ...SSE_HEADERS, 'Cache-Control': 'no-store' }
+
+interface ChatBody {
+  messages?: unknown
+  context?: unknown
+  target?: unknown
+  provider?: unknown
+  customInstructions?: unknown
+  typeNouns?: unknown
+  threadItemId?: unknown
+}
+
+export async function POST(req: Request): Promise<Response> {
+  const user = await requireSessionUser()
+  if (!user) return jsonChatError(401, 'Your session ended. Sign in again.', 'unauthorized')
+  if (!isSameOrigin(req)) return jsonChatError(403, "That request wasn't allowed.", 'forbidden')
+
+  const read = await readJson<ChatBody>(req, MAX_BODY_BYTES)
+  if (!read.ok) {
+    return read.error === 'too_large'
+      ? jsonChatError(413, 'That message is too long to send.', 'too_large')
+      : jsonChatError(read.status, "That request couldn't be read.", 'invalid')
   }
-  const { provider, model, systemPrompt, customInstructions, typeNouns, threadItemId } = body
-  const apiKey = typeof body.apiKey === 'string' ? body.apiKey : ''
-  // Who pays decides what the caller controls. On the deployment's key (the
-  // OpenAI branch with no key of the caller's own) every size is capped and the
-  // prompt is built here; on the caller's own key or gateway only the roles are
-  // narrowed. See lib/ai-limits.ts.
-  const onServerKey = provider !== 'openclaw' && !apiKey
-  const messages = sanitizeChatMessages(body.messages, onServerKey)
-  const rawContext = typeof body.context === 'string' ? body.context : ''
-  const context = onServerKey ? clipText(rawContext, MAX_CHAT_CONTEXT_CHARS) : rawContext
-  const ownPrompt = typeof systemPrompt === 'string' ? systemPrompt : ''
+  const body: ChatBody = read.body && typeof read.body === 'object' ? read.body : {}
 
-  const encoder = new TextEncoder()
+  // `provider`, `apiKey`, `model` and `systemPrompt` are never read. `provider`
+  // is consulted only to place an older tab (deploy skew) that sends no target.
+  const target =
+    body.target === 'model' || body.target === 'openclaw'
+      ? body.target
+      : body.provider === 'openclaw'
+        ? 'openclaw'
+        : 'model'
+
+  const messages = sanitizeChatMessages(body.messages)
+  if (messages.length === 0) return jsonChatError(400, "That request couldn't be read.", 'invalid')
+  const context = clipText(body.context, MAX_CHAT_CONTEXT_CHARS)
+  const system = composeChatSystem({
+    typeNouns: body.typeNouns,
+    customInstructions: body.customInstructions,
+    context,
+  })
 
   // ── OpenClaw gateway ───────────────────────────────────────────────────────
   // Proxied here rather than called from the browser: the gateway token is full
-  // operator access and stays server-side. Chunks are translated into dsul's
-  // own frames, so the client parser is the same one the OpenAI path feeds.
-  if (provider === 'openclaw') {
+  // operator access and stays server-side. No output cap: it is the user's own
+  // agent.
+  if (target === 'openclaw') {
+    let config: GatewayConfig | null
     try {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        return new Response(streamChars('Sign in to use your OpenClaw gateway.'), {
-          headers: SSE_HEADERS,
-        })
-      }
+      config = await getGatewayConfig(user.id)
+    } catch (err) {
+      console.warn('[ai] chat gateway config', err instanceof GatewayConfigReadError ? 'unreadable' : 'failed')
+      return jsonChatError(503, USER_MESSAGES.upstream, 'server')
+    }
+    if (!config) return jsonChatError(409, NOT_CONNECTED_GATEWAY, 'not_connected')
 
-      const config = await getGatewayConfig(user.id)
-      if (!config) {
-        // Not an error: this account simply has not moved off the plugin chat
-        // path yet, and the client only routes here when it believes a gateway
-        // is configured.
-        return new Response(
-          streamChars('No OpenClaw gateway configured — add one in Settings → Beacon.'),
-          { headers: SSE_HEADERS }
-        )
-      }
-
-      // The user's own gateway: their prompt, their bill.
-      const resolvedPrompt = ownPrompt || BEACON_SYSTEM_PROMPT
+    try {
       const stream = await streamGatewayChat({
         config,
         // Derived from the authenticated user, never taken from the body. The
-        // client names which THREAD it is (an item id, or nothing for the
-        // global conversation); the key itself is built here, so a browser
-        // cannot address another user's thread or a reserved gateway
-        // namespace. Per-item threads get their own durable gateway session.
+        // client names which THREAD it is (an item id, or nothing for the global
+        // conversation); the key itself is built here, so a browser cannot
+        // address another user's thread or a reserved gateway namespace.
         sessionKey:
-          typeof threadItemId === 'string' && threadItemId
-            ? itemSessionKey(user.id, threadItemId)
+          typeof body.threadItemId === 'string' && body.threadItemId
+            ? itemSessionKey(user.id, body.threadItemId)
             : chatSessionKey(user.id),
-        messages: [
-          { role: 'system', content: context ? `${resolvedPrompt}\n\n${context}` : resolvedPrompt },
-          ...messages,
-        ],
+        messages: [{ role: 'system', content: system.join('\n\n') }, ...messages],
+        signal: anySignal([req.signal, AbortSignal.timeout(CHAT_TIMEOUT_MS)]),
       })
-      return new Response(stream, { headers: SSE_HEADERS })
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Unknown error'
-      return new Response(streamChars(`Could not reach your gateway — ${msg}`, 0), {
-        headers: SSE_HEADERS,
-      })
-    }
-  }
-
-  // ── Anthropic (coming soon) / none ─────────────────────────────────────────
-  if (provider === 'anthropic') {
-    return new Response(streamChars(COMING_SOON_MESSAGE), { headers: SSE_HEADERS })
-  }
-
-  if (provider === 'none' || (!apiKey && !process.env.OPENAI_API_KEY)) {
-    return new Response(streamChars(MOCK_RESPONSE), { headers: SSE_HEADERS })
-  }
-
-  // ── No API key — stream a friendly mock response ───────────────────────────
-  if (!process.env.OPENAI_API_KEY && !apiKey) {
-    return new Response(streamChars(MOCK_RESPONSE), { headers: SSE_HEADERS })
-  }
-
-  // ── OpenAI provider ────────────────────────────────────────────────────────
-  // A caller's OWN key is self-funded and needs no session. Falling back to the
-  // deployment's key does: without this, anyone could POST here and spend the
-  // owner's OpenAI budget. Pre-dates the gateway work; same hole, same fix.
-  if (!apiKey && process.env.OPENAI_API_KEY) {
-    try {
-      const supabase = await createClient()
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        return new Response(streamChars('Sign in to use the assistant.'), { headers: SSE_HEADERS })
-      }
+      return new Response(stream, { headers: STREAM_HEADERS })
     } catch {
-      return new Response(streamChars('Sign in to use the assistant.'), { headers: SSE_HEADERS })
+      return jsonChatError(502, "Couldn't reach your OpenClaw gateway.", 'upstream')
     }
   }
 
-  // On the deployment's key the prompt is built HERE, never taken from the
-  // body — otherwise any signed-in account holds a general-purpose proxy to the
-  // owner's OpenAI account. Custom instructions are appended, not substituted.
-  const onOwnKey = Boolean(apiKey)
-  const openaiMessages = onOwnKey
-    ? [
-        {
-          role: 'system',
-          content: context
-            ? `${ownPrompt || BEACON_SYSTEM_PROMPT}\n\n${context}`
-            : ownPrompt || BEACON_SYSTEM_PROMPT,
-        },
-        ...messages,
-      ]
-    : [
-        { role: 'system', content: serverKeySystemPrompt(typeNouns, customInstructions) },
-        ...(context ? [{ role: 'system', content: framedPlannerContext(context) }] : []),
-        ...messages,
-      ]
+  // ── The user's connected model ─────────────────────────────────────────────
+  let conn: Opened
+  try {
+    conn = await openModelConnection(user.id)
+  } catch (err) {
+    if (err instanceof AiDbError) console.warn('[ai] db', err.op, 'failed', err.code)
+    else console.warn('[ai] chat connection read failed')
+    return jsonChatError(503, USER_MESSAGES.upstream, 'server')
+  }
+  if (!conn.ok) {
+    switch (conn.reason) {
+      case 'unavailable':
+        return jsonChatError(503, NOT_CONNECTED_MODEL, 'not_connected', { available: false })
+      case 'blocked_url':
+        return jsonChatError(400, USER_MESSAGES.blocked_url, 'blocked_url')
+      default:
+        return jsonChatError(409, NOT_CONNECTED_MODEL, 'not_connected')
+    }
+  }
 
-  const openai = new OpenAI({
-    apiKey: apiKey || process.env.OPENAI_API_KEY,
-    timeout: CHAT_TIMEOUT_MS,
-    maxRetries: 1,
-  })
+  const { row, creds, model } = conn
+  const abort = new AbortController()
+  const signal = anySignal([req.signal, abort.signal, AbortSignal.timeout(CHAT_TIMEOUT_MS)])
+  const adapter = getAdapter(creds.provider)
+  const onFailure = async (err: unknown) => {
+    const e = toProviderError(err, creds.provider, 'call')
+    logProviderError('chat', creds.provider, e.kind, e.status)
+    if (e.kind === 'auth') {
+      // Conditional on the ciphertext this request read: a key replaced in the
+      // meantime is never marked failing for the old one's rejection.
+      await setConnectionStatus(user.id, row.key_ciphertext, 'failing', 'key_rejected').catch(() => {})
+    }
+    return e
+  }
 
-  const stream = new ReadableStream({
-    async start(controller) {
-      try {
-        const completion = await openai.chat.completions.create({
-          model: resolveModel(onOwnKey, model),
-          messages: openaiMessages as OpenAI.Chat.ChatCompletionMessageParam[],
-          ...(onOwnKey ? {} : { max_tokens: SERVER_KEY_MAX_OUTPUT_TOKENS }),
-          stream: true,
-        })
+  let source: AsyncIterable<string>
+  try {
+    source = await adapter.openStream(creds, {
+      model,
+      modelMeta: row.model_meta ?? {},
+      system,
+      messages,
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      signal,
+    })
+  } catch (err) {
+    const e = await onFailure(err)
+    if (e.kind === 'aborted') return new Response(null, { status: 204, headers: NO_STORE })
+    return jsonChatError(httpStatusFor(e.kind), e.message, toChatErrorCode(e.kind))
+  }
 
-        for await (const chunk of completion) {
-          const content = chunk.choices[0]?.delta?.content ?? ''
-          if (content) {
-            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ content })}\n\n`))
-          }
-        }
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'Unknown error'
-        controller.enqueue(
-          encoder.encode(`data: ${JSON.stringify({ content: `\n\n[Error: ${msg}]` })}\n\n`)
-        )
-        controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-      } finally {
-        controller.close()
-      }
-    },
-  })
-
-  return new Response(stream, { headers: SSE_HEADERS })
+  return new Response(
+    deltasToSse(source, {
+      abort,
+      onError: async (err) => {
+        const e = await onFailure(err)
+        return { error: e.message, code: toChatErrorCode(e.kind) }
+      },
+    }),
+    { headers: STREAM_HEADERS }
+  )
 }

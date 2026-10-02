@@ -18,6 +18,7 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useReminderStore } from '@/lib/reminder-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useLookStore } from '@/lib/look-store';
 import { usePaletteStore } from '@/lib/palette-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -313,14 +314,19 @@ export default function SettingsPage() {
       `${s.remindersEnabled}|${s.lastCallEnabled}|${s.lastCallTime}|` +
       `${s.stakesEnabled}|${s.stakesSettleTime}`
   );
-  // apiKey rides the tick VERBATIM, not as a set/unset flag: one non-empty key
-  // replacing another is exactly what a flag can't see, and the text controls
-  // commit on blur by comparing their draft against the last RENDERED value —
-  // so a stale value prop silently drops the next edit. JSON.stringify rather
-  // than a '|' join because systemPrompt is free text and can contain the
-  // separator. No new exposure: it is already plaintext in dsul-ai-settings.
-  const aiTick = useAISettingsStore((s) =>
-    JSON.stringify([s.provider, s.model, s.systemPrompt, s.apiKey])
+  // systemPrompt rides the tick VERBATIM: the text controls commit on blur by
+  // comparing their draft against the last RENDERED value, so a stale value
+  // prop silently drops the next edit. JSON.stringify rather than a '|' join
+  // because it is free text and can contain the separator.
+  const aiTick = useAISettingsStore((s) => JSON.stringify([s.chatTarget, s.systemPrompt]));
+  // What the server last said is connected. The AI pane's rows read it through
+  // getState() (who answers, the status words on the panel-owned records), so
+  // it has to move the ctx like every other store. Never a key: the store
+  // cannot hold one.
+  const aiConnTick = useAIConnectionStore(
+    (s) =>
+      `${s.phase}|${s.available}|${s.model?.provider}|${s.model?.model}|${s.model?.status}|` +
+      `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
   const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}`);
@@ -413,6 +419,7 @@ export default function SettingsPage() {
       eodTick,
       reminderTick,
       aiTick,
+      aiConnTick,
       paletteTick,
       lookTick,
       extensionsTick,

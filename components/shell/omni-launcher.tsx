@@ -6,7 +6,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Omnibar } from '@/components/sidebar/omnibar';
+import { Omnibar, launcherDescription } from '@/components/sidebar/omnibar';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useUIStore } from '@/lib/ui-store';
 
 /**
@@ -28,6 +29,9 @@ export function OmniLauncher() {
     s.activeDialog?.type === 'launcher' ? s.activeDialog.query : undefined,
   );
   const closeDialog = useUIStore((s) => s.closeDialog);
+  // The screen-reader line says what the omnibar's placeholder says, so it can
+  // only offer to ask when something will answer.
+  const { canChat, answererName } = useAICapabilities();
 
   return (
     <Dialog open={isOpen} onOpenChange={(next) => !next && closeDialog()}>
@@ -52,7 +56,7 @@ export function OmniLauncher() {
             omnibar is the real UI, so both are screen-reader-only. */}
         <DialogTitle className="sr-only">Command launcher</DialogTitle>
         <DialogDescription className="sr-only">
-          Search, add a task, run a command, or ask Beacon.
+          {`${launcherDescription(canChat, answererName)}.`}
         </DialogDescription>
         {/* Render the omnibar only while open so it MOUNTS FRESH each summon —
             its focus + resting-panel effect keys off mount, and this guarantees

@@ -7,24 +7,24 @@ import { ProposalCard } from '@/components/ai/proposal-card';
 import { RelayField } from '@/components/primitives/relay-field';
 import { useChatStore } from '@/lib/chat-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { chatAssistantLabel } from '@/lib/chat-utils';
 import { RELAY } from '@/lib/relay-config';
 
 /**
- * Chat body inside the sidebar dock. Mounted only while expanded (summoned
- * from the omnibar: `?` / Ask Beacon / ⌘]) — there is no persistent chat
- * bar. A slim header labels the provider and collapses back to the omnibar;
- * the chevron keeps aria-label="Toggle AI assistant" for the onboarding tour.
+ * Chat body inside the sidebar dock. Mounted only while expanded AND something
+ * can answer (summoned from the omnibar: `?` / Ask AI / ⌘]) — there is no
+ * persistent chat bar. A slim header names whoever answers ("AI", or
+ * "OpenClaw · agent") and collapses back to the omnibar; the chevron keeps
+ * aria-label="Toggle AI assistant" for the onboarding tour.
  */
 export function ChatPanel({ focusSignal }: { focusSignal: number }) {
   const toggleChat = useSidebarStore((s) => s.toggleChat);
   const router = useRouter();
-  const provider = useAISettingsStore((s) => s.provider);
-  const agentId = useChatStore((s) => s.openclawAgentIdDisplay);
+  const { target, agentId } = useAICapabilities();
   const isStreaming = useChatStore((s) => s.isLoading);
 
-  const label =
-    provider === 'openclaw' ? (agentId ? `OpenClaw · ${agentId}` : 'OpenClaw') : 'Beacon';
+  const label = chatAssistantLabel(target, agentId);
 
   return (
     <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-xl bg-surface-2 shadow-soft-sm">

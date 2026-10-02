@@ -20,9 +20,9 @@ import { useViewStore } from './view-store';
  * and the rest. None of them carries an account. On a shared browser they hold
  * whoever signed in last, so the next person to sign in inherits them: their
  * canvas filters name someone else's projects, the palette's "Recent" group
- * lists someone else's commands, the Beacon panel rehydrates someone else's
- * conversation, and — the sharp one — the Beacon settings page shows them
- * someone else's API key as an editable field.
+ * lists someone else's commands, the chat panel rehydrates someone else's
+ * conversation, and — the sharp one, until the AI key moved server-side — the
+ * AI settings page showed them someone else's API key as an editable field.
  *
  * lib/settings/hydration.ts already writes this problem down ("Every store the
  * settings surface reads is localStorage-persisted under a browser-GLOBAL key
@@ -104,11 +104,13 @@ import { useViewStore } from './view-store';
  *                          hold `project:`/`group:` refs, tag names and goal ids
  *                          lifted from the account's own containers). The other
  *                          13 INERT. `adoptedLegacy` never cleared at all.
- *   dsul-ai-settings     all DISCLOSIVE — apiKey is a credential,
- *                          systemPrompt and assistantName are text the user
- *                          wrote, and provider/model name the paid vendor
- *                          account behind the key (and are incoherent without
- *                          it).
+ *   dsul-ai-settings     all DISCLOSIVE — systemPrompt and assistantName
+ *                          are text the user wrote, chatTarget says whether
+ *                          this person pairs an OpenClaw agent, and
+ *                          legacyNotice says this browser once held their AI
+ *                          key. No credential any more: the model key lives
+ *                          server-side (v0's plaintext apiKey is dropped by
+ *                          the store's v1 migration).
  *   dsul-morning-store   all DISCLOSIVE — the check TIME is the hour this
  *                          person gets up, the dismissal is a date they acted
  *                          on, the auto-age policy drives an unattended
@@ -133,12 +135,14 @@ import { useViewStore } from './view-store';
  * clearing them would mean reaching into next-themes' own storage and the
  * blocking pre-paint script in app/layout.tsx for no security gain.
  *
- * ── THE RESIDUE ─────────────────────────────────────────────────────────────
- * This makes the Beacon API key stop OUTLIVING its owner's session. It does not
- * make localStorage a good place for a credential. The standard this repo holds
- * everywhere else is `user_secrets` — service-role only, with
- * /api/reminders/secrets answering which keys are set and never what they are —
- * and the Beacon key should move there under its own ticket.
+ * ── NO CREDENTIALS HERE ─────────────────────────────────────────────────────
+ * The AI key that used to sit in `dsul-ai-settings` has moved server-side:
+ * sealed in `model_connections`, service-role only, and never sent back to the
+ * browser (lib/ai-connection-store.ts holds only its status, and does not
+ * persist). What this registry still clears there is text the user wrote and
+ * who answers their chat — chatTarget, systemPrompt, legacyNotice. Keep it
+ * that way: a credential belongs with the server-side secrets, never in a blob
+ * the next person at this browser inherits.
  */
 export const LOCAL_STATE_OWNER_KEY = 'dsul-local-state-owner';
 

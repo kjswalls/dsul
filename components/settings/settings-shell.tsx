@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight, Search, SlidersHorizontal, ArrowUpRight } from 'lucide-react';
@@ -17,6 +17,7 @@ import {
   settingById,
   extensionSlugFromPane,
   displayValue,
+  CONNECT_PANEL_RECORD_IDS,
   type PaneId,
   type SettingCtx,
   type SettingRecord,
@@ -34,6 +35,9 @@ import { ExtensionRailList } from './extension-rail-list';
 import { ExtensionHero } from './extension-hero';
 import { ExtensionBrowse } from '@/components/extensions/extension-browse';
 import { ShortcutsPanel } from './shortcuts-panel';
+import { ModelConnectionPanel } from './model-connection-panel';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { revealChat } from '@/lib/open-chat';
 
 /**
  * The settings surface: a rail that is a map, and a content column that is
@@ -153,6 +157,7 @@ export function SettingsShell({
   onOpenDestination: (record: DestinationRecord) => void;
 }) {
   const router = useRouter();
+  const { canChat } = useAICapabilities();
   const [rawQuery, setRawQuery] = useState('');
   const [query, setQuery] = useState('');
   const [includeAdvanced, setIncludeAdvanced] = useState(false);
@@ -265,7 +270,7 @@ export function SettingsShell({
      effect's deps and runs its cleanup. A cleanup that cancelled the ring's
      rAF and its 1600ms reset would therefore destroy the highlight it had just
      scheduled. So the timers are held in refs and cleared only on unmount, and
-     a ref guards against re-arrival for the same id.
+     a ref guards against re-arrival for the same id until the param is gone.
 
      Two: an advanced row isn't in the DOM until its disclosure is open, so a
      deep link to one has to open it first and come back on the next commit.
@@ -301,7 +306,13 @@ export function SettingsShell({
   );
 
   useEffect(() => {
-    if (!focusId || arrivedFor.current === focusId) return;
+    // Consumed (the strip below) or never given: the next ?focus= is a new
+    // arrival even for the same id, so a second "Set up" from search lands too.
+    if (!focusId) {
+      arrivedFor.current = null;
+      return;
+    }
+    if (arrivedFor.current === focusId) return;
 
     // Reveal first; `advOpen` is a dep, so we're called again once it's open.
     // Deliberately not written to sessionStorage — a deep link reveals the
@@ -372,7 +383,41 @@ export function SettingsShell({
 
   useEffect(() => () => void (noticeTimer.current && clearTimeout(noticeTimer.current)), []);
 
-  const rowFor = (record: SettingRecord, extra?: { paneName?: string; ranges?: [number, number][]; matchedValue?: string }) => {
+  /**
+   * A search hit for a record the Connect-a-model panel draws (the key, the
+   * model) has nothing to change in place: its row is an 'info' value, and the
+   * control is the panel. "Set up" goes there the way a deep link does, the
+   * query cleared first so the pane, not the results, is what renders.
+   */
+  const openPanelFor = (record: SettingRecord) => {
+    setRawQuery('');
+    setQuery('');
+    router.push(`/settings/${record.pane}?focus=${encodeURIComponent(record.id)}`);
+  };
+
+  const setUpAction = (record: SettingRecord) =>
+    CONNECT_PANEL_RECORD_IDS.has(record.id) ? (
+      <Button
+        variant="outline"
+        size="sm"
+        onClick={() => openPanelFor(record)}
+        aria-label={`Set up ${record.label}`}
+        data-testid="settings-set-up"
+        className="h-7 shrink-0 px-2 text-xs"
+      >
+        Set up
+      </Button>
+    ) : undefined;
+
+  const rowFor = (
+    record: SettingRecord,
+    extra?: {
+      paneName?: string;
+      ranges?: [number, number][];
+      matchedValue?: string;
+      action?: ReactNode;
+    }
+  ) => {
     // In the pane a dependent whose ancestor is off is not drawn at all (see
     // groupFor) — the chips and rows under a switch exist while it is on. This
     // path still meets one in SEARCH, which lists every record it counts, so
@@ -401,6 +446,7 @@ export function SettingsShell({
           paneName={extra?.paneName}
           ranges={extra?.ranges}
           matchedValue={extra?.matchedValue}
+          action={extra?.action}
         />
       </div>
     );
@@ -450,7 +496,17 @@ export function SettingsShell({
     );
   };
 
-  const { rows, advanced } = paneRows(pane, { isMobile });
+  const paneOwn = paneRows(pane, { isMobile });
+  const advanced = paneOwn.advanced;
+  // The AI pane's key and model records are drawn by ModelConnectionPanel,
+  // which carries their `data-setting-alias` anchors. paneRows stays pure (the
+  // search index and the no-empty-rooms test read it); only this flat list
+  // leaves them out. Search still draws them through rowFor, each with a
+  // "Set up" that opens the panel (setUpAction).
+  const rows =
+    pane === 'beacon'
+      ? paneOwn.rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id))
+      : paneOwn.rows;
   return (
     <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-8 pt-[max(2rem,env(titlebar-area-height,0px))]">
       {/* Three crumbs inside an extension, two everywhere else. The rail's
@@ -657,6 +713,7 @@ export function SettingsShell({
                           paneName: groupName,
                           ranges: hit.ranges,
                           matchedValue: hit.matchedValue,
+                          action: setUpAction(hit.record),
                         })
                       )}
                     </div>
@@ -699,9 +756,15 @@ export function SettingsShell({
                     <Button variant="outline" size="sm" onClick={() => setIncludeAdvanced(true)}>
                       Search advanced too
                     </Button>
-                    <Button variant="outline" size="sm" asChild>
-                      <Link href="/">Ask Beacon</Link>
-                    </Button>
+                    {/* Only when something can answer: a button that opens
+                        nothing is worse than no button. */}
+                    {canChat && (
+                      <Button variant="outline" size="sm" asChild>
+                        <Link href="/" onClick={() => revealChat(isMobile)}>
+                          Ask AI
+                        </Link>
+                      </Button>
+                    )}
                   </div>
                 </div>
               )}
@@ -727,6 +790,11 @@ export function SettingsShell({
                   preview, what changes, the maker's note — above its own rows,
                   which are unchanged and still hold the one switch. */}
               {activePane.parent === 'extensions' && <ExtensionHero slug={extensionSlugFromPane(pane)!} />}
+
+              {/* The AI pane opens with the model connection, above its rows:
+                  connecting is a form with states, not a row. Two records
+                  (CONNECT_PANEL_RECORD_IDS) are drawn by it instead of below. */}
+              {pane === 'beacon' && <ModelConnectionPanel isMobile={isMobile} highlightId={highlight} />}
 
               {pane === 'extensions' && (
                 <>

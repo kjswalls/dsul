@@ -13,7 +13,7 @@ import { DndContext } from '@dnd-kit/core';
  * sidebar's whole body and ChatConversation is the desktop chat panel's, so an
  * unguarded default in either is a desktop regression, not a mobile one.
  *
- * The other contract is the Beacon composer's single mount. Its field moved
+ * The other contract is the chat composer's single mount. Its field moved
  * into the dock, so the conversation must stop rendering one — two text fields
  * on that tab, the upper of them a decoy, is the failure mode.
  */
@@ -61,10 +61,11 @@ vi.mock('next/navigation', () => ({
 import { Braindump } from '@/components/sidebar/braindump';
 import { ChatConversation } from '@/components/ai/chat-conversation';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useChatStore } from '@/lib/chat-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { CONNECTED_MODEL, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
+let unseed: () => void = () => {};
 beforeEach(() => {
   usePlannerStore.setState({
     userId: 'user-1',
@@ -76,10 +77,13 @@ beforeEach(() => {
     routines: [],
     seasons: [],
   });
-  useAISettingsStore.setState({ provider: 'anthropic' });
-  useChatStore.setState({ messages: [], isLoading: false, openclawAgentIdDisplay: null });
+  unseed = seedAI(CONNECTED_MODEL);
+  useChatStore.setState({ messages: [], isLoading: false });
 });
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  unseed();
+});
 
 /** The user menu the phone shell hangs in the dateless tabs' header capsule. */
 const AVATAR = <button aria-label="User menu">K</button>;
@@ -124,10 +128,10 @@ describe('the Braindump header, shared by the sidebar and the phone tab', () => 
   });
 });
 
-describe('the Beacon tab shell', () => {
+describe('the chat tab shell', () => {
   it('titles the capsule after the agent that is answering', () => {
-    useAISettingsStore.setState({ provider: 'openclaw' });
-    useChatStore.setState({ openclawAgentIdDisplay: 'kirby-1' });
+    unseed();
+    unseed = seedAI(OPENCLAW_PLUGIN);
     render(<MobileChatPanel headerAccessory={AVATAR} />);
 
     expect(screen.getByRole('heading', { name: 'OpenClaw · kirby-1' })).toBeInTheDocument();
@@ -139,7 +143,7 @@ describe('the Beacon tab shell', () => {
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('cards Beacon’s replies, which have nothing else bounding them on paper', () => {
+  it('cards the AI’s replies, which have nothing else bounding them on paper', () => {
     useChatStore.setState({ messages: [{ role: 'assistant', content: 'Two items are open.' }] });
     render(<MobileChatPanel />);
 
@@ -152,14 +156,14 @@ describe('the Beacon tab shell', () => {
     render(<MobileChatPanel />);
     // ChatConversation's own provider strip is suppressed; the capsule title
     // says the same thing one line higher.
-    expect(screen.getAllByText('Beacon')).toHaveLength(1);
+    expect(screen.getAllByText('AI')).toHaveLength(1);
   });
 });
 
 describe('the desktop conversation', () => {
   it('still renders its composer when nothing asks it not to', () => {
     render(<ChatConversation variant="desktop" hideHeader />);
-    expect(screen.getByPlaceholderText('Message Beacon...')).toBeInTheDocument();
+    expect(screen.getByPlaceholderText('Ask anything…')).toBeInTheDocument();
   });
 
   it('leaves its replies flat — the sidebar panel is already the card', () => {

@@ -118,7 +118,27 @@ export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHan
         if (typing && !command?.shortcut?.allowInInput) return;
 
         if (command) {
-          if (!isAvailable(command, ctxRef.current)) return;
+          if (!isAvailable(command, ctxRef.current)) {
+            // An unavailable command does not run, but what happens to the key
+            // depends on whose key it is.
+            //
+            // A chrome-level binding (allowInInput) belongs to the app on every
+            // surface, so it stays consumed while its command has nothing to
+            // do. Several of these chords already mean something to the
+            // browser: ⌘] and ⌘[ are Forward and Back in Chrome, Safari and
+            // Firefox. ⌘] is gated on the AI (workspace.toggleChat). If the key
+            // got through whenever nothing could answer, or before the status
+            // read lands on every page load, the same key would toggle chat one
+            // moment and leave the planner for the next page in history the
+            // next.
+            //
+            // Every other binding is handed back. ⌘= / ⌘- / ⌘0 are the
+            // browser's page zoom everywhere except the week views that scale
+            // columns (lib/commands/registry.ts), and that handback is the only
+            // reason those bindings have an `availableWhen`.
+            if (command.shortcut?.allowInInput) event.preventDefault();
+            return;
+          }
           event.preventDefault();
           activeHandledRef.current = binding.id;
           command.run(ctxRef.current);

@@ -1,14 +1,26 @@
-import { NextRequest, NextResponse } from 'next/server'
-import OpenAI from 'openai'
+import { NextResponse } from 'next/server'
 import { ProposalDraftSchema } from '@dsul/types'
-import { createClient } from '@/lib/supabase-server'
+import { isSameOrigin, NO_STORE, readJson, requireSessionUser } from '@/app/api/ai/_shared/guard'
+import type { ChatErrorCode } from '@/lib/ai-types'
 import {
   extractJsonObject,
   gatewayCompletion,
+  GatewayConfigReadError,
   getGatewayConfig,
   proposeSessionKey,
+  type GatewayConfig,
 } from '@/lib/openclaw-gateway'
-import { MAX_CONTEXT_CHARS, resolveModel, SERVER_KEY_MAX_OUTPUT_TOKENS } from '@/lib/ai-limits'
+import { appendInstructions, clipText, MAX_CONTEXT_CHARS, MAX_OUTPUT_TOKENS } from '@/lib/ai-limits'
+import { AiDbError, openModelConnection, setConnectionStatus, type Opened } from '@/lib/ai-server/connections'
+import {
+  httpStatusFor,
+  logProviderError,
+  toChatErrorCode,
+  toProviderError,
+  USER_MESSAGES,
+} from '@/lib/ai-server/errors'
+import { getAdapter } from '@/lib/ai-server/providers'
+import { anySignal } from '@/lib/ai-server/stream'
 
 /**
  * POST /api/ai/propose — turn a free-form ask into a planner diff.
@@ -22,24 +34,36 @@ import { MAX_CONTEXT_CHARS, resolveModel, SERVER_KEY_MAX_OUTPUT_TOKENS } from '@
  *
  * Not streamed: a proposal is worthless until it is complete and validated, so
  * there is nothing to show token by token.
+ *
+ * Who answers is the user's own: the model they connected in Settings, or their
+ * OpenClaw gateway. There is no key of dsul's own to fall back to. Failures
+ * answer `{ error, code }` in our own words; a provider's text never reaches
+ * the response.
  */
+
+export const runtime = 'nodejs'
+export const dynamic = 'force-dynamic'
+export const maxDuration = 60
 
 /**
  * Comfortably inside `maxDuration` so the deadline is OURS — a platform-killed
  * function returns no body at all, and the card would have nothing to show.
- * Applied to BOTH providers: the OpenAI SDK's own default is ten minutes.
+ * Applied to both answerers.
  */
 const PROPOSE_TIMEOUT_MS = 45_000
 
-/**
- * Ceilings on caller-controlled input and the models the deployment's key may
- * be spent on are shared with /api/chat — see lib/ai-limits.ts.
- */
+/** Ceilings on caller-controlled input are shared with /api/chat; see lib/ai-limits.ts. */
 const MAX_PROMPT_CHARS = 8_000
+const MAX_BODY_BYTES = 128_000
+const DATE_RE = /^\d{4}-\d{2}-\d{2}$/
 
-export const maxDuration = 60
+/**
+ * Last, after the user's own instructions, so nothing they wrote can talk the
+ * model out of the one format this route can parse.
+ */
+const JSON_ONLY_LINE = 'Whatever the instructions above say, reply with the JSON object only.'
 
-const SYSTEM_PROMPT = `You are Beacon, the planning assistant inside dsul — a daily planner for neurodivergent people.
+const SYSTEM_PROMPT = `You are the planning assistant inside dsul, a daily planner for neurodivergent people.
 
 You turn a request into a PROPOSAL: a small set of concrete changes the user accepts with one tap. You never make changes yourself.
 
@@ -77,7 +101,7 @@ Rules:
  * else. The size guidance is the load-bearing part — a fifteen-step decomposition
  * of a task someone is already avoiding is a fresh source of dread, not help.
  */
-const BREAKDOWN_PROMPT = `You are Beacon, the planning assistant inside dsul — a daily planner for neurodivergent people.
+const BREAKDOWN_PROMPT = `You are the planning assistant inside dsul, a daily planner for neurodivergent people.
 
 The user has one thing that feels too big. Break it into the few concrete steps that would actually get it moving.
 
@@ -102,193 +126,178 @@ Rules:
 - Tone: warm, plain, never judgmental. Never mention how late anything is.
 - If the item is already small enough to just do, return {"summary":"","operations":[]}.`
 
-export async function POST(req: NextRequest) {
-  // Authenticated, always. This route can fall back to the deployment's own
-  // OPENAI_API_KEY, so leaving it open would let anyone on the internet spend
-  // the owner's money by POSTing a prompt at it. The browser always has a
-  // session here — the chat surfaces live inside the authenticated shell.
-  //
-  // The id is kept, not just checked: the gateway branch resolves the user's
-  // own gateway from it, and it must come from the session rather than the
-  // body — a userId a caller could name is a caller who can spend someone
-  // else's gateway.
-  let userId: string
-  try {
-    const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
-    if (!user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-    userId = user.id
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
-  }
+const NOT_CONNECTED_MODEL = 'Connect a model in Settings to ask for a plan.'
+const NOT_CONNECTED_GATEWAY = 'Connect your OpenClaw gateway in Settings to ask it for a plan.'
 
-  let body: {
-    prompt?: string
-    provider?: string
-    apiKey?: string
-    model?: string
-    mode?: string
-    itemContext?: string
-    todayStr?: string
-  }
-  try {
-    body = await req.json()
-  } catch {
-    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
-  }
+function jsonChatError(
+  status: number,
+  error: string,
+  code: ChatErrorCode,
+  extra?: Record<string, unknown>
+): NextResponse {
+  return NextResponse.json({ ...extra, error, code }, { status, headers: NO_STORE })
+}
 
-  const { prompt, provider, apiKey, model, mode, itemContext, todayStr } = body
+const ok = (body: unknown) => NextResponse.json(body, { headers: NO_STORE })
+
+/** The model's raw text, as the card's answer: a proposal, or a calm "nothing". */
+function proposalFrom(raw: string): NextResponse {
+  const parsed = extractJsonObject(raw)
+  if (!parsed) return ok({ proposal: null, message: 'No suggestion came back.' })
+
+  const result = ProposalDraftSchema.safeParse(parsed)
+  if (!result.success || result.data.operations.length === 0) {
+    // An empty or malformed draft is a normal outcome ("nothing to suggest"),
+    // not an error the user should have to read about.
+    return ok({ proposal: null, message: 'Nothing worth changing right now.' })
+  }
+  return ok({ proposal: result.data })
+}
+
+interface ProposeBody {
+  prompt?: unknown
+  target?: unknown
+  provider?: unknown
+  mode?: unknown
+  itemContext?: unknown
+  todayStr?: unknown
+  customInstructions?: unknown
+}
+
+export async function POST(req: Request): Promise<Response> {
+  // Authenticated, always: every branch spends the user's own key or gateway,
+  // and the id that picks which one comes from the session, never the body.
+  const user = await requireSessionUser()
+  if (!user) return jsonChatError(401, 'Your session ended. Sign in again.', 'unauthorized')
+  if (!isSameOrigin(req)) return jsonChatError(403, "That request wasn't allowed.", 'forbidden')
+
+  const read = await readJson<ProposeBody>(req, MAX_BODY_BYTES)
+  if (!read.ok) {
+    return read.error === 'too_large'
+      ? jsonChatError(413, 'That request is too large.', 'too_large')
+      : jsonChatError(read.status, "That request couldn't be read.", 'invalid')
+  }
+  const body: ProposeBody = read.body && typeof read.body === 'object' ? read.body : {}
+
+  // `provider`, `apiKey` and `model` are never read, except `provider` to place
+  // an older tab (deploy skew) that sends no target.
+  const target =
+    body.target === 'model' || body.target === 'openclaw'
+      ? body.target
+      : body.provider === 'openclaw'
+        ? 'openclaw'
+        : 'model'
 
   // Unknown modes fall back to planning rather than erroring: an older client
   // sending nothing is the normal case, and this is not a security boundary —
   // both prompts are ours, and both outputs go through the same validation.
-  const systemPrompt = mode === 'breakdown' ? BREAKDOWN_PROMPT : SYSTEM_PROMPT
+  const mode = body.mode === 'breakdown' ? 'breakdown' : 'plan'
+  const systemPrompt = [
+    appendInstructions(mode === 'breakdown' ? BREAKDOWN_PROMPT : SYSTEM_PROMPT, body.customInstructions),
+    JSON_ONLY_LINE,
+  ].join('\n\n')
 
-  if (provider === 'anthropic') {
-    return NextResponse.json(
-      { error: 'Claude support is coming soon — use OpenAI for now.' },
-      { status: 400 }
-    )
-  }
+  const today =
+    typeof body.todayStr === 'string' && DATE_RE.test(body.todayStr)
+      ? body.todayStr
+      : new Date().toISOString().slice(0, 10)
 
-  // Nothing below is free — every branch spends either the user's key, their
-  // gateway, or the deployment's own key. A caller controls `prompt` and
-  // `itemContext` completely, and neither had a ceiling: a six-figure-token
-  // body billed straight through. Truncating rather than rejecting keeps the
-  // honest oversized case (a very long chat reply) working.
-  const clip = (text: string | undefined, max: number) =>
-    text && text.length > max ? text.slice(0, max) : (text ?? '')
-
+  // A caller controls `prompt` and `itemContext` completely. Truncating rather
+  // than rejecting keeps the honest oversized case (a very long chat reply)
+  // working while bounding what the user's own bill can be charged.
   const userTurn = [
-    `Today is ${todayStr ?? new Date().toISOString().slice(0, 10)}.`,
-    clip(itemContext, MAX_CONTEXT_CHARS),
+    `Today is ${today}.`,
+    clipText(body.itemContext, MAX_CONTEXT_CHARS),
     '',
-    clip(prompt, MAX_PROMPT_CHARS).trim() ||
+    clipText(body.prompt, MAX_PROMPT_CHARS).trim() ||
       (mode === 'breakdown'
         ? 'Break this into a few concrete steps.'
         : 'Suggest a realistic plan for today.'),
   ].join('\n')
 
-  // The agent tier proposes through the user's OWN gateway. Falling through to
-  // OpenAI here would quietly send an OpenClaw user's planner to a provider
-  // they deliberately did not choose — not a degraded mode, a broken promise
-  // about where their data goes. So this branch either works or fails; it never
-  // reroutes.
-  if (provider === 'openclaw') {
-    // Inside a try: createServiceClient() throws outright when
-    // SUPABASE_SECRET_KEY is unset, and an escaped rejection returns a 500 with
-    // NO BODY — which the client then fails to parse, so the card shows a JSON
-    // syntax error instead of a sentence. The same failure the gateway timeout
-    // above exists to avoid.
-    let config: Awaited<ReturnType<typeof getGatewayConfig>>
-    try {
-      config = await getGatewayConfig(userId)
-    } catch {
-      return NextResponse.json(
-        { error: 'Could not read your gateway settings. Try again in a moment.' },
-        { status: 500 }
-      )
-    }
-    if (!config) {
-      return NextResponse.json(
-        { error: 'Connect your OpenClaw gateway in Settings → Beacon to ask it for a plan.' },
-        { status: 400 }
-      )
-    }
+  const timeout = AbortSignal.timeout(PROPOSE_TIMEOUT_MS)
+  const signal = anySignal([req.signal, timeout])
 
-    // A gateway is a machine on someone's tailnet, and this call is not
-    // streamed — a hung one is a spinner with no output and no end. Without a
-    // deadline the failure mode is a platform-level 504 with no body, which
-    // reaches the card as a blank error; with one it is a sentence.
-    const timeout = AbortSignal.timeout(PROPOSE_TIMEOUT_MS)
+  // ── OpenClaw gateway ───────────────────────────────────────────────────────
+  // Proposes through the user's OWN gateway. Falling through to their model
+  // here would quietly send an OpenClaw user's planner somewhere they did not
+  // choose for it: not a degraded mode, a broken promise about where their data
+  // goes. So this branch either works or fails; it never reroutes.
+  if (target === 'openclaw') {
+    let config: GatewayConfig | null
+    try {
+      config = await getGatewayConfig(user.id)
+    } catch (err) {
+      console.warn('[ai] propose gateway config', err instanceof GatewayConfigReadError ? 'unreadable' : 'failed')
+      return jsonChatError(503, USER_MESSAGES.upstream, 'server')
+    }
+    if (!config) return jsonChatError(409, NOT_CONNECTED_GATEWAY, 'not_connected')
 
     try {
       const raw = await gatewayCompletion({
         config,
-        sessionKey: proposeSessionKey(userId),
-        signal: timeout,
+        sessionKey: proposeSessionKey(user.id),
+        signal,
         messages: [
           { role: 'system', content: systemPrompt },
           { role: 'user', content: userTurn },
         ],
       })
-
-      const parsed = extractJsonObject(raw)
-      if (!parsed) {
-        return NextResponse.json({ proposal: null, message: 'No suggestion came back.' })
-      }
-
-      const result = ProposalDraftSchema.safeParse(parsed)
-      if (!result.success || result.data.operations.length === 0) {
-        return NextResponse.json({ proposal: null, message: 'Nothing worth changing right now.' })
-      }
-
-      return NextResponse.json({ proposal: result.data })
-    } catch (err) {
+      return proposalFrom(raw)
+    } catch {
       if (timeout.aborted) {
-        return NextResponse.json(
-          { error: 'Your gateway did not answer in time. Is it reachable from the internet?' },
-          { status: 504 }
+        return jsonChatError(
+          504,
+          "Your gateway didn't answer in time. Is it reachable from the internet?",
+          'timeout'
         )
       }
-      const message = err instanceof Error ? err.message : 'Unknown error'
-      return NextResponse.json({ error: message }, { status: 502 })
+      return jsonChatError(502, "Couldn't reach your OpenClaw gateway.", 'upstream')
     }
   }
 
-  const key = apiKey || process.env.OPENAI_API_KEY
-  if (!key) {
-    return NextResponse.json(
-      { error: 'Add an OpenAI API key in Settings → Beacon to ask for a plan.' },
-      { status: 400 }
-    )
-  }
-
-  // Whose money is this? A user's own key buys them any model they name. The
-  // deployment's key does not — `model` arrives verbatim from the request body,
-  // and a session only proves SOME account, not the owner's.
-  const onOwnKey = Boolean(apiKey)
-  const resolvedModel = resolveModel(onOwnKey, model)
-
-  // Same deadline the gateway branch takes, and for the same reason: the SDK
-  // defaults to a TEN MINUTE timeout with retries, and a hung call here leaves
-  // "Thinking it through…" on screen with no output and no end. maxDuration
-  // only saves us on Vercel; this saves us everywhere.
-  const openai = new OpenAI({ apiKey: key, timeout: PROPOSE_TIMEOUT_MS, maxRetries: 1 })
-
+  // ── The user's connected model ─────────────────────────────────────────────
+  let conn: Opened
   try {
-    const completion = await openai.chat.completions.create({
-      model: resolvedModel,
-      // json_object rather than a strict json_schema: the client drops
-      // individual bad operations anyway, so tolerance beats brittleness here.
-      response_format: { type: 'json_object' },
-      ...(onOwnKey ? {} : { max_tokens: SERVER_KEY_MAX_OUTPUT_TOKENS }),
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: userTurn },
-      ],
-    })
-
-    const raw = completion.choices[0]?.message?.content
-    if (!raw) return NextResponse.json({ proposal: null, message: 'No suggestion came back.' })
-
-    let parsed: unknown
-    try {
-      parsed = JSON.parse(raw)
-    } catch {
-      return NextResponse.json({ proposal: null, message: 'No suggestion came back.' })
-    }
-
-    const result = ProposalDraftSchema.safeParse(parsed)
-    if (!result.success || result.data.operations.length === 0) {
-      // An empty or malformed draft is a normal outcome ("nothing to suggest"),
-      // not an error the user should have to read a stack trace about.
-      return NextResponse.json({ proposal: null, message: 'Nothing worth changing right now.' })
-    }
-
-    return NextResponse.json({ proposal: result.data })
+    conn = await openModelConnection(user.id)
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    return NextResponse.json({ error: message }, { status: 502 })
+    if (err instanceof AiDbError) console.warn('[ai] db', err.op, 'failed', err.code)
+    else console.warn('[ai] propose connection read failed')
+    return jsonChatError(503, USER_MESSAGES.upstream, 'server')
+  }
+  if (!conn.ok) {
+    switch (conn.reason) {
+      case 'unavailable':
+        return jsonChatError(503, NOT_CONNECTED_MODEL, 'not_connected', { available: false })
+      case 'blocked_url':
+        return jsonChatError(400, USER_MESSAGES.blocked_url, 'blocked_url')
+      default:
+        return jsonChatError(409, NOT_CONNECTED_MODEL, 'not_connected')
+    }
+  }
+
+  const { row, creds, model } = conn
+  try {
+    const raw = await getAdapter(creds.provider).completeText(creds, {
+      model,
+      modelMeta: row.model_meta ?? {},
+      system: [systemPrompt],
+      messages: [{ role: 'user', content: userTurn }],
+      maxOutputTokens: MAX_OUTPUT_TOKENS,
+      signal,
+      // json_object where the provider supports it, rather than a strict
+      // schema: the client drops individual bad operations anyway, so
+      // tolerance beats brittleness here. extractJsonObject covers the rest.
+      json: true,
+    })
+    return proposalFrom(raw)
+  } catch (err) {
+    const e = toProviderError(err, creds.provider, 'call')
+    logProviderError('propose', creds.provider, e.kind, e.status)
+    if (e.kind === 'auth') {
+      await setConnectionStatus(user.id, row.key_ciphertext, 'failing', 'key_rejected').catch(() => {})
+    }
+    if (e.kind === 'aborted') return new Response(null, { status: 204, headers: NO_STORE })
+    return jsonChatError(httpStatusFor(e.kind), e.message, toChatErrorCode(e.kind))
   }
 }

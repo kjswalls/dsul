@@ -1,44 +1,46 @@
 'use client';
 
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
-import { Button } from '@/components/ui/button';
 import { Sparkles, MessageSquarePlus, Copy, Check, User, Wand2 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ChatComposer } from '@/components/ai/chat-composer';
-import { OnboardingChat } from '@/components/ai/onboarding-chat';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useChatStore } from '@/lib/chat-store';
-import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
-import { resolveAICapabilities } from '@/lib/ai-registry';
+import { useAICapabilities } from '@/lib/ai-connection-store';
 import { buildChatOpeners } from '@/lib/ai-openers';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import { useTimeFormat } from '@/lib/use-time-format';
 import { formatChatTimestamp } from '@/lib/format-chat-timestamp';
-import { chatAssistantLabel, chatAssistantName, stripReasoningTags } from '@/lib/chat-utils';
-import { useUIStore } from '@/lib/ui-store';
+import { chatAssistantLabel, stripReasoningTags } from '@/lib/chat-utils';
 import { cn } from '@/lib/utils';
 
 interface ChatConversationProps {
   variant: 'desktop' | 'mobile';
+  /**
+   * Accepted from both shells and currently unused: its one reader was the
+   * "API key needed" empty state, which the AI gate made unreachable (chat
+   * mounts only once something can answer). Kept so a future empty state can
+   * link out without re-plumbing both callers.
+   */
   onOpenSettings?: () => void;
   /** Increment to focus the input (e.g. when the panel expands / tab activates). */
   focusSignal?: number;
   /** Hide the provider header row (the desktop panel renders its own). */
   hideHeader?: boolean;
   /**
-   * Drop the composer. The phone's Beacon tab passes this: its input is the
+   * Drop the composer. The phone's chat tab passes this: its input is the
    * dock's bar (components/mobile/mobile-bottom-dock.tsx), so leaving this one
    * mounted would stack two text fields, the lower of which is the real one.
    */
   hideComposer?: boolean;
   /**
-   * Give Beacon's replies a card of their own (surface-2, hairline, soft
+   * Give the assistant's replies a card of their own (surface-2, hairline, soft
    * shadow, a notched 16px radius), per design/mobile-redesign/ChatTab.dc.html.
-   * The phone's Beacon tab passes it: with the panel gone the conversation sits
+   * The phone's chat tab passes it: with the panel gone the conversation sits
    * straight on the paper, and bare prose there has nothing bounding it — in
    * dark mode the user's bubble ends up the only carded turn on screen. The
    * desktop panel already IS a card, so it keeps the flat default.
@@ -47,13 +49,16 @@ interface ChatConversationProps {
 }
 
 /**
- * The Beacon/OpenClaw conversation (messages + input) on top of chat-store.
- * Shared by the desktop sidebar chat panel and the mobile chat tab —
- * replaces the duplicated bodies of chat-sidebar and mobile-chat-panel.
+ * The chat conversation (messages + input) on top of chat-store, answered by a
+ * connected model or by OpenClaw. Shared by the desktop sidebar chat panel and
+ * the mobile chat tab — replaces the duplicated bodies of chat-sidebar and
+ * mobile-chat-panel.
+ *
+ * Both hosts mount it only while the AI gate says something can answer, so
+ * every branch here can assume an answerer; `target` names which.
  */
 export function ChatConversation({
   variant,
-  onOpenSettings,
   focusSignal,
   hideHeader,
   hideComposer,
@@ -61,10 +66,11 @@ export function ChatConversation({
 }: ChatConversationProps) {
   // `send` outlived the composer's move into ChatComposer: an opener is a
   // tap that sends a message, so this surface still has one thing to say.
-  const { messages, isLoading, isTyping, send, hydrate, syncOpenclawInfo, openclawAgentIdDisplay } =
-    useChatStore();
-  const aiProvider = useAISettingsStore((s) => s.provider);
-  const aiApiKey = useAISettingsStore((s) => s.apiKey);
+  const { messages, isLoading, isTyping, send, hydrate } = useChatStore();
+  // The AI gate (lib/ai-registry.ts), which fails closed. `canPropose` gates
+  // ONE thing here, "Turn this into a plan": OpenClaw's plugin path answers
+  // chat but has no proposal transport, so it can chat without proposing.
+  const { target, agentId, canChat, canPropose } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
@@ -80,29 +86,15 @@ export function ChatConversation({
   );
   const timeFormatStr = useTimeFormat();
 
-  // 'unknown' connection: this component has no reachability probe, and the
-  // registry treats unknown optimistically on purpose so capabilities do not
-  // flicker off and back on during hydration.
-  const canPropose = resolveAICapabilities(aiProvider).canPropose;
   const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
-  // Shared, not local: the phone's chat field lives in the dock now, and the
-  // dock has to stand down while this branch is showing (see the note on
-  // chatOnboardingActive in lib/ui-store.ts).
-  const showOnboarding = useUIStore((s) => s.chatOnboardingActive);
-  const setShowOnboarding = useUIStore((s) => s.setChatOnboardingActive);
-  // Whether to show it is AppShell's call (lib/onboarding-watch.ts), made once
-  // the planner load settles; WHO it is for is the account the provider
-  // already stamped. No getUser() or onboarding read of this component's own —
-  // so a surface that mounts this outside AppShell must run the watcher too.
-  const userId = usePlannerStore((s) => s.userId);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
 
   const isMobile = variant === 'mobile';
-  const displayName = chatAssistantName(aiProvider);
 
+  // Readiness is the connection store's job now (hydrated at sign-in, and
+  // re-checked by Settings → AI); this only loads the saved transcript.
   useEffect(() => {
     hydrate();
-    syncOpenclawInfo();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -120,9 +112,11 @@ export function ChatConversation({
   }, []);
 
   // Only read when the transcript is empty, but hooks cannot be conditional —
-  // the guard is the cheap `messages.length` check inside.
+  // the guard is the cheap `messages.length` check inside. Gated on CHAT, not
+  // on proposing: an opener is a plain send(), so OpenClaw plugin chat (which
+  // cannot propose) still gets something to say instead of a blank box.
   const openers = useMemo(() => {
-    if (messages.length > 0 || !canPropose) return [];
+    if (messages.length > 0 || !canChat) return [];
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const todayStr = toDateStr(new Date(), tz);
     return buildChatOpeners({
@@ -131,14 +125,14 @@ export function ChatConversation({
       userTimezone: tz,
       inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons }),
     });
-  }, [messages.length, canPropose, items, routines, seasons, userTimezone]);
+  }, [messages.length, canChat, items, routines, seasons, userTimezone]);
 
   /**
    * Hand the exchange to the proposal path, so a conversation can end in
    * something you tap rather than something you then go and do by hand.
    *
    * Sends the EXCHANGE, not the raw question: what makes a plan worth proposing
-   * is usually in Beacon's reply ("push the two writing ones to Thursday"), and
+   * is usually in the reply ("push the two writing ones to Thursday"), and
    * a proposer given only "what should I do about this week" has to re-derive
    * the whole answer and will land somewhere else. The card is rendered by the
    * parent shell above the transcript — a decision waiting on you does not
@@ -168,20 +162,12 @@ export function ChatConversation({
     [messages, requestProposal]
   );
 
-  if (showOnboarding && userId) {
-    return (
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        <OnboardingChat userId={userId} onComplete={() => setShowOnboarding(false)} />
-      </div>
-    );
-  }
-
   return (
     <>
       {!hideHeader && (
         <div className="shrink-0 border-b border-border px-3 py-2">
           <p className="text-2xs font-medium text-muted-foreground">
-            {chatAssistantLabel(aiProvider, openclawAgentIdDisplay)}
+            {chatAssistantLabel(target, agentId)}
           </p>
         </div>
       )}
@@ -206,59 +192,38 @@ export function ChatConversation({
                 className={cn('absolute -top-1 -right-1 text-ai', isMobile ? 'h-6 w-6' : 'h-4 w-4')}
               />
             </div>
-            {aiProvider === 'openai' && !aiApiKey ? (
-              <div className="space-y-2">
-                <p className={cn('font-medium text-foreground', isMobile ? 'text-lg' : 'text-sm')}>
-                  API key needed
-                </p>
-                <p className="max-w-[280px] text-xs leading-relaxed text-muted-foreground">
-                  Beacon needs an API key to get started.
-                </p>
-                {onOpenSettings && (
-                  <button onClick={onOpenSettings} className="text-xs text-success-text hover:underline">
-                    → Go to Settings
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="space-y-1">
-                <p className={cn('font-serif font-semibold text-foreground', isMobile ? 'text-lg' : 'text-base')}>
-                  {aiProvider === 'openclaw' ? `${displayName} is ready` : `Plan with ${displayName}`}
-                </p>
-                <p className="max-w-[280px] text-xs leading-relaxed text-muted-foreground">
-                  {aiProvider === 'openclaw' ? (
-                    `Ask anything — ${displayName} knows your tasks, habits, and projects.`
-                  ) : aiProvider === 'none' ? (
-                    <span>
-                      Connect <span className="font-medium text-foreground">OpenClaw</span> in Settings
-                      for your personal AI agent, or add an OpenAI key to use Beacon.
-                    </span>
-                  ) : (
-                    'Ask me to break down tasks, plan your day, or think through what to tackle next.'
-                  )}
-                </p>
+            {/* No "connect a key" branch: the hosts mount this only once
+                something can answer, so the empty state is always an invitation. */}
+            <div className="space-y-1">
+              <p className={cn('font-serif font-semibold text-foreground', isMobile ? 'text-lg' : 'text-base')}>
+                {target === 'openclaw' ? 'OpenClaw is ready' : 'Ask anything'}
+              </p>
+              <p className="max-w-[280px] text-xs leading-relaxed text-muted-foreground">
+                {target === 'openclaw'
+                  ? 'Ask anything. OpenClaw can see your tasks, habits, and projects.'
+                  : 'Break a task down, plan your day, or think out loud. It can see your tasks, habits, and projects.'}
+              </p>
 
-                {/* Something to say, so the first move is a tap rather than a
-                    blank box. Derived from the planner — see lib/ai-openers.ts
-                    for why these are not a static list, and for the copy rule. */}
-                {openers.length > 0 && (
-                  <div
-                    data-testid="chat-openers"
-                    className="flex flex-col items-stretch gap-1.5 pt-2"
-                  >
-                    {openers.map((opener) => (
-                      <button
-                        key={opener.id}
-                        onClick={() => send(opener.prompt)}
-                        className="rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-ai/40 hover:bg-muted"
-                      >
-                        {opener.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
+              {/* Something to say, so the first move is a tap rather than a
+                  blank box. Derived from the planner — see lib/ai-openers.ts
+                  for why these are not a static list, and for the copy rule. */}
+              {openers.length > 0 && (
+                <div
+                  data-testid="chat-openers"
+                  className="flex flex-col items-stretch gap-1.5 pt-2"
+                >
+                  {openers.map((opener) => (
+                    <button
+                      key={opener.id}
+                      onClick={() => send(opener.prompt)}
+                      className="rounded-full border border-border bg-surface-2 px-3 py-1.5 text-xs text-foreground transition-colors hover:border-ai/40 hover:bg-muted"
+                    >
+                      {opener.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
           </div>
         ) : (
           <div className={cn('flex flex-col gap-3 px-4 pb-4', isMobile ? '-mt-12' : '-mt-6')}>

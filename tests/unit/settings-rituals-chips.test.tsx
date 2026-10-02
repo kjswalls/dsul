@@ -228,7 +228,12 @@ describe('a merged chip', () => {
     render(<Harness pane="rituals" />);
 
     fireEvent.click(chip());
-    fireEvent.click(await screen.findByRole('button', { name: /changed from its default/ }));
+    // Named for the chip: the fixture keeps the morning check ON (its
+    // dependents only draw under it), and since rituals went opt-in (054) ON
+    // is itself off-default, so that row wears a reset of its own.
+    fireEvent.click(
+      await screen.findByRole('button', { name: /^Auto-clear stale items is changed from its default/ })
+    );
 
     expect(toggle).toHaveBeenCalledWith(false, expect.anything());
     expect(days).toHaveBeenCalledWith('30', expect.anything());
