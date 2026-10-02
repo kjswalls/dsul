@@ -265,26 +265,34 @@ export function HeaderCapsule() {
 
           It sits IN FLOW, and this header stands over the hour grid, which
           sizes its rows to the height left below it (lib/use-fit-hour-px.ts):
-          the rows re-fit as the shelf comes and goes, and as it moves between
-          one line and a stack, 27px for its one line and 23px for each line
-          the stack adds. That cost was taken on purpose (asked for 2026-09-25;
-          measured in memory/plans/display-menu.md, in the addendum on the
-          canvas's Display shelf): the shelf is worth that much grid while the
-          view is narrowed, and at rest nothing moves.
+          the rows re-fit as the shelf comes and goes, and as its paragraph
+          wraps onto more lines or fewer, 27px for its first line and 23px for
+          each line after. That cost was taken on purpose (asked for
+          2026-09-25; measured in memory/plans/display-menu.md, in the addendum
+          on the canvas's Display shelf): the shelf is worth that much grid
+          while the view is narrowed, and at rest nothing moves. Since
+          2026-10-01 the shelf wraps as a paragraph rather than stacking one
+          setting per line; the same addendum has the heights before and after.
 
           contain-inline-size is load-bearing. This capsule is sized by its
-          content, and the shelf in its one-line fit is as wide as its whole
-          line, so without containment the capsule would grow to the line and
-          the shelf would never stack — its fit needs its width from outside.
+          content, and the paragraph's own width is every setting on one line,
+          so without containment the capsule would grow to that line and the
+          paragraph would never wrap — it needs its width from outside.
           Contained, the capsule keeps the width its two rows give it and the
-          shelf takes that. px-4 puts the text under the Layout icon, and
-          pr-3.5 the reset ✕ under the Zen leaf, which the pill insets 14px (its
-          px-1.5, then half of what w-8 leaves around the 16px leaf); pt-1
-          and pb-px keep the braindump's 8px above and 9px below. */}
+          shelf takes that. px-4 puts the text under the Layout icon, and a
+          0.875rem right inset puts Reset, at the end of its line, under the
+          Zen leaf, which the pill insets as much at any font size (its
+          px-1.5, then half of what w-8 leaves around the 1rem leaf). The ✕
+          that hangs past the last setting on a line is 14px at any size, and
+          hangs into that inset and the capsule's own p-2; under a browser
+          font size of about 10px the two together come to less, and the ✕
+          poked past the capsule's edge. So the inset is the larger of the
+          0.875rem and what makes up the 14px. pt-1 and pb-px keep the
+          braindump's 8px above and 9px below. */}
       <DisplayShelf
         surface="canvas"
         menu={displayRef}
-        className="contain-inline-size px-4 pr-3.5 pt-1 pb-px"
+        className="contain-inline-size px-4 pr-[max(0.875rem,calc(14px-0.5rem))] pt-1 pb-px"
       />
     </div>
   );

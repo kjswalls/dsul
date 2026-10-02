@@ -373,8 +373,8 @@ export function summarizeDisplay(input: DisplaySummaryInput): DisplaySummary {
 }
 
 /**
- * A clause as the shelf reads — its visible text. The shelf keys its fit on
- * the joined text of every clause, and tests read it as the oracle.
+ * A clause as the shelf reads — its visible text. The shelf's opener is named
+ * by the joined text of every clause, and tests read it as the oracle.
  */
 export function clauseText(c: DisplayClause): string {
   switch (c.id) {
@@ -448,8 +448,8 @@ export function useDisplaySummary(surface: DisplaySurface): DisplaySummary {
 
 /**
  * Reset clears everything the Display menu OWNS for this surface. The menu's
- * "Reset display" row and the shelf's reset ✕ (the one at the end) are both
- * this function, so the two cannot come apart.
+ * "Reset display" row and the shelf's Reset (the ↺ that ends its last line)
+ * are both this function, so the two cannot come apart.
  *
  * `showPausedOnGrid` is deliberately excluded, and the menu captions its row
  * "Everywhere" for the same reason — it is an app-wide setting that happens to
@@ -534,7 +534,7 @@ export function withoutDisplayValue(
 
 /**
  * Take one clause, or one value of a multi-select, off this surface — what a
- * shelf ✕ beside a single setting does, where the ✕ at the end is
+ * shelf ✕ beside a single setting does, where the shelf's Reset is
  * `resetDisplay` and takes off all of them.
  *
  * Through the same setters Reset uses, so the canvas group-by and type filter

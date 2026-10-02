@@ -750,6 +750,8 @@ the canvas one rather than a smaller one: it has `type` and still lacks `bucket`
 
 ## Addendum (2026-09-25): the braindump's Display shelf
 
+*Superseded 2026-10-01, in part: the line is a paragraph that wraps, and the ✕ at the end is
+Reset display's ↺, drawn from four ✕s (see "the shelf as one paragraph" below).*
 **What it is.** A line of text inside the braindump header's grey capsule, under the white
 pill, saying in words what the Display menu has set: "Grouped by …", "Sorted by …", the
 priority values (the menu's dots; No priority is the hollow ring), the project values (the
@@ -777,6 +779,9 @@ height from the column's remaining height, so a shelf there re-scales every hour
 first setting goes on. That is why the canvas shipped without one; it has one now, with that
 cost taken on purpose (see the next addendum).
 
+*Superseded 2026-10-01: the shelf is one paragraph that wraps between settings, with no fit
+and no stack, and a wrap inside a filter costs 23px like any line; its spacings and heights are
+in "the shelf as one paragraph" below.*
 **One line while everything fits, then a stack.** On one line the settings sit 16px apart
 with no separators. When that does not fit, grouping and ordering share the first line, each
 filter gets a line of its own, and Hide finished comes last, 5px apart. A multi-value
@@ -786,7 +791,9 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
 
 **Locked decisions:**
 
-- **One derivation.** `useDisplaySummary(surface)` in
+- *Superseded 2026-10-01, the last sentence: there is no fit to key on `clauseText`; it is still
+  the opener's name and the tests' oracle.*
+  **One derivation.** `useDisplaySummary(surface)` in
   [lib/display-summary.ts](../../lib/display-summary.ts) returns `{ activeCount, clauses }`,
   and the trigger's dot, its aria-label count and the shelf all read it. `activeCount > 0 ⇔
   clauses.length > 0` is an invariant of the model, so "visible exactly when the dot is lit"
@@ -794,7 +801,10 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   group-by and the Goals gate, so a grouping or goal selection the switch is keeping is
   neither counted nor named. `clauseText` is the one spelling of each clause: the fit is keyed
   on it, and the tests read the screen against it.
-- **The end ✕ IS Reset display.** Both shells' Reset row and the ✕ at the end of the shelf
+- *Superseded 2026-10-01, in part: Reset is still `resetDisplay(surface)`, still sends focus
+  to the trigger first, and still wears its tip on a pointer and none on the phone, but it is
+  the menu row's ↺ now, at the end of the last line, and it shows from four ✕s, not two.*
+  **The end ✕ IS Reset display.** Both shells' Reset row and the ✕ at the end of the shelf
   call `resetDisplay(surface)`, so they cannot drift. It shows only while the settings wear
   more than one ✕ between them: with one, it would be that setting's ✕ twice. With Goals off it keeps the stranded goal selection and the stored
   Goal grouping (off is lossless), and it never touches Show paused, which is app-wide. The
@@ -828,7 +838,10 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   clear, focus ends on the trigger just pressed, and without it, on the shelf. On the phone
   the overlay covers the trigger through the sheet's exit, so the sheet's clear is the same
   rule with no tap that reaches it.
-- **Fit is imperative, and it is not state.** Whether the text fits changes on every frame
+- *Superseded 2026-10-01: there is no fit. The paragraph wraps by CSS, so nothing is measured,
+  observed or written behind React's back; what this cost and why it went are in "the shelf as
+  one paragraph" below.*
+  **Fit is imperative, and it is not state.** Whether the text fits changes on every frame
   of a sash drag, and React never hears about that: the column resizes through `--sidebar-w`
   precisely so the braindump does not re-render. So the shelf writes `data-fit` on its own
   root, React never renders the attribute, every stack rule keys off
@@ -873,7 +886,12 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
   comparison allows one layout unit (1/64px) and no more: nothing on the one line truncates,
   so any overflow is a glyph cut off with no ellipsis, and neither side of the comparison
   depends on the fit, so there is no oscillation for a wider margin to damp.
-- **The sidebar mount has a width floor, `SIDEBAR_MIN_WIDTH - 20` (260px)**, passed by the
+- *Superseded 2026-10-01, in part: the floor stays, for the same fold, but what it spares now
+  is the paragraph re-wrapping all the way down to `w-0`, growing taller as the column closes,
+  and the collapsed shelf sitting one value to a line. There is no fit: a shelf re-wraps a line
+  at a time as the column closes down to the floor and again as it opens, where the fit flipped
+  a one-line shelf once; at the 280px minimum the floor is the rest width and nothing moves.*
+  **The sidebar mount has a width floor, `SIDEBAR_MIN_WIDTH - 20` (260px)**, passed by the
   braindump as the shelf's `floor` prop (the primitive has none of its own). Collapse and
   hover-peek animate the column between `w-0` and its width over 300ms with the braindump
   still mounted. Without a floor, every frame of the fold would re-fit, and the collapsed
@@ -911,6 +929,8 @@ line of the stack adds 23px, and a wrap inside a setting adds 18px.
 
 ### Addendum (2026-09-26): a ✕ for each setting
 
+*Superseded 2026-10-01, in part: on a pointer each ✕ is drawn only while its setting is under
+the pointer, and the end ✕ is Reset display's ↺ at the end of the last line, from four ✕s.*
 Each grouping, ordering and Hide finished phrase, and each priority, project and goal VALUE,
 now carries a small ✕ after it that takes off that one thing. The end ✕ still resets them all.
 
@@ -924,7 +944,11 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
   as they are deduped. `display-summary.test.ts` removes every drawn thing in every case of
   the matrix and checks that exactly that one disappears. The Goals gate needs no handling
   here, because no ✕ is drawn for a goal clause or a Goal grouping while Goals is off.
-- **The opener sits UNDER the words.** A button cannot hold buttons, so the opener is an
+- *Superseded 2026-10-01, in part: each phrase and value takes the pointer itself now and opens
+  the menu through the same handle, so only the gaps fall through to the opener; a setting's
+  words light on their own (`group/unit`), so there is no `peer/open` to keep beside them; and
+  the paragraph does not clip.*
+  **The opener sits UNDER the words.** A button cannot hold buttons, so the opener is an
   `absolute inset-0` button behind the lines box. The lines box is `relative` (so it paints
   above) and `pointer-events-none` (so a click on the words falls through to the opener); the
   ✕s are `pointer-events-auto`. The opener's name is its own sr-only copy of the text, and the
@@ -933,17 +957,28 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
   words' hover colour reads, so it must stay the lines box's previous sibling. It sits outside
   the clipping lines box so its focus ring is not cut off. `openerRef`, `open(from)` and the
   focus return on close are unchanged.
-- **A ✕ belongs to its setting.** The ✕ sits inside the clause span or value span, after the
+- *Superseded 2026-10-01, the last sentence: the ✕ is px now, like every spacing around it, and
+  there is no sample or fit. On a pointer it hangs in the gap after its setting.*
+  **A ✕ belongs to its setting.** The ✕ sits inside the clause span or value span, after the
   label, and never shrinks, so a phrase ellipsizes before its ✕ and a value never wraps away
   from its own. It is rem-sized, like the gaps and dots, so the sample's rem already accounts
   for it in the fit.
-- **Focus moves on first, as the reset's does.** The pressed ✕ unmounts, so before removing
+- *Superseded 2026-10-01, in part: after a mouse's click on a fine pointer, focus goes to the
+  shelf's text (the opener), not to the next ✕, where the browser would not draw it; a key, a screen
+  reader's press and any press where nothing hovers (the phone, a coarse pointer) still walk on to
+  it. Reset leaves once fewer than four ✕s are left, not with the second-to-last setting; focus
+  still never goes to it. And keys alone do not keep a ✕ alive: no wrapper may come or go around one
+  either (see the paragraph's gotchas).*
+  **Focus moves on first, as the reset's does.** The pressed ✕ unmounts, so before removing
   anything, focus goes to the next per-setting ✕, or the previous one if this was the last, or
   the trigger if nothing is left. It never goes to the reset ✕, which leaves with the
   second-to-last setting. Every other ✕ survives because each is keyed by what it names. A
   repeated (held) Enter is cancelled on keydown; otherwise autorepeat would walk the focus
   from ✕ to ✕ and clear the shelf.
-- **Phone reach: 25 × 28px, lopsided on purpose.** The reach is 7px to the right but only 4px
+- *Superseded 2026-10-01, the last two sentences: the paragraph does not clip, so the
+  `py-[5px]`/`-my-[5px]` pair and the cost of a ✕ flush against the clip are gone. The reach is
+  unchanged, and a coarse pointer on the desktop shell takes it too.*
+  **Phone reach: 25 × 28px, lopsided on purpose.** The reach is 7px to the right but only 4px
   to the left, which is the gap to its own words, so a tap at the end of a name still opens the
   menu. The lines box clips, so it carries `py-[5px]`, taken back by `-my-[5px]`, to keep the
   vertical reach from being cut. Accepted cost: a truncated phrase that fills a stacked line
@@ -963,7 +998,9 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
 
 ### Gotchas from the shelf
 
-- **jsdom reports every width as 0, so the fit is always `line` there** (`0 > 0 + 1/64` is
+- *Superseded 2026-10-01: there is no fit, so no stub and no hand-delivered observer; the tests
+  read the paragraph's rules off its classes and check that it measures nothing.*
+  **jsdom reports every width as 0, so the fit is always `line` there** (`0 > 0 + 1/64` is
   false). That is deterministic, and useless for testing a stack.
   `tests/unit/display-shelf.test.tsx` stubs `Element.prototype.getBoundingClientRect`, giving
   the lines box a chosen width and laying the `[data-line]` spans out in whichever fit the
@@ -975,23 +1012,31 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
   A case that resizes the sample starts with `firstDelivery()`, the delivery a real
   observer makes at `observe()`, since that one asks for a frame of its own: a shelf that
   could re-measure only once would pass a case that skipped it.
-- **The sample's classes are asserted EXACTLY.** A class that stretches it from `left-0`
+- *Superseded 2026-10-01: there is no sample.*
+  **The sample's classes are asserted EXACTLY.** A class that stretches it from `left-0`
   (`right-0`, `inset-x-0`, `w-full`) makes its width the column's, and then every frame of a
   drag resizes it and forces a one-line measure. A subset match would let one through.
-- **The `typeof ResizeObserver === 'undefined'` guard is load-bearing.** jsdom has no
+- *Superseded 2026-10-01: the shelf makes no ResizeObserver, so there is nothing to guard, and
+  an active braindump mounts in jsdom with nothing to stub.*
+  **The `typeof ResizeObserver === 'undefined'` guard is load-bearing.** jsdom has no
   ResizeObserver, and `tests/unit/braindump-grouping.test.tsx` mounts an ACTIVE braindump (a
   grouping is set, so the shelf renders) without stubbing one. Without the guard, all 11 of
   its tests throw `ReferenceError`. A shelf with no observer keeps the fit it measured.
 - **Never read the handle in render.** `menu.current` is null on the first render and a
   commit behind after that. `react-hooks/refs` does not catch it: it flags `.current` on a
   `useRef` or on a prop named `…Ref`, and this prop is `menu`. Read it in handlers only.
-- **A stacked multi-select must `shrink`.** A clause that keeps `shrink-0` in the stack holds
+- *Superseded 2026-10-01: there is no stack. A filter in the paragraph needs `min-w-0
+  max-w-full flex-wrap` instead (without `max-w-full` it never stops at the line's width to wrap
+  its values), and the test asserts those for the same reason.*
+  **A stacked multi-select must `shrink`.** A clause that keeps `shrink-0` in the stack holds
   its one-line width, so the values past the column's edge are clipped instead of wrapped.
   jsdom cannot lay this out, so the test asserts the classes, every one the stack lays out
   by: `flex-col` on the lines box, `shrink`/`min-w-0`/`flex-wrap` on each line and each
   multi-select, `min-w-0 max-w-full` on each value with `truncate` on its label, and
   `min-w-0 max-w-full truncate` on each single phrase.
-- **Never write anything inside the observer's delivery, not even the fit.** Forcing the
+- *Superseded 2026-10-01: the shelf has no observer. The lesson stands for anything that would
+  resize what sits over the hour grid from inside a delivery.*
+  **Never write anything inside the observer's delivery, not even the fit.** Forcing the
   one-line layout there starts a measure, resize, measure loop. And a compare that flips the
   fit changes the shelf's height, which resizes what sits below it in the same delivery.
   Under the canvas header's pill that is the view's scroll viewport, which `useFitHourPx`
@@ -1007,7 +1052,10 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
   asked for. The cost is one frame in the old fit after a width change, in either direction:
   an unstack decided in the delivery to save that frame brings the error back on every
   widen.
-- **A click on the words cannot be `hover()`ed or `click()`ed by locator in Playwright.** The
+- *Superseded 2026-10-01: each phrase and value takes the pointer now, so a locator can hover
+  and click the words, and the gaps are still the opener's. It is a pointer's ✕ that cannot be
+  clicked cold (see "Gotchas from the paragraph" below).*
+  **A click on the words cannot be `hover()`ed or `click()`ed by locator in Playwright.** The
   words are `pointer-events-none` and Playwright refuses them as "not receiving pointer
   events". Move or click the mouse at their coordinates instead, which is what a user does.
 - **`getByText('Priority')` is ambiguous**, because it is a sort label AND a group-by label.
@@ -1026,6 +1074,9 @@ now carries a small ✕ after it that takes off that one thing. The end ✕ stil
   gives the dropdown's closed content an animation holds it mounted the same way, which is
   how a trigger reopening a menu mid-exit is tested.
 
+*Superseded 2026-10-01, the last two states: there is no fit to flip. Text spacing or text-only
+zoom re-wraps the paragraph, and the browser's font size leaves its px alone; the paragraph's
+own states are in "the shelf as one paragraph" below.*
 **Manual QA states:** 406px and 280px sidebar and a 390px phone: one setting; everything on;
 a 4+ value priority or project filter at 280px (wraps between values, each ✕ staying with its
 value); a ✕ press on the phone near the end of a name (opens the menu, not the ✕); each ✕ taken
@@ -1038,6 +1089,8 @@ on one line and a little room to spare (it stacks), then put back (one line).
 
 ## Addendum (2026-09-26): the canvas's Display shelf
 
+*Superseded 2026-10-01, the end ✕: Reset display is the ↺ at the end of the paragraph's last
+line now, while the settings wear more than three ✕s.*
 **What it is.** The braindump's shelf, now in the canvas header too, on both shells. Kirby
 asked for it on 2026-09-25 ("can we also add these active filters rail to the body header
 too"). On the desktop it is the HeaderCapsule's third row, under the view pill, as the
@@ -1049,6 +1102,8 @@ that one canvas setting off, and the end ✕, while the settings wear more than 
 them, is the canvas's Reset display. Nothing in it is canvas-specific except the one clause
 only the canvas has, the type filter.
 
+*Superseded 2026-10-01, the example: the usual three are one line on the phone now. Where two
+✕s do sit on neighbouring lines, the lower one still takes the 5px between them.*
 **Touch keeps its ✕s, as the Braindump tab's.** This branch first drew the text alone on
 touch, on both surfaces, on the dock notices' rule (`components/sidebar/dock-notices.tsx`)
 that a destructive target pressed up against a full-width tap target is a mis-tap generator:
@@ -1063,6 +1118,8 @@ so the upper one reaches 25 × 23 (the usual three settings' "Showing Tasks" ✕
 of a name is a boundary, not a margin: in Chromium a tap on a name's last pixel went to the ✕
 for about half the names, and from a pixel and a half in, every one opened the sheet.
 
+*Superseded 2026-10-01, in part: the 5px is in every mode now, between the paragraph's lines
+and inside each filter, and there is no fit; the card heights here are the stack's.*
 **Wrapped rows keep the reach's 5px on touch.** Review found worse where a line or a
 multi-select wraps: those rows had no gap between them, so a ✕'s reach lay over the next row's
 words, and a tap on a name took a different setting off (with every setting on at 390×844, a tap
@@ -1076,6 +1133,10 @@ last half pixel went to the ✕ of the row below for 5 names on each surface, am
 Wind-down's. The fit measures widths only, so it is unchanged, and the braindump's phone tab
 shares the rule.
 
+*Superseded 2026-10-01, in part: the pass-through stays, since the paragraph's lines are 23px
+apart too and a tip still hangs over the line below. But on a pointer a ✕ is neither drawn nor
+hit until its own setting is under the pointer, so the walk down the stacked ✕s is the stack's,
+and a click under a tip takes off only a ✕ that is drawn there.*
 **A click passes through a ✕'s tip.** In the stack the lines are 23px apart, and a ✕'s tip
 (below it, about 60 × 31px, 6px off) covers the ✕ on the line below, so moving the pointer down
 from one ✕ to press the next pressed the tip instead, which removed nothing: both clicks down
@@ -1104,6 +1165,14 @@ anyway. Across the header puts the reset ✕ at the far right, away from the men
 the pill won on parity with the braindump and on holding up at every width: `<main>` animates
 its width with the sidebar and the item panel, and the capsule never does.
 
+*Superseded 2026-10-01, in wording: there is no fit, but containment is as load-bearing for
+the paragraph, which would otherwise give the capsule its whole one-line width and never wrap.
+Reset keeps the reset ✕'s right edge, in the Zen leaf's column at the end of the last line, so
+it is right under the leaf only while the paragraph is one line. The right inset is now
+`pr-[max(0.875rem,calc(14px-0.5rem))]`: the leaf's 0.875rem (rem-sized, like the leaf, so it
+lines up at any font size), unless that and the capsule's `p-2` come to less than a fine
+pointer's 14px ✕, which hangs into both after a line-filling value (under a browser font size of
+about 10px, where it poked past the capsule).*
 **Containment is load-bearing on the desktop.** The capsule is `inline-flex flex-col`, sized by
 its content, and the shelf's fit needs its width to come from outside (see "Fit is imperative"
 above). So the capsule's mount passes `contain-inline-size`, and the shelf adds no inline size:
@@ -1116,6 +1185,12 @@ mount's insets come in through `className`, merged over the root's with `cn`. Th
 the phone's `px-0 pt-0 pb-px` put the text on the date's edge. `floor` is the sidebar's alone:
 the capsule never animates, so every width it takes is one it rests at.
 
+*Superseded 2026-10-01, in part: the row still grows 27px for the first line and 23 for each
+after, and the grid still re-fits, but nothing stacks now. The usual three are one line (a
+162px row, not 208) and everything on is three lines in Day × Schedule (208, not 277), so the
+line counts, the 84-state counts and the six-line figures below are the stack's. The paragraph
+is the "wrapping fit" this names as the lever; its heights are in "the shelf as one paragraph"
+below.*
 **The height it costs, taken on purpose.** The header row was a constant 135px, and the grid
 under it (`lib/use-fit-hour-px.ts`) sizes Day and Week × Schedule's hour rows, and the phone's
 DaySchedule's, to the height left. The shelf is in flow, so while anything is set the row grows
@@ -1154,6 +1229,9 @@ exactly what the dot counts; if the stack proves too tall on the canvas, a cap o
 for this mount is the lever. `desktop-shell.tsx` records the shelf as the one thing in the
 header row allowed to grow it.
 
+*Superseded 2026-10-01, in part: the paragraph still re-wraps as the date moves List's
+capsule, and the list moves 23px for each line it gains or loses, but there is no flip of the
+whole stack (46 or 69px) at one threshold.*
 **When it moves on its own.** The shelf flips between one line and the stack whenever the
 capsule's width changes, and in List (and, by under 4px, Day × Buckets) that width follows
 the date: a long off-today date with its Today button can outgrow the pill (Day × List 349
@@ -1165,11 +1243,15 @@ paging never flips it there. Accepted; the lever is a date button with the wides
 min-width and a Today slot kept reserved, which would rest the capsule at about 378px in
 List.
 
+*Superseded 2026-10-01: the shelf has no observer, and so no frame to wait.*
 **Never write inside the observer's delivery.** The canvas mount is what surfaced the
 gotcha above ("Never write anything inside the observer's delivery", under Gotchas from the
 shelf): a flip decided inside the observer's delivery resized the grid's viewport in
 that same delivery and raised the "ResizeObserver loop" error. The fit now waits a frame.
 
+*Superseded 2026-10-01, the counts: which of the 84 states fit one line and which stacked are
+the stack's, since the paragraph has no one-line threshold. The choice of words, and why,
+stands.*
 **Words.** The type clause reads "Showing Tasks" / "Showing Habits": the menu's own row (its
 Type section says All, Tasks, Habits), led by a muted "Showing" as grouping is by "Grouped
 by", and "Show" is the palette's name for the setting. The words cost width: "Showing Tasks"
@@ -1206,14 +1288,22 @@ filters only, so any grouping, ordering or type stays named.
 
 **Accepted, not fixed:**
 
-- Two buttons named "Reset display" when both shelves are up, as the two "Display (N active)"
+- *Superseded 2026-10-01, in part: only while both shelves wear four ✕s or more.*
+  Two buttons named "Reset display" when both shelves are up, as the two "Display (N active)"
   triggers already were. Naming each surface in all three controls is one change for later.
 - The ✕s are `text-muted-foreground` like every icon control in the capsule (2.65:1 on their
   ground in light mode), and wear the braindump header's label-only `RailTooltip`, while the
   capsule's own Zen tooltip is the plain one. A token change would restyle every icon control.
-- No ✕ can be undone: Ctrl+Z is the planner's undo and never reaches view settings, the same
+- *Superseded 2026-10-01, the last sentence: Reset still ends in Zen's column, but on the
+  paragraph's last line, so it sits right under Zen only while the paragraph is one line.*
+  No ✕ can be undone: Ctrl+Z is the planner's undo and never reaches view settings, the same
   as the menu's Reset row. The reset ✕ sits 14px under Zen.
-- With the item panel docked, `<main>` can be narrower than the header row, and it clips the
+- *Superseded 2026-10-01, the shelf's figures only, here and in the bullets below: they were
+  measured on the stack, with the reset ✕ beside the first line from two ✕s and every ✕ drawn.
+  The hook and its rules are unchanged, Reset keeps the same right edge (at the end of the last
+  line, from four ✕s), and a pointer's undrawn ✕s keep their boxes and their Tab stops, but the
+  shelf's widths and percentages here are the stack's.*
+  With the item panel docked, `<main>` can be narrower than the header row, and it clips the
   row's right end. How far depends on scope, layout and the sidebar's width. With the
   default sidebar, Zen is clipped up to 1275px windows in Day × Schedule, 1286 in Week ×
   Schedule and 1278 in Week × Buckets (the reset ✕ up to 1267, 1278 and 1270), WeekScale's
@@ -1227,19 +1317,19 @@ filters only, so any grouping, ordering or type stays named.
   closed, unless a later Tab happened to reveal something at the other end (in Week × Schedule
   the grid's first stop often did). `useFocusOnlyScroll` (`hooks/use-focus-only-scroll.ts`) now
   places `<main>` for whatever has focus, a frame after focus moves anywhere, a key goes down in
-  `<main>`, `<main>` scrolls or resizes, or what the focused control paints starts or stops
-  showing whole or at all. An IntersectionObserver at thresholds 0 and 1 hears that when nothing
-  else fires. It watches the control and its children, which a squeezed control paints past its
-  box (below), and its root reaches a pixel past `<main>`'s left and right edges, so what a
-  slide shows whole to within a fraction counts as whole and a later cut is heard. Review found
-  the first version, which watched the box alone at `<main>`'s exact edges, deaf to a move that
-  cut only what the review notice paints: moves of 12, 30 and 56px left 84, 59 and 23% of it
-  showing until the next key. It does not hear a cut of a pixel or less, nor a move from cut to
-  cut, nor one out of sight that stays within a pixel of the edge; those wait for the next key,
-  focus move, scroll or resize. `<main>` goes to rest when focus leaves it for the sidebar, the
-  item panel or nothing, and when the focused control shows there, unless it holds (below).
-  Otherwise it moves only when it must, because Radix closes a tooltip on any scroll around its
-  trigger and a tooltip is all the name Zen and the ✕s show. A control out of sight comes in to
+  `<main>` (other than a modifier on its own), `<main>` scrolls or resizes, or what the focused
+  control paints starts or stops showing whole or at all. An IntersectionObserver at thresholds 0
+  and 1 hears that when nothing else fires. It watches the control and its children, which a
+  squeezed control paints past its box (below), and its root reaches a pixel past `<main>`'s left
+  and right edges, so what a slide shows whole to within a fraction counts as whole and a later cut
+  is heard. Review found the first version, which watched the box alone at `<main>`'s exact edges,
+  deaf to a move that cut only what the review notice paints: moves of 12, 30 and 56px left 84, 59
+  and 23% of it showing until the next key. It does not hear a cut of a pixel or less, nor a move
+  from cut to cut, nor one out of sight that stays within a pixel of the edge; those wait for the
+  next key, focus move, scroll or resize. `<main>` goes to rest when focus leaves it for the
+  sidebar, the item panel or nothing, and when the focused control shows there, unless it holds
+  (below). Otherwise it moves only when it must, because Radix closes a tooltip on any scroll around
+  its trigger and a tooltip is all the name Zen and the ✕s show. A control out of sight comes in to
   the least slide that shows it whole. So does whatever has focus when `<main>`'s width changes:
   the item panel docks a frame at a time, and a slide kept from an earlier frame left the
   focused reset ✕ a quarter showing once it had docked. So does a control the layout moves, once
@@ -1317,10 +1407,10 @@ filters only, so any grouping, ordering or type stays named.
   and on along the header to Next, a click on Next at 1240 moved it 11px in Week × Schedule and
   51 in Day, where a second click at the same spot opened the date picker. Accepted: it takes
   keys along the header and then the pointer on the same stop, and review's pin for it was one
-  more rule for the others to be walked against. A click counts until a key goes down in
-  `<main>`, so Enter on Next still holds. A dragged thumb is not a button, and still holds: a
-  variant that let go for every pointer move jumped the canvas on the release (62px to 0 at
-  1400, 122 to 20 at 1340) and back on the next arrow.
+  more rule for the others to be walked against. A click counts until a key other than a modifier on
+  its own goes down in `<main>`, so Enter on Next still holds. A dragged thumb is not a button, and
+  still holds: a variant that let go for every pointer move jumped the canvas on the release (62px
+  to 0 at 1400, 122 to 20 at 1340) and back on the next arrow.
 - Focus moving on from a held slide places the next control afresh if that slide cuts it by more
   than a pixel, because the slide was held for the control focus left. After paging with Enter on
   Next, Tab onto Go to today showed as little as 3.6% of it under an earlier version, where
@@ -1349,7 +1439,9 @@ filters only, so any grouping, ordering or type stays named.
   the pixel rule below, that keeps the first ✕'s tooltip up at 1308 and 1309, and "High"'s at 1273
   to 1275; a ✕ that slide cuts by more than a pixel still moves `<main>` 2px and closes its own
   tooltip, the first one at 1307, and at 1273 the "Sorted by Priority" ✕ before "High".
-- So does focus coming to a control the layout has moved since the hook made the slide the row
+- *Superseded 2026-10-01, one clause: Reset now mounts afresh when a fourth ✕ comes back, not a
+  second setting.*
+  So does focus coming to a control the layout has moved since the hook made the slide the row
   keeps, where the move shifts an edge the slide cuts. Review found a view switched from the
   Scope or Layout pill's menu by keys, after a slide made for Zen or the reset ✕: Enter hands
   focus back to the pill, whose label changed width, so the pill held the slide, and the Display
@@ -1506,7 +1598,10 @@ filters only, so any grouping, ordering or type stays named.
 current layout (a sort outside List, `sortByBlockedBy`; a grouping `groupBySupport` answers
 `honoured: false` for), the reviews of 2026-09-26 settled how:
 
-- The note is PART OF `clauseText`, so the fit key, the visible text and the test oracle stay
+- *Superseded 2026-10-01, the reason: there is no fit key, and a paragraph wraps rather than
+  clips, but the note still belongs in `clauseText`, which is the opener's name (Label in Name)
+  and the tests' oracle.*
+  The note is PART OF `clauseText`, so the fit key, the visible text and the test oracle stay
   one string. Rendered but left out, a layout switch changes the line's width with no
   re-measure, and the one line clipped its last clause (reproduced in Chromium on both shells).
 - The layout reaches the hook as a plain value (`isCanvas ? s.layout : null`), never as a
@@ -1519,6 +1614,10 @@ current layout (a sort outside List, `sortByBlockedBy`; a grouping `groupBySuppo
   reaches nothing either, and is the third case.
 - Partial reach ("Untimed rows only", "Anytime only") stays the menu's to explain.
 
+*Superseded 2026-10-01, in part: everything on is three lines in Day × Schedule now, not six;
+the threshold walk's `error` listener has no shelf observer left to catch; the three settings
+once stacked are one line, and on a pointer a ✕ is drawn only under its own setting; and "the
+reset ✕" is Reset display's ↺, from four ✕s. The paragraph's own states are below.*
 **Manual QA states:** 1440×900 and 1366×768, Day and Week × Schedule, List and Buckets: one
 setting; everything on (six lines); page dates in Day × List and click Week × List's headings
 with a shelf near its threshold, with a window `error` listener attached (no "ResizeObserver
@@ -1544,6 +1643,503 @@ sheet opened from the text, a tap on each ✕ and at the end of a setting's word
 that setting off, the words open the sheet), a filter whose names wrap onto a second row with a
 tap on the top and bottom of each name (each opens the sheet), and Reset display from the sheet
 (focus lands on the Display icon).
+
+## Addendum (2026-10-01): the shelf as one paragraph
+
+**Why.** Kirby, on 2026-10-01, of the stack above: "stacked looks a little crazy eh? even three
+looks strange? any options for those, on both rails?" Three ways out were built into the real
+header, each reviewed adversarially and then shot on the canvas (1440×900), in the braindump
+(406px, its usual width) and on the phone (390×844) with its height beside the stack's, and put
+to him as round 3 of <https://claude.ai/artifact/8GvLbx6bgiM7JPXgCyhecg> (the same page keeps
+round 2, of 2026-09-24, where the stack was the recommendation). They were built and shot in a
+throwaway Vite harness that bundles the real DesktopShell and MobileShell with seeded stores,
+Next and Supabase stubbed, and an option's files standing in for the repo's. It is not in the
+repo: it lives in the project's shared files, `/mnt/project-files/canvas-shelf/round-3/`, whose
+README says how to build an option and shoot it.
+
+- **A, Quiet paragraph, the recommendation.** The settings wrap like the words of a sentence
+  instead of taking a line each. With a mouse no ✕ shows at rest: a setting's own ✕ appears
+  after it under the pointer. A little extra room marks where each filter starts and ends, and
+  from four ✕s a ↺ ends the last line (the page says "from four settings up"; the build counts
+  ✕s, one per phrase and one per value, so two settings can bring it). On the phone every ✕
+  stays. Three settings take 23px on the canvas (the stack's 69), and everything on 69 in Day ×
+  Schedule (the stack's 138), 92 in Day × List.
+- **B, Soft chips.** Each setting a soft chip with its ✕ inside, the chips wrapping in rows. A
+  filter is one chip, so its one ✕ takes the whole filter off, and a quiet Reset sits at the top
+  right. The clearest structure, with nothing waiting on a hover, but more boxes than words,
+  three settings still take two rows (54px on the canvas, 82 with everything on), and one value
+  of a filter comes off only through the menu.
+- **C, Always one line.** Filters first, a long filter counted ("2 priorities"), and whatever
+  is left behind a quiet +N whose "Also set" tooltip lists it. The filter that emptied the list
+  always keeps its place on the line, and there is no Reset. The quietest header (23px on the
+  canvas whatever is set), but part of what is set hides behind +N (on the phone, until the
+  sheet opens), a filter wears one ✕, and it is the most new logic. It is the cap the canvas
+  addendum held in reserve, at the price that addendum named: a "+N" names what the dot counts
+  only behind a hover.
+
+A paragraph is not new to this shelf. Round 1, which the same page shows beside round 2, was
+one: middots between the settings, "+1" after a setting's first two values, and settings free to
+break mid-way. Round 2 replaced it with the stack, partly because every setting ran together in
+one paragraph and a setting could break across two lines. A answers that with spacing where the
+middots were (20px between phrases, 16 between values, 28 at a seam), every value named, no
+phrase ever broken, and a filter broken only between its values, once it is wider than a line.
+
+**Kirby picked A on 2026-10-01:** "I actually like all of them but since we built A we can go
+with A. Let's keep C in the back pocket though". So **C, Always one line, is held in reserve**:
+if the paragraph proves too tall or too busy, C is the next lever, and its round-3 prototype is
+on the options page and in `/mnt/project-files/canvas-shelf/round-3/`. A is also the "wrapping
+fit" the canvas addendum named as the lever if the stack proved too tall, taken for every mount
+at once.
+
+**What it is now.** One paragraph, in
+[components/primitives/display-shelf.tsx](../../components/primitives/display-shelf.tsx).
+`[data-shelf-lines]` is a `flex-wrap` box and each setting (`[data-clause]`) is one item of it,
+in the menu's order, so the settings wrap BETWEEN one another as words do. A filter is one item
+whose values wrap inside it only once it is wider than a whole line (`inline-flex min-w-0
+max-w-full flex-wrap`), so its values break apart only when they must. A phrase longer than a
+line ellipsizes, and so does a value's name. Nothing is measured: no ResizeObserver, no probe or
+sample, no `data-fit`, no `[data-line]`. In the shipped look, the usual three settings (the
+Heights table's) take one line on the canvas, in the braindump and on the phone's Today card at
+their usual widths, and everything on three or four lines where the stack took five or six;
+Terminal's wider face and a coarse pointer's in-flow ✕s can take more (below).
+
+**Locked decisions:**
+
+- **Three spacings, glyph to glyph, and the eye groups by them.** On a fine pointer: 20px from
+  one phrase to the next (`gap-x-[19px]` on the paragraph, plus the words' 1px of padding), 16
+  between a filter's values (`gap-x-[15px]`, plus the 1px), and 28 at a seam. Where nothing
+  hovers they are measured from the in-flow ✕ instead: 16, 10 and 24, the stack's own 16 and 10.
+  Every one is px, and so are the ✕, Reset and the room before Reset: the 11px type ignores the
+  browser's font-size setting, so a rem gap would spread the settings apart under a larger
+  default font and, under a smaller one, put a drawn ✕ on the next value's glyph. The priority
+  dot and its gap to the name stay in rem (`size-2`, `gap-1`), but they sit inside the words a ✕
+  is placed from, so they carry the ✕ with them.
+- **A seam sets a filter apart** from whatever is on either side of it, so the sort never reads
+  on into "● High ● Medium" and one filter's values never run on into the next's: `mr-[8px]
+  shrink-0` on every setting but the last where it or the next one is a filter, and never
+  between two phrases (grouping, ordering, type, Hide finished), which read apart by their lead
+  words and their 20px. A margin on the setting before, not a gap, so a line never starts
+  indented; never shrunk, so a filter as wide as its line hangs the 8px past the line's end
+  rather than take them from its values. A margin still counts at the end of a line, which is
+  the seams' cost (below).
+- **Lines are 5px apart in every mode**, on the paragraph and inside each filter's run
+  (`gap-y-[5px]`). Where a ✕ is in flow (the phone, a coarse pointer), that is the reach it takes
+  above and below itself, so no ✕'s reach lies over the next line's words. On a fine pointer,
+  where a ✕ has no reach, the same 5px keeps the stack's 23px line pitch, so a line costs the
+  same whatever the pointer (where the lines break still differs: an in-flow ✕ takes room). A
+  line is 18px, so each one after the first costs 23px, as each line of the stack did.
+- **On a fine pointer a ✕ is drawn only while its own setting is under the pointer, or while the
+  ✕ has keyboard focus**, so at rest the shelf is words alone. It takes no room: it is out of
+  flow (`absolute left-full top-0`) in the gap after its setting, 1px off the last glyph, and the
+  gaps above are sized around its 14px. At rest it is `text-transparent` AND
+  `pointer-events-none`. The gaps are the opener's ground, so a click aimed between two settings
+  opens the menu, and a ✕ that was not drawn when the pointer arrived cannot be hit. Its setting
+  under the pointer (`group-hover/unit:`) or keyboard focus (`focus-visible:`) gives it ink and
+  hits together. Its box touches its setting's, and a square box of its own
+  (`after:absolute after:inset-0`) takes its rounded corners, which Chromium hit-tests as
+  outside it, so a sweep from the words onto the ✕ keeps both lit with no dead ground to cross,
+  along any row; and the words' 1px of padding keeps the hit boundary off the last glyph
+  (Chromium snaps a fractional edge up to half a pixel in), so a click on a name's last pixel
+  opens the menu. The last ✕ on a line hangs into the shelf's right inset (15px in the
+  sidebar, 14 on the canvas), so nothing between a ✕ and the shelf's edge may clip, and a test
+  walks up from each ✕ to check. Tailwind compiles its hover variants under `(hover: hover)`, so
+  on a tablet a tap never leaves a ✕ or a setting's ink stuck on.
+- **Each phrase and each value is a unit** (`group/unit`). On a fine pointer it takes the pointer,
+  for its ✕'s hover, where the stack's words let it through to the opener; where nothing hovers its
+  words still do (below). A click on its words opens the menu through the same handle as the opener,
+  and it says what the opener did: the arrow (`cursor-default`), and no selection from a drag, a
+  double-click or a long press (`select-none`). The handler is on the words (`data-chip-label`),
+  which stay aria-hidden, not on the unit: React gives any element with an `onClick` a native one,
+  and Chromium lists a clickable element in the accessibility tree, so on the unit every setting was
+  a nameless clickable node around its ✕ ("clickable" before each ✕ in NVDA's or JAWS's browse
+  mode). There it also caught a press on the ✕ let go over its own words, which now lands on the
+  unit, the two's common ancestor, and opens nothing. The words take focus from a press, out of the
+  Tab order (`tabIndex={-1}`), and hand it straight on to the opener under them (`onFocus`); the
+  opener's box is no empty space to the desktop's click-away (`data-click-away-ignore`), so a click
+  on the words keeps the item selection and the docked item panel, as a click on the opener does
+  (both below). A click's follow-ons (`detail > 1`, a double-click's or a double-tap's second) open
+  nothing from the words or the opener, take nothing off from a ✕ and reset nothing from Reset:
+  after a ✕ took its setting off they land on whatever the re-wrap put under the pointer. A
+  follow-on's press on a ✕ or Reset gives it focus, which on a pointer it hands back to the opener,
+  where the first click left it. On a fine pointer a unit's words take full ink while it is under
+  the pointer or its ✕ has keyboard focus
+  (`group-hover/unit:text-foreground group-has-[:focus-visible]/unit:text-foreground`); the lead
+  words keep their muted ink, and the phone lights nothing. A ✕ sits beside its words, not in them,
+  and nothing it is in opens the menu, so taking a setting off never opens the menu too, with no
+  `stopPropagation`.
+- **Where nothing hovers, every ✕ stays drawn, in flow.** The phone mount (`touch`) puts each ✕
+  4px after its words (`relative ml-[4px]`), with the 25 × 28px reach of 2026-09-26 (4px left,
+  7px right, 5px up and down) and no tooltip. The desktop mount takes the same under a coarse
+  pointer, a tablet on the desktop shell, from the stylesheet alone: literal `pointer-coarse:`
+  classes put the ✕ back in flow, drawn and hit, with the same reach, drop the words' 1px, set
+  the phone's gaps and give the opener and Reset their 28px, so a tablet never paints a frame of
+  the pointer's layout first. There the words let a tap through to the opener underneath, as the
+  stack's all did (the phone's units take no pointer, and the desktop's drop it under
+  `pointer-coarse:pointer-events-none`; each ✕ and Reset take their own): Chromium's
+  accessibility hit test follows `pointer-events`, so a unit that took the tap stood between a
+  screen reader's touch exploration and the opener, and TalkBack found the setting's own ✕, or
+  with the unit out of the tree, the page, where the stack found the opener's whole summary.
+- **Keyboard focus looks like the pointer on the control, with a line inside it.** A focused ✕
+  or Reset takes its hover look (`focus-visible:bg-accent focus-visible:text-foreground`), whose
+  glyph goes from the muted ink to the foreground's (2.65:1 to about 13:1 in Paper): that carries
+  focus in every theme. The line is 2px, in the theme's accent at full strength
+  (`outline-ring`, as the Organize console draws its own; the base layer's `outline-ring/50`
+  halves it, and a theme's accent never dims), 1px in from a ✕'s edge, which clears the words to
+  its left and the next value's glyph to its right by 2px each, and on Reset's own edge. The
+  accent alone could not carry it: Paper's lime is 1.3:1 on the shelf's ground and Sorbet's
+  pink 2.2, so a 1px line at half strength (1.13:1 in Paper) was all Reset showed. 2px because
+  Chromium floors an outline's width to whole pixels: the 1.5px first written here drew 1px.
+- **Reset display is a ↺ at the end of the last line, from four ✕s.** It is the menu row's own glyph
+  (`RotateCcw`) and the menu row's own function (`resetDisplay(surface)`), so it reads as an action
+  wherever the wrap leaves it, never as one more setting's ✕. It shows while the settings wear more
+  than three ✕s between them, one per phrase and one per value. With one it would be that ✕ twice
+  (the end ✕'s old rule); with two or three, the ✕s, or the menu and its Reset row, clear the lot in
+  two or three clicks, and the glyph would push three settings onto a second line in Day × List's
+  capsule, the narrowest. After a phrase it shares one unbreakable span with that phrase
+  (`inline-flex … grow`, the TAIL; every phrase keeps that span, as `contents`, while there is no
+  Reset, below), in a slot pushed to the line's end (`ml-auto flex shrink-0`) with 23px before it on
+  a fine pointer (24 from the words, 9 clear of the drawn ✕) and 16 past an in-flow ✕, so after a
+  phrase it never takes a line alone. After a filter the slot is the run's last item, 8px (6 in
+  flow) on top of the run's own gap, and may wrap alone rather than take the last value with it. Its
+  click moves focus to the trigger FIRST (the reset unmounts the shelf under the pressed button, as
+  before), then resets; a click's follow-on resets nothing (below). On a pointer it wears the "Reset
+  display" `RailTooltip`, which lets a click through as the ✕s' tips do; on the phone, no tip, and a
+  28px reach around its 16 × 18px.
+- **A ✕ hands focus on where it can be seen.** It still hands focus on first, before its setting
+  goes: to the next ✕, else the one before, else the trigger, never Reset. But after a mouse's
+  click on the desktop mount under a fine pointer, it goes to the opener instead, without
+  scrolling. The browser draws no focus a click leaves, so focus handed to the next ✕ after a
+  click sat on a control nobody could see (with a mouse the ✕ itself is not drawn until its
+  setting is under the pointer), and the next Space took that setting off too; on the opener Space
+  only opens the menu. Forced colours draw every ✕ at rest, but not the focus a click leaves on
+  one, so there a click goes to the opener too. So does the focus a double-click's second press
+  gives the ✕ the re-wrap moved under the pointer. A key's press counts 0 clicks, and so does a
+  desktop screen reader's, so both walk on. Where nothing hovers (the phone mount, a coarse
+  pointer: `clickWalksOn`) any press walks on, because a TalkBack or VoiceOver double-tap there
+  can arrive as a click of 1, and the opener would cost it its walk. A held Enter or Space is
+  cancelled on the opener as on a ✕ and the trigger: a pick's focus return landed on the opener
+  with the key still down, and the repeats opened the menu again.
+- **Unchanged:** it renders exactly when the trigger's dot is lit (`useDisplaySummary`). The
+  opener is still the button under the words (`absolute inset-0`), named by its own sr-only copy
+  of the text (`clauseText` joined with "; "), described by the hidden node, with `aria-haspopup`
+  from `useIsMobile()`. Each ✕ takes off just its own setting or value through
+  `removeDisplaySetting`, named by `removeLabel`. The sidebar keeps its `floor`, the canvas its
+  `contain-inline-size`, and the tips their pass-through. Nothing in the
+  shelf carries an opacity or a transition, so the lime data glyphs stay at full strength at rest
+  and under the pointer; an undrawn ✕ is a colour (`text-transparent`), never an opacity
+  (forced colours excepted: see the gotchas).
+
+**What it deleted, and why that is a win.** The measured fit, whole: `data-fit` written on the
+root behind React's back and every `group-data-[fit=stack]/shelf:` rule keyed off it;
+`shelfLines` and its `[data-line]` spans; the one-line measure (`measureLineWidth`, `applyFit`)
+in a layout effect keyed on the full text; the `document.fonts.ready` re-measure, per text, for a
+subset that landed after it; the ResizeObserver on the zero-height probe and the "Hide finished"
+sample, with its frame-deferred compare and its rule never to write inside a delivery; the
+`typeof ResizeObserver` guard; and the clipping lines box with its `py-[5px]`/`-my-[5px]` pair.
+All of it answered one question, does the text fit on one line, which wrapping never asks: CSS
+lays the paragraph out again on every width, every font load and every text-spacing or zoom
+change by itself, in the same layout pass. So there is no frame in the old fit after a sash drag,
+no face the sample could not hear, no hidden 0-wide shelf to skip, and nothing that resizes the
+hour grid's viewport from inside an observer's delivery, which is what raised "ResizeObserver
+loop completed with undelivered notifications" under the canvas header. The shelf's height still
+follows its content and the grid still re-fits to it, through ordinary layout. The tests'
+`getBoundingClientRect` stub and hand-delivered observer went too: "the paragraph" in
+`tests/unit/display-shelf.test.tsx` and the canvas suite now assert the opposite, that the shelf
+makes no observer, reads no layout (no rect, size, offset or computed style), waits on no font
+and writes no `data-fit`, `[data-line]`, probe or sample, and read the layout's rules off its
+classes.
+
+**Heights**, measured in Chromium in that harness at default fonts in the shipped look (Paper)
+on A's mockup, and checked again on the shelf as built, under all six themes, on 2026-10-01,
+where its heights matched the mockup's: the shelf in px, the stack's in brackets. The canvas is
+the Day header capsule at 1440×900, the braindump the sidebar at 406px and at its 280px minimum,
+the phone 390×844. "Everything on" is Grouped by Project, Sorted by Priority, High and Medium,
+Work and Home, one goal and Hide finished, with Showing Tasks on the canvas; "stress" has all
+four priorities, five projects and two goals.
+
+| Where | State | Paragraph (stack) |
+|---|---|---|
+| Canvas, Day × List | one setting; two | 23 (23); 23 (23) |
+| Canvas, Day × List | three: Grouped by Project · Showing Tasks · Hide finished | 23 (69) |
+| Canvas, Day × Schedule | everything on | 69 (138) |
+| Canvas, Day × List | everything on | 92 (not measured) |
+| Canvas, Day × Schedule | stress | 92 (156) |
+| Braindump, 406px | three: Grouped by Project · High · Hide finished | 29 (29) |
+| Braindump, 406px | everything on | 75 (121) |
+| Braindump, 280px | three | 52 (75) |
+| Braindump, 280px | everything on | 98 (139) |
+| Braindump, 280px | stress | 167 (193) |
+| Phone, Today card | three, as on the canvas | 19 (65) |
+| Phone, Today card | everything on | 88 (134) |
+| Phone, Braindump tab | everything on | 75 (121) |
+
+The first line is 23px on the canvas, 29 in the braindump and 19 on the phone's Today card (their
+insets; the phone's Braindump tab keeps the braindump's 29), and each line after it 23, so the
+canvas header row is 162px with one line and 208 with everything on in Day × Schedule, which is
+what the usual three alone cost on the stack. Heights follow the theme's face: in Terminal
+(monospace) the canvas's three take two lines (46px) and the 280px braindump with everything on
+144, while Studio and Sorbet fit the 406px braindump's everything on in 52.
+
+**Accepted, not fixed:**
+
+- **The seams cost room, and can add a line.** A margin counts at the end of a flex line too, so
+  a seam can wrap the setting that carries it a line sooner than a plain gap would. With
+  everything on, the braindump is 98px at 280 and 75 at 406, where a variant with plain 20px gaps
+  and a hairline at each seam measured 75 and 52.
+- **One place is taller than the stack.** On a touch tablet in portrait (820×1180, the desktop
+  shell under a coarse pointer, the sidebar at 280px) the braindump with everything on is 144px
+  against the stack's 139, six lines: every ✕ is in flow there, and "Sorted by Priority" wraps
+  alone on its own seam's 8px.
+- **After a filter, Reset can take a line alone**, when the run fills its line: five projects at
+  406px stay on one line and the ↺ goes below it, 23px more. After a phrase it never does. That
+  breaks the round-3 page's "No × or reset ever floats on a line of its own", which the build
+  keeps for every ✕ but for Reset only after a phrase.
+- **The fold re-wraps above the floor.** Collapse and hover-peek from a sidebar wider than its
+  minimum re-wrap the paragraph a line at a time between its rest width and the 260px floor, so
+  it grows as the column narrows for the 300ms of the fold (everything on from 406px: 75px at
+  rest, 98 at the floor), where the fit flipped a one-line shelf once. At the 280px minimum
+  nothing moves.
+- **Where a setting lands depends on the width.** The same settings wrap differently at 406 and
+  at 280px, where the stack always put grouping and ordering on the first line and each filter on
+  a line of its own. The order never changes.
+- **With a mouse a ✕ is found by pointing.** Nothing says a setting is removable until it is under
+  the pointer, and a click where an undrawn ✕ would be opens the menu, a safe miss. A touchscreen
+  laptop's primary pointer is fine, so a finger there gets no drawn ✕ and a tap opens the menu,
+  from which anything comes off. A fine pointer that cannot hover at all (a basic stylus screen)
+  never draws one outside keyboard focus, since `group-hover/unit:` compiles under
+  `(hover: hover)` and `pointer-coarse:` does not match it; its words still open the menu.
+- **Taking a setting off re-wraps the paragraph**, so after a click the next ✕ is seldom under the
+  pointer, and focus goes to the shelf's text rather than to it. The keyboard's walk from ✕ to ✕
+  is unchanged.
+- **A cancelled press on a ✕ leaves focus on it, undrawn.** A press gives the ✕ the mouse's
+  focus, and one dragged off before it is let go is no click, so nothing hands focus on: the ✕
+  goes clear as the pointer leaves its setting, and a later Space or Enter takes off the setting
+  the press declined. Main did the same, as any button keeps focus after a cancelled press, but
+  its parked ✕ stayed drawn. A `focus:` look would draw it again, at the price of one more state
+  on every ✕.
+- **A press let go on another part of the shelf opens nothing**: one on a setting's words let go
+  onto the ✕ beside them, into a gap or onto another setting's words, or one in a gap let go over
+  words. The click goes to the two points' common ancestor, which has no handler, since a native
+  `onclick` there would bring back the nameless clickable nodes (above). Main's opener caught most
+  of those, and the first cut's unit some. It is a safe miss: nothing changes, and a second click
+  opens the menu. A press on the words leaves focus on the shelf's text, as a press on main's
+  opener did, so Space or Enter then opens the menu.
+- **A screen reader that follows the mouse finds no name over a setting's words.** On a fine
+  pointer the unit takes the pointer, for its ✕'s hover, and its words are aria-hidden, so
+  Chromium's accessibility hit test there lands on the paragraph's box (the stack's words let the
+  pointer through to the opener and its summary). Each ✕, the opener at the gaps, and touch
+  exploration everywhere (where the words let a tap through) are unaffected.
+- **The light themes' muted ink is under WCAG contrast**, as it was in the stack and is across
+  the app: the lead words ("Grouped by", "Sorted by", "Showing"), a ✕ drawn by its setting's
+  hover and Reset at rest are 2.65:1 in Paper, 2.83 in Sorbet and 3.47 in Studio on the shelf's
+  ground (4.5 for text, 3 for a control's glyph). Keyboard focus and the pointer on a ✕ or Reset
+  take the foreground's ink (13:1 in Paper). Raising `--muted-foreground` in the light themes is
+  an app-wide token decision, not the shelf's.
+- **Touch still draws every ✕**, so the phone, a tablet and a touch-first screen look busier than
+  a desktop with a mouse.
+
+**What no longer holds above.** Every paragraph or bullet in the earlier shelf addenda that this
+changes now starts with an italic "Superseded 2026-10-01" note saying what changed, and nothing
+was deleted. The 2026-09-25 addendum's one line or stack, its fit and every gotcha the fit brought
+(the measure, the probe and sample, the observer and its delivery rule, the jsdom stub) are
+history, as are the canvas addendum's stacking heights and counts and its own delivery rule.
+Above, "the reset ✕" and "the end ✕" name what is now Reset display's ↺, which comes and goes
+with a fourth ✕. What still binds: everything above that carries no Superseded note, and
+whatever each note leaves standing of what it heads; among it the model and its invariant, the
+handle and the focus rules, the per-setting ✕s and their removal, the opener's name and
+description, the loaded gate, Goals' Target, the lime rule, no live region or heading, the
+trigger's held-key guard, the menu's folded untick, the floor, containment, the tips'
+pass-through, and the `<main>` hook's rules (only its shelf figures are the stack's).
+
+### Gotchas from the paragraph
+
+- **A ✕ must touch its setting.** It is drawn and hit only while its unit is hovered, and a hover
+  ends where the unit's box does: a ✕ set off by a margin would go undrawn and unhittable as the
+  pointer crossed the gap, and could never be reached from its words. So it sits at `left-full`,
+  and the words' padding, not a margin, keeps it off the last glyph.
+- **Clear ink is not hidden.** A `text-transparent` ✕ still takes clicks, so at rest it needs
+  `pointer-events-none` as well, and the hover and `focus-visible:` rules must give back ink and
+  hits together. A test pins all four on every ✕, with no plain ink or plain
+  `pointer-events-auto` beside them to outrank the rest.
+- **Forced colours draw clear ink.** In forced-colors mode (Windows High Contrast) the browser
+  swaps `text-transparent` for a system colour, so a ✕ that is clear at rest is drawn there,
+  and `pointer-events-none` then refused a click on a ✕ the user could see: the pointer moved
+  onto it from the gap reached the opener, and the menu opened (measured in Chromium with
+  forced colours emulated, 2026-10-01). `forced-colors:pointer-events-auto` lets a drawn ✕ take
+  its click at rest, as a coarse pointer's does, so ink and hits stay together there too; a
+  test pins it.
+- **Focus takes the hover look whole.** The first cut drew a focused ✕ in the muted ink a
+  setting's hover gives, and needed `hover:focus-visible:text-foreground` to go to full ink
+  under the pointer too; Reset showed focus by its ring alone. Now `focus-visible:bg-accent
+  focus-visible:text-foreground` give both the look of the pointer on them, and the rule needs
+  no help: it ties `group-hover/unit:`'s specificity and comes later in the compiled sheet, and
+  outranks the coarse pointer's plain ink outright.
+- **An outline is whole pixels, and the accent is not a focus colour.** Chromium floors an
+  outline's width, so `outline-[1.5px]` drew 1px at every device pixel ratio; and the base
+  layer's ring colour is the theme's accent at half strength, 1.13:1 in Paper. The line is
+  `outline-2 outline-ring` now, and the hover look carries focus where the accent cannot.
+- **No wrapper may come or go around a unit.** React keeps an element only while its parent
+  chain is the same, so a key on the ✕ is not enough. The last phrase sat in the TAIL span only
+  while Reset showed, so a ✕ that took the shelf from four to three dropped the span, remounted
+  the last phrase's ✕ it had just handed focus to, and focus fell to `<body>` (Chromium, on the
+  canvas, the braindump and the phone). Every phrase keeps the span now, `contents` without
+  Reset, and tests hand focus across the four-to-three line on both mounts and the other way.
+- **An `onClick` puts a node in the accessibility tree.** React gives an element with an
+  `onClick` prop a native no-op one (an old iOS workaround), and Chromium keeps any clickable
+  element in the tree, even an unnamed span. The menu's click is on the aria-hidden words, and a
+  test fails any element with a native `onclick` that is neither a button nor aria-hidden.
+- **Chromium hit-tests rounded corners as outside.** A sweep along a line's top or bottom pixel
+  row from the words onto a ✕ crossed its rounded corner, which was neither the unit's nor the
+  ✕'s, so the unit lost its hover, the ✕ went clear and a click there opened the menu. The ✕'s
+  `after:absolute after:inset-0` box is square and takes the corners.
+- **A click's follow-ons land somewhere new.** A double-click on a ✕ took its setting off with the
+  first click, and the second landed on what the re-wrap put under the pointer: the next words or
+  the opener, which opened the menu, or, where every ✕ is drawn (the phone, a coarse pointer, forced
+  colours), the next ✕, which took a second setting off (4 ✕s in 9 on the phone, 3 on a touch
+  tablet, 2 in forced colours), or Reset, which reset the whole display: in the 280px braindump a
+  ✕'s click put Reset under the pointer 2 times in 222. `open`, every ✕ and Reset ignore
+  `detail > 1`; a key's click counts 0. Chromium counts a second tap as 2 only within about 300ms
+  and 16px of the first (32 under a phone's touch), so two quick taps on two ✕s apart still take
+  both off. The follow-on's press still gives what it lands on the mouse's focus, which nothing
+  draws, and on a ✕ a Space then took that setting off too: 2 double-clicks in 9 on the canvas and 3
+  in 8 on the braindump in forced colours, and in normal colours only within about a pixel of where
+  the next setting's words end, where Chromium's hover update hovers that setting first and its ✕
+  takes the press. On a pointer the ✕ hands that focus back to the opener; where clicks walk on, it
+  stays on the ✕ the tap found. iOS Safari was not measured, and may count every tap 1: check a
+  double tap on an iPhone before leaning on the guard there. When the first click leaves the shelf a
+  line shorter with the pointer on its last line, the second press lands on the page below and is a
+  click there: on the only setting's ✕, which takes the shelf, and wherever the settings left fit on
+  one line fewer (the last line's only setting went, or the rest moved up, as when four ✕s go to
+  three and ↺ goes), 6 of 40 double-clicks over the QA states below, in normal and forced colours
+  alike. Focus goes to the page, so Space then opens nothing. That press is no click-away
+  (`lib/click-away.ts` ignores every follow-on), so a selection and a docked item panel stay; main
+  let them go whenever its stack lost the line under the pointer.
+- **Hand focus where it can be seen.** The browser draws no focus a click leaves, and on a fine
+  pointer the next ✕ is not drawn either, so focus handed to it after a click was invisible, Space
+  then took that setting off too, and with the item panel docked a ✕ past `<main>`'s clipped edge
+  made the `<main>` hook slide the canvas under the pointer to show it (up to 62px at the default
+  sidebar width, and more as the sidebar widens: 257 at 660 in a 1240px window). Forced colours draw
+  the ✕ but not that focus. Focus goes to the opener after such a click, with `preventScroll`, and
+  `hooks/use-focus-only-scroll.ts` now leaves the box where it was for any focus a click in it hands
+  on to a control the browser does not draw as focused (no `:focus-visible`): the next ✕ on a
+  tablet, and the Display trigger that the last ✕ and Reset hand focus to. The browser's own reveal
+  is undone the same way. Do not gate the hand-off on `detail === 0` alone: a screen reader's
+  double-tap on a phone can count 1.
+- **A control left undrawn is placed before a key opens a menu from it.** With the item panel
+  docked and the sidebar widened, the trigger the last ✕ hands focus to sits wholly past
+  `<main>`'s clipped edge. Radix's trigger opens on Enter, Space or ↓ as the key goes down, and
+  the hook's frame-late pass finds focus in the menu and stands down, so the menu opened against a
+  trigger out of view, over the item panel. The hook now places that control in the key's capture
+  phase, before the key reaches it, and only a control a click left undrawn that opens a menu
+  (`aria-haspopup`, as the trigger and the shelf's text have). The text is placed too, but the
+  menu it opens is the trigger's, drawn against the trigger wherever it sits: after a click on any
+  ✕ but the last, Enter or Space there opens it 109 to 143px past `<main>`'s edge, over the item
+  panel (1240/520, 1366/680, 1440/760), as a click on its words does, here and on main. Placing on
+  every key that opens a menu would run before a key's own focus move and could slide twice, and
+  on a ✕ a tap handed focus to, a tablet keyboard's Enter hands focus on again, so placing that ✕
+  first would slide the box for a control about to go. The ✕ that Enter hands focus on to is
+  placed where the re-wrap leaves it, as after Tab: cut part-way, it keeps the slide and its
+  tooltip (Hide finished's, 4 of its 14px showing, at 1366 with the sidebar at 680 and the panel
+  docked).
+- **A lone Shift draws focus.** Chromium makes the focused control `:focus-visible` on Shift or
+  Caps Lock pressed alone (not on Ctrl, Alt or ⌘), so the hook placed the trigger a click had left
+  undrawn on the Shift of a Shift-click and slid the canvas just as the click came down, by the
+  trigger's distance past the edge, which grows with the sidebar (109 to 220px measured). The hook
+  no longer hears a modifier on its own; the key after it draws and places as any key does.
+- **A press on text nothing can focus makes the next script focus drawn.** Chromium drops focus to
+  `<body>` on such a press, and draws focus a script moves from there: the menu Radix focuses, and
+  the opener it hands focus back to as it closes, wore the keyboard ring around the whole
+  paragraph after a mouse's click on the words. The words take focus from the press now
+  (`tabIndex={-1}`) and hand it straight on to the opener (`onFocus`), and script focus moved from
+  a control the mouse focused is not drawn. Kept on the words, focus sat on an aria-hidden node:
+  Chromium un-hides it with a warning ("Blocked aria-hidden"), and a key drew a ring around one
+  setting and did nothing, after a press let go past the words, a right-click, or a double-click
+  on a ✕ whose second press landed on the next words (28 of 78 seeded double-clicks on the canvas,
+  27 of 75 on the braindump). `focus({ focusVisible: false })` is no way round it: Chromium
+  ignores it.
+- **The click-away reads plain words as empty space.** `lib/click-away.ts` keeps a click on a
+  control or inside `[data-click-away-ignore]`, and the words are neither, so a click that
+  opened the menu from them also let go of the item selection and closed the docked item panel
+  (a press arms it, so a press on the words let go past them did too). The opener's box carries
+  the marker; the shelf's padding does not, so a click there still clears them, as on main.
+- **Explore-by-touch follows the pointer's hit test.** Chromium's accessibility hit test
+  respects `pointer-events`, so a unit that took the tap was what TalkBack found under a
+  setting's words: the setting's own ✕ with the unit in the tree, the whole page with it out.
+  Where nothing hovers the unit takes no pointer, and the hit lands on the opener, as on the
+  stack.
+- **A coarse pointer's ✕ goes in flow, not in the gap.** The first cut drew every ✕ and let it
+  take hits under a coarse pointer, but left it where a fine pointer's sits, out of flow in the
+  gap and 1px from the next value's glyph: finger taps 1 to 3px left of "Medium" or "Home" took a
+  setting off 5 times in 10. In flow, 4px after its words, with the phone's reach and the gaps
+  measured from it, none did.
+- **The `pointer-coarse:` classes are written out whole**, every one, because Tailwind builds only
+  the class names it finds literally in the source. A variant assembled at runtime would never
+  reach the stylesheet, and a tablet would get the pointer's layout, whose ✕s it could never draw.
+- **jsdom lays nothing out**, so "the paragraph" asserts the classes each rule rests on:
+  `flex-wrap` on the paragraph and `min-w-0 max-w-full flex-wrap` on each filter (without
+  `max-w-full` a filter never stops at the line's width to wrap its values), `truncate` on every
+  name, `shrink-0` on every ✕, the seam on exactly the settings that need one, and no indenting
+  margin on any.
+- **On a pointer a ✕ cannot be clicked cold.** It takes no hit until its words are under the
+  pointer. A Playwright locator's `click()` on one cold never fires: its hit-target check finds
+  the opener at the ✕'s centre (or the shelf's own inset, for a ✕ hanging past the paragraph),
+  logs "… intercepts pointer events" and retries until it times out. `force: true` or
+  `page.mouse.click` at its coordinates skips that check and clicks whatever is there, which over
+  the paragraph is the opener: the menu opens and nothing comes off. Hover its words first and
+  then move onto the ✕, as a user does. The words themselves now take a locator's `hover()` and
+  `click()`.
+
+**Manual QA states:** 1440×900, the canvas in Day × Schedule and Day × List and the braindump at
+406px, light and dark: one setting, three, and everything on (the heights above, and nothing but
+words at rest); the pointer onto each setting's words (they go to full ink and its own ✕ appears 1px
+after them, no other) and on along onto that ✕ (it stays drawn, "Remove" shows, and a click takes
+just that one off and opens nothing); the pointer onto a ✕'s place from the gap or the line below,
+not through its words (nothing drawn, and a click there opens the menu); a click on a name's last
+pixel and in a gap (each opens the menu); a double-click on a ✕ whose line stays (one setting off,
+no menu) and then Space (the menu opens, nothing more comes off), and on the only setting's ✕ with
+two items selected (the shelf goes, the second press lands on the page, the selection and the panel
+stay, and Space opens nothing); in the 280px braindump with everything on, a double-click on each ✕
+(one setting off each time, never the lot, though a click there can move Reset under the pointer); a
+press on a ✕ let go over its own words (nothing off, no menu), and a press on a setting's words let
+go past them and then Space (the menu opens, with no ring around one setting); a click on a ✕ and
+then Space (focus went to the text, so Space opens the menu and takes nothing off); two items
+selected (a click, then a Ctrl-click) with the item panel open, then a click on a setting's words
+(the menu opens, and the selection and the panel stay), and a pick from that menu with the mouse (no
+ring around the shelf as it closes); Tab from the text through every ✕ to Reset (each ✕ and Reset as
+the pointer on it would draw it, full ink on its plate, with a 2px accent line inside it, and a ✕'s
+words at full ink), Enter on each in turn (focus walks on, never to Reset, which goes at three, then
+lands on the trigger), four ending in Hide finished with Enter on the third (focus stays on Hide
+finished's ✕ as Reset goes), a held Enter on a ✕ (one setting off), a pick from the menu opened from
+the text with Enter or Space held (the menu does not open again), and Reset by mouse and by Enter
+(the shelf goes, focus lands on the Display trigger, nothing opens); with the item panel docked at
+1200 to 1300px, a click on each ✕ in turn (the header never slides under the pointer), and at 1240px
+with the sidebar widened to 520, a click on the last ✕ and then a Shift-click on an item (nothing
+slides) or Enter (the header slides to show the Display trigger, and the menu opens against it, not
+over the panel); four ✕s ending in a phrase and four ending in a filter (Reset ends the last line,
+and after a phrase never sits alone); the 280px sidebar with everything on and with every value of
+every filter (settings wrap between one another, a filter's values only between theirs, each ✕ with
+its own value, a long project name ellipsizes), and collapse and hover-peek there (nothing moves)
+and from 406px (the paragraph re-wraps down to the floor and no further); a tablet-width coarse
+pointer, the desktop shell at 820×1180 and 1180×820 with touch (every ✕ drawn in flow 4px after its
+words and over none, a tap on a name opens the menu, a tap on a ✕ takes it off and a double tap just
+it, and no ink left behind after a tap); dark mode, Night and Terminal (the Low dot and a lime
+project square at full strength at rest and under the pointer, an undrawn ✕ leaves no trace, and
+Terminal's wider face wraps sooner); forced colours (DevTools, Rendering, Emulate CSS media feature
+forced-colors: active) with the pointer moved onto a ✕ from the gap (every ✕ drawn at rest, a click
+on one takes its setting off and opens nothing, a double-click just that one, and Space after a
+click, or after a double-click whose second press stays on the shelf, opens the menu); the browser's
+default font size raised (Chrome: Settings, Appearance, Font size) with the pointer on a value (its
+✕ still clear of the next value); a text-spacing bookmarklet (the paragraph re-wraps, nothing
+clips); dates paged in Day × List with a window `error` listener attached (the paragraph re-wraps as
+the date moves the capsule, and nothing is raised). A 390×844 phone, the Today card and the
+Braindump tab: three settings on one line and everything on (every ✕ drawn, no tooltips); a tap on
+each setting's words, at its start and at its very end (each opens the sheet), and on each ✕ (just
+that one comes off); a double tap on each ✕, on Android and on an iPhone (just that one comes off;
+the iPhone is unmeasured); a filter whose names wrap onto a second row, with a tap on the top and
+bottom of each name (each opens the sheet: the 5px between rows); Reset from four ✕s (the shelf
+goes, focus lands on the Display icon) and Reset display from the sheet; TalkBack or VoiceOver touch
+exploration over a setting's words (it finds the shelf's button, read as the whole summary, and each
+✕ by its own name).
 
 ## Related
 

@@ -743,14 +743,15 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
         // header-capsule.tsx.) And the shelf is there only while something is
         // set, so a braindump with nothing set keeps the bare capsule.
         //
-        // The sidebar's shelf keeps the fit of the narrowest column it can have.
-        // Collapse and hover-peek animate the column between w-0 and its width
-        // over 300ms with the braindump still mounted, so without a floor every
-        // frame of the fold would re-fit, and the collapsed shelf would sit in a
-        // one-value-per-row stack that every expand then unfolds from. At rest
-        // the floor never binds — the column is never narrower than
-        // SIDEBAR_MIN_WIDTH, less the capsule's 10px sides — and while it folds,
-        // the column's own overflow clips the rest. The phone tab has no
+        // The sidebar's shelf keeps the layout of the narrowest column it can
+        // have. Collapse and hover-peek animate the column between w-0 and its
+        // width over 300ms with the braindump still mounted, so without a floor
+        // the paragraph would re-wrap on every frame of the fold, growing taller
+        // and pushing the list down as the column closed, and the collapsed
+        // shelf would sit one value to a line, which every expand then unfolds
+        // from. At rest the floor never binds — the column is never narrower
+        // than SIDEBAR_MIN_WIDTH, less the capsule's 10px sides — and while it
+        // folds, the column's own overflow clips the rest. The phone tab has no
         // collapsing column to ride out, so it takes no floor.
         below={
           <DisplayShelf
@@ -773,7 +774,7 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
             The menu itself is portalled, so the sidebar's 280px minimum never
             constrains its 240px panel. The shelf under the pill is the one
             part of the Display surface that spends the column's width, and it
-            stacks rather than overflow. */}
+            wraps rather than overflow. */}
         <span className={cn('flex', isMobile && '[&>button]:size-7')}>
           <DisplayMenu ref={displayRef} surface="braindump" trigger="icon" align="start" />
         </span>

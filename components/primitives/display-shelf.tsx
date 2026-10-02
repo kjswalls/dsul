@@ -1,7 +1,7 @@
 'use client';
 
-import { useEffect, useId, useLayoutEffect, useRef } from 'react';
-import { Target, X } from 'lucide-react';
+import { useId, useRef } from 'react';
+import { RotateCcw, Target, X } from 'lucide-react';
 import {
   ContainerSquare,
   PriorityDot,
@@ -35,18 +35,37 @@ import { cn } from '@/lib/utils';
  * It renders exactly when the dot is lit and names exactly what the dot counts,
  * because both read the one summary in lib/display-summary.ts — a shelf that
  * worked out its own answer would sooner or later disagree with the dot. Its
- * text opens the menu, every setting and every value in it wears a ✕ of its
- * own that takes just that one off (`removeDisplaySetting`), and the ✕ at the
- * end IS "Reset display", the same function the menu's row calls — shown only
- * while there is more than one thing to take off, since with one it would be
- * that thing's ✕ twice.
+ * words open the menu, and every setting and every value in it wears a ✕ of
+ * its own that takes just that one off (`removeDisplaySetting`).
+ *
+ * One paragraph (2026-10-01, "Quiet paragraph"; it replaced a measured choice
+ * between one line and a stack of one setting per line, which Kirby found
+ * looked strange from three settings up). The settings sit side by side and
+ * wrap BETWEEN one another like the words of a sentence, a filter's values kept
+ * together wherever they fit on one line. Plain CSS wrapping: nothing is
+ * measured, so nothing watches a size and nothing writes to the DOM behind
+ * React's back.
+ *
+ * On a fine pointer a setting's ✕ is drawn only while that setting (or the ✕)
+ * is under the pointer, or the ✕ has keyboard focus, so at rest the shelf is
+ * words alone; and a ✕ that is not drawn is not there to hit either, so the
+ * gaps between the words only ever open the menu. Where nothing hovers — the
+ * phone mount, and a coarse pointer (a tablet) on the desktop shell — every ✕
+ * stays drawn, in flow after its setting, with the phone's reaches.
+ *
+ * Reset display is the menu row's own glyph and the menu row's own function
+ * (`resetDisplay`), at the end of the last line, and only from four things to
+ * take off up: with two or three, the ✕s and the menu's row already do it in
+ * as many clicks, and the glyph would push three settings onto a second line in
+ * the List/Day capsule.
  *
  * No opacity and no transition anywhere in it. The Low dot is --priority-low
  * and a project square can be --accent-8, both lime: they are data glyphs, drawn
- * at rest exactly as the list's own priority bars and the menu's squares are,
- * and the shelf adds no lime CHROME of its own. No live region and no heading
- * either — the menu it opens is modal, so nothing here changes while a screen
- * reader could be reading it.
+ * at rest and under the pointer exactly as the list's own priority bars and the
+ * menu's squares are, and the shelf adds no lime CHROME of its own. A ✕ that is
+ * not drawn is `text-transparent`, a colour, never an opacity. No live region
+ * and no heading either — the menu it opens is modal, so nothing here changes
+ * while a screen reader could be reading it.
  */
 export function DisplayShelf({
   surface,
@@ -59,20 +78,21 @@ export function DisplayShelf({
   /** The menu this shelf describes. Read in handlers only — see DisplayMenuHandle. */
   menu: React.RefObject<DisplayMenuHandle | null>;
   /**
-   * The phone mount: a 28px reach on the opener and the reset ✕, and 25 × 28px
-   * on each setting's ✕.
+   * The phone mount: every ✕ drawn, in flow, 25 × 28px reach on each, 28px on
+   * the opener and on Reset. (The desktop mount takes the same layout under a
+   * coarse pointer, from the stylesheet.)
    */
   touch?: boolean;
   /**
-   * The narrowest width the shelf fits itself to, in px, for a mount whose
+   * The narrowest width the shelf lays itself out at, in px, for a mount whose
    * column animates through narrower widths than it ever rests at (the
-   * sidebar's fold). None by default: the shelf fits whatever it is given.
+   * sidebar's fold), so the paragraph does not re-wrap on every frame of it.
    */
   floor?: number;
   /**
-   * The mount's own insets, merged over the root's. Never `data-fit` or a
-   * rule that sizes the root from its content: the fit below needs the root's
-   * width to come from outside.
+   * The mount's own insets, merged over the root's. The canvas capsule passes
+   * contain-inline-size so the paragraph takes the capsule's width rather than
+   * giving it one.
    */
   className?: string;
 }) {
@@ -85,8 +105,8 @@ export function DisplayShelf({
   // The summary guarantees `activeCount > 0` exactly when there are clauses, so
   // this is the dot's own condition.
   if (clauses.length === 0) return null;
-  // The body is its own component so its measuring effects mount and unmount
-  // with the shelf rather than idling behind a null render.
+  // The body is its own component so its hooks (the media query useIsMobile
+  // subscribes to among them) run only while the shelf shows.
   return (
     <ShelfBody
       surface={surface}
@@ -100,59 +120,101 @@ export function DisplayShelf({
   );
 }
 
-/* ── the lines ──────────────────────────────────────────────────────────────
+/* ── the paragraph ──────────────────────────────────────────────────────────
  *
- * One line while everything fits, settings 16px apart. Otherwise a stack:
- * grouping and ordering share the first line, as the arrangement of the list,
- * then one line per filter, then Hide finished. Every rule for the stack keys
- * off `data-fit="stack"` on the root (see "fit" below), so both layouts are the
- * same DOM — the width never changes what a screen reader reads.
+ * Three spacings, and the eye groups by them, glyph to glyph:
+ *
+ *   · a filter's values, 16px apart,
+ *   · one phrase and the next ("Grouped by Project   Sorted by Priority"),
+ *     20px — the muted lead words already say where a phrase starts,
+ *   · a SEAM, 28px, wherever a filter meets what is next to it, so the sort
+ *     never reads on into "● High ● Medium" and one filter's values never run
+ *     on into the next's. Never between two phrases.
+ *
+ * Lines 5px apart. A setting is one flex item; a filter is one flex item that
+ * wraps inside itself only when it is wider than a whole line, so its values
+ * break apart only when they must. A phrase longer than a line ellipsizes.
+ *
+ * A seam is a margin on the setting BEFORE it, not a gap, so a line never
+ * starts indented; at the end of a line it costs at most its 8px of room.
+ *
+ * On a fine pointer a ✕ takes no room of its own. It is drawn in the gap after
+ * its setting, 1px off the words, which is what the 16 is sized for (15 in the
+ * class, plus the words' 1px of padding, around a 14px ✕), and the last one on
+ * a line hangs into the shelf's right inset (14px on the canvas, 15 in the
+ * sidebar). Everything here is in px, the ✕ included: the 11px type does not
+ * follow the browser's font-size setting, so neither may the room for a ✕.
+ *
+ * Where nothing hovers, the ✕ is in flow, 4px after its words, and the gaps
+ * are measured from the ✕: 10 between values, 16 between phrases, 24 at a
+ * seam. The phone mount says so with `touch`; the desktop mount gets the same
+ * classes under `pointer-coarse:`, from the stylesheet, so a tablet never
+ * paints a frame of the pointer layout first.
  */
 
-/* A ✕ is part of the setting it removes, so a phrase ellipsizes before its ✕
- * and a value never wraps away from its own. */
-
-/** A line of the stack; inside the one line, just a run of clauses. */
-const LINE =
-  'flex shrink-0 gap-x-4 group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:shrink group-data-[fit=stack]/shelf:flex-wrap';
+/** The words: one wrapping paragraph, over the opener. */
+const FLOW = 'pointer-events-none relative flex min-w-0 flex-1 flex-wrap items-start gap-y-[5px]';
+const FLOW_GAP = { fine: 'gap-x-[19px] pointer-coarse:gap-x-[16px]', touch: 'gap-x-[16px]' };
+/** One phrase setting. */
+const CLAUSE = 'inline-flex min-w-0 max-w-full items-center';
+/** A filter's run of values, which wraps only between one another. */
+const MULTI = 'inline-flex min-w-0 max-w-full flex-wrap items-start gap-y-[5px]';
+const MULTI_GAP = { fine: 'gap-x-[15px] pointer-coarse:gap-x-[10px]', touch: 'gap-x-[10px]' };
 /**
- * Grouping, ordering, Hide finished: one phrase and its ✕, where the phrase
- * ellipsizes rather than wraps and the ✕ never shrinks.
+ * The extra room at a seam, as a margin on the setting before it. Never
+ * shrunk: a filter wider than a line is already the line's whole width, and
+ * the margin must hang past it rather than take 8px from its values.
  */
-const SINGLE =
-  'flex shrink-0 items-center gap-1 whitespace-nowrap group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:max-w-full';
-/** One value of a multi-select — glyph, name, ✕ — which shrinks only by its name. */
-const VALUE = 'inline-flex min-w-0 max-w-full items-center gap-1';
+const SEAM = 'mr-[8px] shrink-0';
 /**
- * A multi-select's values, which wrap only BETWEEN one another. `shrink` in the
- * stack is load-bearing: a clause that kept `shrink-0` there held its one-line
- * width, and the values past the column's edge were clipped rather than wrapped.
+ * One removable thing — a phrase or a value — and the pointer's target for its
+ * ✕. It says what the opener did: the arrow, not a text cursor, and no
+ * selection from a drag, a double-click or a long press.
  */
-const MULTI =
-  'flex shrink-0 gap-x-2.5 group-data-[fit=stack]/shelf:min-w-0 group-data-[fit=stack]/shelf:shrink group-data-[fit=stack]/shelf:flex-wrap';
+const UNIT = 'group/unit relative inline-flex min-w-0 max-w-full cursor-default select-none items-center';
+/**
+ * A unit takes the pointer only where the pointer hovers, which it needs for
+ * its ✕. Where nothing hovers (the phone, and a coarse pointer on the desktop
+ * shell) its words let a tap through to the opener underneath, as all of them
+ * did before the paragraph, so a screen reader's touch exploration finds the
+ * shelf's button there, named by the whole summary, and not a span with no
+ * name. Each ✕ there takes its own (X_REACH).
+ */
+const UNIT_HIT = { fine: 'pointer-events-auto pointer-coarse:pointer-events-none', touch: '' };
+/** A unit's words: 1px of padding on a fine pointer, so its ✕ starts clear of the last glyph. */
+const WORDS_PAD = { fine: 'pr-px pointer-coarse:pr-0', touch: '' };
+/**
+ * The last PHRASE and Reset: one unbreakable pair that grows to the end of its
+ * line, with Reset pushed to that end. A phrase is one word to the wrap, so
+ * holding Reset to it splits nothing, and after a phrase Reset never takes a
+ * line alone. (After a filter it is the run's own last item instead: see
+ * Clause.)
+ */
+const TAIL = 'inline-flex min-w-0 max-w-full grow items-center';
+/**
+ * Reset's slot: pushed to the end of its line, never nearer the words than
+ * 24px on a fine pointer (9px clear of a drawn ✕) or 16px past an in-flow ✕.
+ * After a phrase the padding is all of that; at the end of a filter, where
+ * Reset is the run's last item and may wrap on its own rather than take the
+ * last value with it, the run's own gap is part of it.
+ */
+const RESET_SLOT = 'ml-auto flex shrink-0';
+const RESET_PAD = {
+  phrase: { fine: 'pl-[23px] pointer-coarse:pl-[16px]', touch: 'pl-[16px]' },
+  filter: { fine: 'pl-[8px] pointer-coarse:pl-[6px]', touch: 'pl-[6px]' },
+};
 
 /** The words the arrangement and type clauses lead with, as `clauseText` spells them. */
 const LEAD = { group: 'Grouped by', sort: 'Sorted by', type: 'Showing' } as const;
 
-type ShelfLine = { id: string; clauses: DisplayClause[] };
-
-/** Grouping and ordering share the first line; every other clause is a line of its own. */
-function shelfLines(clauses: DisplayClause[]): ShelfLine[] {
-  const lines: ShelfLine[] = [];
-  for (const c of clauses) {
-    const id = c.id === 'group' || c.id === 'sort' ? 'arrange' : c.id;
-    const line = lines.find((l) => l.id === id);
-    if (line) line.clauses.push(c);
-    else lines.push({ id, clauses: [c] });
-  }
-  return lines;
+/** The settings with values of their own; a seam falls on either side of one. */
+function isFilter(c: DisplayClause | undefined): boolean {
+  return c?.id === 'priority' || c?.id === 'project' || c?.id === 'goal';
 }
 
 /**
  * The opener's description: the section each value belongs to, which the
- * glyphs say to the eye and the visible text never says in words — "High" and
- * "Work" read the same to a screen reader until something names them. Each
- * value's ✕ says its noun too, in the reading order.
+ * glyphs say to the eye and the visible text never says in words.
  */
 function shelfDescription(clauses: DisplayClause[]): string {
   const nouns = clauses.flatMap((c) =>
@@ -184,119 +246,178 @@ function removeLabel(c: DisplayClause, valueLabel?: string): string {
     : `Remove ${clauseText(c)}`;
 }
 
+type Remove = (removal: DisplayRemoval, label: string) => React.ReactNode;
+
 /**
  * One setting as the shelf draws it. The words are aria-hidden: the opener
- * underneath already says all of them as its name (see ShelfBody), so what a
- * screen reader meets here is the ✕s alone, each naming what it takes off.
+ * underneath says all of them as its name, so what a screen reader meets here
+ * is the ✕s alone. On a fine pointer each phrase and value is a pointer target
+ * of its own (the ✕ shows for the one under the pointer), and a click on its
+ * words opens the menu, as a click on the opener does. `seam` sets it apart
+ * from the next setting; `tail` is Reset, for the last one.
  */
 function Clause({
   clause: c,
   remove,
+  open,
+  toOpener,
+  touch,
+  seam,
+  tail,
 }: {
   clause: DisplayClause;
-  /** One ✕, for the removal it names. */
-  remove: (removal: DisplayRemoval, label: string) => React.ReactNode;
+  remove: Remove;
+  open: (e: React.MouseEvent) => void;
+  toOpener: () => void;
+  touch: boolean;
+  seam: boolean;
+  tail?: React.ReactNode;
 }) {
+  const mode = touch ? 'touch' : 'fine';
+  /** Under the pointer, or with its ✕ focused, the setting's words take full ink; lead words stay muted. */
+  const hot =
+    !touch && 'group-hover/unit:text-foreground group-has-[:focus-visible]/unit:text-foreground';
+  const unit = (
+    key: string | undefined,
+    label: React.ReactNode,
+    x: React.ReactNode,
+    glyphed = false
+  ) => (
+    <span key={key} data-value={key} className={cn(UNIT, UNIT_HIT[mode])}>
+      {/* The words take the click that opens the menu, not the unit around
+          them (on a fine pointer; elsewhere a tap on them is the opener's).
+          Aria-hidden, they keep the handler out of the accessibility tree,
+          where on the unit it listed every setting as a nameless clickable
+          stop over the opener; and a press on the ✕ let go over its own words
+          lands on the unit, the two's common ancestor, and opens nothing.
+          They take focus from the press, out of the Tab order, and hand it
+          straight on to the opener under them, so it ends where a press on
+          the opener leaves it. Untaken, it fell to <body>, and Chromium draws
+          whatever a script focuses from there: the menu, and the opener it
+          hands focus back to as it closes, wore a keyboard ring around the
+          whole paragraph after a mouse's click. Kept, it sat on an
+          aria-hidden node, which Chromium un-hides with a warning, and a key
+          drew a ring around one setting and did nothing. */}
+      <span
+        data-chip-label=""
+        aria-hidden
+        tabIndex={-1}
+        onFocus={toOpener}
+        onClick={open}
+        className={cn(
+          glyphed ? 'inline-flex min-w-0 items-center gap-1' : 'min-w-0 truncate',
+          WORDS_PAD[mode],
+          hot
+        )}
+      >
+        {label}
+      </span>
+      {x}
+    </span>
+  );
+  const slot = (kind: 'phrase' | 'filter') =>
+    tail ? <span className={cn(RESET_SLOT, RESET_PAD[kind][mode])}>{tail}</span> : null;
+  /**
+   * The last phrase, held to Reset. Every phrase has the span, `contents` (no
+   * box at all) where there is no Reset, so a phrase never changes parents as
+   * Reset comes and goes: a ✕ that takes the shelf from four to three would
+   * otherwise remount the last phrase's ✕ it had just handed focus to, and
+   * focus would fall to <body>. With no box, the unit stays the clause's own
+   * flex item, which its words' truncation needs: a box between the two
+   * would take the words' width and never let them shrink.
+   */
+  const phrase = (node: React.ReactNode) => (
+    <span className={tail ? TAIL : 'contents'}>
+      {node}
+      {slot('phrase')}
+    </span>
+  );
+  const root = (base: string) => cn(base, seam && SEAM, tail && 'grow');
   switch (c.id) {
     case 'group':
     case 'sort':
     case 'type':
       return (
-        <span data-clause={c.id} className={SINGLE}>
-          <span data-chip-label="" aria-hidden className="min-w-0 truncate">
-            <span className="font-normal text-muted-foreground">{LEAD[c.id]}</span> {c.label}
-          </span>
-          {remove({ id: c.id }, removeLabel(c))}
+        <span data-clause={c.id} className={root(CLAUSE)}>
+          {phrase(
+            unit(
+              undefined,
+              <>
+                <span className="font-normal text-muted-foreground">{LEAD[c.id]}</span> {c.label}
+              </>,
+              remove({ id: c.id }, removeLabel(c))
+            )
+          )}
         </span>
       );
     case 'hide-finished':
       return (
-        <span data-clause={c.id} className={SINGLE}>
-          <span data-chip-label="" aria-hidden className="min-w-0 truncate">
-            {clauseText(c)}
-          </span>
-          {remove({ id: c.id }, removeLabel(c))}
+        <span data-clause={c.id} className={root(CLAUSE)}>
+          {phrase(unit(undefined, clauseText(c), remove({ id: c.id }, removeLabel(c))))}
         </span>
       );
     case 'priority':
     case 'project':
     case 'goal':
       return (
-        <span data-clause={c.id} className={MULTI}>
-          {c.values.map((v) => (
-            <span key={v.key} data-value={v.key} className={VALUE}>
-              <span
-                data-chip-label=""
-                aria-hidden
-                className="inline-flex min-w-0 items-center gap-1"
-              >
+        <span data-clause={c.id} className={root(cn(MULTI, MULTI_GAP[mode]))}>
+          {c.values.map((v) =>
+            unit(
+              v.key,
+              <>
                 <Glyph glyph={v.glyph} />
                 <span className="truncate">{v.label}</span>
-              </span>
-              {remove({ id: c.id, key: v.key }, removeLabel(c, v.label))}
-            </span>
-          ))}
+              </>,
+              remove({ id: c.id, key: v.key }, removeLabel(c, v.label)),
+              true
+            )
+          )}
+          {slot('filter')}
         </span>
       );
   }
 }
 
-/* ── fit: one line, or the stack ────────────────────────────────────────────
- *
- * Whether the text fits on one line is a fact about layout, and it changes on
- * every frame of a sash drag without React hearing of it — the column is resized
- * through a CSS variable precisely so that the braindump does not re-render 60
- * times a second. So it is not state. The shelf writes `data-fit` on its own
- * root, React never renders the attribute (so no render can reset it), and with
- * no attribute at all the one-line layout applies.
- *
- * The one-line width is MEASURED when the text changes, and a resize only
- * COMPARES that number with the width on offer. The text changes when its
- * string does, and also when its size does with the string unchanged: a font
- * that loads late, a text-spacing or text-only-zoom override, or the browser's
- * font-size setting, which moves its rem-sized gaps and dots.
- *
- * Neither happens inside ResizeObserver delivery. A measure forces the
- * one-line layout, and a compare that changes its answer changes the shelf's
- * height, so either one resizes things other observers watch, in the very
- * delivery that is reporting sizes. In the canvas header that is the view's own
- * scroll viewport, which useFitHourPx watches at the probe's depth, and the
- * engine skips an observation that deep and fires a "ResizeObserver loop" error
- * that lands on every other observer on the page. So the observer only notes
- * what it heard, and the shelf acts on it a frame later, outside delivery: one
- * frame in the old fit, the price of never resizing anything mid-delivery.
- */
-
 /**
- * The width the clauses take laid out on ONE line, whatever the column's width.
+ * Keyboard focus on a ✕ or Reset: the look the pointer on it gives, full ink
+ * on its plate, and a line around it. The look carries focus on its own in
+ * every theme (the glyph goes from the muted ink to the foreground's); the
+ * line is the theme's accent, which the light themes' grounds barely part
+ * from (Paper's lime is 1.3:1 on the shelf's ground), so it never carries it
+ * alone.
  *
- * In the one-line layout every line and clause is shrink-0, so the span from
- * the first line's left edge to the last one's right edge is a property of the
- * text alone. Rects rather than `scrollWidth`, which clamps to `clientWidth`
- * whenever the content fits and so cannot say by how much.
+ * The line is drawn INSIDE the control's own box, at the accent's full
+ * strength, as the Organize console draws its own (the base layer's
+ * outline-ring/50 halves it, and a theme's accent never dims): 2px, the
+ * thinnest Chromium draws as written (it floors an outline's width to whole
+ * pixels, so a 1.5px one came out 1px). On a ✕ it runs 1px in from the edge,
+ * so it clears the words 1px to its left and the next value's glyph 1px to
+ * its right by 2px each, and the ✕'s own strokes by a pixel; Reset has room
+ * around it, so its line runs along its own edge.
  */
-function measureLineWidth(root: HTMLElement, lines: HTMLElement): number {
-  root.dataset.fit = 'line';
-  const rows = Array.from(lines.children).filter((el) => el.hasAttribute('data-line'));
-  if (rows.length === 0) return 0;
-  return rows[rows.length - 1].getBoundingClientRect().right - rows[0].getBoundingClientRect().left;
-}
+const FOCUS_LOOK = 'focus-visible:bg-accent focus-visible:text-foreground';
+const FOCUS_RING = 'focus-visible:outline-solid focus-visible:outline-2 focus-visible:outline-ring';
+const FOCUS_IN = { x: 'focus-visible:outline-offset-[-3px]', reset: 'focus-visible:outline-offset-[-2px]' };
 
-/**
- * The stack if the measured line would overflow the lines box, one line if not.
- * The box is flex-1 min-w-0 in both layouts, so its width is the column's answer
- * and never the fit's own. Written only on a change, so a drag that crosses no
- * threshold writes nothing at all.
- *
- * Compared to within one layout unit (1/64px, the engine's own grain) and no
- * more. There is nothing to damp: the box never depends on the fit and the
- * line's width is cached, so the fit cannot oscillate, and a looser margin
- * would only let the one line clip its last glyph, with no ellipsis to say so.
- */
-function applyFit(root: HTMLElement, lines: HTMLElement, lineWidth: number): void {
-  const fit = lineWidth > lines.getBoundingClientRect().width + 1 / 64 ? 'stack' : 'line';
-  if (root.dataset.fit !== fit) root.dataset.fit = fit;
-}
+/** A ✕ or Reset's 28px reach where nothing hovers, around a box of its own. */
+const X_REACH = {
+  touch:
+    "pointer-events-auto relative ml-[4px] before:absolute before:-left-[4px] before:-right-[7px] before:-inset-y-[5px] before:content-['']",
+  // The same, for the desktop mount under a coarse pointer. Literal, so the
+  // stylesheet has every one of them.
+  coarse:
+    "pointer-coarse:pointer-events-auto pointer-coarse:relative pointer-coarse:left-auto pointer-coarse:top-auto pointer-coarse:ml-[4px] pointer-coarse:text-muted-foreground pointer-coarse:before:absolute pointer-coarse:before:-left-[4px] pointer-coarse:before:-right-[7px] pointer-coarse:before:-inset-y-[5px] pointer-coarse:before:content-['']",
+};
+const RESET_REACH = {
+  touch: "relative before:absolute before:-inset-x-[6px] before:-inset-y-[5px] before:content-['']",
+  coarse:
+    "pointer-coarse:relative pointer-coarse:before:absolute pointer-coarse:before:-inset-x-[6px] pointer-coarse:before:-inset-y-[5px] pointer-coarse:before:content-['']",
+};
+const OPENER_REACH = {
+  touch: "before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-['']",
+  coarse:
+    "pointer-coarse:before:absolute pointer-coarse:before:inset-x-0 pointer-coarse:before:-inset-y-[5px] pointer-coarse:before:content-['']",
+};
 
 function ShelfBody({
   surface,
@@ -316,129 +437,47 @@ function ShelfBody({
   openerRef: React.RefObject<HTMLButtonElement | null>;
 }) {
   // The hook DisplayMenu picks its shell with, so the popup this announces is
-  // the one that opens. `touch` is the mount's, and only sizes targets.
+  // the one that opens. `touch` is the mount's: it shapes the shelf's own
+  // layout, targets and tips, never which popup opens.
   const isTouch = useIsMobile();
   const descId = useId();
   const rootRef = useRef<HTMLDivElement>(null);
-  const probeRef = useRef<HTMLSpanElement>(null);
-  const linesRef = useRef<HTMLSpanElement>(null);
-  const sampleRef = useRef<HTMLSpanElement>(null);
-  /** The current text's one-line width; 0 until something laid out has been measured. */
-  const lineWidth = useRef(0);
-
-  // The FULL text, every value in it: adding a value to an open multi-select
-  // lengthens the line without adding a clause, and a key that missed it would
-  // leave the added value clipped.
   const text = clauses.map(clauseText).join('; ');
-  const lines = shelfLines(clauses);
-
-  // Before paint, so a change of text never shows a frame in the wrong fit.
-  useLayoutEffect(() => {
-    const root = rootRef.current;
-    const box = linesRef.current;
-    if (!root || !box) return;
-    lineWidth.current = measureLineWidth(root, box);
-    applyFit(root, box, lineWidth.current);
-  }, [text]);
-
-  // Again once the fonts the text needs have loaded. A web font that swaps in
-  // late changes every width without resizing the column, and a string can
-  // need a subset the page has not loaded yet — a Cyrillic goal name arriving
-  // with the planner is measured in the fallback face above. The measure above
-  // is what asks for that subset, so `ready` here waits on it. Per text, not
-  // once, since each text can ask for a subset of its own. The observer below
-  // hears a swap only in the face its sample is drawn in, the basic Latin one,
-  // so a face that loads for any other characters (another script, or accented
-  // Latin such as a Polish name) changes nothing it can see. (jsdom has no
-  // `document.fonts`.)
-  useEffect(() => {
-    let alive = true;
-    document.fonts?.ready.then(() => {
-      const root = rootRef.current;
-      const box = linesRef.current;
-      if (!alive || !root || !box) return;
-      lineWidth.current = measureLineWidth(root, box);
-      applyFit(root, box, lineWidth.current);
-    });
-    return () => {
-      alive = false;
-    };
-  }, [text]);
-
-  // One observer, two jobs, and neither is the shelf itself, whose height
-  // changes with the very fit this is deciding. The zero-height probe's width
-  // is the root's and nothing else, so a probe resize is the column moving, and
-  // that only compares. The sample's width is a fixed phrase in the shelf's own
-  // type plus one rem, never the column's or the fit's, so a sample resize is
-  // the line changing size with its string unchanged: a late font, a
-  // text-spacing or text-only-zoom override, a minimum font size, or the
-  // browser's font-size setting, which leaves the 11px text alone and moves
-  // every rem-sized gap, priority dot and ✕. That re-measures, in either
-  // fit and whatever else the delivery holds: a change that lands mid-drag is
-  // not taken for the drag. A drag never touches the sample, so it only ever
-  // compares. The first delivery carries the sample too, so a shelf that
-  // mounts laid out measures once more and finds the width it already had. A
-  // sample gone to nothing is the shelf being hidden, with nothing to fit
-  // until the sample's return, itself a resize, measures it.
-  //
-  // Both wait for the next frame (see "fit" above): the delivery writes
-  // nothing, and a frame already asked for serves every delivery before it.
-  //
-  // Not the lines, the obvious thing to watch: a stacked line stretches to the
-  // column, so the text changing size resizes nothing there, and a change in a
-  // frame where the column also moves looks like a drag.
-  //
-  // Guarded: jsdom has no ResizeObserver, suites mount an active braindump
-  // without stubbing one (tests/unit/braindump-grouping.test.tsx), and a shelf
-  // with no observer simply keeps the fit it measured.
-  useEffect(() => {
-    const root = rootRef.current;
-    const probe = probeRef.current;
-    const sample = sampleRef.current;
-    const box = linesRef.current;
-    if (typeof ResizeObserver === 'undefined' || !root || !probe || !sample || !box) return;
-    let frame = 0;
-    let remeasure = false;
-    const ro = new ResizeObserver((entries) => {
-      if (entries.some((e) => e.target === sample && e.contentRect.width > 0)) remeasure = true;
-      if (frame) return;
-      frame = requestAnimationFrame(() => {
-        frame = 0;
-        // Hidden. Against a 0-wide box every line is too wide, so a fit here
-        // would write the stack for the shelf's return to paint for a frame.
-        // A measure asked for stays asked for, and the return, itself a
-        // resize, brings the frame that does it.
-        if (box.getBoundingClientRect().width === 0) return;
-        // A shelf that mounted where nothing is laid out (display:none, jsdom)
-        // measured 0, and measures here, the first time its lines box has a
-        // width.
-        if (remeasure || lineWidth.current === 0) {
-          remeasure = false;
-          lineWidth.current = measureLineWidth(root, box);
-        }
-        applyFit(root, box, lineWidth.current);
-      });
-    });
-    ro.observe(probe);
-    ro.observe(sample);
-    return () => {
-      cancelAnimationFrame(frame);
-      ro.disconnect();
-    };
-  }, []);
-
-  /** The ✕ look, at the sidebar's density or with the phone's 28px-tall reach. */
-  const xClass = (reach: string) =>
-    cn(
-      'grid h-[18px] shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
-      touch && `relative before:absolute ${reach} before:-inset-y-[5px] before:content-['']`
-    );
+  /**
+   * A click's follow-ons, a double-click's second, open nothing: they land
+   * wherever the first left the paragraph, which after a ✕ took its setting
+   * off is the next setting's words, the opener, another ✕ or Reset (which
+   * take nothing off for one either), or, when it took that line away, the
+   * page below the shelf. A key's click counts 0.
+   */
+  const open = (e: React.MouseEvent) => {
+    if (e.detail > 1) return;
+    menu.current?.open(openerRef);
+  };
+  /**
+   * Focus to the opener, without scrolling: where a mouse's press on a
+   * setting's words or click on a ✕ leaves it. The browser draws none of that
+   * focus, and on the opener the next key only opens the menu.
+   */
+  const toOpener = () => openerRef.current?.focus({ preventScroll: true });
+  /**
+   * A HELD Enter or Space presses nothing more, here as on the trigger. On a
+   * ✕ a held Enter would clear the whole shelf: each press hands focus to the
+   * next ✕, and the key's autorepeat presses that one too. On the opener, a
+   * pick made with a held key closes the menu and hands focus back while the
+   * key is still down, and the repeats would open the menu again (Space as it
+   * comes up) and walk on into its rows.
+   */
+  const ignoreHeldKey = (e: React.KeyboardEvent) => {
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) e.preventDefault();
+  };
+  const mode = touch ? 'touch' : 'fine';
 
   /**
    * The header's tooltip, which every icon-only control in it wears. None on
    * the phone, where no hover earns one and a tap would pop it over the thumb.
-   * A click passes through it: in the stack a ✕'s tip covers the ✕ on the line
-   * below, and moving down to press that one pressed the tip instead.
+   * A click passes through it: a ✕'s tip hangs over the line below, and moving
+   * down to press something there pressed the tip instead.
    */
   const tipped = (label: string, button: React.ReactElement) =>
     touch ? (
@@ -450,14 +489,31 @@ function ShelfBody({
     );
 
   /**
+   * Whether a click on a ✕ walks focus on to the next ✕, as a key's press
+   * does: where nothing hovers (the phone mount, a coarse pointer), since a
+   * TalkBack or VoiceOver double-tap there can arrive as a click of 1. Forced
+   * colours draw every ✕ at rest, but no more of the focus a mouse leaves on
+   * one than anywhere else, so there a click hands it to the opener too.
+   */
+  const clickWalksOn = () => touch || !!window.matchMedia?.('(pointer: coarse)').matches;
+
+  /**
    * One setting's ✕. Its own setting is all it takes off, so its button
-   * unmounts under the press, and focus is handed on FIRST, as the reset's is:
-   * to the next setting's ✕, or the one before it when this was the last, or
-   * to the trigger when nothing else is left and the shelf is about to go.
-   * Never to the reset ✕, which leaves with the second-to-last setting.
-   * Every other setting's ✕ survives the removal — the model takes off
-   * exactly the one value named (display-summary.test.ts holds it to that
-   * over every combination) and each ✕ is keyed by what it names.
+   * unmounts under the press, and focus is handed on FIRST, as Reset's is: to
+   * the next setting's ✕, or the one before it when this was the last, so the
+   * keyboard can walk on taking things off; to the trigger when nothing else
+   * is left and the shelf is about to go; never to Reset, which goes once
+   * fewer than four things are left to take off. But after a mouse's click,
+   * to the opener instead, without scrolling: the browser draws no focus a
+   * click leaves, so the next ✕ would hold it unseen, and the next Space would
+   * take its setting off too, where on the opener it only opens the menu. A
+   * key's press counts 0 clicks, and so does a screen reader's on the desktop;
+   * where nothing hovers a screen reader's double-tap can count 1, so a click
+   * there walks on (clickWalksOn). Every other setting's ✕ survives the
+   * removal: the model takes off exactly the one value named
+   * (display-summary.test.ts holds it to that over every combination), each
+   * ✕ is keyed by what it names, and no wrapper comes or goes around one (see
+   * `phrase` in Clause).
    */
   const removeButton = (removal: DisplayRemoval, label: string) => (
     <button
@@ -465,96 +521,139 @@ function ShelfBody({
       data-shelf-remove=""
       data-testid={`display-shelf-remove-${surface}`}
       aria-label={label}
-      // A HELD Enter would otherwise clear the whole shelf: each press hands
-      // focus to the next ✕, and the key's autorepeat presses that one too.
-      // Space activates on release, so it cannot repeat.
-      onKeyDown={(e) => {
-        if (e.repeat && e.key === 'Enter') e.preventDefault();
-      }}
+      onKeyDown={ignoreHeldKey}
       onClick={(e) => {
+        // A follow-on, a double-click's or a double-tap's second, takes nothing
+        // more off: the first moved this ✕ under the pointer. Its press gave
+        // this ✕ the mouse's focus, undrawn, so on a pointer that goes back to
+        // the opener, as after the first click; where clicks walk on, it stays
+        // on the ✕ the tap found.
+        if (e.detail > 1) {
+          if (!clickWalksOn()) toOpener();
+          return;
+        }
         const all = Array.from(
           rootRef.current?.querySelectorAll<HTMLButtonElement>('[data-shelf-remove]') ?? []
         );
         const i = all.indexOf(e.currentTarget);
         const next = all[i + 1] ?? all[i - 1];
-        if (next) next.focus();
-        else menu.current?.focus();
+        if (!next) menu.current?.focus();
+        else if (e.detail === 0 || clickWalksOn()) next.focus();
+        else toOpener();
         removeDisplaySetting(surface, removal);
       }}
-      // pointer-events-auto: the words around it let clicks through to the
-      // opener underneath, and the ✕ has to take its own.
-      //
-      // The phone's reach runs 7px to the right but only 4px to the left, the
-      // gap to its own words, so a tap on a name, short of its last pixel,
-      // still opens the menu rather than taking the name away: 25 × 28px, less
-      // the 5px gap it shares with a ✕ right below it, which takes the gap.
-      className={cn('pointer-events-auto w-3.5', xClass('before:-left-1 before:-right-[7px]'))}
+      className={cn(
+        'grid h-[18px] w-[14px] shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
+        FOCUS_LOOK,
+        FOCUS_RING,
+        FOCUS_IN.x,
+        touch
+          ? X_REACH.touch
+          : // In the gap after its words, from the setting's own edge (the
+            // words' 1px of padding past their last glyph). Clear ink AND no
+            // hit until its setting is under the pointer: the gap is the
+            // opener's ground, so a click aimed between two settings opens the
+            // menu and can never land on a ✕ that was not drawn when the
+            // pointer arrived. Once its setting is under the pointer the ✕ takes
+            // hits too, and the two boxes touch, so a sweep from the words onto
+            // the ✕ keeps both lit with no dead ground to cross. The 1px keeps
+            // the hit boundary off the last glyph (Chromium snaps a fractional
+            // edge up to half a pixel in), so a click on a name's last pixel
+            // opens the menu. Keyboard focus reaches it regardless and draws it,
+            // as the pointer on it would (FOCUS_LOOK), and a drawn ✕ takes a
+            // click. Forced colours (Windows High Contrast) paint clear ink in
+            // a system colour, so there every ✕ is drawn at rest, and takes its
+            // hit at rest too: ink and hits always come back together. Its
+            // corners are rounded and Chromium hit-tests the rounding, so a
+            // square box of its own (after:) takes the corners, or a sweep
+            // along a line's top or bottom row from the words passed through
+            // ground that was neither's. Under a coarse pointer, which never
+            // hovers, it is the phone's ✕ instead: in flow, drawn, with reach.
+            cn(
+              "pointer-events-none absolute left-full top-0 text-transparent group-hover/unit:pointer-events-auto group-hover/unit:text-muted-foreground focus-visible:pointer-events-auto forced-colors:pointer-events-auto after:absolute after:inset-0 after:content-['']",
+              X_REACH.coarse
+            )
+      )}
     >
       <X className="size-[10px]" aria-hidden />
     </button>
   );
 
-  const remove = (removal: DisplayRemoval, label: string) =>
-    tipped('Remove', removeButton(removal, label));
+  const remove: Remove = (removal, label) => tipped('Remove', removeButton(removal, label));
 
   /** How many ✕s the settings wear: one per phrase, one per value. */
   const removable = clauses.reduce((n, c) => n + ('values' in c ? c.values.length : 1), 0);
 
-  const resetButton = (
-    <button
-      type="button"
-      data-testid={`display-shelf-reset-${surface}`}
-      aria-label="Reset display"
-      onClick={() => {
-        // Focus goes to the trigger FIRST. A reset always takes the count to
-        // zero, so the shelf unmounts under the pressed button, and a focused
-        // element that unmounts leaves focus on <body>.
-        menu.current?.focus();
-        resetDisplay(surface);
-      }}
-      className={cn('w-4', xClass('before:-inset-x-[6px]'))}
-    >
-      <X className="size-[11px]" aria-hidden />
-    </button>
-  );
+  /**
+   * Reset display, at the end of the paragraph: the menu row's own function
+   * and the menu row's own glyph, so it reads as an action wherever the line
+   * leaves it, never as one more setting. Named in words for a screen reader
+   * and, on a pointer, in its tip. Only from four things to take off up (see
+   * the top of the file).
+   */
+  const reset =
+    removable > 3
+      ? tipped(
+          'Reset display',
+          <button
+            type="button"
+            data-testid={`display-shelf-reset-${surface}`}
+            aria-label="Reset display"
+            onClick={(e) => {
+              // A follow-on resets nothing: a ✕'s click can re-wrap Reset under
+              // the pointer (the 280px braindump), and a double-click's second
+              // press would take every setting off. As on a ✕, its press's
+              // focus goes back to the opener on a pointer.
+              if (e.detail > 1) {
+                if (!clickWalksOn()) toOpener();
+                return;
+              }
+              // Focus to the trigger FIRST: a reset takes the count to zero, so
+              // the shelf unmounts under the pressed button.
+              menu.current?.focus();
+              resetDisplay(surface);
+            }}
+            className={cn(
+              'pointer-events-auto grid h-[18px] w-[16px] shrink-0 place-items-center rounded-[4px] text-muted-foreground hover:bg-accent hover:text-foreground',
+              FOCUS_LOOK,
+              FOCUS_RING,
+              FOCUS_IN.reset,
+              touch ? RESET_REACH.touch : RESET_REACH.coarse
+            )}
+          >
+            <RotateCcw className="size-[11px]" aria-hidden />
+          </button>
+        )
+      : undefined;
+
+  const lastIndex = clauses.length - 1;
 
   return (
     <div
       ref={rootRef}
       data-testid={`display-shelf-${surface}`}
       className={cn(
-        'group/shelf relative flex items-start gap-2 px-[15px] pb-[3px] pt-2 text-[11px] font-medium leading-[18px] text-secondary-foreground',
+        'flex items-start px-[15px] pb-[3px] pt-2 text-[11px] font-medium leading-[18px] text-secondary-foreground',
         className
       )}
       style={floor === undefined ? undefined : { minWidth: floor }}
     >
-      <span
-        ref={probeRef}
-        data-shelf-probe=""
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-0"
-      />
-      {/* The line's size, sampled (see the observer above): a phrase in the
-          shelf's own type, placed out of flow and unbreakable, so its width
-          answers to the font and to spacing and never to the column. Its rem
-          of padding answers for the rest of the line, whose gaps, dots and ✕s
-          are sized in rem. Both are on ::before, so the phrase adds no text to
-          the page and the padding sits inside the box the observer reads. */}
-      <span
-        ref={sampleRef}
-        data-shelf-sample=""
-        aria-hidden
-        className="pointer-events-none invisible absolute left-0 top-0 h-0 overflow-hidden whitespace-nowrap before:pl-4 before:content-['Hide_finished']"
-      />
-      <div className="relative flex min-w-0 flex-1">
+      {/* The opener's ground, words and all, is no empty space to the
+          desktop's click-away (lib/click-away.ts). The words are no control,
+          so a click that opened the menu from them also let go of the item
+          selection and closed the docked item panel, which a click on the
+          opener keeps. */}
+      <div data-click-away-ignore="" className="relative flex min-w-0 flex-1">
         {/* The opener, UNDER the words rather than around them: a button
-            cannot hold the ✕ buttons, so it covers the lines' box from behind
-            and the words let clicks fall through to it. It is named by the
-            same text, said once, in its own sr-only copy — the words on screen
-            are aria-hidden — so what a voice-control user reads off the screen
-            is what they can say (WCAG 2.5.3, Label in Name). No aria-expanded:
+            cannot hold the ✕ buttons, so it covers the paragraph's box from
+            behind, and takes the clicks that land between the words (a click
+            on the words opens the menu through the same handle). It is the
+            keyboard's and the screen reader's way in, named by the same text,
+            said once, in its own sr-only copy — the words on screen are
+            aria-hidden — so what a voice-control user reads off the screen is
+            what they can say (WCAG 2.5.3, Label in Name). No aria-expanded:
             what opens is modal, and hides this whole section while it is up.
-            Outside the lines' box, so its focus ring is not clipped. */}
+            Outside the paragraph's box, so its focus ring is not clipped. */}
         <button
           type="button"
           data-testid={`display-shelf-open-${surface}`}
@@ -564,46 +663,40 @@ function ShelfBody({
           // handle picks the shell. Handing over the ref brings focus back here
           // on close, while this text is still on screen to take it.
           ref={openerRef}
-          onClick={() => menu.current?.open(openerRef)}
+          onKeyDown={ignoreHeldKey}
+          onClick={open}
           className={cn(
-            'peer/open absolute inset-0 rounded-[4px]',
-            touch && "before:absolute before:inset-x-0 before:-inset-y-[5px] before:content-['']"
+            'absolute inset-0 rounded-[4px]',
+            touch ? OPENER_REACH.touch : OPENER_REACH.coarse
           )}
         >
           <span className="sr-only">{text}</span>
         </button>
         {/* The words, over the opener: `relative` so they paint above it, and
-            pointer-events-none so a click on them still lands on it. The
-            vertical padding, taken back by the margin, keeps the phone's
-            ✕ reach from being cut off by this box's clip. On the phone the
-            rows a line or a multi-select wraps into keep the stack's 5px
-            between them, the reach a ✕ takes above and below itself: with
-            none, a ✕'s reach lay over the next row's words, and a tap on a
-            name took a different setting off. */}
-        <span
-          ref={linesRef}
-          data-shelf-lines=""
-          className={cn(
-            'pointer-events-none relative -my-[5px] flex min-w-0 flex-1 gap-x-4 overflow-hidden py-[5px] peer-hover/open:text-foreground group-data-[fit=stack]/shelf:flex-col group-data-[fit=stack]/shelf:gap-y-[5px]',
-            touch && '[&_[data-clause]]:gap-y-[5px] [&_[data-line]]:gap-y-[5px]'
-          )}
-        >
-          {lines.map((line) => (
-            <span key={line.id} data-line={line.id} className={LINE}>
-              {line.clauses.map((c) => (
-                <Clause key={c.id} clause={c} remove={remove} />
-              ))}
-            </span>
+            pointer-events-none so a click in the gaps between the settings
+            still lands on it; on a fine pointer each setting takes its own
+            (UNIT_HIT). */}
+        <span data-shelf-lines="" className={cn(FLOW, FLOW_GAP[mode])}>
+          {clauses.map((c, i) => (
+            <Clause
+              key={c.id}
+              clause={c}
+              remove={remove}
+              open={open}
+              toOpener={toOpener}
+              touch={touch}
+              seam={i < lastIndex && (isFilter(c) || isFilter(clauses[i + 1]))}
+              tail={i === lastIndex ? reset : undefined}
+            />
           ))}
         </span>
       </div>
-      {/* Hidden rather than sr-only: each value's ✕ now says its noun in the
+      {/* Hidden rather than sr-only: each value's ✕ says its noun in the
           reading order, so this is for the opener's description alone, which
           aria-describedby reads from a hidden node just the same. */}
       <span id={descId} hidden>
         {shelfDescription(clauses)}
       </span>
-      {removable > 1 && tipped('Reset display', resetButton)}
     </div>
   );
 }
