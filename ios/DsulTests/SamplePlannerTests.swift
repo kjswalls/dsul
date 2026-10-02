@@ -275,7 +275,7 @@ import Testing
 
         let subtasks = planner.subtasks(of: roadmap.id)
         #expect(subtasks.map(\.title) == ["Pull the September numbers", "Write the three bets"])
-        #expect(subtasks.allSatisfy(\.isSubtask))
+        #expect(subtasks.allSatisfy { $0.isSubtask })
         #expect(!roadmap.isSubtask)
         // Only in their parent's sheet: never on a day or in the braindump.
         let ids = Set(subtasks.map(\.id))
