@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, IBM_Plex_Mono, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
+import { DM_Mono, Geist, IBM_Plex_Mono, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
@@ -37,6 +37,13 @@ const plexMono = IBM_Plex_Mono({
   weight: ['400', '500', '600'],
   style: ['normal', 'italic'],
   variable: '--font-plex-mono',
+  preload: false,
+})
+// Writer's face (`type: 'dm'`), Light for the page and Regular for its labels.
+const dmMono = DM_Mono({
+  subsets: ['latin'],
+  weight: ['300', '400', '500'],
+  variable: '--font-dm-mono',
   preload: false,
 })
 
@@ -87,7 +94,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} ${plexMono.variable} font-sans antialiased`}
+        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} ${plexMono.variable} ${dmMono.variable} font-sans antialiased`}
       >
         {/* The macOS desktop app's window-drag band; 0px tall everywhere else. FIRST in
             <body>, always: see .titlebar-drag in globals.css. */}

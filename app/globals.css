@@ -2628,6 +2628,132 @@ body {
   font-family: var(--font-mono);
 }
 
+/* ── Writer: one quiet column ────────────────────────────────────────────────
+   The page as a writing app's: one narrow column of light monospace, the
+   bucket you are in kept in ink while the rest of the day goes grey, a round
+   tick, and the braindump behind a tab on the left edge. */
+
+/* measure: 'narrow' — the canvas as one reading column. The week column views
+   still opt out (data-wide), since seven days never fit a column; every
+   canvas-container flips together, as the utility requires. */
+[data-layout-measure='narrow'] .canvas-container:not([data-wide='true']) {
+  max-width: 720px;
+}
+
+/* type: 'dm' — DM Mono, Light for the page. The reading size steps up with it;
+   the rows' metadata keeps its own. */
+[data-layout-type='dm'] {
+  --font-ui: var(--font-dm-mono), 'DM Mono', ui-monospace, monospace;
+  --font-content: var(--font-ui);
+  --font-mono: var(--font-ui);
+  --font-content-weight: 300;
+  --text-content: 14px;
+  font-family: var(--font-ui);
+}
+/* The looser leading is the list rows' only: the schedule panes size their
+   title clamp off the default 17px line (day-schedule.tsx), so a taller line
+   there would clip a block's last line mid-glyph. */
+[data-layout-type='dm'] [data-testid='item-card'] {
+  --text-content--line-height: 22px;
+}
+[data-layout-type='dm'] :is(.font-mono, code, pre, kbd, samp) {
+  font-family: var(--font-mono);
+}
+
+/* buckets: 'focus' — a bucket is a small lowercase label over its rows, no
+   card, no glyph. While one of them is the bucket you are in, the others go
+   grey by colour, never by opacity (CLAUDE.md: the accent is never faded
+   through a parent), so a tick's accent keeps its full strength everywhere.
+   On a day with no current bucket nothing greys. */
+[data-layout-buckets='focus'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='focus'] [data-bucket-glyph] {
+  display: none;
+}
+[data-layout-buckets='focus'] [data-bucket-label] {
+  text-transform: lowercase;
+  letter-spacing: 0.08em;
+  font-weight: 400;
+}
+[data-layout-buckets='focus'] [data-testid='bucket-card'][data-current='true'] [data-bucket-label] {
+  color: var(--success-text);
+}
+[data-layout-buckets='focus'] [data-testid='bucket-card'][data-current='true'] [data-bucket-label]::after {
+  content: ' · now';
+}
+[data-layout-buckets='focus'] main:has([data-testid='bucket-card'][data-current='true'])
+  [data-testid='bucket-card'][data-current='false'] {
+  --foreground: var(--muted-foreground);
+  color: var(--muted-foreground);
+}
+
+/* rows: 'round' — the tick as a hairline circle that fills with the accent
+   when done. Same button, same 16px hit area; the done row is struck through
+   in the accent. The done title fades with opacity everywhere else, which
+   would fade that lime strike too (CLAUDE.md), so here it greys by colour. */
+[data-layout-rows='round'] [data-testid='item-complete-button'] {
+  border-radius: 9999px;
+  border-width: 1px;
+}
+[data-layout-rows='round'] [data-testid='item-complete-button'][data-checked='false'] {
+  background: transparent;
+}
+[data-layout-rows='round'] [data-testid='item-card'][data-completed='true'] p {
+  opacity: 1;
+  color: var(--muted-foreground);
+  text-decoration-color: var(--success-text);
+}
+
+/* edge: 'tab' — the closed braindump's expand zone draws a `● braindump` pull
+   on the page's left edge instead of the small grip. Same button: a click
+   opens the column, a hover peeks it, exactly as the grip does. */
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip'] {
+  left: 12px;
+  translate: 0 -50%;
+  width: auto;
+  height: auto;
+  gap: 6px;
+  padding: 14px 7px;
+  border: 0;
+  /* Rounded on the left before the 180deg turn, so on the right once drawn:
+     the flat side sits on the window edge. */
+  border-radius: 8px 0 0 8px;
+  background: var(--np-chrome);
+  box-shadow: none;
+  writing-mode: vertical-rl;
+  rotate: 180deg;
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  letter-spacing: 0.04em;
+  color: var(--muted-foreground);
+}
+/* The grip's own hover and focus utilities are layered, so this unlayered rule
+   would cancel them; the tab states its own. The zone drops its outline, so
+   the tab's ring is the only focus cue. */
+[data-layout-edge='tab'] [data-testid='sidebar-expand-zone']:is(:hover, :focus-visible)
+  [data-testid='sidebar-expand-grip'] {
+  color: var(--foreground);
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-zone']:focus-visible
+  [data-testid='sidebar-expand-grip'] {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip'] > svg {
+  display: none;
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip']::before {
+  content: '●';
+  color: var(--success-text);
+}
+[data-layout-edge='tab'] [data-testid='sidebar-expand-grip']::after {
+  content: 'braindump';
+}
+
 /* skin: 'retro' — Notepad as it first looked: white paper, light grey chrome
    and a blue caret, and their dark twins. The semantic tokens resolve at
    :root, so the skin restates them here rather than the paper ramp; the raw

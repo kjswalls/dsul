@@ -55,6 +55,7 @@ import {
   useSidebarStore,
 } from '@/lib/sidebar-store';
 import { cn } from '@/lib/utils';
+import { useLayoutDef } from '@/lib/look-store';
 
 /** Arrow-key step on the focused handle, and its shift-held coarse step. */
 const NUDGE_PX = 8;
@@ -81,6 +82,7 @@ const noopSubscribe = () => () => {};
  * is also the only thing that touches localStorage.
  */
 export function Sidebar() {
+  const edgeTab = useLayoutDef().slots.edge === 'tab';
   const {
     leftSidebarOpen,
     leftSidebarHovered,
@@ -619,7 +621,9 @@ export function Sidebar() {
             <button
               type="button"
               data-testid="sidebar-expand-zone"
-              aria-label="Expand sidebar"
+              // A layout that draws the zone as a labelled `braindump` tab names
+              // it that way too, so the visible word is in the accessible name.
+              aria-label={edgeTab ? 'Expand braindump' : 'Expand sidebar'}
               onClick={() => {
                 cancelPeek();
                 toggleLeftSidebar();
