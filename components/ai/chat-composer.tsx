@@ -134,10 +134,27 @@ export function ChatComposer({
     void sendFrom(binding, text);
   };
 
+  const refocus = useRef(false);
   /** Stops this conversation's reply only: another conversation's stream is its own. */
-  const stop = () => {
+  const stop = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Stop's slot turns into Send or the disabled Mic once the reply ends, and
+    // a focused button that goes disabled drops focus to <body>, where the next
+    // Tab starts over at the top of the page. A keyboard Stop hands focus to
+    // the box: at once where the box is only read-only, and once the reply has
+    // ended where it is disabled (the dock).
+    if (e.currentTarget === document.activeElement) {
+      refocus.current = true;
+      textareaRef.current?.focus();
+    }
     if (threadId) useConversationsStore.getState().stop(threadId);
   };
+  useEffect(() => {
+    if (isLoading || !refocus.current) return;
+    refocus.current = false;
+    // Only focus that went nowhere: if the reader has moved on, leave them.
+    const at = document.activeElement;
+    if (!at || at === document.body) textareaRef.current?.focus();
+  }, [isLoading]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter is how an IME COMMITS a candidate, so without this a
@@ -235,6 +252,7 @@ export function ChatComposer({
         // dark:bg-transparent for the same reason as the dock's field above —
         // the tray is the surface here, so the base's dark:bg-input/30 shows as
         // a second, lighter box inside it.
+        aria-label={`Message ${displayName}`}
         className="min-h-0 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
         // Read-only mid-reply, not disabled: disabling a focused field drops
         // focus to <body>, where the next keystroke fires a bare-key shortcut,

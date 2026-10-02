@@ -39,7 +39,8 @@ export function NewChatEmpty() {
  * me start…" (lib/ai-openers.ts, `NEW_CHAT_OPENERS` and `includeStart`), read
  * off the same day as Ask home's two. A sending chip starts its conversation
  * titled with its label, not its long prompt (`askNew`); "Help me start…"
- * (`mode: 'prefill'`) fills this draft's box instead and hands it the caret.
+ * (`mode: 'prefill'`) fills this draft's box instead, ahead of anything typed
+ * there already, and hands it the caret.
  */
 export function NewChatChips({ binding, surface = 'desktop' }: { binding: ComposerBinding; surface?: AskSurface }) {
   const { ctx, minutesNow } = useOpenerContext();
@@ -53,8 +54,13 @@ export function NewChatChips({ binding, surface = 'desktop' }: { binding: Compos
 
   const choose = (opener: ChatOpener) => {
     if (opener.mode === 'prefill') {
+      // The chips sit beside a live box: words already typed there are kept,
+      // after the sentence's start, never replaced by it.
       const rail = useRailStore.getState();
-      rail.setDraft(bindingKey(binding), opener.prompt);
+      const key = bindingKey(binding);
+      const typed = rail.drafts[key] ?? '';
+      if (!typed.trim()) rail.setDraft(key, opener.prompt);
+      else if (!typed.startsWith(opener.prompt)) rail.setDraft(key, opener.prompt + typed.trimStart());
       rail.focusComposer(binding);
       return;
     }

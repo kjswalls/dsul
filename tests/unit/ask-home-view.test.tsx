@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 
 /**
  * Ask home's content (PR-2 checkpoint C3), rendered: the greeting, the load
@@ -47,6 +47,9 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { AskHome } from '@/components/ai/ask/ask-home';
+import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { fetchItemEvents } from '@/lib/db';
+import { READY_AFTER_MS } from '@/hooks/use-agent-question';
 import { AskGreeting } from '@/components/ai/ask/ask-greeting';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
@@ -66,6 +69,7 @@ import { resetAgentFreshness } from '@/hooks/use-agent-freshness';
 import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, summary } from './helpers/conversations-fakes';
 import type { Item } from '@/lib/planner-types';
+import type { ConversationSummary } from '@/lib/conversation-types';
 
 const TODAY = '2026-10-02';
 const NOW = Date.parse('2026-10-02T10:00:00.000Z');
@@ -93,6 +97,21 @@ const ask = (q: string, options: unknown[]): Ev[] => [
 
 function setItems(items: Item[]) {
   usePlannerStore.setState({ items, tasks: items.filter((i) => i.type !== 'habit') } as never);
+}
+
+/** Conversations as History's list holds them, fresh: Ask home lists from the list (D8). */
+function setConversations(...rows: ConversationSummary[]) {
+  useConversationsStore.setState((s) => ({
+    summaries: Object.fromEntries(rows.map((r) => [r.id, r])),
+    list: {
+      ...s.list,
+      ids: rows.filter((r) => !r.starred).map((r) => r.id),
+      starredIds: rows.filter((r) => r.starred).map((r) => r.id),
+      cursor: null,
+      status: 'loaded',
+      fetchedAt: Date.now(),
+    },
+  }));
 }
 
 beforeAll(() => {
@@ -255,7 +274,7 @@ describe('Needs you', () => {
   it('Escape with text clears it and is consumed; on an empty field it passes', async () => {
     setItems([DENTIST]);
     render(<AskHome />);
-    const field = screen.getByTestId('needs-you-answer');
+    const field = await screen.findByTestId('needs-you-answer');
     fireEvent.change(field, { target: { value: 'Fri' } });
     // fireEvent returns false when the handler called preventDefault.
     expect(fireEvent.keyDown(field, { key: 'Escape' })).toBe(false);
@@ -267,11 +286,85 @@ describe('Needs you', () => {
   it('shows the field outright with no options, without taking focus', async () => {
     setItems([DENTIST]);
     render(<AskHome />);
-    const field = screen.getByTestId('needs-you-answer');
+    const field = await screen.findByTestId('needs-you-answer');
     expect(field).toHaveAttribute('placeholder', 'Answer…');
+    expect(screen.queryByTestId('needs-you-other')).toBeNull();
     expect(document.activeElement).not.toBe(field);
     fireEvent.keyDown(field, { key: 'Enter' });
     expect(hoisted.recordAgentReply).not.toHaveBeenCalled();
+  });
+
+  it('never paints the field ahead of the chips: it waits for the trail to answer', async () => {
+    // The field painted first and was then swapped for the chips, taking a
+    // caret (and any words) already in it.
+    hoisted.events.dentist = ask('Tue 3pm or Thu 10am?', ['Tue 3pm', 'Thu 10am']);
+    setItems([DENTIST]);
+    render(<AskHome />);
+    expect(screen.queryByTestId('needs-you-answer')).toBeNull();
+    await waitFor(() => expect(screen.getAllByTestId('needs-you-option')).toHaveLength(2));
+    expect(screen.queryByTestId('needs-you-answer')).toBeNull();
+  });
+
+  it('a trail that fails still leaves the field to answer in', async () => {
+    vi.mocked(fetchItemEvents).mockImplementationOnce(async () => {
+      throw new Error('offline');
+    });
+    setItems([DENTIST]);
+    render(<AskHome />);
+    expect(await screen.findByTestId('needs-you-answer')).toBeInTheDocument();
+  });
+
+  it('a trail that never answers stops being waited on after READY_AFTER_MS', async () => {
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+    vi.setSystemTime(NOW);
+    vi.mocked(fetchItemEvents).mockImplementationOnce(() => new Promise(() => {}));
+    setItems([DENTIST]);
+    render(<AskHome />);
+    act(() => void vi.advanceTimersByTime(READY_AFTER_MS - 1));
+    expect(screen.queryByTestId('needs-you-answer')).toBeNull();
+    act(() => void vi.advanceTimersByTime(1));
+    expect(screen.getByTestId('needs-you-answer')).toBeInTheDocument();
+  });
+
+  it('heads the cards "Needs you · N", in the section headings\' type', () => {
+    setItems([DENTIST, blocked('vet', 'Call the vet', 'Which day?', ago(10))]);
+    render(<AskHome />);
+    const heading = screen.getByRole('heading', { level: 3, name: 'Needs you · 2' });
+    expect(heading.className).toBe(ASK_SECTION_HEADING);
+    expect(screen.getByRole('region', { name: 'Needs you · 2' })).toBe(screen.getByTestId('needs-you'));
+  });
+
+  it('an answer by keyboard hands focus to the row the item became, not to <body>', async () => {
+    hoisted.events.dentist = ask('Tue 3pm or Thu 10am?', ['Tue 3pm', 'Thu 10am']);
+    setItems([DENTIST]);
+    render(<AskHome />);
+    const option = await screen.findByRole('button', { name: 'Thu 10am' });
+    option.focus();
+    fireEvent.click(option);
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('data-ask-focus', 'item:dentist'));
+    expect(document.activeElement).toHaveAttribute('data-state', 'working');
+  });
+
+  it('so does Enter in the field', async () => {
+    setItems([DENTIST, blocked('vet', 'Call the vet', 'Which day?', ago(10))]);
+    render(<AskHome />);
+    const field = await within(cards()[0]).findByTestId('needs-you-answer');
+    field.focus();
+    fireEvent.change(field, { target: { value: 'Thursday' } });
+    fireEvent.keyDown(field, { key: 'Enter' });
+    expect(hoisted.recordAgentReply).toHaveBeenCalledWith('dentist', 'task', 'Thursday');
+    await waitFor(() => expect(document.activeElement).toHaveAttribute('data-ask-focus', 'item:dentist'));
+  });
+
+  it('a card answered with the mouse leaves focus where it was', async () => {
+    hoisted.events.dentist = ask('Tue 3pm or Thu 10am?', ['Tue 3pm', 'Thu 10am']);
+    setItems([DENTIST]);
+    render(<AskHome />);
+    const box = home().querySelector('[data-ask-composer] textarea') as HTMLElement;
+    box.focus();
+    fireEvent.click(await screen.findByRole('button', { name: 'Thu 10am' }));
+    await new Promise((r) => setTimeout(r, 5));
+    expect(document.activeElement).toBe(box);
   });
 
   it('shows three, longest-waiting first, then "Show 2 more" opens the rest in place', () => {
@@ -287,6 +380,16 @@ describe('Needs you', () => {
     fireEvent.click(screen.getByTestId('needs-you-more'));
     expect(cards().map((c) => c.dataset.itemId)).toEqual(['n2', 'n3', 'n4', 'n5', 'n1']);
     expect(screen.queryByTestId('needs-you-more')).toBeNull();
+  });
+
+  it('"Show N more" by keyboard hands focus to the first card it showed', async () => {
+    setItems(['n1', 'n2', 'n3', 'n4', 'n5'].map((id, i) => blocked(id, id, 'Q', ago(50 - i))));
+    render(<AskHome />);
+    const more = screen.getByTestId('needs-you-more');
+    expect(more).toHaveClass('focus-visible:ring-2');
+    more.focus();
+    fireEvent.click(more);
+    await waitFor(() => expect(document.activeElement).toBe(within(cards()[3]).getByTestId('needs-you-title')));
   });
 
   it('reads "AI needs you" for the AI, and its title opens the item', () => {
@@ -312,24 +415,30 @@ describe('With AI activity', () => {
       task('plumber', { title: 'Find a plumber', assignee: 'openclaw', aiStatus: 'failed', aiStatusAt: ago(90) }),
       task('taxes', { title: 'File taxes' }),
     ]);
-    useConversationsStore.setState({
-      summaries: {
-        c1: summary({ id: 'c1', title: 'Plan for today', lastMessageAt: '2026-10-02T08:02:00.000Z' }),
-        c2: summary({ id: 'c2', itemId: 'taxes', title: 'taxes', lastMessageAt: '2026-10-02T07:40:00.000Z' }),
-      },
-    });
+    setConversations(
+      summary({ id: 'c1', title: 'Plan for today', lastMessageAt: '2026-10-02T08:02:00.000Z' }),
+      summary({ id: 'c2', itemId: 'taxes', title: 'taxes', lastMessageAt: '2026-10-02T07:40:00.000Z' })
+    );
     render(<AskHome />);
 
-    expect(screen.getByRole('heading', { name: 'With AI activity' })).toBeInTheDocument();
+    const heading = screen.getByRole('heading', { name: 'With AI activity' });
+    // Needs you's heading type, on the rows' inset.
+    expect(heading).toHaveClass(...ASK_SECTION_HEADING.split(' '), 'px-2');
     const rows = activity();
+    // Each glyph is an icon, with no text; the kind is said before the title.
     expect(rows.map((r) => r.textContent)).toEqual([
-      'Gift for AriOpenClaw · 12m',
-      'Phone plansback',
-      "Find a plumberCouldn't finish",
-      // The ✦ of a general conversation is an icon, with no text.
-      'Plan for today8:02',
-      '☐File taxes7:40',
+      'Working on: Gift for AriOpenClaw · 12m',
+      'Came back: Phone plansback',
+      "Couldn't finish: Find a plumberCouldn't finish",
+      'Conversation: Plan for today8:02',
+      'Item conversation: File taxes7:40',
     ]);
+    // A state the kind already says is shown once and read once.
+    const meta = (r: HTMLElement) => r.lastElementChild as HTMLElement;
+    expect(rows.map((r) => meta(r).getAttribute('aria-hidden'))).toEqual([null, 'true', 'true', null, null]);
+    // An item's conversation is drawn as History draws it: lucide's square.
+    expect(rows[4].querySelector('svg[data-glyph="item"]')).not.toBeNull();
+    expect(rows[3].querySelector('svg[data-glyph="general"]')).not.toBeNull();
     expect(rows.map((r) => r.dataset.state ?? null)).toEqual(['working', 'back', 'failed', null, null]);
     expect(rows.map((r) => r.dataset.askFocus)).toEqual([
       'item:gift',
@@ -360,9 +469,7 @@ describe('With AI activity', () => {
   });
 
   it('pushes a general conversation from its row, to come back to that row', () => {
-    useConversationsStore.setState({
-      summaries: { c1: summary({ id: 'c1', title: 'Plan for today', lastMessageAt: ago(5) }) },
-    });
+    setConversations(summary({ id: 'c1', title: 'Plan for today', lastMessageAt: ago(5) }));
     render(<AskHome />);
     fireEvent.click(activity()[0]);
     expect(useRailStore.getState().stacks.desktop.at(-1)).toEqual({
@@ -374,9 +481,7 @@ describe('With AI activity', () => {
 
   it("opens an item's conversation as the item, asked to reveal its Conversation", () => {
     setItems([task('taxes', { title: 'File taxes' })]);
-    useConversationsStore.setState({
-      summaries: { c2: summary({ id: 'c2', itemId: 'taxes', title: 'taxes', lastMessageAt: ago(5) }) },
-    });
+    setConversations(summary({ id: 'c2', itemId: 'taxes', title: 'taxes', lastMessageAt: ago(5) }));
     render(<AskHome />);
     fireEvent.click(activity()[0]);
     const dialog = useUIStore.getState().activeDialog as { type: string; item?: { id: string } };
@@ -387,11 +492,23 @@ describe('With AI activity', () => {
 
   it('reads the time on the 24-hour clock under that setting', () => {
     usePlannerStore.setState({ timeFormat: '24h' });
-    useConversationsStore.setState({
-      summaries: { c1: summary({ id: 'c1', title: 'Plan for today', lastMessageAt: '2026-10-02T08:02:00.000Z' }) },
-    });
+    setConversations(summary({ id: 'c1', title: 'Plan for today', lastMessageAt: '2026-10-02T08:02:00.000Z' }));
     render(<AskHome />);
     expect(activity()[0]).toHaveTextContent(/08:02$/);
+  });
+
+  it("lists History's conversations, not every summary this tab ever held", () => {
+    // A summary outlives its place in the list (a search hit, a conversation
+    // opened by id, one dropped by a refresh); only the list says what exists.
+    setConversations(
+      summary({ id: 'c1', title: 'Plan for today', lastMessageAt: ago(5) }),
+      summary({ id: 'c3', title: 'Starred one', starred: true, lastMessageAt: ago(20) })
+    );
+    useConversationsStore.setState((s) => ({
+      summaries: { ...s.summaries, c2: summary({ id: 'c2', title: 'Only a search hit', lastMessageAt: ago(1) }) },
+    }));
+    render(<AskHome />);
+    expect(activity().map((r) => r.dataset.askFocus)).toEqual(['conv:c1', 'conv:c3']);
   });
 });
 

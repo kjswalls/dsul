@@ -823,6 +823,17 @@ describe('History', () => {
     expect(store().itemIndex.i1).toBeNull();
   });
 
+  it('a conversation found gone keeps the name it was shown under, and never saves it', async () => {
+    // Opened from History: the summary held its only title, and goes.
+    useConversationsStore.setState({ summaries: { c1: summary({ id: 'c1', title: 'Trip plans', renamed: true }) } });
+    await store().openThread('c1');
+    expect(store().summaries.c1).toBeUndefined();
+    expect(thread('c1')).toMatchObject({ load: 'gone', saved: false, draftTitle: 'Trip plans' });
+    await store().send('c1', 'still there?');
+    await conversationsSettled();
+    expect(api.turns).toEqual([]);
+  });
+
   it('a delete that fails puts everything back', async () => {
     const id = await sendNew('one');
     api.answer.remove = () => fail(500, 'server');
@@ -971,6 +982,170 @@ describe('History', () => {
     await flush();
     expect(store().search).toMatchObject({ q: 'dentist', status: 'done' });
     expect(store().search.hits.map((h) => h.id)).toEqual(['c9']);
+  });
+});
+
+describe("History's list, read again over time", () => {
+  /** Newest first, an hour apart: c0 at 10:00, c1 at 09:00, and so on down. */
+  const at = (h: number) => `2026-10-02T${String(h).padStart(2, '0')}:00:00.000Z`;
+  const row = (id: string, h: number, over: Partial<ReturnType<typeof summary>> = {}) => summary({ id, lastMessageAt: at(h), ...over });
+
+  /** The first page, then one later page loaded under it. */
+  async function twoPagesLoaded() {
+    api.answer.list = (o) =>
+      o?.cursor === 'p2'
+        ? { ok: true, value: { conversations: [row('c3', 7), row('c4', 6)], nextCursor: null } }
+        : { ok: true, value: { conversations: [row('c1', 9), row('c2', 8)], starred: [], nextCursor: 'p2' } };
+    await store().ensureLoaded();
+    await store().loadMore();
+    expect(store().list).toMatchObject({ ids: ['c1', 'c2', 'c3', 'c4'], cursor: null });
+  }
+
+  it('a quiet refresh keeps the pages loaded below the first, and their cursor', async () => {
+    await twoPagesLoaded();
+    // Something new elsewhere: the first page now ends a row earlier.
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c0', 10), row('c1', 9)], starred: [], nextCursor: 'q2' } });
+    store().refreshIfStale(0);
+    await conversationsSettled();
+    expect(store().list).toMatchObject({ ids: ['c0', 'c1', 'c2', 'c3', 'c4'], cursor: null, status: 'loaded' });
+  });
+
+  it("drops a row inside the page's range the page no longer holds (deleted elsewhere)", async () => {
+    await twoPagesLoaded();
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c0', 10), row('c2', 8)], starred: [], nextCursor: 'q2' } });
+    store().refreshIfStale(0);
+    await conversationsSettled();
+    expect(store().list.ids).toEqual(['c0', 'c2', 'c3', 'c4']);
+  });
+
+  it('a first page that is the whole list is taken whole', async () => {
+    await twoPagesLoaded();
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c1', 9)], starred: [], nextCursor: null } });
+    store().refreshIfStale(0);
+    await conversationsSettled();
+    expect(store().list).toMatchObject({ ids: ['c1'], cursor: null });
+  });
+
+  it('a later page on its way holds off any re-read of the first, which would move its boundary', async () => {
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c1', 9), row('c2', 8)], starred: [], nextCursor: 'p2' } });
+    await store().ensureLoaded();
+    const page = deferred<void>();
+    api.answer.list = async (o) => {
+      if (o?.cursor !== 'p2') return { ok: true, value: { conversations: [row('c0', 10), row('c1', 9)], starred: [], nextCursor: 'q2' } };
+      await page.promise;
+      return { ok: true, value: { conversations: [row('c3', 7)], nextCursor: null } };
+    };
+    const more = store().loadMore();
+    try {
+      store().refreshIfStale(0);
+      void store().ensureLoaded();
+      expect(store().loadMore()).toBe(more);
+      expect(api.api.list).toHaveBeenCalledTimes(2);
+    } finally {
+      page.resolve();
+    }
+    await more;
+    expect(store().list).toMatchObject({ ids: ['c1', 'c2', 'c3'], cursor: null, status: 'loaded' });
+    // Landed: the refresh may go now.
+    store().refreshIfStale(0);
+    await conversationsSettled();
+    expect(api.api.list).toHaveBeenCalledTimes(3);
+  });
+
+  it('a later page cut under a cursor that has since moved is dropped, not appended', async () => {
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c1', 9), row('c2', 8)], starred: [], nextCursor: 'p2' } });
+    await store().ensureLoaded();
+    const page = deferred<void>();
+    api.answer.list = async () => {
+      await page.promise;
+      return { ok: true, value: { conversations: [row('c5', 4)], nextCursor: null } };
+    };
+    const more = store().loadMore();
+    useConversationsStore.setState((s) => ({ list: { ...s.list, cursor: 'elsewhere' } }));
+    page.resolve();
+    await more;
+    expect(store().list).toMatchObject({ ids: ['c1', 'c2'], cursor: 'elsewhere', status: 'loaded' });
+    expect(store().summaries.c5).toBeUndefined();
+  });
+
+  it("a later page writes only the rows it adds, and never over this browser's newer copy", async () => {
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c1', 9), row('c2', 8)], starred: [], nextCursor: 'p2' } });
+    await store().ensureLoaded();
+    // Known outside the list (a search hit), and saved here since: 12:00.
+    useConversationsStore.setState((s) => ({ summaries: { ...s.summaries, c3: row('c3', 12, { messageCount: 6 }) } }));
+    const page = deferred<void>();
+    api.answer.list = async () => {
+      await page.promise;
+      return {
+        ok: true,
+        value: {
+          conversations: [row('c2', 8, { title: 'stale' }), row('c3', 7, { messageCount: 2 }), row('c4', 6, { title: 'server' })],
+          nextCursor: null,
+        },
+      };
+    };
+    const more = store().loadMore();
+    // Renamed while the page was on its way.
+    useConversationsStore.setState((s) => ({ summaries: { ...s.summaries, c4: row('c4', 6, { title: 'before' }) } }));
+    expect(await store().rename('c4', 'mine')).toBe(true);
+    page.resolve();
+    await more;
+    expect(store().summaries.c3).toMatchObject({ lastMessageAt: at(12), messageCount: 6 });
+    expect(store().summaries.c4.title).toBe('mine');
+    // c2 was already listed (placed by a newer read): left as it was.
+    expect(store().summaries.c2.title).not.toBe('stale');
+    // The newer copy goes where it belongs, newest first.
+    expect(store().list.ids).toEqual(['c3', 'c1', 'c2', 'c4']);
+  });
+
+  it("rename and star take only what their PATCH changed, onto the copy held now", async () => {
+    useConversationsStore.setState({ summaries: { c1: row('c1', 9, { messageCount: 4, title: 'Old' }) } });
+    // The PATCH's row was read before a save landed here: 2 messages, 08:00.
+    api.answer.patch = (_id, patch) => ({
+      ok: true,
+      value: row('c1', 8, { messageCount: 2, title: patch.title ?? 'Old', renamed: !!patch.title, starred: !!patch.starred }),
+    });
+    expect(await store().rename('c1', 'New')).toBe(true);
+    expect(store().summaries.c1).toMatchObject({ title: 'New', renamed: true, messageCount: 4, lastMessageAt: at(9) });
+    expect(await store().setStarred('c1', true)).toBe(true);
+    expect(store().summaries.c1).toMatchObject({ title: 'New', starred: true, messageCount: 4, lastMessageAt: at(9) });
+  });
+
+  it('an open moves a conversation continued elsewhere up the list, and keeps a newer copy held here', async () => {
+    useConversationsStore.setState({
+      summaries: { c1: row('c1', 9), c2: row('c2', 8), c3: row('c3', 12) },
+      list: { ids: ['c1', 'c2', 'c3'], starredIds: [], cursor: null, status: 'loaded', fetchedAt: Date.now() },
+    });
+    api.answer.thread = (id) => ({
+      ok: true,
+      value: { conversation: id === 'c2' ? row('c2', 11) : row('c3', 7), messages: [], hasEarlier: false },
+    });
+    await store().openThread('c2');
+    expect(store().summaries.c2.lastMessageAt).toBe(at(11));
+    expect(store().list.ids.indexOf('c2')).toBeLessThan(store().list.ids.indexOf('c1'));
+    // The read began before a save here: the save's copy stands.
+    await store().openThread('c3');
+    expect(store().summaries.c3.lastMessageAt).toBe(at(12));
+  });
+
+  it('a refresh that fails keeps a conversation saved while it was out', async () => {
+    api.answer.list = () => ({ ok: true, value: { conversations: [row('c1', 9)], starred: [], nextCursor: null } });
+    await store().ensureLoaded();
+    const page = deferred<void>();
+    api.answer.list = async () => {
+      await page.promise;
+      return fail(500, 'server');
+    };
+    store().refreshIfStale(0);
+    const id = store().newDraft();
+    await store().send(id, 'hello');
+    await flush();
+    expect(store().list.ids).toContain(id);
+
+    page.resolve();
+    await conversationsSettled();
+    expect(store().list.status).toBe('loaded');
+    expect([...store().list.ids].sort()).toEqual([id, 'c1'].sort());
   });
 });
 

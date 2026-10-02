@@ -28,7 +28,9 @@ vi.mock('sonner', () => ({
 import { RightRail } from '@/components/ai/rail/right-rail';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { ItemConversationMenu, CONVERSATION_COPY, deleteDescription } from '@/components/ai/ask/conversation-title-menu';
-import { answererDividerCopy, answererDividers } from '@/components/ai/chat-transcript';
+import { answererDividerCopy, answererDividers, REPLY_PROSE } from '@/components/ai/chat-transcript';
+import { ItemConversation } from '@/components/ai/item-conversation';
+import { ChatComposer } from '@/components/ai/chat-composer';
 import { useRailStore, type AskView } from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -211,6 +213,76 @@ async function openSaved(row: ConversationSummary, messages: StoredMessage[] = [
   await settle();
 }
 
+/**
+ * A real browser's confirm: its content leaves on a 200ms animation, and
+ * Radix's Presence holds it mounted, its button still focused, until
+ * `animationend`. jsdom runs no CSS, so the alertdialog is given an animation
+ * named by its data-state, and the end is fired by hand (`end`). Without this
+ * the dialog unmounts at once and a fix that only works then looks right.
+ */
+function animatedConfirm() {
+  const real = window.getComputedStyle.bind(window);
+  const spy = vi.spyOn(window, 'getComputedStyle').mockImplementation((el: Element, pseudo?: string | null) => {
+    const style = real(el, pseudo);
+    if (!(el instanceof HTMLElement) || el.getAttribute('role') !== 'alertdialog') return style;
+    return new Proxy(style, {
+      get(target, key) {
+        if (key === 'animationName') return el.dataset.state === 'closed' ? 'confirm-out' : 'confirm-in';
+        const value = Reflect.get(target, key);
+        return typeof value === 'function' ? value.bind(target) : value;
+      },
+    });
+  });
+  return {
+    end() {
+      const node = document.querySelector('[role="alertdialog"]');
+      const event = new Event('animationend');
+      Object.defineProperty(event, 'animationName', { value: 'confirm-out' });
+      act(() => void node?.dispatchEvent(event));
+    },
+    restore: () => spy.mockRestore(),
+  };
+}
+
+/** A saved item conversation, held here with its transcript: its item's index points at it. */
+function holdItemThread(id: string, itemId: string, messages: ChatMessage[]) {
+  act(() =>
+    useConversationsStore.setState((s) => ({
+      summaries: { ...s.summaries, [id]: summary({ id, itemId, title: 'Book the dentist' }) },
+      itemIndex: { ...s.itemIndex, [itemId]: id },
+      threads: {
+        ...s.threads,
+        [id]: {
+          id,
+          itemId,
+          draftTitle: null,
+          saved: true,
+          load: 'loaded',
+          hasEarlier: false,
+          streaming: false,
+          typing: false,
+          fetchedAt: Date.now(),
+          messages,
+        },
+      } as never,
+    }))
+  );
+}
+
+/** A message as the store holds it. */
+const held = (m: Partial<ChatMessage> & Pick<ChatMessage, 'id' | 'role'>): ChatMessage => ({
+  content: '',
+  status: 'complete',
+  errorCode: null,
+  replyTo: null,
+  answerer: m.role === 'assistant' ? 'model' : null,
+  model: null,
+  createdAt: Date.now(),
+  pos: 0,
+  sync: 'saved',
+  ...m,
+});
+
 /* ── History ─────────────────────────────────────────────────────────── */
 
 describe('History', () => {
@@ -322,6 +394,98 @@ describe('History', () => {
     expect(stack()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1', returnFocus: 'conv:c1' }]);
   });
 
+  it('rings a focused row, as every other Ask row does, not only tints it', async () => {
+    listPage();
+    push({ kind: 'history' });
+    renderRail();
+    await settle();
+    for (const row of screen.getAllByTestId('history-row')) {
+      expect(row).toHaveClass('hover:bg-accent', 'focus-visible:ring-2', 'focus-visible:ring-ring', 'focus-visible:outline-none');
+      expect(row.className).not.toMatch(/focus-visible:bg-/);
+    }
+  });
+
+  it('says it is loading in words, with the skeleton rows hidden', async () => {
+    let release: () => void = () => {};
+    api.answer.list = () => new Promise((r) => (release = () => r(undefined)));
+    push({ kind: 'history' });
+    renderRail();
+    try {
+      const list = screen.getByTestId('history-list');
+      expect(within(list).getByText('Loading conversations…')).toHaveClass('sr-only');
+      expect(list.querySelector('[aria-label="Loading"], [aria-busy]')).toBeNull();
+    } finally {
+      await act(async () => {
+        release();
+        await flush();
+      });
+    }
+  });
+
+  it('comes back from a conversation as it was left: the search, its results and the scroll', async () => {
+    listPage();
+    api.rows.set('c1', ROWS.today);
+    api.answer.thread = (id) => (id === 'c1' ? { ok: true, value: { conversation: ROWS.today, messages: [], hasEarlier: false } } : undefined);
+    api.answer.search = () => ({ ok: true, value: [{ ...ROWS.today, matched: 'title', snippet: null, itemTitle: null }] });
+    push({ kind: 'history' });
+    renderRail();
+    await settle();
+    fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'plan' } });
+    await timers(300);
+    await settle();
+    const list = screen.getByTestId('history-list');
+    list.scrollTop = 120;
+    fireEvent.scroll(list);
+    const row = screen.getByTestId('history-row');
+    act(() => row.focus());
+    fireEvent.click(row);
+    await settle();
+    expect(stack()).toEqual([
+      { kind: 'history', memo: { q: 'plan', scrollTop: 120 } },
+      { kind: 'conversation', id: 'c1', returnFocus: 'conv:c1' },
+    ]);
+
+    fireEvent.click(screen.getByTestId('rail-back'));
+    await settle();
+    await timers();
+    expect(screen.getByTestId('history-search')).toHaveValue('plan');
+    expect(groups()).toEqual([{ key: 'results', label: 'Results', rows: ['Plan my day'] }]);
+    // Not asked again: the results it was opened from are the ones on screen.
+    await timers(300);
+    await settle();
+    expect(api.api.search).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('history-list').scrollTop).toBe(120);
+    expect(document.activeElement).toBe(screen.getByTestId('history-row'));
+  });
+
+  it('keeps the row Back hands focus to in sight, scrolling only its list', async () => {
+    listPage();
+    api.rows.set('c1', ROWS.today);
+    api.answer.thread = (id) => (id === 'c1' ? { ok: true, value: { conversation: ROWS.today, messages: [], hasEarlier: false } } : undefined);
+    push({ kind: 'history' });
+    renderRail();
+    await settle();
+    fireEvent.click(screen.getAllByTestId('history-row')[1]);
+    await settle();
+    const realRect = HTMLElement.prototype.getBoundingClientRect;
+    // The list's box ends at 300, and the row sits below it.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const at = this.dataset.testid === 'history-list' ? [0, 300] : this.dataset.askFocus === 'conv:c1' ? [400, 440] : null;
+      return at === null
+        ? realRect.call(this)
+        : ({ top: at[0], bottom: at[1], left: 0, right: 0, width: 0, height: at[1] - at[0], x: 0, y: at[0] } as DOMRect);
+    };
+    try {
+      fireEvent.click(screen.getByTestId('rail-back'));
+      await settle();
+      await timers();
+      expect(document.activeElement).toHaveAttribute('data-ask-focus', 'conv:c1');
+      expect(screen.getByTestId('history-list').scrollTop).toBe(140);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = realRect;
+    }
+  });
+
   it('says so when there is nothing, and when the list fails, with Try again', async () => {
     let fails = true;
     api.answer.list = () => (fails ? fail(500, 'server') : undefined);
@@ -417,6 +581,38 @@ describe('History', () => {
       await timers(300);
       await settle();
       expect(screen.getByTestId('history-no-results')).toHaveTextContent('Nothing matches “zz”.');
+    });
+
+    it('tells a screen reader what a search came to, while focus stays in the field', async () => {
+      push({ kind: 'history' });
+      renderRail();
+      await settle();
+      const status = screen.getByTestId('history-search-status');
+      expect(status).toHaveAttribute('role', 'status');
+      expect(status).toHaveTextContent(/^$/);
+      const box = screen.getByTestId('history-search');
+
+      api.answer.search = () => ({ ok: true, value: [{ ...ROWS.item, matched: 'title', snippet: null, itemTitle: null }] });
+      fireEvent.change(box, { target: { value: 'den' } });
+      expect(status).toHaveTextContent(/^Searching…$/);
+      await timers(300);
+      await settle();
+      expect(status).toHaveTextContent(/^1 result$/);
+
+      api.answer.search = () => ({ ok: true, value: [] });
+      fireEvent.change(box, { target: { value: 'zz' } });
+      await timers(300);
+      await settle();
+      expect(status).toHaveTextContent(/^Nothing matches “zz”\.$/);
+
+      api.answer.search = () => fail(500, 'server');
+      fireEvent.change(box, { target: { value: 'zzz' } });
+      await timers(300);
+      await settle();
+      expect(status).toHaveTextContent(/^Couldn't search right now\.$/);
+
+      fireEvent.change(box, { target: { value: '' } });
+      expect(status).toHaveTextContent(/^$/);
     });
 
     it('clears on Escape first, and goes back on the next', async () => {
@@ -518,7 +714,9 @@ describe("a conversation's ⌄", () => {
     fireEvent.click(screen.getByTestId('conversation-star'));
     await settle();
     expect(useConversationsStore.getState().summaries.c1.starred).toBe(true);
-    expect(toasts.error).toHaveBeenCalledWith(CONVERSATION_COPY.unstarFailed);
+    // D9's one string, for an unstar too.
+    expect(toasts.error).toHaveBeenCalledWith("Couldn't star that conversation.");
+    expect(CONVERSATION_COPY.starFailed).toBe("Couldn't star that conversation.");
   });
 
   it('asks before deleting, in exact words, and Escape leaves everything as it was', async () => {
@@ -557,6 +755,47 @@ describe("a conversation's ⌄", () => {
     expect(useConversationsStore.getState().summaries.c1).toBeUndefined();
     expect(document.activeElement).toBe(heading());
     expect(toasts.error).not.toHaveBeenCalled();
+  });
+
+  it("lands focus on the view beneath once the confirm's exit is over, and keeps its words till then", async () => {
+    const exit = animatedConfirm();
+    try {
+      push({ kind: 'history' });
+      await openSaved(TRIP, EXCHANGE);
+      openMenu(trigger());
+      fireEvent.click(screen.getByTestId('conversation-delete'));
+      await timers();
+      const confirm = screen.getByTestId('conversation-delete-confirm');
+      act(() => confirm.focus());
+      fireEvent.click(confirm);
+      await settle();
+      await hops();
+      expect(stack()).toEqual([{ kind: 'history' }]);
+      // Still leaving: mounted, focused, and still saying what it asked.
+      const dialog = screen.getByTestId('confirm-dialog');
+      expect(dialog).toHaveTextContent('Delete this conversation?');
+      expect(confirm).toHaveTextContent(/^Delete$/);
+      expect(document.activeElement).toBe(confirm);
+
+      exit.end();
+      await timers();
+      expect(screen.queryByTestId('confirm-dialog')).toBeNull();
+      expect(document.activeElement).toBe(heading());
+      expect(heading()).toHaveTextContent('History');
+    } finally {
+      exit.restore();
+    }
+  });
+
+  it('counts an OpenClaw reply held here, before the server has said so', async () => {
+    await openSaved(
+      { ...TRIP, openclawSeen: false },
+      stored({ id: 'm1', role: 'user', content: 'Book it' }, { id: 'm2', role: 'assistant', content: 'Done.', replyTo: 'm1', answerer: 'openclaw' })
+    );
+    openMenu(trigger());
+    fireEvent.click(screen.getByTestId('conversation-delete'));
+    await timers();
+    expect(within(screen.getByTestId('confirm-dialog')).getByText(/OpenClaw may keep its own copy\.$/)).toBeInTheDocument();
   });
 
   it('adds that OpenClaw may keep a copy, once it ever answered', async () => {
@@ -617,6 +856,90 @@ describe("an item's conversation ⌄", () => {
     expect(api.removes).toEqual(['c9']);
     expect(usePlannerStore.getState().items).toEqual([DENTIST]);
   });
+
+  it('hands focus to the item panel once the confirm has gone, its ⌄ having gone with the conversation', async () => {
+    const exit = animatedConfirm();
+    try {
+      holdItemThread('c9', 't1', [held({ id: 'q', role: 'user', content: 'When?' })]);
+      api.rows.set('c9', useConversationsStore.getState().summaries.c9);
+      function Pinned() {
+        const saved = useConversationsStore((s) => !!s.summaries.c9);
+        return saved ? <ItemConversationMenu id="c9" /> : null;
+      }
+      render(
+        <>
+          <Pinned />
+          <ConfirmDialog />
+        </>
+      );
+      openMenu(screen.getByRole('button', { name: 'Conversation options' }));
+      fireEvent.click(screen.getByTestId('item-conversation-delete'));
+      await timers();
+      const confirm = screen.getByTestId('item-conversation-delete-confirm');
+      act(() => confirm.focus());
+      const before = useUIStore.getState().itemPanelFocusToken;
+      fireEvent.click(confirm);
+      await settle();
+      await hops();
+      expect(useUIStore.getState().itemPanelFocusToken).toBe(before);
+      exit.end();
+      await timers();
+      expect(useUIStore.getState().itemPanelFocusToken).toBe(before + 1);
+    } finally {
+      exit.restore();
+    }
+  });
+});
+
+describe("an item's inline conversation (the modal, the phone, Zen, /item/[id])", () => {
+  const THREAD = [
+    held({ id: 'q1', role: 'user', content: 'Which day?', pos: 0 }),
+    held({ id: 'a1', role: 'assistant', content: 'Half an answer', status: 'stopped', replyTo: 'q1', pos: 1 }),
+  ];
+
+  it("is Ask's transcript: your bubble, a plain reply with Copy, the status lines, and its ⌄", () => {
+    holdItemThread('c9', 't1', THREAD);
+    render(<ItemConversation item={DENTIST} mode="inline" />);
+    const section = screen.getByTestId('item-thread');
+    expect(section).toHaveTextContent(/^Conversation/);
+    expect(within(section).getByRole('button', { name: 'Conversation options' })).toBeInTheDocument();
+    expect(within(section).getByText('Which day?')).toHaveClass('rounded-2xl', 'bg-secondary');
+    const reply = within(section).getByText('Half an answer').closest('[data-message-role="assistant"]') as HTMLElement;
+    expect(reply.querySelector('[class*="bg-warning"]')).toBeNull();
+    expect(within(reply).getByRole('button', { name: 'Copy reply' })).toBeInTheDocument();
+    expect(within(reply).getByTestId('chat-stopped-note')).toHaveTextContent('Stopped');
+    // Its own one-line box, as before, and the transcript's one status line.
+    expect(within(section).getByTestId('item-thread-input')).toBeInTheDocument();
+    expect(within(section).getByTestId('reply-status')).toHaveAttribute('role', 'status');
+  });
+
+  it('a delete from its ⌄ hands focus to its box, which stays', async () => {
+    const exit = animatedConfirm();
+    try {
+      holdItemThread('c9', 't1', THREAD);
+      api.rows.set('c9', useConversationsStore.getState().summaries.c9);
+      render(
+        <>
+          <ItemConversation item={DENTIST} mode="inline" />
+          <ConfirmDialog />
+        </>
+      );
+      openMenu(screen.getByRole('button', { name: 'Conversation options' }));
+      fireEvent.click(screen.getByTestId('item-conversation-delete'));
+      await timers();
+      const confirm = screen.getByTestId('item-conversation-delete-confirm');
+      act(() => confirm.focus());
+      fireEvent.click(confirm);
+      await settle();
+      await hops();
+      expect(screen.queryByRole('button', { name: 'Conversation options' })).toBeNull();
+      exit.end();
+      await timers();
+      expect(document.activeElement).toBe(screen.getByTestId('item-thread-input'));
+    } finally {
+      exit.restore();
+    }
+  });
 });
 
 /* ── the conversation view ───────────────────────────────────────────── */
@@ -633,6 +956,53 @@ describe('a conversation', () => {
     expect(askBox()).toBeInTheDocument();
     // Nothing left to rename or delete.
     expect(screen.queryByRole('button', { name: /conversation options/i })).toBeNull();
+  });
+
+  it('keeps its name, and the focused heading, when found deleted after it opened', async () => {
+    hold(summary({ id: 'c1', title: 'Trip plans' }));
+    let answer: () => void = () => {};
+    api.answer.thread = () => new Promise((r) => (answer = () => r(fail(404, 'not_found'))));
+    renderRail();
+    push({ kind: 'history' });
+    push({ kind: 'conversation', id: 'c1' });
+    await timers();
+    const h = heading() as HTMLElement;
+    expect(h).toHaveTextContent('Trip plans');
+    expect(document.activeElement).toBe(h);
+
+    await act(async () => {
+      answer();
+      await flush();
+    });
+    await timers();
+    expect(screen.getByTestId('conversation-gone')).toBeInTheDocument();
+    // The same heading node, so focus did not drop to <body> with the ⌄.
+    expect(heading()).toBe(h);
+    expect(h).toHaveTextContent(/^Trip plans$/);
+    expect(document.activeElement).toBe(h);
+    expect(screen.getByTestId('rail-back')).toHaveTextContent('History');
+    expect(askBox()).toHaveAttribute('placeholder', 'Ask anything…');
+  });
+
+  it('says it is loading in words while its transcript is on its way', async () => {
+    let land: () => void = () => {};
+    const row = summary({ id: 'c1', title: 'Trip plans' });
+    hold(row);
+    api.answer.thread = () =>
+      new Promise((r) => (land = () => r({ ok: true, value: { conversation: row, messages: [], hasEarlier: false } })));
+    push({ kind: 'conversation', id: 'c1' });
+    renderRail();
+    try {
+      const loading = screen.getByTestId('chat-transcript-loading');
+      expect(within(loading).getByText('Loading conversation…')).toHaveClass('sr-only');
+      expect(loading).not.toHaveAttribute('aria-label');
+      expect(loading).not.toHaveAttribute('aria-busy');
+    } finally {
+      await act(async () => {
+        land();
+        await flush();
+      });
+    }
   });
 
   it('says when its transcript could not be loaded, and tries again', async () => {
@@ -704,6 +1074,8 @@ describe('the transcript', () => {
     const dividers = screen.getAllByTestId('answerer-divider');
     expect(dividers).toHaveLength(1);
     expect(dividers[0]).toHaveTextContent('OpenClaw answers from here');
+    // A separator's children are presentational: it carries the words itself.
+    expect(screen.getByRole('separator', { name: 'OpenClaw answers from here' })).toBe(dividers[0]);
     // Before the turn's question, never between it and its reply.
     expect(dividers[0].nextElementSibling).toHaveTextContent('two');
   });
@@ -738,6 +1110,9 @@ describe('the transcript', () => {
     expect(screen.getByText('Half an ans')).toBeInTheDocument();
     expect(screen.getByTestId('chat-stopped-note')).toHaveTextContent(/^Stopped$/);
     expect(screen.getByTestId('chat-error-note')).toHaveTextContent(chatErrorCopy('rate_limit', 'model'));
+    // Not a live region of its own: ReplyStatus says a failure once, so it is
+    // not read out twice (nor at all for one that was already there).
+    expect(screen.getByTestId('chat-error-note')).not.toHaveAttribute('role');
   });
 
   it('stops a reply on Stop, keeping what arrived', async () => {
@@ -753,6 +1128,161 @@ describe('the transcript', () => {
     expect(screen.queryByTestId('chat-stop')).toBeNull();
     expect(screen.getByTestId('chat-stopped-note')).toBeInTheDocument();
     expect(screen.getByText('Partial')).toBeInTheDocument();
+  });
+
+  it('Stop by keyboard hands focus to the box, not <body>, as its slot turns back into Send or the Mic', async () => {
+    await openSaved(ROW, stored({ id: 'm1', role: 'user', content: 'one' }, { id: 'm2', role: 'assistant', content: 'A', replyTo: 'm1' }));
+    transport.next = hangs('Partial').run;
+    fireEvent.change(askBox(), { target: { value: 'more please' } });
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    await settle();
+    const stop = screen.getByTestId('chat-stop');
+    act(() => stop.focus());
+    fireEvent.click(stop);
+    expect(document.activeElement).toBe(askBox());
+    await settle();
+    expect(screen.queryByTestId('chat-stop')).toBeNull();
+    expect(document.activeElement).toBe(askBox());
+  });
+
+  it("the phone dock's Stop hands focus to its field once the reply has ended (it is disabled till then)", async () => {
+    await openSaved(ROW, stored({ id: 'm1', role: 'user', content: 'one' }, { id: 'm2', role: 'assistant', content: 'A', replyTo: 'm1' }));
+    transport.next = hangs('Partial').run;
+    fireEvent.change(askBox(), { target: { value: 'more please' } });
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    await settle();
+    render(<ChatComposer variant="dock" binding={{ kind: 'conversation', id: 'c1' }} />);
+    const field = screen.getByTestId('chat-dock-input');
+    expect(field).toBeDisabled();
+    const stop = field.parentElement?.querySelector('[data-testid="chat-stop"]') as HTMLElement;
+    act(() => stop.focus());
+    fireEvent.click(stop);
+    await settle();
+    expect(field).not.toBeDisabled();
+    expect(document.activeElement).toBe(field);
+  });
+
+  it('names the panel box as the dock names its own', async () => {
+    await openSaved(ROW);
+    expect(askBox()).toHaveAttribute('aria-label', 'Message AI');
+  });
+
+  it('is a log that reads nothing out as it streams, and says once that a reply began and how it ended', async () => {
+    await openSaved(ROW, stored({ id: 'm1', role: 'user', content: 'one' }, { id: 'm2', role: 'assistant', content: 'A', replyTo: 'm1' }));
+    const log = screen.getByRole('log', { name: 'Conversation' });
+    expect(log).toBe(screen.getByTestId('chat-transcript'));
+    expect(log).toHaveAttribute('aria-live', 'off');
+    const status = screen.getByTestId('reply-status');
+    expect(status).toHaveAttribute('role', 'status');
+    // A transcript that arrived whole: nothing happened while it was open.
+    expect(status).toHaveTextContent(/^$/);
+
+    const turn = hangs();
+    transport.next = turn.run;
+    fireEvent.change(askBox(), { target: { value: 'two' } });
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    await settle();
+    expect(status).toHaveTextContent(/^AI is replying…$/);
+    // The dots are for the eye only; the line above says it.
+    expect(screen.getByTestId('reply-dots')).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByTestId('reply-dots').querySelector('span')).toHaveClass('motion-reduce:animate-none');
+    await act(async () => {
+      turn.release('B');
+      await flush();
+    });
+    expect(status).toHaveTextContent(/^Reply finished\.$/);
+
+    transport.next = hangs('Half').run;
+    fireEvent.change(askBox(), { target: { value: 'three' } });
+    fireEvent.keyDown(askBox(), { key: 'Enter' });
+    await settle();
+    fireEvent.click(screen.getByTestId('chat-stop'));
+    await settle();
+    expect(status).toHaveTextContent(/^Stopped\.$/);
+  });
+
+  it('draws a reply’s lists, links and code with its own rules (no typography plugin here)', async () => {
+    expect(REPLY_PROSE).not.toMatch(/(^|\s)prose(-|\s|$)/);
+    for (const rule of ['[&_ul]:list-disc', '[&_ol]:list-decimal', '[&_ul]:pl-5', '[&_ol]:pl-5', '[&_a]:underline', '[&_pre]:overflow-x-auto']) {
+      expect(REPLY_PROSE.split(' ')).toContain(rule);
+    }
+    await openSaved(
+      ROW,
+      stored(
+        { id: 'm1', role: 'user', content: 'List?' },
+        { id: 'm2', role: 'assistant', content: '- Groceries\n- Laundry\n\n1. First\n2. Second', replyTo: 'm1' }
+      )
+    );
+    const reply = screen.getByText('Groceries').closest('[data-message-role="assistant"]') as HTMLElement;
+    const prose = reply.querySelector('ul')?.parentElement as HTMLElement;
+    expect(prose.className).toBe(REPLY_PROSE);
+    expect(within(prose).getAllByRole('listitem')).toHaveLength(4);
+    expect(prose.querySelector('ol')).not.toBeNull();
+  });
+
+  describe('Load earlier', () => {
+    const PAGE = stored(
+      { id: 'm3', role: 'user', content: 'three', pos: 2 },
+      { id: 'm4', role: 'assistant', content: 'D', replyTo: 'm3', pos: 3 }
+    );
+    const EARLIER = stored({ id: 'm1', role: 'user', content: 'one', pos: 0 }, { id: 'm2', role: 'assistant', content: 'B', replyTo: 'm1', pos: 1 });
+
+    async function openPaged(earlier: () => ReturnType<NonNullable<FakeApi['answer']['thread']>>) {
+      api.rows.set(ROW.id, ROW);
+      api.answer.thread = (_id, o) =>
+        o?.before != null ? earlier() : { ok: true, value: { conversation: ROW, messages: PAGE, hasEarlier: true } };
+      hold(ROW);
+      push({ kind: 'conversation', id: ROW.id });
+      renderRail();
+      await settle();
+    }
+
+    it('stays focusable while its page is on its way, then hands focus to the transcript as it goes', async () => {
+      let land: () => void = () => {};
+      await openPaged(
+        () => new Promise((r) => (land = () => r({ ok: true, value: { conversation: ROW, messages: EARLIER, hasEarlier: false } })))
+      );
+      const button = screen.getByTestId('chat-load-earlier');
+      act(() => button.focus());
+      fireEvent.click(button);
+      // Busy, not disabled: a disabled button drops focus to <body>.
+      expect(button).toHaveAttribute('aria-disabled', 'true');
+      expect(button).not.toBeDisabled();
+      expect(document.activeElement).toBe(button);
+      fireEvent.click(button);
+      expect(api.api.thread).toHaveBeenCalledTimes(2);
+
+      await act(async () => {
+        land();
+        await flush();
+      });
+      expect(screen.queryByTestId('chat-load-earlier')).toBeNull();
+      expect(screen.getByText('one')).toBeInTheDocument();
+      expect(document.activeElement).toBe(screen.getByTestId('chat-transcript'));
+    });
+
+    it('keeps the message being read where it sat, whatever grew meanwhile', async () => {
+      await openPaged(() => ({ ok: true, value: { conversation: ROW, messages: EARLIER, hasEarlier: false } }));
+      const scroller = screen.getByTestId('chat-transcript');
+      const realRect = HTMLElement.prototype.getBoundingClientRect;
+      // The scroller's box starts at 100. "three" sits 50px into it, and the
+      // landed page pushes it 300px further down.
+      HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+        let top: number | null = null;
+        if (this === scroller) top = 100;
+        else if (this.dataset.messageId === 'm3') top = document.querySelector('[data-message-id="m1"]') ? 450 : 150;
+        return top === null ? realRect.call(this) : ({ top, bottom: top, left: 0, right: 0, width: 0, height: 0, x: 0, y: top } as DOMRect);
+      };
+      try {
+        scroller.scrollTop = 40;
+        fireEvent.click(screen.getByTestId('chat-load-earlier'));
+        await settle();
+        expect(screen.getByText('one')).toBeInTheDocument();
+        expect(scroller.scrollTop).toBe(340);
+      } finally {
+        HTMLElement.prototype.getBoundingClientRect = realRect;
+      }
+    });
   });
 
   describe('Jump to latest', () => {
@@ -809,6 +1339,48 @@ describe('the transcript', () => {
       expect(scroller.scrollTop).toBe(1400);
       expect(screen.queryByTestId('chat-jump-latest')).toBeNull();
     });
+
+    it('hands focus to the box as it goes, and its smooth ride down does not bring it back', async () => {
+      await openSaved(ROW, stored({ id: 'm1', role: 'user', content: 'one' }, { id: 'm2', role: 'assistant', content: 'A', replyTo: 'm1' }));
+      const scroller = screen.getByTestId('chat-transcript');
+      measure(scroller, { scrollHeight: 1000, clientHeight: 300 });
+      scroller.scrollTop = 100;
+      fireEvent.scroll(scroller);
+      const scrollTo = vi.fn();
+      scroller.scrollTo = scrollTo as never;
+      const pill = screen.getByTestId('chat-jump-latest');
+      act(() => pill.focus());
+      fireEvent.click(pill);
+      expect(scrollTo).toHaveBeenCalledWith({ top: 1000, behavior: 'smooth' });
+      expect(screen.queryByTestId('chat-jump-latest')).toBeNull();
+      expect(document.activeElement).toBe(askBox());
+
+      // On the way down, still far from the bottom: no pill.
+      scroller.scrollTop = 300;
+      fireEvent.scroll(scroller);
+      expect(screen.queryByTestId('chat-jump-latest')).toBeNull();
+      scroller.scrollTop = 700;
+      fireEvent.scroll(scroller);
+      // Arrived: the next scroll up is the reader's own.
+      scroller.scrollTop = 100;
+      fireEvent.scroll(scroller);
+      expect(screen.getByTestId('chat-jump-latest')).toBeInTheDocument();
+    });
+
+    it('a ride cut short (the reader took the scroll) ends at scrollend', async () => {
+      await openSaved(ROW, stored({ id: 'm1', role: 'user', content: 'one' }, { id: 'm2', role: 'assistant', content: 'A', replyTo: 'm1' }));
+      const scroller = screen.getByTestId('chat-transcript');
+      measure(scroller, { scrollHeight: 1000, clientHeight: 300 });
+      scroller.scrollTop = 100;
+      fireEvent.scroll(scroller);
+      scroller.scrollTo = vi.fn() as never;
+      fireEvent.click(screen.getByTestId('chat-jump-latest'));
+      scroller.scrollTop = 200;
+      fireEvent.scroll(scroller);
+      expect(screen.queryByTestId('chat-jump-latest')).toBeNull();
+      act(() => void scroller.dispatchEvent(new Event('scrollend')));
+      expect(screen.getByTestId('chat-jump-latest')).toBeInTheDocument();
+    });
   });
 });
 
@@ -862,6 +1434,22 @@ describe('a new chat', () => {
     expect(askBox().selectionStart).toBe('Help me start '.length);
     expect(transport.inputs).toEqual([]);
     expect(api.turns).toEqual([]);
+  });
+
+  it('"Help me start…" keeps what was already typed, after the start of the sentence', async () => {
+    renderRail();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await timers();
+    fireEvent.change(askBox(), { target: { value: '  with the move' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Help me start…' }));
+    await timers();
+    expect(askBox()).toHaveValue('Help me start with the move');
+    // Tapped again: the start is already there, and is not said twice.
+    fireEvent.click(screen.getByRole('button', { name: 'Help me start…' }));
+    await timers();
+    expect(askBox()).toHaveValue('Help me start with the move');
+    expect(document.activeElement).toBe(askBox());
+    expect(transport.inputs).toEqual([]);
   });
 
   it('keeps the same box, focused, through the first send', async () => {

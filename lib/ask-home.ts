@@ -218,6 +218,8 @@ export type ActivityRow =
       conversationId: string
       /** The item it is about, or null for a general conversation. */
       itemId: string | null
+      /** Its item is done today (☑, as History draws it); false for a general one. */
+      done: boolean
       title: string
       /** Its last message; the row shows it as a clock time. */
       at: number
@@ -298,6 +300,7 @@ export function activityRows(input: {
       kind: 'conversation',
       conversationId: c.id,
       itemId: c.itemId,
+      done: !!item && isDoneOn(item, input.todayStr),
       title: item?.title.trim() || c.title,
       at,
     })

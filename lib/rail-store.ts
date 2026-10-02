@@ -68,9 +68,20 @@ export function railMode(i: {
   return 'hidden';
 }
 
+/**
+ * What History was showing when something was pushed over it: its search and
+ * how far down its list was scrolled, so Back finds it as it was (the view
+ * host remounts per view). Kept on History's own entry, so a fresh push of
+ * History starts clean and leaving it forgets it.
+ */
+export interface HistoryMemo {
+  q: string;
+  scrollTop: number;
+}
+
 /** A view pushed over Ask home. `[]` is home. */
 export type AskView =
-  | { kind: 'history'; returnFocus?: string }
+  | { kind: 'history'; returnFocus?: string; memo?: HistoryMemo }
   /** `returnTo`: asked with "?" over an item; Back re-opens that item if it still exists. */
   | { kind: 'conversation'; id: string; returnTo?: { itemId: string }; returnFocus?: string }
   /** Phone only: on desktop the item is ui-store's slot. */
@@ -168,6 +179,8 @@ interface RailState {
   popToHome(surface: AskSurface): void;
   /** Drop a deleted conversation from both stacks (the views beneath show). */
   leaveConversation(id: string): void;
+  /** Keep History's search and scroll on its entry, if it is still on the stack (it unmounted under a push). */
+  rememberHistory(surface: AskSurface, memo: HistoryMemo): void;
   /** The item-conflict rebind: a draft turned out to be the item's existing conversation. */
   rebindConversation(from: string, to: string): void;
   requestFocus(req: FocusRequest): void;
@@ -296,6 +309,21 @@ export const useRailStore = create<RailState>()((set, get) => {
       const next = { desktop: drop(stacks.desktop), phone: drop(stacks.phone) };
       if (next.desktop.length === stacks.desktop.length && next.phone.length === stacks.phone.length) return;
       setStacks(next, 'back');
+    },
+
+    rememberHistory: (surface, memo) => {
+      const { stacks } = get();
+      const at = stacks[surface].findIndex((v) => v.kind === 'history');
+      if (at < 0) return;
+      const entry = stacks[surface][at] as Extract<AskView, { kind: 'history' }>;
+      // Nothing to keep: a fresh History looks the same.
+      const empty = !memo.q && memo.scrollTop <= 0;
+      if (empty && !entry.memo) return;
+      const next = stacks[surface].slice();
+      const bare: AskView = entry.returnFocus ? { kind: 'history', returnFocus: entry.returnFocus } : { kind: 'history' };
+      next[at] = empty ? bare : { ...bare, memo };
+      // Not a move: no slide, and no conversation left (setStacks' card rule).
+      set({ stacks: { ...stacks, [surface]: next } });
     },
 
     rebindConversation: (from, to) => {

@@ -100,6 +100,14 @@ export interface ConfirmRequest {
    */
   testId?: string;
   onConfirm: () => void;
+  /**
+   * Where focus goes when the confirm closes and the control that opened it
+   * is gone (a confirmed delete took it). Run by ConfirmDialog at the real
+   * close, after the exit animation, which is the first moment focus is
+   * actually lost: anything run on a timer from `onConfirm` finds it still on
+   * the closing dialog's button. Without it, focus falls to <body>.
+   */
+  fallbackFocus?: () => void;
 }
 
 interface UIStore {

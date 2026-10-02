@@ -59,11 +59,16 @@ export function useBackLabel(view: AskView | null, beneath: AskView | undefined)
  *    its title names the CURRENT binding for that ("Close (Ctrl+J)", "⌘J" on a
  *    Mac), never a hard-coded key.
  *  - The heading is a real heading that takes focus on request (tabIndex -1),
- *    which is where focus goes when a push removes what held it.
+ *    which is where focus goes when a push removes what held it. It is ONE
+ *    element whatever it holds: `heading` replaces only its contents, for a
+ *    view whose title is a control (a saved conversation's ⌄ menu), so a
+ *    conversation found deleted elsewhere, whose ⌄ goes, keeps the focused
+ *    heading rather than dropping focus to <body> with it.
+ *  - The back control keeps its words: it never shrinks, up to 45% of the row
+ *    (a long item title as the label truncates there), and a long title
+ *    truncates instead. Without a heading (the item view) it takes the row.
  *  - At Ask home the ground is the relay field, waking while any conversation
  *    streams (it was the old chat panel's; layouts with the relay off hide it).
- *  - `heading` replaces the plain title for a view whose title is a control
- *    (a saved conversation's ⌄ menu); it renders its own `data-ask-heading`.
  *  - `actions` sit before ✕: History and "+" in Ask's views.
  *  - `data-sub-input`: the item panel's Enter-to-submit covers its whole
  *    aside, and this row is inside it.
@@ -90,6 +95,7 @@ export function RailHeader({
   const keys = useShortcutKeys('toggle_right_sidebar');
   const isMac = useMemo(() => isApplePlatform(), []);
   const streaming = useConversationsStore((s) => Object.values(s.threads).some((t) => t.streaming));
+  const titled = !!heading || !!title;
 
   return (
     <div
@@ -116,24 +122,30 @@ export function RailHeader({
             onClick={back.onBack}
             data-testid="rail-back"
             aria-label={`Back to ${back.label}`}
-            className="-ml-1.5 flex min-w-0 items-center gap-0.5 rounded-md py-1 pr-2 pl-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            className={cn(
+              '-ml-1.5 flex items-center gap-0.5 rounded-md py-1 pr-2 pl-0.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
+              titled ? 'max-w-[45%] shrink-0' : 'min-w-0'
+            )}
           >
             <ChevronLeft className="size-4 shrink-0" aria-hidden />
             <span className="truncate">{back.label}</span>
           </button>
         )}
-        {heading ??
-          (title && (
-            <h2
-              tabIndex={-1}
-              data-ask-heading=""
-              className="flex min-w-0 items-center gap-1.5 truncate text-sm font-medium text-foreground outline-none"
-            >
-              {home && <Sparkles className="size-4 shrink-0 text-ai" aria-hidden />}
-              <span className="truncate">{title}</span>
-            </h2>
-          ))}
-        {actions && <div className="ml-auto flex shrink-0 items-center gap-0.5">{actions}</div>}
+        {titled && (
+          <h2
+            tabIndex={-1}
+            data-ask-heading=""
+            className="flex min-w-0 flex-1 items-center gap-1.5 text-sm font-medium text-foreground outline-none"
+          >
+            {heading ?? (
+              <>
+                {home && <Sparkles className="size-4 shrink-0 text-ai" aria-hidden />}
+                <span className="truncate">{title}</span>
+              </>
+            )}
+          </h2>
+        )}
+        {actions && <div className={cn('flex shrink-0 items-center gap-0.5', !titled && 'ml-auto')}>{actions}</div>}
         <button
           type="button"
           onClick={onClose}
@@ -142,7 +154,7 @@ export function RailHeader({
           title={`Close (${chordLabel(keys, isMac)})`}
           className={cn(
             'flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
-            !actions && 'ml-auto'
+            !actions && !titled && 'ml-auto'
           )}
         >
           <X className="size-4" aria-hidden />

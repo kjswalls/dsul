@@ -4,7 +4,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BandLabel } from '@/components/planner/item-bands';
-import { TranscriptMessages } from '@/components/ai/chat-transcript';
+import { ReplyStatus, TranscriptMessages } from '@/components/ai/chat-transcript';
 import { ItemConversationMenu } from '@/components/ai/ask/conversation-title-menu';
 import {
   resolveConversationId,
@@ -14,7 +14,6 @@ import {
 } from '@/lib/conversations-store';
 import { sendFrom } from '@/lib/open-chat';
 import { useRailStore } from '@/lib/rail-store';
-import { chatErrorCopy } from '@/lib/chat-errors';
 import { itemChatPlaceholder } from '@/lib/chat-utils';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import type { Item } from '@/lib/planner-types';
@@ -67,11 +66,11 @@ function railBodyOf(el: HTMLElement | null): HTMLElement | null {
  * Every shape returns null when nothing can answer: a conversation nobody can
  * answer in is a field that sends nowhere.
  *
- * In the rail (pinned, transcript) the messages are Ask's own
- * (components/ai/chat-transcript.tsx: your bubble, plain replies, Copy, the
- * status lines), and once the conversation is saved its heading has a ⌄: Star,
- * and Delete conversation… (no Rename: its title is the item's). Deleted here
- * or elsewhere, the item stays, and its next send starts a fresh conversation;
+ * Every shape shows Ask's own messages (components/ai/chat-transcript.tsx:
+ * your bubble, plain replies, Copy, the status lines; D9's one transcript),
+ * and once the conversation is saved its heading has a ⌄: Star, and Delete
+ * conversation… (no Rename: its title is the item's). Deleted here or
+ * elsewhere, the item stays, and its next send starts a fresh conversation;
  * one found deleted elsewhere stays on screen under a notice until then.
  *
  * OPENED FOR ITS CONVERSATION. An item opened from a History or activity row
@@ -102,6 +101,7 @@ export function ItemConversation({
   const { canChat, target } = useAICapabilities();
   const [draft, setDraft] = useState('');
   const listRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const prevCount = useRef(0);
   const inline = mode === 'inline';
 
@@ -170,6 +170,7 @@ export function ItemConversation({
         </div>
         {gone && <GoneNotice />}
         <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} />
+        <ReplyStatus messages={messages} />
       </div>
     );
   }
@@ -178,17 +179,21 @@ export function ItemConversation({
 
   return (
     <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
-      <BandLabel>Thread</BandLabel>
+      <div className="flex min-h-6 items-center justify-between gap-2">
+        <BandLabel>Conversation</BandLabel>
+        {/* A delete takes this ⌄ with it, and the box below stays: focus goes there. */}
+        {saved && threadId && <ItemConversationMenu id={threadId} fallbackFocus={() => inputRef.current?.focus()} />}
+      </div>
       {gone && <GoneNotice />}
       {messages.length > 0 && (
-        <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
-          {messages.map((m, i) => (
-            <MessageRow key={m.id} m={m} next={messages[i + 1]} />
-          ))}
+        <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-3 overflow-y-auto pr-1">
+          <TranscriptMessages messages={messages} typing={isTyping} busy={isLoading} />
         </div>
       )}
+      <ReplyStatus messages={messages} />
       <div className="border-input flex items-center gap-1.5 rounded-md border px-2 py-1">
         <input
+          ref={inputRef}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           placeholder={placeholder}
@@ -222,38 +227,5 @@ function GoneNotice() {
     <p role="status" data-testid="conversation-gone" className="text-xs text-muted-foreground">
       This conversation was deleted.
     </p>
-  );
-}
-
-/**
- * One message, inline: the compact tinted pair the inline thread always had.
- * "Not saved" shows once per turn: under its reply, or under the question when
- * no reply came.
- */
-function MessageRow({ m, next }: { m: ChatMessage; next: ChatMessage | undefined }) {
-  const notSaved = m.sync === 'unsaved' && !(next?.sync === 'unsaved' && next.replyTo === m.id);
-  const mine = m.role === 'user';
-  return (
-    <div className={cn('flex max-w-[92%] flex-col gap-0.5', mine ? 'self-end items-end' : 'self-start')}>
-      <div
-        className={cn(
-          'whitespace-pre-wrap rounded-md px-2.5 py-1.5 text-xs leading-relaxed',
-          mine ? 'bg-secondary text-foreground' : 'bg-warning/10 text-foreground'
-        )}
-      >
-        {m.content || (m.status === 'streaming' ? '…' : '')}
-        {/* A failed reply's words are ours, by its code (lib/chat-errors.ts). */}
-        {m.status === 'error' && (
-          <span data-testid="chat-error-note" className={cn('block text-muted-foreground', m.content && 'mt-1')}>
-            {chatErrorCopy(m.errorCode, m.answerer)}
-          </span>
-        )}
-      </div>
-      {notSaved && (
-        <span data-testid="chat-not-saved" className="text-muted-foreground text-[10px]">
-          Not saved
-        </span>
-      )}
-    </div>
   );
 }

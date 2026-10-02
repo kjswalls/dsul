@@ -311,6 +311,16 @@ function openFromRow(name: 'a' | 'b', item: TaskItem = DENTIST) {
   openRow(item);
 }
 
+/** Conversations as History's first page brings them, fresh: Ask home and History list these. */
+function listConversations(...rows: ReturnType<typeof summary>[]) {
+  act(() =>
+    useConversationsStore.setState((s) => ({
+      summaries: { ...s.summaries, ...Object.fromEntries(rows.map((r) => [r.id, r])) },
+      list: { ...s.list, ids: rows.map((r) => r.id), status: 'loaded', fetchedAt: Date.now() },
+    }))
+  );
+}
+
 /** A conversation's saved title, as History's first page would bring it. */
 function nameConversation(id: string, title: string) {
   act(() =>
@@ -1427,9 +1437,9 @@ describe('Ask home in the column', () => {
     await timers();
     expect(itemOpen()).toBe(true);
     expect(within(dialog()).getByDisplayValue('Pick a plumber')).toBeInTheDocument();
-    // Ask went hidden under the item, taking the title with it: a browser
-    // drops focus to <body> then, and jsdom does not.
-    (document.activeElement as HTMLElement).blur();
+    // Ask went hidden under the item, taking the title with it (a browser
+    // drops focus to <body> then, and jsdom does not): the item takes it.
+    expect(document.activeElement).toBe(dialog());
 
     leave();
     await timers();
@@ -1441,15 +1451,12 @@ describe('Ask home in the column', () => {
     renderShell();
     await timers();
     const at = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
-    act(() =>
-      useConversationsStore.setState((s) => ({
-        summaries: { ...s.summaries, c9: summary({ id: 'c9', itemId: 't1', title: 'dentist', lastMessageAt: at }) },
-      }))
-    );
+    listConversations(summary({ id: 'c9', itemId: 't1', title: 'dentist', lastMessageAt: at }));
     const row = (askView() as HTMLElement).querySelector('[data-ask-focus="conv:c9"]') as HTMLElement;
     expect(row).toHaveTextContent('Book the dentist');
     const reveals: unknown[] = [];
     const unsubscribe = useRailStore.subscribe((s) => void reveals.push(s.pendingReveal));
+    row.focus();
     fireEvent.click(row);
     await timers();
     unsubscribe();
@@ -1462,6 +1469,115 @@ describe('Ask home in the column', () => {
     expect(useRailStore.getState().pendingReveal).toBeNull();
     // An item, not a push over Ask: Back from it shows Ask home.
     expect(useRailStore.getState().stacks.desktop).toEqual([]);
+    // Opened by keyboard: the item has focus, not <body> under a hidden Ask.
+    expect(document.activeElement).toBe(dialog());
+
+    const back = within(dialog()).getByTestId('rail-back');
+    back.focus();
+    fireEvent.click(back);
+    await timers();
+    expect(itemOpen()).toBe(false);
+    expect(document.activeElement).toBe(row);
+  });
+
+  it('opens an item from a History row by keyboard, and Back hands focus to that row', async () => {
+    const at = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+    const general = summary({ id: 'c1', title: 'Plan my day', lastMessageAt: at });
+    const api = fakeApi();
+    api.answer.thread = (id) => (id === 'c1' ? { ok: true, value: { conversation: general, messages: [], hasEarlier: false } } : undefined);
+    configureConversations({ api: api.api, transport: transport.transport });
+    renderShell();
+    await timers();
+    listConversations(summary({ id: 'c9', itemId: 't1', title: 'dentist', lastMessageAt: at }), general);
+    push({ kind: 'history', returnFocus: 'history' });
+    await timers();
+    const historyRow = (id: string) =>
+      (askView() as HTMLElement).querySelector<HTMLElement>(`[data-testid="history-row"][data-ask-focus="conv:${id}"]`) as HTMLElement;
+
+    historyRow('c9').focus();
+    fireEvent.click(historyRow('c9'));
+    await timers();
+    expect(itemOpen()).toBe(true);
+    expect(document.activeElement).toBe(dialog());
+    pressEscapeHere();
+    await timers();
+    expect(itemOpen()).toBe(false);
+    expect(document.activeElement).toBe(historyRow('c9'));
+
+    // A general conversation pushes over History, and Back comes to its row.
+    historyRow('c1').focus();
+    fireEvent.click(historyRow('c1'));
+    await timers();
+    expect(useRailStore.getState().stacks.desktop.at(-1)).toMatchObject({ kind: 'conversation', id: 'c1' });
+    fireEvent.click(within(askView() as HTMLElement).getByTestId('rail-back'));
+    await timers();
+    expect(document.activeElement).toBe(historyRow('c1'));
+  });
+
+  it("scrolls the rail body, and only it, to the item's Conversation when opened for it", async () => {
+    const at = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+    act(() =>
+      useConversationsStore.setState((s) => ({
+        threads: {
+          ...s.threads,
+          c9: {
+            id: 'c9',
+            itemId: 't1',
+            draftTitle: null,
+            saved: true,
+            load: 'loaded',
+            hasEarlier: false,
+            streaming: false,
+            typing: false,
+            fetchedAt: Date.now(),
+            messages: [0, 1].map((i) => ({
+              id: `c9-${i}`,
+              role: i % 2 ? 'assistant' : 'user',
+              content: `turn ${i}`,
+              status: 'complete',
+              errorCode: null,
+              replyTo: null,
+              answerer: 'model',
+              model: null,
+              createdAt: Date.now(),
+              pos: i,
+              sync: 'saved',
+            })),
+          },
+        } as never,
+        itemIndex: { ...s.itemIndex, t1: 'c9' },
+      }))
+    );
+    const writes: number[] = [];
+    const proto = HTMLElement.prototype as unknown as Record<string, unknown>;
+    const realRect = HTMLElement.prototype.getBoundingClientRect;
+    // The section sits 600px down the rail body's box.
+    HTMLElement.prototype.getBoundingClientRect = function (this: HTMLElement) {
+      const top = this.dataset.testid === 'item-conversation' ? 640 : this.hasAttribute('data-rail-body') ? 40 : null;
+      return top === null ? realRect.call(this) : ({ top, bottom: top, left: 0, right: 0, height: 0, width: 0, x: 0, y: top } as DOMRect);
+    };
+    Object.defineProperty(proto, 'scrollTop', {
+      configurable: true,
+      get: () => 0,
+      set(this: HTMLElement, v: number) {
+        if (this.hasAttribute('data-rail-body')) writes.push(v);
+      },
+    });
+    try {
+      renderShell();
+      await timers();
+      listConversations(summary({ id: 'c9', itemId: 't1', title: 'dentist', lastMessageAt: at }));
+      push({ kind: 'history' });
+      await timers();
+      fireEvent.click((askView() as HTMLElement).querySelector('[data-testid="history-row"]') as HTMLElement);
+      await timers();
+      expect(itemOpen()).toBe(true);
+      expect(within(dialog()).getByTestId('item-conversation')).toBeInTheDocument();
+      expect(writes).toEqual([600]);
+    } finally {
+      HTMLElement.prototype.getBoundingClientRect = realRect;
+      delete proto.scrollTop;
+    }
   });
 
   it('keeps an overlay up on Escape in a Needs-you answer with text: the field takes the press', async () => {
@@ -1531,5 +1647,20 @@ describe('<RailHeader/>', () => {
     expect(onBack).toHaveBeenCalledTimes(1);
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(screen.getByRole('heading', { name: 'Trip plans' })).toBeInTheDocument();
+  });
+
+  it('keeps the back label whole beside a long title, which truncates instead', () => {
+    // A flex row shrinks both in proportion, and "‹ History" read "‹ H…".
+    render(<RailHeader back={{ label: 'History', onBack: () => {} }} title={'Plan my day '.repeat(5)} onClose={() => {}} />);
+    expect(screen.getByTestId('rail-back')).toHaveClass('shrink-0', 'max-w-[45%]');
+    expect(screen.getByTestId('rail-back')).not.toHaveClass('min-w-0');
+    expect(screen.getByRole('heading')).toHaveClass('min-w-0', 'flex-1');
+  });
+
+  it('with no heading (the item view), lets the label take the row', () => {
+    render(<RailHeader back={{ label: 'Plan my day around the dentist', onBack: () => {} }} onClose={() => {}} />);
+    expect(screen.getByTestId('rail-back')).toHaveClass('min-w-0');
+    expect(screen.getByTestId('rail-back')).not.toHaveClass('shrink-0');
+    expect(screen.getByTestId('rail-close')).toHaveClass('ml-auto');
   });
 });

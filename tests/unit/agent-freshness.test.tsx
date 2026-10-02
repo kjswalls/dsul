@@ -66,6 +66,7 @@ import {
 import * as db from '@/lib/db';
 import type { AgentStateRow } from '@/lib/db';
 import type { Item, TaskItem } from '@/lib/planner-types';
+import { needsYou } from '@/lib/ask-home';
 
 const USER = 'user-1';
 const T0 = '2026-10-02T09:00:00.000Z';
@@ -207,6 +208,20 @@ describe('refreshAgentFreshness', () => {
     expect(db.fetchAgentStates).toHaveBeenCalledTimes(1);
     await refreshAgentFreshness(T + AGENT_FRESHNESS_MS);
     expect(db.fetchAgentStates).toHaveBeenCalledTimes(2);
+  });
+
+  it('takes an undelegation made on another device: the item leaves Needs you', async () => {
+    vi.mocked(db.fetchAgentStates).mockResolvedValue([row()]);
+    await refreshAgentFreshness(T);
+    expect(needsYou(store().items).map((i) => i.id)).toEqual(['run']);
+
+    // The Remove button's write, read back: no agent, no status, a newer stamp.
+    const T2 = '2026-10-02T10:00:00.000Z';
+    vi.mocked(db.fetchAgentStates).mockResolvedValue([row({ assignee: null, aiStatus: null, aiResult: null, aiStatusAt: T2 })]);
+    await refreshAgentFreshness(T + AGENT_FRESHNESS_MS);
+    expect(byId('run').assignee).toBeUndefined();
+    expect(byId('run').aiStatus).toBeUndefined();
+    expect(needsYou(store().items)).toEqual([]);
   });
 
   it('asks the conversation list to refresh when stale, every time', async () => {

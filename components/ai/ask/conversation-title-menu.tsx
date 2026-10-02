@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { useConversationsStore } from '@/lib/conversations-store';
+import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { CHAT_LIMITS } from '@/lib/conversation-types';
 import { useUIStore } from '@/lib/ui-store';
 
@@ -27,8 +27,8 @@ import { useUIStore } from '@/lib/ui-store';
 
 export const CONVERSATION_COPY = Object.freeze({
   renameFailed: "Couldn't rename that conversation.",
+  /** D9's one string, for Star and Unstar alike. */
   starFailed: "Couldn't star that conversation.",
-  unstarFailed: "Couldn't unstar that conversation.",
   deleteFailed: "Couldn't delete that conversation.",
   deleteTitle: 'Delete this conversation?',
   deleteDescription: "It's removed from all your devices. Changes it made to your planner stay. This can't be undone.",
@@ -48,20 +48,6 @@ export function deleteDescription(o: { item: boolean; openclawSeen: boolean }): 
   return o.openclawSeen ? base + CONVERSATION_COPY.openclawCopy : base;
 }
 
-/**
- * Focus somewhere sensible after a delete, if nothing has it: the control that
- * opened the confirm went with the conversation. Run after the confirm's own
- * close has handed focus back (a Radix timer of its own, so two hops).
- */
-function whenFocusLost(fallback: () => void): void {
-  setTimeout(() => {
-    setTimeout(() => {
-      const active = document.activeElement;
-      if (!active || active === document.body || !active.isConnected) fallback();
-    }, 0);
-  }, 0);
-}
-
 /** The first Ask heading on screen: the view a delete fell back to. */
 function focusShownHeading(): void {
   const headings = Array.from(document.querySelectorAll<HTMLElement>('[data-ask-heading]'));
@@ -69,17 +55,35 @@ function focusShownHeading(): void {
 }
 
 /**
+ * Whether OpenClaw ever answered in a conversation, as this browser knows it:
+ * the server's `openclawSeen`, or an OpenClaw reply held here whose save is
+ * still on its way, waiting for a retry, or never landed (OpenClaw has the
+ * words all the same). The server's own rule, over the same messages.
+ */
+function openclawSeenIn(id: string): boolean {
+  const s = useConversationsStore.getState();
+  const rid = resolveConversationId(id);
+  if (s.summaries[rid]?.openclawSeen) return true;
+  return !!s.threads[rid]?.messages.some((m) => m.role === 'assistant' && m.answerer === 'openclaw');
+}
+
+/**
  * Ask before deleting a conversation, then delete it (optimistic: the view
  * showing it goes at once, rail-store's leaveConversation, and comes back with
  * a toast if the server refuses). `item`: an item's conversation, from the
  * item's own section; the item stays, and its next send starts afresh.
+ *
+ * The control that opened the confirm goes with the conversation, so the
+ * confirm is told where focus goes instead (`fallbackFocus`, which
+ * ConfirmDialog runs once its exit animation is over): the heading of the
+ * view beneath, or the item, whose Conversation section went; a caller that
+ * knows better (the inline section, whose box stays) says so.
  */
-export function confirmDeleteConversation(id: string, o: { item?: boolean } = {}): void {
-  const summary = useConversationsStore.getState().summaries[id];
+export function confirmDeleteConversation(id: string, o: { item?: boolean; fallbackFocus?: () => void } = {}): void {
   const item = !!o.item;
   useUIStore.getState().confirm({
     title: item ? CONVERSATION_COPY.deleteItemTitle : CONVERSATION_COPY.deleteTitle,
-    description: deleteDescription({ item, openclawSeen: !!summary?.openclawSeen }),
+    description: deleteDescription({ item, openclawSeen: openclawSeenIn(id) }),
     confirmLabel: 'Delete',
     destructive: true,
     testId: item ? 'item-conversation-delete-confirm' : 'conversation-delete-confirm',
@@ -90,8 +94,8 @@ export function confirmDeleteConversation(id: string, o: { item?: boolean } = {}
         .then((ok) => {
           if (!ok) toast.error(CONVERSATION_COPY.deleteFailed);
         });
-      whenFocusLost(item ? () => useUIStore.getState().focusItemPanel() : focusShownHeading);
     },
+    fallbackFocus: o.fallbackFocus ?? (item ? () => useUIStore.getState().focusItemPanel() : focusShownHeading),
   });
 }
 
@@ -122,12 +126,13 @@ function useActionAfterClose(triggerRef: RefObject<HTMLButtonElement | null>) {
 
 async function toggleStar(id: string, starred: boolean): Promise<void> {
   const ok = await useConversationsStore.getState().setStarred(id, starred);
-  if (!ok) toast.error(starred ? CONVERSATION_COPY.starFailed : CONVERSATION_COPY.unstarFailed);
+  if (!ok) toast.error(CONVERSATION_COPY.starFailed);
 }
 
 /**
- * The title of a saved conversation, as Ask's header shows it: a heading
- * whose text is the ⌄ menu's trigger (the title names it; the menu is
+ * The title of a saved conversation, as Ask's header shows it, inside the
+ * header's own heading (RailHeader's: one element whatever it holds): the
+ * title is the ⌄ menu's trigger (the title names it; the menu is
  * "Conversation options" to a screen reader too). Rename turns the title into
  * a field in place: Enter or leaving it saves the trimmed text, an empty one
  * cancels, and Escape cancels without also going back a view (it is consumed).
@@ -155,44 +160,42 @@ export function ConversationTitleMenu({ id, title }: { id: string; title: string
   }
 
   return (
-    <h2 tabIndex={-1} data-ask-heading="" className="flex min-w-0 items-center outline-none">
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            ref={triggerRef}
-            type="button"
-            data-testid="conversation-title-menu"
-            className="-ml-1.5 flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent"
-          >
-            <span className="truncate">{title}</span>
-            <span className="sr-only">, conversation options</span>
-            <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="start" className="w-48" onCloseAutoFocus={menu.onCloseAutoFocus}>
-          <DropdownMenuItem
-            data-testid="conversation-rename"
-            onSelect={() => menu.after(() => setRenaming(true), { keepFocus: false })}
-          >
-            <Pencil aria-hidden />
-            Rename
-          </DropdownMenuItem>
-          <DropdownMenuItem data-testid="conversation-star" onSelect={() => void toggleStar(id, !starred)}>
-            <Star aria-hidden />
-            {starred ? 'Unstar' : 'Star'}
-          </DropdownMenuItem>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            variant="destructive"
-            data-testid="conversation-delete"
-            onSelect={() => menu.after(() => confirmDeleteConversation(id))}
-          >
-            <Trash2 aria-hidden />
-            Delete…
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </h2>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          ref={triggerRef}
+          type="button"
+          data-testid="conversation-title-menu"
+          className="-ml-1.5 flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-sm font-medium text-foreground transition-colors hover:bg-accent"
+        >
+          <span className="truncate">{title}</span>
+          <span className="sr-only">, conversation options</span>
+          <ChevronDown className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="start" className="w-48" onCloseAutoFocus={menu.onCloseAutoFocus}>
+        <DropdownMenuItem
+          data-testid="conversation-rename"
+          onSelect={() => menu.after(() => setRenaming(true), { keepFocus: false })}
+        >
+          <Pencil aria-hidden />
+          Rename
+        </DropdownMenuItem>
+        <DropdownMenuItem data-testid="conversation-star" onSelect={() => void toggleStar(id, !starred)}>
+          <Star aria-hidden />
+          {starred ? 'Unstar' : 'Star'}
+        </DropdownMenuItem>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem
+          variant="destructive"
+          data-testid="conversation-delete"
+          onSelect={() => menu.after(() => confirmDeleteConversation(id))}
+        >
+          <Trash2 aria-hidden />
+          Delete…
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
@@ -252,9 +255,10 @@ function RenameField({ id, title, onDone }: { id: string; title: string; onDone:
 /**
  * The ⌄ on an item's Conversation section: Star, and Delete conversation… The
  * item stays either way; deleting its conversation means its next send starts
- * a fresh one (the store's itemIndex goes to null).
+ * a fresh one (the store's itemIndex goes to null). `fallbackFocus`: where
+ * focus goes once a delete has taken this ⌄ with it (default: the item panel).
  */
-export function ItemConversationMenu({ id }: { id: string }) {
+export function ItemConversationMenu({ id, fallbackFocus }: { id: string; fallbackFocus?: () => void }) {
   const starred = useConversationsStore((s) => !!s.summaries[id]?.starred);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menu = useActionAfterClose(triggerRef);
@@ -281,7 +285,7 @@ export function ItemConversationMenu({ id }: { id: string }) {
         <DropdownMenuItem
           variant="destructive"
           data-testid="item-conversation-delete"
-          onSelect={() => menu.after(() => confirmDeleteConversation(id, { item: true }))}
+          onSelect={() => menu.after(() => confirmDeleteConversation(id, { item: true, fallbackFocus }))}
         >
           <Trash2 aria-hidden />
           Delete conversation…

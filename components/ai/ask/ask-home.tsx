@@ -50,6 +50,7 @@ const HOME: ComposerBinding = { kind: 'home' };
 export function AskHome() {
   const items = usePlannerStore((s) => s.items);
   const summaries = useConversationsStore((s) => s.summaries);
+  const list = useConversationsStore((s) => s.list);
   const eodEnabled = useEODStore((s) => s.eodReviewEnabled);
   const eodTime = useEODStore((s) => s.eodReviewTime);
   const awake = useContext(ComposerAwakeContext);
@@ -74,17 +75,24 @@ export function AskHome() {
 
   const waiting = useMemo(() => needsYou(items), [items]);
 
+  // The conversations History lists, not every summary ever cached: one
+  // deleted on another device leaves both at the same refresh. Today's are
+  // always on the first page, and a save here places its own at once.
+  const conversations = useMemo(
+    () => [...new Set([...list.starredIds, ...list.ids])].flatMap((id) => (summaries[id] ? [summaries[id]] : [])),
+    [list, summaries]
+  );
   const activity = useMemo(
     () =>
       now === null || todayStr === null
         ? []
-        : activityRows({ items, conversations: Object.values(summaries), now, todayStr, userTimezone: tz }),
-    [items, summaries, now, todayStr, tz]
+        : activityRows({ items, conversations, now, todayStr, userTimezone: tz }),
+    [items, conversations, now, todayStr, tz]
   );
 
   return (
     <div data-ask-home="" className="flex min-h-0 flex-1 flex-col">
-      <div className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pt-1 pb-3">
+      <div data-ask-scroller="" className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-5 pt-1 pb-3">
         <ProposalCard surface="chat" />
         <div className="flex flex-col gap-0.5">
           <AskGreeting variant="home" />

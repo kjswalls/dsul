@@ -65,16 +65,19 @@ export function addChanges(a: ConversationChanges, b: Partial<ConversationChange
 
 const items = (n: number) => (n === 1 ? '1 item' : `${n} items`);
 
-/**
- * The non-zero counters, joined with " · ", in a fixed order: moved, added,
- * steps, changed. Null when nothing changed.
- */
-export function changePhrase(c: ConversationChanges): string | null {
+/** The non-zero counters, one phrase each, in a fixed order: moved, added, steps, changed. */
+export function changeParts(c: ConversationChanges): string[] {
   const parts: string[] = [];
   if (c.moved > 0) parts.push(`Moved ${items(c.moved)}`);
   if (c.added > 0) parts.push(`Added ${items(c.added)}`);
   if (c.steps > 0) parts.push(c.steps === 1 ? 'Added a step' : `Broke it into ${c.steps} steps`);
   if (c.changed > 0) parts.push(`Changed ${items(c.changed)}`);
+  return parts;
+}
+
+/** `changeParts` joined with " · ". Null when nothing changed. */
+export function changePhrase(c: ConversationChanges): string | null {
+  const parts = changeParts(c);
   return parts.length > 0 ? parts.join(' · ') : null;
 }
 
@@ -91,7 +94,7 @@ const lowerFirst = (s: string) => s.charAt(0).toLowerCase() + s.slice(1);
  *
  *   item conversation, item live, delegated and blocked   "With OpenClaw · waiting on you"
  *   …same, queued or working                               "With OpenClaw · working on it"
- *   item conversation, item live                           "Item conversation · moved 1 item" / "· no changes"
+ *   item conversation, item live                           "Item conversation · moved 1 item · added a step" / "· no changes"
  *   item conversation, item gone                           "Item conversation · item deleted"
  *   general, with changes                                  "Moved 3 items · Added 1 item"
  *   general, none                                          "No changes"
@@ -112,7 +115,10 @@ export function historySecondLine(
     if (item.aiStatus === 'blocked') return `With ${who} · waiting on you`;
     if (item.aiStatus === 'queued' || item.aiStatus === 'working') return `With ${who} · working on it`;
   }
-  return `Item conversation · ${phrase ? lowerFirst(phrase) : 'no changes'}`;
+  // Each phrase lowered, not just the first: after "Item conversation ·" the
+  // whole line reads as one clause ("moved 1 item · added a step").
+  const parts = changeParts(summary.changes);
+  return `Item conversation · ${parts.length > 0 ? parts.map(lowerFirst).join(' · ') : 'no changes'}`;
 }
 
 // ── History's groups and times ───────────────────────────────────────────────

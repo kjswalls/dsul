@@ -135,6 +135,29 @@ describe('dayLoad', () => {
     expect(loadLine(load)).toBe('8 things today · 2 done.');
   });
 
+  it('counts a skipped day as neither open nor done (D13: skipped and cancelled excluded)', () => {
+    const items = [
+      task('open'),
+      task('done', { status: 'completed' }),
+      task('skippedTask', { repeatFrequency: 'daily', startDate: '2026-09-01', skippedDates: [TODAY] }),
+      {
+        type: 'habit',
+        id: 'skippedHabit',
+        title: 'Stretch',
+        streak: 2,
+        status: 'pending',
+        completedDates: [],
+        skippedDates: [TODAY],
+        dailyCounts: {},
+        repeatFrequency: 'daily',
+      } as unknown as Item,
+    ];
+    expect(dayLoad(ctx(items), at)).toMatchObject({ open: 1, done: 1 });
+    // Not skipped, the same two count.
+    const kept = items.map((i) => ({ ...i, skippedDates: [] }) as Item);
+    expect(dayLoad(ctx(kept), at)).toMatchObject({ open: 3, done: 1 });
+  });
+
   it('sums durations only when at least half the open items carry one', () => {
     const half = [task('a', { duration: 30 }), task('b', { duration: 30 }), task('c'), task('d')];
     expect(dayLoad(ctx(half), at).plannedMin).toBe(60);
@@ -344,6 +367,24 @@ describe('activityRows', () => {
     ]);
     const general = got[1];
     expect(general.kind === 'conversation' && general.itemId).toBeNull();
+  });
+
+  it("says whether an item conversation's item is done today, for its ☑, as History draws it", () => {
+    const got = rows(
+      [task('open', { title: 'Open one' }), task('done', { title: 'Done one', status: 'completed' })],
+      [
+        convo('cOpen', { itemId: 'open', lastMessageAt: ago(MIN) }),
+        convo('cDone', { itemId: 'done', lastMessageAt: ago(2 * MIN) }),
+        convo('cGone', { itemId: 'deleted', lastMessageAt: ago(3 * MIN) }),
+        convo('cGeneral', { lastMessageAt: ago(4 * MIN) }),
+      ]
+    );
+    expect(got.map((r) => r.kind === 'conversation' && [r.conversationId, r.done])).toEqual([
+      ['cOpen', false],
+      ['cDone', true],
+      ['cGone', false],
+      ['cGeneral', false],
+    ]);
   });
 
   it('decides "today" in the user’s timezone', () => {

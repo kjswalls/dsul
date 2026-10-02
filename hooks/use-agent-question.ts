@@ -7,6 +7,9 @@ import { pickOpenQuestionOptions } from '@/lib/agent-question';
 /** Shared empty list, so a render with no options allocates nothing. */
 const NO_OPTIONS: string[] = [];
 
+/** How long `ready` waits on the trail before a surface stops waiting for it. */
+export const READY_AFTER_MS = 1500;
+
 /**
  * The tappable answers to an agent's question on `item`, if it offered any for
  * the question on screen (lib/agent-question.ts `pickOpenQuestionOptions`).
@@ -28,9 +31,16 @@ const NO_OPTIONS: string[] = [];
  * `clear()` withdraws them once answered, so nobody replies twice; the status
  * flip usually unmounts the surface anyway, but that is the caller's
  * behaviour, and nothing here leans on it.
+ *
+ * `ready`: the answer for THIS question is in (options or none, a failed fetch
+ * counting as none), or there is no trail to ask, or it has taken longer than
+ * READY_AFTER_MS. A surface that puts a free-text field where no options came
+ * waits for it, or every card would paint the field and then swap it for the
+ * chips once the trail answered, taking a caret already in the field with it.
  */
 export function useAgentQuestion(item: { id: string; aiResult?: string }): {
   options: string[];
+  ready: boolean;
   clear: () => void;
 } {
   const optionsKey = `${item.id}\u0000${(item.aiResult ?? '').trim()}`;
@@ -38,24 +48,32 @@ export function useAgentQuestion(item: { id: string; aiResult?: string }): {
     key: '',
     options: NO_OPTIONS,
   }));
+  const [lateKey, setLateKey] = useState('');
   const options = fetched.key === optionsKey ? fetched.options : NO_OPTIONS;
+  const available = getItemEventsAvailable();
+  const ready = !available || fetched.key === optionsKey || lateKey === optionsKey;
 
   useEffect(() => {
     let cancelled = false;
     if (!getItemEventsAvailable()) return;
 
+    // A trail that never answers must not leave the question unanswerable.
+    const late = setTimeout(() => setLateKey(optionsKey), READY_AFTER_MS);
     fetchItemEvents(item.id)
       .then((events) => {
         if (cancelled) return;
         setFetched({ key: optionsKey, options: pickOpenQuestionOptions(events, item.aiResult) });
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!cancelled) setFetched({ key: optionsKey, options: NO_OPTIONS });
+      });
 
     return () => {
       cancelled = true;
+      clearTimeout(late);
     };
   }, [item.id, item.aiResult, optionsKey]);
 
   const clear = useCallback(() => setFetched({ key: '', options: NO_OPTIONS }), []);
-  return { options, clear };
+  return { options, ready, clear };
 }

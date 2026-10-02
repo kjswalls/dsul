@@ -17,7 +17,7 @@ import {
 import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
 import { usePlannerStore } from './planner-store';
 import { useViewStore } from './view-store';
-import type { Task } from './planner-types';
+import type { Item, Task } from './planner-types';
 
 export { bindingKey, type ComposerBinding } from './rail-store';
 
@@ -164,6 +164,28 @@ export function useChatCardHomeShown(surface: AskSurface): boolean {
 // ── Opening what Ask holds ───────────────────────────────────────────────────
 
 /**
+ * An item opened from inside Ask (a Needs-you title, an activity row, an
+ * item's conversation from History or an activity row): `openEditFor`, and
+ * when focus was Ask's, the item takes it. Ask goes hidden and inert under
+ * the item with the control that opened it, which would leave focus on
+ * <body> and send the next Tab to the top of the document (rail-store's
+ * `back` does the same for an item reopened by Back).
+ *
+ * The hand-off waits a tick: ItemDialog notes the control that opened it in
+ * the open's own commit, and its return on close (Back, Escape) hands focus
+ * back there; the panel focused in the same commit would be noted instead,
+ * and the return would land nowhere.
+ */
+export function openItemFromAsk(item: Item): void {
+  const handBack = focusIsInRail();
+  openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
+  if (!handBack) return;
+  setTimeout(() => {
+    if (focusIsInRail()) useUIStore.getState().focusItemPanel();
+  }, 0);
+}
+
+/**
  * Show Ask from a command (the palette), with whatever was on top of it closed
  * through the one flushing close, so the view about to be pushed is the one on
  * screen. False when nothing can answer.
@@ -242,11 +264,13 @@ export function openConversation(id: string, isMobile: boolean, o: { returnFocus
   const item = itemId ? usePlannerStore.getState().items.find((i) => i.id === itemId) : undefined;
 
   if (item) {
-    if (!isMobile) {
-      leaveZen();
-      useRailStore.getState().setPendingReveal(item.id);
+    if (isMobile) {
+      openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
+      return;
     }
-    openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
+    leaveZen();
+    useRailStore.getState().setPendingReveal(item.id);
+    openItemFromAsk(item);
     return;
   }
 

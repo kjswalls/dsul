@@ -45,6 +45,20 @@ function ownsEscape(el: HTMLElement): boolean {
  */
 type ConversationHeader = 'saved' | 'unsaved' | 'new';
 
+/**
+ * A control Back handed focus to, kept in sight inside its own scroller
+ * (History's list, Ask home's): only that box scrolls, never
+ * `scrollIntoView`, which would move every ancestor, <main> included.
+ */
+function keepInView(el: HTMLElement): void {
+  const box = el.closest<HTMLElement>('[data-ask-scroller]');
+  if (!box) return;
+  const r = el.getBoundingClientRect();
+  const b = box.getBoundingClientRect();
+  if (r.top < b.top) box.scrollTop -= b.top - r.top;
+  else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
+}
+
 const back = () => useRailStore.getState().back('desktop');
 const close = () => useRailStore.getState().closeRail();
 
@@ -153,6 +167,8 @@ export function RightRail({
           )
         : undefined;
       (opener ?? root.querySelector<HTMLElement>('[data-ask-heading]'))?.focus({ preventScroll: true });
+      // History puts its list back where it was first; this is the backstop.
+      if (opener) keepInView(opener);
     }, 0);
   }, [viewKey, top, visible]);
 

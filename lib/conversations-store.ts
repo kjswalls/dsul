@@ -250,12 +250,21 @@ const swallowed = new Map<string, SaveJob[]>();
 const parked = new Map<string, { replyId: string; reply: ChatMessage | null; job: SaveJob }>();
 let listInflight: Promise<void> | null = null;
 /**
- * Conversations whose summary changed here while a list page was on its way:
- * the page was read before, so their own place in the list wins over it.
+ * A later page on its way (loadMore). Its own marker, not `list.status`: the
+ * first page is never re-read under it (a send, a refresh), which would move
+ * the boundary the page's cursor was cut at.
  */
-let touchedDuringList: Set<string> | null = null;
+let moreInflight: Promise<void> | null = null;
+/** Bumped by every first page that lands: a later page asked for before it is from another list. */
+let listEpoch = 0;
+/**
+ * Conversations whose summary changed here while a list page was on its way,
+ * one set per page in flight: the page was read before, so their own copy and
+ * place in the list win over it.
+ */
+const touchedDuringList = new Set<Set<string>>();
 const touch = (id: string) => {
-  touchedDuringList?.add(id);
+  for (const touched of touchedDuringList) touched.add(id);
 };
 const resolving = new Map<string, Promise<string>>();
 const opening = new Map<string, Promise<void>>();
@@ -293,6 +302,7 @@ export async function conversationsSettled(): Promise<void> {
   for (let i = 0; i < 50; i++) {
     const pending = [...chains.values(), ...opening.values(), ...resolving.values()];
     if (listInflight) pending.push(listInflight);
+    if (moreInflight) pending.push(moreInflight);
     if (pending.length === 0) return;
     await Promise.all(pending.map((p) => p.catch(() => {})));
     await Promise.resolve();
@@ -391,6 +401,36 @@ function placeInList(
   if (summary.starred) insert(starredIds, true);
   else insert(ids, list.cursor === null);
   return { ...list, ids, starredIds };
+}
+
+/**
+ * The first page, read again over a list that had loaded further (a refresh
+ * after History was scrolled): the page's rows, then every row already loaded
+ * past the page's last one, under the deeper cursor, so the pages below are
+ * not lost from under the reader (or from under the row Back hands focus to).
+ * A row inside the page's range that the page no longer holds was deleted or
+ * moved elsewhere, and goes. The order is the server's keyset, newest first
+ * by (lastMessageAt, id): `recency`. A page with no cursor is the whole list.
+ */
+function refreshedPage(
+  prev: Pick<ConversationListState, 'ids' | 'cursor'>,
+  page: readonly ConversationSummary[],
+  nextCursor: string | null,
+  summaries: Record<string, ConversationSummary>
+): { ids: string[]; cursor: string | null } {
+  const ids = page.map((c) => c.id).filter((id) => !removed.has(id));
+  const last = page.at(-1);
+  if (nextCursor === null || !last) return { ids, cursor: nextCursor };
+  const onPage = new Set(page.map((c) => c.id));
+  const below = prev.ids.filter(
+    (id) => !onPage.has(id) && !removed.has(id) && !!summaries[id] && recency(last, summaries[id]) < 0
+  );
+  return below.length > 0 ? { ids: [...ids, ...below], cursor: prev.cursor } : { ids, cursor: nextCursor };
+}
+
+/** This browser's copy of a conversation is newer than a page's (a turn saved here since the page was read). */
+function newerHere(local: ConversationSummary | undefined, row: ConversationSummary): boolean {
+  return !!local && Date.parse(local.lastMessageAt) > Date.parse(row.lastMessageAt);
 }
 
 function withSummaries(
@@ -521,6 +561,14 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
   /**
    * A conversation deleted elsewhere (404 on a save or an open). Its waiting
    * turns would land nowhere, or bring it back with `create`: "Not saved", now.
+   *
+   * The thread keeps the name it was shown under (D9: the view keeps what is
+   * in memory). The summary goes, and for a conversation opened from History
+   * it was the only place the title lived, so the header would fall back to
+   * "New chat", or to the first message under a rename. Kept as `draftTitle`,
+   * which is safe on a gone thread: nothing saves one (fire and the pagehide
+   * flush refuse it), and an item's next send never reuses it
+   * (resolveItemThread skips gone drafts).
    */
   const markGone = (id: string) => {
     const rest = queue.filter((q) => resolveId(q.threadId) === id);
@@ -532,8 +580,9 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const itemId = t?.itemId ?? s.summaries[id]?.itemId ?? null;
       const summaries = { ...s.summaries };
       delete summaries[id];
+      const draftTitle = s.summaries[id]?.title ?? t?.draftTitle ?? null;
       return {
-        threads: t ? { ...s.threads, [id]: { ...t, load: 'gone', saved: false } } : s.threads,
+        threads: t ? { ...s.threads, [id]: { ...t, load: 'gone', saved: false, draftTitle } } : s.threads,
         summaries,
         list: { ...s.list, ids: s.list.ids.filter((x) => x !== id), starredIds: s.list.starredIds.filter((x) => x !== id) },
         itemIndex: itemId ? { ...s.itemIndex, [itemId]: null } : s.itemIndex,
@@ -802,10 +851,13 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       if (get().saving === 'off' || !get().ownerId) return Promise.resolve();
       if (get().list.status === 'loaded') return Promise.resolve();
       if (listInflight) return listInflight;
+      // A later page on its way means the list is loaded; the first page read
+      // now would move the boundary that page was cut at.
+      if (moreInflight) return moreInflight;
       const st = stamp();
       set((s) => ({ list: { ...s.list, status: 'loading' } }));
       const touched = new Set<string>();
-      touchedDuringList = touched;
+      touchedDuringList.add(touched);
       const p = (async () => {
         try {
           const res = await deps.api.list();
@@ -816,12 +868,13 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
             return;
           }
           const { conversations, starred = [], nextCursor } = res.value;
+          listEpoch += 1;
           set((s) => {
             const next = withSummaries(s, [...starred, ...conversations]);
             let list: ConversationListState = {
-              ids: conversations.map((c) => c.id).filter((id) => !removed.has(id)),
+              // Over pages already loaded (a refresh), they stay below this one.
+              ...refreshedPage(s.list, conversations, nextCursor, next.summaries),
               starredIds: starred.map((c) => c.id).filter((id) => !removed.has(id)),
-              cursor: nextCursor,
               status: 'loaded',
               fetchedAt: Date.now(),
             };
@@ -839,7 +892,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         } catch {
           if (!isStale(st)) set((s) => ({ list: { ...s.list, status: 'error' } }));
         } finally {
-          if (touchedDuringList === touched) touchedDuringList = null;
+          touchedDuringList.delete(touched);
         }
       })();
       const tracked = p.finally(() => {
@@ -851,7 +904,9 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
 
     refreshIfStale: (maxAgeMs = 60_000) => {
       const s = get();
-      if (s.saving === 'off' || listInflight) return;
+      // Never under a later page on its way: that page's cursor was cut at
+      // the boundary a re-read first page would move.
+      if (s.saving === 'off' || listInflight || moreInflight) return;
       if (s.list.status !== 'loaded') {
         void get().ensureLoaded();
         return;
@@ -859,43 +914,78 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       if (Date.now() - s.list.fetchedAt < maxAgeMs) return;
       // The first page again, quietly: the rows stay up while it loads.
       set((x) => ({ list: { ...x.list, status: 'idle' } }));
-      const before = s.list;
       void get().ensureLoaded().then(() => {
-        if (get().list.status === 'error') set({ list: { ...before } });
+        // A failed refresh puts back only the status: the rows are the ones
+        // on screen NOW, a conversation saved while it was out included.
+        // `fetchedAt` stays old, so the next focus or mount tries again.
+        if (get().list.status === 'error') set((x) => ({ list: { ...x.list, status: 'loaded' } }));
       });
     },
 
-    loadMore: async () => {
+    loadMore: () => {
       get().ensureOwner();
       const s = get();
       // 'error' with a cursor is a later page that failed: History's "Try
       // again" asks for it once more. (A first page that failed has no cursor;
       // ensureLoaded is its retry.)
-      if (s.saving === 'off' || !s.list.cursor) return;
-      if (s.list.status !== 'loaded' && s.list.status !== 'error') return;
+      if (s.saving === 'off' || !s.list.cursor) return Promise.resolve();
+      if (moreInflight) return moreInflight;
+      if (s.list.status !== 'loaded' && s.list.status !== 'error') return Promise.resolve();
       const st = stamp();
       const cursor = s.list.cursor;
+      const epoch = listEpoch;
       set((x) => ({ list: { ...x.list, status: 'loading' } }));
-      const res = await deps.api.list({ cursor });
-      if (isStale(st)) return;
-      if (!res.ok) {
-        if (res.error === 'unavailable') latchOff();
-        set((x) => ({ list: { ...x.list, status: 'error' } }));
-        return;
-      }
-      set((x) => {
-        const seen = new Set([...x.list.ids, ...x.list.starredIds]);
-        const fresh = res.value.conversations.filter((c) => !seen.has(c.id) && !removed.has(c.id));
-        return {
-          ...withSummaries(x, res.value.conversations),
-          list: {
-            ...x.list,
-            ids: [...x.list.ids, ...fresh.map((c) => c.id)],
-            cursor: res.value.nextCursor,
-            status: 'loaded',
-          },
-        };
+      const touched = new Set<string>();
+      touchedDuringList.add(touched);
+      const p = (async () => {
+        try {
+          const res = await deps.api.list({ cursor });
+          if (isStale(st)) return;
+          // A first page landed meanwhile (or another page moved the
+          // cursor): this one was cut from a list that is no longer the one
+          // on screen, and appending it could skip rows for good.
+          if (epoch !== listEpoch || get().list.cursor !== cursor) {
+            if (get().list.status === 'loading') set((x) => ({ list: { ...x.list, status: 'loaded' } }));
+            return;
+          }
+          if (!res.ok) {
+            if (res.error === 'unavailable') latchOff();
+            set((x) => ({ list: { ...x.list, status: 'error' } }));
+            return;
+          }
+          set((x) => {
+            const seen = new Set([...x.list.ids, ...x.list.starredIds]);
+            const fresh = res.value.conversations.filter((c) => !seen.has(c.id) && !removed.has(c.id));
+            // Only the rows this page adds, and of those, not one this browser
+            // holds a newer copy of (a turn saved here, a star, a rename, while
+            // the page was on its way): that copy stays, and goes where it
+            // belongs. A row already listed was placed by a newer read.
+            const held = (c: ConversationSummary) => touched.has(c.id) || newerHere(x.summaries[c.id], c);
+            const taken = fresh.filter((c) => !held(c));
+            const next = withSummaries(x, taken);
+            let list: ConversationListState = {
+              ...x.list,
+              ids: [...x.list.ids, ...taken.map((c) => c.id)],
+              cursor: res.value.nextCursor,
+              status: 'loaded',
+            };
+            for (const c of fresh) {
+              const local = next.summaries[c.id];
+              if (held(c) && local) list = placeInList(list, next.summaries, local);
+            }
+            return { ...next, list };
+          });
+        } catch {
+          if (!isStale(st)) set((x) => ({ list: { ...x.list, status: 'error' } }));
+        } finally {
+          touchedDuringList.delete(touched);
+        }
+      })();
+      const tracked = p.finally(() => {
+        if (moreInflight === tracked) moreInflight = null;
       });
+      moreInflight = tracked;
+      return tracked;
     },
 
     openThread: (rawId) => {
@@ -925,8 +1015,15 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
           const { conversation, messages, hasEarlier } = res.value;
           set((x) => {
             const cur = x.threads[id] ?? blankThread(id, { itemId: conversation.itemId, saved: true });
+            // A turn saved here since the read began is newer than the read;
+            // a conversation continued on another device moves up the list.
+            const local = x.summaries[id];
+            const keep = newerHere(local, conversation);
+            const next = keep ? { summaries: x.summaries, itemIndex: x.itemIndex } : withSummaries(x, [conversation]);
+            const moved = !keep && !!local && local.lastMessageAt !== conversation.lastMessageAt;
             return {
-              ...withSummaries(x, [conversation]),
+              ...next,
+              list: moved ? placeInList(x.list, next.summaries, conversation) : x.list,
               threads: {
                 ...x.threads,
                 [id]: {
@@ -1191,7 +1288,13 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       if (isStale(st)) return false;
       touch(id);
       if (res.ok) {
-        if (!removed.has(id)) set((s) => ({ summaries: { ...s.summaries, [id]: res.value } }));
+        // Only what this PATCH changed, onto the copy held NOW: a save or a
+        // tally answered meanwhile owns the count, the time and the changes,
+        // and the PATCH's row may have been read before either landed.
+        const { title: saved, renamed } = res.value;
+        set((s) =>
+          !removed.has(id) && s.summaries[id] ? { summaries: { ...s.summaries, [id]: { ...s.summaries[id], title: saved, renamed } } } : s
+        );
         return true;
       }
       if (res.error === 'unavailable') latchOff();
@@ -1217,7 +1320,9 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const res = await deps.api.patch(id, { starred });
       if (isStale(st)) return false;
       if (res.ok) {
-        if (!removed.has(id)) apply(res.value);
+        // The star alone, onto the copy held now (rename's rule).
+        const now = get().summaries[id];
+        if (!removed.has(id) && now) apply({ ...now, starred: res.value.starred });
         return true;
       }
       if (res.error === 'unavailable') latchOff();
@@ -1491,7 +1596,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       resolving.clear();
       opening.clear();
       listInflight = null;
-      touchedDuringList = null;
+      moreInflight = null;
+      touchedDuringList.clear();
       set((s) => ({
         ownerId: null,
         generation: s.generation + 1,

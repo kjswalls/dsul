@@ -3,6 +3,7 @@ import type { ProposalOperation } from '@/lib/planner-types';
 import {
   NO_CHANGES,
   addChanges,
+  changeParts,
   changePhrase,
   groupHistory,
   hasChanges,
@@ -83,6 +84,12 @@ describe('changePhrase', () => {
     expect(changePhrase({ added: 0, steps: 4, moved: 1, changed: 2 })).toBe('Moved 1 item · Broke it into 4 steps · Changed 2 items');
     expect(changePhrase(NO_CHANGES)).toBeNull();
   });
+
+  it('is changeParts joined, which a line can case for itself', () => {
+    const c = { added: 0, steps: 4, moved: 1, changed: 2 };
+    expect(changeParts(c)).toEqual(['Moved 1 item', 'Broke it into 4 steps', 'Changed 2 items']);
+    expect(changeParts(NO_CHANGES)).toEqual([]);
+  });
 });
 
 describe('historySecondLine (D9)', () => {
@@ -105,6 +112,16 @@ describe('historySecondLine (D9)', () => {
   it('item conversation, item live: its changes, or none', () => {
     expect(historySecondLine(forItem({ ...NO_CHANGES, moved: 1 }), {})).toBe('Item conversation · moved 1 item');
     expect(historySecondLine(forItem(), { assignee: 'openclaw', aiStatus: 'done' })).toBe('Item conversation · no changes');
+  });
+
+  it('item conversation with several changes: one clause, every phrase in lower case', () => {
+    // Only the first was lowered: "Item conversation · moved 1 item · Added a step".
+    expect(historySecondLine(forItem({ added: 2, steps: 1, moved: 1, changed: 3 }), {})).toBe(
+      'Item conversation · moved 1 item · added 2 items · added a step · changed 3 items'
+    );
+    expect(historySecondLine(forItem({ ...NO_CHANGES, steps: 4, changed: 1 }), {})).toBe(
+      'Item conversation · broke it into 4 steps · changed 1 item'
+    );
   });
 
   it('item conversation, item gone', () => {
