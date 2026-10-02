@@ -187,14 +187,18 @@ struct PressScaleStyle: ButtonStyle {
 }
 
 /// A row's press: a soft fill behind the label, which itself never fades.
+/// The fill reaches `verticalBleed` past the label above and below; a label
+/// already as tall as its row takes 0, so the fill stays in the row.
 struct RowPressStyle: ButtonStyle {
+    var verticalBleed: CGFloat = 3
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .background {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .fill(Color(.systemFill))
                     .padding(.horizontal, -6)
-                    .padding(.vertical, -3)
+                    .padding(.vertical, -verticalBleed)
                     .opacity(configuration.isPressed ? 1 : 0)
             }
     }

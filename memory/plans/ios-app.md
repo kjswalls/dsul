@@ -128,8 +128,8 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   Thu, Oct 8") when it holds a verb that acts on that day (the tick, Skip,
   Unskip); a bar of Pause, Pause until or Resume alone gets none. When the
   title's circle ticks that day and the bar doesn't hold the tick (a habit,
-  or a bar given way to Resume), a line under the title names the day
-  instead. On a day a recurring item doesn't fall on (`occurrenceOn` is
+  or a bar given way to Resume), a line under the title names the day too
+  (over a habit's Skip or Unskip, the caption and the line both show). On a day a recurring item doesn't fall on (`occurrenceOn` is
   `absent`) a "Not due" line takes the bar's place. Today lists only what
   falls on its day, so in practice that is a Search result on one of the
   item's days off, and the line reads "Not due today"; off today it would

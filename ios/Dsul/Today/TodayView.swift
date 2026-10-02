@@ -20,11 +20,18 @@ struct TodayView: View {
             // itself, and at its medium detent this copy would show too.
             .overlay(alignment: .top) {
                 if let banner = planner.banner, !planner.isShowingItemSheet {
-                    BannerView(banner: banner) {
-                        planner.dismissBanner(banner.id)
+                    // As tall as the screen, so the move (which travels the
+                    // view's own height) carries the banner off the top,
+                    // never parking it in the bar's band, which draws no
+                    // background. The spacer draws nothing and takes no taps.
+                    VStack(spacing: 0) {
+                        BannerView(banner: banner) {
+                            planner.dismissBanner(banner.id)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
                     // A move alone: an opacity transition would fade the
                     // lime check through the banner's own opacity.
                     .transition(.move(edge: .top))

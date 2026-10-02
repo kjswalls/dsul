@@ -63,11 +63,19 @@ struct ItemDetail: View {
         // server refused says so over the sheet the verb was tapped in.
         .overlay(alignment: .top) {
             if let banner = planner.banner {
-                BannerView(banner: banner) {
-                    planner.dismissBanner(banner.id)
+                // As tall as the sheet, so the move (which travels the view's
+                // own height) carries the banner past the top, never parking
+                // it under the bar. The spacer draws nothing and takes no taps.
+                VStack(spacing: 0) {
+                    BannerView(banner: banner) {
+                        planner.dismissBanner(banner.id)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 4)
+                    Spacer(minLength: 0)
                 }
-                .padding(.horizontal, 16)
-                .padding(.top, 4)
+                // A move alone: an opacity transition would fade the lime
+                // check through the banner's own opacity.
                 .transition(.move(edge: .top))
             }
         }
@@ -162,7 +170,8 @@ struct ItemDetail: View {
     /// title, never over it, so its left edge lines up with the eyebrow's.
     /// Beside the title, a counted habit's tally ("1/3"), which the circle's
     /// label already speaks; under it, the day the circle ticks when that
-    /// isn't today and the bar's caption doesn't say so.
+    /// isn't today and the bar doesn't hold the tick
+    /// (`ItemSheetModel.titleDayNote`).
     private func titleRow(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID], bar: [SheetVerb]) -> some View {
         let hit = max(44, circle + 22)
         let inset = (hit - circle) / 2
@@ -306,14 +315,15 @@ struct ItemDetail: View {
                         .font(.footnote.weight(.semibold))
                         .foregroundStyle(.tertiary)
                 }
-                // The hit shape overhangs a line of title by 11pt each way,
-                // the row's full 44, as Today's rows do, so a tap above or
-                // below it still opens it and the press fill stays put.
-                .padding(.vertical, 11)
+                // As tall as the row, so a tap above or below one line of
+                // title still opens it. Not an overhang, as Today's rows
+                // have: these rows are siblings in a stack, not List cells,
+                // so an overhang would take taps from the row above.
+                .frame(minHeight: 44)
                 .contentShape(Rectangle())
-                .padding(.vertical, -11)
             }
-            .buttonStyle(RowPressStyle())
+            // The label is the row's height, so the fill bleeds no further.
+            .buttonStyle(RowPressStyle(verticalBleed: 0))
         }
         .frame(minHeight: 44)
         .accessibilityElement(children: .ignore)
