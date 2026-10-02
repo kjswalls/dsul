@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from 'next'
-import { Geist, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
+import { Geist, IBM_Plex_Mono, Inter, JetBrains_Mono, Nunito, Source_Serif_4 } from 'next/font/google'
 import { Analytics } from '@vercel/analytics/next'
 import { ThemeProvider } from '@/components/theme-provider'
 import { SupabaseProvider } from '@/components/providers/supabase-provider'
@@ -28,6 +28,14 @@ const nunito = Nunito({ subsets: ['latin'], variable: '--font-nunito', preload: 
 const jetbrainsMono = JetBrains_Mono({
   subsets: ['latin'],
   variable: '--font-jetbrains-mono',
+  preload: false,
+})
+// Notepad's face (lib/layout-themes.ts, `type: 'plex'`); same terms as the theme faces.
+const plexMono = IBM_Plex_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500', '600'],
+  style: ['normal', 'italic'],
+  variable: '--font-plex-mono',
   preload: false,
 })
 
@@ -76,7 +84,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body
-        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} font-sans antialiased`}
+        className={`${inter.variable} ${sourceSerif.variable} ${geist.variable} ${nunito.variable} ${jetbrainsMono.variable} ${plexMono.variable} font-sans antialiased`}
       >
         {/* The macOS desktop app's window-drag band; 0px tall everywhere else. FIRST in
             <body>, always: see .titlebar-drag in globals.css. */}

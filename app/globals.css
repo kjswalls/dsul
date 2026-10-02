@@ -2249,8 +2249,10 @@ body {
 }
 
 /* rows: 'text' — the tick drawn as [ ] / [~] / [x]. Same button, same hit
-   area (the 16px height stays; it only widens to fit three characters). */
-[data-layout-rows='text'] [data-testid='item-complete-button'] {
+   area (the 16px height stays; it only widens to fit three characters).
+   rows: 'tasks' is the same tick as a markdown task, `- [ ]`. */
+[data-layout-rows='text'] [data-testid='item-complete-button'],
+[data-layout-rows='tasks'] [data-testid='item-complete-button'] {
   width: auto;
   min-width: 3ch;
   border-color: transparent;
@@ -2261,7 +2263,8 @@ body {
   line-height: 1;
   color: var(--muted-foreground);
 }
-[data-layout-rows='text'] [data-testid='item-complete-button'] > * {
+[data-layout-rows='text'] [data-testid='item-complete-button'] > *,
+[data-layout-rows='tasks'] [data-testid='item-complete-button'] > * {
   display: none;
 }
 [data-layout-rows='text'] [data-testid='item-complete-button']::before {
@@ -2276,7 +2279,23 @@ body {
   content: '[x]';
   color: var(--success-text);
 }
-[data-layout-rows='text'] [data-testid='item-complete-button']:hover {
+[data-layout-rows='tasks'] [data-testid='item-complete-button'] {
+  min-width: 5ch;
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button']::before {
+  content: '- [ ]';
+  white-space: pre;
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button'][data-checked='partial']::before {
+  content: '- [~]';
+  color: var(--success-text);
+}
+[data-layout-rows='tasks'] [data-testid='item-complete-button'][data-checked='true']::before {
+  content: '- [x]';
+  color: var(--success-text);
+}
+[data-layout-rows='text'] [data-testid='item-complete-button']:hover,
+[data-layout-rows='tasks'] [data-testid='item-complete-button']:hover {
   color: var(--foreground);
 }
 
@@ -2337,8 +2356,9 @@ body {
   z-index: 1;
 }
 
-/* capture: 'page-foot' — the dock drawn as the page's last ruled line. The
-   omnibar inside is untouched: every mode, the panel and ⌘I still work. */
+/* capture: 'page-foot' — the dock drawn as the page's last ruled line (and
+   'caret', Notepad's, below, as a bare line of text). The omnibar inside is
+   untouched: every mode, the panel and ⌘I still work. */
 [data-dock-page] {
   background: transparent !important;
   box-shadow: none !important;
@@ -2349,10 +2369,12 @@ body {
   box-shadow: none !important;
   translate: none !important;
   border-radius: 0;
-  border-bottom: 1px solid var(--nb-ink);
   padding-inline: 2px;
 }
-[data-dock-page] [data-omnibar-pill] input {
+[data-dock-page='page-foot'] [data-omnibar-pill] {
+  border-bottom: 1px solid var(--nb-ink);
+}
+[data-dock-page='page-foot'] [data-omnibar-pill] input {
   font-family: var(--font-serif-display);
   font-style: italic;
   font-size: 15px;
@@ -2443,4 +2465,282 @@ body {
 }
 [data-layout-rows='ruled'] [data-testid='item-card'][data-completed='true'] p {
   text-decoration-color: var(--nb-ribbon);
+}
+
+/* ── Notepad: the sheet, plain text, its styles ─────────────────────────────
+   The braindump and the day as two documents in one sheet ([data-sheet],
+   desktop-shell's `canvas: 'sheet'`), the window's chrome around it holding
+   the day tabs and the status bar. The sheet is the theme's canvas and the
+   chrome a step darker, so Notepad wears whatever colour theme is on unless
+   its style brings its own skin. */
+:root {
+  --np-chrome: color-mix(in oklab, var(--canvas) 94%, black);
+}
+.dark {
+  --np-chrome: color-mix(in oklab, var(--canvas) 80%, black);
+}
+
+/* canvas: 'sheet' — a hairline seam between the two documents, drawn on the
+   open column's own edge (the sash's gutter stays clear). The wordmark goes:
+   the chrome above already says which app this is. */
+[data-sheet] [data-testid='sidebar-column'][data-column-state='open']::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  inset-block: 24px;
+  width: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+[data-sheet] [data-testid='sidebar-column'][data-column-state='open'] {
+  padding-inline: 22px 18px;
+}
+[data-sheet] [data-testid='sidebar-wordmark'] {
+  visibility: hidden;
+}
+
+/* capture: 'caret' — the dock's line as the end of the braindump's text: no
+   rule under it, a caret in the accent blinking where you would type. */
+[data-dock-page='caret'] [data-omnibar-pill] input {
+  caret-color: var(--success-text);
+}
+/* Only on an empty line with no command chip: anywhere else it would sit in
+   front of text it is not the end of. */
+[data-dock-page='caret'] [data-omnibar-pill]:not(:focus-within):has(> input:placeholder-shown):not(:has(> button))::before {
+  content: '';
+  flex: none;
+  width: 2px;
+  height: 1.15em;
+  margin-right: -4px;
+  border-radius: 1px;
+  background: var(--success-text);
+  animation: np-caret 1.1s steps(1) infinite;
+}
+@keyframes np-caret {
+  50% {
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  [data-dock-page='caret'] [data-omnibar-pill]::before {
+    animation: none !important;
+  }
+}
+
+/* header: 'plain' — the capsule's controls with no capsule: the date as a line
+   of text, the view row as quiet words. The braindump's title row goes plain
+   with it. Same buttons, same test ids; only the chrome goes. */
+[data-layout-header='plain'] [data-header-capsule],
+[data-layout-header='plain'] [data-header-pill],
+[data-layout-header='plain'] [data-surface-header],
+[data-layout-header='plain'] [data-surface-pill] {
+  background: transparent;
+  box-shadow: none;
+}
+[data-layout-header='plain'] [data-header-capsule] {
+  padding: 0;
+}
+[data-layout-header='plain'] [data-surface-header],
+[data-layout-header='plain'] [data-surface-pill],
+[data-layout-header='plain'] [data-testid='display-shelf-braindump'] {
+  padding-inline: 0;
+}
+[data-layout-header='plain'] [data-testid='header-date'] {
+  font-size: 15px;
+  font-weight: 600;
+}
+[data-layout-header='plain'] [data-surface-title] {
+  font-weight: 600;
+}
+
+/* buckets: 'rules' — a bucket as `── Morning ──────`, in the text's own box-
+   drawing line; 'markdown' as `## Morning`; 'caps' as a bold MORNING. No card
+   under any of them, and no glyph: a text file has none. The drag slot keeps
+   its surface, as under 'headings'. */
+[data-layout-buckets='rules'],
+[data-layout-buckets='markdown'],
+[data-layout-buckets='caps'] {
+  --bkt-card: transparent;
+  --bkt-card-now: transparent;
+  --bkt-card-shadow: 0 0 #0000;
+  --bkt-card-shadow-now: 0 0 #0000;
+}
+[data-layout-buckets='rules'] [data-bucket-glyph],
+[data-layout-buckets='markdown'] [data-bucket-glyph],
+[data-layout-buckets='caps'] [data-bucket-glyph] {
+  display: none;
+}
+[data-layout-buckets='markdown'] [data-bucket-label] {
+  font-weight: 600;
+  color: var(--foreground);
+}
+[data-layout-buckets='markdown'] [data-bucket-label]::before {
+  content: '## ';
+  color: var(--success-text);
+}
+[data-layout-buckets='rules'] [data-bucket-label] {
+  font-weight: 400;
+}
+[data-layout-buckets='rules'] [data-bucket-label]::before {
+  content: '── ';
+}
+[data-layout-buckets='rules'] [data-bucket-head] > h3 {
+  flex: 1 1 auto;
+}
+[data-layout-buckets='rules'] [data-bucket-head] > h3::after {
+  content: '';
+  flex: 1 1 auto;
+  min-width: 24px;
+  height: 1px;
+  margin-inline: 10px 6px;
+  background: var(--border);
+}
+[data-layout-buckets='caps'] [data-bucket-label] {
+  text-transform: uppercase;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--foreground);
+}
+
+/* type: one monospace face for the whole shell. --font-ui and --font-content
+   are body's, so they are redefined here, and the shell sets its own
+   font-family because what it inherits was computed at body. .font-mono and
+   code have the system stack baked in (see Terminal), so they follow too. */
+[data-layout-type='plex'] {
+  --font-ui: var(--font-plex-mono), 'IBM Plex Mono', ui-monospace, monospace;
+}
+[data-layout-type='jetbrains'] {
+  --font-ui: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
+}
+[data-layout-type='mono'] {
+  --font-ui: ui-monospace, 'Cascadia Mono', Consolas, 'SF Mono', SFMono-Regular, Menlo, monospace;
+}
+[data-layout-type='plex'],
+[data-layout-type='jetbrains'],
+[data-layout-type='mono'] {
+  --font-content: var(--font-ui);
+  --font-mono: var(--font-ui);
+  font-family: var(--font-ui);
+}
+[data-layout-type='plex'] :is(.font-mono, code, pre, kbd, samp),
+[data-layout-type='jetbrains'] :is(.font-mono, code, pre, kbd, samp),
+[data-layout-type='mono'] :is(.font-mono, code, pre, kbd, samp) {
+  font-family: var(--font-mono);
+}
+
+/* skin: 'retro' — Notepad as it first looked: white paper, light grey chrome
+   and a blue caret, and their dark twins. The semantic tokens resolve at
+   :root, so the skin restates them here rather than the paper ramp; the raw
+   lime ramp too, for the few marks that read it directly. The accent is the
+   skin's blue, the way Studio's is — it never dims either. Shell-only, like
+   every layout: menus and dialogs portal out and keep the colour theme.
+   Tokens DERIVED from those (muted, the schedule panes, the drop trays, the
+   shadows a theme re-cuts) were also resolved at :root, so the skin restates
+   each formula as well, or it would inherit the theme's finished colours. */
+[data-layout-skin='retro'] {
+  --np-chrome: #f3f3f3;
+  --canvas: #ffffff;
+  --background: #f3f3f3;
+  --surface-0: #f3f3f3;
+  --surface-1: #f3f3f3;
+  --surface-2: #ffffff;
+  --surface-3: #ebebeb;
+  --card: #ffffff;
+  --popover: #ffffff;
+  --modal: #ffffff;
+  --sidebar: #f3f3f3;
+  --foreground: #1b1b1b;
+  --card-foreground: #1b1b1b;
+  --popover-foreground: #1b1b1b;
+  --sidebar-foreground: #1b1b1b;
+  --secondary-foreground: #5f5f5f;
+  --muted-foreground: #6b6b6b;
+  --border: #e1e1e1;
+  --sidebar-border: #e1e1e1;
+  --input: #cfcfcf;
+  --accent: oklch(0.5 0.15 255 / 6%);
+  --row-selected: #cce4f7;
+  --lime-solid: #005fb8;
+  --lime-ink: #005fb8;
+  --lime-tint: #e5f0fa;
+  --primary: #005fb8;
+  --primary-foreground: #ffffff;
+  --ring: #005fb8;
+  --success: #005fb8;
+  --success-foreground: #ffffff;
+  --success-text: #005fb8;
+  --day-today: #005fb8;
+  --radius: 0.375rem;
+  /* The derived chain, re-cut from the skin's own values (formulas from :root). */
+  --muted: var(--surface-3);
+  --secondary: var(--surface-3);
+  --sidebar-accent: var(--surface-3);
+  --accent-foreground: var(--foreground);
+  --sidebar-primary: var(--lime-solid);
+  --sidebar-primary-foreground: var(--primary-foreground);
+  --sidebar-ring: var(--lime-solid);
+  --priority-low: var(--lime-solid);
+  --priority-low-foreground: var(--primary-foreground);
+  --day-on: var(--secondary-foreground);
+  --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 8%);
+  --sched-pane: color-mix(in oklab, var(--surface-2) 80%, transparent);
+  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 94%, transparent);
+  --sched-pane-selected: color-mix(in oklab, white 12%, var(--surface-2));
+  --sched-pane-done: color-mix(in oklab, var(--surface-3) 55%, transparent);
+  --sched-rail: color-mix(in oklab, var(--border) 60%, transparent);
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 45%, transparent);
+  --bkt-tray: color-mix(in oklab, var(--surface-0) 70%, var(--surface-3));
+  --bkt-tray-armed: color-mix(in oklab, var(--primary) 10%, var(--bkt-tray));
+  --bkt-block: var(--surface-2);
+  --shadow-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
+  --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
+  --shadow-elev-lg: 0 8px 24px oklch(0 0 0 / 16%), 0 4px 8px oklch(0 0 0 / 10%);
+  --shadow-elev-bar: 0 1px 2px oklch(0 0 0 / 7%), 0 4px 12px -2px oklch(0 0 0 / 10%);
+  color: var(--foreground);
+}
+.dark [data-layout-skin='retro'] {
+  --np-chrome: #202020;
+  --canvas: #272727;
+  --background: #202020;
+  --surface-0: #202020;
+  --surface-1: #202020;
+  --surface-2: #2d2d2d;
+  --surface-3: #333333;
+  --card: #2d2d2d;
+  --popover: #2d2d2d;
+  --modal: #2d2d2d;
+  --sidebar: #202020;
+  --foreground: #f2f2f2;
+  --card-foreground: #f2f2f2;
+  --popover-foreground: #f2f2f2;
+  --sidebar-foreground: #f2f2f2;
+  --secondary-foreground: #b4b4b4;
+  --muted-foreground: #9a9a9a;
+  --border: #3a3a3a;
+  --sidebar-border: #3a3a3a;
+  --input: #4a4a4a;
+  --accent: oklch(1 0 0 / 6%);
+  --row-selected: #264f78;
+  --lime-solid: #60cdff;
+  --lime-ink: #60cdff;
+  --lime-tint: #1d3a4d;
+  --primary: #60cdff;
+  --primary-foreground: #0b2433;
+  --ring: #60cdff;
+  --success: #60cdff;
+  --success-foreground: #0b2433;
+  --success-text: #60cdff;
+  --day-today: #60cdff;
+  /* The derived chain, re-cut from the dark values (formulas from .dark). */
+  --surface-2-pressed: color-mix(in oklab, var(--surface-2), var(--surface-3) 10%);
+  --sched-pane-hover: color-mix(in oklab, var(--surface-2) 92%, transparent);
+  --sched-pane-selected: color-mix(in oklab, white 10%, var(--surface-2));
+  --sched-pane-done: color-mix(in oklab, var(--surface-3) 80%, transparent);
+  --sched-rail: oklch(1 0 0 / 7%);
+  --sched-pocket: color-mix(in oklab, var(--surface-3) 70%, transparent);
+  --bkt-tray: color-mix(in oklab, var(--canvas) 40%, var(--surface-0));
+  --shadow-elev-sm: inset 0 1px 0 oklch(1 0 0 / 8%), 0 1px 2px oklch(0 0 0 / 35%), 0 4px 10px oklch(0 0 0 / 30%);
+  --shadow-elev-md: inset 0 1px 0 oklch(1 0 0 / 9%), 0 2px 4px oklch(0 0 0 / 35%), 0 8px 20px oklch(0 0 0 / 38%);
+  --shadow-elev-lg: inset 0 1px 0 oklch(1 0 0 / 10%), 0 4px 8px oklch(0 0 0 / 40%), 0 16px 40px oklch(0 0 0 / 45%);
+  --shadow-elev-bar: inset 0 1px 0 oklch(1 0 0 / 7%), 0 1px 2px oklch(0 0 0 / 40%), 0 6px 18px -4px oklch(0 0 0 / 45%);
 }

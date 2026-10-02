@@ -5,12 +5,15 @@ import { join } from 'node:path';
 import {
   DEFAULT_LAYOUT,
   LAYOUTS,
+  LAYOUT_FAMILIES,
   LAYOUT_ORNAMENTS,
   LAYOUT_SLOTS,
   LAYOUT_STORAGE_KEY,
   STYLED_SLOTS,
   isLayoutTheme,
   layoutAttributes,
+  layoutDef,
+  layoutStyles,
   type LayoutSlot,
 } from '@/lib/layout-themes';
 import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
@@ -76,6 +79,40 @@ describe('layouts — catalog', () => {
         expect(LAYOUTS.some((l) => l.slots[slot] === variant), `${slot}: ${variant}`).toBe(true);
       }
     }
+  });
+});
+
+describe('layouts — families and styles', () => {
+  it('every family names a lead that is its own family, listed before its styles', () => {
+    for (const layout of LAYOUTS) {
+      const lead = layoutDef(layout.family);
+      expect(lead.value, layout.value).toBe(layout.family);
+      expect(lead.family, layout.value).toBe(lead.value);
+      expect(LAYOUTS.indexOf(lead), layout.value).toBeLessThanOrEqual(LAYOUTS.indexOf(layout));
+    }
+    expect(LAYOUT_FAMILIES.map((l) => l.value)).toEqual(['classic', 'console', 'notebook', 'notepad']);
+  });
+
+  it('a family with styles names every one of them, and a lone layout names none', () => {
+    for (const family of LAYOUT_FAMILIES) {
+      const styles = layoutStyles(family.value);
+      if (styles.length > 1) {
+        const labels = styles.map((l) => l.styleLabel);
+        for (const label of labels) expect(label, family.value).toBeTruthy();
+        expect(new Set(labels).size, family.value).toBe(labels.length);
+      } else {
+        expect(family.styleLabel, family.value).toBeUndefined();
+      }
+    }
+    expect(layoutStyles('notepad').map((l) => l.styleLabel)).toEqual(['Quiet', 'Markdown', 'Retro']);
+  });
+
+  it('only one family has styles, because Settings lists them statically', () => {
+    // look.layoutStyle's options are every styled layout at once. A second
+    // family with styles would show its styles under the first one's Layout;
+    // give the record per-family options before adding one.
+    const styled = LAYOUT_FAMILIES.filter((f) => layoutStyles(f.value).length > 1);
+    expect(styled.map((f) => f.value)).toEqual(['notepad']);
   });
 });
 
