@@ -174,7 +174,7 @@ fails on the literal anywhere under `app/`, `lib/`, `components/` or `hooks/`, c
 included. Each user connects ONE model in Settings → AI
 ([model-connection-panel.tsx](components/settings/model-connection-panel.tsx)): OpenAI,
 Anthropic, Google Gemini, OpenRouter (PKCE sign-in or a key), or any OpenAI-compatible
-https base URL. Four rules are load-bearing:
+https base URL. Five rules are load-bearing:
 
 - **The key is write-only.** It is sealed app-side with AES-256-GCM under
   `MODEL_KEYS_ENCRYPTION_KEY` ([secret-box.ts](lib/ai-server/secret-box.ts); never
@@ -193,8 +193,27 @@ https base URL. Four rules are load-bearing:
   never persisted, and [ai-registry.ts](lib/ai-registry.ts) turns it into capabilities.
   Every AI surface asks `useAICapabilities()` / `getAICapabilities()` and hides while the
   answer is unknown or failed. Who answers in chat is a device-local choice changed only
-  through `chooseChatTarget()` ([chat-target.ts](lib/chat-target.ts)), the one path
-  allowed to wipe transcripts.
+  through `chooseChatTarget()` ([chat-target.ts](lib/chat-target.ts)). It deletes
+  nothing: it returns Ask to its home, so the next question starts a new conversation
+  with the new answerer. Nothing in the app deletes a saved conversation except the
+  user's own Delete.
+- **Conversations are saved, once per turn, by the client.**
+  [conversations-store.ts](lib/conversations-store.ts) writes each finished turn (user
+  message plus reply, or the stopped or failed reply with an error *code*) in one
+  `POST /api/ai/conversations/[id]/turns`, never per token, through the session client
+  and RLS, never the service role. `/api/chat` stays stateless; the OpenClaw plugin path
+  never reaches dsul's server, which is why the client is the writer. Error copy is never
+  stored as content and never re-sent to a model. One conversation per item is a
+  database rule (migration 057's partial unique index); a `409 conflict` rebinds the
+  client to the existing one. The gateway session key is
+  `dsul:u:<uid>:chat:<conversationId>`, built server-side from the verified user and a
+  validated UUID. Conversations are not in `/api/agent/context` or MCP. If 057 is
+  missing every conversations route answers 503 and the client latches saving off for
+  the session; chat still works, unsaved. Content is clipped to the caps (8,000 a user
+  message, 40,000 a reply) by the store before it is sent or saved, and by the route
+  again; a length is never a 400. Every queued or keepalive save carries its owner, and
+  the route refuses one whose owner is not the session user. Read the privacy statement
+  in [ai-vision.md](memory/plans/ai-vision.md) before storing anything new.
 - **The AI has no name.** The user-facing noun is "AI"; OpenClaw keeps its own name.
   `beacon` survives only in permanent ids and stored values (`/settings/beacon`, the
   `beacon.*` settings ids, the assignee value `'beacon'`, which renders as "AI"); never
@@ -204,8 +223,8 @@ https base URL. Four rules are load-bearing:
 Read [ai-vision.md](memory/plans/ai-vision.md) before touching any of it.
 
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
-sidebar, eod, morning, chat, …). `planner-store.ts` is the big one: it holds `items[]`
-with `tasks`/`habits` projections derived off it.
+sidebar, eod, morning, conversations, rail, …). `planner-store.ts` is the big one: it
+holds `items[]` with `tasks`/`habits` projections derived off it.
 
 **Layout.** `app/` is thin — one main page plus `api/` routes. The UI lives in
 `components/` (`views/`, `shell/`, `planner/`, `sidebar/`, `canvas/`, `mobile/`, `ai/`,
@@ -330,6 +349,29 @@ rather than taking the flag.
   surface that wants "may I tick / skip / carry this?" asks there rather than re-deriving.
   The right-click menus are pointer-only (long-press is drag on touch) and hold no Delete
   for containers — each Organize pane words its own delete consequence.
+- **The right rail is Ask, and an item opens on top of it.** The item is still ui-store's
+  `edit-item` slot (every reader and every `openEditFor` caller is unchanged);
+  [rail-store.ts](lib/rail-store.ts) holds only what Ask shows under it (a stack per
+  surface, with a level rule: history < conversation < item), and `railMode()` is the one
+  visibility rule. **Ask starts closed.** Whether it is open is sidebar-store v3's
+  persisted `askOpen`: every explicit open writes it (the Ask button at the end of the
+  canvas's header row, [ask-opener.tsx](components/ai/rail/ask-opener.tsx); Ctrl+J; `?` in
+  the dock), Ctrl+J or the rail's ✕ clears it, and the tour's summon never touches it
+  (`summon({persist:false})`). Someone who never chose gets `ASK_OPEN_DEFAULT` (false,
+  Kirby's call on 2026-10-02), so making Ask start open is that one constant. Anything outside
+  ItemDialog that closes the item (Ctrl+J, `?`, catch-up) goes through `closeItemPanel()`
+  in ui-store, which flushes the queued autosave and applies the selection rule; a bare
+  `closeDialog()` leaves the row selected and the save waiting out the unmount grace.
+  Ctrl+J (⌘J) is the frozen `toggle_right_sidebar` id re-defaulted. With no AI the rail is
+  exactly the old item panel, Done included; with AI the item's header is "‹ <view
+  beneath> … ✕" and has no Done. While the column is docked (Ask or an item) the
+  braindump narrows: `renderedSidebarWidth` takes the column's reserve off its ceiling so
+  the canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes that back. At ≤1180px
+  (`PANEL_OVERLAY_QUERY`) Ask is an opaque overlay that appears only when summoned and
+  parks on click-away or Escape, so it never locks the planner at boot. Every send goes
+  through `sendFrom()` in [open-chat.ts](lib/open-chat.ts), the one place that decides
+  which conversation a message lands in. The help bubble lives inside `<main>` so it can
+  never cover the rail.
 - **Design source of truth is the Figma file, not the mockup PNGs in the repo.** Pull
   specs live via the Figma MCP; the checked-in PNGs drift.
 - Some settings persist but are read by no view. That's deliberate — leave them alone
@@ -360,6 +402,7 @@ a membership role. Read it before touching `lib/goals.ts`, the goals store slice
 anything that writes an item's `startDate` in bulk: a milestone's start date is a target
 date, and the sweep and the carry verbs are excluded from it on purpose.
 [ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
-the capability gate, delegation to OpenClaw, and which earlier decisions step 1
-superseded. Read it before touching `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`,
-`app/api/chat` or the AI settings pane.
+the capability gate, delegation to OpenClaw, saved conversations and their privacy
+statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
+`lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
+right rail, or anything under `components/ai/`.

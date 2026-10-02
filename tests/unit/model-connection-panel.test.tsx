@@ -48,6 +48,8 @@ vi.mock('@/lib/settings-service', () => ({
 import { ModelConnectionPanel, connectErrorCopy } from '@/components/settings/model-connection-panel';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useUIStore } from '@/lib/ui-store';
+import { chordLabel } from '@/lib/commands/keys';
+import { DEFAULT_SHORTCUTS, useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import type {
   AIConnectionResponse,
   ApiErrorCode,
@@ -170,9 +172,13 @@ function given(seed: SeedAI, model: ModelConnectionView | null = null) {
 const statusGets = () =>
   calls.filter((c) => c.url === '/api/ai/connection' && c.method === 'GET').length;
 
-function renderPanel() {
-  return render(<ModelConnectionPanel />);
+function renderPanel(o: { isMobile?: boolean } = {}) {
+  return render(<ModelConnectionPanel isMobile={o.isMobile} />);
 }
+
+/** Ask's chord as the copy prints it on a PC (jsdom is not a Mac), from the binding, never typed. */
+const askChord = (keys = DEFAULT_SHORTCUTS.find((b) => b.id === 'toggle_right_sidebar')!.keys) =>
+  chordLabel(keys, false);
 
 const keyInput = () => screen.getByTestId('mcp-key') as HTMLInputElement;
 
@@ -380,11 +386,43 @@ describe('connecting', () => {
       expect(input.value).not.toContain('SENTINEL');
     }
 
-    // Once: the way in.
+    // Once: the way in. Ask starts closed on the desktop, so it names each
+    // way to open it, the chord through chordLabel ("Ctrl+J" here).
     const just = await screen.findByTestId('mcp-just-connected');
-    expect(just).toHaveTextContent('Connected. Type ? in the dock to ask anything.');
+    expect(askChord()).toBe('Ctrl+J');
+    expect(just).toHaveTextContent(
+      `Connected. Open Ask with the Ask button or ${askChord()}, or type ? in the dock, to ask anything.`
+    );
     fireEvent.click(within(just).getByRole('button', { name: 'Try it' }));
     expect(nav.push).toHaveBeenCalledWith('/');
+  });
+
+  it('names Ask’s chord as rebound, and on the phone keeps to the dock', async () => {
+    useKeyboardShortcutsStore.setState({ overrides: { toggle_right_sidebar: ['meta', 'shift', 'k'] } });
+    try {
+      given(NOTHING_CONNECTED);
+      acceptPut(view());
+      const desktop = renderPanel();
+      fireEvent.change(keyInput(), { target: { value: SENTINEL } });
+      fireEvent.click(screen.getByTestId('mcp-connect'));
+      expect(await screen.findByTestId('mcp-just-connected')).toHaveTextContent(
+        'Connected. Open Ask with the Ask button or Ctrl+Shift+K, or type ? in the dock, to ask anything.'
+      );
+      desktop.unmount();
+      cleanupAI?.();
+
+      // The phone has no chord to press, and its own Ask tab: the dock sentence.
+      given(NOTHING_CONNECTED);
+      acceptPut(view());
+      renderPanel({ isMobile: true });
+      fireEvent.change(keyInput(), { target: { value: SENTINEL } });
+      fireEvent.click(screen.getByTestId('mcp-connect'));
+      const phone = await screen.findByTestId('mcp-just-connected');
+      expect(phone).toHaveTextContent('Connected. Type ? in the dock to ask anything.');
+      expect(phone).not.toHaveTextContent(/Ctrl|Ask button/);
+    } finally {
+      useKeyboardShortcutsStore.setState({ overrides: {} });
+    }
   });
 
   it('sends the base URL and the typed model for Other', async () => {
@@ -688,7 +726,7 @@ describe('connected', () => {
     expect(request).toMatchObject({
       title: 'Disconnect OpenAI?',
       description:
-        'dsul will delete the saved key. Chat and plan suggestions hide until you connect again. The key stays active with OpenAI until you revoke it there.',
+        'dsul will delete the saved key. Chat and plan suggestions hide until you connect again. Your saved conversations stay, and come back when you reconnect. The key stays active with OpenAI until you revoke it there.',
       confirmLabel: 'Disconnect',
       destructive: true,
       testId: 'model-disconnect-confirm',
@@ -711,7 +749,7 @@ describe('connected', () => {
     expect(useUIStore.getState().confirmRequest).toMatchObject({
       title: 'Disconnect api.groq.com?',
       description:
-        'dsul will delete the saved key. Chat and plan suggestions hide until you connect again. The key stays active with api.groq.com until you revoke it there.',
+        'dsul will delete the saved key. Chat and plan suggestions hide until you connect again. Your saved conversations stay, and come back when you reconnect. The key stays active with api.groq.com until you revoke it there.',
     });
     act(() => useUIStore.getState().resolveConfirm(false));
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
