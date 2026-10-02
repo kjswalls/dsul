@@ -190,3 +190,52 @@ test.describe('Layouts: Notepad', () => {
     await expect(page.getByTestId('day-tabs-braindump')).toHaveText('braindump.txt');
   });
 });
+
+test.describe('Layouts: Writer', () => {
+  test.beforeEach(async ({ page }) => {
+    await loginTestUser(page);
+    await page.evaluate(() => localStorage.setItem('dsul-layout', 'writer'));
+    await reloadApp(page);
+  });
+
+  test('sets the day as one column with a round tick, and keeps the braindump behind a tab', async ({
+    page,
+  }) => {
+    const shell = page.locator('[data-layout]');
+    await expect(shell).toHaveAttribute('data-layout', 'writer');
+    await expect(shell).toHaveAttribute('data-layout-measure', 'narrow');
+    await expect(page.getByTestId('page-count-counts')).toBeVisible();
+    await expect(page.getByTestId('header-next')).toBeVisible();
+
+    // The braindump closes to the edge tab, and the same tab opens it again.
+    const column = page.getByTestId('sidebar-column');
+    await page.keyboard.press('ControlOrMeta+BracketLeft');
+    await expect(column).toHaveAttribute('data-column-state', 'closed');
+    const tab = page.getByRole('button', { name: 'Expand braindump' });
+    await expect(tab).toBeVisible();
+    await tab.click();
+    await expect(column).toHaveAttribute('data-column-state', 'open');
+
+    const title = testTitle('writer');
+    try {
+      const id = await createTestTask(page, {
+        title,
+        startDate: getTodayStr(),
+        timeBucket: 'morning',
+        isScheduled: true,
+      });
+      await reloadApp(page);
+      await expect(itemCard(page, id)).toBeVisible({ timeout: 10_000 });
+      await expect(completeButton(page, id)).toHaveCSS('border-radius', /9999px|50%/);
+      await completeButton(page, id).click();
+      await expectCompleted(page, id, true);
+      // The done title greys by colour, not opacity, so the lime strike keeps
+      // its full strength.
+      await expect(itemCard(page, id).getByText(title)).toHaveCSS('opacity', '1');
+      await itemCard(page, id).getByText(title).click();
+      await expect(page.getByTestId('item-dialog')).toBeVisible();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+});

@@ -48,3 +48,27 @@ export function StatusBar({ className }: { className?: string }) {
     </div>
   );
 }
+
+/**
+ * The `page-count` ornament: the same count as one quiet line centred at the
+ * foot of the page, for a layout with no chrome to put a status bar in. Same
+ * constant height, for the same reason.
+ */
+export function PageCount({ className }: { className?: string }) {
+  const { open, done } = useDayCounts({ followScope: true });
+  const items = open + done;
+  return (
+    <div
+      data-testid="page-count"
+      className={cn(
+        'flex h-9 flex-shrink-0 items-center justify-center font-mono text-xs whitespace-nowrap text-muted-foreground',
+        className
+      )}
+    >
+      <span data-testid="page-count-counts">
+        <b className="font-normal text-foreground">{items}</b> {items === 1 ? 'item' : 'items'} ·{' '}
+        <b className="font-normal text-foreground">{done}</b> done
+      </span>
+    </div>
+  );
+}

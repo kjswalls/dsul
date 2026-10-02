@@ -66,24 +66,32 @@ export const LAYOUT_SLOTS = {
    * small-caps label, a `── Morning ───` rule, a markdown `## Morning` with no
    * glyph, or a bold all-caps line.
    */
-  buckets: ['cards', 'headings', 'labels', 'rules', 'markdown', 'caps'],
+  buckets: ['cards', 'headings', 'labels', 'rules', 'markdown', 'caps', 'focus'],
   /**
    * A row's tick: the checkbox, a text `[ ]` / `[x]`, an inked box with a
-   * hand-drawn tick on ruled paper, or a markdown task `- [ ]`.
+   * hand-drawn tick on ruled paper, a markdown task `- [ ]`, or a hairline
+   * circle that fills with the accent.
    */
-  rows: ['rows', 'text', 'ruled', 'tasks'],
+  rows: ['rows', 'text', 'ruled', 'tasks', 'round'],
   /** The RelayField's motion in the shell. */
   relay: ['on', 'off'],
   /**
    * The shell's typeface: the colour theme's own, or one monospace face for
    * everything — IBM Plex Mono, JetBrains Mono, or the system's.
    */
-  type: ['ui', 'plex', 'jetbrains', 'mono'],
+  type: ['ui', 'plex', 'jetbrains', 'mono', 'dm'],
   /**
    * The shell's colours: the colour theme's, or the layout's own — `retro` is
    * white paper on light grey chrome with a blue accent, in both modes.
    */
   skin: ['theme', 'retro'],
+  /** The canvas's reading width: the usual 1100px cap, or one narrow column. */
+  measure: ['full', 'narrow'],
+  /**
+   * What sits on the closed braindump's edge (the sidebar's expand zone): the
+   * small grip, or a `braindump` tab standing off the edge like a drawer pull.
+   */
+  edge: ['grip', 'tab'],
 } as const;
 
 export type LayoutSlot = keyof typeof LAYOUT_SLOTS;
@@ -91,7 +99,16 @@ export type SlotVariant<S extends LayoutSlot> = (typeof LAYOUT_SLOTS)[S][number]
 export type LayoutSlots = { [S in LayoutSlot]: SlotVariant<S> };
 
 /** Slots drawn by CSS off a `data-layout-<slot>` stamp rather than by a component. */
-export const STYLED_SLOTS = ['header', 'buckets', 'rows', 'relay', 'type', 'skin'] as const satisfies readonly LayoutSlot[];
+export const STYLED_SLOTS = [
+  'header',
+  'buckets',
+  'rows',
+  'relay',
+  'type',
+  'skin',
+  'measure',
+  'edge',
+] as const satisfies readonly LayoutSlot[];
 
 /** Named additions — the only things a layout may add. Closed, like the slots. */
 export const LAYOUT_ORNAMENTS = [
@@ -103,6 +120,8 @@ export const LAYOUT_ORNAMENTS = [
   'ribbon',
   /** An editor's status bar across the bottom, counting the day (components/shell/status-bar.tsx). */
   'status-bar',
+  /** The day's count as one quiet centred line at the foot of the page (same file). */
+  'page-count',
 ] as const;
 export type LayoutOrnament = (typeof LAYOUT_ORNAMENTS)[number];
 
@@ -112,7 +131,8 @@ export type LayoutTheme =
   | 'notebook'
   | 'notepad'
   | 'notepad-markdown'
-  | 'notepad-retro';
+  | 'notepad-retro'
+  | 'writer';
 
 /**
  * A layout can come in STYLES: the same arrangement drawn a few ways (Notepad's
@@ -146,6 +166,8 @@ const CLASSIC_SLOTS: LayoutSlots = {
   tabs: 'none',
   type: 'ui',
   skin: 'theme',
+  measure: 'full',
+  edge: 'grip',
 };
 
 /**
@@ -164,6 +186,8 @@ const NOTEPAD_SLOTS: LayoutSlots = {
   relay: 'off',
   type: 'plex',
   skin: 'theme',
+  measure: 'full',
+  edge: 'grip',
 };
 
 export const LAYOUTS: LayoutDef[] = [
@@ -193,6 +217,8 @@ export const LAYOUTS: LayoutDef[] = [
       relay: 'off',
       type: 'ui',
       skin: 'theme',
+      measure: 'full',
+      edge: 'grip',
     },
     ornaments: ['status-line'],
   },
@@ -213,6 +239,8 @@ export const LAYOUTS: LayoutDef[] = [
       relay: 'off',
       type: 'ui',
       skin: 'theme',
+      measure: 'full',
+      edge: 'grip',
     },
     ornaments: ['page-tabs', 'ribbon'],
   },
@@ -245,6 +273,28 @@ export const LAYOUTS: LayoutDef[] = [
     pairsWith: {},
     slots: { ...NOTEPAD_SLOTS, tabs: 'txt', buckets: 'caps', type: 'mono', skin: 'retro' },
     ornaments: ['status-bar'],
+  },
+  {
+    value: 'writer',
+    label: 'Writer',
+    description: 'One quiet column of type. The bucket you are in stays in ink, the braindump is a drawer.',
+    family: 'writer',
+    pairsWith: {},
+    slots: {
+      sidebar: 'left',
+      capture: 'caret',
+      canvas: 'sheet',
+      tabs: 'none',
+      header: 'plain',
+      buckets: 'focus',
+      rows: 'round',
+      relay: 'off',
+      type: 'dm',
+      skin: 'theme',
+      measure: 'narrow',
+      edge: 'tab',
+    },
+    ornaments: ['page-count'],
   },
 ];
 

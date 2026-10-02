@@ -921,7 +921,7 @@ describe('settings manifest — layout and its style', () => {
   });
 
   it('Layout lists one entry per family, and Style the styles', () => {
-    expect(layout().options?.map((o) => o.value)).toEqual(['classic', 'console', 'notebook', 'notepad']);
+    expect(layout().options?.map((o) => o.value)).toEqual(['classic', 'console', 'notebook', 'notepad', 'writer']);
     expect(style().options?.map((o) => o.label)).toEqual(['Quiet', 'Markdown', 'Retro']);
   });
 

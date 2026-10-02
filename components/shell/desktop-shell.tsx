@@ -21,7 +21,7 @@ import { BraindumpPane } from '@/components/shell/braindump-pane';
 import { StatusLine } from '@/components/shell/status-line';
 import { PageTabs, Ribbon } from '@/components/shell/page-tabs';
 import { DayTabs } from '@/components/shell/day-tabs';
-import { StatusBar } from '@/components/shell/status-bar';
+import { PageCount, StatusBar } from '@/components/shell/status-bar';
 import { cn } from '@/lib/utils';
 
 /** Below this the panel stops compressing the canvas and overlays it instead. */
@@ -42,7 +42,7 @@ const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
  * LAYOUTS (lib/layout-themes.ts). The structural slots are read here: where the
  * braindump sits (`sidebar`), where capture sits (`capture`), whether the
  * canvas is a plate (`canvas`), the day tabs across the top (`tabs`), and the
- * `status-line` and `status-bar` ornaments. The styled
+ * `status-line`, `status-bar` and `page-count` ornaments. The styled
  * slots are stamped on this root (layoutAttributes) for app/globals.css, which
  * is what keeps every layout off the phone. Classic renders the exact tree it
  * always has; a layout with a top or bottom band wraps the row in a column.
@@ -63,10 +63,11 @@ export const DesktopShell = memo(function DesktopShell() {
   const flatPanel = slots.canvas === 'flat' || sheet;
   const statusLine = layout.ornaments.includes('status-line');
   const statusBar = layout.ornaments.includes('status-bar');
+  const pageCount = layout.ornaments.includes('page-count');
   const tabs = slots.tabs === 'none' ? null : slots.tabs;
   const captureBottom = slots.capture === 'prompt-bottom';
   // A top or bottom band spans the whole shell, so the row goes in a column.
-  const banded = statusLine || captureBottom || !!tabs || statusBar;
+  const banded = statusLine || captureBottom || !!tabs || statusBar || pageCount;
 
   // Editing an item IS the selection here — the ui-store's single dialog slot
   // already gives us retargeting for free: clicking another row calls
@@ -331,6 +332,7 @@ export const DesktopShell = memo(function DesktopShell() {
           <div className="relative flex min-h-0 flex-1">{row}</div>
           {captureBottom && <SidebarDock placement="bottom" />}
           {statusBar && <StatusBar />}
+          {pageCount && <PageCount className="bg-canvas" />}
         </>
       ) : (
         row

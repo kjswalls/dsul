@@ -90,7 +90,7 @@ describe('layouts — families and styles', () => {
       expect(lead.family, layout.value).toBe(lead.value);
       expect(LAYOUTS.indexOf(lead), layout.value).toBeLessThanOrEqual(LAYOUTS.indexOf(layout));
     }
-    expect(LAYOUT_FAMILIES.map((l) => l.value)).toEqual(['classic', 'console', 'notebook', 'notepad']);
+    expect(LAYOUT_FAMILIES.map((l) => l.value)).toEqual(['classic', 'console', 'notebook', 'notepad', 'writer']);
   });
 
   it('a family with styles names every one of them, and a lone layout names none', () => {
