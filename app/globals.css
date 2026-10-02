@@ -2729,6 +2729,14 @@ body {
   font-family: var(--font-mono);
 }
 
+/* type, for Ask's greeting: the type rules above redefine --font-ui, never
+   --font-serif, so the one serif line in the rail would stay serif in a layout
+   that is plain text everywhere else (Notepad: your day as plain text). It
+   takes the layout's face instead; every 'ui' layout keeps the serif. */
+[data-layout-type]:not([data-layout-type='ui']) [data-ask-greeting] {
+  font-family: var(--font-ui);
+}
+
 /* buckets: 'focus' — a bucket is a small lowercase label over its rows, no
    card, no glyph. While one of them is the bucket you are in, the others go
    grey by colour, never by opacity (CLAUDE.md: the accent is never faded

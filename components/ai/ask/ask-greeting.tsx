@@ -1,0 +1,52 @@
+'use client';
+
+import { Sparkles } from 'lucide-react';
+import { greeting } from '@/lib/ask-home';
+import { usePlannerStore } from '@/lib/planner-store';
+import { useSessionUserStore } from '@/lib/session-user-store';
+import { useNowMinutes } from '@/lib/use-now-minutes';
+import { cn } from '@/lib/utils';
+
+/**
+ * "Morning, Kirby." The greeting, in the serif, by the user's clock and the
+ * first word of their display name (lib/ask-home.ts `greeting`).
+ *
+ *  - home      Ask home, 15px with a period (the Direction B mock). Its ✦ is
+ *              the header's, one line above, so it carries none of its own.
+ *  - new-chat  a new chat's empty state, 24px, no period, led by the ✦ (mock 6).
+ *
+ * The clock is the grid's now-marker clock, aligned to the minute, so it turns
+ * from morning to afternoon at noon on its own. `data-ask-greeting` lets a
+ * layout with a typeface of its own draw it in that face instead of the serif
+ * (app/globals.css, beside the layout type rules): Notepad is your day as plain
+ * text, and a serif line would be the one thing on screen that is not.
+ */
+export function AskGreeting({
+  variant,
+  spark = variant === 'new-chat',
+  className,
+}: {
+  variant: 'home' | 'new-chat';
+  spark?: boolean;
+  className?: string;
+}) {
+  const userTimezone = usePlannerStore((s) => s.userTimezone);
+  const minutes = useNowMinutes(userTimezone ?? undefined);
+  const name = useSessionUserStore((s) => s.user?.displayName ?? null);
+  const text = greeting(minutes, name);
+  const home = variant === 'home';
+
+  return (
+    <p
+      data-ask-greeting={variant}
+      className={cn(
+        'flex items-center font-serif text-foreground',
+        home ? 'gap-1.5 text-[15px] leading-snug' : 'gap-2.5 text-2xl leading-tight',
+        className
+      )}
+    >
+      {spark && <Sparkles className={cn('shrink-0 text-ai', home ? 'size-4' : 'size-6')} aria-hidden />}
+      <span className="min-w-0">{home ? `${text}.` : text}</span>
+    </p>
+  );
+}

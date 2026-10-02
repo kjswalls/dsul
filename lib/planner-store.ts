@@ -82,6 +82,7 @@ import {
   adoptContainerMembers,
   type TrashEntry,
   type PlannerData,
+  type AgentStateRow,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
 import type { CommitResult, SeedPlan } from './seed-containers';
@@ -5330,6 +5331,93 @@ usePlannerStore.subscribe((state) => {
 
   prevStateJson = currentStateJson;
 });
+
+/* ── agent state from the server ──────────────────────────────────────── */
+
+type AgentFields = Pick<TaskItem, 'assignee' | 'aiStatus' | 'aiResult' | 'aiStatusAt'>;
+
+const agentFieldsOf = (item: Item): AgentFields => {
+  const i = item as AgentFields;
+  return { assignee: i.assignee, aiStatus: i.aiStatus, aiResult: i.aiResult, aiStatusAt: i.aiStatusAt };
+};
+
+const sameAgentFields = (a: AgentFields, b: AgentFields) =>
+  (a.assignee ?? null) === (b.assignee ?? null) &&
+  (a.aiStatus ?? null) === (b.aiStatus ?? null) &&
+  (a.aiResult ?? null) === (b.aiResult ?? null) &&
+  (a.aiStatusAt ?? null) === (b.aiStatusAt ?? null);
+
+/**
+ * Fold the agent columns read back from the server (lib/db.ts
+ * `fetchAgentStates`, on Ask home's throttled refetch) into the store. An agent
+ * writes these from outside the browser, and nothing else refetches them for
+ * the rest of the session, so without this Ask home's "Needs you" and "With AI
+ * activity" would only ever show what was true at load.
+ *
+ * NEWER WINS, by `aiStatusAt`. A row applies only when its stamp is later than
+ * the item's. That is the right test because the one client write to these
+ * columns (an answer's flip to `queued`, or delegating) stamps `aiStatusAt`
+ * itself (updateTask), so an answer a moment ago is never overwritten by the
+ * row it superseded. A row with no stamp has no order to win by.
+ *
+ * ONE set(), NO UNDO ENTRY, NO WRITE-BACK. This is the server's news, not a
+ * user action: nothing here writes to the database, and the history
+ * subscriber is held off. Holding it off is not enough on its own, because
+ * applyHistoryState writes the restored snapshot's difference back: an undo of
+ * an unrelated edit would restore the item's pre-merge agent state and write
+ * it to the row, quietly reverting the agent's work. So the baseline follows
+ * the merge, and every snapshot that still holds an item's pre-merge agent
+ * state is rewritten to the merged one, as if the server's value had been
+ * there all along. A snapshot holding a different state (from before the
+ * user's own delegation or answer) is left alone, so undoing that still undoes
+ * it. Suppressed the save-and-restore way (see undoFailedCreate), and skipped
+ * while a load is in flight, which brings fresh rows of its own.
+ *
+ * Returns how many items changed.
+ */
+export function mergeAgentStates(rows: readonly AgentStateRow[]): number {
+  const state = usePlannerStore.getState();
+  if (state.isLoading || rows.length === 0) return 0;
+
+  const byId = new Map(state.items.map((item) => [item.id, item]));
+  const changes = new Map<string, { before: AgentFields; after: AgentFields }>();
+  for (const row of rows) {
+    const item = byId.get(row.id);
+    if (!item || item.type === 'habit') continue;
+    const rowAt = row.aiStatusAt ? Date.parse(row.aiStatusAt) : NaN;
+    if (!Number.isFinite(rowAt)) continue;
+    const before = agentFieldsOf(item);
+    const itemAt = before.aiStatusAt ? Date.parse(before.aiStatusAt) : NaN;
+    if (Number.isFinite(itemAt) && rowAt <= itemAt) continue;
+    const after: AgentFields = {
+      assignee: row.assignee ?? undefined,
+      aiStatus: row.aiStatus ?? undefined,
+      aiResult: row.aiResult ?? undefined,
+      aiStatusAt: row.aiStatusAt ?? undefined,
+    };
+    if (!sameAgentFields(before, after)) changes.set(row.id, { before, after });
+  }
+  if (changes.size === 0) return 0;
+
+  /** Items whose agent fields still read `before` take `after`; everything else is untouched. */
+  const fold = (items: Item[]): Item[] =>
+    items.map((item) => {
+      const change = changes.get(item.id);
+      if (!change || item.type === 'habit' || !sameAgentFields(agentFieldsOf(item), change.before)) return item;
+      return { ...item, ...change.after } as Item;
+    });
+
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+  return changes.size;
+}
 
 /* ── batches ───────────────────────────────────────────────────────────── */
 

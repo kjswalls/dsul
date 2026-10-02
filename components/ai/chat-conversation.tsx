@@ -13,7 +13,8 @@ import { chatErrorCopy } from '@/lib/chat-errors';
 import { useProposalStore } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { buildChatOpeners } from '@/lib/ai-openers';
+import { buildChatOpeners, NEW_CHAT_OPENERS } from '@/lib/ai-openers';
+import { useNowMinutes } from '@/lib/use-now-minutes';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { toDateStr } from '@/lib/recurrence';
 import { useTimeFormat } from '@/lib/use-time-format';
@@ -93,6 +94,8 @@ export function ChatConversation({
   // chat but has no proposal transport, so it can chat without proposing.
   const { target, agentId, canChat, canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
+  // The openers turn from today to tomorrow at 16:00 (lib/ai-openers.ts).
+  const minutesNow = useNowMinutes(userTimezone ?? undefined);
   const items = usePlannerStore((s) => s.items);
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
@@ -138,18 +141,23 @@ export function ChatConversation({
   // Only read when the transcript is empty, but hooks cannot be conditional —
   // the guard is the cheap `messages.length` check inside. Gated on CHAT, not
   // on proposing: an opener is a plain send(), so OpenClaw plugin chat (which
-  // cannot propose) still gets something to say instead of a blank box.
+  // cannot propose) still gets something to say instead of a blank box. A new
+  // chat's count, without "Help me start…": a chip here sends, and on the phone
+  // this view has no box of its own to put a half sentence in.
   const openers = useMemo(() => {
-    if (messages.length > 0 || !canChat) return [];
+    if (messages.length > 0 || !canChat || minutesNow === null) return [];
     const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
     const todayStr = toDateStr(new Date(), tz);
-    return buildChatOpeners({
-      items,
-      todayStr,
-      userTimezone: tz,
-      inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons }),
-    });
-  }, [messages.length, canChat, items, routines, seasons, userTimezone]);
+    return buildChatOpeners(
+      {
+        items,
+        todayStr,
+        userTimezone: tz,
+        inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons }),
+      },
+      { max: NEW_CHAT_OPENERS, minutesNow }
+    );
+  }, [messages.length, canChat, items, routines, seasons, userTimezone, minutesNow]);
 
   /**
    * Hand the exchange to the proposal path, so a conversation can end in

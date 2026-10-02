@@ -101,7 +101,7 @@ import {
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, type SeedAI } from './helpers/ai-fixtures';
-import { fakeApi, fakeTransport, flush, hangs, type FakeTransport } from './helpers/conversations-fakes';
+import { fakeApi, fakeTransport, flush, hangs, summary, type FakeTransport } from './helpers/conversations-fakes';
 import { askFromCommandBar } from '@/lib/open-chat';
 import type { TaskItem } from '@/lib/planner-types';
 
@@ -1396,11 +1396,84 @@ describe('with no AI', () => {
 
 /* ── the pieces ──────────────────────────────────────────────────────── */
 
-describe('<AskHome/>, minimal', () => {
-  it("holds the catch-up card, today's chips and the box, and no greeting yet", async () => {
+/* ── Ask home in the column ──────────────────────────────────────────── */
+
+describe('Ask home in the column', () => {
+  const WAITING = task({
+    id: 't3',
+    title: 'Pick a plumber',
+    order: 2,
+    assignee: 'openclaw',
+    aiStatus: 'blocked',
+    aiResult: 'Which one?',
+  } as Partial<TaskItem>);
+  const needsTitle = () => within(askView() as HTMLElement).getByTestId('needs-you-title');
+
+  it.each([
+    [
+      'Back',
+      () => {
+        const back = within(dialog()).getByTestId('rail-back');
+        back.focus();
+        fireEvent.click(back);
+      },
+    ],
+    ['Escape', () => pressEscapeHere()],
+  ])('hands focus back to the Needs-you title an item was opened from (%s)', async (_how, leave) => {
+    usePlannerStore.setState({ items: [DENTIST, PLANTS, WAITING] } as never);
+    renderShell();
+    needsTitle().focus();
+    fireEvent.click(needsTitle());
+    await timers();
+    expect(itemOpen()).toBe(true);
+    expect(within(dialog()).getByDisplayValue('Pick a plumber')).toBeInTheDocument();
+    // Ask went hidden under the item, taking the title with it: a browser
+    // drops focus to <body> then, and jsdom does not.
+    (document.activeElement as HTMLElement).blur();
+
+    leave();
+    await timers();
+    expect(itemOpen()).toBe(false);
+    expect(document.activeElement).toBe(needsTitle());
+  });
+
+  it("opens an item's conversation from its activity row, on the Conversation", async () => {
+    renderShell();
+    await timers();
+    const at = new Date(Math.floor(Date.now() / 60_000) * 60_000).toISOString();
+    act(() =>
+      useConversationsStore.setState((s) => ({
+        summaries: { ...s.summaries, c9: summary({ id: 'c9', itemId: 't1', title: 'dentist', lastMessageAt: at }) },
+      }))
+    );
+    const row = (askView() as HTMLElement).querySelector('[data-ask-focus="conv:c9"]') as HTMLElement;
+    expect(row).toHaveTextContent('Book the dentist');
+    const reveals: unknown[] = [];
+    const unsubscribe = useRailStore.subscribe((s) => void reveals.push(s.pendingReveal));
+    fireEvent.click(row);
+    await timers();
+    unsubscribe();
+
+    expect(itemOpen()).toBe(true);
+    expect(within(dialog()).getByDisplayValue('Book the dentist')).toBeInTheDocument();
+    // Asked for, then taken by the item's pinned conversation (it is the one
+    // that scrolls the rail body to itself once it has something to show).
+    expect(reveals).toContainEqual({ itemId: 't1' });
+    expect(useRailStore.getState().pendingReveal).toBeNull();
+    // An item, not a push over Ask: Back from it shows Ask home.
+    expect(useRailStore.getState().stacks.desktop).toEqual([]);
+  });
+});
+
+describe('<AskHome/>, a brand-new account', () => {
+  it("holds the catch-up card, the greeting, today's chips and the box, and nothing else", async () => {
     render(<AskHome />);
     const home = document.querySelector('[data-ask-home]') as HTMLElement;
-    expect(home.querySelector('[data-ask-greeting]')).toBeNull();
+    // Nothing to say yet about the day or the AI's work (ask-home-view.test.tsx
+    // has those), so only the greeting.
+    expect(home.querySelector('[data-ask-greeting]')).not.toBeNull();
+    expect(within(home).queryByTestId('needs-you')).toBeNull();
+    expect(within(home).queryByTestId('ai-activity')).toBeNull();
     expect(home.querySelector('[data-ask-composer] textarea')).not.toBeNull();
     expect(within(home).getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
     expect(within(home).queryByTestId('proposal-card')).toBeNull();

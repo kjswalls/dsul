@@ -14,8 +14,10 @@ import {
   type AskView,
   type ComposerBinding,
 } from './rail-store';
-import { closeItemPanel, useUIStore } from './ui-store';
+import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
+import { usePlannerStore } from './planner-store';
 import { useViewStore } from './view-store';
+import type { Task } from './planner-types';
 
 export { bindingKey, type ComposerBinding } from './rail-store';
 
@@ -332,6 +334,54 @@ export function askNew(text: string, o: { title: string; isMobile: boolean }): v
   rail.push('desktop', { kind: 'conversation', id });
   rail.focusComposer({ kind: 'draft', id });
   void sendFrom({ kind: 'draft', id }, text, { surface: 'desktop' });
+}
+
+/**
+ * Open a saved conversation from a row that names it: an activity row on Ask
+ * home now, History's rows and a deep link later (this is the seam a URL per
+ * conversation would call).
+ *
+ * An item's conversation is the item's: while the item exists this opens the
+ * item, on its Conversation section (`pendingReveal`, which the item's pinned
+ * conversation consumes on mount and scrolls only the rail body to), over
+ * whatever Ask view is showing, so Back returns there. A general conversation,
+ * or one whose item is gone, is pushed, its transcript fetched if this browser
+ * has not read it, and Back returns focus to the row (`returnFocus`, the row's
+ * `data-ask-focus="conv:<id>"`). Nothing focuses the box: a row is not a
+ * request to type.
+ *
+ * The phone, until C5: its chat tab still shows the general conversation
+ * (MobileChatPanel), so a general conversation becomes that one, as `askNew`
+ * does there, and an item opens in the drawer, as every phone open does.
+ */
+export function openConversation(id: string, isMobile: boolean): void {
+  if (!getAICapabilities().canChat) return;
+  const store = useConversationsStore.getState();
+  const rid = resolveConversationId(id);
+  const itemId = store.summaries[rid]?.itemId ?? store.threads[rid]?.itemId ?? null;
+  const item = itemId ? usePlannerStore.getState().items.find((i) => i.id === itemId) : undefined;
+
+  if (item) {
+    if (!isMobile) {
+      leaveZen();
+      useRailStore.getState().setPendingReveal(item.id);
+    }
+    openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
+    return;
+  }
+
+  if (isMobile) {
+    if (!revealChat(true)) return;
+    setGeneral(rid);
+    void store.openThread(rid);
+    return;
+  }
+  leaveZen();
+  if (useUIStore.getState().activeDialog?.type === 'edit-item') closeItemPanel();
+  const rail = useRailStore.getState();
+  if (railModeNow() !== 'ask') rail.summon();
+  rail.push('desktop', { kind: 'conversation', id: rid, returnFocus: `conv:${rid}` });
+  void store.openThread(rid);
 }
 
 /**

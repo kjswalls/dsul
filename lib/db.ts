@@ -831,6 +831,44 @@ function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
 }
 
+/** One delegated item's agent columns, as `fetchAgentStates` reads them. */
+export interface AgentStateRow {
+  id: string;
+  assignee: string | null;
+  aiStatus: string | null;
+  aiResult: string | null;
+  aiStatusAt: string | null;
+}
+
+/**
+ * The agent columns of every delegated item, and nothing else: the one narrow
+ * read that keeps Ask home's "Needs you" and "With AI activity" honest without
+ * realtime (hooks/use-agent-freshness.ts; planner-store `mergeAgentStates`
+ * folds it in). An agent writes these from outside the browser, and nothing
+ * else refetches them for the rest of the session.
+ *
+ * Narrow on purpose: a full `fetchItems` would clobber edits still in flight.
+ * Under RLS, like every read here. Reads `items`, not items_windowed: no
+ * completion array is asked for. Throws the client's error, as fetchItems does;
+ * the one caller treats any failure as "nothing new".
+ */
+export async function fetchAgentStates(client?: DbClient): Promise<AgentStateRow[]> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('items')
+    .select('id, assignee, ai_status, ai_result, ai_status_at')
+    .not('assignee', 'is', null)
+    .is('deleted_at', null);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    assignee: (row.assignee as string | null) ?? null,
+    aiStatus: (row.ai_status as string | null) ?? null,
+    aiResult: (row.ai_result as string | null) ?? null,
+    aiStatusAt: (row.ai_status_at as string | null) ?? null,
+  }));
+}
+
 /**
  * When each of `ids` was completed — `items.completed_at` (migration 048), by
  * id, for the rows that have one.
