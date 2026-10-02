@@ -34,6 +34,8 @@ interface ChatComposerProps {
    */
   value?: string;
   onValueChange?: (text: string) => void;
+  /** Overrides the wording for whoever answers ("Reply…" under a conversation). */
+  placeholder?: string;
   /**
    * False while the field is mounted where nobody can see it (BoundComposer's
    * ComposerAwakeContext: Ask hidden under an item). A hidden field measures
@@ -80,6 +82,7 @@ export function ChatComposer({
   value,
   onValueChange,
   awake = true,
+  placeholder: placeholderOverride,
 }: ChatComposerProps) {
   const threadId = useConversationsStore((s) => boundThreadId(s, binding));
   // Busy from the moment a send starts (before an item's conversation is even
@@ -99,7 +102,8 @@ export function ChatComposer({
 
   const displayName = chatAssistantName(target);
   // A box bound to an item says so: it looks like every other box.
-  const placeholder = binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target);
+  const placeholder =
+    placeholderOverride ?? (binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target));
   const hasText = input.trim().length > 0;
 
   useEffect(() => {

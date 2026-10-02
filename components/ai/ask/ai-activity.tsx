@@ -53,7 +53,9 @@ export function AIActivity({ rows }: { rows: readonly ActivityRow[] }) {
             ) : (
               <ActivityButton
                 focusKey={`conv:${row.conversationId}`}
-                onClick={() => openConversation(row.conversationId, false)}
+                onClick={() =>
+                  openConversation(row.conversationId, false, { returnFocus: `conv:${row.conversationId}` })
+                }
                 glyph={
                   row.itemId ? (
                     <span aria-hidden className="text-[13px] leading-none text-muted-foreground">

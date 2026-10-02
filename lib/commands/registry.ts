@@ -21,6 +21,8 @@ import {
   ListChecks,
   ListPlus,
   MessageSquare,
+  MessageSquarePlus,
+  History as HistoryIcon,
   Moon,
   PanelLeft,
   Palette,
@@ -75,7 +77,8 @@ import { useMorningStore } from '../morning-store';
 import { useEODStore } from '../eod-store';
 import { useProposalStore } from '../proposal-store';
 import { getAICapabilities } from '../ai-connection-store';
-import { askNew, revealChat, toggleRail } from '../open-chat';
+import { askNew, newChat, openHistory, revealChat, toggleRail } from '../open-chat';
+import { useConversationsStore } from '../conversations-store';
 import { railModeNow, useRailStore } from '../rail-store';
 import { goToDate, stepScope } from '../nav-commands';
 import { resolveCategoryIcon } from '../category-icons';
@@ -885,6 +888,31 @@ export const STATIC_COMMANDS: Command[] = [
     // Always a fresh conversation, titled after the ritual, so a reply still
     // streaming somewhere else is never in the way.
     run: (ctx) => askNew('Plan my day', { title: 'Plan my day', isMobile: ctx.isMobile }),
+  },
+  // Ask's own two doors, palette only (no shortcut id: the frozen list in
+  // commands.test.ts stays as it is). Desktop only until the phone's Ask tab
+  // shows its stack (C5): there, nothing would show what these push.
+  {
+    id: 'ask.newChat',
+    label: 'New chat',
+    group: 'rituals',
+    icon: MessageSquarePlus,
+    keywords: 'ask ai chat conversation new start fresh',
+    hidden: (ctx) => ctx.isMobile || !getAICapabilities().canChat,
+    availableWhen: () => getAICapabilities().canChat,
+    run: (ctx) => void newChat(ctx.isMobile, { reveal: true }),
+  },
+  {
+    id: 'ask.history',
+    label: 'Conversation history',
+    group: 'rituals',
+    icon: HistoryIcon,
+    keywords: 'ask ai chat conversations history past saved search',
+    // With saving off (the migration missing) there is nothing to list.
+    hidden: (ctx) =>
+      ctx.isMobile || !getAICapabilities().canChat || useConversationsStore.getState().saving === 'off',
+    availableWhen: () => getAICapabilities().canChat && useConversationsStore.getState().saving !== 'off',
+    run: (ctx) => openHistory(ctx.isMobile, { reveal: true, focusSearch: true }),
   },
   {
     id: 'rituals.eod',

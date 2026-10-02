@@ -114,3 +114,113 @@ export function historySecondLine(
   }
   return `Item conversation · ${phrase ? lowerFirst(phrase) : 'no changes'}`;
 }
+
+// ── History's groups and times ───────────────────────────────────────────────
+
+export type HistoryDay = 'today' | 'yesterday' | 'earlier';
+export type HistoryGroupKey = 'starred' | HistoryDay;
+
+export const HISTORY_GROUP_LABELS: Readonly<Record<HistoryGroupKey, string>> = Object.freeze({
+  starred: 'Starred',
+  today: 'Today',
+  yesterday: 'Yesterday',
+  earlier: 'Earlier',
+});
+
+/**
+ * A formatter in the user's zone, falling back to the browser's when the zone
+ * is unset or one Intl does not know (it throws a RangeError for those).
+ */
+function zoned(tz: string | null | undefined, o: Intl.DateTimeFormatOptions, locale = 'en-US'): Intl.DateTimeFormat {
+  try {
+    return new Intl.DateTimeFormat(locale, { ...o, timeZone: tz || undefined });
+  } catch {
+    return new Intl.DateTimeFormat(locale, o);
+  }
+}
+
+/** The calendar day an instant falls on in `tz`, as yyyy-MM-dd. */
+function dayIn(ms: number, tz: string | null | undefined): string {
+  return zoned(tz, {}, 'en-CA').format(new Date(ms));
+}
+
+/** The day before a yyyy-MM-dd, by the calendar (no zone: it is already a date). */
+function dayBefore(day: string): string {
+  const [y, m, d] = day.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d - 1)).toISOString().slice(0, 10);
+}
+
+/** Which of History's day groups a conversation's last message falls in, in the user's zone. */
+export function historyDay(lastMessageAt: string, now: number, tz: string | null | undefined): HistoryDay {
+  const t = Date.parse(lastMessageAt);
+  if (!Number.isFinite(t)) return 'earlier';
+  const day = dayIn(t, tz);
+  const today = dayIn(now, tz);
+  if (day === today) return 'today';
+  return day === dayBefore(today) ? 'yesterday' : 'earlier';
+}
+
+/**
+ * A History row's time, in the user's zone:
+ *   today      "8:02", or "08:02" under the 24-hour setting (mock 5: a
+ *              row's time is a glance, so no am/pm)
+ *   yesterday  "Tue"
+ *   earlier    "Sep 24", plus ", 2025" when it is not this year
+ */
+export function historyTime(lastMessageAt: string, now: number, tz: string | null | undefined, hour24: boolean): string {
+  const t = Date.parse(lastMessageAt);
+  if (!Number.isFinite(t)) return '';
+  const at = new Date(t);
+  const day = historyDay(lastMessageAt, now, tz);
+  if (day === 'today') {
+    const clock: Intl.DateTimeFormatOptions = hour24
+      ? { hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }
+      : { hour: 'numeric', minute: '2-digit', hour12: true };
+    const parts = zoned(tz, clock).formatToParts(at);
+    const part = (type: string) => parts.find((p) => p.type === type)?.value ?? '';
+    return `${part('hour')}:${part('minute')}`;
+  }
+  if (day === 'yesterday') return zoned(tz, { weekday: 'short' }).format(at);
+  const date = zoned(tz, { month: 'short', day: 'numeric' }).format(at);
+  const year = zoned(tz, { year: 'numeric' });
+  return year.format(at) === year.format(new Date(now)) ? date : `${date}, ${year.format(at)}`;
+}
+
+export interface HistoryGroup {
+  key: HistoryGroupKey;
+  label: string;
+  ids: string[];
+}
+
+/**
+ * History's groups, in order: Starred (every starred conversation, and only
+ * when there is one), then Today, Yesterday and Earlier by the last message,
+ * in the user's zone. A starred conversation shows ONLY under Starred. Each
+ * group keeps the list's own order (newest first), and an empty group is left
+ * out. Ids with no summary are skipped: a row needs something to say.
+ */
+export function groupHistory(
+  list: { ids: readonly string[]; starredIds: readonly string[] },
+  summaries: Readonly<Record<string, Pick<ConversationSummary, 'starred' | 'lastMessageAt'> | undefined>>,
+  now: number,
+  tz: string | null | undefined
+): HistoryGroup[] {
+  const groups: Record<HistoryGroupKey, string[]> = { starred: [], today: [], yesterday: [], earlier: [] };
+  const seen = new Set<string>();
+  for (const id of list.starredIds) {
+    if (seen.has(id) || !summaries[id]) continue;
+    seen.add(id);
+    groups.starred.push(id);
+  }
+  for (const id of list.ids) {
+    const s = summaries[id];
+    if (seen.has(id) || !s) continue;
+    seen.add(id);
+    // A row starred here a moment ago, before the list moved it.
+    if (s.starred) groups.starred.push(id);
+    else groups[historyDay(s.lastMessageAt, now, tz)].push(id);
+  }
+  return (['starred', 'today', 'yesterday', 'earlier'] as const)
+    .filter((key) => groups[key].length > 0)
+    .map((key) => ({ key, label: HISTORY_GROUP_LABELS[key], ids: groups[key] }));
+}

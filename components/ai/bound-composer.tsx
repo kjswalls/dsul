@@ -40,7 +40,16 @@ export const ComposerAwakeContext = createContext(true);
  * commit Enter alone on purpose (chat-composer.tsx), so without it that Enter
  * would save and close the item.
  */
-export function BoundComposer({ binding, className }: { binding: ComposerBinding; className?: string }) {
+export function BoundComposer({
+  binding,
+  className,
+  placeholder,
+}: {
+  binding: ComposerBinding;
+  className?: string;
+  /** The box's own wording, where the default would mislead ("Reply…" under a conversation). */
+  placeholder?: string;
+}) {
   const key = bindingKey(binding);
   const text = useRailStore((s) => s.drafts[key] ?? '');
   const pending = useRailStore((s) => s.pendingFocus);
@@ -54,7 +63,12 @@ export function BoundComposer({ binding, className }: { binding: ComposerBinding
     // that must not cancel the focus it just claimed.
     setTimeout(() => {
       const field = wrapperRef.current?.querySelector('textarea');
-      if (field?.isConnected) field.focus({ preventScroll: true });
+      if (!field?.isConnected) return;
+      field.focus({ preventScroll: true });
+      // After what is there, so text put in for the user ("Help me start ")
+      // is carried on, not typed in front of.
+      const end = field.value.length;
+      field.setSelectionRange(end, end);
     }, 0);
   }, [awake, pending, binding]);
 
@@ -78,6 +92,7 @@ export function BoundComposer({ binding, className }: { binding: ComposerBinding
         value={text}
         onValueChange={(next) => useRailStore.getState().setDraft(key, next)}
         awake={awake}
+        placeholder={placeholder}
       />
       <AnswererLabel className="px-2" />
     </div>

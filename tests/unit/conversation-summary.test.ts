@@ -4,8 +4,11 @@ import {
   NO_CHANGES,
   addChanges,
   changePhrase,
+  groupHistory,
   hasChanges,
+  historyDay,
   historySecondLine,
+  historyTime,
   tallyOperations,
 } from '@/lib/conversation-summary';
 
@@ -112,5 +115,88 @@ describe('historySecondLine (D9)', () => {
   it('general, with changes and without', () => {
     expect(historySecondLine(general({ added: 1, steps: 0, moved: 3, changed: 0 }), null)).toBe('Moved 3 items · Added 1 item');
     expect(historySecondLine(general(), null)).toBe('No changes');
+  });
+});
+
+/**
+ * History's groups and row times (C4): by the last message, in the USER's
+ * zone, never the browser's or UTC's.
+ */
+describe("History's days and times", () => {
+  const NY = 'America/New_York';
+  // Friday 2 October 2026, 10:00 in New York.
+  const NOW = Date.parse('2026-10-02T14:00:00.000Z');
+
+  it('groups by the day in the user zone', () => {
+    expect(historyDay('2026-10-02T12:05:00.000Z', NOW, NY)).toBe('today');
+    expect(historyDay('2026-10-01T15:00:00.000Z', NOW, NY)).toBe('yesterday');
+    // 23:30 on the 1st in New York, though the 2nd in UTC.
+    expect(historyDay('2026-10-02T03:30:00.000Z', NOW, NY)).toBe('yesterday');
+    expect(historyDay('2026-10-02T03:30:00.000Z', NOW, 'UTC')).toBe('today');
+    expect(historyDay('2026-09-30T15:00:00.000Z', NOW, NY)).toBe('earlier');
+    expect(historyDay('not a date', NOW, NY)).toBe('earlier');
+  });
+
+  it('crosses a month and a year by the calendar', () => {
+    const newYear = Date.parse('2027-01-01T15:00:00.000Z');
+    expect(historyDay('2026-12-31T15:00:00.000Z', newYear, NY)).toBe('yesterday');
+    const march = Date.parse('2026-03-01T15:00:00.000Z');
+    expect(historyDay('2026-02-28T15:00:00.000Z', march, NY)).toBe('yesterday');
+  });
+
+  it("today: the clock, with no am/pm; 24-hour under that setting", () => {
+    expect(historyTime('2026-10-02T12:05:00.000Z', NOW, NY, false)).toBe('8:05');
+    expect(historyTime('2026-10-02T12:05:00.000Z', NOW, NY, true)).toBe('08:05');
+    expect(historyTime('2026-10-02T17:30:00.000Z', NOW, NY, false)).toBe('1:30');
+    expect(historyTime('2026-10-02T17:30:00.000Z', NOW, NY, true)).toBe('13:30');
+    // Just after midnight.
+    expect(historyTime('2026-10-02T04:05:00.000Z', NOW, NY, false)).toBe('12:05');
+    expect(historyTime('2026-10-02T04:05:00.000Z', NOW, NY, true)).toBe('00:05');
+  });
+
+  it('yesterday: the weekday; earlier: the date, with the year once it is not this one', () => {
+    expect(historyTime('2026-10-01T15:00:00.000Z', NOW, NY, false)).toBe('Thu');
+    expect(historyTime('2026-09-24T15:00:00.000Z', NOW, NY, false)).toBe('Sep 24');
+    expect(historyTime('2025-09-24T15:00:00.000Z', NOW, NY, false)).toBe('Sep 24, 2025');
+    expect(historyTime('garbage', NOW, NY, false)).toBe('');
+  });
+
+  it("falls back to the browser's zone for one Intl does not know", () => {
+    expect(() => historyTime('2026-10-02T12:05:00.000Z', NOW, 'Not/AZone', false)).not.toThrow();
+    expect(() => historyDay('2026-10-02T12:05:00.000Z', NOW, null)).not.toThrow();
+  });
+
+  const at = (lastMessageAt: string, starred = false) => ({ lastMessageAt, starred });
+
+  it('orders Starred, Today, Yesterday, Earlier, leaving out an empty group', () => {
+    const summaries = {
+      s1: at('2025-01-01T12:00:00.000Z', true),
+      t1: at('2026-10-02T13:00:00.000Z'),
+      t2: at('2026-10-02T12:00:00.000Z'),
+      e1: at('2026-09-01T12:00:00.000Z'),
+    };
+    const groups = groupHistory({ ids: ['t1', 't2', 'e1'], starredIds: ['s1'] }, summaries, NOW, NY);
+    expect(groups).toEqual([
+      { key: 'starred', label: 'Starred', ids: ['s1'] },
+      { key: 'today', label: 'Today', ids: ['t1', 't2'] },
+      { key: 'earlier', label: 'Earlier', ids: ['e1'] },
+    ]);
+  });
+
+  it('shows a starred conversation ONLY under Starred, even before the list has moved it', () => {
+    const summaries = { a: at('2026-10-02T13:00:00.000Z', true), b: at('2026-10-02T12:00:00.000Z') };
+    const groups = groupHistory({ ids: ['a', 'b'], starredIds: [] }, summaries, NOW, NY);
+    expect(groups.map((g) => [g.key, g.ids])).toEqual([
+      ['starred', ['a']],
+      ['today', ['b']],
+    ]);
+    // Listed twice (both pages), shown once.
+    const twice = groupHistory({ ids: ['a', 'b'], starredIds: ['a'] }, summaries, NOW, NY);
+    expect(twice.flatMap((g) => g.ids)).toEqual(['a', 'b']);
+  });
+
+  it('skips an id with no summary, and is empty with nothing', () => {
+    expect(groupHistory({ ids: ['x'], starredIds: ['y'] }, {}, NOW, NY)).toEqual([]);
+    expect(groupHistory({ ids: [], starredIds: [] }, {}, NOW, NY)).toEqual([]);
   });
 });

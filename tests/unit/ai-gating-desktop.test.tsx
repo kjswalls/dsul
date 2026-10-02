@@ -95,7 +95,7 @@ const desktopCtx: CommandContext = {
   isMobile: false,
 };
 
-const CHAT_COMMANDS = ['rituals.chat', 'rituals.planDay', 'workspace.toggleChat'];
+const CHAT_COMMANDS = ['rituals.chat', 'rituals.planDay', 'workspace.toggleChat', 'ask.newChat', 'ask.history'];
 
 beforeAll(() => {
   if (!('PointerEvent' in globalThis)) {
