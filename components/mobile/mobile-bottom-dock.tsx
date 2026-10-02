@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { ChatComposer } from '@/components/ai/chat-composer';
+import { AnswererLabel, BoundComposer } from '@/components/ai/bound-composer';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { Omnibar } from '@/components/sidebar/omnibar';
 import { DockNoticesMobile } from '@/components/sidebar/dock-notices';
@@ -15,8 +15,9 @@ import {
   useChatCardHomeShown,
   useChatCardSurface,
   useChatHostCard,
-  useGeneralThreadId,
+  usePhoneComposerBinding,
 } from '@/lib/open-chat';
+import { phoneArrivalFocuses, useRailStore } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 
 /**
@@ -26,10 +27,15 @@ import { cn } from '@/lib/utils';
  * ABOVE it rather than inside it. Owns the bottom safe area. NOT overflow-hidden
  * — the omnibar's results panel opens upward out of it.
  *
- * The pill is the omnibar everywhere except the chat tab, where it is the chat
- * composer instead. One bar, one address for typing, whichever surface you are
- * on — which is the same argument that keeps the notice stack mounted here on
- * every tab.
+ * The pill is the omnibar everywhere except the Ask tab, where it is the chat
+ * composer instead, with the static model label under it. One bar, one address
+ * for typing, whichever surface you are on — which is the same argument that
+ * keeps the notice stack mounted here on every tab. On the Ask tab it is the
+ * box of whatever the tab shows (lib/open-chat.ts usePhoneComposerBinding):
+ * Ask home's and History's start a conversation, a conversation's replies in
+ * it, an item's asks about that item. Its half-typed text is kept per view
+ * (rail-store's drafts), so going to Today, which swaps the bar back to the
+ * omnibar, loses nothing.
  *
  * The soft radius-24 pill this replaces was the last surface still wearing the
  * old mobile chrome, and the three-tab bar under the omnibar went with it: the
@@ -46,7 +52,6 @@ import { cn } from '@/lib/utils';
 export function MobileBottomDock() {
   const activeTab = useMobileNavStore((s) => s.activeTab);
   const dockRef = useRef<HTMLDivElement>(null);
-  const [chatFocusSignal, setChatFocusSignal] = useState(0);
 
   const { canChat } = useAICapabilities();
   /**
@@ -55,8 +60,6 @@ export function MobileBottomDock() {
    * composer here would be a field that sends nowhere under the wrong surface.
    */
   const chatBar = activeTab === 'chat' && canChat;
-  // The conversation the chat tab shows, and so the one this bar sends into.
-  const generalThreadId = useGeneralThreadId();
   /**
    * The catch-up host. "Pick things back up" is local and needs no model
    * (lib/commands/registry.ts), and its card answers on the chat surface — so
@@ -82,11 +85,16 @@ export function MobileBottomDock() {
   const catchUpHost = hostCard && !homeShown && (!canChat || hosting);
   if (catchUpHost !== hosting) setHosting(catchUpHost);
 
-  // Arriving on the chat tab puts the caret in the composer, exactly as it did
-  // when the composer lived in the panel — the field moved down here, the
-  // behaviour did not move with it on its own.
+  // Arriving on the Ask tab puts the caret in the composer only where typing
+  // is the point: a conversation or an item on top. Ask home and History are
+  // tap targets, and a keyboard raised over them hides what was to be tapped
+  // (rail-store's phoneArrivalFocuses, which the mode sheet's focus return
+  // asks too). A request the box consumes, as every Ask focus is; an explicit
+  // open (revealChat, `?`, "+") makes its own at any view.
   useEffect(() => {
-    if (chatBar) setChatFocusSignal((n) => n + 1);
+    if (!chatBar) return;
+    const rail = useRailStore.getState();
+    if (phoneArrivalFocuses(rail.stacks.phone)) rail.focusComposer();
   }, [chatBar]);
 
   // Measured, not estimated: app/globals.css pins the mobile toast at
@@ -153,11 +161,7 @@ export function MobileBottomDock() {
                 changes between tabs; swapping the pill for an empty well was
                 the phase-2 regression this closes. */}
             {chatBar ? (
-              <ChatComposer
-                variant="dock"
-                binding={{ kind: 'conversation', id: generalThreadId }}
-                focusSignal={chatFocusSignal}
-              />
+              <AskDockComposer />
             ) : (
               // captureRelay: the radial relay
               // (components/primitives/relay-field.tsx) lives INSIDE this pill on
@@ -179,7 +183,23 @@ export function MobileBottomDock() {
             )}
           </div>
         </div>
+        {/* Who answers, under the bar on the Ask tab at every view: the
+            capsule says "Ask" and a conversation's box says "Reply…", so this
+            is the phone's one sign of it. Its own row, inset past the mode
+            card to the pill's text, so the card keeps the pill's floor. The
+            toast anchor above re-measures the taller well. */}
+        {chatBar && <AnswererLabel className="mt-1 pl-[74px]" />}
       </div>
     </div>
   );
+}
+
+/**
+ * The Ask tab's box: the dock pill, bound to the top of the phone's Ask stack
+ * (usePhoneComposerBinding), its text kept per binding and its focus taken
+ * only on request (BoundComposer). The label is the dock's own row.
+ */
+function AskDockComposer() {
+  const { binding, placeholder } = usePhoneComposerBinding();
+  return <BoundComposer variant="dock" surface="phone" binding={binding} placeholder={placeholder} label={false} />;
 }

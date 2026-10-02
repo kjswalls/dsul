@@ -1,6 +1,5 @@
 import { useAISettingsStore } from './ai-settings-store';
 import { resetPluginTransport } from './chat-transport';
-import { resetGeneralThread } from './open-chat';
 import { useRailStore } from './rail-store';
 import type { ChatTarget } from './ai-types';
 
@@ -10,11 +9,10 @@ import type { ChatTarget } from './ai-types';
  * own Delete.
  *
  * It sets the device-local choice, drops the cached plugin transport, and
- * returns both Ask stacks to home (and gives the old single-thread panels a
- * fresh general conversation), so the next ask starts a new conversation with
- * the new answerer. An old conversation can still be continued: each message
- * records who answered it, and the store folds a continuity note into the
- * context for OpenClaw (lib/conversations-store.ts).
+ * returns both Ask stacks to home, so the next ask starts a new conversation
+ * with the new answerer. An old conversation can still be continued: each
+ * message records who answered it, and the store folds a continuity note into
+ * the context for OpenClaw (lib/conversations-store.ts).
  *
  * It is a function and not a store subscriber on purpose. A subscriber also
  * fires when the persisted choice REHYDRATES, when `clearUserScopedState`
@@ -28,5 +26,4 @@ export function chooseChatTarget(next: ChatTarget): void {
   resetPluginTransport();
   useRailStore.getState().popToHome('desktop');
   useRailStore.getState().popToHome('phone');
-  resetGeneralThread();
 }

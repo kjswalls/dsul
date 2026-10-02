@@ -74,8 +74,8 @@ vi.mock('@/components/mobile/mobile-view-router', () => ({
 vi.mock('@/components/sidebar/braindump', () => ({
   Braindump: () => <div data-testid="surface-braindump" />,
 }));
-vi.mock('@/components/mobile/mobile-chat-panel', () => ({
-  MobileChatPanel: () => <div data-testid="surface-chat" />,
+vi.mock('@/components/mobile/ask-tab', () => ({
+  AskTab: () => <div data-testid="surface-chat" />,
 }));
 
 import { MobileShell } from '@/components/shell/mobile-shell';
@@ -86,7 +86,7 @@ import ItemPage from '@/app/item/[id]/page';
 import { mobileTabOrder, useMobileNavStore } from '@/lib/mobile-nav-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { generalThreadId } from '@/lib/open-chat';
+import { useRailStore } from '@/lib/rail-store';
 import type { TaskItem } from '@/lib/planner-types';
 import {
   CONNECTED_MODEL,
@@ -123,6 +123,7 @@ const updateTask = vi.fn();
 let unseed: () => void = () => {};
 beforeEach(() => {
   useMobileNavStore.setState({ activeTab: 'today' });
+  useRailStore.getState().reset();
   useProposalStore.getState().dismiss();
   usePlannerStore.setState({
     userId: 'user-1',
@@ -181,15 +182,15 @@ describe('the switcher sheet', () => {
     await waitFor(() => expect(entries()).toHaveLength(2));
   });
 
-  it('lists three with a model, the third named AI', async () => {
+  it('lists three with a model, the third named Ask', async () => {
     seed(CONNECTED_MODEL);
     render(<ModeSwitcherSheet />);
     open();
 
     await waitFor(() => expect(entries()).toHaveLength(3));
-    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('AI');
+    expect(screen.getByTestId('mode-option-chat')).toHaveTextContent('Ask');
     expect(
-      screen.getByText('Switch between the Braindump, Today and AI surfaces.')
+      screen.getByText('Switch between the Braindump, Today and Ask surfaces.')
     ).toBeInTheDocument();
   });
 });
@@ -325,9 +326,10 @@ describe('the catch-up host in the phone dock', () => {
     expect(host()).toBeNull();
   });
 
-  it("carries the chat tab's own plan when the key is turned down mid-review", () => {
+  it("carries the Ask tab's conversation's plan when the key is turned down mid-review", () => {
     seed(CONNECTED_MODEL);
     useMobileNavStore.setState({ activeTab: 'chat' });
+    useRailStore.getState().push('phone', { kind: 'conversation', id: 'c1' });
     render(<MobileBottomDock />);
     act(() => {
       useProposalStore.setState({
@@ -339,10 +341,10 @@ describe('the catch-up host in the phone dock', () => {
           operations: [{ kind: 'create' as const, itemType: 'task', title: 'Call the bank' }],
           createdAt: '2026-10-01T00:00:00.000Z',
         },
-        lastRequest: { intent: 'ask', prompt: 'plan it', surface: `conv:${generalThreadId()}` },
+        lastRequest: { intent: 'ask', prompt: 'plan it', surface: 'conv:c1' },
       });
     });
-    // The chat tab carries it while there is one.
+    // The conversation on the Ask tab carries it while there is one.
     expect(host()).toBeNull();
 
     act(() => {

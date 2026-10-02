@@ -10,12 +10,14 @@ import { DndContext } from '@dnd-kit/core';
  * deleted wrapper, and a test asserting a class is absent pins the class, not
  * the design. It is the two SHARED components that grew a mobile variant, and
  * the one thing that variant must not do: leak onto desktop. Braindump is the
- * sidebar's whole body and ChatConversation is the desktop chat panel's, so an
+ * sidebar's whole body and ConversationView is the desktop rail's, so an
  * unguarded default in either is a desktop regression, not a mobile one.
  *
  * The other contract is the chat composer's single mount. Its field moved
- * into the dock, so the conversation must stop rendering one — two text fields
- * on that tab, the upper of them a decoy, is the failure mode.
+ * into the dock, so the Ask tab must render none of its own (no Ask home box,
+ * no conversation box): two text fields on that tab, the upper of them a
+ * decoy, is the failure mode. The tab's own stack, focus and items are
+ * tests/unit/ask-tab.test.tsx.
  */
 
 // RelayField (the braindump's empty-state backdrop) reads prefers-reduced-motion.
@@ -41,6 +43,8 @@ vi.mock('@/lib/db', () => ({
   fetchRoutines: vi.fn(async () => []),
   fetchSeasons: vi.fn(async () => []),
   fetchGoals: vi.fn(async () => []),
+  // Ask home reads the agents' freshness on mount (hooks/use-agent-freshness.ts).
+  fetchAgentStates: vi.fn(async () => []),
 }));
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }));
 vi.mock('@/lib/supabase', () => ({
@@ -59,12 +63,20 @@ vi.mock('next/navigation', () => ({
 }));
 
 import { Braindump } from '@/components/sidebar/braindump';
-import { ChatConversation } from '@/components/ai/chat-conversation';
-import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
-import { clearChatState, useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
-import { generalThreadId } from '@/lib/open-chat';
+import { ConversationView } from '@/components/ai/ask/conversation-view';
+import { AskTab } from '@/components/mobile/ask-tab';
+import { chatTransport } from '@/lib/chat-transport';
+import { httpConversationsApi } from '@/lib/conversations-api';
+import {
+  clearChatState,
+  configureConversations,
+  useConversationsStore,
+  type ChatMessage,
+} from '@/lib/conversations-store';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useRailStore } from '@/lib/rail-store';
 import { CONNECTED_MODEL, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { fakeApi, fakeTransport } from './helpers/conversations-fakes';
 
 let unseed: () => void = () => {};
 beforeEach(() => {
@@ -79,19 +91,22 @@ beforeEach(() => {
     seasons: [],
   });
   unseed = seedAI(CONNECTED_MODEL);
+  configureConversations({ api: fakeApi().api, transport: fakeTransport().transport });
   clearChatState();
 });
 afterEach(() => {
   cleanup();
   unseed();
+  configureConversations({ api: httpConversationsApi, transport: chatTransport });
 });
 
 /** The user menu the phone shell hangs in the dateless tabs' header capsule. */
 const AVATAR = <button aria-label="User menu">K</button>;
 
-/** The panels' one (general) conversation, as a load leaves it, holding one reply. */
+/** A saved conversation, as a load leaves it, holding one reply. */
+const CONV = 'c1';
 function seedReply(content: string) {
-  const id = generalThreadId();
+  const id = CONV;
   const reply: ChatMessage = {
     id: 'reply-1',
     role: 'assistant',
@@ -164,47 +179,63 @@ describe('the Braindump header, shared by the sidebar and the phone tab', () => 
   });
 });
 
-describe('the chat tab shell', () => {
-  it('titles the capsule after the agent that is answering', () => {
+describe('the Ask tab shell', () => {
+  it('titles the capsule "Ask" whoever answers, and carries the user menu', () => {
     unseed();
     unseed = seedAI(OPENCLAW_PLUGIN);
-    render(<MobileChatPanel headerAccessory={AVATAR} />);
+    render(<AskTab headerAccessory={AVATAR} />);
 
-    expect(screen.getByRole('heading', { name: 'OpenClaw · kirby-1' })).toBeInTheDocument();
+    // The answerer is named under the dock's bar (mobile-dock.test.tsx), not here.
+    expect(screen.getByText('Ask')).toBeInTheDocument();
+    expect(screen.queryByText(/OpenClaw · kirby-1/)).toBeNull();
     expect(screen.getByRole('button', { name: 'User menu' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'History' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'New chat' })).toBeInTheDocument();
   });
 
-  it('brings no composer of its own — the dock owns the field', () => {
-    render(<MobileChatPanel />);
+  it('brings no composer of its own, at home or in a conversation — the dock owns the field', () => {
+    render(<AskTab />);
+    expect(screen.queryByRole('textbox')).toBeNull();
+    cleanup();
+
+    seedReply('Two items are open.');
+    useRailStore.getState().push('phone', { kind: 'conversation', id: CONV });
+    render(<AskTab />);
+    expect(screen.getByText('Two items are open.')).toBeInTheDocument();
     expect(screen.queryByRole('textbox')).toBeNull();
   });
 
-  it('cards the AI’s replies, which have nothing else bounding them on paper', () => {
+  it('leaves the replies plain on the phone too: one transcript, one look (D11)', () => {
     seedReply('Two items are open.');
-    render(<MobileChatPanel />);
-
-    // design/mobile-redesign/ChatTab.dc.html: surface-2, hairline, soft shadow.
-    // Without it the user's bubble is the only carded turn on the screen.
-    expect(replyBlock('Two items are open.')?.className).toMatch(/bg-surface-2/);
+    useRailStore.getState().push('phone', { kind: 'conversation', id: CONV });
+    render(<AskTab />);
+    expect(replyBlock('Two items are open.')?.className).not.toMatch(/bg-surface-2/);
   });
 
-  it('opens with one header, not a header under a header', () => {
-    render(<MobileChatPanel />);
-    // ChatConversation's own provider strip is suppressed; the capsule title
-    // says the same thing one line higher.
-    expect(screen.getAllByText('AI')).toHaveLength(1);
+  it('has no ✕: the tab is the way out', () => {
+    useRailStore.getState().push('phone', { kind: 'history' });
+    render(<AskTab />);
+    expect(screen.queryByRole('button', { name: /close/i })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Back to Ask' })).toBeInTheDocument();
   });
 });
 
 describe('the desktop conversation', () => {
   it('still renders its composer when nothing asks it not to', () => {
-    render(<ChatConversation variant="desktop" hideHeader />);
-    expect(screen.getByPlaceholderText('Ask anything…')).toBeInTheDocument();
+    seedReply('Two items are open.');
+    render(<ConversationView id={CONV} />);
+    expect(screen.getByPlaceholderText('Reply…')).toBeInTheDocument();
   });
 
-  it('leaves its replies flat — the sidebar panel is already the card', () => {
+  it('drops it only for the phone, whose box is the dock', () => {
     seedReply('Two items are open.');
-    render(<ChatConversation variant="desktop" hideHeader />);
+    render(<ConversationView id={CONV} surface="phone" composer={false} />);
+    expect(screen.queryByRole('textbox')).toBeNull();
+  });
+
+  it('leaves its replies flat — the rail is already the card', () => {
+    seedReply('Two items are open.');
+    render(<ConversationView id={CONV} />);
 
     expect(replyBlock('Two items are open.')?.className).not.toMatch(/bg-surface-2/);
   });

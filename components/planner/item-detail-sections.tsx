@@ -56,9 +56,10 @@ function SubtasksSection({ item }: { item: Item }) {
 
   const { canPropose } = useAICapabilities();
   const requestProposal = useProposalStore((s) => s.request);
-  // Scoped to THIS item — see the note in chat-conversation.tsx. A breakdown
-  // loading for another item must not grey out this one's button with no
-  // spinner in sight.
+  // Scoped to THIS item, not global. The spinner renders on the surface that
+  // asked, so a breakdown loading for another item must not grey out this
+  // one's button with no spinner in sight. Superseding another surface's
+  // request is safe: the store drops the reply of any request no longer current.
   const proposalBusy = useProposalStore(
     (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
   );

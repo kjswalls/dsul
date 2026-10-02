@@ -7,6 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
 import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
+import type { AskSurface } from '@/lib/rail-store';
 import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
 import { cn } from '@/lib/utils';
 
@@ -23,10 +24,13 @@ interface ChatComposerProps {
   variant: 'panel' | 'dock';
   /** Where a send goes (lib/open-chat.ts `sendFrom` decides what that means). */
   binding: ComposerBinding;
+  /**
+   * Which Ask stack a send that starts a conversation pushes it on: the
+   * phone's dock bar says 'phone'. Absent: the desktop rail's.
+   */
+  surface?: AskSurface;
   /** Grows the panel variant's icon buttons to touch size. 'dock' is already 48px. */
   touch?: boolean;
-  /** Increment to focus the field (a tab activating, a panel expanding). */
-  focusSignal?: number;
   /**
    * The text, held by the caller (BoundComposer keeps it in rail-store, so a
    * half-typed message outlives the view it was typed in). Absent: the field
@@ -77,8 +81,8 @@ function boundThreadId(s: ConversationsState, binding: ComposerBinding): string 
 export function ChatComposer({
   variant,
   binding,
+  surface,
   touch,
-  focusSignal,
   value,
   onValueChange,
   awake = true,
@@ -106,12 +110,6 @@ export function ChatComposer({
     placeholderOverride ?? (binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target));
   const hasText = input.trim().length > 0;
 
-  useEffect(() => {
-    if (focusSignal !== undefined && focusSignal > 0) {
-      setTimeout(() => textareaRef.current?.focus(), 100);
-    }
-  }, [focusSignal]);
-
   // Auto-grow, measured while the field can be: a field with no box (hidden,
   // or an ancestor display:none) reads scrollHeight 0, and writing that down
   // would leave a 0px field behind once it shows. So a hidden field keeps no
@@ -131,7 +129,7 @@ export function ChatComposer({
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
-    void sendFrom(binding, text);
+    void sendFrom(binding, text, { surface });
   };
 
   const refocus = useRef(false);
@@ -258,7 +256,9 @@ export function ChatComposer({
         // focus to <body>, where the next keystroke fires a bare-key shortcut,
         // and a disabled field cannot take the focus a send hands to the
         // conversation it pushed. handleSend already refuses while busy. (The
-        // phone's dock bar stays disabled: its contract is pinned for C5.)
+        // phone's dock bar stays disabled on purpose: a reply on its way puts
+        // the keyboard away so the reply can be read, and a phone has no
+        // bare-key shortcuts for a lost focus to fire.)
         readOnly={isLoading}
         aria-busy={isLoading || undefined}
       />

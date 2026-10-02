@@ -46,8 +46,12 @@ const HOME: ComposerBinding = { kind: 'home' };
  *
  * A chip starts a FRESH conversation titled with its label, not its long
  * prompt (`askNew`), and pushes it; the box does the same with what was typed.
+ *
+ * `variant="mobile"` is the phone's Ask tab: the same home, pushing on the
+ * phone's stack, with no box of its own (the dock's bar is the tab's box).
  */
-export function AskHome() {
+export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
+  const phone = variant === 'mobile';
   const items = usePlannerStore((s) => s.items);
   const summaries = useConversationsStore((s) => s.summaries);
   const list = useConversationsStore((s) => s.list);
@@ -103,15 +107,15 @@ export function AskHome() {
           )}
         </div>
         <NeedsYou items={waiting} />
-        <AIActivity rows={activity} />
+        <AIActivity rows={activity} surface={phone ? 'phone' : 'desktop'} />
       </div>
       <div className="flex shrink-0 flex-col gap-2 px-3 pb-3">
         <OpenerChips
           openers={openers}
-          onPick={(opener) => askNew(opener.prompt, { title: opener.label, isMobile: false })}
+          onPick={(opener) => askNew(opener.prompt, { title: opener.label, isMobile: phone })}
           className="px-2"
         />
-        <BoundComposer binding={HOME} />
+        {!phone && <BoundComposer binding={HOME} />}
       </div>
     </div>
   );

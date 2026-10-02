@@ -1,4 +1,4 @@
-import { useSyncExternalStore } from 'react';
+import { useMemo } from 'react';
 import { getAICapabilities, useAICapabilities } from './ai-connection-store';
 import { resolveConversationId, useConversationsStore } from './conversations-store';
 import { useMobileNavStore } from './mobile-nav-store';
@@ -17,6 +17,7 @@ import {
 import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
 import { usePlannerStore } from './planner-store';
 import { useViewStore } from './view-store';
+import { chatPlaceholder, itemChatPlaceholder } from './chat-utils';
 import type { Item, Task } from './planner-types';
 
 export { bindingKey, type ComposerBinding } from './rail-store';
@@ -27,6 +28,11 @@ function leaveZen(): void {
   if (view.zenOpen) view.setZenOpen(false);
 }
 
+/** The phone's Ask tab, shown with nothing asked of the box (a row is not a request to type). */
+function showAskTab(): void {
+  useMobileNavStore.getState().setActiveTab('chat');
+}
+
 /**
  * Opens Ask iff something can answer (`getAICapabilities().canChat`).
  *
@@ -35,15 +41,17 @@ function leaveZen(): void {
  * and a focus request the box consumes when it mounts. Because all three
  * outlive a client navigation, the settings buttons that call this and then go
  * to `/` land on Ask with the caret in its box. An item open on top stays on
- * top, with Ask under it. Mobile: the chat tab. Returns whether it opened, so
- * a caller (a command, the catch-up card, the settings no-results button) can
- * do something else when there is nothing to open: an open into a surface
- * that is hidden is a button that does nothing.
+ * top, with Ask under it. Mobile: the Ask tab, with the dock's box asked for
+ * (an explicit open, unlike arriving by the sheet or a swipe). Returns whether
+ * it opened, so a caller (a command, the catch-up card, the settings
+ * no-results button) can do something else when there is nothing to open: an
+ * open into a surface that is hidden is a button that does nothing.
  */
 export function revealChat(isMobile: boolean): boolean {
   if (!getAICapabilities().canChat) return false;
   if (isMobile) {
-    useMobileNavStore.getState().setActiveTab('chat');
+    showAskTab();
+    useRailStore.getState().focusComposer();
   } else {
     leaveZen();
     useRailStore.getState().summon({ focus: true });
@@ -104,9 +112,9 @@ export function useChatHostCard(): boolean {
 }
 
 /**
- * The surface for chat's ONE card in a host that carries it (MobileChatPanel
- * and the docks' catch-up hosts): a conversation's own plan while that is what
- * was asked, else the catch-up card's 'chat'. One mount, not two side by side:
+ * The surface for chat's ONE card in a host that carries it (the docks'
+ * catch-up hosts): a conversation's own plan while that is what was asked,
+ * else the catch-up card's 'chat'. One mount, not two side by side:
  * a card with no request to match (the "nothing left to apply" after an
  * accept) renders on every mount, and two would show it twice. Both surfaces
  * are exempt from the unmount-dismiss, so the prop flipping between them drops
@@ -138,9 +146,9 @@ export function useAskHomeShown(surface: AskSurface): boolean {
  * Whether the card a catch-up host would carry (useChatCardSurface) is already
  * on screen in its own home, so the host yields and the card never renders
  * twice. The catch-up card's home is Ask home (D12's rule); a conversation's
- * plan's home is that conversation's view, on top of the shown rail. False
- * whenever nothing can answer, which is what keeps EITHER card in the dock
- * when the gate closes under it. The docks use it as
+ * plan's home is that conversation's view, on top of the shown rail or the
+ * phone's Ask tab. False whenever nothing can answer, which is what keeps
+ * EITHER card in the dock when the gate closes under it. The docks use it as
  * `hostCard && !homeShown && (!canChat || hosting)`, keeping their latch.
  */
 export function useChatCardHomeShown(surface: AskSurface): boolean {
@@ -154,11 +162,58 @@ export function useChatCardHomeShown(surface: AskSurface): boolean {
     return view?.kind === 'conversation' ? view.id : null;
   });
   if (cardSurface === 'chat') return askHome;
-  if (surface === 'desktop') return mode === 'ask' && cardSurface === `conv:${top}`;
-  // C2–C4: the phone's chat tab is still MobileChatPanel, which shows chat's
-  // one card whatever its conversation. C5 (the Ask tab) makes this the
-  // desktop rule over the phone stack.
-  return onTab && canChat;
+  const shown = surface === 'desktop' ? mode === 'ask' : onTab && canChat;
+  return shown && top !== null && cardSurface === `conv:${resolveConversationId(top)}`;
+}
+
+/** What the phone dock's box sends into, and what it says (usePhoneComposerBinding). */
+export interface PhoneComposer {
+  binding: ComposerBinding;
+  placeholder: string;
+}
+
+const PHONE_HOME: ComposerBinding = { kind: 'home' };
+
+/**
+ * The phone's one box is the dock's (components/mobile/mobile-bottom-dock.tsx),
+ * under every view of the Ask tab, so it follows the top of `stacks.phone`:
+ *   home, History  a new conversation, pushed: "Ask anything…" ("Message
+ *                  OpenClaw…" when OpenClaw answers)
+ *   conversation   that one: "Reply…". A new chat's draft has nothing to reply
+ *                  to yet, and one deleted elsewhere sends to a new conversation
+ *                  (which replaces it), so both keep the plain wording, as the
+ *                  rail's conversation view does.
+ *   item           the item's one conversation: "Ask about this item…"
+ * The binding is one object per view, so the box's effects run when it moves
+ * and never because something else re-rendered.
+ */
+export function usePhoneComposerBinding(): PhoneComposer {
+  const top = useRailStore((s) => {
+    const view = s.stacks.phone.at(-1);
+    if (view?.kind === 'conversation') return `conv:${view.id}`;
+    if (view?.kind === 'item') return `item:${view.itemId}`;
+    return 'home';
+  });
+  const conversation = useConversationsStore((s): 'said' | 'new' | 'gone' | null => {
+    if (!top.startsWith('conv:')) return null;
+    const id = resolveConversationId(top.slice(5));
+    const t = s.threads[id];
+    if (t?.load === 'gone') return 'gone';
+    return (t && t.messages.length > 0) || s.summaries[id] || t?.saved ? 'said' : 'new';
+  });
+  const { target } = useAICapabilities();
+  return useMemo(() => {
+    if (top.startsWith('item:')) {
+      return { binding: { kind: 'item', itemId: top.slice(5) }, placeholder: itemChatPlaceholder(target) };
+    }
+    if (top.startsWith('conv:') && conversation !== 'gone') {
+      return {
+        binding: { kind: 'conversation', id: resolveConversationId(top.slice(5)) },
+        placeholder: conversation === 'said' ? 'Reply…' : chatPlaceholder(target),
+      };
+    }
+    return { binding: PHONE_HOME, placeholder: chatPlaceholder(target) };
+  }, [top, conversation, target]);
 }
 
 // ── Opening what Ask holds ───────────────────────────────────────────────────
@@ -240,21 +295,17 @@ export function openHistory(
  * showing.
  *
  *  - An ITEM's conversation opens its item, landing on the item's Conversation
- *    section. On desktop the item takes the slot over whatever Ask view is
- *    showing, so Back returns there, carrying a reveal request
- *    (`pendingReveal`, which the item's pinned conversation consumes on mount
- *    and scrolls only the rail body to). The phone's drawer is the inline
- *    shape, which reveals nothing, so the phone asks for none.
+ *    section, with a reveal request (`pendingReveal`, which the item's
+ *    conversation consumes on mount and scrolls only its scroller to). On
+ *    desktop the item takes the slot over whatever Ask view is showing, so
+ *    Back returns there; on the phone it is pushed over the Ask tab's view
+ *    (`{kind:'item'}`), the row that opened it named as for a conversation.
  *  - A general conversation, or an item's whose item is gone, is pushed, the
  *    row that opened it named in `returnFocus` so Back hands focus back to it.
  *    The view fetches its transcript if this browser has not read it, and says
  *    when the item is gone; the conversation can still go on, with no item to
  *    focus its context on. Nothing focuses the box: a row is not a request to
  *    type.
- *
- * The phone, until C5: its chat tab still shows the general conversation
- * (MobileChatPanel), so a general conversation becomes that one, as `askNew`
- * does there, and an item opens in the drawer, as every phone open does.
  */
 export function openConversation(id: string, isMobile: boolean, o: { returnFocus?: string } = {}): void {
   if (!getAICapabilities().canChat) return;
@@ -263,23 +314,22 @@ export function openConversation(id: string, isMobile: boolean, o: { returnFocus
   const itemId = conversations.summaries[rid]?.itemId ?? conversations.threads[rid]?.itemId ?? null;
   const item = itemId ? usePlannerStore.getState().items.find((i) => i.id === itemId) : undefined;
 
+  if (isMobile) {
+    showAskTab();
+    const rail = useRailStore.getState();
+    if (item) rail.setPendingReveal(item.id);
+    const view: AskView = item ? { kind: 'item', itemId: item.id } : { kind: 'conversation', id: rid };
+    rail.push('phone', o.returnFocus ? { ...view, returnFocus: o.returnFocus } : view);
+    return;
+  }
+
   if (item) {
-    if (isMobile) {
-      openEditFor(item as unknown as Task, item.type === 'habit' ? 'habit' : 'task');
-      return;
-    }
     leaveZen();
     useRailStore.getState().setPendingReveal(item.id);
     openItemFromAsk(item);
     return;
   }
 
-  if (isMobile) {
-    if (!revealChat(true)) return;
-    setGeneral(rid);
-    void conversations.openThread(rid);
-    return;
-  }
   leaveZen();
   if (useUIStore.getState().activeDialog?.type === 'edit-item') closeItemPanel();
   const rail = useRailStore.getState();
@@ -295,70 +345,6 @@ export function openConversation(id: string, isMobile: boolean, o: { returnFocus
 // The one place that decides which conversation a composer's text lands in,
 // and whether a view is pushed to show it. Every composer calls sendFrom; the
 // store's send never chooses a thread.
-
-/**
- * C1–C4 only: the one conversation the old single-thread panels
- * (MobileChatPanel, and the ChatConversation and ChatComposer inside it) bind
- * to, as `{kind:'conversation', id: generalThreadId()}`. The desktop's
- * ChatPanel went in C2 (Ask is in the rail); this goes in C5 with the last of
- * them.
- *
- * Memory only. The id is minted here WITHOUT a store write, so a render may
- * read it; the thread comes into being on its first send, which saves it with
- * `create`, a real saved conversation. A new one is minted when the store
- * resets (sign-out, an account switch), when this one is deleted or found gone
- * (a 404), and by `resetGeneralThread()` (chooseChatTarget).
- */
-let general: string | null = null;
-const generalListeners = new Set<() => void>();
-
-/**
- * The general conversation is the old panels' one conversation on screen, so
- * replacing it is that conversation leaving, and a plan card it asked for
- * (`conv:<id>`) goes with it: rail-store's rule for a conversation that leaves
- * both Ask stacks, applied to the one the panels show.
- */
-function setGeneral(id: string | null): void {
-  const prev = general === null ? null : resolveConversationId(general);
-  general = id;
-  if (prev !== null && prev !== id) {
-    const proposals = useProposalStore.getState();
-    if (proposals.lastRequest?.surface === `conv:${prev}`) proposals.dismiss();
-  }
-  for (const l of generalListeners) l();
-}
-
-export function generalThreadId(): string {
-  if (general === null) general = crypto.randomUUID();
-  return resolveConversationId(general);
-}
-
-/** A fresh general conversation from the next send on (chooseChatTarget). */
-export function resetGeneralThread(): void {
-  setGeneral(null);
-}
-
-/** The general conversation, as a render reads it: re-renders when it is re-minted. */
-export function useGeneralThreadId(): string {
-  return useSyncExternalStore(
-    (onChange) => {
-      generalListeners.add(onChange);
-      return () => generalListeners.delete(onChange);
-    },
-    generalThreadId,
-    // Module state on the server would be shared by every request.
-    () => ''
-  );
-}
-
-// The general conversation follows the cache: a reset, a delete or a 404 ends it.
-useConversationsStore.subscribe((s, prev) => {
-  if (general === null) return;
-  const id = resolveConversationId(general);
-  if (s.generation !== prev.generation || (prev.threads[id] && !s.threads[id]) || s.threads[id]?.load === 'gone') {
-    setGeneral(null);
-  }
-});
 
 /**
  * The conversation a binding sends into, and the view to push for it:
@@ -443,26 +429,20 @@ export async function sendFrom(
 /**
  * Start a fresh conversation with this text: a chip, "Plan my day". Always a
  * new conversation, titled `title` (the chip's label, not its long prompt),
- * pushed on the rail with its box focused. An item open on top is closed
- * first, through the one flushing close, or the answer would stream in under
- * it where nobody sees it.
- *
- * The phone, until C5: its chat tab still shows the general conversation
- * (MobileChatPanel), so the fresh conversation becomes that one instead.
+ * pushed on the rail (the phone: its Ask tab) with its box asked for. An item
+ * open on top on desktop is closed first, through the one flushing close, or
+ * the answer would stream in under it where nobody sees it; the phone's item
+ * is a view on the same stack, which the push replaces (the level rule).
  */
 export function askNew(text: string, o: { title: string; isMobile: boolean }): void {
   if (!revealChat(o.isMobile)) return;
   const id = useConversationsStore.getState().newDraft({ title: o.title });
-  if (o.isMobile) {
-    setGeneral(id);
-    void sendFrom({ kind: 'conversation', id }, text, { surface: 'phone' });
-    return;
-  }
-  closeItemPanel();
+  const surface: AskSurface = o.isMobile ? 'phone' : 'desktop';
+  if (!o.isMobile) closeItemPanel();
   const rail = useRailStore.getState();
-  rail.push('desktop', { kind: 'conversation', id });
+  rail.push(surface, { kind: 'conversation', id });
   rail.focusComposer({ kind: 'draft', id });
-  void sendFrom({ kind: 'draft', id }, text, { surface: 'desktop' });
+  void sendFrom({ kind: 'draft', id }, text, { surface });
 }
 
 /**
@@ -484,15 +464,6 @@ export function askNew(text: string, o: { title: string; isMobile: boolean }): v
 export function askFromCommandBar(text: string, isMobile: boolean): void {
   if (!text.trim()) {
     revealChat(isMobile);
-    return;
-  }
-  // C2–C4 only: the phone's chat tab still shows the general conversation
-  // (MobileChatPanel), not the phone stack, so a `?` there continues it. C5's
-  // Ask tab shows the stack: this block goes with generalThreadId(), and the
-  // phone branches below (written for it now) take over.
-  if (isMobile) {
-    if (!revealChat(true)) return;
-    void sendFrom({ kind: 'conversation', id: generalThreadId() }, text, { surface: 'phone' });
     return;
   }
   const surface: AskSurface = isMobile ? 'phone' : 'desktop';

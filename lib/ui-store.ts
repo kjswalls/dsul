@@ -283,6 +283,9 @@ export const openBulkAdd = (
  * for the same item. DesktopShell's narrowed selector and ItemDialog's
  * confirm-disarm latch both key on payload identity, so a by-reference
  * pass-through would make re-opening the same custom item invisible to them.
+ *
+ * The interceptor (below) is asked first: an item opened while the phone's
+ * Ask tab is showing is pushed over Ask instead of opening the drawer.
  */
 export const openEditFor = (item: Task | HabitItem, itemType: KnownItemType) => {
   const runtime = item as { type?: string };
@@ -290,8 +293,23 @@ export const openEditFor = (item: Task | HabitItem, itemType: KnownItemType) => 
     runtime.type === 'custom'
       ? ({ ...item } as unknown as Item)
       : ({ ...item, type: itemType } as Item);
+  if (editItemInterceptor?.(stamped)) return;
   useUIStore.getState().openDialog({ type: 'edit-item', item: stamped });
 };
+
+/**
+ * Asked by every `openEditFor` before the slot: true means the open was taken
+ * elsewhere and the slot stays as it is. lib/rail-store.ts installs the one
+ * there is, which pushes the item over the phone's Ask tab while that tab is
+ * mounted (so Today and Braindump keep the drawer). A module slot with a
+ * setter, as the item panel's flush and close are below, so this store
+ * imports nothing to learn about Ask.
+ */
+let editItemInterceptor: ((item: Item) => boolean) | null = null;
+
+export function setEditItemInterceptor(fn: ((item: Item) => boolean) | null): void {
+  editItemInterceptor = fn;
+}
 
 // ── Closing the item from outside it ─────────────────────────────────────────
 //
