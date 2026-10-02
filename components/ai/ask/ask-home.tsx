@@ -10,13 +10,11 @@ import { AIActivity } from '@/components/ai/ask/ai-activity';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useEODStore } from '@/lib/eod-store';
-import { buildChatOpeners, HOME_OPENERS, type OpenerContext } from '@/lib/ai-openers';
+import { buildChatOpeners, HOME_OPENERS } from '@/lib/ai-openers';
 import { activityRows, dayEndFromReview, dayLoad, loadLine, needsYou } from '@/lib/ask-home';
-import { inactiveItemIdsOn } from '@/lib/active';
-import { toDateStr } from '@/lib/recurrence';
 import { askNew } from '@/lib/open-chat';
-import { useMinuteClock, useNowMinutes } from '@/lib/use-now-minutes';
 import { useAgentFreshness } from '@/hooks/use-agent-freshness';
+import { useOpenerContext } from '@/hooks/use-opener-context';
 import type { ComposerBinding } from '@/lib/rail-store';
 
 /** Ask home's box: a send starts a new conversation and pushes it (lib/open-chat.ts). */
@@ -36,10 +34,11 @@ const HOME: ComposerBinding = { kind: 'home' };
  * so a brand-new account sees the greeting, the chips and the box. Every line
  * is worked out in lib/ask-home.ts, under the copy contract there.
  *
- * The clock is the minute clock (lib/use-now-minutes.ts), so the day, the
- * chips and "OpenClaw · 12m" turn on the minute and nothing reads `Date.now()`
- * in render. Until it is known (hydration only; Ask mounts behind the AI
- * gate, after it) nothing derived from it shows.
+ * The clock is the minute clock (lib/use-now-minutes.ts, through
+ * hooks/use-opener-context.ts, which a new chat's chips read too), so the day,
+ * the chips and "OpenClaw · 12m" turn on the minute and nothing reads
+ * `Date.now()` in render. Until it is known (hydration only; Ask mounts behind
+ * the AI gate, after it) nothing derived from it shows.
  *
  * Fresh without realtime: while Ask is on screen (ComposerAwakeContext is
  * "the rail is visible") the agent columns and the conversation list are
@@ -50,34 +49,15 @@ const HOME: ComposerBinding = { kind: 'home' };
  */
 export function AskHome() {
   const items = usePlannerStore((s) => s.items);
-  const routines = usePlannerStore((s) => s.routines);
-  const seasons = usePlannerStore((s) => s.seasons);
-  const userTimezone = usePlannerStore((s) => s.userTimezone);
   const summaries = useConversationsStore((s) => s.summaries);
   const eodEnabled = useEODStore((s) => s.eodReviewEnabled);
   const eodTime = useEODStore((s) => s.eodReviewTime);
   const awake = useContext(ComposerAwakeContext);
   useAgentFreshness(awake);
 
-  const tz = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const minutesNow = useNowMinutes(tz);
-  const now = useMinuteClock();
-  const todayStr = now === null ? null : toDateStr(new Date(now), tz);
-
   // The openers' own day, so the chips and the load line never disagree
   // about what today holds (lib/ai-openers.ts has why, and the copy rule).
-  const ctx = useMemo<OpenerContext | null>(
-    () =>
-      todayStr === null
-        ? null
-        : {
-            items,
-            todayStr,
-            userTimezone: tz,
-            inactiveIds: inactiveItemIdsOn(items, todayStr, { userTimezone: tz, routines, seasons }),
-          },
-    [items, routines, seasons, todayStr, tz]
-  );
+  const { ctx, minutesNow, now, todayStr, tz } = useOpenerContext();
 
   const openers = useMemo(
     () => (ctx && minutesNow !== null ? buildChatOpeners(ctx, { max: HOME_OPENERS, minutesNow }) : []),

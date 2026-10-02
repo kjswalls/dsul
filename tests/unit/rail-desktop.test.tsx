@@ -1463,6 +1463,26 @@ describe('Ask home in the column', () => {
     // An item, not a push over Ask: Back from it shows Ask home.
     expect(useRailStore.getState().stacks.desktop).toEqual([]);
   });
+
+  it('keeps an overlay up on Escape in a Needs-you answer with text: the field takes the press', async () => {
+    viewport.narrow = true;
+    usePlannerStore.setState({ items: [DENTIST, PLANTS, WAITING] } as never);
+    renderShell();
+    act(() => useRailStore.getState().summon());
+    await timers();
+    const field = within(askView() as HTMLElement).getByTestId('needs-you-answer') as HTMLInputElement;
+    act(() => field.focus());
+    fireEvent.change(field, { target: { value: 'The cheaper one' } });
+
+    // D8: the text clears and the press is consumed, so the overlay's own
+    // Escape does not also park Ask out from under the card.
+    const press = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+    act(() => void field.dispatchEvent(press));
+    expect(press.defaultPrevented).toBe(true);
+    expect(useRailStore.getState().summoned).toBe(true);
+    expect(askView()).toBeVisible();
+    expect(field).toHaveValue('');
+  });
 });
 
 describe('<AskHome/>, a brand-new account', () => {

@@ -63,12 +63,12 @@ const NO_MESSAGES: ChatMessage[] = [];
 /**
  * The chat conversation (messages + input) over one saved conversation
  * (lib/conversations-store.ts), answered by a connected model or by OpenClaw.
- * Shared by the rail's interim conversation view (components/ai/ask/
- * conversation-view.tsx, until C4 gives the rail its own transcript) and the
- * mobile chat tab (until C5) — replaces the duplicated bodies of chat-sidebar
- * and mobile-chat-panel.
+ * Now only the mobile chat tab's (until C5, which deletes it with
+ * mobile-chat-panel): the rail's conversation view has its own transcript
+ * (components/ai/chat-transcript.tsx) since C4. It replaced the duplicated
+ * bodies of chat-sidebar and mobile-chat-panel.
  *
- * Both hosts mount it only while the AI gate says something can answer, so
+ * Its host mounts it only while the AI gate says something can answer, so
  * every branch here can assume an answerer; `target` names which.
  */
 export function ChatConversation({

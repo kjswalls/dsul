@@ -29,7 +29,6 @@ import { RightRail } from '@/components/ai/rail/right-rail';
 import { ConfirmDialog } from '@/components/shell/confirm-dialog';
 import { ItemConversationMenu, CONVERSATION_COPY, deleteDescription } from '@/components/ai/ask/conversation-title-menu';
 import { answererDividerCopy, answererDividers } from '@/components/ai/chat-transcript';
-import { HELP_ME_START, newChatGreeting, newChatOpeners } from '@/components/ai/ask/new-chat-empty';
 import { useRailStore, type AskView } from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -816,6 +815,17 @@ describe('the transcript', () => {
 /* ── a new chat ──────────────────────────────────────────────────────── */
 
 describe('a new chat', () => {
+  // The chips turn at 16:00 (lib/ai-openers.ts), so the clock is fixed:
+  // 14:00 in the user's zone, an afternoon.
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ['Date'], now: NOW });
+  });
+
+  const chipIds = () =>
+    within(screen.getByTestId('chat-openers'))
+      .getAllByRole('button')
+      .map((c) => c.dataset.opener);
+
   it('opens from "+" with the greeting, the box in the middle and four chips', async () => {
     // Something overdue and nothing today: three openers, then "Help me start…".
     usePlannerStore.setState({ items: [DENTIST, task({ id: 't3', title: 'File taxes', startDate: '2020-01-01' })] });
@@ -882,19 +892,33 @@ describe('a new chat', () => {
     expect(Object.keys(useConversationsStore.getState().summaries)).toEqual([]);
   });
 
-  it('chips: up to three of today’s openers, then "Help me start…" (the C3 seam)', () => {
-    // Today's buildChatOpeners can offer fewer than three; C3's options fill
-    // the row to four at the merge.
-    const openers = newChatOpeners({ items: [], todayStr: '2026-10-02', userTimezone: 'UTC', inactiveIds: new Set() });
-    expect(openers.map((o) => o.id)).toEqual(['plan', 'reflect', 'start']);
-    expect(openers.at(-1)).toBe(HELP_ME_START);
-    expect(HELP_ME_START.mode).toBe('prefill');
+  it("chips: today's openers at the new chat's count, then \"Help me start…\", by the hour", async () => {
+    // Nothing sitting and the afternoon: "Plan my day" and the fallback, so
+    // fewer than three, and "Help me start…" still last.
+    renderRail();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await timers();
+    expect(chipIds()).toEqual(['plan', 'reflect', 'start']);
+    cleanup();
+    act(() => rail().reset());
+
+    // From 16:00, tomorrow and a look back, with what has been sitting.
+    vi.setSystemTime(Date.parse('2026-10-02T19:00:00.000Z'));
+    usePlannerStore.setState({ items: [DENTIST, task({ id: 't3', title: 'File taxes', startDate: '2020-01-01' })] });
+    renderRail();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await timers();
+    expect(chipIds()).toEqual(['plan-tomorrow', 'let-go', 'review', 'start']);
   });
 
-  it('greets by the part of the day and the first name', () => {
-    expect(newChatGreeting(9 * 60, 'Kirby Smith')).toBe('Morning, Kirby');
-    expect(newChatGreeting(13 * 60, null)).toBe('Afternoon');
-    expect(newChatGreeting(2 * 60, 'Kirby')).toBe('Evening, Kirby');
-    expect(newChatGreeting(null, 'Kirby')).toBe('Hello');
+  it("greets with Ask home's greeting, at the new chat's size, under the spark", async () => {
+    renderRail();
+    fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
+    await timers();
+    const greeting = screen.getByTestId('new-chat-empty').querySelector('[data-ask-greeting]') as HTMLElement;
+    expect(greeting).toHaveAttribute('data-ask-greeting', 'new-chat');
+    expect(greeting).toHaveClass('font-serif', 'text-2xl', 'flex-col');
+    expect(greeting.querySelector('svg')).toHaveClass('text-ai');
+    expect(greeting).toHaveTextContent(/^Afternoon(, \S+)?$/);
   });
 });

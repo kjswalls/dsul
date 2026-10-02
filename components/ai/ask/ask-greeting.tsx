@@ -13,7 +13,8 @@ import { cn } from '@/lib/utils';
  *
  *  - home      Ask home, 15px with a period (the Direction B mock). Its ✦ is
  *              the header's, one line above, so it carries none of its own.
- *  - new-chat  a new chat's empty state, 24px, no period, led by the ✦ (mock 6).
+ *  - new-chat  a new chat's empty state, 24px, no period, under the ✦ on a line
+ *              of its own, centred (mock 6; components/ai/ask/new-chat-empty.tsx).
  *
  * The clock is the grid's now-marker clock, aligned to the minute, so it turns
  * from morning to afternoon at noon on its own. `data-ask-greeting` lets a
@@ -41,7 +42,7 @@ export function AskGreeting({
       data-ask-greeting={variant}
       className={cn(
         'flex items-center font-serif text-foreground',
-        home ? 'gap-1.5 text-[15px] leading-snug' : 'gap-2.5 text-2xl leading-tight',
+        home ? 'gap-1.5 text-[15px] leading-snug' : 'flex-col gap-2.5 text-center text-2xl leading-tight',
         className
       )}
     >
