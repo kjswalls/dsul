@@ -1,21 +1,23 @@
 import DsulCore
 import SwiftUI
 
-/// An item's sheet (H board): what the item is, read-only in part 1, and its
-/// verbs. `PlannerSheetContent`'s `.item` arm, so it opens over Today from
-/// List, Buckets, Schedule and Search, and stacked on the braindump sheet
-/// from a braindump row, through the planner's one sheet slot
-/// (`SamplePlanner.open`).
+/// An item's sheet (H board): what the item is, its title and notes edited in
+/// place, and its verbs, Delete among them. `PlannerSheetContent`'s `.item`
+/// arm, so it opens over Today from List, Buckets, Schedule and Search, and
+/// stacked on the braindump sheet from a braindump row, through the planner's
+/// one sheet slot (`SamplePlanner.open`).
 ///
 /// - Its own navigation: a subtask's title pushes the subtask's page.
 /// - Detents medium and large; it opens large at the accessibility text sizes,
-///   where medium leaves too little room for the content above the bar.
+///   where medium leaves too little room for the content above the bar, and
+///   goes large whenever a field on any page takes focus (`ItemDetail`).
 /// - Its verbs act on the day it was opened with (`SheetDay`), read when one
 ///   is tapped. Pause until and Reschedule's Pick a date open a day picker
 ///   sheet of its own (`DayPick`), never the planner's slot, which would close
 ///   this one to open it.
 /// - It stays open after a verb, as the web's item panel does. When its item
-///   is gone (a fetch without it), the planner clears the slot and it closes.
+///   is gone (deleted, or a fetch without it), the planner clears the slot
+///   and it closes, still showing the item as it slides away.
 struct ItemSheet: View {
     let id: UUID
     let day: SheetDay
@@ -61,15 +63,19 @@ private struct ItemSheetStack: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ItemDetail(id: id, day: day, isRoot: true, path: $path, dayPick: $dayPick)
+            ItemDetail(id: id, day: day, isRoot: true, path: $path, dayPick: $dayPick, detent: $detent)
                 .navigationDestination(for: UUID.self) { child in
-                    ItemDetail(id: child, day: day, isRoot: false, path: $path, dayPick: $dayPick)
+                    ItemDetail(id: child, day: day, isRoot: false, path: $path, dayPick: $dayPick,
+                               detent: $detent)
                 }
         }
         // No sheet-wide `.tint`: the done tick and "Now" are drawn in
-        // `Color.accentColor`, which must stay lime. Each text control tints
-        // itself in the label colour instead (ItemDetail, DayPickSheet), and
-        // the bar draws its slots in it (VerbBar).
+        // `Color.accentColor`, which must stay lime. Each control tints
+        // itself in the label colour instead (ItemDetail's toolbar buttons,
+        // DayPickSheet's calendar), and the bar draws its slots in it
+        // (VerbBar). A text field above all: its caret and its selection
+        // highlight are the tint, and a lime caret is about 1.5:1 on white,
+        // so TitleField and NotesEditor tint themselves too.
         .sheet(item: $dayPick) { pick in
             dayPicker(pick)
         }

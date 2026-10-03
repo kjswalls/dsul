@@ -1,4 +1,6 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import path from 'path';
 
 /**
  * POST /api/app/items/:id — the iPhone's verbs on an item.
@@ -19,6 +21,13 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
  * a change, the status snapshot); on a task-like row, the two per-date RPCs and
  * nothing else. `move` is moveTaskToDate, behind lib/row-moves.ts's Reschedule gate.
  * `pause` is setItemPaused, resolved by lib/item-pause.ts in the user's zone.
+ *
+ * `title` and `notes` are the item panel's typed fields, one key each, through
+ * lib/item-edit.ts; `delete` is deleteTask (the subtasks read first, then one
+ * deleteItem each, parent first) or deleteHabit, and answers 200 for a row
+ * already in the Trash. tests/fixtures/day/edit-writes.json, which the web's
+ * own gestures wrote, is replayed through the route: every write it records is
+ * the row update the route makes, column for column.
  *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
@@ -106,6 +115,9 @@ const token = () =>
   [b64({ alg: 'HS256' }), b64({ sub: USER, role: 'authenticated', exp: Date.now() / 1000 + 3600 }), 'sig'].join('.');
 
 import { POST } from '@/app/api/app/items/[id]/route';
+import { updatesToRow } from '@/lib/db';
+import { itemTypeName } from '@/lib/item-registry';
+import type { Item } from '@/lib/planner-types';
 
 const write = (body: unknown, id = ITEM) =>
   POST(
@@ -124,6 +136,11 @@ const settle = () => new Promise((resolve) => setTimeout(resolve, 0));
 async function runAfter() {
   for (const [callback] of h.after.mock.calls) await (callback as () => Promise<void>)();
 }
+
+/** WRITE_ROW_COLUMNS: what every intent reads. */
+const BASE_COLUMNS =
+  'id, type, parent_item_id, repeat_frequency, status, start_date, time_bucket, in_project_block, ' +
+  'skipped_dates, daily_counts, current_day_count, paused_at, paused_until';
 
 const HABIT = {
   id: ITEM,
@@ -223,6 +240,8 @@ describe('reading the row first', () => {
     ['skip', { action: 'skip', date: DATE, skipped: true }],
     ['move', { action: 'move', date: TOMORROW }],
     ['pause', { action: 'pause', paused: true }],
+    ['title', { action: 'title', title: 'Mine now' }],
+    ['notes', { action: 'notes', notes: null }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -246,6 +265,17 @@ describe('reading the row first', () => {
   it('reads an uppercase id as the lowercase row', async () => {
     await write({ action: 'complete', date: DATE, done: true }, ITEM.toUpperCase());
     expect(queries[0].calls).toContainEqual(['eq', ['id', ITEM]]);
+  });
+
+  it.each([
+    ['title', { action: 'title', title: 'Renamed' }, `${BASE_COLUMNS}, title`],
+    ['notes', { action: 'notes', notes: 'Noted.' }, `${BASE_COLUMNS}, notes`],
+    ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
+  ])('reads for %s only the column it decides on', async (_, body, columns) => {
+    // A tick never reads the notes, which can run to 200,000 characters.
+    row = { ...ONE_OFF, title: 'Call the bank', notes: null };
+    await write(body);
+    expect(called(queries[0], 'select')).toEqual([[columns]]);
   });
 });
 
@@ -916,6 +946,347 @@ describe('pause: the zone "today" is read in', () => {
   });
 });
 
+// ── title, notes and delete ──────────────────────────────────────────────────
+
+type EditCase = {
+  name: string;
+  item: Item;
+  children: Item[];
+  edit: Record<string, unknown>;
+  refusal: string | null;
+  updates: Record<string, unknown> | null;
+  removed: string[];
+};
+
+const EDIT_WRITES = JSON.parse(
+  readFileSync(path.resolve(__dirname, '../fixtures/day/edit-writes.json'), 'utf8'),
+) as { cases: EditCase[] };
+
+/**
+ * The row the route reads for `item`: every WRITE_ROW_COLUMNS key plus the
+ * edit columns, snake_case, as Postgres holds what itemFromRow mapped.
+ */
+function rowFor(item: Item): Record<string, unknown> {
+  const i = item as unknown as Record<string, unknown>;
+  return {
+    id: item.id,
+    type: itemTypeName(item),
+    parent_item_id: i.parentItemId ?? null,
+    repeat_frequency: i.repeatFrequency ?? null,
+    status: i.status ?? null,
+    start_date: i.startDate ?? null,
+    time_bucket: i.timeBucket ?? null,
+    in_project_block: i.inProjectBlock ?? null,
+    skipped_dates: i.skippedDates ?? [],
+    daily_counts: i.dailyCounts ?? null,
+    current_day_count: i.currentDayCount ?? null,
+    paused_at: i.pausedAt ?? null,
+    paused_until: i.pausedUntil ?? null,
+    title: item.title,
+    notes: i.notes ?? null,
+  };
+}
+
+const selected = (q: Query) => String(called(q, 'select')[0]?.[0] ?? '');
+/** The ids the route stamped deleted_at on, by id: the cascade's parent_item_id updates aside. */
+const deletedIds = () =>
+  queries
+    .filter((q) => q.table === 'items' && op(q) === 'update' && 'deleted_at' in (called(q, 'update')[0][0] as object))
+    .flatMap((q) => called(q, 'eq').filter(([column]) => column === 'id').map(([, value]) => value));
+const deleteEvents = () =>
+  writes('item_events', 'insert')
+    .filter((e) => e.action === 'delete')
+    .map((e) => e.item_id);
+
+describe('the web’s own edits, replayed through the route (edit-writes.json)', () => {
+  /** What a delete's child read finds. */
+  let children: { id: string; type: string }[];
+
+  beforeEach(() => {
+    children = [];
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && op(q) === 'select' && selected(q) === 'id, type' ? { data: children, error: null } : base(q);
+  });
+
+  it('has cases to replay', () => {
+    expect(EDIT_WRITES.cases.length).toBeGreaterThan(0);
+  });
+
+  for (const c of EDIT_WRITES.cases) {
+    it(c.name, async () => {
+      row = rowFor(c.item);
+      // What the child read finds: the live task-like rows naming the item.
+      children = c.children
+        .filter((ch) => (ch as { parentItemId?: string }).parentItemId === c.item.id && ch.type !== 'habit')
+        .map((ch) => ({ id: ch.id, type: itemTypeName(ch) }));
+      const res = await write(c.edit, c.item.id);
+      await settle();
+
+      if (c.refusal) {
+        // Every refusal an edit records is the row's 400: a cap or a missing field.
+        expect(res.status).toBe(400);
+        expect(await res.json()).toEqual({ error: c.refusal });
+        expect(writes('items', 'update')).toEqual([]);
+        return;
+      }
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+
+      if (c.edit.action === 'delete') {
+        // One deleted_at stamp and one 'delete' event per id, in the store's order.
+        expect(deletedIds()).toEqual(c.removed);
+        expect(deleteEvents()).toEqual(c.removed);
+        expect(queries.filter((q) => selected(q) === 'id, type').length).toBe(c.item.type === 'habit' ? 0 : 1);
+        return;
+      }
+
+      const type = itemTypeName(c.item);
+      if (Object.keys(c.updates!).length === 0) {
+        // Already so: no write, no event, so a retry leaves no trace.
+        expect(writes('items', 'update')).toEqual([]);
+        expect(writes('item_events', 'insert')).toEqual([]);
+        return;
+      }
+      const update = queries.filter((q) => q.table === 'items' && op(q) === 'update');
+      expect(update).toHaveLength(1);
+      const sent = called(update[0], 'update')[0][0];
+      expect(sent).toEqual(updatesToRow(type, c.updates!));
+      expect(Object.keys(sent as object).length).toBeGreaterThan(0);
+      expect(update[0].calls).toEqual(expect.arrayContaining([['eq', ['id', c.item.id]], ['eq', ['type', type]]]));
+      expect(writes('item_events', 'insert')).toEqual([
+        { item_id: c.item.id, item_type: type, action: 'update', payload: c.updates },
+      ]);
+    });
+  }
+});
+
+describe('title', () => {
+  beforeEach(() => {
+    row = { ...ONE_OFF, title: 'Call the bank', notes: null };
+  });
+
+  it('trims what it is sent, as the dialog trims its draft', async () => {
+    expect((await write({ action: 'title', title: '  Call the bank today  ' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ title: 'Call the bank today' }]);
+  });
+
+  it('answers a title that trims to the stored one with no write', async () => {
+    expect((await write({ action: 'title', title: ' Call the bank ' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('lets a title already over 500 characters keep its length, and never grow', async () => {
+    row = { ...ONE_OFF, title: 'a'.repeat(700), notes: null };
+    expect((await write({ action: 'title', title: 'b'.repeat(700) })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ title: 'b'.repeat(700) }]);
+    const res = await write({ action: 'title', title: 'b'.repeat(701) });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid' });
+    expect(writes('items', 'update')).toHaveLength(1);
+  });
+
+  it('takes 500 characters on a short title, and refuses 501', async () => {
+    expect((await write({ action: 'title', title: 'd'.repeat(500) })).status).toBe(200);
+    expect((await write({ action: 'title', title: 'd'.repeat(501) })).status).toBe(400);
+    expect(writes('items', 'update')).toEqual([{ title: 'd'.repeat(500) }]);
+  });
+
+  it('retitles a habit through the habit allowlist, by its type', async () => {
+    row = { ...HABIT, title: 'Stretch', notes: null };
+    expect((await write({ action: 'title', title: 'Stretch twice' })).status).toBe(200);
+    const update = queries.find((q) => op(q) === 'update')!;
+    expect(called(update, 'update')).toEqual([[{ title: 'Stretch twice' }]]);
+    expect(update.calls).toContainEqual(['eq', ['type', 'habit']]);
+  });
+});
+
+describe('notes', () => {
+  beforeEach(() => {
+    row = { ...ONE_OFF, title: 'Call the bank', notes: 'Ask about the wire fee.' };
+  });
+
+  it.each([
+    ['null', null],
+    ['blank text', ' \n\t '],
+  ])('clears them to NULL for %s, as the dialog saves an empty draft', async (_, notes) => {
+    expect((await write({ action: 'notes', notes })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ notes: null }]);
+  });
+
+  it('answers a clear of notes already empty with no write', async () => {
+    row = { ...ONE_OFF, title: 'Call the bank', notes: null };
+    expect((await write({ action: 'notes', notes: null })).status).toBe(200);
+    expect((await write({ action: 'notes', notes: '  ' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('lets notes already over 50,000 characters be edited at their own length', async () => {
+    row = { ...ONE_OFF, title: 'Call the bank', notes: 'm'.repeat(60_000) };
+    expect((await write({ action: 'notes', notes: 'k'.repeat(60_000) })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ notes: 'k'.repeat(60_000) }]);
+    expect((await write({ action: 'notes', notes: 'k'.repeat(60_001) })).status).toBe(400);
+    expect(writes('items', 'update')).toHaveLength(1);
+  });
+
+  it('measures the cap after the trim, so whitespace around 50,000 characters still saves', async () => {
+    expect((await write({ action: 'notes', notes: ` ${'k'.repeat(50_000)}\n` })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ notes: 'k'.repeat(50_000) }]);
+  });
+});
+
+describe('delete', () => {
+  /** What the database says to the child read and to the second, trashed-row read. */
+  let children: { id: string; type: string }[];
+  let trashed: Record<string, unknown> | null;
+  const CHILD_A = '7a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d';
+  const CHILD_B = '8b2c3d4e-5f6a-4b7c-9d8e-0f1a2b3c4d5e';
+
+  beforeEach(() => {
+    row = ONE_OFF;
+    children = [];
+    trashed = null;
+    const base = respond;
+    respond = (q) => {
+      if (q.table !== 'items' || op(q) !== 'select') return base(q);
+      if (selected(q) === 'id, type') return { data: children, error: null };
+      if (selected(q) === 'id, type, deleted_at') return { data: trashed, error: null };
+      return base(q);
+    };
+  });
+
+  it('reads the live subtasks first, then deletes the parent and each child, with an event each', async () => {
+    children = [
+      { id: CHILD_A, type: 'task' },
+      { id: CHILD_B, type: 'task' },
+    ];
+    const res = await write({ action: 'delete' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+
+    // The row, then the children, then the writes: deleteTask takes its
+    // children before it removes anything.
+    const childRead = queries.findIndex((q) => selected(q) === 'id, type');
+    const firstUpdate = queries.findIndex((q) => op(q) === 'update');
+    expect(childRead).toBe(1);
+    expect(firstUpdate).toBeGreaterThan(childRead);
+    expect(queries[childRead].calls).toEqual([
+      ['select', ['id, type']],
+      ['eq', ['parent_item_id', ITEM]],
+      ['eq', ['user_id', USER]],
+      ['is', ['deleted_at', null]],
+      ['neq', ['type', 'habit']],
+      ['order', ['order', { ascending: true, nullsFirst: false }]],
+      ['order', ['created_at', { ascending: true }]],
+    ]);
+
+    // To the Trash, stamped now: soft, as the web's delete is.
+    expect(deletedIds()).toEqual([ITEM, CHILD_A, CHILD_B]);
+    for (const update of writes('items', 'update')) expect(update).toEqual({ deleted_at: NOW });
+    expect(writes('item_events', 'insert')).toEqual(
+      [ITEM, CHILD_A, CHILD_B].map((id) => ({ item_id: id, item_type: 'task', action: 'delete', payload: {} })),
+    );
+  });
+
+  it('deletes a habit alone, without asking for children', async () => {
+    row = HABIT;
+    expect((await write({ action: 'delete' })).status).toBe(200);
+    await settle();
+    expect(queries.some((q) => selected(q) === 'id, type')).toBe(false);
+    expect(deletedIds()).toEqual([ITEM]);
+    expect(deleteEvents()).toEqual([ITEM]);
+    // deleteItem's own cascade is for task-likes too: a habit's delete is one update.
+    expect(writes('items', 'update')).toEqual([{ deleted_at: NOW }]);
+  });
+
+  it('deletes a custom type by its stored slug', async () => {
+    row = { ...ONE_OFF, type: 'errand' };
+    expect((await write({ action: 'delete' })).status).toBe(200);
+    expect(queries.find((q) => op(q) === 'update')!.calls).toContainEqual(['eq', ['type', 'errand']]);
+  });
+
+  describe('when the item has no live row', () => {
+    beforeEach(() => {
+      row = null;
+    });
+
+    it('answers 200 for one already in the Trash, finishing its subtasks', async () => {
+      // deleteItem's own cascade only logs a failure, so a parent can reach
+      // the Trash with children left behind; a retry is what repairs it.
+      trashed = { id: ITEM, type: 'task', deleted_at: '2026-10-02T21:00:00+00:00' };
+      children = [{ id: CHILD_A, type: 'task' }];
+      const res = await write({ action: 'delete' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      await settle();
+      const second = queries.find((q) => selected(q) === 'id, type, deleted_at')!;
+      expect(second.calls).toEqual(
+        expect.arrayContaining([
+          ['eq', ['id', ITEM]],
+          ['eq', ['user_id', USER]],
+        ]),
+      );
+      // The second read is the one without the deleted_at filter.
+      expect(second.calls.some(([m]) => m === 'is')).toBe(false);
+      expect(deletedIds()).toEqual([CHILD_A]);
+      expect(deleteEvents()).toEqual([CHILD_A]);
+    });
+
+    it('answers 200 with no write for one in the Trash with nothing left under it', async () => {
+      trashed = { id: ITEM, type: 'task', deleted_at: '2026-10-02T21:00:00+00:00' };
+      expect((await write({ action: 'delete' })).status).toBe(200);
+      await settle();
+      expect(writes('items', 'update')).toEqual([]);
+      expect(writes('item_events', 'insert')).toEqual([]);
+    });
+
+    it('asks a trashed habit for no children', async () => {
+      trashed = { id: ITEM, type: 'habit', deleted_at: '2026-10-02T21:00:00+00:00' };
+      expect((await write({ action: 'delete' })).status).toBe(200);
+      expect(queries.map(selected)).toEqual([BASE_COLUMNS, 'id, type, deleted_at']);
+    });
+
+    it('deletes one restored between the two reads, since it is live again', async () => {
+      trashed = { id: ITEM, type: 'task', deleted_at: null };
+      expect((await write({ action: 'delete' })).status).toBe(200);
+      await settle();
+      expect(deletedIds()).toEqual([ITEM]);
+    });
+
+    it('404s `not_found` for no row of this user’s at all, which the phone counts as landed', async () => {
+      const res = await write({ action: 'delete' });
+      expect(res.status).toBe(404);
+      expect(await res.json()).toEqual({ error: 'not_found' });
+      expect(queries.map(selected)).toEqual([BASE_COLUMNS, 'id, type, deleted_at']);
+      expect(writes('items', 'update')).toEqual([]);
+    });
+
+    it('answers a failed second read as an error, not as a 404 the phone would count as landed', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      const base = respond;
+      respond = (q) =>
+        selected(q) === 'id, type, deleted_at'
+          ? { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } }
+          : base(q);
+      const res = await write({ action: 'delete' });
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'failed' });
+      spy.mockRestore();
+    });
+  });
+
+  it('stops at a failed child read, before anything is deleted', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const base = respond;
+    respond = (q) =>
+      selected(q) === 'id, type' ? { data: null, error: { code: '57014', message: 'timeout' } } : base(q);
+    expect((await write({ action: 'delete' })).status).toBe(500);
+    expect(writes('items', 'update')).toEqual([]);
+    spy.mockRestore();
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -941,6 +1312,17 @@ describe('validation', () => {
     ['a null resume day', { action: 'pause', paused: true, pausedUntil: null }],
     ['a resume day in another shape', { action: 'pause', paused: true, pausedUntil: 'Oct 9' }],
     ['a zone that is not a string', { action: 'pause', paused: true, timeZone: 5 }],
+    // The edits are strict: a key a newer phone adds is refused, never dropped.
+    ['a title with a key it does not take', { action: 'title', title: 'Renamed', notes: 'x' }],
+    ['no title', { action: 'title' }],
+    ['a blank title', { action: 'title', title: ' \n ' }],
+    ['a title that is not a string', { action: 'title', title: 5 }],
+    ['a title over 10,000 characters', { action: 'title', title: 'x'.repeat(10_001) }],
+    ['notes left out, which is not a clear', { action: 'notes' }],
+    ['notes that are not a string', { action: 'notes', notes: 5 }],
+    ['notes over 200,000 characters', { action: 'notes', notes: 'x'.repeat(200_001) }],
+    ['notes with a key they do not take', { action: 'notes', notes: 'x', title: 'y' }],
+    ['a delete with anything else in it', { action: 'delete', cascade: false }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -996,6 +1378,9 @@ describe('webhooks', () => {
       [ONE_OFF, { action: 'move', date: TOMORROW }],
       [ONE_OFF, { action: 'pause', paused: true }],
       [PAUSED, { action: 'pause', paused: false }],
+      [{ ...ONE_OFF, title: 'Call the bank', notes: null }, { action: 'title', title: 'Call the bank today' }],
+      [{ ...ONE_OFF, title: 'Call the bank', notes: null }, { action: 'notes', notes: 'Wire fee.' }],
+      [{ ...HABIT, title: 'Stretch', notes: null }, { action: 'delete' }],
     ] as const) {
       row = r;
       expect((await write(body)).status).toBe(200);

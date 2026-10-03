@@ -12,6 +12,10 @@ import SwiftUI
 /// Its earliest day can move while it is up (Pause until's, at midnight):
 /// a day picked before then is brought up to it, so the button never names a
 /// day the pause would refuse.
+///
+/// The calendar draws its picked day, and today, in the tint, so it tints
+/// itself in the label colour: in the sheet's lime the picked day was a faded
+/// 1.5:1 disc.
 struct DayPickSheet: View {
     /// The title, the confirm button's verb before the day ("Move to",
     /// "Pause until"), and the note under the calendar, if any.
@@ -89,8 +93,10 @@ struct DayPickSheet: View {
     private var calendar: some View {
         if let earliest {
             DatePicker("Day", selection: $picked, in: earliest.localDate()..., displayedComponents: .date)
+                .tint(Color.primary)
         } else {
             DatePicker("Day", selection: $picked, displayedComponents: .date)
+                .tint(Color.primary)
         }
     }
 }

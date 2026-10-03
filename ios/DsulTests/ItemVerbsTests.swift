@@ -141,7 +141,8 @@ import Testing
         let planner = await loaded(server)
         let groceries = try #require(planner.item(PlannerJSON.groceries))
         let ctx = planner.verbContext(for: groceries, day: .selected)
-        #expect(planner.offeredVerbs(for: groceries, day: .selected) == [.tick, .pause, .nextDay, .reschedule])
+        #expect(planner.offeredVerbs(for: groceries, day: .selected)
+            == [.tick, .pause, .nextDay, .reschedule, .delete])
         let target = nextDayOf(groceries, ctx)
         #expect(target == "2026-10-02")
         #expect(verbLabel(.nextDay, groceries, ctx) == "Move to tomorrow")
@@ -180,7 +181,7 @@ import Testing
 
     /// A series takes Reschedule (lib/row-moves.ts `canReschedule`) but not
     /// Tomorrow: the picked day becomes its start. The sheet keeps the bar for
-    /// the day's verbs and puts Reschedule behind ⋯.
+    /// the day's verbs and puts Reschedule behind ⋯, with Delete last.
     @Test func rescheduleMovesASeriesStartAndWaitsBehindMore() async throws {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.plantsJSON])))
@@ -189,10 +190,10 @@ import Testing
         let plants = try #require(planner.item(PlannerJSON.plants))
         let ctx = planner.verbContext(for: plants, day: .selected)
         let offered = planner.offeredVerbs(for: plants, day: .selected)
-        #expect(offered == [.tick, .skip, .pause, .reschedule])
+        #expect(offered == [.tick, .skip, .pause, .reschedule, .delete])
         let verbs = ItemSheetModel.verbs(plants, ctx, offered: offered)
         #expect(verbs.bar == [.tick, .skip, .pause])
-        #expect(verbs.menu == [.pauseUntil, .reschedule])
+        #expect(verbs.menu == [.pauseUntil, .reschedule, .delete])
 
         planner.move(PlannerJSON.plants, to: "2026-10-05")
         let moved = planner.item(PlannerJSON.plants)
@@ -307,6 +308,7 @@ import Testing
         #expect(posts == 0)
     }
 
+    /// Delete too: a subtask may be deleted from its own page (and its row).
     @Test func aSubtaskOffersTheTickAloneAndTicksAsAOneOff() async throws {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])))
@@ -314,7 +316,7 @@ import Testing
         let planner = await loaded(server)
         let bags = try #require(planner.item(PlannerJSON.bags))
         #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags])
-        #expect(planner.offeredVerbs(for: bags, day: .selected) == [.tick])
+        #expect(planner.offeredVerbs(for: bags, day: .selected) == [.tick, .delete])
 
         planner.toggle(PlannerJSON.bags, on: planner.actingDay(.selected))
         #expect(planner.item(PlannerJSON.bags)?.status == "completed")
@@ -337,6 +339,7 @@ import Testing
         #expect(!planner.canWrite("skip"))
         #expect(!planner.canWrite("move"))
         #expect(!planner.canWrite("pause"))
+        #expect(!planner.canWrite("delete"))
         let water = try #require(planner.item(PlannerJSON.water))
         let groceries = try #require(planner.item(PlannerJSON.groceries))
         #expect(planner.offeredVerbs(for: water, day: .selected) == [.tick])
@@ -358,7 +361,7 @@ import Testing
         let planner = await loaded(server)
         #expect(planner.writes == PlannerJSON.allWrites)
         let water = try #require(planner.item(PlannerJSON.water))
-        #expect(planner.offeredVerbs(for: water, day: .selected) == [.tick, .skip, .pause])
+        #expect(planner.offeredVerbs(for: water, day: .selected) == [.tick, .skip, .pause, .delete])
     }
 
     // MARK: The sheet

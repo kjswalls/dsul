@@ -17,7 +17,19 @@
       "subtasks": true,
       "streakCounter": false,
       "dailyCounts": false,
-      "hasPriority": true
+      "hasPriority": true,
+      "hasNotes": true,
+      "titlePlaceholder": "What needs to be done?",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
     },
     {
       "name": "habit",
@@ -36,7 +48,19 @@
       "subtasks": false,
       "streakCounter": true,
       "dailyCounts": true,
-      "hasPriority": false
+      "hasPriority": false,
+      "hasNotes": true,
+      "titlePlaceholder": "What habit to track?",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" and its history to Trash for 30 days, then deletes them for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" and its history to Trash for 30 days, then deletes them for good."
+        }
+      ]
     },
     {
       "name": "errand",
@@ -55,7 +79,19 @@
       "subtasks": true,
       "streakCounter": false,
       "dailyCounts": false,
-      "hasPriority": true
+      "hasPriority": true,
+      "hasNotes": true,
+      "titlePlaceholder": "Add a errand…",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
     },
     {
       "name": "side-quest",
@@ -74,7 +110,19 @@
       "subtasks": true,
       "streakCounter": false,
       "dailyCounts": false,
-      "hasPriority": true
+      "hasPriority": true,
+      "hasNotes": true,
+      "titlePlaceholder": "Add a side-quest…",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
     },
     {
       "name": "book_club",
@@ -93,7 +141,19 @@
       "subtasks": true,
       "streakCounter": false,
       "dailyCounts": false,
-      "hasPriority": true
+      "hasPriority": true,
+      "hasNotes": true,
+      "titlePlaceholder": "Add a book_club…",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
     },
     {
       "name": "x",
@@ -112,7 +172,19 @@
       "subtasks": true,
       "streakCounter": false,
       "dailyCounts": false,
-      "hasPriority": true
+      "hasPriority": true,
+      "hasNotes": true,
+      "titlePlaceholder": "Add a x…",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
     }
   ],
   "items": [
@@ -300,6 +372,44 @@
       "isPausable": false,
       "isRemindable": false,
       "isCollectible": false
+    }
+  ],
+  "hydrated": [
+    {
+      "name": "side_quest",
+      "label": "Side quest",
+      "labelPlural": "Side quests",
+      "typeLabel": "Side quest",
+      "titlePlaceholder": "Add a side quest…",
+      "deleteTitle": "Delete side quest?",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
+    },
+    {
+      "name": "book-club",
+      "label": "Book Club",
+      "labelPlural": "Book Clubs",
+      "typeLabel": "Book Club",
+      "titlePlaceholder": "Add a book club…",
+      "deleteTitle": "Delete book club?",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
     }
   ]
 }

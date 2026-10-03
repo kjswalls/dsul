@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Which planner the app shows: none on the sign-in screen, the sample after
 /// "Try with sample data", and the signed-in user's own once there is a
@@ -58,7 +59,8 @@ struct AppGate: View {
             if let current = planner, current.userId == session.userId { return }
             planner?.stopSync()
             let api = APIClient(origin: AppConfig.apiOrigin, tokens: auth, transport: HTTP.live)
-            let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld })
+            let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld },
+                                     backgroundTime: .uiApplication)
             if let email = auth.takeWelcome() {
                 live.show(email.isEmpty ? "Signed in" : "Signed in as \(email)", isError: false)
             }
@@ -73,4 +75,28 @@ struct AppGate: View {
             planner = nil
         }
     }
+}
+
+extension BackgroundTime {
+    /// iOS's own: `beginBackgroundTask`, which keeps the app running for about
+    /// half a minute after it leaves the screen, so the writes PlannerSync has
+    /// out finish (a title saved on the way out, a delete just before a swipe
+    /// home). iOS calls the expiry handler on the main thread when the time is
+    /// up, and the task must end there and then, so it runs synchronously
+    /// rather than in a Task.
+    static let uiApplication = BackgroundTime(
+        begin: { name, expired in
+            let id = UIApplication.shared.beginBackgroundTask(withName: name) {
+                MainActor.assumeIsolated { expired() }
+            }
+            return id.rawValue
+        },
+        end: { token in
+            let id = UIBackgroundTaskIdentifier(rawValue: token)
+            // iOS answers `.invalid` when it won't give the time; there is
+            // nothing to end then.
+            guard id != .invalid else { return }
+            UIApplication.shared.endBackgroundTask(id)
+        }
+    )
 }

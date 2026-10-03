@@ -67,7 +67,8 @@ enum APIError: Error, Equatable, Sendable {
 
 /// The app's writes and one read on /api/app (lib/app-api.ts), with a
 /// Supabase access token as the bearer: capture, and the item writes (tick,
-/// braindump row to an hour, skip, move, pause).
+/// braindump row to an hour, skip, move, pause, and the item sheet's title,
+/// notes and Delete).
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -126,6 +127,20 @@ final class APIClient {
     func pause(id: UUID, paused: Bool, pausedUntil: String?, timeZone: String?) async throws {
         let body = PauseBody(paused: paused, pausedUntil: pausedUntil, timeZone: timeZone)
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/items/:id `title` or `notes`: a typed edit, as its own
+    /// action. The body is DsulCore's `ItemWriteBody`, which sends a cleared
+    /// field as `null`, never as a missing key.
+    func edit(id: UUID, _ edit: ItemEdit) async throws {
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.edit(edit)))
+    }
+
+    /// POST /api/app/items/:id `delete`: the item to the Trash, with its
+    /// subtasks unless it is a habit. A 404 `not_found` is thrown like any
+    /// refusal; PlannerSync reads it as landed.
+    func delete(id: UUID) async throws {
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.delete))
     }
 
     /// POST /api/app/items: a capture, under the phone's own id, so a retry

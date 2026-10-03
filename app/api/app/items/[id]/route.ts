@@ -7,6 +7,9 @@ import { postItemWrite } from '@/lib/app-api';
  *   { action: 'skip', date, skipped }                     Skip today / Unskip today
  *   { action: 'move', date }                              Tomorrow, or Reschedule to a day
  *   { action: 'pause', paused, pausedUntil?, timeZone? }  Pause, Pause until, Resume
+ *   { action: 'title', title }                            the title, typed
+ *   { action: 'notes', notes }                            the notes, typed; null clears them
+ *   { action: 'delete' }                                  Delete, with its subtasks, to the Trash
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

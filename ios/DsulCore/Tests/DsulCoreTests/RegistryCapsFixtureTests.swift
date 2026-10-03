@@ -4,10 +4,17 @@ import DsulCore
 
 // The web's own answers for lib/item-registry.ts, checked against
 // Registry.swift. tests/unit/day-fixtures.test.ts reads each type's config
-// (task, habit, and custom slugs the registry builds from its template) and
+// (task, habit, and custom slugs the registry builds from its template), a
+// custom type hydrated from an item_types def (`buildCustomTypeConfig`), and
 // the item-level predicates through the real TS, and writes them to
 // tests/fixtures/day/caps.json. Never edit the JSON by hand: regenerate it from
 // the Vitest side (UPDATE_FIXTURES=1).
+
+/// `form.deleteDescription(title)` for one title.
+private struct DeleteDescription: Decodable, Sendable {
+    let title: String
+    let text: String
+}
 
 private struct TypeCase: Decodable, Sendable {
     let name: String
@@ -27,6 +34,22 @@ private struct TypeCase: Decodable, Sendable {
     let streakCounter: Bool
     let dailyCounts: Bool
     let hasPriority: Bool
+    let hasNotes: Bool
+    let titlePlaceholder: String
+    let deleteDescriptions: [DeleteDescription]
+}
+
+/// A custom type built from the def a user saved: what the phone gets in the
+/// payload's `itemTypes` (`name`, `label`, `labelPlural`), and the config's
+/// answers for it.
+private struct HydratedCase: Decodable, Sendable {
+    let name: String
+    let label: String?
+    let labelPlural: String?
+    /// The config's `label`.
+    let typeLabel: String
+    let titlePlaceholder: String
+    let deleteDescriptions: [DeleteDescription]
 }
 
 private struct ItemCase: Decodable, Sendable {
@@ -40,6 +63,7 @@ private struct ItemCase: Decodable, Sendable {
 
 private struct Fixture: Decodable, Sendable {
     let types: [TypeCase]
+    let hydrated: [HydratedCase]
     let items: [ItemCase]
 }
 
@@ -69,6 +93,8 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         #expect(f.types.contains { $0.name == "habit" })
         #expect(f.types.count > 2)
         #expect(!f.items.isEmpty)
+        #expect(!f.hydrated.isEmpty)
+        #expect(f.types.allSatisfy { !$0.deleteDescriptions.isEmpty })
     }
 
     @Test func eachTypeAnswersAsTheRegistryDoes() throws {
@@ -91,6 +117,31 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(c.streakCounter == t.streakCounter, "\(t.name): streakCounter")
             #expect(c.dailyCounts == t.dailyCounts, "\(t.name): dailyCounts")
             #expect(c.hasPriority == t.hasPriority, "\(t.name): hasPriority")
+            #expect(c.hasNotes == t.hasNotes, "\(t.name): hasNotes")
+            #expect(c.titlePlaceholder == t.titlePlaceholder, "\(t.name): titlePlaceholder")
+            for d in t.deleteDescriptions {
+                #expect(c.deleteDescription(d.title) == d.text, "\(t.name): deleteDescription(\(d.title))")
+            }
+        }
+    }
+
+    /// A type the payload names takes the user's label, and its placeholder
+    /// and delete words follow; every capability stays the template's.
+    @Test func aHydratedTypeAnswersWithItsOwnLabel() throws {
+        for h in try loadFixture().hydrated {
+            let labels = [h.name: ItemTypeLabel(name: h.name, label: h.label ?? "", labelPlural: h.labelPlural ?? "")]
+            let c = caps(h.name, labels: labels)
+            #expect(c.label == h.typeLabel, "\(h.name): label")
+            #expect(typeLabel(h.name, labels: labels) == h.typeLabel, "\(h.name): typeLabel")
+            #expect(c.titlePlaceholder == h.titlePlaceholder, "\(h.name): titlePlaceholder")
+            for d in h.deleteDescriptions {
+                #expect(c.deleteDescription(d.title) == d.text, "\(h.name): deleteDescription(\(d.title))")
+            }
+
+            var template = caps(h.name)
+            template.label = c.label
+            template.titlePlaceholder = c.titlePlaceholder
+            #expect(c == template, "\(h.name): only the words change")
         }
     }
 
@@ -111,5 +162,37 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         #expect(typeLabel("") == "")
         #expect(caps("errand").label == "Errand")
         #expect(ItemCaps.custom.label == "Custom")
+    }
+
+    /// The labels never rename a built-in, an empty label falls back to the
+    /// slug (`def.label || capitalize(def.name)`), and a slug the payload
+    /// doesn't name is the template's.
+    @Test func labelsReachOnlyTheTypesTheyName() {
+        let labels = [
+            "task": ItemTypeLabel(name: "task", label: "Chore", labelPlural: "Chores"),
+            "side_quest": ItemTypeLabel(name: "side_quest", label: "Side quest", labelPlural: "Side quests"),
+            "errand": ItemTypeLabel(name: "errand", label: "", labelPlural: ""),
+        ]
+        #expect(caps("task", labels: labels) == .task)
+        #expect(caps("habit", labels: labels) == .habit)
+        #expect(typeLabel("side_quest", labels: labels) == "Side quest")
+        #expect(caps("side_quest", labels: labels).titlePlaceholder == "Add a side quest\u{2026}")
+        #expect(typeLabel("errand", labels: labels) == "Errand")
+        #expect(typeLabel("book_club", labels: labels) == "Book_club")
+        #expect(caps("book_club", labels: labels) == caps("book_club"))
+    }
+
+    /// Delete's confirm says what Delete does: to the Trash for 30 days, then
+    /// gone. A habit's history goes too.
+    @Test func theDeleteWordsSayTrash() {
+        #expect(ItemCaps.task.deleteDescription("Buy milk")
+            == "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good.")
+        #expect(ItemCaps.habit.deleteDescription("Meds")
+            == "Moves \"Meds\" and its history to Trash for 30 days, then deletes them for good.")
+        #expect(caps("errand").deleteDescription("Stamps")
+            == "Moves \"Stamps\" to Trash for 30 days, then deletes it for good.")
+        #expect(ItemCaps.task.titlePlaceholder == "What needs to be done?")
+        #expect(ItemCaps.habit.titlePlaceholder == "What habit to track?")
+        #expect(caps("errand").titlePlaceholder == "Add a errand\u{2026}")
     }
 }

@@ -75,13 +75,15 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 ///
 /// What shows on a day is DsulCore's port of the web's rules (lib/active.ts,
 /// lib/day-items.ts, day-schedule.tsx, lib/braindump-members.ts,
-/// lib/grouping.ts), a tick is lib/item-toggle.ts, and the item sheet's verbs
-/// are lib/item-verbs.ts (their gates) and the store actions they run
-/// (DsulCore VerbWrites.swift), so the phone and the web agree on the same
-/// data. Every change here is optimistic and immediate; when signed in, `sync`
-/// then sends it to the server (PlannerSync). A verb re-reads its item and asks
-/// its gate again before it writes, whatever the sheet drew; a refusal changes
-/// nothing and sends nothing.
+/// lib/grouping.ts), a tick is lib/item-toggle.ts, the item sheet's verbs are
+/// lib/item-verbs.ts (their gates) and the store actions they run (DsulCore
+/// VerbWrites.swift), and its title, notes and Delete are lib/item-edit.ts and
+/// the store's `deleteTask` / `deleteHabit` (DsulCore ItemEdit.swift), so the
+/// phone and the web agree on the same data. Every change here is optimistic
+/// and immediate; when signed in, `sync` then sends it to the server
+/// (PlannerSync). A verb or an edit re-reads its item and asks its gate again
+/// before it writes, whatever the sheet drew; a refusal changes nothing and
+/// sends nothing.
 @Observable @MainActor
 final class SamplePlanner {
     /// Every item, braindump and subtasks included, as the server sent them
@@ -117,6 +119,11 @@ final class SamplePlanner {
     /// The item writes the server takes (`PlannerPayload.writes`). Nil until
     /// the first fetch lands, or from a server older than the list.
     private(set) var writes: [String]? = nil
+    /// The user's own item types by slug (`PlannerPayload.itemTypes`): a
+    /// custom item's noun, title placeholder and Delete's words read them
+    /// (`caps(for:)`). Empty for the sample and for a server that sent none,
+    /// so a custom type reads as its slug, capitalised.
+    private(set) var typeLabels: [String: ItemTypeLabel] = [:]
     /// Sends this planner's writes and fetches its data. Nil for the sample,
     /// whose changes last until the app quits.
     @ObservationIgnored private(set) var sync: PlannerSync? = nil
@@ -165,9 +172,10 @@ final class SamplePlanner {
     /// The signed-in user's planner: empty until the first fetch lands. Its
     /// day is the device's until the user's stored timezone arrives with it.
     /// `isDragging` holds fetched data back while a braindump row is in the
-    /// air (ScheduleDrag's `DragHold`).
+    /// air (ScheduleDrag's `DragHold`). `backgroundTime` is what its writes
+    /// ask iOS for when the app leaves the screen (AppGate passes UIKit's).
     init(userId: UUID, api: APIClient, isDragging: @escaping @MainActor () -> Bool, todayString: String? = nil,
-         now: @escaping () -> Date = { Date() }) {
+         now: @escaping () -> Date = { Date() }, backgroundTime: BackgroundTime = .foregroundOnly) {
         let anchor: DayString = todayString.flatMap { DayString($0) } ?? DayString(date: now())
         self.today = anchor
         selectedDay = anchor
@@ -179,7 +187,8 @@ final class SamplePlanner {
         hasLoaded = false
         self.userId = userId
         self.now = now
-        sync = PlannerSync(planner: self, api: api, userId: userId, isDragging: isDragging)
+        sync = PlannerSync(planner: self, api: api, userId: userId, isDragging: isDragging, now: now,
+                           backgroundTime: backgroundTime)
     }
 
     nonisolated static func uuid(_ n: Int) -> UUID {
@@ -325,14 +334,16 @@ final class SamplePlanner {
     /// task-like row (`order = tasks.length`). The id is made here, so a retry
     /// of the same capture is the same row on the server.
     func capture(_ title: String) {
-        var trimmed = title.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        // The route takes at most 500 UTF-16 units, JavaScript's string length.
-        while trimmed.utf16.count > 500 { trimmed.removeLast() }
+        // The route trims as JavaScript does and takes at most 500 UTF-16
+        // units (lib/app-api.ts `CaptureSchema`). Cut by whole characters,
+        // then trimmed again, so a cut can't leave a space the server strips.
+        let clean = jsTrim(clampUTF16(jsTrim(title), 500))
+        guard !clean.isEmpty else { return }
         let id = UUID()
         let order = DsulCore.project(items).tasks.count
-        items.append(Item(id: id, type: "task", title: trimmed, status: "pending", order: order, isScheduled: false))
-        sync?.enqueue(.capture(id: id, title: trimmed), snapshot: nil)
+        let created = Item(id: id, type: "task", title: clean, status: "pending", order: order, isScheduled: false)
+        items.append(created)
+        sync?.enqueue(.capture(id: id, title: clean), before: [.item(id): .absent(created: created)])
     }
 
     // MARK: The item sheet
@@ -397,6 +408,7 @@ final class SamplePlanner {
         case .skip, .unskip: return "skip"
         case .pause, .resume: return "pause"
         case .nextDay, .reschedule: return "move"
+        case .delete: return "delete"
         }
     }
 
@@ -404,7 +416,8 @@ final class SamplePlanner {
     /// - the web's gate (DsulCore `verbEligible`, lib/item-verbs.ts);
     /// - the server's own gate where it asks more (lib/app-api.ts): it never
     ///   skips or carries a subtask, which has no day of its own, and pauses
-    ///   or resumes only what `isPausable` allows;
+    ///   or resumes only what `isPausable` allows. Delete it takes on anything,
+    ///   a subtask included;
     /// - the server takes the write (`canWrite`).
     func offers(_ verb: VerbID, _ item: SampleItem, _ ctx: VerbContext) -> Bool {
         guard canWrite(verb), verbEligible(verb, item, ctx) else { return false }
@@ -413,12 +426,14 @@ final class SamplePlanner {
         case .skip, .unskip: return isSkippable(item) && !item.isSubtask
         case .nextDay, .reschedule: return !item.isSubtask
         case .pause, .resume: return isPausable(item)
+        case .delete: return true
         }
     }
 
     /// Every verb the sheet may offer `item` on its day, in the web's
     /// declaration order (tick, skip, unskip, pause, resume, nextDay,
-    /// reschedule). Which ones the bar shows, and in what slots, is the view's.
+    /// reschedule, delete). Which ones the bar shows, and in what slots, is
+    /// the view's.
     func offeredVerbs(for item: SampleItem, day: SheetDay) -> [VerbID] {
         let ctx = verbContext(for: item, day: day)
         return VerbID.allCases.filter { offers($0, item, ctx) }
@@ -513,6 +528,57 @@ final class SamplePlanner {
         sync?.enqueue(.pause(id: id, paused: paused, pausedUntil: until, timeZone: zone), snapshot: before)
     }
 
+    /// The item sheet's title or notes (lib/item-edit.ts `editPatch`, DsulCore
+    /// `editing`): the title trimmed, the notes trimmed and cleared when
+    /// blank. The sheet sends only what changed, already cleaned and within
+    /// its growth cap (`ItemSheetModel.commit`). Behind the server's list
+    /// (`canWrite(edit.action)`) and its type gate (`editAllowed`: notes only
+    /// on a type that has them); a title that trims to nothing, or an edit
+    /// that changes nothing, writes nothing.
+    func edit(_ id: UUID, _ edit: ItemEdit) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let before = items[i]
+        guard canWrite(edit.action), editAllowed(edit, on: before, caps: caps(for: before)) else { return }
+        let after = editing(before, edit)
+        guard after != before else { return }
+        items[i] = after
+        sync?.enqueue(.edit(id: id, edit), snapshot: before)
+    }
+
+    /// Delete: takes `id` out, and, unless it is a habit, its subtasks with it
+    /// (the store's `deleteTask` / `deleteHabit`, DsulCore `deleting`), as the
+    /// server's `delete` does, to the Trash. The web's gate is always yes, so
+    /// what refuses is the server's list. Each removed item's place goes with
+    /// the write, so a delete that never lands puts them all back where they
+    /// stood. An item sheet whose own item went closes; a subtask deleted from
+    /// its page leaves its parent's sheet up.
+    func deleteItem(_ id: UUID) {
+        guard let before = item(id), offers(.delete, before, verbContext(for: before, on: today)) else { return }
+        let (kept, removed) = deleting(id, from: items)
+        guard !removed.isEmpty else { return }
+        items = kept
+        var snapshots: [PlannerSync.Subject: PlannerSync.Before] = [:]
+        for placed in removed {
+            snapshots[.item(placed.item.id)] = .item(placed.item, placed.place)
+        }
+        sync?.enqueue(.delete(id: id, removed: removed, cascades: !before.isHabit), before: snapshots)
+        closeSheetIfItsItemIsGone()
+    }
+
+    /// What `item`'s type can do, and the words it lends the sheet (the
+    /// title placeholder, Delete's confirm): lib/item-registry.ts
+    /// `getItemTypeConfig` after `hydrateCustomTypes`, so a custom type reads
+    /// with the user's own noun (`typeLabels`).
+    func caps(for item: SampleItem) -> ItemCaps {
+        return DsulCore.caps(item.typeName, labels: typeLabels)
+    }
+
+    /// `item`'s type noun ("Task", "Habit", or a custom type's own label),
+    /// for the sheet's eyebrow and Delete's words.
+    func typeLabel(for item: SampleItem) -> String {
+        return DsulCore.typeLabel(item.typeName, labels: typeLabels)
+    }
+
     /// `id`'s subtasks, in stored order: the items whose `parentItemId` is
     /// its id (Postgres writes uuids lowercase). DsulCore `project` keeps them
     /// off every day and the braindump; they show only in their parent's sheet.
@@ -539,8 +605,8 @@ final class SamplePlanner {
         return weekStartOf(today, settings.weekStartDay).adding(days: 7)
     }
 
-    /// An item sheet whose item is gone (a fetch without it, a capture undone)
-    /// closes: there is nothing left to show or act on.
+    /// An item sheet whose item is gone (a fetch without it, a capture undone,
+    /// a delete) closes: there is nothing left to show or act on.
     private func closeSheetIfItsItemIsGone() {
         if case .item(let id, _)? = activeSheet, item(id) == nil {
             activeSheet = nil
@@ -717,26 +783,30 @@ final class SamplePlanner {
         seasons = payload.seasons
         settings = payload.settings
         writes = payload.writes
+        typeLabels = Dictionary((payload.itemTypes ?? []).map { ($0.name, $0) },
+                                uniquingKeysWith: { first, _ in first })
         hasLoaded = true
         loadError = nil
         if zoneChanged { refreshToday() }
         closeSheetIfItsItemIsGone()
     }
 
-    /// Puts back what writes the server never took changed: the fields of
-    /// `slot`, as `snapshot` holds them (PlannerSync's rebase: the item before
-    /// the earliest failed write in the slot, with what landed there since
-    /// played on it), leaving every other field as it is now, so undoing a
-    /// failed carry never undoes a tick that landed. A nil snapshot removes
-    /// the item: a capture that never landed. An item that is gone is left
-    /// gone.
-    func restore(_ id: UUID, slot: PlannerSync.WriteSlot, from snapshot: SampleItem?) {
-        if let snapshot {
-            if let i = items.firstIndex(where: { $0.id == id }) {
-                items[i] = slot.restoring(items[i], from: snapshot)
+    /// Puts one subject back as PlannerSync's rebase found the server holds
+    /// it: the item before the earliest write the server never took, with
+    /// every write it took since played on it. The whole item is replaced
+    /// where it stands; nil removes it (a capture that never landed, or a
+    /// delete that did). One that is gone (a delete that never landed) comes
+    /// back at `place`, through DsulCore `reinserting`: after the item it
+    /// followed when that is here, else at its index; at the end without one.
+    func restore(_ subject: PlannerSync.Subject, to item: SampleItem?, place: Place?) {
+        switch subject {
+        case .item(let id):
+            if let item {
+                let at = place ?? Place(index: items.count, after: nil)
+                items = reinserting([PlacedItem(place: at, item: item)], into: items)
+            } else {
+                items.removeAll { $0.id == id }
             }
-        } else {
-            items.removeAll { $0.id == id }
         }
         closeSheetIfItsItemIsGone()
     }
