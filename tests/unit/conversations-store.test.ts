@@ -1283,7 +1283,11 @@ describe('pagehide', () => {
 
     expect(api.keepalives.length).toBeGreaterThan(0);
     const total = api.keepalives.reduce((n, k) => n + bytes(k.body), 0);
-    expect(total).toBeLessThanOrEqual(KEEPALIVE_BUDGET_BYTES);
+    // The numbers themselves, not the module's constant: the Fetch spec caps
+    // a page's in-flight keepalive bodies at 64 KiB in all, and past it every
+    // pagehide save fails. A raised budget must turn this red.
+    expect(KEEPALIVE_BUDGET_BYTES).toBeLessThanOrEqual(64 * 1024);
+    expect(total).toBeLessThanOrEqual(60_000);
     // The streaming turn has the budget first: as stopped, clipped from the end.
     const first = api.keepalives.find((k) => k.id === streaming);
     expect(first).toBeDefined();
@@ -1296,6 +1300,24 @@ describe('pagehide', () => {
     for (const k of api.keepalives) expect(LONE.test(k.body)).toBe(false);
 
     store().stop(streaming);
+    await sending;
+  });
+
+  it("creates an item's conversation still streaming its first turn under the item's title, not the question", async () => {
+    planner.items = [{ id: 'i1', type: 'task', title: 'Book the dentist' }];
+    const h = hangs('Try the clinic on');
+    tx.next = h.run;
+    const id = store().newDraft({ itemId: 'i1' });
+    const sending = store().send(id, 'when are they open?');
+    await flush(1);
+
+    store().flushOnPageHide();
+    expect(api.keepalives.map((k) => k.id)).toEqual([id]);
+    const body = JSON.parse(api.keepalives[0].body) as TurnRequest;
+    expect(body.create).toEqual({ itemId: 'i1', title: 'Book the dentist' });
+    expect(body.messages[1]).toMatchObject({ role: 'assistant', status: 'stopped', content: 'Try the clinic on' });
+
+    store().stop(id);
     await sending;
   });
 
