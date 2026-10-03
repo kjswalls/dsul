@@ -608,7 +608,10 @@ describe('room on the header row', () => {
   });
 
   // Room exactly at a rung takes it, and nothing it then draws re-reads the
-  // width that put it there: no frame of the next form up or down.
+  // width that put it there: no frame of the next form up or down. With the
+  // drawn key's 14px inset as without: each rung counts it, the key form's
+  // as read off the whole button too, and a rung short of its inset would
+  // pass through the key form on the way to the key alone.
   it('holds its form with the room exactly at a rung, however often the row is re-read, and steps one rung at a time', () => {
     renderRow();
     // Every form the slot is given, in order, whether or not a frame would show it.
@@ -621,49 +624,59 @@ describe('room on the header row', () => {
     };
     const settled = () => changes.splice(0);
     try {
-      for (const [room, form] of [
-        [106, 'full'],
-        [80, 'key'],
-        [32, 'icon'],
-      ] as const) {
-        expect(at(room)).toBe(form);
+      for (const margin of [0, 14]) {
+        (opener() as HTMLElement).style.marginRight = `${margin}px`;
+        const fullRung = wholeFor('Ctrl+J') + margin;
+        const keyRung = KEY_FORM + margin;
+        const iconRung = 32 + margin;
+        const m = `${margin}px`;
+        for (const [room, form] of [
+          [fullRung, 'full'],
+          [keyRung, 'key'],
+          [iconRung, 'icon'],
+        ] as const) {
+          expect(at(room), m).toBe(form);
+          settled();
+          for (let i = 0; i < 5; i++) resized();
+          expect(settled(), `${form} at ${room}px, ${m}`).toEqual([]);
+          expect(pill(), m).toHaveAttribute('data-fit', form);
+        }
+        // A pixel at a time, down then up: each change is one rung, never a frame of another.
+        at(fullRung + 1);
         settled();
-        for (let i = 0; i < 5; i++) resized();
-        expect(settled(), `${form} at ${room}px`).toEqual([]);
-        expect(pill()).toHaveAttribute('data-fit', form);
-      }
-      // A pixel at a time, down then up: each change is one rung, never a frame of another.
-      at(107);
-      settled();
-      expect([at(106), at(105)]).toEqual(['full', 'key']);
-      expect(settled()).toEqual(['key']);
-      expect([at(80), at(79)]).toEqual(['key', 'icon']);
-      expect(settled()).toEqual(['icon']);
-      expect([at(32), at(31)]).toEqual(['icon', 'none']);
-      expect(settled()).toEqual(['none']);
-      expect([at(32), at(80), at(106)]).toEqual(['icon', 'key', 'full']);
-      expect(settled()).toEqual(['icon', 'key', 'full']);
-      // Straight from whole to a room the key form does not fit: the key
-      // alone at once, the key form's width read off the whole button, with
-      // no pass through the key form; and to one it fits, the key form.
-      expect(at(79)).toBe('icon');
-      expect(settled()).toEqual(['icon']);
-      expect(at(106)).toBe('full');
-      expect(at(80)).toBe('key');
-      expect(settled()).toEqual(['full', 'key']);
-      at(106);
-      settled();
+        expect([at(fullRung), at(fullRung - 1)], m).toEqual(['full', 'key']);
+        expect(settled(), m).toEqual(['key']);
+        expect([at(keyRung), at(keyRung - 1)], m).toEqual(['key', 'icon']);
+        expect(settled(), m).toEqual(['icon']);
+        expect([at(iconRung), at(iconRung - 1)], m).toEqual(['icon', 'none']);
+        expect(settled(), m).toEqual(['none']);
+        expect([at(iconRung), at(keyRung), at(fullRung)], m).toEqual(['icon', 'key', 'full']);
+        expect(settled(), m).toEqual(['icon', 'key', 'full']);
+        // Straight from whole to a room the key form does not fit: the key
+        // alone at once, the key form's width read off the whole button, with
+        // no pass through the key form; and to one it fits, the key form.
+        expect(at(keyRung - 1), m).toBe('icon');
+        expect(settled(), m).toEqual(['icon']);
+        expect(at(fullRung), m).toBe('full');
+        expect(at(keyRung), m).toBe('key');
+        expect(settled(), m).toEqual(['full', 'key']);
+        at(fullRung);
+        settled();
 
-      // Even a key form that draws a pixel wider than the whole button said
-      // settles at once on the key alone, and stays there: the width is read
-      // again only when the key form shows, never by the key alone.
-      expect(at(80, KEY_FORM + 1)).toBe('icon');
-      expect(settled()).toEqual(['key', 'icon']);
-      for (let i = 0; i < 5; i++) resized();
-      expect(settled()).toEqual([]);
-      expect(at(81, KEY_FORM + 1)).toBe('key');
-      for (let i = 0; i < 5; i++) resized();
-      expect(settled()).toEqual(['key']);
+        // Even a key form that draws a pixel wider than the whole button said
+        // settles at once on the key alone, and stays there: the width is read
+        // again only when the key form shows, never by the key alone.
+        expect(at(keyRung, KEY_FORM + 1), m).toBe('icon');
+        expect(settled(), m).toEqual(['key', 'icon']);
+        for (let i = 0; i < 5; i++) resized();
+        expect(settled(), m).toEqual([]);
+        expect(at(keyRung + 1, KEY_FORM + 1), m).toBe('key');
+        for (let i = 0; i < 5; i++) resized();
+        expect(settled(), m).toEqual(['key']);
+        // Whole again for the next inset.
+        at(fullRung + 14);
+        settled();
+      }
     } finally {
       slot.setAttribute = setAttribute;
     }
