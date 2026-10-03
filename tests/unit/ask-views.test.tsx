@@ -1117,6 +1117,39 @@ describe('a conversation', () => {
     expect(screen.queryByRole('button', { name: /conversation options/i })).toBeNull();
   });
 
+  it('keeps the reply being typed in its box when found deleted, and sends it as a new conversation', async () => {
+    const row = summary({ id: 'c1', title: 'Trip plans' });
+    hold(row);
+    let answer: () => void = () => {};
+    api.answer.thread = () => new Promise((r) => (answer = () => r(fail(404, 'not_found'))));
+    // Something half-typed at Ask home earlier.
+    act(() => rail().setDraft('home', 'home draft'));
+    push({ kind: 'conversation', id: 'c1' });
+    renderRail();
+    await timers();
+    const box = askBox();
+    act(() => box.focus());
+    fireEvent.change(box, { target: { value: 'my half-typed reply' } });
+    await act(async () => {
+      answer();
+      await flush();
+    });
+    await timers();
+    expect(screen.getByTestId('conversation-gone')).toBeInTheDocument();
+    // The same box, still focused, with the reply after what was at home; nothing left behind.
+    expect(askBox()).toBe(box);
+    expect(document.activeElement).toBe(box);
+    expect(box.value).toBe('home draft\nmy half-typed reply');
+    expect(rail().drafts).toEqual({ home: 'home draft\nmy half-typed reply' });
+
+    // Sent from there, it starts a new conversation, never the deleted one.
+    fireEvent.keyDown(box, { key: 'Enter' });
+    await settle();
+    expect(transport.inputs).toHaveLength(1);
+    expect(transport.inputs[0].message).toBe('home draft\nmy half-typed reply');
+    expect(transport.inputs[0].conversationId).not.toBe('c1');
+  });
+
   it('keeps its name, and the focused heading, when found deleted after it opened', async () => {
     hold(summary({ id: 'c1', title: 'Trip plans' }));
     let answer: () => void = () => {};

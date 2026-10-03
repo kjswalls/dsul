@@ -205,6 +205,23 @@ describe('composer drafts', () => {
   });
 });
 
+describe('carryDraftHome', () => {
+  it("moves a gone conversation's draft to Ask home's, after anything there, and leaves none behind", () => {
+    rail().setDraft('conv:c1', 'my reply');
+    rail().carryDraftHome('c1');
+    expect(rail().drafts).toEqual({ home: 'my reply' });
+
+    rail().setDraft('conv:c2', 'second thought');
+    rail().carryDraftHome('c2');
+    expect(rail().drafts).toEqual({ home: 'my reply\nsecond thought' });
+
+    // Nothing typed there: nothing moves.
+    const before = rail().drafts;
+    rail().carryDraftHome('c3');
+    expect(rail().drafts).toBe(before);
+  });
+});
+
 describe("a conversation's proposal card", () => {
   it('is dismissed when its conversation leaves both stacks, and only then', () => {
     const dismiss = stubDismiss();

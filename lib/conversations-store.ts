@@ -597,6 +597,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
    * (resolveItemThread skips gone drafts).
    */
   const markGone = (id: string) => {
+    // Its box binds Ask home's draft from now on: what was half-typed under it goes there.
+    useRailStore.getState().carryDraftHome(id);
     const rest = queue.filter((q) => resolveId(q.threadId) === id);
     queue = queue.filter((q) => resolveId(q.threadId) !== id);
     for (const q of rest) setSync(id, jobIds(q), 'unsaved');

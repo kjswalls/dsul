@@ -203,6 +203,13 @@ interface RailState {
   rememberHistory(surface: AskSurface, memo: HistoryMemo): void;
   /** The item-conflict rebind: a draft turned out to be the item's existing conversation. */
   rebindConversation(from: string, to: string): void;
+  /**
+   * A conversation found deleted: its view's box binds Ask home's draft from
+   * then on (a send there starts afresh), so the reply half-typed under it is
+   * carried there, after anything already there, rather than left where no box
+   * reads it any more. conversations-store's markGone calls it.
+   */
+  carryDraftHome(id: string): void;
   requestFocus(req: FocusRequest): void;
   focusComposer(binding?: ComposerBinding): void;
   /**
@@ -395,6 +402,18 @@ export const useRailStore = create<RailState>()((set, get) => {
       // A rebind is the same conversation under its real id: no card goes.
       set({ stacks: { desktop: swap(stacks.desktop), phone: swap(stacks.phone) }, drafts: nextDrafts, pendingFocus: nextFocus });
     },
+
+    carryDraftHome: (id) =>
+      set((s) => {
+        const key = `conv:${id}`;
+        const text = s.drafts[key];
+        if (text === undefined) return s;
+        const drafts = { ...s.drafts };
+        delete drafts[key];
+        const home = drafts.home ?? '';
+        drafts.home = home ? `${home}\n${text}` : text;
+        return { drafts };
+      }),
 
     requestFocus: (req) => set({ pendingFocus: req }),
 

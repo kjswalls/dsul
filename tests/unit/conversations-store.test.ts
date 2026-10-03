@@ -825,6 +825,16 @@ describe('History', () => {
     expect(store().itemIndex.i1).toBeNull();
   });
 
+  it("a conversation found gone by a save carries the reply half-typed under it to Ask home's box", async () => {
+    const id = await sendNew('one');
+    useRailStore.getState().setDraft(`conv:${id}`, 'and another thing');
+    api.answer.appendTurn = () => fail(404, 'not_found');
+    await store().send(id, 'two');
+    await conversationsSettled();
+    expect(thread(id).load).toBe('gone');
+    expect(useRailStore.getState().drafts).toEqual({ home: 'and another thing' });
+  });
+
   it('a conversation found gone keeps the name it was shown under, and never saves it', async () => {
     // Opened from History: the summary held its only title, and goes.
     useConversationsStore.setState({ summaries: { c1: summary({ id: 'c1', title: 'Trip plans', renamed: true }) } });
