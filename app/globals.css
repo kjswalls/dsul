@@ -2220,8 +2220,9 @@ body {
   }
 }
 
-/* Reduced motion: every state swaps at once (the in-app animations-off
-   setting is the global [data-reduce-motion] rule above). */
+/* Reduced motion, the OS's or the in-app animations-off setting: every state
+   swaps at once. The global [data-reduce-motion] rule above clamps durations
+   only, and would leave the mark's 60ms hand-off delays. */
 @media (prefers-reduced-motion: reduce) {
   [data-ask-opener],
   [data-ask-opener]::before,
@@ -2231,6 +2232,14 @@ body {
     transition: none !important;
     animation: none !important;
   }
+}
+[data-reduce-motion='true'] [data-ask-opener],
+[data-reduce-motion='true'] [data-ask-opener]::before,
+[data-reduce-motion='true'] [data-ask-opener] *,
+[data-reduce-motion='true'] [data-ask-opener] *::before,
+[data-reduce-motion='true'] [data-ask-opener] *::after {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* ─── Notices in place ────────────────────────────────────────────────────────

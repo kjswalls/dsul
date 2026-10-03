@@ -254,6 +254,10 @@ describe("the key's paint (app/globals.css)", () => {
     for (const sel of ['[data-ask-opener]', '[data-ask-opener]::before', '[data-ask-opener] *']) expect(body).toContain(sel);
     expect(body).toMatch(/transition:\s*none !important;/);
     expect(body).toMatch(/animation:\s*none !important;/);
+    // And the in-app animations-off setting, which the global rule only clamps (delays survive it).
+    expect(block).toMatch(
+      /\[data-reduce-motion='true'\] \[data-ask-opener\] \*,[\s\S]*?\{\s*transition: none !important;\s*animation: none !important;/
+    );
   });
 
   it('lights up on hover for a pointer only, so a tap never leaves it lit', () => {
