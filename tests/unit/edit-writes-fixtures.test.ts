@@ -100,7 +100,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
 import { habitUpdatesFromDraft, taskUpdatesFromDraft, type ItemDraft } from '@/components/planner/item-dialog';
 import { ItemWriteSchema } from '@/lib/app-api';
-import { EDIT_LIMITS, editPatch, editRefusal, editShapeFromRow, type ItemEdit } from '@/lib/item-edit';
+import { EDIT_LIMITS, OUTER_LIMITS, editPatch, editRefusal, editShapeFromRow, type ItemEdit } from '@/lib/item-edit';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import type { Item } from '@/lib/planner-types';
 
@@ -226,7 +226,15 @@ type EditCase = {
   created: Item | null;
 };
 type TrimCase = { name: string; input: string; expected: string };
-type EditWrites = { today: string; cases: EditCase[]; trim: TrimCase[]; copy: Record<string, string> };
+/** lib/item-edit.ts's caps, which DsulCore's `EditLimits` must equal. */
+type EditLimits = { title: number; notes: number; outerTitle: number; outerNotes: number };
+type EditWrites = {
+  today: string;
+  limits: EditLimits;
+  cases: EditCase[];
+  trim: TrimCase[];
+  copy: Record<string, string>;
+};
 
 async function editCase(name: string, item: Item, edit: ItemEdit, refusal: string | null = null): Promise<EditCase> {
   const base = { name, item, children: [], edit, refusal, removed: [], created: null };
@@ -319,7 +327,13 @@ async function build(): Promise<EditWrites> {
     ] as [string, string][]
   ).map(([name, input]) => ({ name, input, expected: input.trim() }));
 
-  return { today: TODAY, cases, trim, copy: {} };
+  const limits: EditLimits = {
+    title: EDIT_LIMITS.title,
+    notes: EDIT_LIMITS.notes,
+    outerTitle: OUTER_LIMITS.title,
+    outerNotes: OUTER_LIMITS.notes,
+  };
+  return { today: TODAY, limits, cases, trim, copy: {} };
 }
 
 // ── Writing and checking ─────────────────────────────────────────────────────

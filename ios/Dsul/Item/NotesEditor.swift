@@ -14,26 +14,23 @@ import SwiftUI
 ///   in it, so the caret never lands where the finger did.
 /// - **Editing**: Return is a line break; the nav bar's Done, a drag down
 ///   the scroll, or leaving the page ends it, and `ItemDetail` sends the
-///   change (`ItemSheetModel.commit`). Typing past `growthLimit` of the seed
-///   is cut (`ItemSheetModel.notesEntry`).
+///   change (`ItemSheetModel.commit`). Typing past `growthLimit` of what is
+///   stored is cut (`ItemSheetModel.notesEntry`).
 /// - **Read-only**: an older server, a type without notes, or notes stored
 ///   longer than one request may carry (200,000 UTF-16 units), which say so
 ///   under them ("Too long to edit on the phone.").
 ///
-/// The draft and the seed are `ItemDetail`'s, which commits them on focus
-/// leaving, on `.onDisappear` and on the scene going inactive; this view only
-/// draws them.
+/// The draft is `ItemDetail`'s, which commits it on focus leaving, on
+/// `.onDisappear` and on the scene going inactive; this view only draws it.
 struct NotesEditor: View {
-    /// The notes as stored (`planner.item(id)?.notes`).
+    /// The notes as stored (`planner.item(id)?.notes`): what the route
+    /// measures growth against, so what typing may grow to.
     let stored: String?
     /// The type has notes and the server takes the write.
     let editable: Bool
     /// The field is up in place of the text.
     let editing: Bool
     @Binding var draft: String
-    /// What the field showed when editing began: typing may grow the notes
-    /// to the cap, or keep them as long as this when it is longer.
-    let seed: String
     var focus: FocusState<SheetField?>.Binding
     /// A tap on the text or the placeholder: the page seeds the draft and
     /// swaps the field in.
@@ -80,7 +77,7 @@ struct NotesEditor: View {
                 // Typing only: the page fills the draft before the field
                 // appears, never while it has focus.
                 guard focus.wrappedValue == .notes else { return }
-                let limit = growthLimit(cap: EditLimits.notes, stored: seed)
+                let limit = growthLimit(cap: EditLimits.notes, stored: stored)
                 let fitted = ItemSheetModel.notesEntry(previous: previous, next: next, limit: limit)
                 if fitted != next { draft = fitted }
             }
@@ -106,6 +103,9 @@ struct NotesEditor: View {
 /// four lines, one not. VoiceOver reads the whole text either way, so the
 /// button is hidden from it. With `onEdit`, the text is a button that edits
 /// the notes; Show all stays its own, so a tap on it never starts editing.
+/// Show all is hit over 44pt by an overhang of 12pt each way, so it sits 12pt
+/// under the text: the overhang reaches the text's frame and no further, and
+/// never takes a tap meant for the notes.
 private struct NotesText: View {
     let text: String
     let onEdit: (() -> Void)?
@@ -117,7 +117,7 @@ private struct NotesText: View {
     private var truncates: Bool { fullHeight > clippedHeight + 0.5 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 12) {
             if let onEdit {
                 // Hit over at least 44pt: a one-line note is centred in it.
                 Button(action: onEdit) {

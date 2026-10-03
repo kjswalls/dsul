@@ -36,6 +36,8 @@ private struct TypeCase: Decodable, Sendable {
     let hasPriority: Bool
     let hasNotes: Bool
     let titlePlaceholder: String
+    /// lib/item-verbs.ts `deleteConfirmTitle(label)`.
+    let deleteTitle: String
     let deleteDescriptions: [DeleteDescription]
 }
 
@@ -49,6 +51,8 @@ private struct HydratedCase: Decodable, Sendable {
     /// The config's `label`.
     let typeLabel: String
     let titlePlaceholder: String
+    /// lib/item-verbs.ts `deleteConfirmTitle` of the config's `label`.
+    let deleteTitle: String
     let deleteDescriptions: [DeleteDescription]
 }
 
@@ -119,6 +123,7 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(c.hasPriority == t.hasPriority, "\(t.name): hasPriority")
             #expect(c.hasNotes == t.hasNotes, "\(t.name): hasNotes")
             #expect(c.titlePlaceholder == t.titlePlaceholder, "\(t.name): titlePlaceholder")
+            #expect(deleteConfirmTitle(c.label) == t.deleteTitle, "\(t.name): deleteConfirmTitle")
             for d in t.deleteDescriptions {
                 #expect(c.deleteDescription(d.title) == d.text, "\(t.name): deleteDescription(\(d.title))")
             }
@@ -134,6 +139,7 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(c.label == h.typeLabel, "\(h.name): label")
             #expect(typeLabel(h.name, labels: labels) == h.typeLabel, "\(h.name): typeLabel")
             #expect(c.titlePlaceholder == h.titlePlaceholder, "\(h.name): titlePlaceholder")
+            #expect(deleteConfirmTitle(c.label) == h.deleteTitle, "\(h.name): deleteConfirmTitle")
             for d in h.deleteDescriptions {
                 #expect(c.deleteDescription(d.title) == d.text, "\(h.name): deleteDescription(\(d.title))")
             }
@@ -194,5 +200,39 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         #expect(ItemCaps.task.titlePlaceholder == "What needs to be done?")
         #expect(ItemCaps.habit.titlePlaceholder == "What habit to track?")
         #expect(caps("errand").titlePlaceholder == "Add a errand\u{2026}")
+        #expect(deleteConfirmTitle(ItemCaps.task.label) == "Delete task?")
+        #expect(deleteConfirmTitle(ItemCaps.habit.label) == "Delete habit?")
+    }
+
+    /// `jsLowercased` is `String.prototype.toLowerCase` (Node's answers):
+    /// a capital sigma that ends a word takes the final form, skipping an
+    /// apostrophe, a full stop or an accent either side, and one that doesn't
+    /// end a word, or stands alone, doesn't. Everything else is `lowercased()`.
+    @Test func lowerCasingIsJavaScripts() {
+        let cases: [(String, String)] = [
+            ("ΣΤΟΧΟΣ", "στοχος"),
+            ("ΟΔΟΣ ΣΤΟΧΟΣ", "οδος στοχος"),
+            ("ΣΑΣ", "σας"),
+            ("Σ", "σ"),
+            ("ΑΣΑ", "ασα"),
+            ("ΑΣ Β", "ας β"),
+            ("Α.Σ", "α.ς"),
+            ("ΑΣ.Α", "ασ.α"),
+            ("ΑΣ'", "ας'"),
+            ("Α\u{0301}Σ", "α\u{0301}ς"),
+            ("\u{0345}Σ", "\u{0345}σ"),
+            ("İSTANBUL", "i\u{0307}stanbul"),
+            ("Book Club", "book club"),
+            ("", ""),
+        ]
+        for (input, expected) in cases {
+            // By scalar: String's == would call some different strings equal.
+            #expect(Array(jsLowercased(input).unicodeScalars) == Array(expected.unicodeScalars),
+                    "\(input.debugDescription)")
+        }
+        let labels = ["stochos": ItemTypeLabel(name: "stochos", label: "ΣΤΟΧΟΣ", labelPlural: "ΣΤΟΧΟΙ")]
+        let greek = caps("stochos", labels: labels)
+        #expect(greek.titlePlaceholder == "Add a στοχος\u{2026}")
+        #expect(deleteConfirmTitle(greek.label) == "Delete στοχος?")
     }
 }

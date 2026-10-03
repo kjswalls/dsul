@@ -20,6 +20,7 @@
       "hasPriority": true,
       "hasNotes": true,
       "titlePlaceholder": "What needs to be done?",
+      "deleteTitle": "Delete task?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",
@@ -51,6 +52,7 @@
       "hasPriority": false,
       "hasNotes": true,
       "titlePlaceholder": "What habit to track?",
+      "deleteTitle": "Delete habit?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",
@@ -82,6 +84,7 @@
       "hasPriority": true,
       "hasNotes": true,
       "titlePlaceholder": "Add a errand…",
+      "deleteTitle": "Delete errand?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",
@@ -113,6 +116,7 @@
       "hasPriority": true,
       "hasNotes": true,
       "titlePlaceholder": "Add a side-quest…",
+      "deleteTitle": "Delete side-quest?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",
@@ -144,6 +148,7 @@
       "hasPriority": true,
       "hasNotes": true,
       "titlePlaceholder": "Add a book_club…",
+      "deleteTitle": "Delete book_club?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",
@@ -175,6 +180,7 @@
       "hasPriority": true,
       "hasNotes": true,
       "titlePlaceholder": "Add a x…",
+      "deleteTitle": "Delete x?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",
@@ -400,6 +406,24 @@
       "typeLabel": "Book Club",
       "titlePlaceholder": "Add a book club…",
       "deleteTitle": "Delete book club?",
+      "deleteDescriptions": [
+        {
+          "title": "Buy milk",
+          "text": "Moves \"Buy milk\" to Trash for 30 days, then deletes it for good."
+        },
+        {
+          "title": "Say \"hi\"",
+          "text": "Moves \"Say \"hi\"\" to Trash for 30 days, then deletes it for good."
+        }
+      ]
+    },
+    {
+      "name": "stochos",
+      "label": "ΣΤΟΧΟΣ",
+      "labelPlural": "ΣΤΟΧΟΙ",
+      "typeLabel": "ΣΤΟΧΟΣ",
+      "titlePlaceholder": "Add a στοχος…",
+      "deleteTitle": "Delete στοχος?",
       "deleteDescriptions": [
         {
           "title": "Buy milk",

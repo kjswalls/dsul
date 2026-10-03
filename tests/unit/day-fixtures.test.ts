@@ -1232,6 +1232,8 @@ type TypeCaps = {
   hasNotes: boolean;
   /** `form.titlePlaceholder`, the title field's empty prompt. */
   titlePlaceholder: string;
+  /** The delete confirm's title (lib/item-verbs.ts deleteConfirmTitle). */
+  deleteTitle: string;
   /** `form.deleteDescription` for each of DELETE_TITLES: the delete confirm's message. */
   deleteDescriptions: DeleteDescription[];
 };
@@ -1299,12 +1301,16 @@ function buildCaps(): CapsFixture {
       hasPriority: c.fields.includes('priority'),
       hasNotes: c.fields.includes('notes'),
       titlePlaceholder: c.form.titlePlaceholder,
+      deleteTitle: deleteConfirmTitle(c.label),
       deleteDescriptions: deleteDescriptions(c),
     };
   });
   const hydrated = [
     { name: 'side_quest', label: 'Side quest', labelPlural: 'Side quests' },
     { name: 'book-club', label: 'Book Club', labelPlural: 'Book Clubs' },
+    // A word-final capital sigma lower-cases to the final form (Final_Sigma),
+    // which JavaScript's toLowerCase applies and Swift's lowercased() doesn't.
+    { name: 'stochos', label: 'ΣΤΟΧΟΣ', labelPlural: 'ΣΤΟΧΟΙ' },
   ].map((def): HydratedCaps => {
     const c = buildCustomTypeConfig(def);
     return {
@@ -1498,6 +1504,9 @@ describe('day fixtures shared with DsulCore', () => {
     // word the phone shows, so the fixture can tell a port that ignores it.
     const words = (name: string) => caps.types.find((t) => t.name === name)!.deleteDescriptions[0].text;
     expect(words('task')).not.toBe(words('habit'));
+    const deleteTitle = (name: string) => caps.types.find((t) => t.name === name)!.deleteTitle;
+    expect(deleteTitle('task')).not.toBe(deleteTitle('habit'));
+    for (const t of caps.types) expect(t.deleteTitle, t.name).toContain(t.label.toLowerCase());
     for (const h of caps.hydrated) {
       expect(h.titlePlaceholder, h.name).toContain(h.label.toLowerCase());
       expect(h.deleteTitle, h.name).toContain(h.label.toLowerCase());

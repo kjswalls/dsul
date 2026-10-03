@@ -51,11 +51,13 @@ import Foundation
 ///   one the phone had already taken out on its own included. A delete
 ///   answered 404 `not_found` landed, since the row is gone either way; a 404
 ///   without that code is an edge's or a proxy's, and fails.
-/// - **Writes ask iOS for background time** (`BackgroundTime`) from the first
-///   write queued until the queue drains, so a tick, a title saved on the way
-///   out or a delete just before a swipe home gets the half minute or so iOS
-///   allows. A write still out when it runs out fails on resume and is handled
-///   as above.
+/// - **Writes ask iOS for background time** (`BackgroundTime`) whenever one
+///   is queued and none is held, until the queue drains or the sync stops, so
+///   a tick, a title saved on the way out or a delete just before a swipe
+///   home gets the half minute or so iOS allows. Not only on the queue's
+///   first write: once iOS has taken the time back with a write still out,
+///   the next one asks again. A write still out when the time runs out fails
+///   on resume and is handled as above.
 /// - **No polling and no realtime** (the web has neither): a fetch on sign-in,
 ///   on returning to the app at most once a minute, and on pull to refresh.
 @MainActor
@@ -176,6 +178,10 @@ final class PlannerSync {
         let subject: Subject
         let item: Item?
         let place: Place?
+        /// The failed write that recorded `place`, which is the list the
+        /// place was measured against.
+        let placeSeq: Int?
+        /// Its earliest failure.
         let seq: Int
     }
 
@@ -257,7 +263,7 @@ final class PlannerSync {
         if case .delete(let id, _, true) = write {
             queuedCascades[id, default: 0] += 1
         }
-        if pending == 0 { beginBackgroundTime() }
+        beginBackgroundTime()
         pending += 1
         let previous = tail
         tail = Task { [weak self] in
@@ -286,11 +292,15 @@ final class PlannerSync {
     }
 
     /// Sign-out or an account switch: nothing queued is sent, and nothing in
-    /// flight reaches the planner.
+    /// flight reaches the planner. The background time goes back now: what is
+    /// still queued will never be sent, and the queued writes hold the sync
+    /// weakly, so once AppGate lets go of the planner they may never run to
+    /// the drain that would give it back.
     func stop() {
         stopped = true
         dragWaiter?.cancel()
         dragWaiter = nil
+        endBackgroundTime()
     }
 
     private func run(_ write: Write, before: [Subject: Before], seq: Int) async {
@@ -368,9 +378,10 @@ final class PlannerSync {
 
     // MARK: Background time
 
-    /// The queue went from empty to busy: ask iOS to keep the app running
-    /// until it drains. Its expiry gives the time back at once, as iOS
-    /// requires; whatever is still out then fails on resume.
+    /// A write was queued: ask iOS to keep the app running until the queue
+    /// drains, unless time is held already. Its expiry gives the time back at
+    /// once, as iOS requires; whatever is still out then fails on resume, and
+    /// the next write queued asks again.
     private func beginBackgroundTime() {
         guard backgroundToken == nil else { return }
         backgroundToken = backgroundTime.begin(Self.backgroundTaskName) { [weak self] in
@@ -583,28 +594,36 @@ final class PlannerSync {
                 state = nil
             }
         }
-        return Target(subject: subject, item: state, place: placeOf(subject, in: ordered), seq: seq)
+        let recorded = placeOf(subject, in: ordered)
+        return Target(subject: subject, item: state, place: recorded?.place, placeSeq: recorded?.seq, seq: seq)
     }
 
     /// Where `subject` goes back if it is gone: the place the latest failed
-    /// write naming it recorded, which is the delete that took it out.
-    private func placeOf(_ subject: Subject, in ordered: [Failure]) -> Place? {
+    /// write naming it recorded, which is the delete that took it out, and
+    /// that write's number.
+    private func placeOf(_ subject: Subject, in ordered: [Failure]) -> (place: Place, seq: Int)? {
         for failure in ordered.reversed() {
-            if case .item(_, let place)? = failure.before[subject] { return place }
+            if case .item(_, let place)? = failure.before[subject] { return (place, failure.seq) }
         }
         return nil
     }
 
     /// Puts each target back through the planner (`restore`): updates and
-    /// removals first, then what comes back, front to back by its recorded
-    /// place, so a subtask that stood after its parent finds the parent back
-    /// already. Returns whether the list changed.
+    /// removals first, then what comes back. Each delete recorded its places
+    /// against the list the deletes before it had left, so the deletes are
+    /// undone newest first, each onto the list it was measured against: two
+    /// rows deleted one after the other both stood after the same row, and
+    /// oldest first would put them back swapped. Within one delete, front to
+    /// back by recorded place, so a subtask that stood after its parent finds
+    /// the parent back already. Returns whether the list changed.
     private func put(_ targets: [Target], on planner: SamplePlanner) -> Bool {
         let shown = planner.items
         let present = Set(shown.map(\.id))
         let returning: (Target) -> Bool = { $0.item != nil && !present.contains($0.subject.itemId) }
-        let back = targets.filter(returning).sorted {
-            ($0.place?.index ?? Int.max, $0.seq) < ($1.place?.index ?? Int.max, $1.seq)
+        let back = targets.filter(returning).sorted { a, b in
+            let (aSeq, bSeq) = (a.placeSeq ?? Int.min, b.placeSeq ?? Int.min)
+            if aSeq != bSeq { return aSeq > bSeq }
+            return (a.place?.index ?? Int.max, a.seq) < (b.place?.index ?? Int.max, b.seq)
         }
         for target in targets.filter({ !returning($0) }) + back {
             guard planner.item(target.subject.itemId) != target.item else { continue }
@@ -690,14 +709,16 @@ final class PlannerSync {
 
 /// Time iOS gives the app to finish its writes once it leaves the screen
 /// (`UIApplication.beginBackgroundTask`, about half a minute). PlannerSync
-/// begins it when its queue goes from empty to busy and ends it at the drain,
-/// or when `expired` says iOS is taking it back. Two closures rather than
-/// UIKit itself, so the data layer and its tests never touch UIApplication:
-/// AppGate passes the real pair (`uiApplication`), and everything else asks
-/// for nothing (`foregroundOnly`).
+/// begins it when a write is queued and it holds none, and ends it at the
+/// drain, on `stop()`, or when `expired` says iOS is taking it back. Two
+/// closures rather than UIKit itself, so the data layer and its tests never
+/// touch UIApplication: AppGate passes the real pair (`uiApplication`), and
+/// everything else asks for nothing (`foregroundOnly`).
 struct BackgroundTime: Sendable {
     /// Asks for time under `name`; `expired` runs on the main actor if iOS
-    /// takes it back first, and must end it. Answers a token for `end`.
+    /// takes it back first, and ends it. Answers a token for `end`. An
+    /// adapter ends the time itself after `expired` if its owner didn't (the
+    /// owner may be gone), and never ends one token twice.
     let begin: @MainActor @Sendable (_ name: String, _ expired: @escaping @MainActor @Sendable () -> Void) -> Int
     /// Gives back the time `begin` answered `token` for.
     let end: @MainActor @Sendable (_ token: Int) -> Void

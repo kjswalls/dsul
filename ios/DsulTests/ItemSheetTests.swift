@@ -266,9 +266,9 @@ import Testing
 
     /// A custom type is named with the user's own label when the payload
     /// carries it (`itemTypes`), and with its slug, capitalised, when it
-    /// doesn't (the sample, an older server). caps.json's `hydrated` pins the
-    /// web's words for these labels ("Delete side quest?", "Delete book
-    /// club?").
+    /// doesn't (the sample, an older server). The confirm's title is DsulCore
+    /// `deleteConfirmTitle`, which RegistryCapsFixtureTests pins to caps.json's
+    /// words for these labels ("Delete side quest?", "Delete book club?").
     @Test func aCustomTypeIsNamedWithItsOwnLabel() {
         let quest = Item(id: UUID(), type: "custom", customType: "side_quest", title: "Find the cave",
                          status: "pending")
@@ -391,10 +391,10 @@ import Testing
         #expect(!twoLines.commit)
     }
 
-    /// Typing stops at 500 UTF-16 units, or at the seed's length when that is
-    /// longer: a stored title may stay as long, never grow. The cut takes
-    /// whole characters from what was put in, never from what was there.
-    @Test func typingStopsAtTheCapOrTheSeedsLength() {
+    /// Typing stops at 500 UTF-16 units, or at the stored title's length when
+    /// that is longer: a stored title may stay as long, never grow. The cut
+    /// takes whole characters from what was put in, never from what was there.
+    @Test func typingStopsAtTheCapOrTheStoredLength() {
         let full = String(repeating: "a", count: 499)
         #expect(growthLimit(cap: EditLimits.title, stored: "Groceries") == 500)
         #expect(ItemSheetModel.titleEntry(previous: full, next: full + "bc", limit: 500).draft == full + "b")
@@ -406,12 +406,12 @@ import Testing
         #expect(String(middle.draft.prefix(2)) == "az")
         #expect(String(middle.draft.suffix(2)) == "zb")
 
-        let seed = String(repeating: "x", count: 700)
-        let limit = growthLimit(cap: EditLimits.title, stored: seed)
+        let stored = String(repeating: "x", count: 700)
+        let limit = growthLimit(cap: EditLimits.title, stored: stored)
         #expect(limit == 700)
         let shorter = String(repeating: "x", count: 650)
-        #expect(ItemSheetModel.titleEntry(previous: seed, next: shorter, limit: limit).draft == shorter)
-        #expect(ItemSheetModel.titleEntry(previous: seed, next: seed + "y", limit: limit).draft == seed)
+        #expect(ItemSheetModel.titleEntry(previous: stored, next: shorter, limit: limit).draft == shorter)
+        #expect(ItemSheetModel.titleEntry(previous: stored, next: stored + "y", limit: limit).draft == stored)
     }
 
     /// A line break the web stored stays while the title is typed in, and
@@ -470,6 +470,29 @@ import Testing
         let shorter = String(repeating: "t", count: 650)
         #expect(ItemSheetModel.commit(draft: shorter, seed: long, stored: long, kind: .title)
                 == ItemEdit.title(shorter))
+    }
+
+    /// The cap is the stored text's, as the route measures it, never the
+    /// seed's. The scene went inactive mid-edit with trailing spaces typed:
+    /// the trimmed title was sent and stored, and the seed kept the raw
+    /// draft. A draft as long as that seed is cut to what is stored, so the
+    /// route never refuses it. Notes past 50,000 the same.
+    @Test func theCapIsTheStoredTextsNotTheSeeds() {
+        let title = String(repeating: "a", count: 695)
+        let titleSeed = title + "     "
+        #expect(ItemSheetModel.commit(draft: String(repeating: "a", count: 700), seed: titleSeed, stored: title,
+                                      kind: .title) == nil)
+        let retitled = "b" + String(repeating: "a", count: 699)
+        #expect(ItemSheetModel.commit(draft: retitled, seed: titleSeed, stored: title, kind: .title)
+                == ItemEdit.title(String(retitled.prefix(695))))
+
+        let notes = String(repeating: "n", count: 50_005)
+        let notesSeed = notes + "\n\n\n\n\n"
+        #expect(ItemSheetModel.commit(draft: String(repeating: "n", count: 50_010), seed: notesSeed, stored: notes,
+                                      kind: .notes) == nil)
+        let renoted = "m" + String(repeating: "n", count: 50_009)
+        #expect(ItemSheetModel.commit(draft: renoted, seed: notesSeed, stored: notes, kind: .notes)
+                == ItemEdit.notes(String(renoted.prefix(50_005))))
     }
 
     /// "Notes" where there are none, a button that "Edits the notes"; text

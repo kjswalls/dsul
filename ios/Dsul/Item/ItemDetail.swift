@@ -272,7 +272,7 @@ struct ItemDetail: View {
             titleRow(item, ctx, typeCaps: typeCaps, offered: offered, bar: bar)
 
             NotesEditor(stored: item.notes, editable: typeCaps.hasNotes && planner.canWrite("notes"),
-                        editing: editingNotes, draft: $notesDraft, seed: notesSeed, focus: $focus,
+                        editing: editingNotes, draft: $notesDraft, focus: $focus,
                         onEdit: { startEditingNotes() })
                 .id(SheetField.notes)
 
@@ -329,7 +329,7 @@ struct ItemDetail: View {
             }
             VStack(alignment: .leading, spacing: 2) {
                 if editable {
-                    TitleField(draft: $titleDraft, seed: titleSeed, placeholder: typeCaps.titlePlaceholder,
+                    TitleField(draft: $titleDraft, stored: item.title, placeholder: typeCaps.titlePlaceholder,
                                focus: $focus)
                         .id(SheetField.title)
                 } else {

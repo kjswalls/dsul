@@ -1,5 +1,11 @@
 {
   "today": "2026-10-01",
+  "limits": {
+    "title": 500,
+    "notes": 50000,
+    "outerTitle": 10000,
+    "outerNotes": 200000
+  },
   "cases": [
     {
       "name": "title-task",

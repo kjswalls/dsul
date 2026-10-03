@@ -43,11 +43,12 @@ public enum ItemEdit: Sendable, Hashable {
     }
 }
 
-/// lib/item-edit.ts `EDIT_LIMITS` and `OUTER_LIMITS`, in UTF-16 units.
-/// The first are growth-only caps: nothing else in dsul caps these fields, so
-/// stored text may already be longer, and it may stay as long but never grow
-/// (`growthLimit`). The outer ones are what one request may carry at all; a
-/// stored value past them is too long to edit on the phone.
+/// lib/item-edit.ts `EDIT_LIMITS` and `OUTER_LIMITS`, in UTF-16 units, which
+/// edit-writes.json's `limits` pins. The first are growth-only caps: nothing
+/// else in dsul caps these fields, so stored text may already be longer, and
+/// it may stay as long but never grow (`growthLimit`). The outer ones are what
+/// one request may carry at all; a stored value past them is too long to edit
+/// on the phone.
 public enum EditLimits {
     public static let title = 500
     public static let notes = 50_000
@@ -108,7 +109,8 @@ public func clampUTF16(_ s: String, _ max: Int) -> String {
 /// web's title is one line), trimmed, cut to `limit` and trimmed again, so a
 /// cut can't leave a trailing space for the server to strip. Nil when nothing
 /// is left, which the field reads as "put the stored title back". Pass
-/// `growthLimit(cap: EditLimits.title, stored:)` of the field's seed.
+/// `growthLimit(cap: EditLimits.title, stored:)` of the stored title, which
+/// is what the route measures against.
 public func cleanTitle(_ raw: String, limit: Int) -> String? {
     let oneLine = String(raw.map { $0.isNewline ? Character(" ") : $0 })
     let title = jsTrim(clampUTF16(jsTrim(oneLine), limit))
@@ -118,7 +120,8 @@ public func cleanTitle(_ raw: String, limit: Int) -> String? {
 /// Notes as the phone sends them: lib/item-edit.ts `cleanNotes` (trimmed, and
 /// empty is none, so nil clears them), cut to `limit` with the title's
 /// clamp-then-trim. Newlines inside are kept. Pass
-/// `growthLimit(cap: EditLimits.notes, stored:)` of the field's seed.
+/// `growthLimit(cap: EditLimits.notes, stored:)` of the stored notes, which
+/// is what the route measures against.
 public func cleanNotes(_ raw: String, limit: Int) -> String? {
     let notes = jsTrim(clampUTF16(jsTrim(raw), limit))
     return notes.isEmpty ? nil : notes
@@ -226,8 +229,11 @@ public func deleting(_ id: UUID, from items: [Item]) -> (kept: [Item], removed: 
 /// item recorded before it when that item is in the list, else at its index,
 /// clamped to the end. Ascending, so a subtask that stood after its parent
 /// finds the parent already back; by predecessor first, so another row
-/// removed or added meanwhile doesn't shift it. An item already in the list
-/// (a fetch brought it back) is replaced where it stands, never doubled.
+/// removed or added meanwhile doesn't shift it. Ascending is right for one
+/// delete's `removed`, whose places were all recorded against one list;
+/// separate deletes go back newest first (PlannerSync's `put`). An item
+/// already in the list (a fetch brought it back) is replaced where it stands,
+/// never doubled.
 public func reinserting(_ removed: [PlacedItem], into items: [Item]) -> [Item] {
     var out = items
     // Sorted by index, ties in the order given, which `sorted` alone doesn't

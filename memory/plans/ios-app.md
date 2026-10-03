@@ -250,10 +250,12 @@ Delete. Delete's words are fixed on every surface, below.
 - **Title.** `TitleField` takes the title's place when `canWrite("title")`,
   on every type and on a subtask's page: a vertical `TextField` with the
   type's placeholder, `.submitLabel(.done)`, labelled "Title" and still a
-  heading. `ItemSheetModel.titleEntry` reads only the inserted text: exactly
-  one inserted newline is a typed Return (it commits and ends the edit), any
-  other inserted newline (a paste) becomes a space, and growth past the
-  limit is cut. A blank or unchanged title sends nothing, and the field shows
+  heading. `ItemSheetModel.titleEntry` reads only the inserted text: an
+  insertion whose only line break is its last character is a typed Return
+  (an autocorrection may come with it), so the break is dropped and the
+  title commits and ends the edit; any other inserted line break (such as
+  the one in a two-line paste) becomes a space; and growth past the limit
+  is cut. A blank or unchanged title sends nothing, and the field shows
   the stored title again. The counted habit's tally moves to the line under
   the title, before the day note ("1/3 · For Wed, Sep 30").
 - **Notes.** `NotesEditor`: part 1's notes text (four lines and Show all),
@@ -283,12 +285,14 @@ Delete. Delete's words are fixed on every surface, below.
   to 50,000, and text already longer may stay as long but never grow:
   nothing else in dsul caps these fields, so stored text can be any length,
   and a cap that refused it would make it uneditable or cut it on a save
-  that never touched it. The phone clamps typing at `growthLimit` (the cap,
-  or the seed's length if longer), and the server holds the same rule
-  (`withinGrowthLimit`, 400 `invalid`). A request may carry at most 10,000 /
-  200,000 (the schema); a seed over that makes the field read-only, with
-  "Too long to edit on the phone." under it. Trimming is JavaScript's
-  (`jsTrim`), not Foundation's, which keeps U+FEFF and strips U+0085.
+  that never touched it. The phone clamps typing, and what it sends, at
+  `growthLimit` of the stored text (the cap, or the stored length if
+  longer), never of the seed, because the server measures the same rule
+  against what is stored (`withinGrowthLimit`, 400 `invalid`). A request may
+  carry at most 10,000 / 200,000 (the schema); stored text over that makes
+  the field read-only, with "Too long to edit on the phone." under it.
+  Trimming is JavaScript's (`jsTrim`), not Foundation's, which keeps U+FEFF
+  and strips U+0085.
 - **Delete.** ⋯ ends with "Delete task" (the type's label, lowercased; a
   custom type's own), destructive, after a divider; a subtask row has it in a
   context menu and as a VoiceOver action (no swipe actions in a
@@ -335,20 +339,24 @@ Delete. Delete's words are fixed on every surface, below.
   placeholder ("Add a side quest…") and its delete words use the user's
   label, while its capabilities stay the template's. With none (the sample,
   an older server) the label is the slug, capitalised.
-- **Lime.** Text fields, the nav-bar Done and `DayPickSheet`'s calendar tint
-  in `Color.primary`, so the caret, the selection and the picked day are
-  never a 1.5:1 lime; the confirm dialog's Cancel follows the window tint,
-  which DsulApp sets to `.label` inside `UIAlertController` at launch. Delete
-  is the system red.
+- **Lime.** Text fields and the nav-bar Done tint in `Color.primary`, so the
+  caret and the selection are never a 1.5:1 lime. `DayPickSheet`'s calendar
+  tints the system blue instead: it draws the picked day as a white number on
+  a disc of the tint and today's number in it, so the label colour hid today
+  and, in dark mode, put a picked today white on white (README device check
+  12 confirms the blue in both modes). The confirm dialog's Cancel follows
+  the window tint, which DsulApp sets to `.label` inside `UIAlertController`
+  at launch. Delete is the system red.
 - **The fixture.** tests/fixtures/day/edit-writes.json, written by
   tests/unit/edit-writes-fixtures.test.ts from the web's own gesture over the
   real store (the panel's mapper for the one key, then `updateTask` /
   `updateHabit`; `deleteTask` / `deleteHabit`): each case's exact wire body,
   the refusal, the `updateItem` payload, the store's end item and the ids it
-  deleted, in order, plus `String.prototype.trim` cases. Vitest checks
+  deleted, in order, plus `String.prototype.trim` cases and the caps
+  themselves (`limits`: `EDIT_LIMITS` and `OUTER_LIMITS`). Vitest checks
   lib/item-edit.ts and replays every case through the route; DsulCore checks
-  `editAllowed`, `editing`, `deleting`, `reinserting`, `ItemWriteBody` and
-  `jsTrim` against the same file.
+  `editAllowed`, `editing`, `deleting`, `reinserting`, `ItemWriteBody`,
+  `jsTrim` and `EditLimits` against the same file.
 - **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-4 and
   9-13: the title, the notes, the keyboard, Delete, offline, VoiceOver, the
   largest text size, the lime, and the platform behaviours they rest on).
@@ -490,7 +498,10 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   its `perform` started, on the day that instant falls on in the zone the
   pause was sent with, as the server resolved it then), and the result is
   put back: replaced, removed, or reinserted after the item it followed
-  (`Place.after`), else at its index, clamped. A landed delete that cascades
+  (`Place.after`), else at its index, clamped. Each delete recorded its places
+  against the list the deletes before it had left, so returning items go back
+  newest failed delete first, and in ascending `Place.index` only within one
+  delete. A landed delete that cascades
   (anything but a habit's) also removes any subject whose replayed state
   names it as parent, matched as it replays rather than from the list
   recorded at enqueue, so a failed subtask edit can't bring back a child the
@@ -522,9 +533,12 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   moved something; otherwise it is the plain "Couldn't reach dsul".
 - **Background time.** PlannerSync takes a `BackgroundTime` (two main-actor
   closures; `.foregroundOnly`, which asks for nothing, unless one is passed,
-  and a recording fake in the tests) and begins it when the first write is
-  queued on an idle queue and ends it at the drain or on expiry; AppGate passes
-  `UIApplication`'s `beginBackgroundTask` / `endBackgroundTask`. So a tick, a
+  and a recording fake in the tests) and begins it whenever a write is queued
+  and none is held (so a write queued after iOS took the time back asks
+  again), and ends it at the drain, on `stop()` or on expiry; AppGate passes
+  `UIApplication`'s `beginBackgroundTask` / `endBackgroundTask`, through an
+  adapter that ends each task exactly once and ends it itself on expiry if
+  its owner didn't (a sync dropped with writes queued). So a tick, a
   title saved on `.background` or a delete just before a swipe home gets the
   half minute or so iOS allows. A write still out at expiry fails on resume
   and is handled as above. The queue lives in memory: an app killed while

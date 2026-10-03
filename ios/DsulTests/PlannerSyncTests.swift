@@ -1023,6 +1023,38 @@ final class DragFlag {
         #expect(gets == 3)
     }
 
+    /// Two rows deleted one after the other, both failed: each delete
+    /// recorded its place against the list the one before it left, so both
+    /// stood after the same row. They come back newest delete first, in their
+    /// own order rather than swapped. So does a subtask deleted before its
+    /// parent, whose delete took the other subtask with it.
+    @Test func failedDeletesComeBackInTheirOwnOrder() async {
+        let list = UUID(uuidString: "0d000000-0000-4000-8000-00000000000a")!
+        let listJSON = "{\"id\":\"\(lowerID(list))\",\"type\":\"task\",\"title\":\"Write the list\","
+            + "\"status\":\"pending\",\"isScheduled\":false,\"order\":6,"
+            + "\"parentItemId\":\"\(lowerID(PlannerJSON.groceries))\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        for second in [list, PlannerJSON.groceries] {
+            let server = FakeServer()
+            await server.on(plannerRoute,
+                            .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON, listJSON])), .offline)
+            await server.on(itemRoute(PlannerJSON.bags), .offline)
+            await server.on(itemRoute(second), .offline)
+            let planner = await loaded(server)
+            let order = planner.items.map(\.id)
+            #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags, list])
+
+            planner.deleteItem(PlannerJSON.bags)   // never reaches the server
+            planner.deleteItem(second)             // nor does this
+            #expect(planner.item(list) == nil)
+            await drain(planner)
+
+            #expect(planner.items.map(\.id) == order, "after \(second == list ? "the list" : "Groceries")")
+            #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags, list])
+            #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        }
+    }
+
     // MARK: Background time
 
     /// iOS is asked for time when the queue goes from empty to busy, once
@@ -1071,6 +1103,60 @@ final class DragFlag {
         #expect(background.ended == [1])
         #expect(isDone(planner, PlannerJSON.groceries))
         #expect(planner.banner == nil)
+    }
+
+    /// Once iOS has taken the time back with a write still out, the next
+    /// write queued asks again, though the queue never emptied between.
+    @Test func backgroundTimeIsAskedForAgainAfterIOSTakesItBack() async {
+        let background = FakeBackgroundTime()
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = makeLivePlanner(server, backgroundTime: background.time)
+        await planner.refresh()
+        await server.gate(itemRoute(PlannerJSON.groceries))
+
+        planner.toggle(PlannerJSON.groceries)
+        background.expire()
+        #expect(background.ended == [1])
+        planner.toggle(PlannerJSON.groceries)
+        #expect(background.begun.count == 2)
+        #expect(background.ended == [1])
+
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await drain(planner)
+        #expect(background.ended == [1, 2])
+        #expect(!isDone(planner, PlannerJSON.groceries))
+        #expect(planner.banner == nil)
+    }
+
+    /// Sign-out gives the time back at once, with a write still out and one
+    /// queued: the queued one will never be sent, and once AppGate drops the
+    /// planner nothing may be left to run the queue to its drain. The write
+    /// that comes back after ends nothing twice.
+    @Test func backgroundTimeEndsWhenTheSyncStops() async {
+        let background = FakeBackgroundTime()
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = makeLivePlanner(server, backgroundTime: background.time)
+        await planner.refresh()
+        await server.gate(itemRoute(PlannerJSON.groceries))
+
+        planner.toggle(PlannerJSON.groceries)
+        planner.toggle(PlannerJSON.groceries)
+        let out = await waitUntil { await server.count(itemRoute(PlannerJSON.groceries)) == 1 }
+        #expect(out)
+        planner.stopSync()
+        #expect(background.ended == [1])
+
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await drain(planner)
+        #expect(background.begun.count == 1)
+        #expect(background.ended == [1])
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 1)
     }
 
     @Test func aCaptureSendsItsOwnIdLowercase() async {

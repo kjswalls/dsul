@@ -90,24 +90,41 @@ struct EditWritesFixture: Decodable, Sendable {
     let trim: [EditWritesTrimCase]
 }
 
+/// The fixture's `limits`: lib/item-edit.ts `EDIT_LIMITS` (`title`, `notes`)
+/// and `OUTER_LIMITS` (`outerTitle`, `outerNotes`), in UTF-16 units. Read on
+/// its own, so only the test that pins them depends on it.
+private struct EditWritesLimits: Decodable, Sendable {
+    struct Limits: Decodable, Sendable {
+        let title: Int
+        let notes: Int
+        let outerTitle: Int
+        let outerNotes: Int
+    }
+
+    let limits: Limits
+}
+
 enum EditWritesFixtureError: Error {
     case notFound(String)
 }
 
-/// Walks up from the calling source file to the repo root (see
-/// RecurrenceFixtureTests.swift).
-func loadEditWrites(_ here: String = #filePath) throws -> EditWritesFixture {
+/// The fixture's bytes. Walks up from the calling source file to the repo
+/// root (see RecurrenceFixtureTests.swift).
+func editWritesData(_ here: String = #filePath) throws -> Data {
     let relative = "tests/fixtures/day/edit-writes.json"
     var dir: URL = URL(fileURLWithPath: here).deletingLastPathComponent()
     while dir.path != "/" && !dir.path.isEmpty {
         let candidate: URL = dir.appendingPathComponent(relative)
         if FileManager.default.fileExists(atPath: candidate.path) {
-            let data: Data = try Data(contentsOf: candidate)
-            return try JSONDecoder().decode(EditWritesFixture.self, from: data)
+            return try Data(contentsOf: candidate)
         }
         dir = dir.deletingLastPathComponent()
     }
     throw EditWritesFixtureError.notFound("\(relative) above \(here)")
+}
+
+func loadEditWrites(_ here: String = #filePath) throws -> EditWritesFixture {
+    return try JSONDecoder().decode(EditWritesFixture.self, from: editWritesData(here))
 }
 
 /// The body the phone would build to send `wire`: `.edit` for a field action,
@@ -264,6 +281,17 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
             #expect(c.after == nil, "\(c.name): after")
             #expect(reinserting(removed, into: kept) == store, "\(c.name): put back")
         }
+    }
+
+    /// `EditLimits` is the web's: the cases are built from the same
+    /// constants, so a cap moved there would carry them with it and leave
+    /// every other test here green.
+    @Test func theLimitsAreTheWebs() throws {
+        let limits = try JSONDecoder().decode(EditWritesLimits.self, from: editWritesData()).limits
+        #expect(EditLimits.title == limits.title, "EDIT_LIMITS.title")
+        #expect(EditLimits.notes == limits.notes, "EDIT_LIMITS.notes")
+        #expect(EditLimits.outerTitle == limits.outerTitle, "OUTER_LIMITS.title")
+        #expect(EditLimits.outerNotes == limits.outerNotes, "OUTER_LIMITS.notes")
     }
 
     @Test func jsTrimIsStringPrototypeTrim() throws {

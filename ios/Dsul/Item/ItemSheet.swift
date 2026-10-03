@@ -71,11 +71,12 @@ private struct ItemSheetStack: View {
         }
         // No sheet-wide `.tint`: the done tick and "Now" are drawn in
         // `Color.accentColor`, which must stay lime. Each control tints
-        // itself in the label colour instead (ItemDetail's toolbar buttons,
-        // DayPickSheet's calendar), and the bar draws its slots in it
-        // (VerbBar). A text field above all: its caret and its selection
-        // highlight are the tint, and a lime caret is about 1.5:1 on white,
-        // so TitleField and NotesEditor tint themselves too.
+        // itself in the label colour instead (ItemDetail's toolbar buttons),
+        // and the bar draws its slots in it (VerbBar). A text field above
+        // all: its caret and its selection highlight are the tint, and a lime
+        // caret is about 1.5:1 on white, so TitleField and NotesEditor tint
+        // themselves too. DayPickSheet's calendar tints itself the system
+        // blue, since it draws a white number on the tint.
         .sheet(item: $dayPick) { pick in
             dayPicker(pick)
         }

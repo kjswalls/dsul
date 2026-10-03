@@ -81,22 +81,48 @@ extension BackgroundTime {
     /// iOS's own: `beginBackgroundTask`, which keeps the app running for about
     /// half a minute after it leaves the screen, so the writes PlannerSync has
     /// out finish (a title saved on the way out, a delete just before a swipe
-    /// home). iOS calls the expiry handler on the main thread when the time is
-    /// up, and the task must end there and then, so it runs synchronously
-    /// rather than in a Task.
+    /// home). `UIKitBackgroundTasks` holds what is begun and not yet ended.
     static let uiApplication = BackgroundTime(
         begin: { name, expired in
-            let id = UIApplication.shared.beginBackgroundTask(withName: name) {
-                MainActor.assumeIsolated { expired() }
-            }
-            return id.rawValue
+            UIKitBackgroundTasks.shared.begin(name, expired: expired)
         },
         end: { token in
-            let id = UIBackgroundTaskIdentifier(rawValue: token)
-            // iOS answers `.invalid` when it won't give the time; there is
-            // nothing to end then.
-            guard id != .invalid else { return }
-            UIApplication.shared.endBackgroundTask(id)
+            UIKitBackgroundTasks.shared.end(token)
         }
     )
+}
+
+/// The background tasks begun and not yet ended, by a token of our own, so
+/// each is ended exactly once. iOS calls the expiry handler on the main thread
+/// when the time is up, and the task must be ended there and then (it runs
+/// synchronously rather than in a Task): the owner is told (`expired`), and
+/// the handler ends the task itself if the owner didn't, since an owner gone
+/// by then (a sync dropped with writes queued) would leave it running and iOS
+/// would kill the app.
+@MainActor
+private final class UIKitBackgroundTasks {
+    static let shared = UIKitBackgroundTasks()
+
+    private var nextToken = 0
+    private var live: [Int: UIBackgroundTaskIdentifier] = [:]
+
+    func begin(_ name: String, expired: @escaping @MainActor @Sendable () -> Void) -> Int {
+        nextToken += 1
+        let token = nextToken
+        let id = UIApplication.shared.beginBackgroundTask(withName: name) {
+            MainActor.assumeIsolated {
+                expired()
+                UIKitBackgroundTasks.shared.end(token)
+            }
+        }
+        // iOS answers `.invalid` when it won't give the time; there is
+        // nothing to end then.
+        if id != .invalid { live[token] = id }
+        return token
+    }
+
+    func end(_ token: Int) {
+        guard let id = live.removeValue(forKey: token) else { return }
+        UIApplication.shared.endBackgroundTask(id)
+    }
 }

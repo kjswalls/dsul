@@ -8,7 +8,8 @@ import Foundation
 // notes), with the item-level questions built on them (`isSkippable`,
 // `isPausable`, `isRemindable`, `isCollectible`), and the words the sheet
 // borrows from the type's `form` (the title placeholder and Delete's
-// confirm). Keep in step with `ITEM_TYPES` and `buildCustomTypeConfig` there.
+// confirm), with Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
+// Keep in step with `ITEM_TYPES` and `buildCustomTypeConfig` there.
 // Checked against the web by RegistryCapsFixtureTests
 // (tests/fixtures/day/caps.json).
 //
@@ -133,7 +134,8 @@ public struct ItemCaps: Sendable, Hashable {
     /// `buildCustomTypeConfig({ name, label })`: task-shaped in every respect
     /// the phone reads, labelled with `label`, or with `capitalize(name)` when
     /// it is nil or empty (`def.label || capitalize(def.name)`). The label
-    /// reaches the placeholder too, lower-cased ("Add a side quest…").
+    /// reaches the placeholder too, lower-cased as JavaScript does
+    /// (`jsLowercased`: "Add a side quest…").
     public static func forCustomType(_ name: String, label: String? = nil) -> ItemCaps {
         let noun: String
         if let label, !label.isEmpty {
@@ -146,7 +148,7 @@ public struct ItemCaps: Sendable, Hashable {
             defaultBlockMinutes: 30, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true,
             remindable: true, collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false,
             dailyCounts: false, hasPriority: true, hasNotes: true,
-            titlePlaceholder: "Add a \(noun.lowercased())\u{2026}", deleteNamesHistory: false
+            titlePlaceholder: "Add a \(jsLowercased(noun))\u{2026}", deleteNamesHistory: false
         )
     }
 
@@ -163,6 +165,13 @@ public struct ItemCaps: Sendable, Hashable {
         }
         return "Moves \"\(title)\" to Trash for 30 days, then deletes it for good."
     }
+}
+
+/// lib/item-verbs.ts `deleteConfirmTitle(label)`: the title of Delete's
+/// confirm in the type's own noun, "Delete task?", "Delete side quest?".
+/// Pass the type's `label` (`ItemCaps.label`).
+public func deleteConfirmTitle(_ label: String) -> String {
+    return "Delete \(jsLowercased(label))?"
 }
 
 /// One of the user's own item types (an `item_types` row), as the planner
@@ -204,6 +213,35 @@ public struct ItemTypeLabel: Codable, Sendable, Hashable {
 func capitalizedFirst(_ s: String) -> String {
     guard let first = s.first else { return s }
     return String(first).uppercased() + String(s.dropFirst())
+}
+
+/// `String.prototype.toLowerCase`. Swift's `lowercased()` maps each scalar on
+/// its own; JavaScript also applies Unicode's one context-dependent rule,
+/// Final_Sigma: a capital sigma that ends a word (a cased letter before it, and
+/// none after it, skipping case-ignorable scalars such as an apostrophe or an
+/// accent) becomes the final form, U+03C2, so "ΣΤΟΧΟΣ" is "στοχος", not
+/// "στοχοσ". Skipping before testing, as ICU does, so a scalar that is both
+/// cased and case-ignorable (U+0345) is skipped.
+public func jsLowercased(_ s: String) -> String {
+    let sigma: Unicode.Scalar = "\u{03A3}"
+    let scalars = Array(s.unicodeScalars)
+    guard scalars.contains(sigma) else { return s.lowercased() }
+    /// Is the first scalar along `indices` that isn't case-ignorable cased?
+    func casedNext(_ indices: some Sequence<Int>) -> Bool {
+        for i in indices where !scalars[i].properties.isCaseIgnorable {
+            return scalars[i].properties.isCased
+        }
+        return false
+    }
+    var out = String.UnicodeScalarView()
+    for (i, scalar) in scalars.enumerated() {
+        if scalar == sigma, casedNext((0..<i).reversed()), !casedNext((i + 1)..<scalars.count) {
+            out.append("\u{03C2}")
+        } else {
+            out.append(contentsOf: scalar.properties.lowercaseMapping.unicodeScalars)
+        }
+    }
+    return String(out)
 }
 
 /// lib/item-registry.ts `getItemTypeConfig`, for the fields above, with no

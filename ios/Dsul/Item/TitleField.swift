@@ -11,15 +11,17 @@ import SwiftUI
 ///   reads a typed one out of the text rather than trusting `.onSubmit`,
 ///   which may not fire for one (`.onSubmit` ends it too, if it does).
 ///   A pasted line break becomes a space, as the web's one-line input reads
-///   it, and typing past `growthLimit` of the seed is cut.
+///   it, and typing past `growthLimit` of the stored title is cut.
 /// - **Lime**: the caret and the selection are the tint, so the field tints
 ///   itself in the label colour; the accent is a 1.5:1 lime.
 /// - **VoiceOver**: "Title", a text field, and still the page's heading.
 struct TitleField: View {
     @Binding var draft: String
-    /// What the field showed when editing began: the title may grow to the
-    /// cap, or stay as long as this when it is longer.
-    let seed: String
+    /// The title as stored (`planner.item(id)?.title`): it may grow to the
+    /// cap, or stay as long as this when it is longer. What the route
+    /// measures against, never the seed, which after a commit that kept focus
+    /// is the raw draft and may be longer than the trimmed title stored.
+    let stored: String
     /// The type's own prompt ("What needs to be done?", "Add a side quest…").
     let placeholder: String
     var focus: FocusState<SheetField?>.Binding
@@ -38,7 +40,7 @@ struct TitleField: View {
                 // Typing only: the page fills the draft from the planner while
                 // the field doesn't have focus, and that is never an entry.
                 guard focus.wrappedValue == .title else { return }
-                let limit = growthLimit(cap: EditLimits.title, stored: seed)
+                let limit = growthLimit(cap: EditLimits.title, stored: stored)
                 let entry = ItemSheetModel.titleEntry(previous: previous, next: next, limit: limit)
                 if entry.draft != next { draft = entry.draft }
                 if entry.commit { focus.wrappedValue = nil }

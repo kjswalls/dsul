@@ -11,8 +11,8 @@ import Foundation
 // bar shortens a few, and that mapping is here. From part 2, the typed fields'
 // rules too: what a keystroke may put in the title or the notes, and what
 // leaving a field sends (DsulCore ItemEdit.swift, lib/item-edit.ts), and
-// Delete's words (lib/item-verbs.ts `deleteConfirmTitle`, the registry's
-// `form.deleteDescription`).
+// Delete's words (lib/item-verbs.ts `deleteConfirmTitle` and the registry's
+// `form.deleteDescription`, both in DsulCore Registry.swift).
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
@@ -300,17 +300,19 @@ enum ItemSheetModel {
 
     // MARK: Delete
 
-    /// Delete's entry in ⋯: "Delete task", the type's noun lower-cased, a
-    /// custom type's own ("Delete side quest"). No ellipsis: it only asks
-    /// to confirm, it opens nothing to pick from.
+    /// Delete's entry in ⋯: "Delete task", the type's noun lower-cased as
+    /// JavaScript does (`jsLowercased`), a custom type's own ("Delete side
+    /// quest"). No ellipsis: it only asks to confirm, it opens nothing to
+    /// pick from.
     static func deleteMenuTitle(typeLabel: String) -> String {
-        return "Delete " + typeLabel.lowercased()
+        return "Delete " + jsLowercased(typeLabel)
     }
 
     /// The confirm's title: lib/item-verbs.ts `deleteConfirmTitle`, "Delete
-    /// task?", which the web's own prompt uses.
+    /// task?", which the web's own prompt uses (DsulCore's port, which
+    /// caps.json pins).
     static func deleteConfirmTitle(typeLabel: String) -> String {
-        return "Delete \(typeLabel.lowercased())?"
+        return DsulCore.deleteConfirmTitle(typeLabel)
     }
 
     /// The confirm's message: the registry's `form.deleteDescription` for the
@@ -371,8 +373,8 @@ enum ItemSheetModel {
     ///   the title commits;
     /// - any other inserted line break (a paste) becomes a space, as the web's
     ///   one-line input reads it;
-    /// - growth past `limit` (UTF-16 units: `growthLimit` of the seed) is cut
-    ///   from the insertion, by whole characters.
+    /// - growth past `limit` (UTF-16 units: `growthLimit` of the stored
+    ///   title) is cut from the insertion, by whole characters.
     /// A line break already in the title (one the web stored) stays until a
     /// change is sent, where `cleanTitle` turns it into a space. Asked only
     /// while the field has focus, so a fill from the planner is never read
@@ -390,8 +392,8 @@ enum ItemSheetModel {
     }
 
     /// What the notes field holds after a change from `previous` to `next`:
-    /// `next`, with growth past `limit` (`growthLimit` of the seed) cut from
-    /// what was put in. Return is a line break there, kept.
+    /// `next`, with growth past `limit` (`growthLimit` of the stored notes)
+    /// cut from what was put in. Return is a line break there, kept.
     static func notesEntry(previous: String, next: String, limit: Int) -> String {
         guard next.utf16.count > limit else { return next }
         let change = splice(previous, next)
@@ -403,7 +405,11 @@ enum ItemSheetModel {
     ///   leaving it never writes, whatever is stored there: a 700-character
     ///   title, notes ending in a line break, a title the web stored with one;
     /// - otherwise the draft cleaned (`cleanTitle`, `cleanNotes`) within
-    ///   `growthLimit` of the seed, unless that is what is stored.
+    ///   `growthLimit` of what is stored, unless the result is what is
+    ///   stored. The limit is the stored text's, as the route measures it,
+    ///   never the seed's: after a commit that kept focus (the scene going
+    ///   inactive) the seed is the raw draft, which may be longer than the
+    ///   trimmed text stored.
     /// A title that cleans to nothing sends nothing: the server refuses a
     /// blank title, and the field shows the stored one again. Notes that clean
     /// to nothing clear them. The caller sends the edit through the planner,
@@ -413,12 +419,12 @@ enum ItemSheetModel {
         guard draft != seed else { return nil }
         switch kind {
         case .title:
-            guard let title = cleanTitle(draft, limit: growthLimit(cap: EditLimits.title, stored: seed)),
+            guard let title = cleanTitle(draft, limit: growthLimit(cap: EditLimits.title, stored: stored)),
                   title != stored
             else { return nil }
             return ItemEdit.title(title)
         case .notes:
-            let notes = cleanNotes(draft, limit: growthLimit(cap: EditLimits.notes, stored: seed))
+            let notes = cleanNotes(draft, limit: growthLimit(cap: EditLimits.notes, stored: stored))
             guard notes != stored else { return nil }
             return ItemEdit.notes(notes)
         }

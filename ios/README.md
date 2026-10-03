@@ -205,8 +205,9 @@ three bets), and no sample note runs past four lines.
    once (not again over Today behind the sheet at its medium size), and goes
    by itself after five seconds, or at a tap.
 7. **A counted habit** (signed in only; the sample has none). Open a habit you
-   do more than once a day: its count sits beside the title ("0/3"), and each
-   tap on the title's circle counts one ("1/3") until the day is done.
+   do more than once a day: its count sits on the line under the title
+   ("0/3"), and each tap on the title's circle counts one ("1/3") until the
+   day is done.
 8. **VoiceOver.** A row is one element: it reads the title and the time, the
    hint "Opens details", and the rotor's Actions has Mark done. Each chip reads
    as its own element ("Time: 9:00 to 11:00 am"), the streak chip as one
@@ -241,9 +242,12 @@ starts, so relaunch it to undo a delete.
    - Clear the title and close: the old title comes back.
    - Paste two lines: they become one title, joined by a space.
    - A subtask's page edits its own title.
-   - Signed in: on a title the web stored with a line break, or over 500
-     characters, tap it and close without typing: nothing is sent, and the
-     web is unchanged.
+   - Signed in: on a title with a line break, or one over 500 characters,
+     tap it and close without typing: nothing is sent, and the web is
+     unchanged. The web's title field flattens line breaks, so store that
+     title in SQL or through the agent API: `PATCH /api/agent/tasks/:id`,
+     with your OpenClaw API key as the Bearer token and the body
+     `{"title":"Line one\nLine two"}`.
 2. **Notes.**
    - On an item without notes (Call the dentist on the sample), "Notes" shows
      under the title. Tap it, type six lines, tap Done: it saves, and Show all
@@ -282,8 +286,9 @@ that add them, so the numbers match memory/plans/ios-app.md.
 12. **Lime, in light and dark mode.**
     - The caret, the selection, the nav bar's Done and the confirm's Cancel
       aren't lime.
-    - In Pick a date… and Pause until…, the calendar's picked day isn't lime,
-      and today is still told apart in dark mode, picked and not.
+    - In Pick a date… and Pause until…, the calendar's picked day and today
+      are the system blue, not lime, and today is still told apart in dark
+      mode, picked and not.
     - Delete is red. The done tick stays full lime.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
