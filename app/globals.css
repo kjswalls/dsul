@@ -2196,6 +2196,12 @@ body {
   background-color: var(--ask-wash);
   box-shadow: none;
 }
+/* As specific as the wash's and after it, so a keyboard-focused key keeps
+   the light-theme focus line inside its ring while it is hovered or pressed
+   (the lime ring alone is 1.4:1 on paper). */
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:focus-visible::before {
+  box-shadow: inset 0 0 0 1px var(--ask-focus-line);
+}
 :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full']:active [data-ask-key] {
   --ask-key-fill: var(--canvas);
   box-shadow: inset 0 0 0 0 var(--input);

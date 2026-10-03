@@ -394,6 +394,44 @@ describe("the key's paint (app/globals.css)", () => {
     expect(block).not.toMatch(/ring\/|color-mix\([^)]*--ring/);
   });
 
+  // In light the ring carries a 1px --success-text line inside it, so the pair
+  // reads at 3:1 on paper (the lime ring alone is 1.4:1). The plain and
+  // masthead headers' wash took it away from a focused key under the pointer
+  // or pressed: their ::before rules outranked the focus line's.
+  it("keeps the focus line inside the ring while a focused key is hovered or pressed, in every header", () => {
+    // The specificity reader, against the selectors it judges.
+    expect(specificity("[data-ask-opener]:focus-visible::before")).toEqual([0, 2, 1]);
+    expect(specificity(":is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before")).toEqual([0, 3, 1]);
+    expect(specificity(":root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark])")).toEqual([0, 4, 0]);
+    expect(specificity(':where(.a) b')).toEqual([0, 0, 1]);
+
+    const all = rules(stripComments(askBlock()));
+    const line = /^inset 0 0 0 1px var\(--ask-focus-line\)$/;
+    const focusLines = all.filter((r) => values(r.body, 'box-shadow').some((v) => line.test(v)));
+    expect(focusLines.length).toBeGreaterThan(0);
+    const scope = (s: string) => s.slice(0, s.indexOf('[data-ask-opener]'));
+    let judged = 0;
+    for (const r of all) {
+      if (!values(r.body, 'box-shadow').length) continue;
+      for (const s of r.selectors) {
+        // A well under a hovered or pressed key, which a focused key can also be.
+        if (!/::before$/.test(s) || !/:(hover|active)\b/.test(s) || /:focus-visible/.test(s)) continue;
+        judged++;
+        const kept = focusLines.some((f) =>
+          f.selectors.some(
+            (fs) =>
+              /:focus-visible::before$/.test(fs) &&
+              // Unscoped, or scoped to the same headers as the well.
+              (scope(fs) === '' || scope(fs) === scope(s)) &&
+              beats(f, fs, r, s)
+          )
+        );
+        expect(kept, `the focus line loses to ${s}`).toBe(true);
+      }
+    }
+    expect(judged).toBeGreaterThanOrEqual(4);
+  });
+
   // The design's docked key took the page's --input edge in these headers, as
   // the whole key did. Scoped to the whole key only, the key alone's edge away
   // from the light read as the raised key's faint 9% mix on paper.
