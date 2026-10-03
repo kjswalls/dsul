@@ -2032,7 +2032,12 @@ body {
     transform 150ms var(--ease-out-soft);
 }
 
-/* The key: the omnibar's raised key, with the light in its rim. */
+/* The key: the omnibar's raised key, with the light in its rim. Its fill
+   eases (a press, the key alone's hover), and "Ask" (its colour, inherited)
+   eases with it, on the same duration and curve: a mode flip that does not go
+   through the theme swap's window (the OS flipping a 'system' theme, another
+   tab's toggle) would otherwise snap the word to the new mode over the old
+   fill for a frame or two, near-white on white or dark on dark. */
 [data-ask-key] {
   --ask-key-x: 18px;
   --ask-key-fill: var(--surface-2);
@@ -2061,6 +2066,7 @@ body {
     --ask-key-tail 220ms var(--ease-out-soft),
     --ask-key-reach 220ms var(--ease-out-soft),
     --ask-key-fill 150ms var(--ease-out-soft),
+    color 150ms var(--ease-out-soft),
     box-shadow 150ms var(--ease-out-soft),
     translate 150ms var(--ease-out-soft);
 }
@@ -2107,7 +2113,7 @@ body {
   translate: 0 1px;
   --ask-key-fill: var(--surface-2-pressed);
   box-shadow: var(--shadow-key-pressed);
-  transition-duration: 220ms, 220ms, 220ms, 60ms, 60ms, 60ms;
+  transition-duration: 220ms, 220ms, 220ms, 60ms, 60ms, 60ms, 60ms;
 }
 /* Focus: the app's 2px full-strength ring round the whole target, key and
    chord, with the light-theme line inside it. */
@@ -2228,15 +2234,30 @@ body {
   }
 }
 
+/* The mark moves only inside the key. Wherever else it is drawn (Ask's
+   header) it is still: a mode flip outside the theme swap's window swaps it
+   with what is round it, rather than holding a part on the old mode's colour
+   through a hand-off delay. Not !important, so inside the window (whose
+   !important grants colour transitions to everything, delay 0) it eases with
+   the header; the mark's own transitions are Tailwind's, layered, so this
+   unlayered rule beats them. */
+[data-ask-mark]:not([data-ask-key] [data-ask-mark]),
+[data-ask-mark]:not([data-ask-key] [data-ask-mark]) * {
+  transition: none;
+}
+
 /* Reduced motion, the OS's or the in-app animations-off setting: every state
-   swaps at once. The global [data-reduce-motion] rule above clamps durations
-   only, and would leave the mark's 60ms hand-off delays. */
+   swaps at once, the key's and the mark's wherever it is drawn. The global
+   [data-reduce-motion] rule above clamps durations only, and would leave the
+   mark's 60ms hand-off delays. */
 @media (prefers-reduced-motion: reduce) {
   [data-ask-opener],
   [data-ask-opener]::before,
   [data-ask-opener] *,
   [data-ask-opener] *::before,
-  [data-ask-opener] *::after {
+  [data-ask-opener] *::after,
+  [data-ask-mark],
+  [data-ask-mark] * {
     transition: none !important;
     animation: none !important;
   }
@@ -2245,7 +2266,9 @@ body {
 [data-reduce-motion='true'] [data-ask-opener]::before,
 [data-reduce-motion='true'] [data-ask-opener] *,
 [data-reduce-motion='true'] [data-ask-opener] *::before,
-[data-reduce-motion='true'] [data-ask-opener] *::after {
+[data-reduce-motion='true'] [data-ask-opener] *::after,
+[data-reduce-motion='true'] [data-ask-mark],
+[data-reduce-motion='true'] [data-ask-mark] * {
   transition: none !important;
   animation: none !important;
 }

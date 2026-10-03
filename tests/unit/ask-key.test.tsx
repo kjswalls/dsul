@@ -331,18 +331,60 @@ describe("the key's paint (app/globals.css)", () => {
     }
   });
 
-  it('stops every transition under reduced motion', () => {
+  it("stops every transition under reduced motion, the key's and the mark's wherever it is drawn", () => {
     const block = stripComments(askBlock());
     const reduce = mediaBlocks(block, '(prefers-reduced-motion: reduce)');
     expect(reduce).toHaveLength(1);
-    const body = block.slice(...reduce[0]);
-    for (const sel of ['[data-ask-opener]', '[data-ask-opener]::before', '[data-ask-opener] *']) expect(body).toContain(sel);
-    expect(body).toMatch(/transition:\s*none !important;/);
-    expect(body).toMatch(/animation:\s*none !important;/);
-    // And the in-app animations-off setting, which the global rule only clamps (delays survive it).
-    expect(block).toMatch(
-      /\[data-reduce-motion='true'\] \[data-ask-opener\] \*,[\s\S]*?\{\s*transition: none !important;\s*animation: none !important;/
-    );
+    const osVeto = rules(block.slice(...reduce[0]));
+    // And the in-app animations-off setting, which the global rule only
+    // clamps: delays survive it, and the header's mark held a part on the old
+    // mode's colour for its 60ms on a theme flip.
+    const appVeto = rules(block).filter((r) => r.selectors.every((s) => s.startsWith("[data-reduce-motion='true'] ")));
+    for (const [name, veto] of [
+      ['the OS setting', osVeto],
+      ['the in-app setting', appVeto],
+    ] as const) {
+      const vetoes = veto.filter((r) => /transition:\s*none !important/.test(r.body) && /animation:\s*none !important/.test(r.body));
+      const covered = vetoes.flatMap((r) => r.selectors.map((s) => s.replace("[data-reduce-motion='true'] ", '')));
+      for (const sel of ['[data-ask-opener]', '[data-ask-opener]::before', '[data-ask-opener] *', '[data-ask-mark]', '[data-ask-mark] *']) {
+        expect(covered, `${name} stills ${sel}`).toContain(sel);
+      }
+    }
+  });
+
+  // Ask's header carries the mark with no key round it: nothing engages it
+  // there, so its only motion was the rest state's hand-off delay, which held
+  // a part on the old colour through a mode flip outside the theme swap's
+  // window (the OS flipping a 'system' theme).
+  it('holds the mark still outside the key, while letting the theme swap ease it', () => {
+    const all = rules(stripComments(askBlock()));
+    const still = all.filter((r) => /(?:^|[\s;{])transition:\s*none\s*;/.test(r.body) && !/!important/.test(r.body));
+    const selectors = still.flatMap((r) => r.selectors);
+    expect(selectors).toContain('[data-ask-mark]:not([data-ask-key] [data-ask-mark])');
+    expect(selectors).toContain('[data-ask-mark]:not([data-ask-key] [data-ask-mark]) *');
+    // Not !important (filtered above), so the swap's window, which is, still
+    // eases it with the header; and it beats the mark's own (layered) classes
+    // by being unlayered, which the block is.
+    const css = read('app/globals.css');
+    const before = css.slice(0, css.indexOf("/* ─── Ask's key"));
+    const depth = stripComments(before).split('{').length - stripComments(before).split('}').length;
+    expect(depth, "the Ask's key block sits outside every @layer").toBe(0);
+  });
+
+  // A press eases the key's fill, and "Ask" is the key's colour: the two
+  // move together, or an unwindowed mode flip snaps the word over the old fill.
+  it('eases "Ask" with the key\'s fill, and keeps the press\'s durations in step with the list', () => {
+    const all = rules(stripComments(askBlock()));
+    const key = all.find((r) => r.selectors.length === 1 && r.selectors[0] === '[data-ask-key]');
+    expect(key).toBeDefined();
+    const list = items(values(key!.body, 'transition')[0]);
+    const timing = (p: string) => list.find((i) => i.startsWith(`${p} `))?.slice(p.length + 1);
+    expect(timing('color')).toBeDefined();
+    expect(timing('color')).toBe(timing('--ask-key-fill'));
+    // Every transition-duration list that re-times the key names one per property.
+    for (const r of all.filter((r) => r.selectors.some((s) => s.endsWith('[data-ask-key]')))) {
+      for (const v of values(r.body, 'transition-duration')) expect(items(v), r.selectors.join(', ')).toHaveLength(list.length);
+    }
   });
 
   it('lights up on hover for a pointer only, so a tap never leaves it lit', () => {
