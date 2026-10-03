@@ -861,9 +861,10 @@ conversation is saved to the account.
   the right column is exactly the old item panel, Done included.
 - **Ask starts closed.** It opens from the Ask button (`components/ai/rail/ask-opener.tsx`,
   the last thing on the canvas's header row, shown only while the right column is empty; a
-  pointer's click on it holds Ask's header against the pointer for 500ms, rail-store
-  `holdRailHeader`, since that header opens where the button was and a double-click's second
-  click would land on History, "+" or ✕), Ctrl+J (⌘J: the frozen `toggle_right_sidebar` id
+  pointer's click on it holds Ask's header, and the button's own spot, against the pointer
+  for 500ms, rail-store `holdRailHeader`, since that header opens where the button was and in
+  Console the braindump slides under it as the column eases in, so a double-click's second
+  click would land on History, "+", ✕ or the braindump), Ctrl+J (⌘J: the frozen `toggle_right_sidebar` id
   re-defaulted) and `?` in the dock (or "Ask AI" in ⌘K). Every one of those writes
   sidebar-store's persisted `askOpen`, and Ctrl+J or the rail's ✕ clear it, so Ask stays as
   the user left it across reloads; the tour's summon is the one open that persists nothing.

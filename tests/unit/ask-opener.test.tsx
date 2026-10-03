@@ -22,7 +22,7 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}), 
 
 import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { ASK_OPEN_DEFAULT, useSidebarStore } from '@/lib/sidebar-store';
-import { RAIL_HEADER_HOLD_MS, railHeaderHeld, useRailStore } from '@/lib/rail-store';
+import { RAIL_HEADER_HOLD_MS, SUMMON_SPOT_SLOP_PX, railHeaderHeld, useRailStore } from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -199,6 +199,128 @@ describe('a click', () => {
       expect(RAIL_HEADER_HOLD_MS).toBeGreaterThanOrEqual(400);
       expect(RAIL_HEADER_HOLD_MS).toBeLessThanOrEqual(500);
     } finally {
+      clock.mockRestore();
+    }
+  });
+});
+
+// In Console the braindump slides left under the pointer while the column
+// eases in, so a quick second click lands on whatever of it just arrived.
+describe("a pointer summon shields the button's own spot", () => {
+  /** The button's box on screen: 80x32 at (1000, 10). */
+  const BOX = { left: 1000, top: 10, right: 1080, bottom: 42, width: 80, height: 32, x: 1000, y: 10 };
+  const SPOT = { clientX: 1040, clientY: 26 };
+
+  /** Something that slid under the spot (the braindump's pill), with a spy on everything it hears. */
+  function underneath() {
+    const heard: string[] = [];
+    const el = document.createElement('button');
+    el.textContent = 'Organize projects & groups';
+    for (const type of ['pointerdown', 'mousedown', 'click', 'dblclick']) {
+      el.addEventListener(type, () => heard.push(type));
+    }
+    document.body.appendChild(el);
+    return { el, heard, remove: () => el.remove() };
+  }
+  const Pointer = (typeof PointerEvent === 'function' ? PointerEvent : MouseEvent) as typeof MouseEvent;
+  /** A real pointer's press and click: Chromium's pointerdown has a count of 0, its mouse events the real one. */
+  function press(el: Element, at: { clientX: number; clientY: number }, count: number) {
+    const opts = { bubbles: true, cancelable: true, ...at };
+    const down = new Pointer('pointerdown', { ...opts, detail: 0 });
+    const mouse = new MouseEvent('mousedown', { ...opts, detail: count });
+    act(() => {
+      el.dispatchEvent(down);
+      el.dispatchEvent(mouse);
+    });
+    return { down, mouse };
+  }
+  function click(el: Element, at: { clientX: number; clientY: number }, count: number) {
+    const e = new MouseEvent('click', { bubbles: true, cancelable: true, ...at, detail: count });
+    const dbl = new MouseEvent('dblclick', { bubbles: true, cancelable: true, ...at, detail: count });
+    act(() => {
+      el.dispatchEvent(e);
+      if (count === 2) el.dispatchEvent(dbl);
+    });
+    return { click: e, dbl };
+  }
+
+  it('swallows a press and its click there, whatever is under it, for the hold only', () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const under = underneath();
+    try {
+      renderRow();
+      vi.spyOn(opener() as HTMLButtonElement, 'getBoundingClientRect').mockReturnValue(BOX as DOMRect);
+      fireEvent.click(opener() as HTMLButtonElement, { detail: 1, ...SPOT });
+      expect(useRailStore.getState().summoned).toBe(true);
+      const focused = document.activeElement;
+
+      // A double-click's second press and click, 120ms on, land on what slid in.
+      now += 120;
+      const { down, mouse } = press(under.el, SPOT, 2);
+      const second = click(under.el, SPOT, 2);
+      expect(under.heard).toEqual([]);
+      expect(down.defaultPrevented).toBe(true);
+      expect(mouse.defaultPrevented).toBe(true);
+      expect(second.click.defaultPrevented).toBe(true);
+      expect(second.dbl.defaultPrevented).toBe(true);
+      expect(document.activeElement).toBe(focused);
+
+      // Just past the button's edge, within the slop: still its spot.
+      press(under.el, { clientX: BOX.right + SUMMON_SPOT_SLOP_PX, clientY: BOX.bottom }, 1);
+      expect(under.heard).toEqual([]);
+      // Anywhere else on the page, never.
+      press(under.el, { clientX: 400, clientY: 300 }, 1);
+      click(under.el, { clientX: 400, clientY: 300 }, 1);
+      expect(under.heard).toEqual(['pointerdown', 'mousedown', 'click']);
+      under.heard.length = 0;
+
+      // A key's click (no count) is never the pointer's.
+      click(under.el, SPOT, 0);
+      expect(under.heard).toEqual(['click']);
+      under.heard.length = 0;
+
+      // A press swallowed just before the hold ends takes its click after it.
+      now += RAIL_HEADER_HOLD_MS - 120 - 1;
+      press(under.el, SPOT, 1);
+      now += 50;
+      click(under.el, SPOT, 1);
+      expect(under.heard).toEqual([]);
+
+      // Past the hold, the spot is the page's again.
+      press(under.el, SPOT, 1);
+      click(under.el, SPOT, 1);
+      expect(under.heard).toEqual(['pointerdown', 'mousedown', 'click']);
+    } finally {
+      under.remove();
+      clock.mockRestore();
+    }
+  });
+
+  it('is never raised by a key, and a sign-out takes it down', () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    const under = underneath();
+    try {
+      renderRow();
+      vi.spyOn(opener() as HTMLButtonElement, 'getBoundingClientRect').mockReturnValue(BOX as DOMRect);
+      // Enter or Space: no count, no shield.
+      fireEvent.click(opener() as HTMLButtonElement, SPOT);
+      now += 100;
+      press(under.el, SPOT, 1);
+      expect(under.heard).toEqual(['pointerdown', 'mousedown']);
+      under.heard.length = 0;
+      act(() => useRailStore.getState().closeRail());
+
+      fireEvent.click(opener() as HTMLButtonElement, { detail: 1, ...SPOT });
+      now += 100;
+      press(under.el, SPOT, 1);
+      expect(under.heard).toEqual([]);
+      act(() => useRailStore.getState().reset());
+      press(under.el, SPOT, 1);
+      expect(under.heard).toEqual(['pointerdown', 'mousedown']);
+    } finally {
+      under.remove();
       clock.mockRestore();
     }
   });

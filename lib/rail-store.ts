@@ -483,6 +483,7 @@ export const useRailStore = create<RailState>()((set, get) => {
     reset: () => {
       focusBeforeSummon = null;
       railHeaderHeldUntil = 0;
+      unshieldSummonSpot?.();
       set({ stacks: EMPTY_STACKS, summoned: false, pendingFocus: null, pendingReveal: null, drafts: {}, lastNav: null });
     },
   };
@@ -600,9 +601,17 @@ function restoreFocus(record: HTMLElement | null): void {
 // summon just focused. So a summon by the pointer holds Ask's header against
 // the pointer for a moment (holdRailHeader, from ask-opener.tsx), and the
 // header (components/ai/rail/rail-header.tsx) swallows a press and its click
-// while it holds, without moving focus. The keyboard is never held: a key's
-// click has no click count, and nothing else a key does there goes through a
-// pointer event. Module state, not store state: nothing renders from it.
+// while it holds, without moving focus.
+//
+// The header is not all that moves under the pointer. In Console the
+// braindump sits between the canvas and the rail and slides left while the
+// column eases in (300ms), so a second click 60-250ms after the first landed
+// on its pill, "Add task" or "Organize projects & groups" and opened them. So
+// the same summon also shields the pointer's own spot: the button's box as it
+// was, a few px wider (holdRailHeader's `from`), wherever the press there
+// lands. The keyboard is never held: a key's click has no click count, and
+// nothing else a key does goes through a pointer event. Module state, not
+// store state: nothing renders from it.
 
 /**
  * How long the header ignores the pointer after a pointer summon: a
@@ -614,14 +623,109 @@ export const RAIL_HEADER_HOLD_MS = 500;
 
 let railHeaderHeldUntil = 0;
 
-/** A summon by the pointer: Ask's header ignores the pointer for RAIL_HEADER_HOLD_MS. */
-export function holdRailHeader(): void {
+/**
+ * A summon by the pointer: Ask's header ignores the pointer for
+ * RAIL_HEADER_HOLD_MS, and so does the spot `from` (the Ask button) occupied,
+ * whatever slides under it meanwhile (shieldSummonSpot).
+ */
+export function holdRailHeader(from?: Element | null): void {
   railHeaderHeldUntil = Date.now() + RAIL_HEADER_HOLD_MS;
+  if (from) shieldSummonSpot(from.getBoundingClientRect());
 }
 
 /** True while the header still ignores the pointer. */
 export function railHeaderHeld(): boolean {
   return Date.now() < railHeaderHeldUntil;
+}
+
+/** How far past the Ask button's edges its spot is shielded: a second click lands a few px off the first. */
+export const SUMMON_SPOT_SLOP_PX = 4;
+/** A press swallowed in the hold whose click never comes (dragged away, held down) stops being waited for. */
+const SHIELD_PRESS_WAIT_MS = 5_000;
+
+/** The shield's teardown while it is up (reset() and a new summon call it). */
+let unshieldSummonSpot: (() => void) | null = null;
+
+/**
+ * For RAIL_HEADER_HOLD_MS after a pointer summon, a press inside `rect` (the
+ * Ask button's box, SUMMON_SPOT_SLOP_PX wider) is swallowed in the capture
+ * phase at the window, before anything under it hears it, and its default
+ * prevented, so focus stays in the box the summon focused:
+ *   - pointerdown and mousedown, always: only a pointer makes them, and a
+ *     pointer's pointerdown carries a click count of 0 in Chromium, so the
+ *     count cannot tell it from anything (a Radix trigger opens on it);
+ *   - click and dblclick, only with a count (a key's click has none), when
+ *     they follow a swallowed press, or land inside while the hold is on. A
+ *     press swallowed just before the hold ended still takes its click.
+ * Elsewhere on the page the pointer is never touched.
+ */
+function shieldSummonSpot(rect: { left: number; top: number; right: number; bottom: number }): void {
+  unshieldSummonSpot?.();
+  if (typeof window === 'undefined') return;
+  const box = {
+    left: rect.left - SUMMON_SPOT_SLOP_PX,
+    top: rect.top - SUMMON_SPOT_SLOP_PX,
+    right: rect.right + SUMMON_SPOT_SLOP_PX,
+    bottom: rect.bottom + SUMMON_SPOT_SLOP_PX,
+  };
+  const until = Date.now() + RAIL_HEADER_HOLD_MS;
+  const held = () => Date.now() < until;
+  const inside = (e: MouseEvent) =>
+    e.clientX >= box.left && e.clientX <= box.right && e.clientY >= box.top && e.clientY <= box.bottom;
+  const swallow = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
+  /** A press was swallowed, and its click is still to come. */
+  let pressHeld = false;
+  /** The last click was swallowed: its dblclick goes with it. */
+  let clickHeld = false;
+  let timer: ReturnType<typeof setTimeout> | undefined;
+
+  const onPress = (e: Event) => {
+    // Every press starts its own press-and-click: only this one's counts.
+    clickHeld = false;
+    pressHeld = held() && inside(e as MouseEvent);
+    if (pressHeld) swallow(e);
+  };
+  const onClick = (e: Event) => {
+    const m = e as MouseEvent;
+    if (m.detail === 0) return;
+    const take = pressHeld || (held() && inside(m));
+    pressHeld = false;
+    clickHeld = take;
+    if (take) swallow(e);
+    // Past the hold, down after this click's dblclick (dispatched with it).
+    if (!held()) {
+      clearTimeout(timer);
+      timer = setTimeout(stop, 0);
+    }
+  };
+  const onDblClick = (e: Event) => {
+    const m = e as MouseEvent;
+    if (m.detail === 0) return;
+    if (clickHeld || (held() && inside(m))) swallow(e);
+    clickHeld = false;
+  };
+  const opts = { capture: true } as const;
+  function stop() {
+    clearTimeout(timer);
+    window.removeEventListener('pointerdown', onPress, opts);
+    window.removeEventListener('mousedown', onPress, opts);
+    window.removeEventListener('click', onClick, opts);
+    window.removeEventListener('dblclick', onDblClick, opts);
+    if (unshieldSummonSpot === stop) unshieldSummonSpot = null;
+  }
+  window.addEventListener('pointerdown', onPress, opts);
+  window.addEventListener('mousedown', onPress, opts);
+  window.addEventListener('click', onClick, opts);
+  window.addEventListener('dblclick', onDblClick, opts);
+  unshieldSummonSpot = stop;
+  // Down once the hold is over, unless a press it swallowed is still waiting
+  // for its click (onClick takes it down then).
+  timer = setTimeout(() => {
+    timer = setTimeout(stop, pressHeld ? SHIELD_PRESS_WAIT_MS : 0);
+  }, RAIL_HEADER_HOLD_MS);
 }
 
 // ── Reading the rule ─────────────────────────────────────────────────────────

@@ -96,9 +96,11 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
  * can measure no room and stay hidden until the column has gone. A click
  * focuses it first: Safari leaves a clicked button unfocused, and there would
  * be nothing to note. A pointer's click (one with a click count; a key's has
- * none) also holds Ask's header against the pointer for a moment (rail-store
- * `holdRailHeader`): the header row opens where this was, and a double-click's
- * second click would otherwise land on its History, "+" or ✕.
+ * none) also holds Ask's header, and this button's own spot, against the
+ * pointer for a moment (rail-store `holdRailHeader`): the header row opens
+ * where this was, and in Console the braindump slides under it as the column
+ * eases in, so a double-click's second click would otherwise land on History,
+ * "+" or ✕, or on whatever of the braindump's had just arrived there.
  *
  * WHEN it shows: something answers (the AI gate's `canChat`, asked, never
  * re-derived; unknown is no), on the desktop, outside Zen, and only while the
@@ -161,7 +163,7 @@ export function AskOpener({ className, rowOffset }: { className?: string; rowOff
         data-ask-opener=""
         onClick={(e) => {
           if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
-          if (e.detail > 0) holdRailHeader();
+          if (e.detail > 0) holdRailHeader(e.currentTarget);
           toggleRail();
         }}
         aria-label="Open Ask"
