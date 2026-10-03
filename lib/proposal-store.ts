@@ -9,7 +9,9 @@ import { useAISettingsStore } from './ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import type { ChatErrorCode } from './ai-types';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
-import type { Proposal } from './planner-types';
+import { noteOpenclawAsked, useConversationsStore } from './conversations-store';
+import { tallyOperations } from './conversation-summary';
+import type { Proposal, ProposalOperation } from './planner-types';
 
 /**
  * proposal-store.ts — the AI's pending suggestion, and the user's one tap.
@@ -32,8 +34,14 @@ export type ProposalIntent = 'catch-up' | 'ask' | 'breakdown';
  * literally invisible, and the user would be looking at the button they just
  * pressed with nothing happening. So each request records the surface it came
  * from and each `<ProposalCard>` renders only its own.
+ *
+ *   'chat'         the catch-up card (no conversation of its own)
+ *   `item:<id>`    asked from an item: a breakdown
+ *   `conv:<id>`    asked from a saved conversation ("Turn this into a plan");
+ *                  what it changes is counted on that conversation's History
+ *                  row (lib/conversations-store.ts, `noteChanges`)
  */
-export type ProposalSurface = 'chat' | `item:${string}`;
+export type ProposalSurface = 'chat' | `item:${string}` | `conv:${string}`;
 export type ProposalStatus = 'idle' | 'loading' | 'ready' | 'empty' | 'error';
 
 interface ProposalStore {
@@ -68,8 +76,33 @@ interface ProposalStore {
    * were being thrown away at the one point where somebody could read them.
    */
   refused: { count: number; reasons: string[] };
+  /**
+   * The lines the USER has ticked off the card, by index, tagged with the
+   * proposal they belong to (ProposalCard has why the id travels with them).
+   *
+   * Here rather than in the card because the card remounts while the user is
+   * still reviewing it: a catch-up host hands it to Ask home when the gate
+   * opens mid-review, an item opened over a conversation and Back remount its
+   * view, and Ask kept mounted under an overlay holds a second copy of the
+   * catch-up card beside the dock's. Local state would come back all-ticked
+   * in each of those, and Accept would then apply the very lines the user had
+   * dropped.
+   */
+  selection: { proposalId: string | null; dropped: ReadonlySet<number> };
 
-  request: (intent: ProposalIntent, prompt?: string, itemId?: string) => Promise<void>;
+  /** Tick a line off the current card, or back on. */
+  toggleDropped: (index: number) => void;
+  /**
+   * `itemId` asks about that item (a breakdown); `conversationId` says which
+   * conversation asked, so the card answers there and what it changes is
+   * counted on that conversation. Neither: the catch-up card's 'chat'.
+   */
+  request: (
+    intent: ProposalIntent,
+    prompt?: string,
+    itemId?: string,
+    o?: { conversationId?: string }
+  ) => Promise<void>;
   /**
    * Ask again, telling the model what it already offered.
    *
@@ -186,9 +219,28 @@ const cleared = (): Partial<ProposalStore> => ({
   lastRequest: null,
   rejected: [],
   refused: NOTHING_REFUSED,
+  selection: NO_SELECTION,
 });
 
 const NOTHING_REFUSED = { count: 0, reasons: [] as string[] };
+
+/** Every line in: the card is an offer, and a new one starts all-ticked. */
+const NO_SELECTION: ProposalStore['selection'] = { proposalId: null, dropped: new Set<number>() };
+
+/**
+ * The conversation an accepted card counts against: the `conv:` card's own,
+ * or the item's one conversation for an `item:` card. None (the catch-up card,
+ * or an item nobody has chatted about) means there is no row to count on.
+ */
+function noteAccepted(surface: ProposalSurface | undefined, accepted: readonly ProposalOperation[]): void {
+  if (!surface || surface === 'chat') return;
+  const conversations = useConversationsStore.getState();
+  const id = surface.startsWith('conv:')
+    ? surface.slice('conv:'.length)
+    : conversations.itemIndex[surface.slice('item:'.length)];
+  if (typeof id !== 'string' || !id) return;
+  conversations.noteChanges(id, tallyOperations(accepted));
+}
 
 /**
  * Deduped and capped: three identical "a repeating item cannot be moved to the
@@ -251,6 +303,12 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // throw out here would park `status` at 'loading' forever — a spinner
       // with no exit that also greys out every other AI button.
       const ctx = plannerContext();
+
+      // A plan asked from a conversation carries an excerpt of it (both
+      // sides): asked of an OpenClaw gateway, OpenClaw now holds that much of
+      // it, which the conversation's delete confirm must say.
+      const surface = get().lastRequest?.surface;
+      if (proposeTarget === 'openclaw' && surface?.startsWith('conv:')) noteOpenclawAsked(surface.slice('conv:'.length));
 
       const res = await fetch('/api/ai/propose', {
         method: 'POST',
@@ -327,18 +385,33 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     lastRequest: null,
     rejected: [],
     refused: NOTHING_REFUSED,
+    selection: NO_SELECTION,
 
-    request: async (intent, prompt, itemId) => {
+    toggleDropped: (index) => {
+      const { proposal, selection } = get();
+      const proposalId = proposal?.id ?? null;
+      const next = new Set(selection.proposalId === proposalId ? selection.dropped : NO_SELECTION.dropped);
+      if (!next.delete(index)) next.add(index);
+      set({ selection: { proposalId, dropped: next } });
+    },
+
+    request: async (intent, prompt, itemId, o) => {
       const token = claim();
+      const surface: ProposalSurface = itemId
+        ? `item:${itemId}`
+        : o?.conversationId
+          ? `conv:${o.conversationId}`
+          : 'chat';
       set({
         status: 'loading',
         error: null,
         emptyMessage: null,
         proposal: null,
         refused: NOTHING_REFUSED,
+        selection: NO_SELECTION,
         // The original ask, kept verbatim so retries decorate it rather than
         // stacking on each other's decoration.
-        lastRequest: { intent, prompt, itemId, surface: itemId ? `item:${itemId}` : 'chat' },
+        lastRequest: { intent, prompt, itemId, surface },
         rejected: [],
       });
 
@@ -397,6 +470,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         emptyMessage: null,
         proposal: null,
         refused: NOTHING_REFUSED,
+        selection: NO_SELECTION,
         rejected: nextRejected,
       });
       await askModel(
@@ -411,14 +485,17 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     },
 
     accept: (operations) => {
-      const { proposal } = get();
+      const { proposal, lastRequest } = get();
       if (!proposal) return 0;
       const chosen = operations ?? proposal.operations;
       // Ticking every line off is a dismissal, not an acceptance of nothing.
       if (chosen.length === 0) return 0;
+      // What the planner actually took (it re-validates), counted on the
+      // conversation that asked: History's second line.
+      const surface = lastRequest?.surface;
       const applied = usePlannerStore
         .getState()
-        .applyProposal({ ...proposal, operations: chosen });
+        .applyProposal({ ...proposal, operations: chosen }, (accepted) => noteAccepted(surface, accepted));
 
       claim();
       if (applied === 0) {

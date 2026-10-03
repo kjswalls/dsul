@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { memo, useCallback, useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { ChevronRight } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 
 /**
  * The grip shared by both states: a rounded rectangle exactly as wide as the
@@ -48,24 +49,66 @@ import { SidebarDock } from '@/components/sidebar/sidebar-dock';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { Wordmark } from '@/components/primitives/wordmark';
 import {
+  clampSidebarGrowth,
   clampSidebarWidth,
+  renderedSidebarWidth,
   SIDEBAR_DEFAULT_WIDTH,
   SIDEBAR_MAX_WIDTH,
   SIDEBAR_MIN_WIDTH,
   useSidebarStore,
 } from '@/lib/sidebar-store';
+import { useRailStore } from '@/lib/rail-store';
+import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
 import { useLayoutDef } from '@/lib/look-store';
+
+/**
+ * What a docked right rail holds back (lib/rail-store.ts), read when it is
+ * needed rather than subscribed in render: the column yields to it
+ * (renderedSidebarWidth, published below), and the drag and the nudges cap
+ * their growth with it (clampSidebarGrowth). The stored width never hears of
+ * it, so the braindump goes back to the user's width when the rail closes.
+ */
+const railReserve = () => useRailStore.getState().reservePx;
+
+/** What the column renders at right now: the stored width, yielded beside a docked rail. */
+const renderedNow = () =>
+  renderedSidebarWidth(useSidebarStore.getState().leftSidebarWidth, window.innerWidth, railReserve());
 
 /** Arrow-key step on the focused handle, and its shift-held coarse step. */
 const NUDGE_PX = 8;
 const NUDGE_COARSE_PX = 48;
+
+/**
+ * How far the pointer travels before a press on the sash becomes a drag. A
+ * hand's tremor on a press moved the column a pixel or two and committed it:
+ * on the grip that ate the click (a moved press is a drag, not a collapse),
+ * and beside a docked rail it stored the yielded width less a pixel, so the
+ * braindump never went back to the user's width when the rail closed.
+ */
+const DRAG_SLOP_PX = 3;
 
 /** How long the pointer rests on the collapsed edge before the column peeks. */
 const PEEK_DELAY_MS = 150;
 
 /** Never fires — `mounted` below only needs the server-vs-client snapshot split. */
 const noopSubscribe = () => () => {};
+
+/**
+ * The sash tooltip's px readout. Its own component so it reads the width the
+ * column renders at when the tooltip opens (Radix mounts the content then) and
+ * whenever the stored width changes under it (a key nudge with the tooltip up
+ * re-renders the column), without the column holding that width in state.
+ */
+function RenderedWidth() {
+  const px = Math.round(renderedNow());
+  return (
+    <>
+      <span className="font-num text-xs text-foreground">{px}px</span>
+      {px === SIDEBAR_DEFAULT_WIDTH && <span className="text-2xs text-muted-foreground">default</span>}
+    </>
+  );
+}
 
 /**
  * Desktop sidebar v2: the Braindump on the warm backdrop (header card + list
@@ -79,9 +122,16 @@ const noopSubscribe = () => () => {};
  * <html> — so the column tracks the pointer without re-rendering the braindump
  * list, the dock, and the relay canvases on every move. React only hears about
  * it twice per drag (start and end); the store commit happens on release, which
- * is also the only thing that touches localStorage.
+ * is also the only thing that touches localStorage. The same holds for a window
+ * resize and for the right rail docking or leaving: both move the variable,
+ * and neither renders anything here.
+ *
+ * memo'd, with no props, and it reads only the sidebar-store fields it draws
+ * from: DesktopShell re-renders for the right column's overlay, and Ask's
+ * `askOpen` lives in the same store, so a whole-store read re-rendered the
+ * braindump on every Ctrl+J.
  */
-export function Sidebar() {
+export const Sidebar = memo(function Sidebar() {
   const edgeTab = useLayoutDef().slots.edge === 'tab';
   const {
     leftSidebarOpen,
@@ -92,14 +142,36 @@ export function Sidebar() {
     leftSidebarWidth,
     setLeftSidebarWidth,
     toggleLeftSidebar,
-  } = useSidebarStore();
+  } = useSidebarStore(
+    useShallow((s) => ({
+      leftSidebarOpen: s.leftSidebarOpen,
+      leftSidebarHovered: s.leftSidebarHovered,
+      leftSidebarHoverEnabled: s.leftSidebarHoverEnabled,
+      setLeftSidebarHovered: s.setLeftSidebarHovered,
+      setLeftSidebarOpen: s.setLeftSidebarOpen,
+      leftSidebarWidth: s.leftSidebarWidth,
+      setLeftSidebarWidth: s.setLeftSidebarWidth,
+      toggleLeftSidebar: s.toggleLeftSidebar,
+    }))
+  );
   const peeking = leftSidebarHoverEnabled && leftSidebarHovered && !leftSidebarOpen;
   const isVisible = leftSidebarOpen || peeking;
 
   const columnRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ startX: number; startWidth: number; onButton: boolean } | null>(null);
-  /** Set once a drag actually moves the column, so a press that never went
-   *  anywhere can still be read as a click on the collapse button. */
+  const sashRef = useRef<HTMLDivElement | null>(null);
+  /**
+   * `startPending` is the width the gesture starts from, as `pendingRef` is
+   * seeded with it: a drag that ends back on it chose nothing (endDrag).
+   */
+  const dragRef = useRef<{
+    startX: number;
+    startWidth: number;
+    startPending: number;
+    onButton: boolean;
+  } | null>(null);
+  /** Set once a drag actually moves the column (past DRAG_SLOP_PX), so a
+   *  press that never went anywhere can still be read as a click on the
+   *  collapse button. */
   const movedRef = useRef(false);
   const frameRef = useRef<number | null>(null);
   const pendingRef = useRef(leftSidebarWidth);
@@ -130,6 +202,62 @@ export function Sidebar() {
   }, []);
 
   /**
+   * The same, landing at once rather than over the column's 300ms ease: the
+   * yield that comes with the rail's own instant first reveal at boot (so a
+   * launch with Ask resting open never slides the braindump), the yield the
+   * column mounts beside (mountingRef, below), and every yield under reduced
+   * motion. Never a change of the stored width after that: a nudge, a reset
+   * or a drag's commit eases beside a docked rail exactly as it does without
+   * one. The transition is held off for exactly this one style change: the
+   * forced read lays the new width out with it off, and clearing it again
+   * starts nothing, because the width is already there.
+   */
+  const publishInstant = useCallback(
+    (px: number) => {
+      const el = columnRef.current;
+      if (!el) return publish(px);
+      el.style.transition = 'none';
+      publish(px);
+      void el.offsetWidth;
+      el.style.transition = '';
+    },
+    [publish]
+  );
+
+  /**
+   * The width the sash reports (aria-valuenow; its tooltip reads the same,
+   * RenderedWidth): the one on screen, which beside a docked rail is the
+   * yielded width and not the stored one. The keys step from it, so it is the
+   * number they change. Written onto the sash rather than held in state: it
+   * moves on every window resize while the viewport or a docked rail binds,
+   * and a state here re-rendered the whole braindump and the dock for each.
+   */
+  const showRendered = useCallback((px: number) => {
+    sashRef.current?.setAttribute('aria-valuenow', String(Math.round(px)));
+  }, []);
+  /** The sash mounts after hydration and on every reopen: it reports at once. */
+  const attachSash = useCallback((el: HTMLDivElement | null) => {
+    sashRef.current = el;
+    if (el) el.setAttribute('aria-valuenow', String(Math.round(renderedNow())));
+  }, []);
+
+  /**
+   * True for the column's first frame. The yield it mounts beside lands at
+   * once (the column's first paint is globals.css's default, and easing from
+   * it would slide the braindump on every launch with an item open), and so
+   * does a second publish in that same frame: the persisted width arriving
+   * with hydration, a commit behind zustand's server snapshot. After it, a
+   * change of the stored width eases (publishInstant).
+   */
+  const mountingRef = useRef(true);
+  useEffect(() => {
+    const frame = requestAnimationFrame(() => {
+      mountingRef.current = false;
+    });
+    return () => cancelAnimationFrame(frame);
+  }, []);
+
+  /**
    * The width as actually laid out. Only the drag wants this: grabbing the sash
    * has to start from where the column visually IS, which is not the stored
    * width if flex shrank it or the viewport ceiling capped it — or if it is
@@ -142,33 +270,51 @@ export function Sidebar() {
 
   /**
    * What the column is resting at: the stored width as published, viewport
-   * ceiling included. The keyboard steps from THIS rather than from `measured`
-   * precisely because the column animates — two arrow presses inside the 300ms
-   * ease would otherwise both read a half-finished box and land somewhere
-   * between one step and two, so a held key crawled instead of stepping.
+   * ceiling and a docked rail's yield included (renderedNow). The keyboard
+   * steps from THIS rather than from `measured` precisely because the column
+   * animates — two arrow presses inside the 300ms ease would otherwise both
+   * read a half-finished box and land somewhere between one step and two, so a
+   * held key crawled instead of stepping.
    *
-   * Read straight off the store rather than from the render's closure, so a key
-   * repeat that outruns a commit still steps from the newest value.
+   * Read straight off the stores rather than from the render's closure, so a
+   * key repeat that outruns a commit still steps from the newest value.
    */
-  const settled = useCallback(
-    () => clampSidebarWidth(useSidebarStore.getState().leftSidebarWidth, window.innerWidth),
-    []
-  );
+  const settled = useCallback(() => renderedNow(), []);
 
-  // Store → CSS var, on mount, on commit, and whenever the window resizes.
-  // The viewport clamp is applied to what gets PUBLISHED and deliberately not
-  // written back to the store: shrink the window and the column yields, grow it
-  // again and the width you chose comes back rather than staying where the
-  // small window pinned it.
+  // Store → CSS var, on mount, on commit, whenever the window resizes, and
+  // whenever the right rail docks or leaves. The viewport ceiling and the
+  // rail's yield are applied to what gets PUBLISHED and deliberately not
+  // written back to the store: shrink the window, or dock the rail, and the
+  // column yields; grow it again, or close the rail, and the width you chose
+  // comes back rather than staying where the squeeze pinned it.
+  //
+  // The rail is heard through a subscription, not a render: the column's
+  // RailColumn publishes its reserve in a layout effect, and this writes the
+  // variable inside that same notification, so the rail and the yield land
+  // in one frame and nothing here re-renders the braindump for it.
   useEffect(() => {
-    const apply = () => {
+    const apply = (instant = false) => {
       if (dragRef.current) return; // a live drag owns the variable
-      publish(clampSidebarWidth(leftSidebarWidth, window.innerWidth));
+      const px = renderedSidebarWidth(leftSidebarWidth, window.innerWidth, railReserve());
+      if (instant) publishInstant(px);
+      else publish(px);
+      showRendered(px);
     };
-    apply();
-    window.addEventListener('resize', apply);
-    return () => window.removeEventListener('resize', apply);
-  }, [leftSidebarWidth, publish]);
+    // Mounting beside a rail that is already docked (an item open at boot)
+    // lands on the yield at once (mountingRef). Every later run is a change
+    // of the stored width, which eases.
+    apply(mountingRef.current && railReserve() > 0);
+    const onResize = () => apply();
+    window.addEventListener('resize', onResize);
+    const unsubscribe = useRailStore.subscribe((rail, prev) => {
+      if (rail.reservePx === prev.reservePx) return;
+      apply(rail.reserveInstant || prefersReducedMotion());
+    });
+    return () => {
+      window.removeEventListener('resize', onResize);
+      unsubscribe();
+    };
+  }, [leftSidebarWidth, publish, publishInstant, showRendered]);
 
   const endDrag = useCallback(() => {
     const drag = dragRef.current;
@@ -178,23 +324,42 @@ export function Sidebar() {
       cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     }
-    publish(pendingRef.current); // flush a move that never got its frame
     setResizing(false);
     document.body.style.cursor = '';
     document.body.style.userSelect = '';
 
-    // A press on the collapse button that never moved is a click. This is
-    // resolved here rather than with an onClick on the button because the sash
-    // takes pointer capture on the way down: pointerup retargets to the sash,
-    // so the browser's click lands on the sash, not on the button inside it.
-    // Deciding from the pointerdown target and whether the column actually
-    // moved is the only reading that survives that.
-    if (drag.onButton && !movedRef.current) {
-      toggleLeftSidebar();
+    // A press that never moved chose no width, so it writes none, and nor
+    // does a drag that came back to where it began (a wobble, or a shrink
+    // dragged back out into the growth cap, which while the column is
+    // yielded IS where it began). The stored width stays the user's: beside a
+    // docked rail the column is laid out at its yielded width, and committing
+    // either would have made the yield permanent. The variable goes back to
+    // what the column renders at, in case the rail moved while the gesture
+    // held it.
+    if (!movedRef.current || pendingRef.current === drag.startPending) {
+      const px = renderedNow();
+      publish(px);
+      showRendered(px);
+      // A press on the collapse button that never moved is a click. This is
+      // resolved here rather than with an onClick on the button because the
+      // sash takes pointer capture on the way down: pointerup retargets to the
+      // sash, so the browser's click lands on the sash, not on the button
+      // inside it. Deciding from the pointerdown target and whether the column
+      // actually moved is the only reading that survives that. A drag out and
+      // back on the grip moved, so it never collapses.
+      if (drag.onButton && !movedRef.current) toggleLeftSidebar();
       return;
     }
+    // Commit, then publish what the column renders for it: the move's last
+    // frame may not have landed, and a rail that docked mid-drag (when the
+    // live drag held the variable) is yielded to now. Both are settled here
+    // rather than left to the store-change effect, which does not run when
+    // the drag ends on the width it started from.
     setLeftSidebarWidth(pendingRef.current);
-  }, [publish, setLeftSidebarWidth, toggleLeftSidebar]);
+    const px = renderedNow();
+    publish(px);
+    showRendered(px);
+  }, [publish, setLeftSidebarWidth, showRendered, toggleLeftSidebar]);
 
   // A drag that outlives the component (route change, shell swap) would leave
   // the body stuck in col-resize with text unselectable.
@@ -231,9 +396,15 @@ export function Sidebar() {
     if (e.button !== 0) return;
     e.preventDefault();
     e.currentTarget.setPointerCapture(e.pointerId);
+    const startWidth = measured();
+    // From where the column IS (beside a docked rail, its yielded width); a
+    // press that never moves, or a drag that ends back here, commits nothing
+    // at all (endDrag).
+    const startPending = clampSidebarWidth(startWidth, window.innerWidth);
     dragRef.current = {
       startX: e.clientX,
-      startWidth: measured(),
+      startWidth,
+      startPending,
       // Pressing the collapse button still ARMS a drag rather than blocking
       // one — the button sits in the middle of the sash, which is where a hand
       // naturally lands, and a 22px dead zone for dragging would be a worse
@@ -241,7 +412,7 @@ export function Sidebar() {
       onButton: !!(e.target as Element | null)?.closest('[data-sash-collapse]'),
     };
     movedRef.current = false;
-    pendingRef.current = clampSidebarWidth(dragRef.current.startWidth, window.innerWidth);
+    pendingRef.current = startPending;
     setResizing(true);
     // Held on the body, not the handle: pointer capture routes the events here
     // but the cursor still resolves against whatever is under the pointer, so
@@ -253,7 +424,14 @@ export function Sidebar() {
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const drag = dragRef.current;
     if (!drag) return;
-    const next = clampSidebarWidth(drag.startWidth + (e.clientX - drag.startX), window.innerWidth);
+    // Still a press until the pointer has really travelled (DRAG_SLOP_PX).
+    if (!movedRef.current && Math.abs(e.clientX - drag.startX) < DRAG_SLOP_PX) return;
+    const next = clampSidebarGrowth(
+      drag.startWidth + (e.clientX - drag.startX),
+      drag.startWidth,
+      window.innerWidth,
+      railReserve()
+    );
     if (next === pendingRef.current) return;
     movedRef.current = true;
     pendingRef.current = next;
@@ -265,16 +443,27 @@ export function Sidebar() {
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+    // Enter is the double-click's reset, and like it sets the stored width:
+    // beside a docked rail the column keeps its yield until the rail closes.
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      setLeftSidebarWidth(SIDEBAR_DEFAULT_WIDTH);
+      return;
+    }
     const step = e.shiftKey ? NUDGE_COARSE_PX : NUDGE_PX;
+    const from = settled();
     let next: number | null = null;
-    if (e.key === 'ArrowLeft') next = settled() - step;
-    else if (e.key === 'ArrowRight') next = settled() + step;
+    if (e.key === 'ArrowLeft') next = from - step;
+    else if (e.key === 'ArrowRight') next = from + step;
     else if (e.key === 'Home') next = SIDEBAR_MIN_WIDTH;
     else if (e.key === 'End') next = SIDEBAR_MAX_WIDTH;
-    else if (e.key === 'Enter') next = SIDEBAR_DEFAULT_WIDTH;
     if (next === null) return;
     e.preventDefault();
-    setLeftSidebarWidth(clampSidebarWidth(next, window.innerWidth));
+    const target = clampSidebarGrowth(next, from, window.innerWidth, railReserve());
+    // A step that cannot move the column (growth while it is yielded, or at a
+    // bound) writes nothing, so it cannot trade the stored width for the
+    // squeezed one.
+    if (target !== from) setLeftSidebarWidth(target);
   };
 
   return (
@@ -421,10 +610,13 @@ export function Sidebar() {
         <Tooltip>
           <TooltipTrigger asChild>
             <div
+              ref={attachSash}
               role="separator"
               aria-orientation="vertical"
               aria-label="Resize sidebar"
-              aria-valuenow={Math.round(leftSidebarWidth)}
+              // aria-valuenow is written by showRendered / attachSash, not
+              // rendered: it is the width on screen, which moves with the
+              // window and the rail without a render.
               aria-valuemin={SIDEBAR_MIN_WIDTH}
               aria-valuemax={SIDEBAR_MAX_WIDTH}
               tabIndex={0}
@@ -552,12 +744,7 @@ export function Sidebar() {
           <TooltipContent side="right" align="center">
             <div className="px-0.5 text-2xs font-medium text-muted-foreground">Sidebar width</div>
             <div className="mt-0.5 flex items-baseline gap-1.5 px-0.5">
-              <span className="font-num text-xs text-foreground">
-                {Math.round(leftSidebarWidth)}px
-              </span>
-              {Math.round(leftSidebarWidth) === SIDEBAR_DEFAULT_WIDTH && (
-                <span className="text-2xs text-muted-foreground">default</span>
-              )}
+              <RenderedWidth />
             </div>
             <div className="mt-1.5 space-y-0.5 border-t border-border px-0.5 pt-1.5 text-2xs text-muted-foreground">
               <div>Click the grip to collapse ({collapseHint})</div>
@@ -686,4 +873,4 @@ export function Sidebar() {
       )}
     </div>
   );
-}
+});

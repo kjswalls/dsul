@@ -97,12 +97,13 @@ export default function OpenClawDocsPage() {
                 https://your-gateway.ts.net
               </code>
               . With it, dsul pushes changes to the plugin the moment they happen, and
-              the chat sidebar in dsul can talk to your agent.
+              Ask in dsul can talk to your agent.
             </p>
             <p>
               Leaving it blank is a perfectly fine choice. That is pull-only mode: the
               plugin still refreshes your context on its own, there is just no push and no
-              sidebar chat. Settings will show{' '}
+              plugin chat in Ask (a Gateway URL in Settings → AI still gives you one).
+              Settings will show{' '}
               <span className="text-foreground">Connected · pull-only</span> — still
               connected, still working. You can add{' '}
               <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}

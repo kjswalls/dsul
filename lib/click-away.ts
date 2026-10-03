@@ -17,8 +17,9 @@
  *     Radix portals — popovers, menus, the confirm dialog, all rendered at
  *     <body> — never read as empty space, and neither does anything outside the
  *     planner (Zen, the mobile shell);
- *   - and outside every KEEP zone: an item, the panel, the bulk bar, or any
- *     control. Clicking the omnibar or a date-nav button must not cost you the
+ *   - and outside every KEEP zone: an item, the panel, the right rail (Ask,
+ *     which rests beside the day and is never "empty space" to it), the bulk
+ *     bar, or any control. Clicking the omnibar or a date-nav button must not cost you the
  *     selection as a side effect; only genuinely empty space does.
  *
  * A click that ENDS a drag is not a click-away: dnd-kit and text-selection
@@ -39,6 +40,7 @@ export const CLICK_AWAY_SCOPE_ATTR = 'data-click-away-scope';
 const KEEP_SELECTOR = [
   '[data-item-id]',
   '[data-testid="item-dialog"]',
+  '[data-rail]',
   '[data-testid="bulk-action-bar"]',
   '[data-click-away-ignore]',
   'button',

@@ -4,6 +4,7 @@ import { useMemo } from 'react';
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import { STATIC_COMMANDS, SHELL_SHORTCUTS } from './commands/registry';
+import { encodeKeys } from './commands/keys';
 import { COMMAND_GROUPS } from './commands/types';
 // Type-only, so it is erased at compile time and lib/local-state.ts importing
 // this store back does not make a runtime cycle.
@@ -117,6 +118,28 @@ interface KeyboardShortcutsStore {
   clearUserScopedState: (scope: ClearScope) => void;
 }
 
+/** toggle_right_sidebar's binding before Ctrl+J was re-defaulted onto it (v4). */
+const OLD_RIGHT_SIDEBAR_KEYS = ['meta', ']'];
+
+/**
+ * v3 → v4: Ctrl+J became toggle_right_sidebar's default when Ask moved to the
+ * right rail (AI step 2a). Before v4 it was unbound, so a user may already
+ * have recorded it for another command;
+ * the dispatcher takes the FIRST matching binding, and toggle_right_sidebar
+ * comes before most commands, so that binding would silently stop working
+ * (with no AI the key is consumed and does nothing). Their chord keeps its
+ * meaning, and Ask keeps its old key instead. A user who already moved
+ * toggle_right_sidebar themselves chose its key, so nothing changes.
+ */
+function keepRecordedCtrlJ(overrides: Record<string, string[]>): Record<string, string[]> {
+  if (overrides.toggle_right_sidebar) return overrides;
+  const ctrlJ = encodeKeys(['mod', 'j']);
+  const taken = Object.entries(overrides).some(
+    ([id, keys]) => id !== 'toggle_right_sidebar' && Array.isArray(keys) && encodeKeys(keys) === ctrlJ
+  );
+  return taken ? { ...overrides, toggle_right_sidebar: OLD_RIGHT_SIDEBAR_KEYS } : overrides;
+}
+
 export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
   persist(
     (set) => ({
@@ -142,22 +165,25 @@ export const useKeyboardShortcutsStore = create<KeyboardShortcutsStore>()(
     }),
     {
       name: 'dsul-keyboard-shortcuts',
-      version: 3,
+      version: 4,
       migrate: (persistedState: unknown, version: number) => {
-        if (version >= 3) return persistedState as KeyboardShortcutsStore;
-
-        // v1/v2 → v3: keep only the bindings that differ from their default.
-        const legacy = persistedState as { shortcuts?: ShortcutBinding[] } | null;
-        const overrides: Record<string, string[]> = {};
-        for (const binding of legacy?.shortcuts ?? []) {
-          const fallback = DEFAULT_SHORTCUTS.find((d) => d.id === binding.id);
-          if (!fallback) continue;
-          const same =
-            fallback.keys.length === binding.keys.length &&
-            fallback.keys.every((key, i) => key === binding.keys[i]);
-          if (!same) overrides[binding.id] = binding.keys;
+        let state = persistedState as KeyboardShortcutsStore;
+        if (version < 3) {
+          // v1/v2 → v3: keep only the bindings that differ from their default.
+          const legacy = persistedState as { shortcuts?: ShortcutBinding[] } | null;
+          const overrides: Record<string, string[]> = {};
+          for (const binding of legacy?.shortcuts ?? []) {
+            const fallback = DEFAULT_SHORTCUTS.find((d) => d.id === binding.id);
+            if (!fallback) continue;
+            const same =
+              fallback.keys.length === binding.keys.length &&
+              fallback.keys.every((key, i) => key === binding.keys[i]);
+            if (!same) overrides[binding.id] = binding.keys;
+          }
+          state = { overrides } as KeyboardShortcutsStore;
         }
-        return { overrides } as KeyboardShortcutsStore;
+        if (version < 4) state = { ...state, overrides: keepRecordedCtrlJ(state?.overrides ?? {}) };
+        return state;
       },
     }
   )

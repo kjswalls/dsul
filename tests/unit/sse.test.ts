@@ -3,7 +3,8 @@ import { parseSseFrames, sseFrame, SSE_DONE, type SseFrame } from '@/lib/sse';
 
 /**
  * lib/sse.ts is the single parser for dsul's chat wire format. It replaced two
- * hand-rolled copies inside chat-store.send(), so these tests pin the behavior
+ * hand-rolled copies inside the old chat store's send() (lib/chat-transport.ts
+ * reads it now), so these tests pin the behavior
  * both copies had (frames split across chunks, malformed payloads skipped) plus
  * the bug neither had fixed: `[DONE]` must end the READ, not just the inner
  * per-line loop.

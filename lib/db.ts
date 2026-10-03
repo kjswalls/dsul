@@ -831,6 +831,51 @@ function itemsFromRows(rows: ItemRow[]): Item[] {
   return rows.map(itemFromRow);
 }
 
+/** One item's agent columns, as `fetchAgentStates` reads them. */
+export interface AgentStateRow {
+  id: string;
+  assignee: string | null;
+  aiStatus: string | null;
+  aiResult: string | null;
+  aiStatusAt: string | null;
+}
+
+/**
+ * The agent columns of every item whose agent state was ever stamped, and
+ * nothing else: the one narrow read that keeps Ask home's "Needs you" and
+ * "With AI activity" honest without realtime (hooks/use-agent-freshness.ts;
+ * planner-store `mergeAgentStates` folds it in). An agent writes these from
+ * outside the browser, and nothing else refetches them for the rest of the
+ * session.
+ *
+ * Stamped, not merely delegated: an item undelegated on another device has
+ * `assignee` null and a fresh `ai_status_at` (the Remove button's write), and
+ * a read of delegated items only would never bring that back, leaving this
+ * browser's card up and its answer re-queuing an item no agent holds. An
+ * unstamped row would be skipped by the merge anyway.
+ *
+ * Narrow on purpose: a full `fetchItems` would clobber edits still in flight.
+ * Under RLS, like every read here. Reads `items`, not items_windowed: no
+ * completion array is asked for. Throws the client's error, as fetchItems does;
+ * the one caller treats any failure as "nothing new".
+ */
+export async function fetchAgentStates(client?: DbClient): Promise<AgentStateRow[]> {
+  const supabase = client ?? createClient();
+  const { data, error } = await supabase
+    .from('items')
+    .select('id, assignee, ai_status, ai_result, ai_status_at')
+    .not('ai_status_at', 'is', null)
+    .is('deleted_at', null);
+  if (error) throw error;
+  return ((data ?? []) as Record<string, unknown>[]).map((row) => ({
+    id: row.id as string,
+    assignee: (row.assignee as string | null) ?? null,
+    aiStatus: (row.ai_status as string | null) ?? null,
+    aiResult: (row.ai_result as string | null) ?? null,
+    aiStatusAt: (row.ai_status_at as string | null) ?? null,
+  }));
+}
+
 /**
  * When each of `ids` was completed — `items.completed_at` (migration 048), by
  * id, for the rows that have one.

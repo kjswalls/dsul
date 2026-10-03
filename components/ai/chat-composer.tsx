@@ -5,8 +5,10 @@ import { ArrowUp, Mic, Plus, Square } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { useChatStore } from '@/lib/chat-store';
-import { chatAssistantName, chatPlaceholder } from '@/lib/chat-utils';
+import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
+import { bindingKey, sendFrom, type ComposerBinding } from '@/lib/open-chat';
+import type { AskSurface } from '@/lib/rail-store';
+import { chatAssistantName, chatPlaceholder, itemChatPlaceholder } from '@/lib/chat-utils';
 import { cn } from '@/lib/utils';
 
 /** Auto-grow ceiling, past which the field scrolls instead of pushing further. */
@@ -20,10 +22,47 @@ interface ChatComposerProps {
    * keeps a single address for typing whichever surface you are on.
    */
   variant: 'panel' | 'dock';
-  /** Grows the panel variant's icon buttons to touch size. 'dock' is already 48px. */
-  touch?: boolean;
-  /** Increment to focus the field (a tab activating, a panel expanding). */
-  focusSignal?: number;
+  /** Where a send goes (lib/open-chat.ts `sendFrom` decides what that means). */
+  binding: ComposerBinding;
+  /**
+   * Which Ask stack a send that starts a conversation pushes it on: the
+   * phone's dock bar says 'phone'. Absent: the desktop rail's.
+   */
+  surface?: AskSurface;
+  /**
+   * The text, held by the caller (BoundComposer keeps it in rail-store, so a
+   * half-typed message outlives the view it was typed in). Absent: the field
+   * keeps its own.
+   */
+  value?: string;
+  onValueChange?: (text: string) => void;
+  /** Overrides the wording for whoever answers ("Reply…" under a conversation). */
+  placeholder?: string;
+  /**
+   * False while the field is mounted where nobody can see it (BoundComposer's
+   * ComposerAwakeContext: Ask hidden under an item). A hidden field measures
+   * 0px tall, so the auto-grow waits, and measures again the moment it shows.
+   */
+  awake?: boolean;
+}
+
+/**
+ * The conversation a binding is showing right now, if it has one yet: an
+ * item's resolves through the store's index (or the draft still on its way to
+ * its first save).
+ */
+function boundThreadId(s: ConversationsState, binding: ComposerBinding): string | null {
+  switch (binding.kind) {
+    case 'home':
+      return null;
+    case 'item': {
+      const known = s.itemIndex[binding.itemId];
+      if (typeof known === 'string') return resolveConversationId(known);
+      return Object.values(s.threads).find((t) => t.itemId === binding.itemId && !t.saved && t.load !== 'gone')?.id ?? null;
+    }
+    default:
+      return resolveConversationId(binding.id);
+  }
 }
 
 /**
@@ -32,43 +71,85 @@ interface ChatComposerProps {
  * `target`), never after the device's stored choice, which may not be usable.
  *
  * One component rather than two because the behaviour — Enter sends, Shift+Enter
- * newlines, auto-grow to a ceiling, disabled mid-stream, cleared and refocused
- * on send — is the contract, and the mobile redesign moved the phone's copy of
+ * newlines, auto-grow to a ceiling, busy mid-stream, cleared and refocused on
+ * send — is the contract, and the mobile redesign moved the phone's copy of
  * it from the foot of the conversation into the dock. Two implementations would
  * have drifted on the first of those rules that got fixed in one place.
  */
-export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps) {
-  const send = useChatStore((s) => s.send);
-  const stop = useChatStore((s) => s.stop);
-  const isLoading = useChatStore((s) => s.isLoading);
+export function ChatComposer({
+  variant,
+  binding,
+  surface,
+  value,
+  onValueChange,
+  awake = true,
+  placeholder: placeholderOverride,
+}: ChatComposerProps) {
+  const threadId = useConversationsStore((s) => boundThreadId(s, binding));
+  // Busy from the moment a send starts (before an item's conversation is even
+  // known) until the reply has finished arriving.
+  const isLoading = useConversationsStore(
+    (s) => !!s.sending[bindingKey(binding)] || (threadId !== null && !!s.threads[threadId]?.streaming)
+  );
   const { target } = useAICapabilities();
 
-  const [input, setInput] = useState('');
+  const [ownInput, setOwnInput] = useState('');
+  const input = value ?? ownInput;
+  const setInput = (text: string) => {
+    if (value === undefined) setOwnInput(text);
+    else onValueChange?.(text);
+  };
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const displayName = chatAssistantName(target);
-  const placeholder = chatPlaceholder(target);
+  // A box bound to an item says so: it looks like every other box.
+  const placeholder =
+    placeholderOverride ?? (binding.kind === 'item' ? itemChatPlaceholder(target) : chatPlaceholder(target));
   const hasText = input.trim().length > 0;
 
-  useEffect(() => {
-    if (focusSignal !== undefined && focusSignal > 0) {
-      setTimeout(() => textareaRef.current?.focus(), 100);
-    }
-  }, [focusSignal]);
-
+  // Auto-grow, measured while the field can be: a field with no box (hidden,
+  // or an ancestor display:none) reads scrollHeight 0, and writing that down
+  // would leave a 0px field behind once it shows. So a hidden field keeps no
+  // inline height (rows=1 governs), and showing it measures again.
   useEffect(() => {
     const ta = textareaRef.current;
-    if (!ta) return;
+    if (!ta || !awake) return;
     ta.style.height = 'auto';
+    if (ta.scrollHeight === 0) {
+      ta.style.height = '';
+      return;
+    }
     ta.style.height = Math.min(ta.scrollHeight, MAX_HEIGHT_PX) + 'px';
-  }, [input]);
+  }, [input, awake]);
 
   const handleSend = () => {
     const text = input.trim();
     if (!text || isLoading) return;
     setInput('');
-    send(text);
+    void sendFrom(binding, text, { surface });
   };
+
+  const refocus = useRef(false);
+  /** Stops this conversation's reply only: another conversation's stream is its own. */
+  const stop = (e: React.MouseEvent<HTMLButtonElement>) => {
+    // Stop's slot turns into Send or the disabled Mic once the reply ends, and
+    // a focused button that goes disabled drops focus to <body>, where the next
+    // Tab starts over at the top of the page. A keyboard Stop hands focus to
+    // the box: at once where the box is only read-only, and once the reply has
+    // ended where it is disabled (the dock).
+    if (e.currentTarget === document.activeElement) {
+      refocus.current = true;
+      textareaRef.current?.focus();
+    }
+    if (threadId) useConversationsStore.getState().stop(threadId);
+  };
+  useEffect(() => {
+    if (isLoading || !refocus.current) return;
+    refocus.current = false;
+    // Only focus that went nowhere: if the reader has moved on, leave them.
+    const at = document.activeElement;
+    if (!at || at === document.body) textareaRef.current?.focus();
+  }, [isLoading]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     // isComposing: Enter is how an IME COMMITS a candidate, so without this a
@@ -121,7 +202,7 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
         />
         {isLoading ? (
           /* A reply that has started going wrong is worth interrupting, and the
-             store can (`abortController.abort()`) — there was simply no way to
+             store can (it aborts the reply's stream) — there was simply no way to
              ask. Send is disabled mid-stream anyway, so this occupies a slot
              that was dead, and on the phone this bar is the only control the
              chat tab has. */
@@ -166,48 +247,57 @@ export function ChatComposer({ variant, touch, focusSignal }: ChatComposerProps)
         // dark:bg-transparent for the same reason as the dock's field above —
         // the tray is the surface here, so the base's dark:bg-input/30 shows as
         // a second, lighter box inside it.
+        aria-label={`Message ${displayName}`}
         className="min-h-0 resize-none border-0 bg-transparent px-4 py-3 text-sm leading-6 shadow-none placeholder:text-muted-foreground/60 focus-visible:ring-0 focus-visible:ring-offset-0 dark:bg-transparent"
-        disabled={isLoading}
+        // Read-only mid-reply, not disabled: disabling a focused field drops
+        // focus to <body>, where the next keystroke fires a bare-key shortcut,
+        // and a disabled field cannot take the focus a send hands to the
+        // conversation it pushed. handleSend already refuses while busy. (The
+        // phone's dock bar stays disabled on purpose: a reply on its way puts
+        // the keyboard away so the reply can be read, and a phone has no
+        // bare-key shortcuts for a lost focus to fire.)
+        readOnly={isLoading}
+        aria-busy={isLoading || undefined}
       />
       <div className="flex items-center justify-between px-2 pb-2">
         <Button
           variant="ghost"
           size="icon"
-          className={cn('rounded-full text-muted-foreground', touch ? 'h-9 w-9' : 'h-8 w-8')}
+          className="h-8 w-8 rounded-full text-muted-foreground"
           disabled
           title="Attach files (coming soon)"
         >
-          <Plus className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
+          <Plus className="h-4 w-4" />
         </Button>
         {isLoading ? (
           <Button
             size="icon"
-            className={cn('rounded-full', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            className="h-8 w-8 rounded-full"
             onClick={stop}
             aria-label="Stop generating"
             data-testid="chat-stop"
           >
-            <Square className={cn('fill-current', touch ? 'h-3.5 w-3.5' : 'h-3 w-3')} />
+            <Square className="h-3 w-3 fill-current" />
           </Button>
         ) : hasText ? (
           <Button
             size="icon"
-            className={cn('rounded-full', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            className="h-8 w-8 rounded-full"
             onClick={handleSend}
             disabled={isLoading}
             aria-label="Send"
           >
-            <ArrowUp className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
+            <ArrowUp className="h-4 w-4" />
           </Button>
         ) : (
           <Button
             variant="ghost"
             size="icon"
-            className={cn('rounded-full text-muted-foreground', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            className="h-8 w-8 rounded-full text-muted-foreground"
             disabled
             title="Voice input (coming soon)"
           >
-            <Mic className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
+            <Mic className="h-4 w-4" />
           </Button>
         )}
       </div>

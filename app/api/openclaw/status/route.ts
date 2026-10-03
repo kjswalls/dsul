@@ -8,7 +8,7 @@ export interface OpenclawStatusResponse {
    * not-connected — no API key on file, so device auth was never completed.
    * pull-only     — API key on file, but no chat URL registered. The plugin
    *                 works (context injection, tools); there is just no
-   *                 publicUrl, so no webhook push and no sidebar chat.
+   *                 publicUrl, so no webhook push and no plugin chat in Ask.
    * connected     — API key + chat URL. Everything is wired up.
    */
   state: OpenclawConnectionState

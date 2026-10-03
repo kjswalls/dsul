@@ -29,6 +29,14 @@ export function chatPlaceholder(t: ChatTarget | string): string {
 }
 
 /**
+ * The same, for a box bound to one item's conversation: it says the item is
+ * what it is about, since the box itself looks like every other one.
+ */
+export function itemChatPlaceholder(t: ChatTarget | string): string {
+  return t === 'openclaw' ? 'Ask OpenClaw about this item…' : 'Ask about this item…';
+}
+
+/**
  * A stored assignee, as the user reads it. `'beacon'` is a persisted value from
  * before the AI lost its name, so it renders as "AI"; the stored value itself
  * is an external contract and is never rewritten.

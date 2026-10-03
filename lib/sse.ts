@@ -7,8 +7,8 @@
  * payloads (OpenAI chunks from `/api/chat`, or an OpenClaw gateway's
  * OpenAI-compatible stream) are translated into these frames server-side.
  *
- * Extracted from the two hand-rolled copies that used to live inside
- * `chat-store.send()`. Both had the same latent bug: `[DONE]` and error frames
+ * Extracted from the two hand-rolled copies that used to live inside the old
+ * chat store's `send()`. Both had the same latent bug: `[DONE]` and error frames
  * `break`ed only the inner per-line loop, so the reader kept pulling from a
  * stream the caller had already finished with. Returning from the generator
  * ends the read for real.
