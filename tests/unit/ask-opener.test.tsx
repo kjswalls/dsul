@@ -490,6 +490,48 @@ describe('room on the header row', () => {
       layOut(500, 374);
       resized(observers);
       expect(pill()).toHaveAttribute('data-fit', 'icon');
+      // The key alone needs it too: 34px holds the 32px key, not its inset.
+      layOut(420, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'none');
+      layOut(432, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+    }
+  });
+
+  // Drawn on the page (Notebook, Notepad, Writer), the key keeps D's 14px
+  // inset off the row's end alone as well as whole: flush, Notebook's
+  // bookmark ribbon sat 4px past it and its focus ring came within 2px.
+  it("keeps the drawn key's inset when it is the key alone; the capsule's key has none", () => {
+    const RealRO = globalThis.ResizeObserver;
+    const observers: (() => void)[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderRow();
+      layOut(450, 374);
+      resized(observers);
+      expect(opener()).toHaveAttribute('data-form', 'icon');
+      expect(opener()).not.toHaveClass('mr-3.5');
+      for (const layout of ['notebook', 'notepad', 'writer'] as const) {
+        act(() => useLookStore.setState({ layout }));
+        resized(observers);
+        expect(opener(), layout).toHaveAttribute('data-form', 'icon');
+        expect(opener(), layout).toHaveClass('size-8', 'mr-3.5');
+      }
+      layOut(600, 374);
+      resized(observers);
+      expect(opener()).toHaveAttribute('data-form', 'full');
+      expect(opener()).toHaveClass('mr-3.5');
     } finally {
       globalThis.ResizeObserver = RealRO;
     }

@@ -80,12 +80,14 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
         // A child with nothing to say renders no box, and takes no gap either.
         if (w > 0) others += w + gap;
       }
-      if (slot.dataset.fit === 'full') {
-        const own = getComputedStyle(el);
-        fullPx.current = naturalWidth(el, own) + px(own.marginLeft) + px(own.marginRight);
-      }
+      // Its margins (the drawn key's inset off the row's end) are the same in
+      // both forms, so they are read off whichever is drawn, and the key
+      // alone needs them too.
+      const own = getComputedStyle(el);
+      const margins = px(own.marginLeft) + px(own.marginRight);
+      if (slot.dataset.fit === 'full') fullPx.current = naturalWidth(el, own) + margins;
       const room = content - others;
-      setFit(room >= fullPx.current ? 'full' : room >= ICON_PX ? 'icon' : 'none');
+      setFit(room >= fullPx.current ? 'full' : room >= ICON_PX + margins ? 'icon' : 'none');
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
@@ -169,7 +171,8 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  *    travels round the whole rim. The plain and masthead headers, which have
  *    no capsule material, draw the key on the page instead.
  *  - 'icon': the 32px key alone, the same light caught on its left arc. Its
- *    focus ring sits on the key, whose rim takes the focus colour.
+ *    focus ring sits on the key, whose rim takes the focus colour. Drawn on
+ *    the page it keeps the whole key's 14px inset off the row's end.
  *
  * `titlebar-hole`: in Writer the row starts at the window's top, inside the
  * desktop app's 43px drag band, which would swallow its clicks.
@@ -229,7 +232,10 @@ export function AskOpener({ className }: { className?: string }) {
         style={light}
         className={cn(
           'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
-          !full ? 'size-8 rounded-[10px]' : raised ? 'h-12 rounded-[10px] py-2 pr-2.5 pl-2' : 'mr-3.5 h-10 rounded-[12px] py-1 pr-2 pl-1'
+          !full ? 'size-8 rounded-[10px]' : raised ? 'h-12 rounded-[10px] py-2 pr-2.5 pl-2' : 'h-10 rounded-[12px] py-1 pr-2 pl-1',
+          // The drawn key keeps its inset off the row's end in both forms
+          // (Notebook's ribbon sits just past it), and the fit counts it.
+          !raised && 'mr-3.5'
         )}
       >
         <span
