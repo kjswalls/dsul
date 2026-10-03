@@ -38,6 +38,10 @@ const WAVE_SMALL = grid(
   (s) => (s === 2 ? 1 : s === 1 || s === 3 ? 0.6 : 0.26),
 );
 
+// [dot, gap] in px for the browser-tab sizes, shared by both looks. Small enough to leave a
+// 4–5px margin inside the tile, so the grid doesn't run to the rounded edge.
+const FAVICON_SPACING = { 16: [2, 1], 32: [4, 2] };
+
 const f = (v) => +v.toFixed(2);
 function rr(x, y, s, r, fill, op) {
   return `<rect x="${f(x)}" y="${f(y)}" width="${f(s)}" height="${f(s)}" rx="${f(r)}" fill="${fill}" fill-opacity="${op.toFixed(3)}"/>`;
@@ -79,12 +83,12 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
   if (!dots) {
     // ground and glow only
   } else if (small) {
-    // Pixel-snapped cores with air between them, no halo: a one-pixel glow reads as mud.
-    // 16px → 2px dots, 2px gaps; 32px → 4px dots, 3px gaps.
+    // Pixel-snapped cores, no halo: a one-pixel glow reads as mud. The tab favicons keep a
+    // wide margin round the grid: 16px → 2px dots, 1px gaps; 32px → 4px dots, 2px gaps.
     const tiles = size <= 20 ? WAVE_SMALL : WAVE;
     const n = Math.sqrt(tiles.length);
-    const core = Math.max(1, Math.round(size / 8));
-    const g = Math.max(1, Math.round((size * 3) / 32));
+    const [core, g] =
+      FAVICON_SPACING[size] ?? [Math.max(1, Math.round(size / 8)), Math.max(1, Math.round((size * 3) / 32))];
     const off = Math.floor((size - (n * core + (n - 1) * g)) / 2);
     const r = Math.max(0.5, core * 0.26);
     tiles.forEach(([k, a], i) => {
@@ -145,8 +149,9 @@ function limeSmallTiles(size, { roomy = 1, mono = false } = {}) {
   const n = size <= 20 ? 3 : 4;
   let core;
   let g;
-  if (size === 16) [core, g] = roomy ? [2, 2] : [3, 1];
-  else if (size === 32) [core, g] = roomy ? [4, 3] : [5, 2];
+  if (roomy && FAVICON_SPACING[size]) [core, g] = FAVICON_SPACING[size];
+  else if (size === 16) [core, g] = [3, 1];
+  else if (size === 32) [core, g] = [5, 2];
   else {
     core = Math.max(1, Math.round(size / 8));
     g = Math.max(1, Math.round((size * 3) / 32));
