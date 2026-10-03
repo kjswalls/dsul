@@ -34,7 +34,13 @@ import { AskOpener, ASK_OPENER_CLOSE_WAIT_MS } from '@/components/ai/rail/ask-op
 import { ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useLookStore } from '@/lib/look-store';
 import { ASK_OPEN_DEFAULT, useSidebarStore } from '@/lib/sidebar-store';
-import { RAIL_HEADER_HOLD_MS, SUMMON_SPOT_SLOP_PX, railHeaderHeld, useRailStore } from '@/lib/rail-store';
+import {
+  RAIL_HANDBACK_WAIT_MS,
+  RAIL_HEADER_HOLD_MS,
+  SUMMON_SPOT_SLOP_PX,
+  railHeaderHeld,
+  useRailStore,
+} from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -841,28 +847,75 @@ describe('room on the header row', () => {
       rail.style.position = '';
       width = 0;
 
-      // The guess can be generous (a braindump the column narrowed takes some
-      // room back as it goes), and the focus hand-back waits for the button
-      // to be drawn: so the wait is short, and past it what fits shows, the
-      // column still going or not.
+      // Nothing waited for, nothing hidden: room for the whole key at once.
       act(() => useSidebarStore.getState().setAskOpen(true));
       layOut(500, 374);
       act(() => useRailStore.getState().closeRail());
       resized();
       expect(pill()).toHaveAttribute('data-fit', 'full');
+
+      // The key form fits only once the column's last few px have gone, the
+      // slow tail of its ease-out: past two thirds of the 300ms the column
+      // still takes 20px, and the key alone, which fits now, does not stand
+      // in for it. Once the column has gone, the key form shows directly.
+      const changes: string[] = [];
+      const slot = pill() as HTMLElement;
+      const setAttribute = slot.setAttribute;
+      slot.setAttribute = function (name: string, value: string) {
+        if (name === 'data-fit') changes.push(value);
+        setAttribute.call(this, name, value);
+      };
+      try {
+        act(() => useSidebarStore.getState().setAskOpen(true));
+        width = 300;
+        at(90 - 300);
+        act(() => useRailStore.getState().closeRail());
+        resized();
+        expect(pill()).toHaveAttribute('hidden');
+        act(() => vi.advanceTimersByTime(250));
+        width = 20;
+        expect(at(70)).toBe('none');
+        expect(pill()).toHaveAttribute('hidden');
+        act(() => vi.advanceTimersByTime(60));
+        width = 0;
+        expect(at(90)).toBe('key');
+        expect(pill()).not.toHaveAttribute('hidden');
+        expect(changes).not.toContain('icon');
+      } finally {
+        slot.setAttribute = setAttribute;
+      }
+
+      // The guess can be generous (a braindump the column narrowed takes some
+      // room back as it goes), which only waits out the rest of the ease:
+      // with the column gone, what fits shows.
       act(() => useSidebarStore.getState().setAskOpen(true));
       width = 300;
       layOut(450, 374);
       act(() => useRailStore.getState().closeRail());
       resized();
       expect(pill()).toHaveAttribute('hidden');
+      act(() => vi.advanceTimersByTime(300));
+      width = 0;
+      resized();
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+      expect(pill()).not.toHaveAttribute('hidden');
+
+      // A column that never goes is waited for only so long: past the cap
+      // what fits shows, inside the focus hand-back's own wait for the button
+      // to be drawn (two frames short of it), and past the column's 300ms ease.
+      act(() => useSidebarStore.getState().setAskOpen(true));
+      width = 300;
+      act(() => useRailStore.getState().closeRail());
+      resized();
+      expect(pill()).toHaveAttribute('hidden');
       act(() => vi.advanceTimersByTime(ASK_OPENER_CLOSE_WAIT_MS - 1));
       resized();
       expect(pill()).toHaveAttribute('hidden');
-      expect(ASK_OPENER_CLOSE_WAIT_MS).toBeLessThanOrEqual(200);
       act(() => vi.advanceTimersByTime(1));
       expect(pill()).toHaveAttribute('data-fit', 'icon');
       expect(pill()).not.toHaveAttribute('hidden');
+      expect(ASK_OPENER_CLOSE_WAIT_MS).toBeLessThanOrEqual(RAIL_HANDBACK_WAIT_MS - 2 * 16);
+      expect(ASK_OPENER_CLOSE_WAIT_MS).toBeGreaterThan(300);
       // Each close waits afresh.
       act(() => useSidebarStore.getState().setAskOpen(true));
       act(() => useRailStore.getState().closeRail());

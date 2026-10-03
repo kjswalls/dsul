@@ -6,7 +6,7 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { toggleRail } from '@/lib/open-chat';
-import { holdRailHeader, usePanelOverlays, useRailMode } from '@/lib/rail-store';
+import { RAIL_HANDBACK_WAIT_MS, holdRailHeader, usePanelOverlays, useRailMode } from '@/lib/rail-store';
 import { useViewStore } from '@/lib/view-store';
 import { useLayoutDef } from '@/lib/look-store';
 import { railHeaderRowOffset } from '@/lib/layout-themes';
@@ -23,12 +23,23 @@ type Fit = 'full' | 'key' | 'icon' | 'none';
 /** The key alone: the capsule's square controls' size (h-8 w-8). */
 const ICON_PX = 32;
 
+/** A frame at 60Hz, rounded up. */
+const FRAME_MS = 17;
+
 /**
  * The longest the button waits, unseen, for the room a closing column is
- * about to give it (useHeaderFit): the first two thirds of the column's 300ms
- * ease, by when nearly all its width has gone. Past it, what fits shows.
+ * about to give it (useHeaderFit). The wait ends by itself once the column
+ * has gone, since it then has no more room to give: the 300ms ease, and
+ * Notebook's sheet margin, which goes when the ease reports its end
+ * (desktop-shell.tsx LEAVE_FALLBACK_MS, 400ms, at the latest). So this is
+ * only the backstop for a column that never goes, and it is the focus
+ * hand-back's own wait (rail-store RAIL_HANDBACK_WAIT_MS) less two frames,
+ * so the button is drawn in time for focus to land on it. Not two thirds of
+ * the ease: the key form fits only once the column's last 20-40px have gone,
+ * the slow tail of its ease-out, and a 200ms cap showed the key alone for
+ * 30-130ms before it (Notebook's Week x Buckets, Classic's Week x Schedule).
  */
-export const ASK_OPENER_CLOSE_WAIT_MS = 200;
+export const ASK_OPENER_CLOSE_WAIT_MS = RAIL_HANDBACK_WAIT_MS - 2 * FRAME_MS;
 
 const px = (v: string) => parseFloat(v) || 0;
 
@@ -117,11 +128,13 @@ function closingColumnPx(rail: Element | null): number {
  * unseen, rather than a smaller one standing in (the key without its chord
  * no more than the key alone); one it will not have room for even then gives
  * way at once, as ever. The column is watched too, so each frame of its ease
- * is read. The wait is capped (ASK_OPENER_CLOSE_WAIT_MS):
- * the guess can be generous (a braindump the column had narrowed takes some
- * of the room back as it goes), and the focus hand-back waits for the button
- * to be drawn (rail-store `restoreFocus`), so it must not be kept hidden for
- * long.
+ * is read, and the wait runs until the column has gone, when the room it
+ * reads is the room it will have. The guess can be generous (a braindump the
+ * column had narrowed takes some of the room back as it goes), which only
+ * means waiting out the rest of the ease. It is capped
+ * (ASK_OPENER_CLOSE_WAIT_MS) for a column that never goes, inside the focus
+ * hand-back's own wait for the button to be drawn (rail-store
+ * `restoreFocus`).
  */
 function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean, face: string): Fit {
   const [fit, setFit] = useState<Fit>('full');

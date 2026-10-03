@@ -575,9 +575,11 @@ export function focusIsInRail(): boolean {
 
 /**
  * How long a hand-back waits for its target to be drawn: the column's width
- * ease (desktop-shell.tsx RailColumn, 300ms) and a frame or two past it.
+ * ease (desktop-shell.tsx RailColumn, 300ms) and a frame or two past it. The
+ * Ask button's own wait for the closing column's room ends inside it
+ * (ask-opener.tsx ASK_OPENER_CLOSE_WAIT_MS, derived from this).
  */
-const HANDBACK_WAIT_MS = 450;
+export const RAIL_HANDBACK_WAIT_MS = 450;
 
 function restoreFocus(record: HTMLElement | null): void {
   const el =
@@ -601,7 +603,7 @@ function restoreFocus(record: HTMLElement | null): void {
     typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: () => void) => setTimeout(fn, 16);
   const attempt = () => {
     if (!focusIsInRail() || !el.isConnected) return;
-    if (el.closest('[hidden]') && Date.now() - start < HANDBACK_WAIT_MS) {
+    if (el.closest('[hidden]') && Date.now() - start < RAIL_HANDBACK_WAIT_MS) {
       nextFrame(attempt);
       return;
     }
