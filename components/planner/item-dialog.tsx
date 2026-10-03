@@ -93,7 +93,7 @@ import { subscribeClickAway } from '@/lib/click-away';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
-import { EDIT_COPY } from '@/lib/item-edit';
+import { EDIT_COPY, reminderPatch, TIMES_PER_DAY_MAX } from '@/lib/item-edit';
 import type {
   HabitItem,
   Item,
@@ -432,8 +432,7 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
   // rule the three repeat fields follow. '' means "no reminder": the DB column
   // is null-means-off, and undefined is what the allowlist turns into null.
   if (wants('reminderTime', 'reminderAnchor')) {
-    updates.reminderTime = d.reminderTime || undefined;
-    updates.reminderAnchor = d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined;
+    Object.assign(updates, reminderPatch(d.reminderTime, d.reminderAnchor));
   }
   return updates;
 }
@@ -457,8 +456,7 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
   // rule the three repeat fields follow. '' means "no reminder": the DB column
   // is null-means-off, and undefined is what the allowlist turns into null.
   if (wants('reminderTime', 'reminderAnchor')) {
-    updates.reminderTime = d.reminderTime || undefined;
-    updates.reminderAnchor = d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined;
+    Object.assign(updates, reminderPatch(d.reminderTime, d.reminderAnchor));
   }
   return updates;
 }
@@ -514,7 +512,13 @@ function buildAddDrafts(seed: AddSeed): Record<string, ItemDraft> {
   return Object.fromEntries(ALL_ITEM_TYPES.map((t) => [t, makeAddDraft(t, seed)]));
 }
 
-function draftFromItem(item: Item): ItemDraft {
+/**
+ * The draft an edit starts from, seeded from the stored item.
+ *
+ * Exported for tests/unit/edit-writes-fixtures.test.ts, which seeds the
+ * panel's draft as the panel does.
+ */
+export function draftFromItem(item: Item): ItemDraft {
   const config = getItemTypeConfig(itemTypeName(item));
   // Parse date string as local date, not UTC
   // "2026-03-22" should be March 22 local time, not UTC midnight which shows as March 21
@@ -1108,8 +1112,7 @@ function ItemDialogInner({
         repeatFrequency: d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined,
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
-        reminderTime: d.reminderTime || undefined,
-        reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
+        ...reminderPatch(d.reminderTime, d.reminderAnchor),
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
       }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
@@ -1125,8 +1128,7 @@ function ItemDialogInner({
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
         timesPerDay: parseInt(d.timesPerDay) || 1,
-        reminderTime: d.reminderTime || undefined,
-        reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
+        ...reminderPatch(d.reminderTime, d.reminderAnchor),
       }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
     }
 
@@ -2278,7 +2280,7 @@ function ItemDialogInner({
         contentClassName="w-40"
       >
         {(close) =>
-          ['1', '2', '3', '4', '5'].map((n) => (
+          Array.from({ length: TIMES_PER_DAY_MAX }, (_, i) => String(i + 1)).map((n) => (
             <ChipOption
               key={n}
               selected={d.timesPerDay === n}
@@ -2443,8 +2445,7 @@ function ItemDialogInner({
 
             {d.reminderTime && reminderNeedsDate && (
               <p className="text-muted-foreground px-2 pb-2 text-[10px]">
-                Give this a date and it will fire. Without one there is no day
-                for the reminder to land on.
+                {EDIT_COPY.reminderNeedsDate}
               </p>
             )}
 
@@ -2455,7 +2456,7 @@ function ItemDialogInner({
                   <Input
                     value={d.reminderAnchor}
                     onChange={(e) => patch({ reminderAnchor: e.target.value })}
-                    placeholder="I pour my coffee"
+                    placeholder={EDIT_COPY.reminderAnchorPlaceholder}
                     className="h-9 text-sm"
                     data-sub-input
                   />
@@ -2465,8 +2466,7 @@ function ItemDialogInner({
                       notification actually says — so the hint has to appear
                       where the sentence is being written, not in a doc. */}
                   <p className="text-muted-foreground mt-1.5 text-[10px]">
-                    Optional, and worth it. Something you already do beats a
-                    time. The reminder will say what you write here.
+                    {EDIT_COPY.reminderAnchorHint}
                   </p>
                 </div>
                 <ChipOption

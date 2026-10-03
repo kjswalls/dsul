@@ -321,6 +321,37 @@ import Testing
         #expect(!planner.offeredVerbs(for: reset, day: .selected).contains(.resetStreak))
     }
 
+    /// The sample takes every chip edit too, sending nothing: a priority, a
+    /// habit's times a day, and a reminder's time alone, which keeps its cue
+    /// words. It knows no Habit reminders switch and stores no zone, and isn't
+    /// live, so the Remind sheet shows neither settings line over it.
+    @Test func theSampleTakesEveryChipEditWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(!planner.isLive)
+        #expect(planner.settings.remindersEnabled == nil)
+        #expect(!planner.hasStoredZone)
+
+        let dentist = first(planner, "Call the dentist")
+        #expect(dentist.priority == "medium")
+        #expect(planner.canEdit("priority", dentist))
+        planner.edit(dentist.id, .priority("low"))
+        #expect(planner.item(dentist.id)?.priority == "low")
+
+        let meds = first(planner, "Meds")
+        #expect(meds.timesPerDay == nil)
+        #expect(planner.canEdit("timesPerDay", meds))
+        #expect(!planner.canEdit("priority", meds))
+        planner.edit(meds.id, .timesPerDay(3))
+        #expect(planner.item(meds.id)?.timesPerDay == 3)
+
+        #expect(planner.canEdit("reminder", meds))
+        planner.edit(meds.id, .reminder(time: "07:30", anchor: nil))
+        let retimed = try #require(planner.item(meds.id))
+        #expect(retimed.reminderTime == "07:30")
+        #expect(retimed.reminderAnchor == "I pour my coffee")
+    }
+
     @Test func nextWeekStartsOnTheUsersWeekStart() {
         let planner = makePlanner()
         // Thursday 2026-10-01; the sample's week starts on Sunday (the default).

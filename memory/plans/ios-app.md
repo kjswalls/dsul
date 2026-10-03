@@ -83,7 +83,13 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   (`isBulkPaste`, `splitBulkLinesWithMeta`: the list markers matched by hand,
   with JS's `\s` and ASCII digits, since NSRegularExpression's are
   Unicode-wide) and `EditCopy.swift` ← `EDIT_COPY` and `streakRunText`
-  (lib/item-edit.ts).
+  (lib/item-edit.ts). 2c adds the chips' three edits (`priority`,
+  `timesPerDay`, `reminder`) to `ItemEdit.swift` and `ItemWriteBody.swift`,
+  with `cleanAnchor` (the cue words as the phone sends them) and
+  `editAllowed(action:on:caps:)` (the gate by action name, which a chip asks
+  before it has a value); `isRemindable(_:caps:)` and `reminderNeedsDate`
+  (← `lib/bulk-edit.ts`) to `Registry.swift`; and the reminder sentences to
+  `EditCopy.swift`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -91,8 +97,9 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `SignInView`. `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
   `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
-  `NotesEditor`, `SubtaskField` and `StreakPopover`) and `ItemSheetModel`,
-  which decides what it says and offers apart from the views.
+  `NotesEditor`, `SubtaskField` and `StreakPopover`, and from 2c `Editors/`:
+  `PropertyMenus` and `ReminderSheet`) and `ItemSheetModel`, which decides
+  what it says and offers apart from the views.
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
 
@@ -245,15 +252,16 @@ popover), and the Streaks switch honoured (below); 2c the chips as controls
 and "+ Add property" (priority, times a day, the reminder); 2d date and time;
 2e repeat; 2f project, routines and seasons. An older server's `writes` hides
 any editor it doesn't take, so the deploy order doesn't matter: against one
-without `addSubtask` there is no Add a subtask row, and without
-`resetStreak` the streak popover has no Reset.
+without `addSubtask` there is no Add a subtask row, without `resetStreak` the
+streak popover has no Reset, and without `priority`, `timesPerDay` and
+`reminder` the chips stay read-only and there is no Add property.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
 view-only pass, since what the sheet says lives in `ItemSheetModel` and
-DsulCore and how it looks in small views. A subtask's page edits its title
-and notes and has Delete (priority waits for 2c). A paused item's ⋯ holds
-Delete. Delete's words are fixed on every surface, below.
+DsulCore and how it looks in small views. A subtask's page edits its title,
+notes and priority, and has Delete. A paused item's ⋯ holds Delete. Delete's
+words are fixed on every surface, below.
 
 - **Title.** `TitleField` takes the title's place when `canWrite("title")`,
   on every type and on a subtask's page: a vertical `TextField` with the
@@ -352,6 +360,20 @@ Delete. Delete's words are fixed on every surface, below.
   a type without a streak counter (400
   `no_streak`), and writes `{streak: 0}`, never the completion history; at 0
   or null it is 200 with no write and no event.
+  2c's chips go through the same field handler: `priority` (`low`, `medium`,
+  `high`, or null for none), `timesPerDay` (an integer, 1-5,
+  `TIMES_PER_DAY_MAX`) and `reminder` (`time`, HH:mm or null to turn it off,
+  always sent; `anchor`, the cue words, up to 10,000 or null, sent only when
+  they changed and only with a time, else the schema's 400 `invalid`), each
+  `.strict()`. Each reads its own columns (`priority`; `times_per_day`;
+  `reminder_time, reminder_anchor`). A habit's priority is 400 `no_priority`,
+  a count on a type without daily counts (a task, a custom item) 400
+  `no_count`, and a reminder on a type that can't take one or on a subtask
+  400 `not_remindable`; cue words growing past 500 (after the trim) are 400
+  `invalid`. The reminder writes both columns or neither (`reminderPatch`),
+  and a time sent alone keeps the stored words. Each is `{}` (200, no write)
+  when the row already says it, and a habit with no count stored takes 1 as
+  already so, since the dialog seeds it as 1.
 - **Add a subtask** (2b). The Subtasks section shows whenever the item has
   subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
   itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
@@ -413,8 +435,9 @@ Delete. Delete's words are fixed on every surface, below.
   subtasks below. One overlap is left: under notes long enough for Show all,
   Show all's 12pt overhang (NotesEditor) and the slot's 6pt share 4pt of the
   stack's 14pt gap, and the chip, drawn later and nearer, takes those taps.
-  The sample never shows it; if Show all's 44pt should hold there too, the
-  gap or NotesEditor changes in a later PR.
+  2c kept it, now that most items have an editable chip or Add property on
+  that line: the shared band is nearer the chip's capsule, and the fix would
+  move every chip row 4pt or cut Show all under 44pt.
 - **Streaks** (2b). The payload's `settings.streaksEnabled` is the Streaks
   extension (`resolveEnabled` over the user's `user_extensions` rows, on by
   default), read in its own try/catch, so a failed read answers on rather
@@ -423,6 +446,71 @@ Delete. Delete's words are fixed on every surface, below.
   the spoken "streak N" on Today's List and Buckets rows, as the web hides
   them (task-row.tsx) and as the extension promises ("hides them
   everywhere"). The phone honours the switch but can't turn it on or off.
+- **The chips as controls** (2c). The priority, times per day and reminder
+  chips edit when the server lists the action in `writes` and DsulCore's
+  `editAllowed` takes it for the type (`ItemSheetModel.chipEditor`, asking
+  the planner's `canEdit`); a menu writes at once, the reminder opens a
+  sheet. Every other chip stays read-only until 2d-2f. An editable chip keeps
+  part 1's look and gains a trailing chevron; its words, symbol and chevron
+  draw in the label colour (`ChipView(editable: true)`), never lime, and it
+  scales when pressed (`PressScaleStyle`) rather than fading. It is hit over
+  at least 44pt square inside its own line (`chipHit()`, the streak chip's
+  frame, factored out beside `chipSlot()`). VoiceOver hears part 1's label,
+  the button trait and a hint ("Changes the priority", "Changes how many
+  times a day", "Changes the reminder"). A read-only chip has no chevron,
+  trait or hint.
+- **Add property** (2c). The chip row ends in a seed listing the properties
+  that are unset and editable, in chip order (`unsetProperties`): Priority ▸
+  Low, Medium, High; Times per day ▸ 2× to 5× a day; Remind…. It reads "Add
+  property" when the row has nothing else and is a bare plus otherwise, and
+  VoiceOver always hears "Add property". A menu property is a submenu set in
+  one pick, listing only changes (no None, no 1× a day); Remind… opens its
+  sheet with the wheel already up on a time (Kirby, 2026-09-24: adding a
+  property opens its picker straight away). Unset properties are never
+  dimmed placeholder chips (Q2 a). Emptying a property from its chip (None,
+  1× a day, No reminder) removes the chip at once and puts the property back
+  in the seed, where the web keeps the emptied chip in view until its panel
+  closes. After a pick, or the Remind sheet closing, VoiceOver goes to that
+  property's chip, or to Add property when the chip went
+  (`voiceOverTarget`), set 600ms later, once the menu or sheet has gone.
+- **Priority and times per day** (2c). Menus that write at once, the current
+  value checked: None, Low, Medium and High (the web's `PRIORITY_LABELS`) on a
+  task, a custom item and a subtask's page (Q7 a), never a habit; and "1× a
+  day" to "5× a day" on a habit, the web chip's list, a stored value above 5
+  getting its own row (checked; picking it changes nothing). A habit with no
+  count reads as 1, so 1× a day there sends nothing.
+- **Remind** (2c). The reminder chip and Remind… open `ReminderSheet`, nested
+  in the item sheet (`SheetEditor.reminder`; `SheetEditor` is 2b's `DayPick`,
+  widened and moved into ItemSheetModel.swift so the Linux shim compiles it):
+  a `Form` titled "Remind", with Cancel and Done. "Nudge me at" is a wheel,
+  always up, in GMT on a Gregorian calendar, so "08:00" is 8:00 whatever the
+  phone's zone and the stored value never shifts, with the hour cycle from
+  `timeFormat`. It opens on the stored time or, for a new reminder, the
+  item's start time, else 9:00, which Done saves untouched. The seeds and
+  drafts are taken once as the sheet opens, so a fetch while it is up
+  changes neither, and a sheet whose item went keeps drawing it. "Right
+  after" is a one-line field with the web's placeholder and hint
+  (`EDIT_COPY`); Return lowers the keyboard and leaves the sheet up. Stored
+  words longer than one request may carry (`outerAnchor`, 10,000) show as
+  text with "Too long to edit on the phone." and are never sent. The words
+  are sent only when typed (the seed rule, P3), and a time-only change keeps
+  the stored ones. When only the words changed, the time is sent as
+  stored when Done is tapped, not as the sheet opened, so words changed on
+  the phone never put back a time changed on the web that a fetch brought
+  in while the sheet was up. Without such a fetch the phone sends the time
+  it last fetched, since the route requires a time. A dated type
+  with no date gets `reminderNeedsDate`'s note under the time. No reminder,
+  there only when the item had one as the sheet opened, turns it off at once
+  with no confirm. A swipe is refused once anything changed, and Cancel then
+  asks "Discard changes?"; a clean sheet, a new reminder's included, closes
+  and sends nothing. Two settings lines say when a reminder can't fire
+  (Q9 a): Habit reminders off on the web (`settings.remindersEnabled ==
+  false`) and no stored time zone (the scan skips one). Both need a live
+  planner, so the sample shows neither. `settings.remindersEnabled` is
+  `habit_reminders_enabled === true`, read beside `app_icon` among the
+  columns a database behind on its migrations may lack, and null when that
+  read was retried without them; missing (an older server) or null reads
+  unknown and shows no line.
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -454,10 +542,24 @@ Delete. Delete's words are fixed on every surface, below.
   `editAllowed`, `editing`, `deleting`, `reinserting`, `subtaskItem`,
   `canAddSubtask`, `resettingStreak`, `ItemWriteBody`, `BulkLines`,
   `EditCopy`, `jsTrim` and `EditLimits` against the same file.
-- **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-6 and
-  9-13: the title, the notes, the keyboard, Delete, adding subtasks, Reset
-  streak and Streaks off, offline, VoiceOver, the largest text size, the
-  lime, and the platform behaviours they rest on).
+  2c adds the chips' cases, each driven as the panel drives it (the draft
+  seeded by `draftFromItem`, the chip's change, the changed `DRAFT_KEYS`, the
+  mapper): a priority set, cleared, already so, on a subtask and on a custom
+  item, and refused on a habit; times per day changed, back to 1 (written as
+  1), already so with none stored, and refused on a task; a reminder set,
+  given words, retimed keeping its words, its words cleared, already so,
+  turned off, the growth pair, and refused on a subtask. One case,
+  `reminder-anchor-without-time`, is the file's only body the schema refuses
+  (cue words with no time); both sides exempt it from "every body parses",
+  and the phone's encoder can't build it. `limits` gains `anchor`,
+  `outerAnchor` and `timesPerDayMax`, and `copy` the three reminder sentences.
+  caps.json's item cases gain `reminderNeedsDate` (lib/bulk-edit.ts), hence
+  `bulk-edit` in ios.yml's filter.
+- **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-13:
+  the title, the notes, the keyboard, Delete, adding subtasks, Reset streak
+  and Streaks off, Add property, the chips and the Remind sheet, offline,
+  VoiceOver, the largest text size, the lime, and the platform behaviours
+  they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -704,6 +806,10 @@ functions:
   and answers 409 `parent_gone`.
 - **Reset streak writes `streak` alone**, as `resetHabitStreak` does: never
   `completedDates` or `dailyCounts`, and nothing at all at 0.
+- **A reminder writes its two columns together**, as the dialog does
+  (`reminderPatch`): a time with the cue words trimmed, or off with both
+  cleared, and a time sent alone keeps the stored words. Never
+  `reminder_sent_key`, so a new time re-arms itself, and never a snooze.
 - **The live Beeminder post** (`reportLiveCompletion`) runs after every
   `set_item_completion`, as the browser's `reportCompletion` does after a
   tick and `/api/reminders/act` after its own: through `after()` once the
@@ -751,8 +857,8 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of item detail part 2 (the
-chips as controls and "+ Add property", 2c-2f), undo or restore after a
+from the bar to the braindump sheet, the rest of item detail part 2 (date
+and time, repeat, project, routines and seasons: 2d-2f), undo or restore after a
 delete (the web's Trash restores it), Change type, Duplicate and Copy link,
 the rest of the sheet (a routine's or a season's hold, the goal chip once
 goals are in the payload, the Beeminder row, the Streaks switch, which the

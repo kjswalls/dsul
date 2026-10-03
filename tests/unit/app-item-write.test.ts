@@ -35,6 +35,10 @@ import path from 'path';
  * resetHabitStreak, the counter alone, and nothing at 0. Both replay from the
  * same fixture.
  *
+ * `priority`, `timesPerDay` and `reminder` are the panel's chips, one column
+ * each but the reminder's two, which are written together as the dialog writes
+ * them; never reminder_sent_key or a snooze. They replay from the fixture too.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
@@ -250,6 +254,9 @@ describe('reading the row first', () => {
     ['notes', { action: 'notes', notes: null }],
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }],
     ['resetStreak', { action: 'resetStreak' }],
+    ['priority', { action: 'priority', priority: 'high' }],
+    ['timesPerDay', { action: 'timesPerDay', timesPerDay: 2 }],
+    ['reminder', { action: 'reminder', time: '08:00' }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -280,6 +287,9 @@ describe('reading the row first', () => {
     ['title', { action: 'title', title: 'Renamed' }, `${BASE_COLUMNS}, title`],
     ['notes', { action: 'notes', notes: 'Noted.' }, `${BASE_COLUMNS}, notes`],
     ['resetStreak', { action: 'resetStreak' }, `${BASE_COLUMNS}, streak`],
+    ['priority', { action: 'priority', priority: 'high' }, `${BASE_COLUMNS}, priority`],
+    ['timesPerDay', { action: 'timesPerDay', timesPerDay: 2 }, `${BASE_COLUMNS}, times_per_day`],
+    ['reminder', { action: 'reminder', time: '08:00' }, `${BASE_COLUMNS}, reminder_time, reminder_anchor`],
     ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
     // The type and the parent decide it, and both are in every read.
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
@@ -998,6 +1008,10 @@ function rowFor(item: Item): Record<string, unknown> {
     title: item.title,
     notes: i.notes ?? null,
     streak: i.streak ?? null,
+    priority: i.priority ?? null,
+    times_per_day: i.timesPerDay ?? null,
+    reminder_time: i.reminderTime ?? null,
+    reminder_anchor: i.reminderAnchor ?? null,
   };
 }
 
@@ -1058,9 +1072,11 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
 
       if (c.refusal) {
         // A refusal is the row's: a cap, a missing field or capability (400),
-        // or a subtask under a subtask (409). Nothing is written or created.
+        // or a subtask under a subtask (409). Or the schema's, for the one body
+        // it refuses (cue words with no time), which also carries `details`.
+        // Nothing is written or created.
         expect(res.status).toBe(REFUSAL_STATUS[c.refusal] ?? 400);
-        expect(await res.json()).toEqual({ error: c.refusal });
+        expect((await res.json()).error).toBe(c.refusal);
         expect(writes('items', 'update')).toEqual([]);
         expect(writes('items', 'insert')).toEqual([]);
         return;
@@ -1591,6 +1607,171 @@ describe('resetStreak', () => {
   });
 });
 
+describe('priority', () => {
+  beforeEach(() => {
+    row = { ...ONE_OFF, priority: null };
+  });
+
+  it('writes the priority alone, with the web’s event', async () => {
+    const res = await write({ action: 'priority', priority: 'high' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ priority: 'high' }]);
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'task', action: 'update', payload: { priority: 'high' } },
+    ]);
+  });
+
+  it('clears it to NULL with null, the chip’s None', async () => {
+    row = { ...ONE_OFF, priority: 'high' };
+    expect((await write({ action: 'priority', priority: null })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ priority: null }]);
+  });
+
+  it('answers the priority the row already has with no write and no event', async () => {
+    row = { ...ONE_OFF, priority: 'high' };
+    const res = await write({ action: 'priority', priority: 'high' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('400s a habit, whose schema has no priority, and writes nothing', async () => {
+    row = { ...HABIT, priority: null };
+    const res = await write({ action: 'priority', priority: 'high' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'no_priority' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('takes a subtask’s', async () => {
+    row = { ...ONE_OFF, parent_item_id: PARENT, priority: null };
+    expect((await write({ action: 'priority', priority: 'low' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ priority: 'low' }]);
+  });
+});
+
+describe('timesPerDay', () => {
+  beforeEach(() => {
+    row = { ...HABIT, times_per_day: 3 };
+  });
+
+  it('writes the count alone, through the habit allowlist, never the tallies', async () => {
+    const res = await write({ action: 'timesPerDay', timesPerDay: 5 });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ times_per_day: 5 }]);
+    expect(queries.find((q) => op(q) === 'update')!.calls).toContainEqual(['eq', ['type', 'habit']]);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'habit', action: 'update', payload: { timesPerDay: 5 } },
+    ]);
+  });
+
+  it('answers 1 on a habit with none stored with no write, since none counts once', async () => {
+    row = { ...HABIT, times_per_day: null };
+    const res = await write({ action: 'timesPerDay', timesPerDay: 1 });
+    expect(res.status).toBe(200);
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('400s a task, which counts nothing', async () => {
+    row = { ...ONE_OFF, times_per_day: null };
+    const res = await write({ action: 'timesPerDay', timesPerDay: 2 });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'no_count' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+});
+
+describe('reminder', () => {
+  beforeEach(() => {
+    row = { ...HABIT, reminder_time: '08:00', reminder_anchor: 'I pour my coffee' };
+  });
+
+  /** Every update the route made names the reminder's two columns and nothing else. */
+  const onlyTheTwoColumns = () => {
+    for (const update of writes('items', 'update')) {
+      expect(Object.keys(update).sort()).toEqual(['reminder_anchor', 'reminder_time']);
+    }
+  };
+
+  it('keeps the stored words on a time sent alone, and writes both columns', async () => {
+    const res = await write({ action: 'reminder', time: '07:30' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ reminder_time: '07:30', reminder_anchor: 'I pour my coffee' }]);
+    expect(writes('item_events', 'insert')).toEqual([
+      {
+        item_id: ITEM,
+        item_type: 'habit',
+        action: 'update',
+        payload: { reminderTime: '07:30', reminderAnchor: 'I pour my coffee' },
+      },
+    ]);
+    onlyTheTwoColumns();
+  });
+
+  it('turns it off with a null time, clearing both', async () => {
+    expect((await write({ action: 'reminder', time: null })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ reminder_time: null, reminder_anchor: null }]);
+    onlyTheTwoColumns();
+  });
+
+  it('clears the words with a null anchor, and keeps the time', async () => {
+    expect((await write({ action: 'reminder', time: '08:00', anchor: null })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ reminder_time: '08:00', reminder_anchor: null }]);
+    onlyTheTwoColumns();
+  });
+
+  it('answers what the row already says with no write and no event', async () => {
+    const res = await write({ action: 'reminder', time: '08:00', anchor: 'I pour my coffee' });
+    expect(res.status).toBe(200);
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('never writes the sent stamp or a snooze, so a new time re-arms itself', async () => {
+    for (const body of [
+      { action: 'reminder', time: '07:30' },
+      { action: 'reminder', time: '09:00', anchor: 'I make the bed' },
+      { action: 'reminder', time: '08:00', anchor: null },
+      { action: 'reminder', time: null },
+    ]) {
+      expect((await write(body)).status, JSON.stringify(body)).toBe(200);
+    }
+    expect(writes('items', 'update')).toHaveLength(4);
+    onlyTheTwoColumns();
+  });
+
+  it('400s a subtask, which the scan never reminds', async () => {
+    row = { ...ONE_OFF, parent_item_id: PARENT, reminder_time: null, reminder_anchor: null };
+    const res = await write({ action: 'reminder', time: '08:00' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_remindable' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('refuses words growing past 500, and lets stored words of 700 be rewritten at 650', async () => {
+    const res = await write({ action: 'reminder', time: '08:00', anchor: 'w'.repeat(501) });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid' });
+    expect(writes('items', 'update')).toEqual([]);
+
+    row = { ...HABIT, reminder_time: '21:00', reminder_anchor: 'a'.repeat(700) };
+    expect((await write({ action: 'reminder', time: '21:00', anchor: 'b'.repeat(650) })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ reminder_time: '21:00', reminder_anchor: 'b'.repeat(650) }]);
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -1634,6 +1815,22 @@ describe('validation', () => {
     ['a new subtask with a blank title', { action: 'addSubtask', id: ITEM, title: ' \n ' }],
     ['a new subtask over 500 characters', { action: 'addSubtask', id: ITEM, title: 'x'.repeat(501) }],
     ['a reset with anything else in it', { action: 'resetStreak', streak: 0 }],
+    ['a priority that is not one of the three', { action: 'priority', priority: 'urgent' }],
+    ['priority left out, which is not a clear', { action: 'priority' }],
+    ['a priority with a key it does not take', { action: 'priority', priority: 'high', notes: 'x' }],
+    ['a times a day of 0', { action: 'timesPerDay', timesPerDay: 0 }],
+    ['a times a day of 6', { action: 'timesPerDay', timesPerDay: 6 }],
+    ['a fractional times a day', { action: 'timesPerDay', timesPerDay: 1.5 }],
+    ['a times a day as a string', { action: 'timesPerDay', timesPerDay: '3' }],
+    ['times a day left out', { action: 'timesPerDay' }],
+    ['a times a day with a key it does not take', { action: 'timesPerDay', timesPerDay: 2, dailyCounts: {} }],
+    ['a reminder with no time key, which is not off', { action: 'reminder' }],
+    ['a reminder at 24:00', { action: 'reminder', time: '24:00' }],
+    ['a reminder time without its leading zero', { action: 'reminder', time: '8:00' }],
+    ['cue words with no time, which off would drop', { action: 'reminder', time: null, anchor: 'I pour my coffee' }],
+    ['cue words over 10,000 characters', { action: 'reminder', time: '08:00', anchor: 'x'.repeat(10_001) }],
+    ['cue words that are not a string', { action: 'reminder', time: '08:00', anchor: 5 }],
+    ['a reminder with a key it does not take', { action: 'reminder', time: '08:00', snooze: null }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -1694,6 +1891,9 @@ describe('webhooks', () => {
       [{ ...HABIT, title: 'Stretch', notes: null }, { action: 'delete' }],
       [ONE_OFF, { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }],
       [{ ...HABIT, streak: 3 }, { action: 'resetStreak' }],
+      [ONE_OFF, { action: 'priority', priority: 'high' }],
+      [{ ...HABIT, times_per_day: 3 }, { action: 'timesPerDay', timesPerDay: 2 }],
+      [ONE_OFF, { action: 'reminder', time: '08:00' }],
     ] as const) {
       row = r;
       // A new subtask is a created row: 201, as a capture is.

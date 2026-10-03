@@ -34,6 +34,7 @@ import {
   type ItemTypeConfig,
 } from '@/lib/item-registry';
 import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { reminderNeedsDate } from '@/lib/bulk-edit';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
 import { occursOn } from '@/lib/reminders/due';
@@ -1289,6 +1290,8 @@ type ItemCapsCase = {
   isPausable: boolean;
   isRemindable: boolean;
   isCollectible: boolean;
+  /** lib/bulk-edit.ts reminderNeedsDate: a cue that would never fire for want of a day. */
+  reminderNeedsDate: boolean;
 };
 type CapsFixture = { types: TypeCaps[]; items: ItemCapsCase[]; hydrated: HydratedCaps[] };
 
@@ -1371,6 +1374,7 @@ function buildCaps(): CapsFixture {
     isPausable: isPausable(item),
     isRemindable: isRemindable(item),
     isCollectible: isCollectible(item),
+    reminderNeedsDate: reminderNeedsDate(item),
   }));
   return { types, items, hydrated };
 }
@@ -1533,7 +1537,7 @@ describe('day fixtures shared with DsulCore', () => {
     expect(new Set(occurs.map((c) => c.occurrence))).toEqual(new Set(['done', 'skipped', 'due', 'open', 'absent', null]));
 
     const caps = generated.caps as CapsFixture;
-    for (const key of ['isSkippable', 'isPausable', 'isRemindable', 'isCollectible'] as const) {
+    for (const key of ['isSkippable', 'isPausable', 'isRemindable', 'isCollectible', 'reminderNeedsDate'] as const) {
       expect(new Set(caps.items.map((c) => c[key])), key).toEqual(both);
     }
     // The task and habit messages differ, and a hydrated label reaches every

@@ -3,15 +3,16 @@ import Foundation
 import Testing
 @testable import Dsul
 
-/// The item sheet's title, notes, Delete, Add a subtask and Reset streak on a
-/// signed-in planner, against PlannerSyncTests' fake server and its Thursday
-/// 2026-10-01 payload: each write's optimistic step and the body it sends,
-/// the gates that refuse (sending nothing), an older server's shorter list of
-/// writes, what a delete takes with it and which sheet it closes, a pasted
-/// list sent offline, the Streaks switch, a custom type's own words, the
-/// banner said once, and the background time a write asks for. The rebase
-/// under a failed write is PlannerSyncTests'; the sample's steps are
-/// SamplePlannerTests'.
+/// The item sheet's title, notes, Delete, Add a subtask, Reset streak and
+/// chips (priority, times a day, Remind) on a signed-in planner, against
+/// PlannerSyncTests' fake server and its Thursday 2026-10-01 payload: each
+/// write's optimistic step and the body it sends, the gates that refuse
+/// (sending nothing), an older server's shorter list of writes, what a delete
+/// takes with it and which sheet it closes, a pasted list sent offline, the
+/// Streaks and Habit reminders switches, the stored zone, a custom type's own
+/// words, the banner said once, and the background time a write asks for.
+/// The rebase under a failed write is PlannerSyncTests'; the sample's steps
+/// are SamplePlannerTests'.
 @MainActor
 @Suite struct ItemEditTests {
     private let ok = "{\"ok\":true}"
@@ -35,6 +36,15 @@ import Testing
     private func postCount(_ server: FakeServer) async -> Int {
         let requests = await server.requests
         return requests.filter { $0.route.hasPrefix("POST") }.count
+    }
+
+    /// Every POST body to `id`'s route as the bytes went out (keys sorted, as
+    /// `APIClient.encode` writes them), in the order it arrived.
+    private func sentText(_ server: FakeServer, _ id: UUID) async -> [String] {
+        let requests = await server.requests
+        return requests.filter { $0.route == itemRoute(id) }.compactMap { request in
+            request.body.flatMap { String(data: $0, encoding: .utf8) }
+        }
     }
 
     // MARK: Title
@@ -457,6 +467,185 @@ import Testing
         await planner.refresh()
         #expect(planner.showsStreak(for: water))
         #expect(planner.offeredVerbs(for: water, day: .selected).contains(.resetStreak))
+    }
+
+    // MARK: Priority, times per day and Remind
+
+    /// The priority chip's pick shows at once and is sent as its own action;
+    /// None clears it and sends `"priority": null`, never a missing key.
+    @Test func aPriorityShowsAtOnceAndSendsItsOwnAction() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+        let groceries = PlannerJSON.groceries
+
+        planner.edit(groceries, .priority("high"))
+        #expect(planner.item(groceries)?.priority == "high")
+        planner.edit(groceries, .priority(nil))
+        #expect(planner.item(groceries)?.priority == nil)
+        await drain(planner)
+
+        let sent = await sentText(server, groceries)
+        #expect(sent == ["{\"action\":\"priority\",\"priority\":\"high\"}",
+                         "{\"action\":\"priority\",\"priority\":null}"])
+        #expect(planner.banner == nil)
+    }
+
+    /// Times a day is a habit's alone: a change is sent as a number, the same
+    /// count again sends nothing, and a task's is refused by the gate before
+    /// any optimistic step.
+    @Test func timesPerDayIsAHabitsAndSendsOnlyAChange() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.water), .status(200, ok))
+        let planner = await loaded(server)
+        let water = try #require(planner.item(PlannerJSON.water))
+        #expect(water.timesPerDay == 3)
+
+        planner.edit(PlannerJSON.water, .timesPerDay(5))
+        let five = try #require(planner.item(PlannerJSON.water))
+        #expect(five.timesPerDay == 5)
+        #expect(five.dailyCounts == water.dailyCounts)
+        planner.edit(PlannerJSON.water, .timesPerDay(5))   // already so
+        #expect(planner.item(PlannerJSON.water) == five)
+        await drain(planner)
+        let sent = await sentText(server, PlannerJSON.water)
+        #expect(sent == ["{\"action\":\"timesPerDay\",\"timesPerDay\":5}"])
+
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        #expect(!planner.canEdit("timesPerDay", groceries))
+        planner.edit(PlannerJSON.groceries, .timesPerDay(2))
+        #expect(planner.item(PlannerJSON.groceries) == groceries)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 1)
+    }
+
+    /// The Remind sheet's writes, in order: a time with no words sends the
+    /// time alone; words typed send both; a time changed alone sends the time
+    /// alone and keeps the words; No reminder sends `"time": null` and clears
+    /// both. The words go out only when they changed.
+    @Test func aReminderSendsItsWordsOnlyWhenTheyChanged() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+        let groceries = PlannerJSON.groceries
+
+        planner.edit(groceries, .reminder(time: "08:00", anchor: nil))
+        #expect(planner.item(groceries)?.reminderTime == "08:00")
+        #expect(planner.item(groceries)?.reminderAnchor == nil)
+        planner.edit(groceries, .reminder(time: "08:00", anchor: .set("I unpack the bags")))
+        #expect(planner.item(groceries)?.reminderAnchor == "I unpack the bags")
+        planner.edit(groceries, .reminder(time: "07:30", anchor: nil))
+        let retimed = try #require(planner.item(groceries))
+        #expect(retimed.reminderTime == "07:30")
+        #expect(retimed.reminderAnchor == "I unpack the bags")
+        planner.edit(groceries, .reminder(time: nil, anchor: nil))
+        let off = try #require(planner.item(groceries))
+        #expect(off.reminderTime == nil)
+        #expect(off.reminderAnchor == nil)
+        await drain(planner)
+
+        let sent = await sentText(server, groceries)
+        #expect(sent == [
+            "{\"action\":\"reminder\",\"time\":\"08:00\"}",
+            "{\"action\":\"reminder\",\"anchor\":\"I unpack the bags\",\"time\":\"08:00\"}",
+            "{\"action\":\"reminder\",\"time\":\"07:30\"}",
+            "{\"action\":\"reminder\",\"time\":null}",
+        ])
+        #expect(planner.banner == nil)
+    }
+
+    /// A subtask's own page sets its priority (design Q7 a), but a subtask
+    /// is never reminded (`not_remindable`): that edit changes nothing and
+    /// sends nothing.
+    @Test func aSubtaskTakesAPriorityButNoReminder() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])))
+        await server.on(itemRoute(PlannerJSON.bags), .status(200, ok))
+        let planner = await loaded(server)
+        let bags = try #require(planner.item(PlannerJSON.bags))
+        #expect(planner.canEdit("priority", bags))
+        #expect(!planner.canEdit("reminder", bags))
+
+        planner.edit(PlannerJSON.bags, .priority("low"))
+        let low = try #require(planner.item(PlannerJSON.bags))
+        #expect(low.priority == "low")
+        await drain(planner)
+
+        planner.edit(PlannerJSON.bags, .reminder(time: "08:00", anchor: nil))
+        #expect(planner.item(PlannerJSON.bags) == low)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let sent = await sentText(server, PlannerJSON.bags)
+        #expect(sent == ["{\"action\":\"priority\",\"priority\":\"low\"}"])
+        let posts = await postCount(server)
+        #expect(posts == 1)
+    }
+
+    /// 2b's server lists none of the three chip writes, and one older still
+    /// lists no writes at all: no chip is editable there, and each edit sends
+    /// nothing.
+    @Test func anOlderServerOffersNoChipEdit() async throws {
+        let partTwoB = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
+                        "addSubtask", "resetStreak"]
+        for writes in [partTwoB, nil] {
+            let server = FakeServer()
+            await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: writes)))
+            let planner = await loaded(server)
+            let groceries = try #require(planner.item(PlannerJSON.groceries))
+            let water = try #require(planner.item(PlannerJSON.water))
+            #expect(!planner.canEdit("priority", groceries))
+            #expect(!planner.canEdit("timesPerDay", water))
+            #expect(!planner.canEdit("reminder", groceries))
+            #expect(!planner.canEdit("reminder", water))
+
+            planner.edit(PlannerJSON.groceries, .priority("high"))
+            planner.edit(PlannerJSON.water, .timesPerDay(5))
+            planner.edit(PlannerJSON.groceries, .reminder(time: "08:00", anchor: .set("I park")))
+            #expect(planner.item(PlannerJSON.groceries) == groceries)
+            #expect(planner.item(PlannerJSON.water) == water)
+            #expect(planner.sync?.pending == 0)
+            await drain(planner)
+            let posts = await postCount(server)
+            #expect(posts == 0)
+        }
+    }
+
+    /// What the Remind sheet's two settings lines read: Habit reminders as
+    /// the payload sends it (false only when the server says so; null, or
+    /// left out by an older server, is unknown), and whether the account
+    /// stores a usable zone.
+    @Test func theRemindersSwitchAndTheZoneReachThePlanner() async {
+        let server = FakeServer()
+        await server.on(plannerRoute,
+                        .status(200, PlannerJSON.payload(remindersEnabled: "false")),
+                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-2", remindersEnabled: "null")),
+                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-3")),
+                        .status(200, PlannerJSON.payload(fetchedAt: "fetch-4", remindersEnabled: "true")))
+        let planner = await loaded(server)
+        #expect(planner.settings.remindersEnabled == false)
+        await planner.refresh()
+        #expect(planner.settings.remindersEnabled == nil)
+        await planner.refresh()
+        #expect(planner.settings.remindersEnabled == nil)
+        await planner.refresh()
+        #expect(planner.settings.remindersEnabled == true)
+
+        let zones = FakeServer()
+        await zones.on(plannerRoute,
+                       .status(200, PlannerJSON.payload()),
+                       .status(200, PlannerJSON.payload(fetchedAt: "fetch-2", timezone: "Not/AZone")),
+                       .status(200, PlannerJSON.payload(fetchedAt: "fetch-3", timezone: "America/New_York")))
+        let zoned = await loaded(zones)
+        #expect(!zoned.hasStoredZone)
+        await zoned.refresh()
+        #expect(!zoned.hasStoredZone)
+        await zoned.refresh()
+        #expect(zoned.hasStoredZone)
     }
 
     // MARK: The banner

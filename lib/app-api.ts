@@ -1,6 +1,7 @@
 import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
+import { PrioritySchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
   createItem,
@@ -28,6 +29,7 @@ import {
   resetStreakPatch,
   resetStreakRefusal,
   subtaskRefusal,
+  TIMES_PER_DAY_MAX,
 } from './item-edit';
 import { EXT_STREAKS, resolveEnabled } from './extension-registry';
 import { isPausableRow, resolveItemPause } from './item-pause';
@@ -51,11 +53,12 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * WRITES ARE INTENTS, NEVER ARRAYS. Each thing the phone does (capture; tick,
  * skip or unskip a day; drop a braindump row on an hour; carry an item to
  * another day; pause or resume one; retitle it, rewrite its notes or delete
- * it; add a subtask under it, reset its streak) is one verb here that does
- * what the web's own store action does for the same gesture, through the same
- * lib/db.ts calls. Nothing accepts an absolute completedDates, skippedDates or
- * dailyCounts: the phone reads a 400-day window, and an array written back
- * from a window deletes what the window did not show. Nor is there a generic
+ * it; add a subtask under it, reset its streak; set its priority, a habit's
+ * times a day or its reminder) is one verb here that does what the web's own
+ * store action does for the same gesture, through the same lib/db.ts calls.
+ * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
+ * phone reads a 400-day window, and an array written back from a window
+ * deletes what the window did not show. Nor is there a generic
  * `edit`: each field is its own action, so a server that doesn't take one
  * refuses it (400) rather than dropping the key and answering 200, and the
  * phone hides any editor whose action `writes` doesn't list.
@@ -177,6 +180,24 @@ const ItemWriteActions = z.discriminatedUnion('action', [
     })
     .strict(),
   z.object({ action: z.literal('resetStreak') }).strict(),
+  // The chips (2c). Each is one property, decided on the row by
+  // lib/item-edit.ts as the typed fields are.
+  z.object({ action: z.literal('priority'), priority: PrioritySchema.nullable() }).strict(),
+  z
+    .object({
+      action: z.literal('timesPerDay'),
+      timesPerDay: z.number().int().min(1).max(TIMES_PER_DAY_MAX),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('reminder'),
+      /** HH:mm, or null to turn the reminder off, which clears the anchor too. */
+      time: TimeStrSchema.nullable(),
+      /** The cue words. Absent keeps the stored ones; null or blank clears them. Only with a time. */
+      anchor: z.string().max(OUTER_LIMITS.anchor).nullable().optional(),
+    })
+    .strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -185,6 +206,11 @@ export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
   // schemas refuse it.
   if (body.action === 'pause' && body.pausedUntil !== undefined && !body.paused) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['pausedUntil'], message: 'only with paused: true' });
+  }
+  // Off clears the cue words with the time, so words sent with no time would
+  // be dropped while the answer said 200. The phone never builds this body.
+  if (body.action === 'reminder' && body.time === null && body.anchor !== undefined) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['anchor'], message: 'only with a time' });
   }
 });
 
@@ -239,6 +265,15 @@ export interface AppPlannerPayload {
      * on Today's rows. Absent, from an older server, reads as on.
      */
     streaksEnabled: boolean;
+    /**
+     * Habit reminders (Settings → Rituals; habit_reminders_enabled, migration
+     * 032), the switch that lets any reminder through. False when off or never
+     * set, as the reminder scan reads it (lib/reminders/scan.ts counts only
+     * true). Null when the column couldn't be read (a database behind on its
+     * migrations), so the phone says nothing rather than "off". Absent, from an
+     * older server, means the same.
+     */
+    remindersEnabled: boolean | null;
   };
   /**
    * The item-write intents this server takes (ITEM_WRITES). The phone hides
@@ -272,13 +307,16 @@ export interface AppItemType {
  * Named columns, never `*`: the same row holds `openclaw_api_key`, a plaintext
  * key with service-role power that RLS lets this token read.
  *
- * `app_icon` is migration 056, which may not be applied yet (it sits in
- * lib/settings-service.ts PENDING_SCHEMA_COLUMNS): PostgREST refuses the whole
- * select over one unknown column, so a missing one is read again without it.
  * The week start and the time format are migration 008, and stable.
  */
 const STABLE_SETTINGS_COLUMNS = 'timezone, show_completed_tasks, week_start_day, time_format';
-const SETTINGS_COLUMNS = `${STABLE_SETTINGS_COLUMNS}, app_icon`;
+/**
+ * `app_icon` is migration 056 and `habit_reminders_enabled` 032; both sit in
+ * lib/settings-service.ts PENDING_SCHEMA_COLUMNS. PostgREST refuses the whole
+ * select over one unknown column, so a missing one is read again without
+ * either (`full` is then false).
+ */
+const SETTINGS_COLUMNS = `${STABLE_SETTINGS_COLUMNS}, app_icon, habit_reminders_enabled`;
 
 interface SettingsRow {
   timezone?: string | null;
@@ -286,15 +324,26 @@ interface SettingsRow {
   week_start_day?: string | null;
   time_format?: string | null;
   app_icon?: string | null;
+  habit_reminders_enabled?: boolean | null;
 }
 
-async function readSettings(userId: string, client: Client): Promise<SettingsRow | null> {
+interface SettingsRead {
+  row: SettingsRow | null;
+  /** False when the newer columns couldn't be read and the stable set was read instead. */
+  full: boolean;
+}
+
+async function readSettings(userId: string, client: Client): Promise<SettingsRead> {
   const read = (columns: string) =>
     client.from('user_settings').select(columns).eq('user_id', userId).maybeSingle();
+  let full = true;
   let result = await read(SETTINGS_COLUMNS);
-  if (result.error && isMissingColumnError(result.error)) result = await read(STABLE_SETTINGS_COLUMNS);
+  if (result.error && isMissingColumnError(result.error)) {
+    full = false;
+    result = await read(STABLE_SETTINGS_COLUMNS);
+  }
   if (result.error) throw result.error;
-  return result.data as SettingsRow | null;
+  return { row: result.data as SettingsRow | null, full };
 }
 
 /**
@@ -358,7 +407,7 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, settings, streaksEnabled] = await Promise.all([
+    const [data, { row: settings, full }, streaksEnabled] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
       readSettings(userId, client),
       readStreaksEnabled(userId, client),
@@ -376,6 +425,9 @@ export async function getPlanner(req: Request): Promise<Response> {
         timeFormat: timeFormatFrom(settings?.time_format),
         appIcon: appIconFrom(settings?.app_icon),
         streaksEnabled,
+        // Only true lets a reminder through (the scan's own test), so a missing
+        // row or a null column is off. Unread is unknown, never off.
+        remindersEnabled: full ? settings?.habit_reminders_enabled === true : null,
       },
       writes: ITEM_WRITES,
       items: data.items,
@@ -488,6 +540,9 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   title: 'title',
   notes: 'notes',
   resetStreak: 'streak',
+  priority: 'priority',
+  timesPerDay: 'times_per_day',
+  reminder: 'reminder_time, reminder_anchor',
 };
 
 interface WriteRow {
@@ -508,6 +563,10 @@ interface WriteRow {
   title?: string | null;
   notes?: string | null;
   streak?: number | null;
+  priority?: string | null;
+  times_per_day?: number | null;
+  reminder_time?: string | null;
+  reminder_anchor?: string | null;
 }
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -567,6 +626,9 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   delete    Delete (deleteTask, with its subtasks / deleteHabit)
  *   addSubtask  a new subtask, typed (SubtasksSection → addTask) or one line of a paste (→ addTasksBulk)
  *   resetStreak Reset streak (resetHabitStreak)
+ *   priority     the priority chip (the dialog's priority → updateTask)
+ *   timesPerDay  a habit's times a day (the dialog's chip → updateHabit)
+ *   reminder     Remind, its time and cue words together, or off (the dialog's chip, reminderPatch)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -630,6 +692,9 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
         return await pause(ctx, body);
       case 'title':
       case 'notes':
+      case 'priority':
+      case 'timesPerDay':
+      case 'reminder':
         return await edit(ctx, body);
       case 'delete':
         return await del(client, userId, id, row.type);
@@ -849,11 +914,19 @@ async function pause(ctx: WriteContext, body: IntentBody<'pause'>): Promise<Resp
 }
 
 /**
- * `title` and `notes`: the dialog's typed fields, one key each, through
- * lib/item-edit.ts. Already so is 200 with no write, as the dialog's autosave
- * skips a draft that didn't change, so a retried edit writes no second event.
+ * `title` and `notes`, the dialog's typed fields, and `priority`, `timesPerDay`
+ * and `reminder`, its chips: one key each (the reminder's two together, as
+ * reminderPatch writes them), through lib/item-edit.ts. Already so is 200 with
+ * no write, as the dialog's autosave skips a draft that didn't change, so a
+ * retried edit writes no second event. updateItem takes the row's own type, so
+ * a custom item's priority goes through taskUpdatesToRow and a habit's count
+ * through habitUpdatesToRow. Nothing here clears reminder_sent_key (a new time
+ * re-arms itself; lib/db.ts says why) or a snooze.
  */
-async function edit(ctx: WriteContext, body: IntentBody<'title' | 'notes'>): Promise<Response> {
+async function edit(
+  ctx: WriteContext,
+  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder'>,
+): Promise<Response> {
   const { client, id, type, config, row } = ctx;
   const shape = editShapeFromRow(row);
   const refusal = editRefusal(shape, body, config);

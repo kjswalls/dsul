@@ -3,9 +3,9 @@ import Testing
 import DsulCore
 
 // ItemEdit.swift on hand-written text and lists: the cleaners at their limits,
-// JavaScript's trim, the growth caps, a new subtask and a streak reset, and
-// where a failed delete puts things back. The web's own answers for the same
-// functions are in EditWritesFixtureTests.
+// JavaScript's trim, the growth caps, the type gate and the chips' edits, a new
+// subtask and a streak reset, and where a failed delete puts things back. The
+// web's own answers for the same functions are in EditWritesFixtureTests.
 
 /// 00000000-0000-4000-8000-000000000012 for 12.
 private func uuid(_ n: Int) -> UUID {
@@ -63,6 +63,23 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         let limit = growthLimit(cap: EditLimits.title, stored: stored)
         #expect(cleanTitle(stored, limit: limit) == stored)
         #expect(cleanTitle(stored + "y", limit: limit) == stored)
+    }
+
+    /// The cue words are one line, as the web's `<input>` is: the title's
+    /// rule, newlines to spaces, clamp then trim, an emoji going whole.
+    @Test func cueWordsAreOneLine() {
+        #expect(cleanAnchor("I pour\nmy coffee", limit: 500) == "I pour my coffee")
+        #expect(cleanAnchor("  I pour my coffee \r\n", limit: 500) == "I pour my coffee")
+        #expect(cleanAnchor("", limit: 500) == nil)
+        #expect(cleanAnchor(" \n\t\u{A0}", limit: 500) == nil)
+        #expect(cleanAnchor(a499 + " tail", limit: 500) == a499)
+        #expect(cleanAnchor(a499 + "😀", limit: 500) == a499)
+        let fits = String(repeating: "a", count: 498) + "😀"
+        #expect(cleanAnchor(fits, limit: 500) == fits)
+        // Stored words over the cap may keep their length (`growthLimit`).
+        let stored = String(repeating: "w", count: 700)
+        let limit = growthLimit(cap: EditLimits.anchor, stored: stored)
+        #expect(cleanAnchor(stored + "x", limit: limit) == stored)
     }
 
     @Test func notesKeepTheirLines() {
@@ -125,6 +142,8 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(EditLimits.outerTitle == 10_000 && EditLimits.outerNotes == 200_000)
         // New text has nothing stored to grow from: the plain cap.
         #expect(EditLimits.newTitle == 500)
+        #expect(EditLimits.anchor == 500 && EditLimits.outerAnchor == 10_000)
+        #expect(EditLimits.timesPerDayMax == 5)
     }
 }
 
@@ -161,6 +180,164 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(!editAllowed(ItemEdit.notes("x"), on: item, caps: noNotes))
         // A title is every type's.
         #expect(editAllowed(ItemEdit.title("x"), on: item, caps: noNotes))
+    }
+}
+
+/// lib/item-edit.ts `editRefusal`'s type gate, asked by action name.
+@Suite struct EditAllowedTests {
+    private let roadmap = task(1, "Draft Q4 roadmap")
+    private let numbers = task(2, "Pull the numbers", parent: 1)
+    private let meds = Item(id: uuid(3), type: "habit", title: "Meds", repeatFrequency: "daily")
+    private let errand = Item(id: uuid(4), type: "custom", customType: "errand", title: "Post office")
+
+    private func allowed(_ action: String, _ item: Item) -> Bool {
+        return editAllowed(action: action, on: item, caps: caps(item.typeName))
+    }
+
+    @Test func aTitleIsEveryones() {
+        for item in [roadmap, numbers, meds, errand] {
+            #expect(allowed("title", item), "\(item.title)")
+        }
+    }
+
+    @Test func notesFollowTheSchema() {
+        #expect(allowed("notes", roadmap) && allowed("notes", meds) && allowed("notes", errand))
+        var noNotes = ItemCaps.task
+        noNotes.hasNotes = false
+        #expect(!editAllowed(action: "notes", on: roadmap, caps: noNotes))
+    }
+
+    /// A task's, a custom item's and a subtask's, never a habit's.
+    @Test func aPriorityIsATaskShapedTypes() {
+        #expect(allowed("priority", roadmap))
+        #expect(allowed("priority", errand))
+        #expect(allowed("priority", numbers))
+        #expect(!allowed("priority", meds))
+    }
+
+    @Test func timesADayIsAHabitsAlone() {
+        #expect(allowed("timesPerDay", meds))
+        #expect(!allowed("timesPerDay", roadmap))
+        #expect(!allowed("timesPerDay", errand))
+        #expect(!allowed("timesPerDay", numbers))
+    }
+
+    /// Every remindable type, never a subtask.
+    @Test func aReminderIsNeverASubtasks() {
+        #expect(allowed("reminder", roadmap))
+        #expect(allowed("reminder", meds))
+        #expect(allowed("reminder", errand))
+        #expect(!allowed("reminder", numbers))
+        var quiet = ItemCaps.task
+        quiet.remindable = false
+        #expect(!editAllowed(action: "reminder", on: roadmap, caps: quiet))
+    }
+
+    /// The other writes have gates of their own, and a name the phone
+    /// doesn't know is never an edit.
+    @Test func anyOtherNameIsRefused() {
+        for action in ["nonsense", "", "delete", "addSubtask", "resetStreak", "Priority"] {
+            #expect(!allowed(action, roadmap), "\(action)")
+        }
+    }
+
+    /// The typed form asks the same question by the edit's own action.
+    @Test func theTypedFormIsTheSameGate() {
+        let edits: [ItemEdit] = [
+            .title("x"), .notes(nil), .priority("high"), .timesPerDay(2), .reminder(time: "08:00", anchor: nil),
+        ]
+        for item in [roadmap, numbers, meds, errand] {
+            for edit in edits {
+                #expect(editAllowed(edit, on: item, caps: caps(item.typeName)) == allowed(edit.action, item),
+                        "\(item.title): \(edit.action)")
+            }
+        }
+    }
+}
+
+/// `editing` for the chips: lib/item-edit.ts `editPatch`, and `reminderPatch`
+/// under it.
+@Suite struct ChipEditingTests {
+    private let roadmap = Item(
+        id: uuid(1), title: "Draft Q4 roadmap", startDate: "2026-10-01", timeBucket: "morning", priority: "high"
+    )
+    private let meds = Item(
+        id: uuid(2), type: "habit", title: "Meds", repeatFrequency: "daily", reminderTime: "08:00",
+        reminderAnchor: "I pour my coffee", streak: 41, dailyCounts: ["2026-10-01": 1]
+    )
+
+    @Test func aPriorityIsSetOrCleared() {
+        var low = roadmap
+        low.priority = "low"
+        #expect(editing(roadmap, ItemEdit.priority("low")) == low)
+        var none = roadmap
+        none.priority = nil
+        #expect(editing(roadmap, ItemEdit.priority(nil)) == none)
+        #expect(editing(roadmap, ItemEdit.priority("high")) == roadmap)
+    }
+
+    /// A count is set, and nothing else moves: the day's tally stays.
+    @Test func aCountIsSet() {
+        var thrice = meds
+        thrice.timesPerDay = 3
+        #expect(editing(meds, ItemEdit.timesPerDay(3)) == thrice)
+        #expect(editing(thrice, ItemEdit.timesPerDay(3)) == thrice)
+        var once = thrice
+        once.timesPerDay = 1
+        // Back to 1 is written as 1, never cleared.
+        #expect(editing(thrice, ItemEdit.timesPerDay(1)) == once)
+        #expect(editing(thrice, ItemEdit.timesPerDay(1)).dailyCounts == meds.dailyCounts)
+    }
+
+    /// None stored reads as 1, so 1 there changes nothing (and 1 is not
+    /// written in its place).
+    @Test func noCountIsOne() {
+        #expect(meds.timesPerDay == nil)
+        #expect(editing(meds, ItemEdit.timesPerDay(1)) == meds)
+        #expect(editing(meds, ItemEdit.timesPerDay(2)).timesPerDay == 2)
+    }
+
+    /// A time alone keeps the stored words, trimmed as the dialog writes
+    /// them.
+    @Test func aTimeAloneKeepsTheWords() {
+        let next = editing(meds, ItemEdit.reminder(time: "07:30", anchor: nil))
+        var want = meds
+        want.reminderTime = "07:30"
+        #expect(next == want)
+
+        var spaced = meds
+        spaced.reminderAnchor = "  I pour my coffee\u{A0}"
+        let trimmed = editing(spaced, ItemEdit.reminder(time: "07:30", anchor: nil))
+        #expect(trimmed.reminderTime == "07:30")
+        #expect(trimmed.reminderAnchor == "I pour my coffee")
+
+        // A first reminder has no words to keep.
+        let fresh = editing(roadmap, ItemEdit.reminder(time: "09:00", anchor: nil))
+        #expect(fresh.reminderTime == "09:00" && fresh.reminderAnchor == nil)
+    }
+
+    @Test func newWordsAreTrimmedAndBlankIsNone() {
+        let set = editing(meds, ItemEdit.reminder(time: "08:00", anchor: .set("  I fill the kettle ")))
+        #expect(set.reminderTime == "08:00" && set.reminderAnchor == "I fill the kettle")
+        let cleared = editing(meds, ItemEdit.reminder(time: "08:00", anchor: .clear))
+        #expect(cleared.reminderTime == "08:00" && cleared.reminderAnchor == nil)
+        let blank = editing(meds, ItemEdit.reminder(time: "08:00", anchor: .set("   ")))
+        #expect(blank.reminderTime == "08:00" && blank.reminderAnchor == nil)
+        // The same values are the same item.
+        #expect(editing(meds, ItemEdit.reminder(time: "08:00", anchor: .set("I pour my coffee"))) == meds)
+        #expect(editing(meds, ItemEdit.reminder(time: "08:00", anchor: nil)) == meds)
+    }
+
+    /// No time turns it off: both columns go, whatever the words say, and
+    /// nothing else moves.
+    @Test func noTimeClearsBoth() {
+        var off = meds
+        off.reminderTime = nil
+        off.reminderAnchor = nil
+        #expect(editing(meds, ItemEdit.reminder(time: nil, anchor: nil)) == off)
+        #expect(editing(meds, ItemEdit.reminder(time: nil, anchor: .set("I pour my coffee"))) == off)
+        #expect(editing(meds, ItemEdit.reminder(time: nil, anchor: .clear)) == off)
+        #expect(editing(off, ItemEdit.reminder(time: nil, anchor: nil)) == off)
     }
 }
 

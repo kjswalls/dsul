@@ -3,7 +3,8 @@
 A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
 and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
 the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
-and notes, Delete, a new subtask and a streak reset are saved to the server.
+and notes, Delete, a new subtask, a streak reset, and an item's priority,
+times per day and reminder are saved to the server.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -18,10 +19,11 @@ Tap an item anywhere (a row, a block on the grid, a braindump row, a search
 result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
 Pause until, Resume, whichever apply), and Delete behind ⋯. Tap the title or
-the notes to edit them in place; the chips are read-only for now, except the
-streak chip, which opens this week and Reset streak. Add a subtask from the
-Subtasks section, one at a time or by pasting a list. A tap on a row's circle
-still just ticks it.
+the notes to edit them in place. Tap the priority, times per day or reminder
+chip to change it, and Add property (a plus once there are chips) to add one;
+the other chips are read-only for now, and the streak chip opens this week and
+Reset streak. Add a subtask from the Subtasks section, one at a time or by
+pasting a list. A tap on a row's circle still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
@@ -229,11 +231,13 @@ three bets), and no sample note runs past four lines.
 
 The hosted tests pin what each field sends and what Delete says, but not how
 typing feels. Check on the iPhone, on the sample or signed in once the
-server's `title`, `notes`, `delete`, `addSubtask` and `resetStreak` writes are
-deployed (against an older server the title and notes stay text, ⋯ has no
-Delete, there is no Add a subtask row and the streak popover has no Reset); a
-check that needs one or the other says so. The sample comes back whole each
-time the app starts, so relaunch it to undo a delete or a reset.
+server's `title`, `notes`, `delete`, `addSubtask`, `resetStreak`, `priority`,
+`timesPerDay` and `reminder` writes are deployed (against an older server the
+title and notes stay text, ⋯ has no Delete, there is no Add a subtask row, the
+streak popover has no Reset, and the chips stay read-only, with no chevrons,
+and there is no Add property); a check that needs one or the other says so.
+The sample comes back whole each time the app starts, so relaunch it to undo
+a delete, a reset or a chip.
 
 1. **Title.**
    - Tap the title: the keyboard rises, the sheet goes full height, the bar
@@ -304,8 +308,75 @@ time the app starts, so relaunch it to undo a delete or a reset.
      Meds' or Draft Q4 roadmap's wrap), the gaps between the lines are even,
      and the first line sits as far under the notes as before.
 
-Checks 7 and 8 (the chips) come with the PRs that add them, so the numbers
-match memory/plans/ios-app.md.
+7. **Add property.**
+   - On Call the bank in the braindump (no date, priority or reminder), the
+     only chip reads "Add property". On Groceries it is a plus after the
+     project chip. VoiceOver reads both as "Add property".
+   - Tap it on Groceries: Priority and Remind…, and no Times per day (a task
+     has none). On Journal: Times per day and Remind…. On Meds: Times per day
+     alone. On Draft Q4 roadmap's subtask Pull the September numbers (its own
+     page): Priority alone, and no Remind….
+   - Priority ▸ Low on Groceries: one pick, a "Low" chip with a chevron
+     appears, and Priority is gone from Add property.
+   - Remind… opens the Remind sheet at once, with the wheel already up.
+   - Once everything it offers is set, there is no Add property.
+8. **The chips.**
+   - Priority: on Draft Q4 roadmap, tap "High": None, Low, Medium and High,
+     with High checked. Pick Medium: the chip reads Medium at once. Pick None:
+     the chip goes, and Priority is back in Add property.
+   - Times per day: Add property ▸ Times per day ▸ 3× a day on Journal: a "3×"
+     chip. Tap it: 1× a day to 5× a day, with 3 checked. Pick 5×: the chip
+     reads 5×. Pick 1× a day: the chip goes, and Times per day is back in Add
+     property.
+   - Remind: tap Meds' reminder chip. "Nudge me at" shows 8:00 on a wheel,
+     then "Right after" with "I pour my coffee" and its note, then No
+     reminder. Turn the wheel to 7:30 and tap Done: the chip reads "After I
+     pour my coffee · 7:30 am".
+   - On Journal, Add property ▸ Remind…: the wheel at 9:00 under "Nudge me
+     at", then Right after, and no No reminder. Tap Cancel: it closes with
+     nothing asked, and Journal still has no reminder. Again, and this time
+     type "I put the kettle on" and tap Done: the chip reads "After I put the
+     kettle on · 9:00 am".
+   - On Call the dentist (at 3:00 pm), No reminder, then Add property ▸
+     Remind…: the wheel opens at 3:00 pm. Tap Done without touching it: the
+     chip reads 3:00 pm.
+   - Change something, then swipe the sheet down: it stays. Tap Cancel:
+     "Discard changes?". Keep editing keeps your change; Discard closes, and
+     the chip is as it was. With nothing changed, a swipe or Cancel just
+     closes.
+   - No reminder: the sheet closes and the chip goes, at once, with no
+     confirm.
+   - On Call the bank (no date), Add property ▸ Remind…: "Give this a date and
+     it will fire…" shows under the wheel.
+   - In Right after, Return lowers the keyboard and leaves the sheet up;
+     nothing is saved until Done.
+   - Signed in, with Time format set to 24-hour on the web (Settings → Your
+     day) and a pull to refresh: the wheel runs 0 to 23 with no AM/PM, and the
+     chip shows the same clock.
+   - Signed in, with Time format set to 12-hour on the web and 24-Hour Time on
+     in the phone's Settings (General → Date & Time): the wheel shows AM/PM.
+   - Signed in, with Habit reminders off on the web (Settings → Rituals) and a
+     pull to refresh: "Habit reminders are off in dsul's settings on the web,
+     under Rituals, so this won't fire." Turn it on and refresh: the line
+     goes. On the sample, neither line shows.
+   - Signed in, on an account first signed in on the phone and never opened on
+     the web (the phone never stores a time zone): "Reminders need your time
+     zone, which dsul picks up when you open it on the web." Open dsul on the
+     web once, then pull to refresh: the line goes.
+   - Signed in, on a habit of your own with a reminder and cue words: open its
+     Remind sheet on the phone and leave it up. On the web, change its cue
+     words. Without refreshing the phone (leave the app in the foreground, so
+     no fetch lands), move only the wheel and tap Done: the web shows the new
+     time with the words typed on the web.
+   - The same the other way round, with a fetch in between: with the sheet
+     up, change the habit's time on the web. Leave the phone app for over a
+     minute and come back, so the return fetches (the sheet stays up). Change
+     only the words and tap Done: the web keeps the time set on the web.
+     Without that fetch the phone hasn't seen the new time, and sends the one
+     it last fetched, since a reminder edit always carries its time.
+
+Check 8's other chips (date, time, repeat, project, routines and seasons) come
+with the PRs that make them editable.
 
 9. **Offline** (signed in only: the sample sends nothing, so nothing fails).
    With Airplane Mode and Wi-Fi off:
@@ -319,7 +390,9 @@ match memory/plans/ios-app.md.
      once;
    - on a habit of your own with a streak, not yet done today: reset its
      streak. It turns back, with the banner. Then, back online, tick it today:
-     the count is one more than before the reset, and matches the web.
+     the count is one more than before the reset, and matches the web;
+   - change a priority, a times per day and a reminder: each turns back, with
+     the banner.
 10. **VoiceOver.**
     - The title reads as "Title", a text field and a heading; the notes, and
       "Notes" where there are none, as a button with the hint "Edits the
@@ -336,11 +409,29 @@ match memory/plans/ios-app.md.
       back on "Add a subtask".
     - Type "Milk" in the field without pressing Return, then close the sheet.
       Milk is added, and VoiceOver says "Added Milk" after the sheet has gone.
+    - An editable chip reads its words, "button" and a hint: "High priority,
+      button, Changes the priority"; "3 times a day, button, Changes how many
+      times a day"; "Reminder: After I pour my coffee, 8:00 am, button,
+      Changes the reminder". A read-only chip (the date, the project) has no
+      hint.
+    - "Add property" is a button. Pick None on a priority chip: VoiceOver
+      moves to Add property.
+    - On Pull the September numbers' page, Add property ▸ Priority ▸ Low: Add
+      property goes, and VoiceOver lands on the new chip, "Low priority".
+    - On Journal, Add property ▸ Times per day ▸ 3× a day: VoiceOver lands on
+      "3 times a day".
+    - In the Remind sheet, "Nudge me at" and "Right after" are read before
+      their rows, the wheel is "Time", and No reminder is a button. After No
+      reminder, VoiceOver is on Add property. After Done on a new reminder
+      from Add property, it is on the new reminder chip.
+    - In the times menus, the choices read "3 times a day".
 11. **The largest text size.** The title and the notes still edit, and
     Delete's confirm shows all its words. The streak chip opens a sheet, not a
     popover, at half height with a grabber. The flame and the count sit above
     the week's seven days, the week and Reset streak fit, and a swipe down
-    closes it.
+    closes it. Every chip still opens its menu, Add property's submenus fit,
+    and the Remind sheet scrolls to its wheel, Right after, its notes, the
+    settings lines and No reminder.
 12. **Lime, in light and dark mode.**
     - The caret, the selection, the nav bar's Done and the confirm's Cancel
       aren't lime.
@@ -351,6 +442,15 @@ match memory/plans/ios-app.md.
     - Reset streak is red, in the popover and in the confirm. The subtask
       field's caret isn't lime. The streak chip's count is the label colour,
       at rest and while pressed.
+    - The chips' words, symbols and chevrons, and Add property's plus, are the
+      label colour or gray, not lime, at rest and while pressed, and a press
+      scales them. The menus' checkmarks, the wheel, the Remind sheet's Cancel
+      and Done, and Right after's caret aren't lime. No reminder and Discard
+      are red.
+    - On Call the dentist with six lines of notes (check 2), a tap on the
+      words Show all expands the notes, and a tap in the gap just above the
+      Medium chip opens its menu: the few points between them go to the chip,
+      which is nearer.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
     - Return in the subtask field (a vertical field with a Next key) adds
@@ -369,6 +469,24 @@ match memory/plans/ios-app.md.
     - Signed in: retitle or delete something, then go to the home screen at
       once: it still reaches the server (the background time the app asks
       for while a write is out).
+    - A pick in a chip's menu, and in an Add property submenu, writes once:
+      signed in, the edit history at the foot of the web's item panel shows
+      one new entry.
+    - Remind… in Add property opens the Remind sheet (a sheet presented from
+      a menu action).
+    - The wheel runs in GMT. Signed in, on a habit of your own with a
+      reminder at 8:00, with the phone set to another time zone (Settings →
+      General → Date & Time): the wheel shows 8:00, and Done without touching
+      it sends nothing (the web's edit history has no new entry).
+    - The wheel's 12- or 24-hour clock follows the locale's hour cycle.
+    - A swipe on a changed Remind sheet is refused
+      (interactiveDismissDisabled), and the discard confirm comes up over the
+      nested sheet.
+    - Return in Right after (a one-line field with a Done key) lowers the
+      keyboard and leaves the sheet up.
+    - VoiceOver moves where the code sends it once a menu or the Remind sheet
+      has closed (`@AccessibilityFocusState`, set 600 ms later), and iOS's own
+      return of focus to the menu's source doesn't win.
 
 ## Rules
 
