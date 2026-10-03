@@ -1260,6 +1260,8 @@ type TypeCaps = {
   hasPriority: boolean;
   /** `fields.includes('notes')`, the sheet's gate on editing the notes. */
   hasNotes: boolean;
+  /** `fields.includes('duration')`, the Time sheet's gate on its lengths (lib/item-edit.ts no_duration). */
+  hasDuration: boolean;
   /** `form.titlePlaceholder`, the title field's empty prompt. */
   titlePlaceholder: string;
   /** The delete confirm's title (lib/item-verbs.ts deleteConfirmTitle). */
@@ -1332,6 +1334,7 @@ function buildCaps(): CapsFixture {
       dailyCounts: c.counters.dailyCounts,
       hasPriority: c.fields.includes('priority'),
       hasNotes: c.fields.includes('notes'),
+      hasDuration: c.fields.includes('duration'),
       titlePlaceholder: c.form.titlePlaceholder,
       deleteTitle: deleteConfirmTitle(c.label),
       deleteDescriptions: deleteDescriptions(c),

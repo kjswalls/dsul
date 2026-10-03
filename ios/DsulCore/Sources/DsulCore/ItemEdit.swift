@@ -10,7 +10,18 @@ import Foundation
 //   a priority (`no_priority` without the field), a habit's times a day
 //   (`no_count` without daily counts, and none reads as 1), and a reminder
 //   (`not_remindable` on a subtask), whose two columns are written together
-//   by `reminderPatch`, the dialog's own rule;
+//   by `reminderPatch`, the dialog's own rule. From 2d, the Time chip
+//   (`time`): a part of day, a specific time and a length, refused on a
+//   subtask (`not_for_subtask`), on a date-anchored item with no date
+//   (`not_dated`), and as a length on a type with none (`no_duration`), and
+//   written as lib/item-edit.ts `timeEditPatch` writes it: the dialog's
+//   `commitEdit` over the keys sent, its first pass the mappers through
+//   lib/planner-store.ts `updateTask` / `updateHabit` (whose auto-correct
+//   files a new time where it falls), its second `planTimeEdit` through
+//   `scheduleTask` / `unscheduleTask` / `scheduleHabit`
+//   (`scheduleTaskPatch`, `UNSCHEDULE_TASK_PATCH`, `scheduleHabitPatch`).
+//   The date is not here: the Date chip writes through `move` (`moving`, in
+//   VerbWrites.swift);
 // - lib/planner-store.ts `deleteTask` / `deleteHabit` (`deleting`): the item
 //   and, for anything but a habit, its live subtasks, which is also the child
 //   pass lib/app-api.ts `del` makes on the server, in the same order;
@@ -30,9 +41,10 @@ import Foundation
 // Text is measured in UTF-16 units, JavaScript's `length`, which is what every
 // cap on the server counts. What the phone SENDS is the intent (POST
 // /api/app/items/:id `title`, `notes`, `delete`, `addSubtask`, `resetStreak`,
-// `priority`, `timesPerDay`, `reminder`, built by ItemWriteBody.swift), never
-// these items. `Place` and `reinserting` are the phone's alone: they put a
-// deleted item back where it was when its delete fails.
+// `priority`, `timesPerDay`, `reminder`, `time`, built by
+// ItemWriteBody.swift), never these items. `Place` and `reinserting` are the
+// phone's alone: they put a deleted item back where it was when its delete
+// fails.
 
 /// One typed edit, as the phone sends it (lib/item-edit.ts `ItemEdit`). Each
 /// is its own server action, so a server that doesn't list one in `writes`
@@ -52,6 +64,14 @@ public enum ItemEdit: Sendable, Hashable {
     /// rule: words never typed are never sent); `.set` sends the cleaned
     /// words (`cleanAnchor`); `.clear` sends null.
     case reminder(time: String?, anchor: ColumnWrite?)
+    /// The Time chip. Each key nil when it didn't change, and then left off
+    /// the wire: `bucket` .set("anytime" | "morning" | "afternoon" |
+    /// "evening") or .clear (none, a habit's only, which the sheet never
+    /// offers); `startTime` .set("HH:mm") or .clear (no specific time);
+    /// `duration` minutes, 1...`EditLimits.durationMax`. A key the edit
+    /// doesn't send is the item's own when the server resolves it, and when
+    /// `editing` replays it.
+    case time(bucket: ColumnWrite?, startTime: ColumnWrite?, duration: Int?)
 
     /// The server's `action` name, which is also what `writes` lists.
     public var action: String {
@@ -61,20 +81,24 @@ public enum ItemEdit: Sendable, Hashable {
         case .priority: "priority"
         case .timesPerDay: "timesPerDay"
         case .reminder: "reminder"
+        case .time: "time"
         }
     }
 }
 
 /// lib/item-edit.ts `EDIT_LIMITS`, `OUTER_LIMITS` and `NEW_TITLE_LIMIT`, the
-/// text caps in UTF-16 units, and `TIMES_PER_DAY_MAX`, a count, which
-/// edit-writes.json's `limits` pins. The first are growth-only caps: nothing
-/// else in dsul caps these fields, so stored text may already be longer, and
-/// it may stay as long but never grow (`growthLimit`). The outer ones are what
-/// one request may carry at all; a stored value past them is too long to edit
-/// on the phone. `newTitle` is the plain cap on a title that has nothing
-/// stored to grow from: a new subtask, and a capture. `timesPerDayMax` is the
-/// most a habit's times a day may be set to, the last of the web chip's
-/// "1× a day" to "5× a day".
+/// text caps in UTF-16 units, `TIMES_PER_DAY_MAX`, a count, and
+/// `MAX_DURATION_MINUTES`, in minutes, which edit-writes.json's `limits` pins.
+/// The first are growth-only caps: nothing else in dsul caps these fields, so
+/// stored text may already be longer, and it may stay as long but never grow
+/// (`growthLimit`). The outer ones are what one request may carry at all; a
+/// stored value past them is too long to edit on the phone. `newTitle` is the
+/// plain cap on a title that has nothing stored to grow from: a new subtask,
+/// and a capture. `timesPerDayMax` is the most a habit's times a day may be
+/// set to, the last of the web chip's "1× a day" to "5× a day". `durationMax`
+/// is the longest one request may set a length to, a day: the web's chip
+/// offers 15 to 120 minutes and a block resized on the grid stores any
+/// length, so it is only what the route's schema takes.
 public enum EditLimits {
     public static let title = 500
     public static let notes = 50_000
@@ -85,6 +109,7 @@ public enum EditLimits {
     public static let outerAnchor = 10_000
     public static let newTitle = 500
     public static let timesPerDayMax = 5
+    public static let durationMax = 1440
 }
 
 /// The longest a field may grow to: `cap`, or what is stored when that is
@@ -188,6 +213,9 @@ public func cleanNotes(_ raw: String, limit: Int) -> String? {
 /// - `timesPerDay`: `caps.dailyCounts` (`no_count`), so a habit's alone.
 /// - `reminder`: `isRemindable(_:caps:)` (`not_remindable`), so never a
 ///   subtask's.
+/// - `time`: not a subtask (`not_for_subtask`), and a date-anchored type only
+///   once it has a date (`not_dated`: the dialog shows Time only then), so a
+///   habit's always, and an undated task's never.
 /// - any other name: false. Delete, Add a subtask and Reset streak have gates
 ///   of their own, and an action the phone doesn't know is never sent.
 /// The growth caps are the field's to keep (`growthLimit`), not this gate's.
@@ -203,14 +231,35 @@ public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
         return caps.dailyCounts
     case "reminder":
         return isRemindable(item, caps: caps)
+    case "time":
+        return !isSubtask(item) && (!caps.dateAnchored || !(item.startDate ?? "").isEmpty)
     default:
         return false
     }
 }
 
-/// `editAllowed(action:on:caps:)` for `edit`'s own action.
+/// `editAllowed(action:on:caps:)` for `edit`'s own action, and for `.time`
+/// the body's own rules too, which no row is needed to judge: the route's
+/// schema refuses an empty time edit and a time beside Anytime or none
+/// (`invalid`), and a length outside 1...`EditLimits.durationMax`, and
+/// `editRefusal` a length on a type with none (`no_duration`). The row's rule
+/// (a time that would land beside a STORED Anytime or none) is the sheet's to
+/// keep, as a growth cap is.
 public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool {
-    return editAllowed(action: edit.action, on: item, caps: caps)
+    guard editAllowed(action: edit.action, on: item, caps: caps) else { return false }
+    switch edit {
+    case .time(let bucket, let startTime, let duration):
+        if bucket == nil && startTime == nil && duration == nil { return false }
+        if case .set? = startTime, bucket == .set(DayBucket.anytime.rawValue) || bucket == .clear {
+            return false
+        }
+        if let duration, !caps.hasDuration || !(1...EditLimits.durationMax).contains(duration) {
+            return false
+        }
+        return true
+    case .title, .notes, .priority, .timesPerDay, .reminder:
+        return true
+    }
 }
 
 /// The item after `edit`: lib/item-edit.ts `editPatch` applied, which is what
@@ -228,6 +277,7 @@ public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool
 ///   `anchor`'s when it has one, else the stored ones, trimmed either way,
 ///   and none when blank: a time sent alone keeps the words, as the dialog's
 ///   draft holds them and writes both.
+/// - time: `timeEditPatch` (`editingTime`), the dialog's two passes.
 /// No cap is applied: the server refuses growth rather than cutting it, and
 /// the field never sends it.
 public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
@@ -254,6 +304,104 @@ public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
             next.reminderTime = nil
             next.reminderAnchor = nil
         }
+    case .time(let bucket, let startTime, let duration):
+        return editingTime(item, bucket: bucket, startTime: startTime, duration: duration)
+    }
+    return next
+}
+
+/// lib/item-edit.ts `timeEditPatch` applied to the item: the dialog's Time
+/// chip as components/planner/item-dialog.tsx `commitEdit` saves it, over the
+/// keys sent.
+/// 1. The draft is seeded as `draftFromItem` seeds it: the stored bucket, or
+///    "none"; the stored time, or ""; the stored length, or the type's
+///    `defaultBlockMinutes`. Each sent key goes over its seed (.clear is
+///    "none" or ""), and a key is changed only when it differs from its seed,
+///    as the dialog marks it. None changed: the item as it was.
+/// 2. The first pass, the mappers through lib/planner-store.ts `updateTask` /
+///    `updateHabit`: the length, and the time ("" is none), which, when there
+///    is one, files the stored bucket where it falls (`autoCorrectBucket`).
+/// 3. The second pass, `planTimeEdit`, only when the bucket or the time
+///    changed, compared against the item as stored, never as the first pass
+///    left it:
+///    - a dated task-like item: its bucket ("none" reads as Anytime, the
+///      dialog's `effectiveBucket`) different from the stored one, or the
+///      item not scheduled (nil reads as not): `scheduleTaskPatch`, which
+///      schedules it, files the time, and takes it out of any project block
+///      (`inProjectBlock` false; the phone decodes no `previousStart*`).
+///      Else a time different from the stored one, compared raw (a stored ""
+///      is not nil, as `!==` has it): the time alone, through `updateTask`'s
+///      auto-correct against the bucket as the first pass left it, so a
+///      project block is kept;
+///    - an undated, scheduled task-like item: `UNSCHEDULE_TASK_PATCH`, back
+///      to the braindump. The gate refuses every undated date-anchored item
+///      first (`not_dated`), so this is ported only so the two can't drift;
+///    - a habit with a bucket: when it or the time differs from the stored
+///      one, `scheduleHabitPatch`, the bucket auto-corrected to the time (so
+///      Evening under a 9:00 time files back in Morning);
+///    - a habit with "none" and a stored bucket: both cleared.
+/// The server merges the two passes into one write; the end row is the same.
+private func editingTime(_ item: Item, bucket: ColumnWrite?, startTime: ColumnWrite?, duration: Int?) -> Item {
+    // The seed, as draftFromItem has it.
+    let seedBucket = item.timeBucket.flatMap { $0.isEmpty ? nil : $0 } ?? "none"
+    let seedTime = item.startTime ?? ""
+    let seedDuration = item.duration ?? caps(item.typeName).defaultBlockMinutes
+    // The draft: each sent key over its seed.
+    let draftBucket = bucket.map { $0.value ?? "none" } ?? seedBucket
+    let draftTime = startTime.map { $0.value ?? "" } ?? seedTime
+    let draftDuration = duration ?? seedDuration
+    // The keys the dialog would mark changed.
+    let bucketMoved = draftBucket != seedBucket
+    let timeMoved = draftTime != seedTime
+    let durationMoved = draftDuration != seedDuration
+    guard bucketMoved || timeMoved || durationMoved else { return item }
+
+    // `d.startTime || undefined`.
+    let time: String? = draftTime.isEmpty ? nil : draftTime
+    var next = item
+
+    // Pass 1: the mappers, then updateTask's / updateHabit's auto-correct
+    // against the stored bucket.
+    if durationMoved { next.duration = draftDuration }
+    if timeMoved {
+        next.startTime = time
+        if let time { next.timeBucket = autoCorrectBucket(time, item.timeBucket) }
+    }
+
+    // Pass 2: planTimeEdit, which runs only when something schedule-shaped
+    // moved.
+    guard bucketMoved || timeMoved else { return next }
+    if !item.isHabit {
+        if !(item.startDate ?? "").isEmpty {
+            let effective = draftBucket == "none" ? DayBucket.anytime.rawValue : draftBucket
+            if effective != item.timeBucket || !(item.isScheduled ?? false) {
+                // scheduleTaskPatch.
+                next.isScheduled = true
+                next.timeBucket = autoCorrectBucket(time, effective) ?? effective
+                next.startTime = time
+                next.inProjectBlock = false
+            } else if time != item.startTime {
+                // `updateTask(id, { startTime })`, its auto-correct against
+                // the bucket as pass 1 left it.
+                next.startTime = time
+                if let time { next.timeBucket = autoCorrectBucket(time, next.timeBucket) }
+            }
+        } else if item.isScheduled ?? false {
+            // UNSCHEDULE_TASK_PATCH.
+            next.isScheduled = false
+            next.timeBucket = nil
+            next.startTime = nil
+            next.startDate = nil
+        }
+    } else if draftBucket != "none" {
+        // scheduleHabit writes unconditionally, so the dialog guards it.
+        if draftBucket != item.timeBucket || time != item.startTime {
+            next.timeBucket = autoCorrectBucket(time, draftBucket) ?? draftBucket
+            next.startTime = time
+        }
+    } else if item.timeBucket != nil {
+        next.timeBucket = nil
+        next.startTime = nil
     }
     return next
 }

@@ -18,7 +18,9 @@ import SwiftUI
 ///   (`StreakPopover`). From 2c the priority and times per day chips are
 ///   menus and the reminder chip opens the Remind sheet, where the server
 ///   and the type take the edit, and "+ Add property" ends the row while one
-///   of those is unset (`PropertyMenus`, `ReminderSheet`);
+///   of those is unset (`PropertyMenus`, `ReminderSheet`). From 2d the date
+///   chip is a menu that moves the item (the bar's Reschedule, offered where
+///   that verb is), and the time chip opens the Time sheet (`TimeSheet`);
 /// - the subtasks, each ticked in place, its title opening its own page, and
 ///   Delete in its context menu; then, where one may be added, "Add a
 ///   subtask", which swaps in a field (`SubtaskField`).
@@ -57,8 +59,8 @@ struct ItemDetail: View {
     /// has the stack's back button instead.
     let isRoot: Bool
     @Binding var path: [UUID]
-    /// The sheet open over the stack (a day picker, the Remind sheet), the
-    /// stack's, shared by every page.
+    /// The sheet open over the stack (a day picker, the Remind sheet, the
+    /// Time sheet), the stack's, shared by every page.
     @Binding var editor: SheetEditor?
     /// The sheet's detent (`ItemSheetStack`'s), raised to large when a field
     /// takes focus, so the keyboard never leaves the field a sliver.
@@ -144,11 +146,14 @@ struct ItemDetail: View {
         .onDisappear {
             commitFields(leaving: true)
         }
-        // The Remind sheet closing (Done, No reminder, Cancel, a swipe):
-        // VoiceOver goes to the reminder's chip, or to Add property when
-        // there is none now. Only on the page whose item it edited.
+        // A chip's sheet closing (the Remind or Time sheet's Done, No
+        // reminder, Cancel, a swipe; Pick a date…'s confirm or Cancel):
+        // VoiceOver goes to that chip, or to Add property when there is none
+        // now (Anytime takes the time chip). Only on the page whose item it
+        // edited (`ItemSheetModel.chipKind`).
         .onChange(of: editor) { old, new in
-            if old == .reminder(id), new == nil { settleVoiceOver(on: .reminder) }
+            guard new == nil, let old, let kind = ItemSheetModel.chipKind(closing: old, on: id) else { return }
+            settleVoiceOver(on: kind)
         }
         .confirmationDialog(confirmTitle, isPresented: $confirming, titleVisibility: .visible,
                             presenting: confirm) { pending in
@@ -411,7 +416,10 @@ struct ItemDetail: View {
         let chips = shownChips(item)
         let showsStreak = planner.showsStreak(for: item)
         let canEdit: (String) -> Bool = { planner.canEdit($0, item) }
-        let unset = ItemSheetModel.unsetProperties(item, shown: chips, canEdit: canEdit)
+        let unset = ItemSheetModel.unsetProperties(item, shown: chips, offered: offered, canEdit: canEdit)
+        // The Date menu's days, as drawn now; a pick reads them again
+        // (`setDate`).
+        let dates = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
         if showsStreak || !chips.isEmpty || !unset.isEmpty {
             let flow = ChipFlow()
             flow {
@@ -419,12 +427,15 @@ struct ItemDetail: View {
                     streakChip(item, ctx, offered: offered)
                 }
                 ForEach(chips) { chip in
-                    chipControl(chip, item, canEdit: canEdit)
+                    chipControl(chip, item, offered: offered, dates: dates, canEdit: canEdit)
                 }
                 if !unset.isEmpty {
                     AddPropertyMenu(kinds: unset,
                                     label: ItemSheetModel.seedLabel(rowHasOthers: showsStreak || !chips.isEmpty),
+                                    dates: dates,
                                     onPriority: { pick(.priority($0), settling: .priority) },
+                                    onDate: { setDate($0) },
+                                    onTime: { editor = .time(item.id) },
                                     onTimes: { pick(.timesPerDay($0), settling: .timesPerDay) },
                                     onRemind: { editor = .reminder(item.id) })
                         .accessibilityFocused($chipVoiceOver, equals: .seed)
@@ -443,19 +454,25 @@ struct ItemDetail: View {
     }
 
     /// One property chip. Where it edits (`ItemSheetModel.chipEditor`), a
-    /// menu (priority, times per day) or a button that opens its sheet (the
-    /// reminder), labelled on the control itself, as the streak chip and the
-    /// bar's Reschedule menu are, with the button trait and a hint, and with
-    /// VoiceOver's focus bound to it so it can land there after a change.
-    /// Otherwise part 1's read-only chip, in its slot.
+    /// menu (priority, the date, times per day) or a button that opens its
+    /// sheet (the time, the reminder), labelled on the control itself, as the
+    /// streak chip and the bar's Reschedule menu are, with the button trait
+    /// and a hint, and with VoiceOver's focus bound to it so it can land there
+    /// after a change. Otherwise part 1's read-only chip, in its slot.
+    /// `offered` is the page's `offeredVerbs`, whose Reschedule gates the
+    /// date; `dates` the Date menu's entries.
     @ViewBuilder
-    private func chipControl(_ chip: SheetChip, _ item: SampleItem, canEdit: (String) -> Bool) -> some View {
-        switch ItemSheetModel.chipEditor(chip.kind, item, canEdit: canEdit) {
+    private func chipControl(_ chip: SheetChip, _ item: SampleItem, offered: [VerbID], dates: [DateOption],
+                             canEdit: (String) -> Bool) -> some View {
+        switch ItemSheetModel.chipEditor(chip.kind, item, offered: offered, canEdit: canEdit) {
         case .menu?:
             if chip.kind == .priority {
                 PriorityChipMenu(chip: chip, item: item,
                                  onPick: { pick(.priority($0), settling: .priority) })
                     .accessibilityFocused($chipVoiceOver, equals: .chip(.priority))
+            } else if chip.kind == .date {
+                DateChipMenu(chip: chip, options: dates, onPick: { setDate($0) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.date))
             } else if chip.kind == .timesPerDay {
                 TimesChipMenu(chip: chip, item: item,
                               onPick: { pick(.timesPerDay($0), settling: .timesPerDay) })
@@ -533,13 +550,29 @@ struct ItemDetail: View {
         settleVoiceOver(on: kind)
     }
 
+    /// A pick in the Date menu, the chip's or Add property's Date ▸: Today,
+    /// Tomorrow or Next week moves the item at once, through the planner's
+    /// `move` (the bar's Reschedule, which asks its gate again), on days read
+    /// now, as `reschedule(_:)` reads them; then VoiceOver goes to the date
+    /// chip. Pick a date… opens the sheet's day picker, titled "Date", whose
+    /// closing sends VoiceOver there (`chipKind`).
+    private func setDate(_ choice: DateChoice) {
+        guard let target = ItemSheetModel.dateTarget(choice, today: planner.today,
+                                                     nextWeekStart: planner.nextWeekStart) else {
+            editor = .pickDate(id)
+            return
+        }
+        withAnimation(.snappy) { planner.move(id, to: target.description) }
+        settleVoiceOver(on: .date)
+    }
+
     /// Sends VoiceOver to `kind`'s chip, or to Add property when the chip went
     /// (`ItemSheetModel.voiceOverTarget`), once the screen has settled, as
     /// `announceSettled` waits: by then the menu or the sheet has closed, the
     /// target is drawn, and iOS has handed focus back to their source, which
     /// a pick may have taken away (a seed pick that set the last unset
-    /// property; None, 1× a day or No reminder taking its chip). Never in the
-    /// same transaction as the edit. A gone item moves nothing.
+    /// property; None, 1× a day, No reminder or Anytime taking its chip).
+    /// Never in the same transaction as the edit. A gone item moves nothing.
     private func settleVoiceOver(on kind: SheetChip.Kind) {
         Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))

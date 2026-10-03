@@ -24,7 +24,8 @@
     "resetStreak",
     "priority",
     "timesPerDay",
-    "reminder"
+    "reminder",
+    "time"
   ],
   "items": [
     {

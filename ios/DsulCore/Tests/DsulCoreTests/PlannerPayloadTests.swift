@@ -62,7 +62,7 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twentyFourHour)
         #expect(p.writes == [
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
-            "priority", "timesPerDay", "reminder",
+            "priority", "timesPerDay", "reminder", "time",
         ])
         // The route's test turns Streaks off, a value no default gives.
         #expect(p.settings.streaksEnabled == false)

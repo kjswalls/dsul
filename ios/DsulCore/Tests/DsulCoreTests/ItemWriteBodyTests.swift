@@ -3,7 +3,8 @@ import Testing
 import DsulCore
 
 // ItemWriteBody.swift: the wire JSON of the item sheet's edits (the fields and
-// the chips), its Delete, Add a subtask and Reset streak.
+// the chips, the time chip's keys only when they changed), its Delete, Add a
+// subtask and Reset streak.
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -37,6 +38,8 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
     /// Clearing the notes sends `"notes":null`, clearing the priority
     /// `"priority":null`, and turning the reminder off `"time":null`. A
     /// missing key is refused: each of those fields is nullable, not optional.
+    /// A time edit's clears are null too (no specific time, a habit's no part
+    /// of day), since there a missing key keeps what is stored.
     @Test func aClearSendsNull() throws {
         let cleared = try json(ItemWriteBody.edit(ItemEdit.notes(nil)))
         #expect(cleared == JSONValue.object(["action": .string("notes"), "notes": .null]))
@@ -48,6 +51,8 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(unprioritized == JSONValue.object(["action": .string("priority"), "priority": .null]))
         let off = try json(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: nil)))
         #expect(off == JSONValue.object(["action": .string("reminder"), "time": .null]))
+        let unfiled = try json(ItemWriteBody.edit(ItemEdit.time(bucket: .clear, startTime: .clear, duration: nil)))
+        #expect(unfiled == JSONValue.object(["action": .string("time"), "startTime": .null, "timeBucket": .null]))
     }
 
     /// Every action is `.strict()` on the server: a body carries its own keys
@@ -88,6 +93,24 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(offWithWords == JSONValue.object(["action": .string("reminder"), "time": .null]))
         let offClearing = try json(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: .clear)))
         #expect(offClearing == JSONValue.object(["action": .string("reminder"), "time": .null]))
+
+        // The time chip: each key only when it changed.
+        let times: [(ItemEdit, [String: JSONValue])] = [
+            (.time(bucket: nil, startTime: .set("10:30"), duration: nil), ["startTime": .string("10:30")]),
+            (.time(bucket: .set("morning"), startTime: .set("07:00"), duration: nil),
+             ["startTime": .string("07:00"), "timeBucket": .string("morning")]),
+            (.time(bucket: .set("anytime"), startTime: .clear, duration: nil),
+             ["startTime": .null, "timeBucket": .string("anytime")]),
+            (.time(bucket: nil, startTime: .clear, duration: nil), ["startTime": .null]),
+            (.time(bucket: nil, startTime: nil, duration: 45), ["duration": .number(45)]),
+            (.time(bucket: .set("evening"), startTime: nil, duration: 60),
+             ["duration": .number(60), "timeBucket": .string("evening")]),
+            (.time(bucket: .clear, startTime: .clear, duration: nil), ["startTime": .null, "timeBucket": .null]),
+        ]
+        for (edit, keys) in times {
+            let body = try json(ItemWriteBody.edit(edit))
+            #expect(body == JSONValue.object(keys.merging(["action": .string("time")]) { a, _ in a }), "\(edit)")
+        }
     }
 
     /// APIClient encodes with sorted keys; this is the request it sends.
@@ -115,6 +138,17 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
             (.reminder(time: "08:00", anchor: .clear), #"{"action":"reminder","anchor":null,"time":"08:00"}"#),
             (.reminder(time: nil, anchor: nil), #"{"action":"reminder","time":null}"#),
             (.reminder(time: nil, anchor: .set("x")), #"{"action":"reminder","time":null}"#),
+            (.time(bucket: nil, startTime: .set("10:30"), duration: nil), #"{"action":"time","startTime":"10:30"}"#),
+            (.time(bucket: .set("morning"), startTime: .set("07:00"), duration: nil),
+             #"{"action":"time","startTime":"07:00","timeBucket":"morning"}"#),
+            (.time(bucket: .set("anytime"), startTime: .clear, duration: nil),
+             #"{"action":"time","startTime":null,"timeBucket":"anytime"}"#),
+            (.time(bucket: nil, startTime: .clear, duration: nil), #"{"action":"time","startTime":null}"#),
+            (.time(bucket: nil, startTime: nil, duration: 45), #"{"action":"time","duration":45}"#),
+            (.time(bucket: .set("evening"), startTime: nil, duration: 60),
+             #"{"action":"time","duration":60,"timeBucket":"evening"}"#),
+            (.time(bucket: .clear, startTime: .clear, duration: nil),
+             #"{"action":"time","startTime":null,"timeBucket":null}"#),
         ]
         for (edit, wire) in bodies {
             let bytes = try encoder.encode(ItemWriteBody.edit(edit))
@@ -138,6 +172,24 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(ItemEdit.priority(nil).action == "priority")
         #expect(ItemEdit.timesPerDay(5).action == "timesPerDay")
         #expect(ItemEdit.reminder(time: "08:00", anchor: .clear).action == "reminder")
+        #expect(ItemWriteBody.edit(ItemEdit.time(bucket: nil, startTime: nil, duration: 45)).action == "time")
+        #expect(ItemEdit.time(bucket: .set("evening"), startTime: .clear, duration: nil).action == "time")
+    }
+
+    /// A time edit's key that didn't change is absent, never null: absent
+    /// keeps what is stored, and null would clear it.
+    @Test func anUnchangedKeyIsLeftOff() throws {
+        let longer = ItemWriteBody.edit(ItemEdit.time(bucket: nil, startTime: nil, duration: 45))
+        let value = try json(longer)
+        #expect(value == JSONValue.object(["action": .string("time"), "duration": .number(45)]))
+        guard case .object(let fields) = value else {
+            Issue.record("not an object")
+            return
+        }
+        #expect(fields["timeBucket"] == nil && fields["startTime"] == nil)
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        #expect(String(decoding: try encoder.encode(longer), as: UTF8.self) == #"{"action":"time","duration":45}"#)
     }
 
     /// A count is a JSON number. `JSONValue` tries `Bool` before `Double`, and

@@ -1,7 +1,7 @@
 import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { PrioritySchema } from '@dsul/types';
+import { PrioritySchema, TimeBucketSchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
   createItem,
@@ -24,10 +24,12 @@ import {
   editPatch,
   editRefusal,
   editShapeFromRow,
+  MAX_DURATION_MINUTES,
   NEW_TITLE_LIMIT,
   OUTER_LIMITS,
   resetStreakPatch,
   resetStreakRefusal,
+  scheduleTaskPatch,
   subtaskRefusal,
   TIMES_PER_DAY_MAX,
 } from './item-edit';
@@ -54,8 +56,9 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * skip or unskip a day; drop a braindump row on an hour; carry an item to
  * another day; pause or resume one; retitle it, rewrite its notes or delete
  * it; add a subtask under it, reset its streak; set its priority, a habit's
- * times a day or its reminder) is one verb here that does what the web's own
- * store action does for the same gesture, through the same lib/db.ts calls.
+ * times a day, its reminder, or its part of day, time and length) is one verb
+ * here that does what the web's own store action does for the same gesture,
+ * through the same lib/db.ts calls.
  * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
  * phone reads a 400-day window, and an array written back from a window
  * deletes what the window did not show. Nor is there a generic
@@ -198,6 +201,18 @@ const ItemWriteActions = z.discriminatedUnion('action', [
       anchor: z.string().max(OUTER_LIMITS.anchor).nullable().optional(),
     })
     .strict(),
+  // The Time chip (2d): part of day, a specific time and a length, each only when it changed.
+  z
+    .object({
+      action: z.literal('time'),
+      /** null is none: a habit's "No specific bucket". A task's none reads as Anytime. */
+      timeBucket: TimeBucketSchema.nullable().optional(),
+      /** HH:mm, or null for no specific time. Only beside a part of day that holds one. */
+      startTime: TimeStrSchema.nullable().optional(),
+      /** Minutes. */
+      duration: z.number().int().min(1).max(MAX_DURATION_MINUTES).optional(),
+    })
+    .strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -211,6 +226,16 @@ export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
   // be dropped while the answer said 200. The phone never builds this body.
   if (body.action === 'reminder' && body.time === null && body.anchor !== undefined) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['anchor'], message: 'only with a time' });
+  }
+  if (body.action === 'time') {
+    // An empty time edit would answer 200 having done nothing; the phone never sends one.
+    if (body.timeBucket === undefined && body.startTime === undefined && body.duration === undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: [], message: 'nothing to change' });
+    }
+    // Anytime and none hold no time (the dialog's Anytime row clears it).
+    if (typeof body.startTime === 'string' && (body.timeBucket === 'anytime' || body.timeBucket === null)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startTime'], message: 'only with a part of day' });
+    }
   }
 });
 
@@ -543,6 +568,8 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   priority: 'priority',
   timesPerDay: 'times_per_day',
   reminder: 'reminder_time, reminder_anchor',
+  // start_date, time_bucket and in_project_block are in every read.
+  time: 'start_time, is_scheduled, duration',
 };
 
 interface WriteRow {
@@ -567,6 +594,9 @@ interface WriteRow {
   times_per_day?: number | null;
   reminder_time?: string | null;
   reminder_anchor?: string | null;
+  start_time?: string | null;
+  is_scheduled?: boolean | null;
+  duration?: number | null;
 }
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -629,6 +659,7 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   priority     the priority chip (the dialog's priority → updateTask)
  *   timesPerDay  a habit's times a day (the dialog's chip → updateHabit)
  *   reminder     Remind, its time and cue words together, or off (the dialog's chip, reminderPatch)
+ *   time         part of day, a specific time and a length (the dialog's Time chip, commitEdit)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -695,6 +726,7 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
       case 'priority':
       case 'timesPerDay':
       case 'reminder':
+      case 'time':
         return await edit(ctx, body);
       case 'delete':
         return await del(client, userId, id, row.type);
@@ -768,14 +800,10 @@ async function schedule(ctx: WriteContext, body: IntentBody<'schedule'>): Promis
   if (!config.dateAnchored) return refused('not_schedulable', 400);
   // A grid drop passes an hour bucket, never 'anytime', so autoCorrectBucket
   // always lands on the time's own bucket. The date is the day the row was
-  // dropped on, which is the anchor a braindump row needs to show there.
+  // dropped on, which is the anchor a braindump row needs to show there. The
+  // rest is the store's own patch, so the block release is stated once.
   const updates: Partial<Task> = {
-    isScheduled: true,
-    timeBucket: getBucketForTime(body.startTime),
-    startTime: body.startTime,
-    inProjectBlock: false,
-    previousStartTime: undefined,
-    previousStartDate: undefined,
+    ...scheduleTaskPatch(getBucketForTime(body.startTime), body.startTime),
     startDate: body.date,
   };
   await updateItem(id, type, updates, undefined, client);
@@ -922,16 +950,21 @@ async function pause(ctx: WriteContext, body: IntentBody<'pause'>): Promise<Resp
  * a custom item's priority goes through taskUpdatesToRow and a habit's count
  * through habitUpdatesToRow. Nothing here clears reminder_sent_key (a new time
  * re-arms itself; lib/db.ts says why) or a snooze.
+ *
+ * `time`, the Time chip, is the dialog's commitEdit over the keys sent
+ * (timeEditPatch): one updateItem where the web makes up to two, the same end
+ * row, and a project block released when the part of day moves
+ * (scheduleTaskPatch). It never writes the date; the Date chip is `move`.
  */
 async function edit(
   ctx: WriteContext,
-  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder'>,
+  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time'>,
 ): Promise<Response> {
   const { client, id, type, config, row } = ctx;
   const shape = editShapeFromRow(row);
   const refusal = editRefusal(shape, body, config);
   if (refusal) return refused(refusal.code, refusal.status);
-  const patch = editPatch(shape, body);
+  const patch = editPatch(shape, body, config);
   if (Object.keys(patch).length === 0) return ok();
   await updateItem(id, type, patch, undefined, client);
   return ok();

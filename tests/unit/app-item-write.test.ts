@@ -39,6 +39,11 @@ import path from 'path';
  * each but the reminder's two, which are written together as the dialog writes
  * them; never reminder_sent_key or a snooze. They replay from the fixture too.
  *
+ * `time` is the panel's Time chip, the dialog's commitEdit over the keys sent
+ * (lib/item-edit.ts timeEditPatch): one update where the web makes up to two,
+ * a project block released only when the part of day moves, and never the
+ * date. It replays from the fixture as well.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
@@ -257,6 +262,7 @@ describe('reading the row first', () => {
     ['priority', { action: 'priority', priority: 'high' }],
     ['timesPerDay', { action: 'timesPerDay', timesPerDay: 2 }],
     ['reminder', { action: 'reminder', time: '08:00' }],
+    ['time', { action: 'time', duration: 45 }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -290,12 +296,14 @@ describe('reading the row first', () => {
     ['priority', { action: 'priority', priority: 'high' }, `${BASE_COLUMNS}, priority`],
     ['timesPerDay', { action: 'timesPerDay', timesPerDay: 2 }, `${BASE_COLUMNS}, times_per_day`],
     ['reminder', { action: 'reminder', time: '08:00' }, `${BASE_COLUMNS}, reminder_time, reminder_anchor`],
+    // start_date, time_bucket and in_project_block are in every read.
+    ['time', { action: 'time', duration: 45 }, `${BASE_COLUMNS}, start_time, is_scheduled, duration`],
     ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
     // The type and the parent decide it, and both are in every read.
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
   ])('reads for %s only the column it decides on', async (_, body, columns) => {
     // A tick never reads the notes, which can run to 200,000 characters.
-    row = { ...ONE_OFF, title: 'Call the bank', notes: null };
+    row = { ...ONE_OFF, title: 'Call the bank', notes: null, start_time: null, is_scheduled: true, duration: null };
     await write(body);
     expect(called(queries[0], 'select')).toEqual([[columns]]);
   });
@@ -1012,6 +1020,9 @@ function rowFor(item: Item): Record<string, unknown> {
     times_per_day: i.timesPerDay ?? null,
     reminder_time: i.reminderTime ?? null,
     reminder_anchor: i.reminderAnchor ?? null,
+    start_time: i.startTime ?? null,
+    is_scheduled: i.isScheduled ?? null,
+    duration: i.duration ?? null,
   };
 }
 
@@ -1019,7 +1030,7 @@ const selected = (q: Query) => String(called(q, 'select')[0]?.[0] ?? '');
 /** A head count, as nextTaskOrder asks it: `select('id', { count: 'exact', head: true })`. */
 const isCount = (q: Query) => (called(q, 'select')[0]?.[1] as { head?: boolean } | undefined)?.head === true;
 /** What a refusal code answers: the row saying no to a well-formed body is a 409, anything else a 400. */
-const REFUSAL_STATUS: Record<string, number> = { nested: 409 };
+const REFUSAL_STATUS: Record<string, number> = { nested: 409, not_dated: 409 };
 /** The ids the route stamped deleted_at on, by id: the cascade's parent_item_id updates aside. */
 const deletedIds = () =>
   queries
@@ -1072,9 +1083,10 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
 
       if (c.refusal) {
         // A refusal is the row's: a cap, a missing field or capability (400),
-        // or a subtask under a subtask (409). Or the schema's, for the one body
-        // it refuses (cue words with no time), which also carries `details`.
-        // Nothing is written or created.
+        // a subtask under a subtask or a time on an undated item (409). Or the
+        // schema's, for the bodies it refuses (cue words with no time, a time
+        // beside Anytime, a time edit with nothing in it), which also carry
+        // `details`. Nothing is written or created.
         expect(res.status).toBe(REFUSAL_STATUS[c.refusal] ?? 400);
         expect((await res.json()).error).toBe(c.refusal);
         expect(writes('items', 'update')).toEqual([]);
@@ -1772,6 +1784,135 @@ describe('reminder', () => {
   });
 });
 
+describe('time', () => {
+  /** A dated one-off in the Afternoon, no time and no length stored, the Time chip's columns read. */
+  const DATED = { ...ONE_OFF, start_time: null, is_scheduled: true, duration: null };
+  /** The same, in a project block. */
+  const BLOCK = { ...DATED, in_project_block: true };
+
+  beforeEach(() => {
+    row = DATED;
+  });
+
+  it('writes a new time in its own part of day alone, with the web’s event', async () => {
+    const res = await write({ action: 'time', startTime: '15:30' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ start_time: '15:30' }]);
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'task', action: 'update', payload: { startTime: '15:30' } },
+    ]);
+  });
+
+  it('files a time from another part of day there, as the mapper’s auto-correct does', async () => {
+    expect((await write({ action: 'time', startTime: '09:00' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ start_time: '09:00', time_bucket: 'morning' }]);
+  });
+
+  it('writes a length alone, and nothing for the default length with none stored', async () => {
+    expect((await write({ action: 'time', duration: 90 })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ duration: 90 }]);
+
+    queries = [];
+    const res = await write({ action: 'time', duration: 30 });
+    expect(res.status).toBe(200);
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('releases a project block when the part of day moves', async () => {
+    row = BLOCK;
+    expect((await write({ action: 'time', timeBucket: 'evening' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([
+      {
+        is_scheduled: true,
+        time_bucket: 'evening',
+        start_time: null,
+        in_project_block: false,
+        previous_start_time: null,
+        previous_start_date: null,
+      },
+    ]);
+  });
+
+  it('keeps a project block when only the time moves', async () => {
+    row = BLOCK;
+    expect((await write({ action: 'time', startTime: '13:00' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ start_time: '13:00' }]);
+  });
+
+  it('drops the time with Anytime, which is a new part of day: the whole schedule write', async () => {
+    row = { ...DATED, start_time: '12:30' };
+    expect((await write({ action: 'time', timeBucket: 'anytime', startTime: null })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([
+      updatesToRow('task', {
+        isScheduled: true,
+        timeBucket: 'anytime',
+        startTime: undefined,
+        inProjectBlock: false,
+        previousStartTime: undefined,
+        previousStartDate: undefined,
+      }),
+    ]);
+    expect(Object.keys(writes('items', 'update')[0])).toHaveLength(6);
+  });
+
+  it('409s an undated item, and 400s a subtask, writing nothing', async () => {
+    row = { ...DATED, start_date: null };
+    let res = await write({ action: 'time', duration: 45 });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'not_dated' });
+
+    row = { ...DATED, parent_item_id: PARENT };
+    res = await write({ action: 'time', duration: 45 });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_for_subtask' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it.each([
+    ['Anytime', 'anytime'],
+    ['no part of day', null],
+  ])('400s a time sent alone on %s, which holds none', async (_, bucket) => {
+    row = { ...DATED, time_bucket: bucket };
+    const res = await write({ action: 'time', startTime: '09:00' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'invalid' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+
+  it('clears a habit’s part of day and time with both null, through the habit allowlist', async () => {
+    row = { ...HABIT, start_time: '07:00', is_scheduled: null, duration: 15 };
+    expect((await write({ action: 'time', timeBucket: null, startTime: null })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ time_bucket: null, start_time: null }]);
+  });
+
+  it('writes a habit’s part of day the time overrules back as it was, as the web does', async () => {
+    row = { ...HABIT, start_time: '07:00', is_scheduled: null, duration: 15 };
+    expect((await write({ action: 'time', timeBucket: 'evening' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ time_bucket: 'morning', start_time: '07:00' }]);
+  });
+
+  it('never writes the date', async () => {
+    for (const [r, body] of [
+      [DATED, { action: 'time', startTime: '15:30' }],
+      [DATED, { action: 'time', startTime: '09:00', timeBucket: 'morning' }],
+      [{ ...DATED, is_scheduled: false }, { action: 'time', startTime: '10:00' }],
+      [BLOCK, { action: 'time', timeBucket: 'evening' }],
+      [DATED, { action: 'time', duration: 60, timeBucket: 'evening' }],
+      [{ ...HABIT, start_time: '07:00', is_scheduled: null, duration: 15 }, { action: 'time', startTime: '21:00' }],
+    ] as const) {
+      row = r;
+      expect((await write(body)).status, JSON.stringify(body)).toBe(200);
+    }
+    const updates = writes('items', 'update');
+    expect(updates).toHaveLength(6);
+    for (const update of updates) expect(update).not.toHaveProperty('start_date');
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -1831,6 +1972,17 @@ describe('validation', () => {
     ['cue words over 10,000 characters', { action: 'reminder', time: '08:00', anchor: 'x'.repeat(10_001) }],
     ['cue words that are not a string', { action: 'reminder', time: '08:00', anchor: 5 }],
     ['a reminder with a key it does not take', { action: 'reminder', time: '08:00', snooze: null }],
+    ['a time edit with nothing in it', { action: 'time' }],
+    ['a time at 24:00', { action: 'time', startTime: '24:00' }],
+    ['a time without its leading zero', { action: 'time', startTime: '9:00' }],
+    ['a part of day that is not one of the four', { action: 'time', timeBucket: 'noon' }],
+    ['a time beside Anytime', { action: 'time', timeBucket: 'anytime', startTime: '09:00' }],
+    ['a time beside no part of day', { action: 'time', timeBucket: null, startTime: '09:00' }],
+    ['a length of 0', { action: 'time', duration: 0 }],
+    ['a length over a day', { action: 'time', duration: 1441 }],
+    ['a fractional length', { action: 'time', duration: 1.5 }],
+    ['a length as a string', { action: 'time', duration: '30' }],
+    ['a time edit with a date in it', { action: 'time', duration: 30, startDate: DATE }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -1894,6 +2046,7 @@ describe('webhooks', () => {
       [ONE_OFF, { action: 'priority', priority: 'high' }],
       [{ ...HABIT, times_per_day: 3 }, { action: 'timesPerDay', timesPerDay: 2 }],
       [ONE_OFF, { action: 'reminder', time: '08:00' }],
+      [{ ...ONE_OFF, start_time: null, is_scheduled: true, duration: null }, { action: 'time', duration: 45 }],
     ] as const) {
       row = r;
       // A new subtask is a created row: 201, as a capture is.

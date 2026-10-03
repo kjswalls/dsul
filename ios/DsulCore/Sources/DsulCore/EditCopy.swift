@@ -11,10 +11,16 @@ import Foundation
 // something the web no longer does. Checked against the web by
 // EditWritesFixtureTests (edit-writes.json's `copy` and `streakRun`).
 //
+// From 2d, the Time sheet's lengths and their words too: lib/item-edit.ts
+// `DURATION_ORDER` (`durationPresets`) and `durationLabel`, which the dialog's
+// Duration rows and its time chip read (checked by edit-writes.json's
+// `durations`).
+//
 // The phone's own words (the "Add a subtask" row, the confirm's title) are
 // the app's, in ItemSheetModel.
 
-/// lib/item-edit.ts `EDIT_COPY`.
+/// lib/item-edit.ts `EDIT_COPY`, and from 2d the lengths and their words
+/// (`DURATION_ORDER`, `durationLabel`).
 public enum EditCopy {
     /// Reset streak's confirm: what goes (the counter) and what stays (the
     /// days already ticked), as lib/planner-store.ts `resetHabitStreak` writes it.
@@ -32,6 +38,22 @@ public enum EditCopy {
     /// Under the time, for a dated type with no date (`reminderNeedsDate`).
     public static let reminderNeedsDate = "Give this a date and it will fire. "
         + "Without one there is no day for the reminder to land on."
+
+    /// lib/item-edit.ts `DURATION_ORDER`: the lengths the Time sheet offers,
+    /// in minutes, in the dialog's order.
+    public static let durationPresets: [Int] = [15, 30, 45, 60, 90, 120]
+
+    /// lib/item-edit.ts `DURATION_LABELS`, keyed by minutes.
+    private static let durationLabels: [Int: String] = [
+        15: "15 min", 30: "30 min", 45: "45 min", 60: "1 hour", 90: "1.5 hours", 120: "2 hours",
+    ]
+
+    /// lib/item-edit.ts `durationLabel`: a length as the web names it, its
+    /// preset's words ("1 hour", "1.5 hours"), else "N min" (the time chip's
+    /// fallback, so 75 is "75 min").
+    public static func durationLabel(_ minutes: Int) -> String {
+        return durationLabels[minutes] ?? "\(minutes) min"
+    }
 }
 
 /// lib/item-edit.ts `streakRunText`, the streak flame's tooltip: "No streak

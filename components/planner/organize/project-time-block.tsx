@@ -17,6 +17,7 @@ import { BufferedInput } from './detail-parts';
 import { cn } from '@/lib/utils';
 import { PropertyChip } from '@/components/primitives/property-chip';
 import { blockWhen, hasTimeBlock } from '@/lib/project-block';
+import { BUCKET_START_TIMES } from '@/lib/time-bucket';
 import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
 
 /**
@@ -40,10 +41,11 @@ import type { Project, RepeatFrequency, TimeBucket } from '@/lib/planner-types';
  * away how it was set up, and nothing reads those fields while the block is off.
  */
 
+/** Each part of day's default start is lib/time-bucket.ts's, which the iPhone's Add a time shares. */
 const BUCKETS: { value: TimeBucket; label: string; defaultTime: string }[] = [
-  { value: 'morning', label: 'Morning', defaultTime: '05:00' },
-  { value: 'afternoon', label: 'Afternoon', defaultTime: '12:00' },
-  { value: 'evening', label: 'Evening', defaultTime: '17:00' },
+  { value: 'morning', label: 'Morning', defaultTime: BUCKET_START_TIMES.morning },
+  { value: 'afternoon', label: 'Afternoon', defaultTime: BUCKET_START_TIMES.afternoon },
+  { value: 'evening', label: 'Evening', defaultTime: BUCKET_START_TIMES.evening },
 ];
 
 const REPEATS: { value: RepeatFrequency; label: string }[] = [
@@ -335,7 +337,7 @@ export function ProjectTimeBlock({ project }: { project: Project }) {
 }
 
 const bucketDefault = (bucket: TimeBucket) =>
-  BUCKETS.find((b) => b.value === bucket)?.defaultTime ?? '05:00';
+  BUCKETS.find((b) => b.value === bucket)?.defaultTime ?? BUCKET_START_TIMES.morning;
 
 /**
  * The block as a property chip in the pane's chip row — "Weekdays · 6–7pm",

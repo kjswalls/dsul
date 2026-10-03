@@ -235,6 +235,7 @@ describe('every /api/app route is behind it', () => {
     ['POST /api/app/items/:id priority', itemWrite({ action: 'priority', priority: 'high' })],
     ['POST /api/app/items/:id timesPerDay', itemWrite({ action: 'timesPerDay', timesPerDay: 2 })],
     ['POST /api/app/items/:id reminder', itemWrite({ action: 'reminder', time: '08:00' })],
+    ['POST /api/app/items/:id time', itemWrite({ action: 'time', duration: 45 })],
   ];
 
   it('lists every intent the item route takes', () => {

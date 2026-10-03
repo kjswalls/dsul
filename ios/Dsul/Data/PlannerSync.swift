@@ -69,8 +69,8 @@ final class PlannerSync {
     /// the item writes POST /api/app/items/:id takes, named by its `action`
     /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
     /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
-    /// priority, times a day and reminder, Delete, Add a subtask and Reset
-    /// streak).
+    /// priority, times a day, reminder and time, Delete, Add a subtask and
+    /// Reset streak).
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -84,7 +84,7 @@ final class PlannerSync {
         /// server uses only when the account stores none.
         case pause(id: UUID, paused: Bool, pausedUntil: String?, timeZone: String?)
         /// A typed edit, sent as its own action (`title`, `notes`, `priority`,
-        /// `timesPerDay`, `reminder`).
+        /// `timesPerDay`, `reminder`, `time`).
         case edit(id: UUID, ItemEdit)
         /// Delete. `removed` is what the planner's step took out (DsulCore
         /// `deleting`): the item, then its subtasks, each with its place,

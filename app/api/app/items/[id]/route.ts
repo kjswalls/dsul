@@ -16,6 +16,9 @@ import { postItemWrite } from '@/lib/app-api';
  *   { action: 'timesPerDay', timesPerDay }                a habit's times a day, 1-5
  *   { action: 'reminder', time, anchor? }                 the reminder; a null time turns it off,
  *                                                         and the anchor is sent only when it changed
+ *   { action: 'time', timeBucket?, startTime?, duration? }
+ *                                                         part of day, a specific time and a length;
+ *                                                         each key only when it changed
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

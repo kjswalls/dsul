@@ -19,6 +19,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "What needs to be done?",
       "deleteTitle": "Delete task?",
       "deleteDescriptions": [
@@ -51,6 +52,7 @@
       "dailyCounts": true,
       "hasPriority": false,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "What habit to track?",
       "deleteTitle": "Delete habit?",
       "deleteDescriptions": [
@@ -83,6 +85,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a errand…",
       "deleteTitle": "Delete errand?",
       "deleteDescriptions": [
@@ -115,6 +118,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a side-quest…",
       "deleteTitle": "Delete side-quest?",
       "deleteDescriptions": [
@@ -147,6 +151,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a book_club…",
       "deleteTitle": "Delete book_club?",
       "deleteDescriptions": [
@@ -179,6 +184,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a x…",
       "deleteTitle": "Delete x?",
       "deleteDescriptions": [
