@@ -7,8 +7,8 @@ import path from 'path';
  *
  * verb-writes-fixtures.test.ts pins what the sheet's verbs write; this pins its
  * edits (lib/item-edit.ts: the title, the notes, and the priority, times per
- * day and reminder chips), its Delete, Add a subtask and Reset streak. Each
- * case drives the web's REAL
+ * day, reminder and time chips), its Delete, Add a subtask and Reset streak.
+ * Each case drives the web's REAL
  * gesture for the same change over the real planner store, with the db layer
  * mocked and the clock pinned (Thursday 1 October), and records to
  * tests/fixtures/day/edit-writes.json:
@@ -28,8 +28,10 @@ import path from 'path';
  * The gestures: a typed field or a chip is the item panel's (components/
  * planner/item-dialog.tsx): the draft seeded from the item (draftFromItem), the
  * field or chip's change applied, the keys that differ from the seed marked
- * changed, then taskUpdatesFromDraft / habitUpdatesFromDraft and the store
- * action they name. Delete is lib/item-verbs.ts's: deleteTask, or
+ * changed, then the panel's own save, commitEdit: taskUpdatesFromDraft /
+ * habitUpdatesFromDraft and the store action they name, then the schedule pass
+ * (lib/item-edit.ts planTimeEdit, through scheduleTask / scheduleHabit /
+ * updateTask). Delete is lib/item-verbs.ts's: deleteTask, or
  * deleteHabit. Add a subtask is the panel's subtask field
  * (components/planner/item-detail-sections.tsx SubtasksSection.addSubtask):
  * addTask with the trimmed title and the parent. Reset streak is the verb the
@@ -37,9 +39,16 @@ import path from 'path';
  * so at 0 it writes nothing. A refused case comes from `refusal` alone, since
  * the store has no such refusal: the dialog never caps a field, and never
  * offers a subtask under a habit or a subtask, a reset on a task, a priority on
- * a habit, a count on a task or a reminder on a subtask. One case,
- * `reminder-anchor-without-time`, has a body the route's schema refuses: cue
- * words with no time, which the phone never builds.
+ * a habit, a count on a task, a reminder on a subtask, or a time on a subtask
+ * or an undated task. Three cases have a
+ * body the route's schema refuses, which the phone never builds:
+ * `reminder-anchor-without-time` (cue words with no time),
+ * `time-refused-anytime-with-a-time` and `time-refused-empty`.
+ *
+ * The Time chip's cases (2d) go through commitEdit's both passes: a part of
+ * day picked away from the stored one is scheduleTask, which releases a
+ * project block; a new time alone is updateTask twice (the mapper, then the
+ * second pass's setTime), auto-corrected, and keeps the block.
  *
  * In `updates`, a key present with null is a column cleared (the store wrote
  * undefined, which lib/db.ts sends as SQL NULL).
@@ -48,14 +57,21 @@ import path from 'path';
  * `cleanNotes` use, for DsulCore's `jsTrim`: Foundation's whitespace set is a
  * different one.
  *
- * `limits` holds lib/item-edit.ts's caps, the cue words' and the times a day's
- * among them.
+ * `limits` holds lib/item-edit.ts's caps, the cue words', the times a day's
+ * and the length's among them.
  *
  * `bulk` pins lib/bulk-add.ts's `isBulkPaste` and `splitBulkLinesWithMeta`,
  * which DsulCore's BulkLines.swift ports for a paste into the new-subtask
  * field: what a line break is, which list markers come off, and JS's `\s`.
  * `streakRun` pins `streakRunText`, and `copy` the sentences both sides say
  * (`EDIT_COPY`).
+ *
+ * `buckets` pins lib/time-bucket.ts, which DsulCore's DayBuckets.swift ports
+ * for the Time sheet: `forTime` is getBucketForTime (JS's parseInt on the
+ * hour, edges included), `corrected` is autoCorrectBucket (null kept as null)
+ * and `starts` is BUCKET_START_TIMES, where Add a time starts the wheel.
+ * `durations` pins the Time chip's lengths and their words (lib/item-edit.ts
+ * DURATION_ORDER and durationLabel), for DsulCore's EditCopy.
  *
  * Regenerate with:
  *
@@ -126,20 +142,17 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 
 import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
-import {
-  DRAFT_KEYS,
-  draftFromItem,
-  habitUpdatesFromDraft,
-  taskUpdatesFromDraft,
-  type ItemDraft,
-} from '@/components/planner/item-dialog';
+import { DRAFT_KEYS, commitEdit, draftFromItem, type ItemDraft } from '@/components/planner/item-dialog';
 import { ItemWriteSchema } from '@/lib/app-api';
 import {
+  DURATION_ORDER,
   EDIT_COPY,
   EDIT_LIMITS,
+  MAX_DURATION_MINUTES,
   NEW_TITLE_LIMIT,
   OUTER_LIMITS,
   TIMES_PER_DAY_MAX,
+  durationLabel,
   editPatch,
   editRefusal,
   editShapeFromRow,
@@ -152,7 +165,8 @@ import {
 import { MAX_BULK_ITEMS, isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
-import type { Item } from '@/lib/planner-types';
+import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
+import type { Item, TimeBucket } from '@/lib/planner-types';
 
 const FILE = path.resolve(__dirname, '../fixtures/day/edit-writes.json');
 const USER = 'user-1';
@@ -202,6 +216,12 @@ const shapeOf = (item: Item) => {
     timesPerDay?: number;
     reminderTime?: string;
     reminderAnchor?: string;
+    startDate?: string;
+    timeBucket?: string;
+    inProjectBlock?: boolean;
+    startTime?: string;
+    isScheduled?: boolean;
+    duration?: number;
   };
   return editShapeFromRow({
     id: item.id,
@@ -214,6 +234,12 @@ const shapeOf = (item: Item) => {
     times_per_day: i.timesPerDay ?? null,
     reminder_time: i.reminderTime ?? null,
     reminder_anchor: i.reminderAnchor ?? null,
+    start_date: i.startDate ?? null,
+    time_bucket: i.timeBucket ?? null,
+    in_project_block: i.inProjectBlock ?? null,
+    start_time: i.startTime ?? null,
+    is_scheduled: i.isScheduled ?? null,
+    duration: i.duration ?? null,
   });
 };
 
@@ -247,21 +273,16 @@ async function run(items: Item[], act: () => void): Promise<{ after: Item | null
 /**
  * The item panel's edit: the draft seeded as the panel seeds it (draftFromItem), `change`
  * applied as the chip or field applies it, the changed DRAFT_KEYS found as scheduleSave finds
- * them, and the mapper's payload sent to the store action it names. A draft equal to its seed
- * marks nothing changed, so nothing is written; a blank title is never saved.
+ * them, and the panel's own save (commitEdit): the mapper's payload to the store action it
+ * names, then the schedule pass. A draft equal to its seed marks nothing changed, so nothing
+ * is written; commitEdit never saves a blank title.
  */
 function editInDialog(item: Item, change: Partial<ItemDraft>): void {
   const prev = draftFromItem(item);
   const next: ItemDraft = { ...prev, ...change };
   const changed = DRAFT_KEYS.filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]));
-  if (changed.length === 0 || !next.title.trim()) return;
-  if (item.type === 'habit') {
-    const updates = habitUpdatesFromDraft(next, changed);
-    if (Object.keys(updates).length > 0) store().updateHabit(item.id, updates);
-  } else {
-    const updates = taskUpdatesFromDraft(next, changed);
-    if (Object.keys(updates).length > 0) store().updateTask(item.id, updates);
-  }
+  if (changed.length === 0) return;
+  commitEdit(item, next, changed);
 }
 
 /** lib/item-verbs.ts's Delete, once confirmed. */
@@ -290,6 +311,14 @@ function panelChange(edit: ItemEdit): Partial<ItemDraft> {
       return {
         reminderTime: edit.time,
         ...(edit.anchor !== undefined ? { reminderAnchor: edit.anchor ?? '' } : {}),
+      };
+    case 'time':
+      // The chip's rows: a part of day (Anytime also clears the time, so a body with Anytime
+      // carries startTime: null), the time input or No specific time, and a length.
+      return {
+        ...(edit.timeBucket !== undefined ? { timeBucket: edit.timeBucket ?? 'none' } : {}),
+        ...(edit.startTime !== undefined ? { startTime: edit.startTime ?? '' } : {}),
+        ...(edit.duration !== undefined ? { duration: String(edit.duration) } : {}),
       };
   }
 }
@@ -331,7 +360,16 @@ type EditLimits = {
   anchor: number;
   outerAnchor: number;
   timesPerDayMax: number;
+  durationMax: number;
 };
+/** lib/time-bucket.ts's rules, which DsulCore's bucketForTime, autoCorrectBucket and bucketStartTime must equal. */
+type EditBuckets = {
+  forTime: { time: string; bucket: TimeBucket }[];
+  corrected: { time: string; bucket: TimeBucket | null; expected: TimeBucket | null }[];
+  starts: Record<'morning' | 'afternoon' | 'evening', string>;
+};
+/** The Time chip's lengths and their words, which DsulCore's EditCopy must equal. */
+type EditDurations = { presets: number[]; labels: { minutes: number; label: string }[] };
 type EditWrites = {
   today: string;
   limits: EditLimits;
@@ -340,6 +378,8 @@ type EditWrites = {
   bulk: BulkCase[];
   streakRun: StreakRunCase[];
   copy: Record<string, string>;
+  buckets: EditBuckets;
+  durations: EditDurations;
 };
 
 async function editCase(name: string, item: Item, edit: ItemEdit, refusal: string | null = null): Promise<EditCase> {
@@ -605,6 +645,123 @@ async function build(): Promise<EditWrites> {
     cases.push(await editCase(...args));
   }
 
+  // The Time chip (2d): a part of day, a specific time and a length, through commitEdit's both
+  // passes. A task in a project block, its own slot remembered.
+  const block = (n: number) =>
+    task(n, 'Review PRs', {
+      startDate: TODAY,
+      timeBucket: 'morning',
+      inProjectBlock: true,
+      previousStartTime: '14:00',
+      previousStartDate: '2026-09-30',
+    });
+  for (const args of [
+    // Not scheduled, so a time schedules it (scheduleTask), the block fields cleared.
+    [
+      'time-unscheduled-dated',
+      task(1240, 'Draft Q4 roadmap', { startDate: TODAY, timeBucket: 'morning', isScheduled: false }),
+      { action: 'time', startTime: '10:00' },
+    ],
+    [
+      'time-same-bucket-new-time',
+      task(1241, 'Draft Q4 roadmap', { startDate: TODAY, timeBucket: 'morning', startTime: '09:00', duration: 120 }),
+      { action: 'time', startTime: '10:30' },
+    ],
+    [
+      'time-crossing-buckets-by-bucket',
+      task(1242, 'Gym', { startDate: TODAY, timeBucket: 'evening', startTime: '17:30', duration: 60 }),
+      { action: 'time', timeBucket: 'morning', startTime: '07:00' },
+    ],
+    // The mapper's auto-correct files the time: no part of day sent.
+    [
+      'time-crossing-buckets-by-time',
+      task(1243, 'Standup', { startDate: TODAY, timeBucket: 'morning', startTime: '10:00' }),
+      { action: 'time', startTime: '15:00' },
+    ],
+    [
+      'time-anytime-drops-time',
+      task(1244, 'Lunch walk', { startDate: TODAY, timeBucket: 'afternoon', startTime: '12:30' }),
+      { action: 'time', timeBucket: 'anytime', startTime: null },
+    ],
+    // The dialog's effectiveBucket: a dated task with none reads as Anytime, and picking it
+    // writes it. The phone never sends this (Anytime is already checked there).
+    ['time-dated-no-bucket-anytime', task(1245, 'Call the bank', { startDate: TODAY }), { action: 'time', timeBucket: 'anytime' }],
+    [
+      'time-habit-set',
+      habit(1250, 'Stretch', { timeBucket: 'morning' }),
+      { action: 'time', timeBucket: 'evening', startTime: '21:00' },
+    ],
+    [
+      'time-habit-no-specific-time',
+      habit(1251, 'Meds', { timeBucket: 'morning', startTime: '08:00' }),
+      { action: 'time', startTime: null },
+    ],
+    // "No specific bucket": the server takes it; the phone's sheet never offers it.
+    [
+      'time-habit-clear',
+      habit(1252, 'Read', { timeBucket: 'evening', startTime: '21:30' }),
+      { action: 'time', timeBucket: null, startTime: null },
+    ],
+    // The time files the habit back in Morning, and the web writes it anyway.
+    [
+      'time-habit-time-overrules-bucket',
+      habit(1253, 'Meds', { timeBucket: 'morning', startTime: '09:00' }),
+      { action: 'time', timeBucket: 'evening' },
+    ],
+    // A part of day picked away from the block's releases it; a new time alone keeps it.
+    ['time-in-project-block-by-bucket', block(1260), { action: 'time', timeBucket: 'afternoon' }],
+    ['time-in-project-block-same-bucket', block(1261), { action: 'time', startTime: '09:30' }],
+    ['time-in-project-block-cross-bucket-by-time', block(1262), { action: 'time', startTime: '15:00' }],
+    [
+      'time-duration-only',
+      task(1263, 'Review PRs', { startDate: TODAY, timeBucket: 'afternoon', startTime: '13:30', duration: 60 }),
+      { action: 'time', duration: 90 },
+    ],
+    // A length alone never schedules.
+    [
+      'time-duration-only-unscheduled',
+      task(1264, 'Groceries', { startDate: TODAY, timeBucket: 'anytime', isScheduled: false }),
+      { action: 'time', duration: 45 },
+    ],
+    // None stored reads as the type's default block, 30: already so.
+    [
+      'time-duration-seed-unchanged',
+      task(1265, 'Call the dentist', { startDate: TODAY, timeBucket: 'afternoon', startTime: '15:00' }),
+      { action: 'time', duration: 30 },
+    ],
+    ['time-duration-habit', habit(1266, 'Journal', { timeBucket: 'morning', duration: 15 }), { action: 'time', duration: 30 }],
+    [
+      'time-custom',
+      custom(1267, 'errand', 'Post office', { startDate: TODAY, timeBucket: 'afternoon' }),
+      { action: 'time', timeBucket: 'evening' },
+    ],
+    ['time-refused-undated', task(1270, 'Call the bank', { isScheduled: false }), { action: 'time', duration: 45 }, 'not_dated'],
+    // Before not_dated: a subtask has no time of its own at all.
+    [
+      'time-refused-subtask',
+      task(1271, 'Pull the numbers', { parentItemId: uid(1241), isScheduled: false }),
+      { action: 'time', duration: 45 },
+      'not_for_subtask',
+    ],
+    // The row's refusal: a time sent alone, under a stored Anytime.
+    [
+      'time-refused-time-on-anytime',
+      task(1272, 'Groceries', { startDate: TODAY, timeBucket: 'anytime' }),
+      { action: 'time', startTime: '09:00' },
+      'invalid',
+    ],
+    // The schema's two: a time beside Anytime in the same body, and nothing to change.
+    [
+      'time-refused-anytime-with-a-time',
+      task(1273, 'Groceries', { startDate: TODAY, timeBucket: 'morning' }),
+      { action: 'time', timeBucket: 'anytime', startTime: '09:00' },
+      'invalid',
+    ],
+    ['time-refused-empty', task(1274, 'Groceries', { startDate: TODAY, timeBucket: 'morning' }), { action: 'time' }, 'invalid'],
+  ] as [string, Item, ItemEdit, string?][]) {
+    cases.push(await editCase(...args));
+  }
+
   const trim = (
     [
       ['spaces', '  hi  '],
@@ -632,9 +789,49 @@ async function build(): Promise<EditWrites> {
     anchor: EDIT_LIMITS.anchor,
     outerAnchor: OUTER_LIMITS.anchor,
     timesPerDayMax: TIMES_PER_DAY_MAX,
+    durationMax: MAX_DURATION_MINUTES,
   };
   const streakRun = [0, 1, 2, 41].map((streak) => ({ streak, text: streakRunText(streak) }));
-  return { today: TODAY, limits, cases, trim, bulk: bulkCases(), streakRun, copy: { ...EDIT_COPY } };
+  // JS's edges among them: parseInt's leading digits ("9:30", "12pm"), its leading space, sign
+  // and hex (" 9:00", "-1:00" filing as Evening under `hour < 5`, "0x0f:00" as 15), NaN for "",
+  // "x" and ":30" (Anytime), "24:00" filing as Evening, and a time that isn't one correcting
+  // Morning to Anytime.
+  const buckets: EditBuckets = {
+    forTime: [
+      ...['00:00', '11:59', '12:00', '16:59', '17:00', '23:59', '04:59', '05:00', '9:30', '24:00', '', 'x'],
+      ...[' 9:00', '12pm', '-1:00', '0x0f:00', ':30'],
+    ].map((time) => ({ time, bucket: getBucketForTime(time) })),
+    corrected: (
+      [
+        ['15:00', 'morning'],
+        ['09:00', 'evening'],
+        ['09:00', 'anytime'],
+        ['', 'morning'],
+        ['21:00', null],
+        ['12:00', 'morning'],
+        ['16:59', 'evening'],
+        ['17:00', 'afternoon'],
+        ['x', 'morning'],
+      ] as [string, TimeBucket | null][]
+    ).map(([time, bucket]) => ({ time, bucket, expected: autoCorrectBucket(time, bucket ?? undefined) ?? null })),
+    starts: { ...BUCKET_START_TIMES },
+  };
+  const presets = DURATION_ORDER.map(Number);
+  const durations: EditDurations = {
+    presets,
+    labels: [...presets, 50, 75, 180].map((minutes) => ({ minutes, label: durationLabel(minutes) })),
+  };
+  return {
+    today: TODAY,
+    limits,
+    cases,
+    trim,
+    bulk: bulkCases(),
+    streakRun,
+    copy: { ...EDIT_COPY },
+    buckets,
+    durations,
+  };
 }
 
 // ── Writing and checking ─────────────────────────────────────────────────────
@@ -676,7 +873,7 @@ describe('edit writes shared with DsulCore', () => {
     expect(JSON.parse(readFileSync(FILE, 'utf8'))).toEqual(JSON.parse(serialize(generated)));
   });
 
-  it('every body is one the route parses, but the one the schema refuses', () => {
+  it('every body is one the route parses, but those the schema refuses', () => {
     const refused: string[] = [];
     for (const c of generated.cases) {
       const parsed = ItemWriteSchema.safeParse(c.edit);
@@ -689,11 +886,11 @@ describe('edit writes shared with DsulCore', () => {
       // Nothing the schema would add or strip: the fixture is the wire.
       expect(asJson(parsed.data), c.name).toEqual(c.edit);
     }
-    expect(refused).toEqual(['reminder-anchor-without-time']);
+    expect(refused).toEqual(['reminder-anchor-without-time', 'time-refused-anytime-with-a-time', 'time-refused-empty']);
   });
 
   it('lib/item-edit.ts refuses, and writes, what the web gesture did', () => {
-    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder'];
+    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time'];
     for (const c of generated.cases) {
       if (!fields.includes(String(c.edit.action))) continue;
       // A body the schema refuses never reaches the row (the check above).
@@ -707,7 +904,7 @@ describe('edit writes shared with DsulCore', () => {
         expect(c.after, c.name).toEqual(asJson(c.item));
         continue;
       }
-      const patch = editPatch(shape, edit);
+      const patch = editPatch(shape, edit, config);
       expect(asWritten(patch), c.name).toEqual(c.updates);
       // The phone's step is the item with the patch on it, and so is the store's.
       expect(asJson({ ...c.item, ...patch }), c.name).toEqual(c.after);
@@ -732,6 +929,23 @@ describe('edit writes shared with DsulCore', () => {
     const unchanged = generated.cases.find((c) => c.name === 'reminder-unchanged')!;
     expect(unchanged.refusal).toBeNull();
     expect(unchanged.updates).toEqual({});
+  });
+
+  it('a time edit never writes the day, and releases a block only when its part of day moves', () => {
+    const times = generated.cases.filter((c) => c.edit.action === 'time' && c.refusal === null);
+    expect(times.length).toBeGreaterThan(0);
+    for (const c of times) expect(c.updates, c.name).not.toHaveProperty('startDate');
+    const blocks = times.filter((c) => (c.item as { inProjectBlock?: boolean }).inProjectBlock);
+    expect(blocks.map((c) => c.name).sort()).toEqual([
+      'time-in-project-block-by-bucket',
+      'time-in-project-block-cross-bucket-by-time',
+      'time-in-project-block-same-bucket',
+    ]);
+    expect(blocks.filter((c) => 'inProjectBlock' in c.updates!).map((c) => c.name)).toEqual([
+      'time-in-project-block-by-bucket',
+    ]);
+    const released = blocks.find((c) => c.name === 'time-in-project-block-by-bucket')!;
+    expect(released.updates).toMatchObject({ inProjectBlock: false, previousStartTime: null, previousStartDate: null });
   });
 
   it('a delete takes the item and, unless it is a habit, its subtasks, in the store’s order', () => {
@@ -800,12 +1014,12 @@ describe('edit writes shared with DsulCore', () => {
     const cases = generated.cases;
     const actions = new Set(cases.map((c) => c.edit.action));
     expect(actions).toEqual(
-      new Set(['title', 'notes', 'delete', 'addSubtask', 'resetStreak', 'priority', 'timesPerDay', 'reminder']),
+      new Set(['title', 'notes', 'delete', 'addSubtask', 'resetStreak', 'priority', 'timesPerDay', 'reminder', 'time']),
     );
     // Refused, already so, a write, and a cleared column.
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'title')).toBe(true);
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'notes')).toBe(true);
-    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder']) {
+    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time']) {
       const of = cases.filter((c) => c.edit.action === action && !c.refusal);
       expect(of.some((c) => Object.keys(c.updates!).length === 0), action).toBe(true);
       expect(of.some((c) => Object.keys(c.updates!).length > 0), action).toBe(true);
@@ -845,6 +1059,39 @@ describe('edit writes shared with DsulCore', () => {
     const timesUnchanged = cases.find((c) => c.name === 'times-unchanged')!;
     expect(timesUnchanged.updates).toEqual({});
     expect(timesUnchanged.item).not.toHaveProperty('timesPerDay');
+    // The Time chip's refusals: each code, and three invalids, two the schema's and one the row's.
+    const times = cases.filter((c) => c.edit.action === 'time');
+    expect(times.some((c) => c.refusal === 'not_dated')).toBe(true);
+    expect(times.some((c) => c.refusal === 'not_for_subtask')).toBe(true);
+    const refusedTimes = times.filter((c) => c.refusal === 'invalid');
+    expect(refusedTimes.filter((c) => !ItemWriteSchema.safeParse(c.edit).success)).toHaveLength(2);
+    expect(refusedTimes.filter((c) => ItemWriteSchema.safeParse(c.edit).success)).toHaveLength(1);
+    // A habit's time cleared with both keys null, a time on a custom item, and a write whose
+    // end row is the stored one.
+    expect(
+      times.some(
+        (c) =>
+          c.item.type === 'habit' &&
+          c.edit.timeBucket === null &&
+          c.updates?.timeBucket === null &&
+          c.updates?.startTime === null,
+      ),
+    ).toBe(true);
+    expect(times.some((c) => c.item.type === 'custom' && c.updates && Object.keys(c.updates).length > 0)).toBe(true);
+    const overruled = cases.find((c) => c.name === 'time-habit-time-overrules-bucket')!;
+    expect(Object.keys(overruled.updates!).length).toBeGreaterThan(0);
+    expect(overruled.after).toEqual(asJson(overruled.item));
+  });
+
+  it('buckets and durations are lib/time-bucket.ts’s and the Time chip’s', () => {
+    expect(generated.buckets.starts).toEqual({ morning: '05:00', afternoon: '12:00', evening: '17:00' });
+    expect(generated.buckets.forTime.find((b) => b.time === '9:30')?.bucket).toBe('morning');
+    expect(generated.buckets.forTime.find((b) => b.time === 'x')?.bucket).toBe('anytime');
+    expect(generated.buckets.corrected.find((b) => b.bucket === null)?.expected).toBeNull();
+    expect(generated.durations.presets).toEqual([15, 30, 45, 60, 90, 120]);
+    expect(generated.durations.labels.find((l) => l.minutes === 90)?.label).toBe('1.5 hours');
+    expect(generated.durations.labels.find((l) => l.minutes === 75)?.label).toBe('75 min');
+    expect(generated.limits.durationMax).toBe(1440);
   });
 
   it('bulk reaches a list, a single line and the cap', () => {

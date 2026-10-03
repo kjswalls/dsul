@@ -352,6 +352,44 @@ import Testing
         #expect(retimed.reminderAnchor == "I pour my coffee")
     }
 
+    /// The sample takes the date and time chips' writes too, sending
+    /// nothing: Call the bank dated today, which files it on Anytime; Draft
+    /// Q4 roadmap's time moved to 3:00 pm, which files it in Afternoon; and
+    /// Meds' part of day to Evening.
+    @Test func theSampleTakesADateAndATimeWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+
+        let bank = try #require(planner.items.first { $0.title == "Call the bank" })
+        #expect(bank.startDate == nil)
+        #expect(!planner.canEdit("time", bank))
+        planner.move(bank.id, to: planner.today.description)
+        let dated = try #require(planner.item(bank.id))
+        #expect(dated.startDate == "2026-10-01")
+        #expect(dated.timeBucket == "anytime")
+        #expect(!planner.braindump.contains { $0.id == bank.id })
+        #expect(planner.buckets()[.anytime]?.contains { $0.id == bank.id } == true)
+        #expect(planner.canEdit("time", dated))
+
+        let roadmap = first(planner, "Draft Q4 roadmap")
+        #expect(roadmap.timeBucket == "morning")
+        #expect(roadmap.startTime == "09:00")
+        planner.edit(roadmap.id, .time(bucket: nil, startTime: .set("15:00"), duration: nil))
+        let afternoon = try #require(planner.item(roadmap.id))
+        #expect(afternoon.timeBucket == "afternoon")
+        #expect(afternoon.startTime == "15:00")
+        #expect(afternoon.duration == 120)
+        #expect(planner.buckets()[.afternoon]?.contains { $0.id == roadmap.id } == true)
+
+        let meds = first(planner, "Meds")
+        #expect(meds.timeBucket == "morning")
+        planner.edit(meds.id, .time(bucket: .set("evening"), startTime: nil, duration: nil))
+        let evening = try #require(planner.item(meds.id))
+        #expect(evening.timeBucket == "evening")
+        #expect(evening.startTime == nil)
+        #expect(planner.buckets()[.evening]?.contains { $0.id == meds.id } == true)
+    }
+
     @Test func nextWeekStartsOnTheUsersWeekStart() {
         let planner = makePlanner()
         // Thursday 2026-10-01; the sample's week starts on Sunday (the default).

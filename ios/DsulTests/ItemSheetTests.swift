@@ -17,7 +17,11 @@ import Testing
 /// off. From 2c: which chips edit and how, what "+ Add property" offers and
 /// says, where VoiceOver goes after a change, the menus' words, and the Remind
 /// sheet's rules (the wheel's clock, what it opens on, what Done sends) and
-/// words.
+/// words. From 2d: the date chip as the Reschedule verb's menu and its days,
+/// the time chip and Time… opening the Time sheet, where VoiceOver goes as a
+/// sheet closes, and the Time sheet's rules (what it opens on, where the check
+/// sits, what a tap changes, Add a time's start, the lengths, what Done sends)
+/// and words.
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -798,11 +802,13 @@ import Testing
                                     seasonNames: planner.seasonNames(for: item.id))
     }
 
-    /// Priority and times per day are menus, the reminder its sheet, each
-    /// only where the type takes it: no priority on a habit, no count on a
-    /// task, no reminder on a subtask, whose page still takes a priority
-    /// (Q7 a). Every other chip stays read-only, and with nothing taken (an
-    /// older server) every chip is.
+    /// Priority and times per day are menus, the reminder and the time their
+    /// sheets, each only where the type takes it: no priority on a habit, no
+    /// count on a task, no reminder on a subtask, whose page still takes a
+    /// priority (Q7 a). The date is offered no Reschedule here (`offered:
+    /// []`), so it stays read-only; `theDateChipIsTheRescheduleVerb` gives it
+    /// one. Every other chip stays read-only, and with nothing taken (an older
+    /// server) every chip is.
     @Test func aChipEditsOnlyWhereTheTypeTakesIt() throws {
         let planner = makePlanner()
         let roadmap = try named(planner, "Draft Q4 roadmap")   // a task
@@ -810,24 +816,29 @@ import Testing
         let pull = try named(planner, "Pull the September numbers")   // a subtask
         let takesNothing: (String) -> Bool = { _ in false }
 
-        #expect(ItemSheetModel.chipEditor(.priority, roadmap, canEdit: gate(roadmap)) == ChipEditor.menu)
-        #expect(ItemSheetModel.chipEditor(.priority, meds, canEdit: gate(meds)) == nil)
-        #expect(ItemSheetModel.chipEditor(.priority, pull, canEdit: gate(pull)) == ChipEditor.menu)
-        #expect(ItemSheetModel.chipEditor(.timesPerDay, meds, canEdit: gate(meds)) == ChipEditor.menu)
-        #expect(ItemSheetModel.chipEditor(.timesPerDay, roadmap, canEdit: gate(roadmap)) == nil)
-        #expect(ItemSheetModel.chipEditor(.reminder, roadmap, canEdit: gate(roadmap))
+        #expect(ItemSheetModel.chipEditor(.priority, roadmap, offered: [], canEdit: gate(roadmap)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.priority, meds, offered: [], canEdit: gate(meds)) == nil)
+        #expect(ItemSheetModel.chipEditor(.priority, pull, offered: [], canEdit: gate(pull)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.timesPerDay, meds, offered: [], canEdit: gate(meds)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.timesPerDay, roadmap, offered: [], canEdit: gate(roadmap)) == nil)
+        #expect(ItemSheetModel.chipEditor(.reminder, roadmap, offered: [], canEdit: gate(roadmap))
                 == ChipEditor.sheet(.reminder(roadmap.id)))
-        #expect(ItemSheetModel.chipEditor(.reminder, meds, canEdit: gate(meds)) == ChipEditor.sheet(.reminder(meds.id)))
-        #expect(ItemSheetModel.chipEditor(.reminder, pull, canEdit: gate(pull)) == nil)
+        #expect(ItemSheetModel.chipEditor(.reminder, meds, offered: [], canEdit: gate(meds))
+                == ChipEditor.sheet(.reminder(meds.id)))
+        #expect(ItemSheetModel.chipEditor(.reminder, pull, offered: [], canEdit: gate(pull)) == nil)
+        #expect(ItemSheetModel.chipEditor(.time, roadmap, offered: [], canEdit: gate(roadmap))
+                == ChipEditor.sheet(.time(roadmap.id)))
+        #expect(ItemSheetModel.chipEditor(.time, meds, offered: [], canEdit: gate(meds))
+                == ChipEditor.sheet(.time(meds.id)))
 
-        let readOnly: [SheetChip.Kind] = [.date, .time, .repeats, .project, .routine, .season]
-        for kind in readOnly {
-            #expect(ItemSheetModel.chipEditor(kind, roadmap, canEdit: gate(roadmap)) == nil)
-            #expect(ItemSheetModel.chipEditor(kind, meds, canEdit: gate(meds)) == nil)
+        let readOnly: [SheetChip.Kind] = [.repeats, .project, .routine, .season]
+        for kind in readOnly + [.date] {
+            #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: gate(roadmap)) == nil)
+            #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: gate(meds)) == nil)
         }
-        for kind in readOnly + [.priority, .timesPerDay, .reminder] {
-            #expect(ItemSheetModel.chipEditor(kind, roadmap, canEdit: takesNothing) == nil)
-            #expect(ItemSheetModel.chipEditor(kind, meds, canEdit: takesNothing) == nil)
+        for kind in readOnly + [.priority, .date, .time, .timesPerDay, .reminder] {
+            #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: takesNothing) == nil)
+            #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: takesNothing) == nil)
         }
     }
 
@@ -836,7 +847,10 @@ import Testing
     /// Remind…, Meds (a reminder already) Times per day alone, and a subtask
     /// Priority alone. A habit counted once a day has no times chip, so its
     /// count is offered; one counted three times has the chip. A priority the
-    /// chips can't name has no chip either, so it is offered too.
+    /// chips can't name has no chip either, so it is offered too. Offered no
+    /// Reschedule (`offered: []`), so no Date: `addPropertyOffersTheDateAndTheTime`
+    /// offers it. Call the bank is undated, so it has no Time… either, and
+    /// Journal, Meds and the roadmap draw a time chip.
     @Test func addPropertyHoldsWhatIsUnsetAndEditable() throws {
         let planner = makePlanner()
         let bank = try named(planner, "Call the bank")   // a braindump task: nothing set
@@ -846,32 +860,29 @@ import Testing
         var roadmap = try named(planner, "Draft Q4 roadmap")   // high, no reminder
         let takesNothing: (String) -> Bool = { _ in false }
 
+        // Offered no Reschedule, so never Date.
+        func unset(_ item: SampleItem) -> [SheetChip.Kind] {
+            return ItemSheetModel.unsetProperties(item, shown: shown(planner, item), offered: [], canEdit: gate(item))
+        }
+
         #expect(shown(planner, bank).isEmpty)
-        #expect(ItemSheetModel.unsetProperties(bank, shown: shown(planner, bank), canEdit: gate(bank))
-                == [.priority, .reminder])
-        #expect(ItemSheetModel.unsetProperties(journal, shown: shown(planner, journal), canEdit: gate(journal))
-                == [.timesPerDay, .reminder])
-        #expect(ItemSheetModel.unsetProperties(meds, shown: shown(planner, meds), canEdit: gate(meds))
-                == [.timesPerDay])
-        #expect(ItemSheetModel.unsetProperties(bets, shown: shown(planner, bets), canEdit: gate(bets))
-                == [.priority])
-        #expect(ItemSheetModel.unsetProperties(roadmap, shown: shown(planner, roadmap), canEdit: gate(roadmap))
-                == [.reminder])
+        #expect(unset(bank) == [.priority, .reminder])
+        #expect(unset(journal) == [.timesPerDay, .reminder])
+        #expect(unset(meds) == [.timesPerDay])
+        #expect(unset(bets) == [.priority])
+        #expect(unset(roadmap) == [.reminder])
 
         journal.timesPerDay = 1
-        #expect(ItemSheetModel.unsetProperties(journal, shown: shown(planner, journal), canEdit: gate(journal))
-                == [.timesPerDay, .reminder])
+        #expect(unset(journal) == [.timesPerDay, .reminder])
         journal.timesPerDay = 3
-        #expect(ItemSheetModel.unsetProperties(journal, shown: shown(planner, journal), canEdit: gate(journal))
-                == [.reminder])
+        #expect(unset(journal) == [.reminder])
 
         roadmap.priority = "urgent"
-        #expect(ItemSheetModel.unsetProperties(roadmap, shown: shown(planner, roadmap), canEdit: gate(roadmap))
-                == [.priority, .reminder])
+        #expect(unset(roadmap) == [.priority, .reminder])
 
         for item in [bank, journal, meds, bets, roadmap] {
-            #expect(ItemSheetModel.unsetProperties(item, shown: shown(planner, item), canEdit: takesNothing)
-                    .isEmpty)
+            #expect(ItemSheetModel.unsetProperties(item, shown: shown(planner, item), offered: [],
+                                                   canEdit: takesNothing).isEmpty)
         }
     }
 
@@ -898,10 +909,10 @@ import Testing
 
     /// The seed reads "Add property" alone on its row and is a bare plus
     /// beside chips, and is "Add property" to VoiceOver either way; its
-    /// entries are the web's, Remind… with an ellipsis since it opens a sheet,
-    /// and each wears its chip's own symbol. The entries 2d to 2f will add
-    /// already read as design §3.7 words them: Time… opens a sheet, and
-    /// Repeat is the web seed's own label.
+    /// entries are the web's, Remind… and Time… with an ellipsis since each
+    /// opens a sheet, and each wears its chip's own symbol. The entries 2e and
+    /// 2f will add already read as design §3.7 words them: Repeat is the web
+    /// seed's own label.
     @Test func theSeedsWords() throws {
         #expect(ItemSheetModel.seedLabel(rowHasOthers: false) == "Add property")
         #expect(ItemSheetModel.seedLabel(rowHasOthers: true) == nil)
@@ -920,7 +931,7 @@ import Testing
         journal.timesPerDay = 3
         let drawn = shown(planner, roadmap) + shown(planner, journal) + shown(planner, meds)
         let symbols = drawn.reduce(into: [SheetChip.Kind: String]()) { $0[$1.kind] = $1.systemImage }
-        for kind: SheetChip.Kind in [.priority, .timesPerDay, .reminder] {
+        for kind: SheetChip.Kind in [.priority, .date, .time, .timesPerDay, .reminder] {
             #expect(symbols[kind] == ItemSheetModel.seedSymbol(kind))
         }
     }
@@ -953,29 +964,184 @@ import Testing
         #expect(ItemSheetModel.chipHint(.priority) == "Changes the priority")
         #expect(ItemSheetModel.chipHint(.timesPerDay) == "Changes how many times a day")
         #expect(ItemSheetModel.chipHint(.reminder) == "Changes the reminder")
-        #expect(ItemSheetModel.chipHint(.date) == nil)
+        #expect(ItemSheetModel.chipHint(.date) == "Changes the date")
+        #expect(ItemSheetModel.chipHint(.time) == "Changes the time")
         #expect(ItemSheetModel.chipHint(.project) == nil)
+    }
+
+    // MARK: The date chip
+
+    /// The date chip is the bar's Reschedule by another door (Q3 a): a menu
+    /// exactly where that verb is offered, read-only elsewhere. The verb's
+    /// gate, not the bar's slots: ticked done, Groceries is offered no
+    /// Reschedule and its chip goes read-only; paused, its bar is Resume
+    /// alone, but the verb is still offered (`canReschedule` has no pause
+    /// test), so its chip still edits, as the web's does.
+    @Test func theDateChipIsTheRescheduleVerb() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")   // dated today, Anytime
+        let takesAll: (String) -> Bool = { _ in true }
+
+        #expect(ItemSheetModel.chipEditor(.date, groceries, offered: [.reschedule], canEdit: takesAll)
+                == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.date, groceries, offered: [], canEdit: takesAll) == nil)
+
+        let open = planner.offeredVerbs(for: groceries, day: .today)
+        #expect(ItemSheetModel.chipEditor(.date, groceries, offered: open, canEdit: gate(groceries))
+                == ChipEditor.menu)
+        planner.toggle(groceries.id, on: planner.today)
+        let done = try #require(planner.item(groceries.id))
+        let finished = planner.offeredVerbs(for: done, day: .today)
+        #expect(!finished.contains(.reschedule))
+        #expect(ItemSheetModel.chipEditor(.date, done, offered: finished, canEdit: gate(done)) == nil)
+
+        let other = makePlanner()
+        other.pause(groceries.id, until: nil)
+        let paused = try #require(other.item(groceries.id))
+        let pausedOffered = other.offeredVerbs(for: paused, day: .today)
+        let bar = ItemSheetModel.verbs(paused, other.verbContext(for: paused, day: .today), offered: pausedOffered).bar
+        #expect(bar == [.resume])
+        #expect(ItemSheetModel.chipEditor(.date, paused, offered: pausedOffered, canEdit: gate(paused))
+                == ChipEditor.menu)
+    }
+
+    /// The time chip, and Time…, open the Time sheet wherever the type takes
+    /// a time: a timed task, an Anytime task and a habit; never an undated
+    /// task, which has no day for a time yet, nor a subtask. With nothing
+    /// taken (an older server), never.
+    @Test func theTimeChipOpensTheTimeSheet() throws {
+        let planner = makePlanner()
+        let takesNothing: (String) -> Bool = { _ in false }
+        for title in ["Draft Q4 roadmap", "Groceries", "Meds"] {
+            let item = try named(planner, title)
+            #expect(ItemSheetModel.chipEditor(.time, item, offered: [], canEdit: gate(item))
+                    == ChipEditor.sheet(.time(item.id)))
+            #expect(ItemSheetModel.chipEditor(.time, item, offered: [], canEdit: takesNothing) == nil)
+        }
+        for title in ["Call the bank", "Write the three bets"] {
+            let item = try named(planner, title)
+            #expect(ItemSheetModel.chipEditor(.time, item, offered: [], canEdit: gate(item)) == nil)
+        }
+    }
+
+    /// Add property, as the page asks it (the planner's own `offeredVerbs`
+    /// and `canEdit`): an undated task is offered Date and no Time…, an
+    /// Anytime task Time… (part 1 draws no chip for Anytime), a dated task
+    /// with a time neither, and a subtask neither. Offered no Reschedule, the
+    /// date goes and nothing else moves.
+    @Test func addPropertyOffersTheDateAndTheTime() throws {
+        let planner = makePlanner()
+        let bank = try named(planner, "Call the bank")         // undated, nothing set
+        let groceries = try named(planner, "Groceries")        // dated today, Anytime
+        let roadmap = try named(planner, "Draft Q4 roadmap")   // dated, 9:00, high
+        let bets = try named(planner, "Write the three bets")  // a subtask
+        func unset(_ item: SampleItem, offered: [VerbID]? = nil) -> [SheetChip.Kind] {
+            let verbs = offered ?? planner.offeredVerbs(for: item, day: .today)
+            return ItemSheetModel.unsetProperties(item, shown: shown(planner, item), offered: verbs,
+                                                  canEdit: { planner.canEdit($0, item) })
+        }
+
+        #expect(unset(bank) == [.priority, .date, .reminder])
+        #expect(unset(groceries) == [.priority, .time, .reminder])
+        #expect(unset(roadmap) == [.reminder])
+        #expect(unset(bets) == [.priority])
+        #expect(unset(bank, offered: []) == [.priority, .reminder])
+        #expect(unset(groceries, offered: []) == [.priority, .time, .reminder])
+    }
+
+    /// After a date pick, or Pick a date… or the Time sheet closing,
+    /// VoiceOver goes to that chip, or to Add property when the chip went
+    /// (Anytime takes the time chip). Only the page whose item the sheet
+    /// edited moves it, and the bar's Reschedule and Pause until move
+    /// nothing.
+    @Test func aClosingSheetSendsVoiceOverToItsChip() throws {
+        let one = SampleData.uuid(1)
+        let two = SampleData.uuid(2)
+        #expect(ItemSheetModel.chipKind(closing: .pickDate(one), on: one) == SheetChip.Kind.date)
+        #expect(ItemSheetModel.chipKind(closing: .time(one), on: one) == SheetChip.Kind.time)
+        #expect(ItemSheetModel.chipKind(closing: .reminder(one), on: one) == SheetChip.Kind.reminder)
+        let elsewhere: [SheetEditor] = [.pickDate(two), .time(two), .reminder(two), .reschedule(one), .pauseUntil(one)]
+        for editor in elsewhere {
+            #expect(ItemSheetModel.chipKind(closing: editor, on: one) == nil)
+        }
+
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let groceries = try named(planner, "Groceries")   // Anytime: no time chip
+        #expect(ItemSheetModel.voiceOverTarget(after: .date, shown: shown(planner, roadmap)) == ChipFocus.chip(.date))
+        #expect(ItemSheetModel.voiceOverTarget(after: .time, shown: shown(planner, groceries)) == ChipFocus.seed)
+        #expect(ItemSheetModel.voiceOverTarget(after: .time, shown: shown(planner, roadmap)) == ChipFocus.chip(.time))
+    }
+
+    /// The Date menu: Today, Tomorrow and Next week, each with its day under
+    /// it as the web's shortcuts name it, then Pick a date… with no day. Next
+    /// week is the first day of next week by Week starts on (Q4 a): Sunday
+    /// Oct 4 on the sample, Monday Oct 5 once the week starts on Monday. On
+    /// the week's last day Tomorrow and Next week name the same day, and both
+    /// stay.
+    @Test func theDateMenusWordsAndDays() throws {
+        let oct1 = try #require(DayString("2026-10-01"))
+        let oct3 = try #require(DayString("2026-10-03"))
+        let oct4 = try #require(DayString("2026-10-04"))
+
+        let options = ItemSheetModel.dateOptions(today: oct1, nextWeekStart: oct4)
+        let subtitles: [String?] = ["Oct 1", "Oct 2", "Oct 4", nil]
+        #expect(options.map(\.choice) == [.today, .tomorrow, .nextWeek, .pick])
+        #expect(options.map(\.word) == ["Today", "Tomorrow", "Next week", "Pick a date\u{2026}"])
+        #expect(options.map(\.subtitle) == subtitles)
+        #expect(options.map(\.symbol) == ["sun.max", "sunrise", "calendar.badge.plus", "calendar"])
+
+        let lastDay = ItemSheetModel.dateOptions(today: oct3, nextWeekStart: oct4)
+        #expect(lastDay.count == 4)
+        #expect(lastDay[1].subtitle == "Oct 4")
+        #expect(lastDay[2].subtitle == "Oct 4")
+
+        #expect(ItemSheetModel.dateTarget(.today, today: oct1, nextWeekStart: oct4) == oct1)
+        #expect(ItemSheetModel.dateTarget(.tomorrow, today: oct1, nextWeekStart: oct4)?.description == "2026-10-02")
+        #expect(ItemSheetModel.dateTarget(.nextWeek, today: oct1, nextWeekStart: oct4) == oct4)
+        #expect(ItemSheetModel.dateTarget(.pick, today: oct1, nextWeekStart: oct4) == nil)
+
+        let planner = makePlanner()
+        #expect(planner.nextWeekStart == oct4)
+        planner.apply(PlannerPayload(userId: UUID(), fetchedAt: "monday",
+                                     settings: PlannerSettings(weekStartDay: .monday), items: planner.items))
+        #expect(planner.nextWeekStart.description == "2026-10-05")
+        let monday = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
+        #expect(monday[2].subtitle == "Oct 5")
+    }
+
+    /// Pick a date… is titled "Date", its button the bar's own verb: "Move
+    /// to" on a dated item, "Schedule for" on an undated one.
+    @Test func pickADateIsTitledDate() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")
+        let bank = try named(planner, "Call the bank")   // undated
+        #expect(ItemSheetModel.dateWords(groceries, planner.verbContext(for: groceries, on: planner.today))
+                == DayPickWords(title: "Date", confirmVerb: "Move to", note: nil))
+        #expect(ItemSheetModel.dateWords(bank, planner.verbContext(for: bank, on: planner.today))
+                == DayPickWords(title: "Date", confirmVerb: "Schedule for", note: nil))
     }
 
     // MARK: The Remind sheet
 
-    /// The wheel reads and writes a time of day in GMT, so a stored time
-    /// comes back as it went in whatever the phone's zone, and the day under
-    /// it never matters. Only a 24-hour "HH:mm", the server's rule, is a time.
+    /// The wheel (the Remind and Time sheets' `ClockWheel`) reads and
+    /// writes a time of day in GMT, so a stored time comes back as it went in
+    /// whatever the phone's zone, and the day under it never matters. Only a
+    /// 24-hour "HH:mm", the server's rule, is a time.
     @Test func theWheelsClockRoundTrips() throws {
-        #expect(ItemSheetModel.reminderCalendar.timeZone.secondsFromGMT() == 0)
+        #expect(ItemSheetModel.wheelCalendar.timeZone.secondsFromGMT() == 0)
         for hhmm in ["00:00", "08:05", "23:59"] {
-            let date = try #require(ItemSheetModel.reminderDate(hhmm))
-            #expect(ItemSheetModel.reminderClock(date) == hhmm)
+            let date = try #require(ItemSheetModel.wheelDate(hhmm))
+            #expect(ItemSheetModel.wheelClock(date) == hhmm)
         }
-        #expect(ItemSheetModel.reminderDate("08:00") == Date(timeIntervalSince1970: 8 * 3_600))
-        #expect(ItemSheetModel.reminderDate("24:00") == nil)
-        #expect(ItemSheetModel.reminderDate("8:00") == nil)
-        #expect(ItemSheetModel.reminderDate("") == nil)
-        #expect(ItemSheetModel.reminderDate("08:60") == nil)
+        #expect(ItemSheetModel.wheelDate("08:00") == Date(timeIntervalSince1970: 8 * 3_600))
+        #expect(ItemSheetModel.wheelDate("24:00") == nil)
+        #expect(ItemSheetModel.wheelDate("8:00") == nil)
+        #expect(ItemSheetModel.wheelDate("") == nil)
+        #expect(ItemSheetModel.wheelDate("08:60") == nil)
 
         let anotherDay = Date(timeIntervalSince1970: 400 * 86_400 + 8 * 3_600 + 5 * 60)
-        #expect(ItemSheetModel.reminderClock(anotherDay) == "08:05")
+        #expect(ItemSheetModel.wheelClock(anotherDay) == "08:05")
     }
 
     /// The sheet opens on the stored time; a new reminder on the item's own
@@ -1128,13 +1294,16 @@ import Testing
     }
 
     /// Each sheet the item sheet opens over itself has its own id, and two
-    /// items' Remind sheets differ.
+    /// items' Remind, Pick a date… and Time sheets differ.
     @Test func eachSheetEditorHasItsOwnID() {
         let one = SampleData.uuid(1)
         let two = SampleData.uuid(2)
-        let ids = [SheetEditor.reschedule(one), SheetEditor.pauseUntil(one), SheetEditor.reminder(one)].map(\.id)
-        #expect(Set(ids).count == 3)
+        let ids = [SheetEditor.reschedule(one), SheetEditor.pauseUntil(one), SheetEditor.reminder(one),
+                   SheetEditor.pickDate(one), SheetEditor.time(one)].map(\.id)
+        #expect(Set(ids).count == 5)
         #expect(SheetEditor.reminder(one).id != SheetEditor.reminder(two).id)
+        #expect(SheetEditor.pickDate(one).id != SheetEditor.pickDate(two).id)
+        #expect(SheetEditor.time(one).id != SheetEditor.time(two).id)
     }
 
     /// The Remind sheet's words: the web's where it has them (the three
@@ -1165,6 +1334,363 @@ import Testing
             ItemSheetModel.remindersOffLine, ItemSheetModel.noZoneLine, ItemSheetModel.discardTitle,
             ItemSheetModel.discardAction, ItemSheetModel.keepEditing, ItemSheetModel.seedSpoken,
         ]
+        let dashed = all.filter { $0.contains("\u{2014}") }
+        #expect(dashed.isEmpty)
+    }
+
+    // MARK: The Time sheet
+
+    /// The sheet opens on what is stored, as the dialog seeds it: the part of
+    /// day, the time as the chip reads it, put as the wheel's "HH:mm", and
+    /// the length, or the type's default with none stored.
+    @Test func theTimeSheetOpensOnWhatIsStored() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")   // Morning, 9:00, 2 hours
+        var groceries = try named(planner, "Groceries")        // Anytime, 45 min
+        let meds = try named(planner, "Meds")                  // Morning, no time, 15 min
+
+        #expect(ItemSheetModel.timeSeed(roadmap, caps: planner.caps(for: roadmap))
+                == TimeDraft(bucket: .morning, time: "09:00", duration: 120))
+        #expect(ItemSheetModel.timeSeed(groceries, caps: planner.caps(for: groceries))
+                == TimeDraft(bucket: .anytime, time: nil, duration: 45))
+        #expect(ItemSheetModel.timeSeed(meds, caps: planner.caps(for: meds))
+                == TimeDraft(bucket: .morning, time: nil, duration: 15))
+
+        groceries.duration = nil
+        #expect(planner.caps(for: groceries).defaultBlockMinutes == 30)
+        #expect(ItemSheetModel.timeSeed(groceries, caps: planner.caps(for: groceries)).duration == 30)
+
+        for (stored, seeded) in [("9:00", "09:00"), ("09:00:00", "09:00"), ("14:5", "14:05")] {
+            var agents = roadmap
+            agents.startTime = stored
+            #expect(ItemSheetModel.timeSeed(agents, caps: planner.caps(for: agents)).time == seeded)
+        }
+        for unreadable in ["25:00", "9:00 PM", "x", ""] {
+            var odd = roadmap
+            odd.startTime = unreadable
+            #expect(ItemSheetModel.timeSeed(odd, caps: planner.caps(for: odd)).time == nil)
+        }
+    }
+
+    /// A time an agent stored as text the wheel can't take ("9:00") opens as
+    /// the chip reads it, so the check, the footer and the no-op rule follow
+    /// the time the server will file by: Evening under it leaves Morning
+    /// checked and sends nothing, as on a time the phone wrote, and the
+    /// untouched wheel never rewrites the stored text.
+    @Test func anAgentsTimeFilesWhereTheCheckShows() throws {
+        let planner = makePlanner()
+        var roadmap = try named(planner, "Draft Q4 roadmap")   // Morning, 9:00, 2 hours
+        roadmap.startTime = "9:00"
+        let typeCaps = planner.caps(for: roadmap)
+        let opened = ItemSheetModel.timeSeed(roadmap, caps: typeCaps)
+        #expect(opened == TimeDraft(bucket: .morning, time: "09:00", duration: 120))
+        #expect(ItemSheetModel.showsSpecificTime(opened, dateAnchored: true))
+
+        let evening = ItemSheetModel.pickBucket(opened, .evening, dateAnchored: true)
+        #expect(evening == opened)
+        #expect(ItemSheetModel.previewBucket(evening, dateAnchored: true) == DayBucket.morning)
+        #expect(ItemSheetModel.timeCommit(draft: evening, seed: opened, stored: roadmap, dateAnchored: true) == nil)
+
+        var longer = opened
+        longer.duration = 60
+        let edit = try #require(ItemSheetModel.timeCommit(draft: longer, seed: opened, stored: roadmap,
+                                                          dateAnchored: true))
+        #expect(edit == ItemEdit.time(bucket: nil, startTime: nil, duration: 60))
+        #expect(editing(roadmap, edit).startTime == "9:00")
+    }
+
+    /// Text the chip can't read ("9:00 PM", "x") shows no time, so a part of
+    /// day sent over it clears it, and the item files where the check shows
+    /// rather than where `autoCorrectBucket` reads the text (Morning for
+    /// "9:00 PM", Anytime for "x"). A task and a habit alike; a length alone
+    /// leaves the text be.
+    @Test func aTimeTheSheetCantShowIsClearedWithThePartOfDay() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")   // a dated task
+        let meds = try named(planner, "Meds")                  // a habit
+        for base in [roadmap, meds] {
+            let typeCaps = planner.caps(for: base)
+            for unreadable in ["9:00 PM", "x"] {
+                var stored = base
+                stored.timeBucket = "evening"
+                stored.startTime = unreadable
+                let opened = ItemSheetModel.timeSeed(stored, caps: typeCaps)
+                #expect(opened.time == nil)
+                #expect(ItemSheetModel.previewBucket(opened, dateAnchored: typeCaps.dateAnchored) == DayBucket.evening)
+
+                let afternoon = ItemSheetModel.pickBucket(opened, .afternoon, dateAnchored: typeCaps.dateAnchored)
+                #expect(ItemSheetModel.previewBucket(afternoon, dateAnchored: typeCaps.dateAnchored)
+                        == DayBucket.afternoon)
+                let edit = try #require(ItemSheetModel.timeCommit(draft: afternoon, seed: opened, stored: stored,
+                                                                  dateAnchored: typeCaps.dateAnchored))
+                #expect(edit == ItemEdit.time(bucket: .set("afternoon"), startTime: .clear, duration: nil))
+                #expect(editAllowed(edit, on: stored, caps: typeCaps))
+                let filed = editing(stored, edit)
+                #expect(filed.timeBucket == "afternoon")
+                #expect(filed.startTime == nil)
+
+                var longer = opened
+                longer.duration = opened.duration + 15
+                #expect(ItemSheetModel.timeCommit(draft: longer, seed: opened, stored: stored,
+                                                  dateAnchored: typeCaps.dateAnchored)
+                        == ItemEdit.time(bucket: nil, startTime: nil, duration: opened.duration + 15))
+            }
+        }
+    }
+
+    /// The check shows where the item will file: a time under a part of day
+    /// files where the time says, a dated task with none in Anytime, and a
+    /// habit with none nowhere. Specific time shows under Morning, Afternoon
+    /// and Evening alone.
+    @Test func theCheckShowsWhereTheItemWillFile() {
+        func draft(_ bucket: DayBucket?, _ time: String? = nil) -> TimeDraft {
+            return TimeDraft(bucket: bucket, time: time, duration: 30)
+        }
+        #expect(ItemSheetModel.previewBucket(draft(.morning, "15:00"), dateAnchored: true) == DayBucket.afternoon)
+        #expect(ItemSheetModel.previewBucket(draft(.morning), dateAnchored: true) == DayBucket.morning)
+        #expect(ItemSheetModel.previewBucket(draft(.anytime), dateAnchored: true) == DayBucket.anytime)
+        #expect(ItemSheetModel.previewBucket(draft(nil), dateAnchored: true) == DayBucket.anytime)
+        #expect(ItemSheetModel.previewBucket(draft(nil), dateAnchored: false) == nil)
+        #expect(ItemSheetModel.previewBucket(draft(.evening, "09:00"), dateAnchored: false) == DayBucket.morning)
+
+        #expect(!ItemSheetModel.showsSpecificTime(draft(.anytime), dateAnchored: true))
+        #expect(!ItemSheetModel.showsSpecificTime(draft(nil), dateAnchored: true))
+        #expect(!ItemSheetModel.showsSpecificTime(draft(nil), dateAnchored: false))
+        #expect(ItemSheetModel.showsSpecificTime(draft(.morning), dateAnchored: false))
+        #expect(ItemSheetModel.showsSpecificTime(draft(.morning, "15:00"), dateAnchored: true))
+    }
+
+    /// What is checked is what is sent: a tap that would leave the check
+    /// where it is changes nothing. Anytime under a time drops the time;
+    /// Evening with no time lands; Evening under 9:00 am, or Afternoon under
+    /// 3:00 pm (already checked), changes nothing; Anytime on a dated task
+    /// with none (already checked) changes nothing; Morning on a habit with
+    /// none lands.
+    @Test func whatIsCheckedIsWhatIsSent() {
+        let atThree = TimeDraft(bucket: .morning, time: "15:00", duration: 120)
+        #expect(ItemSheetModel.pickBucket(atThree, .anytime, dateAnchored: true)
+                == TimeDraft(bucket: .anytime, time: nil, duration: 120))
+        #expect(ItemSheetModel.pickBucket(atThree, .afternoon, dateAnchored: true) == atThree)
+
+        let morning = TimeDraft(bucket: .morning, time: nil, duration: 15)
+        #expect(ItemSheetModel.pickBucket(morning, .evening, dateAnchored: false)
+                == TimeDraft(bucket: .evening, time: nil, duration: 15))
+
+        let roadmap = TimeDraft(bucket: .morning, time: "09:00", duration: 120)
+        let evening = ItemSheetModel.pickBucket(roadmap, .evening, dateAnchored: true)
+        #expect(evening == roadmap)
+        #expect(ItemSheetModel.previewBucket(evening, dateAnchored: true) == DayBucket.morning)
+
+        let none = TimeDraft(bucket: nil, time: nil, duration: 30)
+        #expect(ItemSheetModel.pickBucket(none, .anytime, dateAnchored: true) == none)
+        #expect(ItemSheetModel.pickBucket(none, .morning, dateAnchored: false)
+                == TimeDraft(bucket: .morning, time: nil, duration: 30))
+    }
+
+    /// The sheet has changed only when what it shows moved: a tap that left
+    /// the check where it was is not a change, nor is the long way round back
+    /// to the time it opened on; the wheel, a length and No specific time
+    /// are.
+    @Test func aTapThatLeavesTheCheckIsNotAChange() {
+        let seed = TimeDraft(bucket: .morning, time: "09:00", duration: 120)
+        func moved(_ draft: TimeDraft) -> Bool {
+            return ItemSheetModel.timeMoved(draft: draft, seed: seed, dateAnchored: true)
+        }
+        #expect(!moved(ItemSheetModel.pickBucket(seed, .evening, dateAnchored: true)))
+        #expect(!moved(TimeDraft(bucket: .evening, time: "09:00", duration: 120)))
+        #expect(moved(TimeDraft(bucket: .morning, time: "15:00", duration: 120)))
+        #expect(moved(TimeDraft(bucket: .morning, time: "09:00", duration: 60)))
+        #expect(moved(TimeDraft(bucket: .morning, time: nil, duration: 120)))
+    }
+
+    /// Add a time starts the wheel where the part of day starts as the web
+    /// offers it (open question 2): 5:00 am, 12:00 pm, 5:00 pm, which file
+    /// where they were, so the check stays. Under Anytime, and on a habit
+    /// with none, there is no Add a time, and the draft stays as it was.
+    @Test func addATimeStartsWhereThePartOfDayDoes() {
+        let starts: [(DayBucket, String)] = [(.morning, "05:00"), (.afternoon, "12:00"), (.evening, "17:00")]
+        for (bucket, start) in starts {
+            let added = ItemSheetModel.addingTime(TimeDraft(bucket: bucket, time: nil, duration: 30),
+                                                  dateAnchored: true)
+            #expect(added == TimeDraft(bucket: bucket, time: start, duration: 30))
+            #expect(added.time == bucketStartTime(bucket))
+            #expect(ItemSheetModel.previewBucket(added, dateAnchored: true) == bucket)
+        }
+        let anytime = TimeDraft(bucket: .anytime, time: nil, duration: 30)
+        #expect(ItemSheetModel.addingTime(anytime, dateAnchored: true) == anytime)
+        let none = TimeDraft(bucket: nil, time: nil, duration: 30)
+        #expect(ItemSheetModel.addingTime(none, dateAnchored: false) == none)
+    }
+
+    /// Duration's rows are the web's lengths, and a stored length that is
+    /// none of them on a row of its own, in order. Their words are the web's;
+    /// VoiceOver hears "min" in full, with the visible words still in the
+    /// label.
+    @Test func theLengthsAreTheWebs() {
+        let presets = [15, 30, 45, 60, 90, 120]
+        #expect(EditCopy.durationPresets == presets)
+        #expect(ItemSheetModel.durationChoices(seed: 45) == presets)
+        #expect(ItemSheetModel.durationChoices(seed: 50) == [15, 30, 45, 50, 60, 90, 120])
+        #expect(ItemSheetModel.durationChoices(seed: 180) == presets + [180])
+        #expect(presets.map { ItemSheetModel.durationWord($0) }
+                == ["15 min", "30 min", "45 min", "1 hour", "1.5 hours", "2 hours"])
+        #expect(ItemSheetModel.durationWord(50) == "50 min")
+
+        #expect(ItemSheetModel.durationSpoken(1) == "1 minute")
+        #expect(ItemSheetModel.durationSpoken(45) == "45 minutes")
+        #expect(ItemSheetModel.durationSpoken(60) == "1 hour")
+        #expect(ItemSheetModel.durationSpoken(75) == "75 minutes")
+        #expect(ItemSheetModel.durationSpoken(90) == "1.5 hours")
+        #expect(ItemSheetModel.durationSpoken(120) == "2 hours")
+        for n in presets + [1, 50, 75] {
+            #expect(ItemSheetModel.durationSpoken(n).contains(ItemSheetModel.durationWord(n)))
+        }
+    }
+
+    /// What Done sends: nothing unmoved; only the keys that moved from the
+    /// seed; a part of day only when a tap moved the check, so the wheel
+    /// crossing into another part of day, and the long way round with a new
+    /// time, send the time alone; the long way round back to the time it
+    /// opened on, or a draft changed and changed back, nothing. Every edit
+    /// sent passes the planner's gate.
+    @Test func doneSendsOnlyTheKeysThatMoved() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")   // Morning, 9:00, 2 hours
+        let groceries = try named(planner, "Groceries")        // Anytime, 45 min
+        let meds = try named(planner, "Meds")                  // Morning, no time, 15 min
+        func seed(_ item: SampleItem) -> TimeDraft {
+            return ItemSheetModel.timeSeed(item, caps: planner.caps(for: item))
+        }
+        func commit(_ draft: TimeDraft, on stored: SampleItem) -> ItemEdit? {
+            let typeCaps = planner.caps(for: stored)
+            let edit = ItemSheetModel.timeCommit(draft: draft, seed: seed(stored), stored: stored,
+                                                 dateAnchored: typeCaps.dateAnchored)
+            if let edit { #expect(editAllowed(edit, on: stored, caps: typeCaps)) }
+            return edit
+        }
+        let opened = seed(roadmap)
+        #expect(commit(opened, on: roadmap) == nil)
+
+        // A time added under Morning: the time alone.
+        var medsTimed = seed(meds)
+        medsTimed.time = "08:30"
+        #expect(commit(medsTimed, on: meds) == ItemEdit.time(bucket: nil, startTime: .set("08:30"), duration: nil))
+
+        // A new part of day and a time: both.
+        var groceriesTimed = ItemSheetModel.pickBucket(seed(groceries), .morning, dateAnchored: true)
+        groceriesTimed = ItemSheetModel.addingTime(groceriesTimed, dateAnchored: true)
+        #expect(groceriesTimed.time == "05:00")
+        groceriesTimed.time = "08:30"
+        #expect(commit(groceriesTimed, on: groceries)
+                == ItemEdit.time(bucket: .set("morning"), startTime: .set("08:30"), duration: nil))
+
+        // Anytime over a time: the part of day, and the time cleared.
+        let anytime = ItemSheetModel.pickBucket(opened, .anytime, dateAnchored: true)
+        #expect(commit(anytime, on: roadmap)
+                == ItemEdit.time(bucket: .set("anytime"), startTime: .clear, duration: nil))
+
+        // No specific time alone; a length alone.
+        var noTime = opened
+        noTime.time = nil
+        #expect(commit(noTime, on: roadmap) == ItemEdit.time(bucket: nil, startTime: .clear, duration: nil))
+        var longer = opened
+        longer.duration = 60
+        #expect(commit(longer, on: roadmap) == ItemEdit.time(bucket: nil, startTime: nil, duration: 60))
+
+        // The wheel crossing into the afternoon: the time alone.
+        var crossed = opened
+        crossed.time = "15:00"
+        #expect(ItemSheetModel.previewBucket(crossed, dateAnchored: true) == DayBucket.afternoon)
+        #expect(commit(crossed, on: roadmap) == ItemEdit.time(bucket: nil, startTime: .set("15:00"), duration: nil))
+
+        // The long way round: No specific time, Evening, Add a time, the
+        // wheel to 10:00 am. The check is back on Morning, so the time alone.
+        var longWay = ItemSheetModel.pickBucket(noTime, .evening, dateAnchored: true)
+        longWay = ItemSheetModel.addingTime(longWay, dateAnchored: true)
+        longWay.time = "10:00"
+        #expect(longWay == TimeDraft(bucket: .evening, time: "10:00", duration: 120))
+        #expect(commit(longWay, on: roadmap) == ItemEdit.time(bucket: nil, startTime: .set("10:00"), duration: nil))
+        // And back to 9:00 am: nothing moved that the sheet shows.
+        longWay.time = "09:00"
+        #expect(commit(longWay, on: roadmap) == nil)
+
+        // Anytime, then Morning, then Add a time and the wheel back to 9:00.
+        var back = ItemSheetModel.pickBucket(opened, .anytime, dateAnchored: true)
+        back = ItemSheetModel.pickBucket(back, .morning, dateAnchored: true)
+        back = ItemSheetModel.addingTime(back, dateAnchored: true)
+        back.time = "09:00"
+        #expect(back == opened)
+        #expect(commit(back, on: roadmap) == nil)
+    }
+
+    /// Done keeps the body one the server takes against what is stored at
+    /// Done, a fetch having landed while the sheet was up: a time added under
+    /// a part of day the web has since set to Anytime, or none, takes the
+    /// drafted part of day with it; Anytime picked where the web has since
+    /// added a time clears it too; and the same time already stored sends
+    /// nothing. Every edit sent passes the planner's gate.
+    @Test func doneKeepsTheBodyValidAgainstWhatIsStored() throws {
+        let planner = makePlanner()
+        let meds = try named(planner, "Meds")   // Morning, no time, 15 min
+        let typeCaps = planner.caps(for: meds)
+        let opened = ItemSheetModel.timeSeed(meds, caps: typeCaps)
+        func commit(_ draft: TimeDraft, on stored: SampleItem) -> ItemEdit? {
+            let edit = ItemSheetModel.timeCommit(draft: draft, seed: opened, stored: stored, dateAnchored: false)
+            if let edit { #expect(editAllowed(edit, on: stored, caps: typeCaps)) }
+            return edit
+        }
+
+        var timed = opened
+        timed.time = "08:30"
+        let stored: [String?] = ["anytime", nil, ""]
+        for bucket in stored {
+            var changed = meds
+            changed.timeBucket = bucket
+            #expect(commit(timed, on: changed)
+                    == ItemEdit.time(bucket: .set("morning"), startTime: .set("08:30"), duration: nil))
+        }
+
+        let anytime = ItemSheetModel.pickBucket(opened, .anytime, dateAnchored: false)
+        #expect(anytime == TimeDraft(bucket: .anytime, time: nil, duration: 15))
+        #expect(commit(anytime, on: meds) == ItemEdit.time(bucket: .set("anytime"), startTime: nil, duration: nil))
+        var gainedTime = meds
+        gainedTime.startTime = "07:00"
+        #expect(commit(anytime, on: gainedTime)
+                == ItemEdit.time(bucket: .set("anytime"), startTime: .clear, duration: nil))
+
+        var same = meds
+        same.startTime = "08:30"
+        #expect(commit(timed, on: same) == nil)
+    }
+
+    /// The Time sheet's words: the web's where it has them (the title, the
+    /// three headers, No specific time, the parts of day, the lengths), the
+    /// phone's own otherwise (Add a time, the wheel's name, the line under
+    /// Part of day, the chips' hints), and no em dash in any, the Date menu's
+    /// included.
+    @Test func theTimeSheetsWords() {
+        #expect(ItemSheetModel.timeTitle == "Time")
+        #expect(ItemSheetModel.partOfDayHeader == "Part of day")
+        #expect(ItemSheetModel.specificTimeHeader == "Specific time")
+        #expect(ItemSheetModel.addTime == "Add a time")
+        #expect(ItemSheetModel.noSpecificTime == "No specific time")
+        #expect(ItemSheetModel.durationHeader == "Duration")
+        #expect(ItemSheetModel.timeWheelLabel == "Time")
+        #expect(ItemSheetModel.timeSetsPartOfDay == "The time sets the part of day.")
+        #expect(ItemSheetModel.dateTitle == "Date")
+        #expect(bucketOrder.map(\.label) == ["Anytime", "Morning", "Afternoon", "Evening"])
+
+        let planner = makePlanner()
+        let dates = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
+        let words = [
+            ItemSheetModel.timeTitle, ItemSheetModel.partOfDayHeader, ItemSheetModel.specificTimeHeader,
+            ItemSheetModel.addTime, ItemSheetModel.noSpecificTime, ItemSheetModel.durationHeader,
+            ItemSheetModel.timeWheelLabel, ItemSheetModel.timeSetsPartOfDay, ItemSheetModel.dateTitle,
+            ItemSheetModel.chipHint(.date) ?? "", ItemSheetModel.chipHint(.time) ?? "",
+            ItemSheetModel.seedEntry(.date), ItemSheetModel.seedEntry(.time),
+        ]
+        let all = words + dates.map(\.word) + bucketOrder.map(\.label)
+            + EditCopy.durationPresets.map { ItemSheetModel.durationSpoken($0) }
         let dashed = all.filter { $0.contains("\u{2014}") }
         #expect(dashed.isEmpty)
     }

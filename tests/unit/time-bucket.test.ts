@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
+import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
 
 /**
  * The time → bucket rules moved out of the 'use client' store so the iPhone's
@@ -37,5 +37,18 @@ describe('autoCorrectBucket', () => {
     expect(autoCorrectBucket(undefined, 'afternoon')).toBe('afternoon');
     expect(autoCorrectBucket('18:30', undefined)).toBeUndefined();
     expect(autoCorrectBucket('', 'morning')).toBe('morning');
+  });
+});
+
+describe('BUCKET_START_TIMES', () => {
+  it('starts each part of day where the web offers it: a project block’s default, the phone’s Add a time', () => {
+    expect(BUCKET_START_TIMES).toEqual({ morning: '05:00', afternoon: '12:00', evening: '17:00' });
+  });
+
+  it('files each start in its own part of day', () => {
+    for (const [bucket, time] of Object.entries(BUCKET_START_TIMES)) {
+      expect(getBucketForTime(time), bucket).toBe(bucket);
+      expect(autoCorrectBucket(time, bucket as 'morning'), bucket).toBe(bucket);
+    }
   });
 });

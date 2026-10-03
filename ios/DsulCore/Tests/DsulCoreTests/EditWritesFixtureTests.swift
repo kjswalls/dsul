@@ -2,20 +2,22 @@ import Foundation
 import Testing
 import DsulCore
 
-// The web's own answers for the item sheet's edits (the fields, and from 2c the
-// priority, times a day and reminder chips), its Delete, Add a subtask and
-// Reset streak, checked against ItemEdit.swift, Registry.swift's
-// `canAddSubtask` and `isRemindable` and EditCopy.swift.
+// The web's own answers for the item sheet's edits (the fields, from 2c the
+// priority, times a day and reminder chips, and from 2d the time chip), its
+// Delete, Add a subtask and Reset streak, checked against ItemEdit.swift,
+// Registry.swift's `canAddSubtask` and `isRemindable`, DayBuckets.swift's
+// time-to-bucket rules and EditCopy.swift.
 // tests/unit/edit-writes-fixtures.test.ts drives the web's real gesture for
 // each case (the item panel's draft, seeded as the panel seeds it, changed as
-// the field or chip changes it, through the dialog's mapper to the store action
-// it names; `deleteTask` or `deleteHabit`; the Subtasks section's `addTask`;
-// the Reset streak verb) with the database mocked and the clock pinned, asks
-// lib/item-edit.ts `editRefusal`, `subtaskRefusal` and `resetStreakRefusal`
-// for the refused ones (and the route's schema for the one body it refuses, an
-// anchor with no time), and writes tests/fixtures/day/edit-writes.json. Never
-// edit the JSON by hand: regenerate it from the Vitest side
-// (UPDATE_FIXTURES=1).
+// the field or chip changes it, saved by the dialog's own `commitEdit`, both
+// its passes, to the store actions they name; `deleteTask` or `deleteHabit`;
+// the Subtasks section's `addTask`; the Reset streak verb) with the database
+// mocked and the clock pinned, asks lib/item-edit.ts `editRefusal`,
+// `subtaskRefusal` and `resetStreakRefusal` for the refused ones (and the
+// route's schema for the bodies it refuses: an anchor with no time, a time
+// beside Anytime, an empty time edit), and writes
+// tests/fixtures/day/edit-writes.json. Never edit the JSON by hand: regenerate
+// it from the Vitest side (UPDATE_FIXTURES=1).
 //
 // The fixture's types, its loader, `JSONValue` and `phoneBody` are shared with
 // ItemWriteBodyTests, which checks the same cases' wire bodies; their names
@@ -83,6 +85,9 @@ struct EditWritesCase: Decodable, Sendable {
     /// `resetStreakRefusal`'s), or the schema's `invalid`; null when the
     /// server takes it.
     let refusal: EditWritesRefusal?
+    /// The patch the store wrote, as the route writes it (`editPatch`): `{}`
+    /// when nothing was written; null for a refusal.
+    let updates: JSONValue?
     /// The store's end item; null when it was removed.
     let after: Item?
     /// The ids the store deleted, in its `dbDeleteItem` order; for a delete.
@@ -106,8 +111,9 @@ struct EditWritesFixture: Decodable, Sendable {
 /// The fixture's `limits`: lib/item-edit.ts `EDIT_LIMITS` (`title`, `notes`,
 /// `anchor`), `OUTER_LIMITS` (`outerTitle`, `outerNotes`, `outerAnchor`) and
 /// `NEW_TITLE_LIMIT` (`newTitle`), in UTF-16 units; `TIMES_PER_DAY_MAX`
-/// (`timesPerDayMax`); and lib/bulk-add.ts `MAX_BULK_ITEMS` (`bulkMax`), in
-/// lines. Read on its own, so only the test that pins them depends on it.
+/// (`timesPerDayMax`); `MAX_DURATION_MINUTES` (`durationMax`), in minutes;
+/// and lib/bulk-add.ts `MAX_BULK_ITEMS` (`bulkMax`), in lines. Read on its
+/// own, so only the test that pins them depends on it.
 private struct EditWritesLimits: Decodable, Sendable {
     struct Limits: Decodable, Sendable {
         let title: Int
@@ -119,9 +125,58 @@ private struct EditWritesLimits: Decodable, Sendable {
         let anchor: Int
         let outerAnchor: Int
         let timesPerDayMax: Int
+        let durationMax: Int
     }
 
     let limits: Limits
+}
+
+/// The fixture's `buckets`: lib/time-bucket.ts `getBucketForTime` at a few
+/// times (`forTime`), `autoCorrectBucket` at a few pairs (`corrected`, a null
+/// bucket or answer kept as null), and `BUCKET_START_TIMES` (`starts`). Read
+/// on its own, as `limits` is.
+private struct EditWritesBuckets: Decodable, Sendable {
+    struct ForTime: Decodable, Sendable {
+        let time: String
+        let bucket: String
+    }
+
+    struct Corrected: Decodable, Sendable {
+        let time: String
+        let bucket: String?
+        let expected: String?
+    }
+
+    struct Starts: Decodable, Sendable {
+        let morning: String
+        let afternoon: String
+        let evening: String
+    }
+
+    struct Buckets: Decodable, Sendable {
+        let forTime: [ForTime]
+        let corrected: [Corrected]
+        let starts: Starts
+    }
+
+    let buckets: Buckets
+}
+
+/// The fixture's `durations`: lib/item-edit.ts `DURATION_ORDER` as numbers
+/// (`presets`), and `durationLabel` at each preset and at a few other lengths
+/// (`labels`). Read on its own, as `limits` is.
+private struct EditWritesDurations: Decodable, Sendable {
+    struct Label: Decodable, Sendable {
+        let minutes: Int
+        let label: String
+    }
+
+    struct Durations: Decodable, Sendable {
+        let presets: [Int]
+        let labels: [Label]
+    }
+
+    let durations: Durations
 }
 
 /// The fixture's words: lib/item-edit.ts `EDIT_COPY` (`copy`) and
@@ -173,8 +228,9 @@ func loadEditWrites(_ here: String = #filePath) throws -> EditWritesFixture {
 /// action, `.delete`, `.addSubtask` and `.resetStreak` for theirs. Nil for a
 /// body the phone never builds (an action it doesn't send, a key it doesn't
 /// write, a value of the wrong type, an id that isn't a uuid, a count that
-/// isn't whole, words with no time), which only a case the server refuses may
-/// hold.
+/// isn't whole, words with no time, a time edit with no key, a time beside
+/// Anytime or a null part of day, a length out of range), which only a case
+/// the server refuses may hold.
 func phoneBody(_ wire: JSONValue) -> ItemWriteBody? {
     guard case .object(let fields) = wire, case .string(let action)? = fields["action"] else { return nil }
     switch action {
@@ -227,6 +283,33 @@ func phoneBody(_ wire: JSONValue) -> ItemWriteBody? {
         // The encoder never puts words beside a null time.
         if time == nil, anchor != nil { return nil }
         return .edit(.reminder(time: time, anchor: anchor))
+    case "time":
+        // A key the edit may leave off: absent is nil, null `.clear`; nil
+        // for a value of the wrong type.
+        func column(_ key: String) -> ColumnWrite?? {
+            switch fields[key] {
+            case nil: return .some(nil)
+            case .null?: return .some(.clear)
+            case .string(let value)?: return .some(.set(value))
+            default: return nil
+            }
+        }
+        guard let bucket = column("timeBucket"), let startTime = column("startTime") else { return nil }
+        let duration: Int?
+        switch fields["duration"] {
+        case nil:
+            duration = nil
+        case .number(let minutes)?:
+            guard let whole = Int(exactly: minutes), (1...EditLimits.durationMax).contains(whole) else { return nil }
+            duration = whole
+        default:
+            return nil
+        }
+        let sent = [bucket != nil, startTime != nil, duration != nil].filter { $0 }.count
+        guard sent > 0, fields.count == 1 + sent else { return nil }
+        // The sheet never puts a time beside Anytime or none.
+        if case .set? = startTime, bucket == .set("anytime") || bucket == .clear { return nil }
+        return .edit(.time(bucket: bucket, startTime: startTime, duration: duration))
     default:
         return nil
     }
@@ -252,10 +335,11 @@ extension EditWritesCase {
     }
 
     /// A typed edit's case, a field's (`title`, `notes`) or a chip's
-    /// (`priority`, `timesPerDay`, `reminder`), the phone's body or not.
+    /// (`priority`, `timesPerDay`, `reminder`, `time`), the phone's body or
+    /// not.
     fileprivate var isFieldEdit: Bool {
         guard let action else { return false }
-        return ["title", "notes", "priority", "timesPerDay", "reminder"].contains(action)
+        return ["title", "notes", "priority", "timesPerDay", "reminder", "time"].contains(action)
     }
 
     /// The case's edit as the phone holds it; nil for anything but a field.
@@ -317,13 +401,28 @@ extension EditWritesCase {
         guard case .reminder(let time, let anchor)? = phoneEdit, refusal == nil else { return nil }
         return (time, anchor)
     }
+
+    /// A time edit the server takes, its keys as sent.
+    fileprivate var takenTime: (bucket: ColumnWrite?, startTime: ColumnWrite?, duration: Int?)? {
+        guard case .time(let bucket, let startTime, let duration)? = phoneEdit, refusal == nil else { return nil }
+        return (bucket, startTime, duration)
+    }
+
+    /// The store wrote nothing (`updates` is `{}`).
+    fileprivate var wroteNothing: Bool {
+        return updates == .object([:])
+    }
 }
 
 /// Would the route take this edit's values: its schema (a title that trims to
 /// something, text inside the outer limits, a known priority, a count from 1
 /// to the most, a time that is HH:mm) and lib/item-edit.ts `editRefusal`'s
 /// growth caps, on the trimmed text against what is stored. A reminder turned
-/// off carries no words on the wire, so only its time is measured.
+/// off carries no words on the wire, so only its time is measured. A time
+/// edit's part of day is one of the four, its time HH:mm, and its length in
+/// range; and the row's rule: the part of day and the time as they will be
+/// once written (each sent, else the item's own) never put a time beside
+/// Anytime or none.
 private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     switch edit {
     case .title(let raw):
@@ -345,6 +444,17 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         guard case .set(let words)? = anchor else { return true }
         return words.utf16.count <= EditLimits.outerAnchor
             && jsTrim(words).utf16.count <= growthLimit(cap: EditLimits.anchor, stored: item.reminderAnchor)
+    case .time(let bucket, let startTime, let duration):
+        if case .set(let value)? = bucket, DayBucket(rawValue: value) == nil { return false }
+        if case .set(let value)? = startTime, !isTimeOfDay(value) { return false }
+        if let duration, !(1...EditLimits.durationMax).contains(duration) { return false }
+        guard bucket != nil || startTime != nil else { return true }
+        let willBucket = bucket.map(\.value) ?? item.timeBucket
+        let willTime = startTime.map(\.value) ?? item.startTime
+        if let time = willTime, !time.isEmpty {
+            return !(willBucket ?? "").isEmpty && willBucket != "anytime"
+        }
+        return true
     }
 }
 
@@ -356,7 +466,14 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     /// 0, and one refused on a task. And 2c's: a priority set and cleared, and
     /// refused on a habit; a times a day changed, one with none stored at 1,
     /// and one refused on a task; a reminder's time alone keeping its words,
-    /// one turned off, one refused on a subtask, and words with no time.
+    /// one turned off, one refused on a subtask, and words with no time. And
+    /// 2d's: a time that schedules an unscheduled task, one alone in its own
+    /// part of day and one crossing into another, Anytime dropping a time, a
+    /// habit's part of day and a habit's cleared, a project block released
+    /// and one kept, a length alone, a time on a custom item, an edit equal to
+    /// the seed that writes nothing, a write that ends where it began, and
+    /// each refusal (`not_dated`, `not_for_subtask`, the row's `invalid` and
+    /// the schema's two).
     @Test func everyKindOfCaseIsThere() throws {
         let cases = try loadEditWrites().cases
         #expect(cases.contains { $0.takenTitle && $0.after?.title != $0.item.title }, "a title that writes")
@@ -403,12 +520,62 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         }, "a subtask's reminder")
         #expect(cases.contains { $0.action == "reminder" && $0.phoneEdit == nil && $0.refusal?.code == "invalid" },
                 "words with no time, which the schema refuses")
+
+        #expect(cases.contains { c in
+            c.takenTime != nil && c.item.isScheduled == false && c.after?.isScheduled == true
+        }, "a time that schedules an unscheduled task")
+        #expect(cases.contains { c in
+            guard let t = c.takenTime, t.bucket == nil, case .set(let time)? = t.startTime,
+                  let stored = c.item.startTime, stored != time, !c.item.isHabit else { return false }
+            return c.after?.startTime == time && c.after?.timeBucket == c.item.timeBucket
+        }, "a new time alone in its own part of day")
+        #expect(cases.contains { c in
+            guard let t = c.takenTime, t.bucket == nil, case .set(let time)? = t.startTime else { return false }
+            return c.after?.startTime == time && c.after?.timeBucket != c.item.timeBucket
+        }, "a time that crosses parts of day")
+        #expect(cases.contains { c in
+            guard let t = c.takenTime, t.bucket == .set("anytime"), t.startTime == .clear else { return false }
+            return c.item.startTime != nil && c.after?.startTime == nil && c.after?.timeBucket == "anytime"
+        }, "Anytime dropping a time")
+        #expect(cases.contains { c in
+            guard let t = c.takenTime, case .set? = t.bucket, c.item.isHabit else { return false }
+            return c.after?.timeBucket != c.item.timeBucket
+        }, "a habit's part of day")
+        #expect(cases.contains { c in
+            guard let t = c.takenTime, t.bucket == .clear, t.startTime == .clear, c.item.isHabit else { return false }
+            return c.item.timeBucket != nil && c.after?.timeBucket == nil && c.after?.startTime == nil
+        }, "a habit's part of day and time cleared with null")
+        #expect(cases.contains { c in
+            c.takenTime != nil && c.item.inProjectBlock == true && c.after?.inProjectBlock == false
+        }, "a project block released")
+        #expect(cases.contains { c in
+            c.takenTime != nil && c.item.inProjectBlock == true && c.after?.inProjectBlock == true
+                && c.after != c.item
+        }, "a project block kept")
+        #expect(cases.contains { c in
+            guard let t = c.takenTime, t.bucket == nil, t.startTime == nil, let minutes = t.duration else {
+                return false
+            }
+            return c.after?.duration == minutes && c.after?.isScheduled == c.item.isScheduled && c.after != c.item
+        }, "a length alone")
+        #expect(cases.contains { $0.takenTime != nil && $0.item.type == "custom" && $0.after != $0.item },
+                "a time on a custom item")
+        #expect(cases.contains { $0.takenTime != nil && $0.wroteNothing && $0.after == $0.item },
+                "a time edit that writes nothing")
+        #expect(cases.contains { $0.takenTime != nil && !$0.wroteNothing && $0.after == $0.item },
+                "a time edit that writes and ends where it began")
+        #expect(cases.contains { $0.action == "time" && $0.refusal?.code == "not_dated" }, "an undated task's time")
+        #expect(cases.contains { $0.action == "time" && $0.refusal?.code == "not_for_subtask" }, "a subtask's time")
+        #expect(cases.contains { $0.action == "time" && $0.phoneEdit != nil && $0.refusal?.code == "invalid" },
+                "a time beside a stored Anytime, which the row refuses")
+        #expect(cases.filter { $0.action == "time" && $0.phoneEdit == nil && $0.refusal?.code == "invalid" }.count >= 2,
+                "a time beside Anytime and an empty time edit, which the schema refuses")
     }
 
     /// `editAllowed` answers the type's refusals (`no_notes`, `no_priority`,
-    /// `no_count`, `not_remindable`), and the field's growth cap (`fits`) the
-    /// `invalid` ones, or the body is one the phone never builds; everything
-    /// else is taken.
+    /// `no_count`, `not_remindable`, `not_for_subtask`, `not_dated`), and the
+    /// field's growth cap or the time's row rule (`fits`) the `invalid` ones,
+    /// or the body is one the phone never builds; everything else is taken.
     @Test func theGatesRefuseWhatTheServerRefuses() throws {
         for c in try loadEditWrites().cases where c.isFieldEdit {
             guard let edit = c.phoneEdit else {
@@ -447,7 +614,7 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
                 let limit = growthLimit(cap: EditLimits.anchor, stored: c.item.reminderAnchor)
                 let anchor = cleanAnchor(raw, limit: limit).map(ColumnWrite.set) ?? .clear
                 #expect(fits(ItemEdit.reminder(time: time, anchor: anchor), on: c.item), "\(c.name)")
-            case .reminder?, .priority?, .timesPerDay?:
+            case .reminder?, .priority?, .timesPerDay?, .time?:
                 // Nothing typed to clean.
                 continue
             case nil:
@@ -458,7 +625,8 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
 
     /// The optimistic step is the store's end state: the whole decoded item,
     /// so a field the edit must not touch is pinned too (a habit's
-    /// `dailyCounts` under a new times a day, the words under a time alone).
+    /// `dailyCounts` under a new times a day, the words under a time alone, a
+    /// project block under a new time, the day under every time edit).
     @Test func editingLandsWhereTheStoreDoes() throws {
         for c in try loadEditWrites().cases where c.refusal == nil && c.isFieldEdit {
             let edit = try #require(c.phoneEdit, "\(c.name): no edit")
@@ -558,6 +726,40 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
         #expect(EditLimits.anchor == limits.anchor, "EDIT_LIMITS.anchor")
         #expect(EditLimits.outerAnchor == limits.outerAnchor, "OUTER_LIMITS.anchor")
         #expect(EditLimits.timesPerDayMax == limits.timesPerDayMax, "TIMES_PER_DAY_MAX")
+        #expect(EditLimits.durationMax == limits.durationMax, "MAX_DURATION_MINUTES")
+    }
+
+    /// lib/time-bucket.ts's rules are the web's at every time the fixture
+    /// asks, its JavaScript edges included ("9:30" by `parseInt`, "24:00",
+    /// none at all), and the parts of day start where the web's do.
+    @Test func theBucketRulesAreTheWebs() throws {
+        let buckets = try JSONDecoder().decode(EditWritesBuckets.self, from: editWritesData()).buckets
+        #expect(!buckets.forTime.isEmpty && !buckets.corrected.isEmpty)
+        for t in buckets.forTime {
+            #expect(bucketForTime(t.time).rawValue == t.bucket, "getBucketForTime(\(t.time.debugDescription))")
+        }
+        for c in buckets.corrected {
+            #expect(autoCorrectBucket(c.time, c.bucket) == c.expected,
+                    "autoCorrectBucket(\(c.time.debugDescription), \(c.bucket ?? "nil"))")
+        }
+        #expect(bucketStartTime(.morning) == buckets.starts.morning, "BUCKET_START_TIMES.morning")
+        #expect(bucketStartTime(.afternoon) == buckets.starts.afternoon, "BUCKET_START_TIMES.afternoon")
+        #expect(bucketStartTime(.evening) == buckets.starts.evening, "BUCKET_START_TIMES.evening")
+        #expect(bucketStartTime(.anytime) == nil)
+    }
+
+    /// The Time sheet's lengths and their words are the web's, character for
+    /// character.
+    @Test func theLengthsAreTheWebs() throws {
+        let durations = try JSONDecoder().decode(EditWritesDurations.self, from: editWritesData()).durations
+        #expect(EditCopy.durationPresets == durations.presets, "DURATION_ORDER")
+        #expect(durations.presets.allSatisfy { p in durations.labels.contains { $0.minutes == p } },
+                "a label for every preset")
+        for l in durations.labels {
+            // By scalar, as theCopyIsTheWebs compares.
+            #expect(Array(EditCopy.durationLabel(l.minutes).unicodeScalars) == Array(l.label.unicodeScalars),
+                    "durationLabel(\(l.minutes))")
+        }
     }
 
     /// The words the phone shares with the web are the web's, character for

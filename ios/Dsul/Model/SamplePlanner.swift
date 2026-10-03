@@ -77,14 +77,15 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 /// lib/day-items.ts, day-schedule.tsx, lib/braindump-members.ts,
 /// lib/grouping.ts), a tick is lib/item-toggle.ts, the item sheet's verbs are
 /// lib/item-verbs.ts (their gates) and the store actions they run (DsulCore
-/// VerbWrites.swift), and its title, notes, priority, times a day, reminder and
-/// Delete are lib/item-edit.ts and the store's `deleteTask` / `deleteHabit`,
-/// Add a subtask the store's `addTask` and Reset streak its `resetHabitStreak`
-/// (DsulCore ItemEdit.swift), so the phone and the web agree on the same data.
-/// Every change here is optimistic and immediate; when signed in, `sync` then
-/// sends it to the server (PlannerSync). A verb or an edit re-reads its item
-/// and asks its gate again before it writes, whatever the sheet drew; a refusal
-/// changes nothing and sends nothing.
+/// VerbWrites.swift), and its title, notes, priority, times a day, reminder,
+/// time and Delete are lib/item-edit.ts and the store's `deleteTask` /
+/// `deleteHabit` (the time as the dialog's `commitEdit` saves it; the date is
+/// Reschedule's `move`), Add a subtask the store's `addTask` and Reset streak
+/// its `resetHabitStreak` (DsulCore ItemEdit.swift), so the phone and the web
+/// agree on the same data. Every change here is optimistic and immediate; when
+/// signed in, `sync` then sends it to the server (PlannerSync). A verb or an
+/// edit re-reads its item and asks its gate again before it writes, whatever
+/// the sheet drew; a refusal changes nothing and sends nothing.
 @Observable @MainActor
 final class SamplePlanner {
     /// Every item, braindump and subtasks included, as the server sent them
@@ -411,11 +412,23 @@ final class SamplePlanner {
     /// May `item` take the edit `action` names? The server takes the action
     /// (`canWrite`) and the item's type has the field (DsulCore
     /// `editAllowed(action:on:caps:)`, lib/item-edit.ts `editRefusal`'s type
-    /// gate: a habit has no priority, a task no count, a subtask no
-    /// reminder). The sheet asks it for a chip before it has a value to send,
-    /// and `edit` asks it again before it writes.
+    /// gate: a habit has no priority, a task no count, a subtask no reminder
+    /// and no time, and a task no time until it has a date). The sheet asks
+    /// it for a chip before it has a value to send, and `edit` asks the typed
+    /// gate below before it writes.
     func canEdit(_ action: String, _ item: SampleItem) -> Bool {
         return canWrite(action) && editAllowed(action: action, on: item, caps: caps(for: item))
+    }
+
+    /// May `item` take `edit` itself? `canEdit(edit.action, item)`, and the
+    /// body's own rules (DsulCore `editAllowed(_:on:caps:)`): the ones a time
+    /// edit carries (no key at all, a time beside Anytime or none, a length
+    /// out of range or on a type with none) are refused here, before any
+    /// step, as the route refuses them. The row's rule, a time that would
+    /// land beside a stored Anytime, is the sheet's to keep
+    /// (`ItemSheetModel.timeCommit`).
+    func canEdit(_ edit: ItemEdit, _ item: SampleItem) -> Bool {
+        return canWrite(edit.action) && editAllowed(edit, on: item, caps: caps(for: item))
     }
 
     /// Does the server take the write `verb` sends?
@@ -500,7 +513,8 @@ final class SamplePlanner {
         sync?.enqueue(.skip(id: id, date: date, skipped: skipped), snapshot: before)
     }
 
-    /// Tomorrow and Reschedule: carries a task-like item to `dateStr` (the
+    /// Tomorrow and Reschedule, and the Date chip's Today, Tomorrow, Next
+    /// week and Pick a date… too: carries a task-like item to `dateStr` (the
     /// store's `moveTaskToDate`, DsulCore `moving`): that start date, its
     /// bucket kept (Anytime when it had none), its time and length kept. The
     /// caller picks the day (`nextDayOf` for Tomorrow); the gate is the web's
@@ -560,15 +574,19 @@ final class SamplePlanner {
     /// blank; the priority set or cleared; a habit's times a day (none reads
     /// as 1, so 1 on a habit with none writes nothing); a reminder's time,
     /// its cue words only when they changed (nil keeps the stored ones, as
-    /// the server does), or off with both cleared. The sheet sends only what
-    /// changed, already cleaned and within its growth cap
-    /// (`ItemSheetModel.commit`, `reminderCommit`). Behind `canEdit`: the
-    /// server's list and its type gate. A title that trims to nothing, or an
-    /// edit that changes nothing, writes nothing.
+    /// the server does), or off with both cleared; a part of day, a specific
+    /// time and a length, only the keys that changed
+    /// (`ItemSheetModel.timeCommit`), stepped as the server writes them
+    /// (DsulCore `editing`, the dialog's `commitEdit`). The sheet sends only
+    /// what changed, already cleaned and within its growth cap
+    /// (`ItemSheetModel.commit`, `reminderCommit`). Behind `canEdit(edit,
+    /// item)`: the server's list, its type gate and the body's own rules. A
+    /// title that trims to nothing, or an edit that changes nothing, writes
+    /// nothing.
     func edit(_ id: UUID, _ edit: ItemEdit) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let before = items[i]
-        guard canEdit(edit.action, before) else { return }
+        guard canEdit(edit, before) else { return }
         let after = editing(before, edit)
         guard after != before else { return }
         items[i] = after

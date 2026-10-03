@@ -93,7 +93,15 @@ import { subscribeClickAway } from '@/lib/click-away';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
-import { EDIT_COPY, reminderPatch, TIMES_PER_DAY_MAX } from '@/lib/item-edit';
+import {
+  DURATION_LABELS,
+  DURATION_ORDER,
+  durationLabel,
+  EDIT_COPY,
+  planTimeEdit,
+  reminderPatch,
+  TIMES_PER_DAY_MAX,
+} from '@/lib/item-edit';
 import type {
   HabitItem,
   Item,
@@ -171,16 +179,6 @@ const BUCKET_LABELS: Record<TimeBucket, string> = {
   morning: 'Morning',
   afternoon: 'Afternoon',
   evening: 'Evening',
-};
-
-const DURATION_ORDER = ['15', '30', '45', '60', '90', '120'];
-const DURATION_LABELS: Record<string, string> = {
-  '15': '15 min',
-  '30': '30 min',
-  '45': '45 min',
-  '60': '1 hour',
-  '90': '1.5 hours',
-  '120': '2 hours',
 };
 
 const DATE_SHORTCUTS = [
@@ -461,6 +459,70 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
   return updates;
 }
 
+/**
+ * The edit write, as a pure function of (item, draft, touched fields).
+ *
+ * Pure in `item` because the panel autosaves: a queued save has to be
+ * flushable for the item the panel already moved OFF of, which a closure over
+ * `editItem` could no longer name.
+ *
+ * Scoped by `keys` because the panel is NON-MODAL, which makes the draft a
+ * claim about the fields you touched rather than about the whole item. The
+ * canvas behind the panel is live — you can drag the very block you have open
+ * — so writing the full property set back would silently revert that drag (and
+ * an undo, and an agent's write) on the next keystroke's save. The modal has
+ * no such window and still passes DRAFT_KEYS for a byte-identical full save.
+ *
+ * Scheduling compares against the LIVE item, not the seeded snapshot: after
+ * the first autosave the snapshot's isScheduled/startTime are stale, and a
+ * stale comparison re-runs scheduleTask — which unconditionally clears
+ * inProjectBlock and the previous-slot fields — on every subsequent save.
+ *
+ * Module scope, reading the store inside each call (never once at load: a test
+ * that swaps an action with usePlannerStore.setState must still see its swap).
+ * Exported for tests/unit/edit-writes-fixtures.test.ts and
+ * tests/unit/item-time-edit.test.ts, which drive the panel's own save. The
+ * second pass is lib/item-edit.ts planTimeEdit, which the iPhone's route turns
+ * into one patch (timeEditPatch).
+ */
+export function commitEdit(item: Item, d: ItemDraft, keys: readonly string[]): void {
+  if (!d.title.trim()) return;
+  // The live items, read before the first pass, and the actions the store holds now.
+  const store = usePlannerStore.getState();
+
+  // Habit first; task and custom items share the task-shaped save path
+  // (the store's task actions operate on any task-like item).
+  if (item.type !== 'habit') {
+    const found = store.items.find((i) => i.id === item.id);
+    const live = found && found.type !== 'habit' ? found : item;
+
+    const updates = taskUpdatesFromDraft(d, keys);
+    if (Object.keys(updates).length > 0) store.updateTask(item.id, updates);
+
+    // Scheduling is a second pass through scheduleTask/unscheduleTask — they
+    // own isScheduled and the project-block/previous-slot clears — and only
+    // runs when something schedule-shaped actually moved (planTimeEdit).
+    const plan = planTimeEdit(live, d, keys);
+    if (plan.kind === 'scheduleTask') store.scheduleTask(item.id, plan.bucket, plan.time);
+    else if (plan.kind === 'setTime') store.updateTask(item.id, { startTime: plan.time });
+    else if (plan.kind === 'unscheduleTask') store.unscheduleTask(item.id);
+  } else {
+    const found = store.items.find((i) => i.id === item.id);
+    const live = found && found.type === 'habit' ? found : item;
+
+    const updates = habitUpdatesFromDraft(d, keys);
+    if (Object.keys(updates).length > 0) store.updateHabit(item.id, updates);
+
+    // Same second pass, with the same equality guard (scheduleHabit writes
+    // unconditionally).
+    const plan = planTimeEdit(live, d, keys);
+    if (plan.kind === 'scheduleHabit') store.scheduleHabit(item.id, plan.bucket, plan.time);
+    else if (plan.kind === 'clearHabitTime') {
+      store.updateHabit(item.id, { timeBucket: undefined, startTime: undefined });
+    }
+  }
+}
+
 interface AddSeed {
   bucket?: TimeBucket;
   date?: Date;
@@ -698,17 +760,13 @@ function ItemDialogInner({
     addItem,
     addTask,
     addHabit,
-    updateTask,
-    updateHabit,
     deleteTask,
     deleteHabit,
     changeItemType,
     moveTaskToDate,
     setItemSkipped,
     toggleHabitStatus,
-    scheduleTask,
     unscheduleTask,
-    scheduleHabit,
     resetHabitStreak,
     projects,
     getProjectColor,
@@ -1136,82 +1194,6 @@ function ItemDialogInner({
     onOpenChange(false);
   };
 
-  /**
-   * The edit write, as a pure function of (item, draft, touched fields).
-   *
-   * Pure in `item` because the panel autosaves: a queued save has to be
-   * flushable for the item the panel already moved OFF of, which a closure over
-   * `editItem` could no longer name.
-   *
-   * Scoped by `keys` because the panel is NON-MODAL, which makes the draft a
-   * claim about the fields you touched rather than about the whole item. The
-   * canvas behind the panel is live — you can drag the very block you have open
-   * — so writing the full property set back would silently revert that drag (and
-   * an undo, and an agent's write) on the next keystroke's save. The modal has
-   * no such window and still passes DRAFT_KEYS for a byte-identical full save.
-   *
-   * Scheduling compares against the LIVE item, not the seeded snapshot: after
-   * the first autosave the snapshot's isScheduled/startTime are stale, and a
-   * stale comparison re-runs scheduleTask — which unconditionally clears
-   * inProjectBlock and the previous-slot fields — on every subsequent save.
-   */
-  const commitEdit = (item: Item, d: ItemDraft, keys: readonly string[]) => {
-    if (!d.title.trim()) return;
-    const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
-    const startTime = d.startTime || undefined;
-
-    // Habit first; task and custom items share the task-shaped save path
-    // (the store's task actions operate on any task-like item).
-    if (item.type !== 'habit') {
-      const found = usePlannerStore.getState().items.find((i) => i.id === item.id);
-      const live = found && found.type !== 'habit' ? found : item;
-
-      const updates = taskUpdatesFromDraft(d, keys);
-      if (Object.keys(updates).length > 0) updateTask(item.id, updates);
-
-      // Scheduling is a second pass through scheduleTask/unscheduleTask — they
-      // own isScheduled and the project-block/previous-slot clears — and only
-      // runs when something schedule-shaped actually moved.
-      if (wants('startDate', 'timeBucket', 'startTime')) {
-        const effectiveTimeBucket = d.startDate
-          ? d.timeBucket === 'none'
-            ? 'anytime'
-            : d.timeBucket
-          : undefined;
-        if (d.startDate && effectiveTimeBucket) {
-          if (effectiveTimeBucket !== live.timeBucket || !live.isScheduled) {
-            scheduleTask(item.id, effectiveTimeBucket, startTime);
-            // `''` is the draft's sentinel for "no specific time"; the store says
-            // `undefined`. Comparing them raw made this branch fire on every
-            // save for every bucket-only task.
-          } else if (startTime !== live.startTime) {
-            updateTask(item.id, { startTime });
-          }
-        } else if (!d.startDate && live.isScheduled) {
-          unscheduleTask(item.id);
-        }
-      }
-    } else {
-      const found = usePlannerStore.getState().items.find((i) => i.id === item.id);
-      const live = found && found.type === 'habit' ? found : item;
-
-      const updates = habitUpdatesFromDraft(d, keys);
-      if (Object.keys(updates).length > 0) updateHabit(item.id, updates);
-
-      // Same second pass, and the same reason for the equality guard the task
-      // branch has always had: scheduleHabit writes unconditionally.
-      if (wants('timeBucket', 'startTime')) {
-        if (d.timeBucket !== 'none') {
-          if (d.timeBucket !== live.timeBucket || startTime !== live.startTime) {
-            scheduleHabit(item.id, d.timeBucket, startTime);
-          }
-        } else if (live.timeBucket !== undefined) {
-          updateHabit(item.id, { timeBucket: undefined, startTime: undefined });
-        }
-      }
-    }
-  };
-
   const handleEditSave = () => {
     if (!state || state.mode !== 'edit') return;
     if (!editItem || !editDraft || !editDraft.title.trim()) return;
@@ -1602,7 +1584,7 @@ function ItemDialogInner({
       effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && d.startTime
         ? d.startTime
         : null,
-      hasDuration ? DURATION_LABELS[d.duration] ?? `${d.duration} min` : null,
+      hasDuration ? durationLabel(d.duration) : null,
     ].filter(Boolean);
 
     const repeatValue = () => {

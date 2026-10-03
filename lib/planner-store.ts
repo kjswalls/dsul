@@ -32,6 +32,8 @@ import type {
 import { PRIORITY_LABELS } from './planner-types';
 // The time → bucket rules live in a plain module so a route can share them.
 import { autoCorrectBucket } from './time-bucket';
+// The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
+import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { validateProposalOperations } from './proposal';
 import {
   addDaysToDateStr,
@@ -3088,17 +3090,7 @@ export const usePlannerStore = create<PlannerStore>()(
           `Schedule task: ${task?.title || 'Unknown'}`,
           landingReceipt(get(), [id], date ?? startDateOf(task))
         );
-        const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
-
-        const updates: Partial<Task> = {
-          isScheduled: true,
-          timeBucket: finalBucket,
-          startTime: time,
-          inProjectBlock: false,
-          previousStartTime: undefined,
-          previousStartDate: undefined,
-          ...(date ? { startDate: date } : {}),
-        };
+        const updates: Partial<Task> = { ...scheduleTaskPatch(bucket, time), ...(date ? { startDate: date } : {}) };
 
         updateItemAction(id, 'task', updates);
       },
@@ -3125,7 +3117,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const task = findTaskLike(id);
         if (!task) return; // habit ids no-op here by contract (sidebar drop)
         setNextActionLabel(`Unschedule task: ${task.title}`);
-        updateItemAction(id, 'task', { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined });
+        updateItemAction(id, 'task', { ...UNSCHEDULE_TASK_PATCH });
       },
 
       /**
@@ -3430,14 +3422,9 @@ export const usePlannerStore = create<PlannerStore>()(
               : `Unschedule task: ${targets.length} items`),
         );
 
-        // Field-for-field identical to unscheduleTask so the single and batched
-        // verbs can never drift apart.
-        const updates: Partial<Task> = {
-          isScheduled: false,
-          timeBucket: undefined,
-          startTime: undefined,
-          startDate: undefined,
-        };
+        // One patch, UNSCHEDULE_TASK_PATCH, for the single and batched verbs, so
+        // they can never drift apart.
+        const updates: Partial<Task> = { ...UNSCHEDULE_TASK_PATCH };
 
         // One set() => one history entry => one undo (see moveTasksToDate).
         //
@@ -4300,8 +4287,7 @@ export const usePlannerStore = create<PlannerStore>()(
       scheduleHabit: (id, bucket, time) => {
         const habit = findItem(id, 'habit');
         setNextActionLabel(`Schedule habit: ${habit?.title || 'Unknown'}`);
-        const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
-        updateItemAction(id, 'habit', { timeBucket: finalBucket, startTime: time });
+        updateItemAction(id, 'habit', scheduleHabitPatch(bucket, time));
       },
 
       assignHabitToBucket: (id, bucket) => {

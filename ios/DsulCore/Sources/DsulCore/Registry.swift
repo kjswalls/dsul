@@ -5,7 +5,7 @@ import Foundation
 // column is NULL, the block length a timed item gets when it has none, and the
 // capabilities the item sheet's verbs, chips and fields read (label, skippable,
 // pausable, dated, remindable, collectible, subtasks, the counters, priority,
-// notes), with the item-level questions built on them (`isSkippable`,
+// notes, duration), with the item-level questions built on them (`isSkippable`,
 // `isPausable`, `isRemindable`, `isCollectible`, lib/item-edit.ts
 // `subtaskRefusal` as `canAddSubtask`, and lib/bulk-edit.ts
 // `reminderNeedsDate`), and the words the sheet borrows from
@@ -68,6 +68,10 @@ public struct ItemCaps: Sendable, Hashable {
     /// `fields.includes('notes')`: every shipped type today, so the server's
     /// `no_notes` is the answer a future type gets.
     public var hasNotes: Bool
+    /// `fields.includes('duration')`: the type keeps a length, which the Time
+    /// sheet edits. Every shipped type today, so the server's `no_duration` is
+    /// the answer a future type gets.
+    public var hasDuration: Bool
     /// `form.titlePlaceholder`: the empty title field's prompt ("What needs to
     /// be done?"; "Add a side quest…" for a custom type).
     public var titlePlaceholder: String
@@ -93,6 +97,7 @@ public struct ItemCaps: Sendable, Hashable {
         dailyCounts: Bool,
         hasPriority: Bool,
         hasNotes: Bool = true,
+        hasDuration: Bool = true,
         titlePlaceholder: String = "",
         deleteNamesHistory: Bool = false
     ) {
@@ -113,6 +118,7 @@ public struct ItemCaps: Sendable, Hashable {
         self.dailyCounts = dailyCounts
         self.hasPriority = hasPriority
         self.hasNotes = hasNotes
+        self.hasDuration = hasDuration
         self.titlePlaceholder = titlePlaceholder
         self.deleteNamesHistory = deleteNamesHistory
     }
@@ -122,7 +128,8 @@ public struct ItemCaps: Sendable, Hashable {
         label: "Task", doneStatus: "completed", skipStatus: nil, defaultFrequency: "none", defaultBlockMinutes: 30,
         dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false, dailyCounts: false,
-        hasPriority: true, hasNotes: true, titlePlaceholder: "What needs to be done?", deleteNamesHistory: false
+        hasPriority: true, hasNotes: true, hasDuration: true, titlePlaceholder: "What needs to be done?",
+        deleteNamesHistory: false
     )
 
     /// `ITEM_TYPES.habit`.
@@ -130,7 +137,8 @@ public struct ItemCaps: Sendable, Hashable {
         label: "Habit", doneStatus: "done", skipStatus: "skipped", defaultFrequency: "daily", defaultBlockMinutes: 30,
         dateAnchored: false, dateAddressable: false, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: false, subtasks: false, streakCounter: true, dailyCounts: true,
-        hasPriority: false, hasNotes: true, titlePlaceholder: "What habit to track?", deleteNamesHistory: true
+        hasPriority: false, hasNotes: true, hasDuration: true, titlePlaceholder: "What habit to track?",
+        deleteNamesHistory: true
     )
 
     /// `buildCustomTypeConfig({ name, label })`: task-shaped in every respect
@@ -149,7 +157,7 @@ public struct ItemCaps: Sendable, Hashable {
             label: noun, doneStatus: "completed", skipStatus: nil, defaultFrequency: "none",
             defaultBlockMinutes: 30, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true,
             remindable: true, collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false,
-            dailyCounts: false, hasPriority: true, hasNotes: true,
+            dailyCounts: false, hasPriority: true, hasNotes: true, hasDuration: true,
             titlePlaceholder: "Add a \(jsLowercased(noun))\u{2026}", deleteNamesHistory: false
         )
     }
@@ -283,8 +291,8 @@ public func isSkippable(_ item: Item) -> Bool {
 }
 
 /// A non-empty `parentItemId`: JavaScript's truthiness, which the subtask rule
-/// below tests.
-private func isSubtask(_ item: Item) -> Bool {
+/// below tests, and ItemEdit.swift's gate for the Time chip (`not_for_subtask`).
+func isSubtask(_ item: Item) -> Bool {
     guard let parent = item.parentItemId else { return false }
     return !parent.isEmpty
 }

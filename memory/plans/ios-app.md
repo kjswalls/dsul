@@ -89,7 +89,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `editAllowed(action:on:caps:)` (the gate by action name, which a chip asks
   before it has a value); `isRemindable(_:caps:)` and `reminderNeedsDate`
   (← `lib/bulk-edit.ts`) to `Registry.swift`; and the reminder sentences to
-  `EditCopy.swift`.
+  `EditCopy.swift`. 2d adds `.time` to `ItemEdit.swift` and
+  `ItemWriteBody.swift` (its step ports `timeEditPatch`, the dialog's
+  `commitEdit` over the keys sent); `bucketForTime`, `autoCorrectBucket` and
+  `bucketStartTime` (← `lib/time-bucket.ts`) to `DayBuckets.swift`;
+  `durationPresets` and `durationLabel` (← `lib/item-edit.ts`) to
+  `EditCopy.swift`; and `hasDuration` to `Registry.swift`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -98,7 +103,8 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
   `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
   `NotesEditor`, `SubtaskField` and `StreakPopover`, and from 2c `Editors/`:
-  `PropertyMenus` and `ReminderSheet`) and `ItemSheetModel`, which decides
+  `PropertyMenus` and `ReminderSheet`, which 2d joins with `TimeSheet` and
+  `ClockWheel`, the wheel both sheets share) and `ItemSheetModel`, which decides
   what it says and offers apart from the views.
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
@@ -253,8 +259,10 @@ and "+ Add property" (priority, times a day, the reminder); 2d date and time;
 2e repeat; 2f project, routines and seasons. An older server's `writes` hides
 any editor it doesn't take, so the deploy order doesn't matter: against one
 without `addSubtask` there is no Add a subtask row, without `resetStreak` the
-streak popover has no Reset, and without `priority`, `timesPerDay` and
-`reminder` the chips stay read-only and there is no Add property.
+streak popover has no Reset, and without `priority`, `timesPerDay`, `reminder`
+and `time` those chips stay read-only; the date chip still edits, through
+`move`, which every server that sends `writes` takes, so Add property then
+holds Date alone, for an undated task.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
@@ -374,6 +382,30 @@ words are fixed on every surface, below.
   and a time sent alone keeps the stored words. Each is `{}` (200, no write)
   when the row already says it, and a habit with no count stored takes 1 as
   already so, since the dialog seeds it as 1.
+  2d's `time` (`timeBucket`, one of the four or null for none; `startTime`,
+  HH:mm or null for no specific time; `duration`, an integer 1-1,440,
+  `MAX_DURATION_MINUTES`; each optional and sent only when it changed,
+  `.strict()`) goes through the same handler. The schema refuses a body with
+  none of the three and a time sent beside Anytime or null (400 `invalid`).
+  It reads `start_time, is_scheduled, duration` on top of the shared row
+  (which already has `start_date`, `time_bucket` and `in_project_block`), and
+  is refused under a subtask (400 `not_for_subtask`), on a date-anchored item
+  with no date (409 `not_dated`), with a length on a type without one (400
+  `no_duration`, which no shipped type reaches) and when the edit would leave
+  a time beside Anytime or no part of day, judging the row as it will be once
+  written, the sent value or else the stored one for each (400 `invalid`), so
+  Anytime or none sent while a time is stored and kept is refused too.
+  `timeEditPatch`
+  is the dialog's `commitEdit` over the sent keys: the draft seeded as
+  `draftFromItem` seeds it (the length at `defaultBlockMinutes` when none is
+  stored), a key changed only when it differs from that seed, then the
+  mapper's pass with `updateTask` / `updateHabit`'s auto-correct and
+  `planTimeEdit`'s pass through the store's own patches
+  (`scheduleTaskPatch`, `scheduleHabitPatch`, now in lib/item-edit.ts: the
+  store's actions import both, the `schedule` intent imports
+  `scheduleTaskPatch`, and the dialog imports `planTimeEdit`). `{}` (200, no
+  write) only when nothing moved from the seed; an edit whose end row is the
+  stored one still writes, as the web does.
 - **Add a subtask** (2b). The Subtasks section shows whenever the item has
   subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
   itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
@@ -450,7 +482,9 @@ words are fixed on every surface, below.
   chips edit when the server lists the action in `writes` and DsulCore's
   `editAllowed` takes it for the type (`ItemSheetModel.chipEditor`, asking
   the planner's `canEdit`); a menu writes at once, the reminder opens a
-  sheet. Every other chip stays read-only until 2d-2f. An editable chip keeps
+  sheet. From 2d the date and time chips edit too (below, with the hints
+  "Changes the date" and "Changes the time"); the rest stay read-only until
+  2e-2f. An editable chip keeps
   part 1's look and gains a trailing chevron; its words, symbol and chevron
   draw in the label colour (`ChipView(editable: true)`), never lime, and it
   scales when pressed (`PressScaleStyle`) rather than fading. It is hit over
@@ -511,6 +545,39 @@ words are fixed on every surface, below.
   columns a database behind on its migrations may lack, and null when that
   read was retried without them; missing (an older server) or null reads
   unknown and shows no line.
+- **Date** (2d). The date chip is a menu: Today, Tomorrow, Next week, each
+  with its day under it ("Oct 2", `formatDay`), then Pick a date…, the day
+  picker titled "Date", whose confirm takes the Reschedule's verb ("Move to
+  Thu, Oct 8", or "Schedule for" on an undated task). A pick writes at once
+  through `move`. Gated as the Reschedule verb (`offers(.reschedule)`, Q3 a),
+  so a paused task's chip edits though its bar shows Resume alone; elsewhere
+  read-only, with no chevron. An undated task gets Date ▸ in Add property.
+  Next week is `nextWeekStart` (Q4 a), the first day of next week by Week
+  starts on, which is the same day as Tomorrow on the week's last day. No "No
+  date". Today and Tomorrow are wall-clock days in the user's zone, where the
+  web counts in the browser's.
+- **Time** (2d). The time chip and Time… open the Time sheet (a `Form`
+  titled "Time"; Cancel and Done; a swipe refused, and Cancel confirming,
+  once what it shows moved). Part of day's check shows where the item will
+  file (`autoCorrectBucket`'s preview), and a tap that would leave the check
+  where it is changes nothing, so what is checked is what is sent: under a
+  time only Anytime moves it, and a line says the time sets the part of day.
+  A part of day is sent only when a tap moved the check; the wheel crossing
+  into another part of day sends the time alone, which the server files there
+  and which keeps a project block. Specific time only under Morning,
+  Afternoon and Evening, "Add a time" first (a part of day with no time is a
+  real state, and the wheel has no empty one), starting at
+  `BUCKET_START_TIMES` (5:00 am, 12:00 pm, 5:00 pm, the project time block's
+  defaults); Anytime drops the time. Duration's presets plus the stored
+  length as its own row, seeded with `defaultBlockMinutes` when none is
+  stored, and no clear. Done sends one `time` write with the keys that moved,
+  re-read against the item at Done so a change made on the web while the
+  sheet was up never makes the body one the server refuses. On a task, a part
+  of day sent always writes, as the web's commitEdit does (scheduleTask sets
+  `isScheduled` and `inProjectBlock: false`, and most rows hold NULL there),
+  releasing a project block. No "No specific bucket" for a habit, which the
+  server still takes. An Anytime item's length shows no chip (part 1's rule),
+  so a length set from Time… on one shows on the grid and the web only.
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -555,11 +622,27 @@ words are fixed on every surface, below.
   `outerAnchor` and `timesPerDayMax`, and `copy` the three reminder sentences.
   caps.json's item cases gain `reminderNeedsDate` (lib/bulk-edit.ts), hence
   `bulk-edit` in ios.yml's filter.
+  2d makes the gesture the dialog's own save, `commitEdit`, both passes, and
+  the 2a-2c cases regenerated byte for byte through it. Its cases: a time on
+  an unscheduled dated task, a time in its own part of day, a part of day and
+  a time, a time that crosses parts of day, Anytime dropping a time, Anytime
+  on a dated task with none; a habit's part of day, its time cleared alone,
+  both cleared (server-only) and a part of day its time overrules (written
+  though the end row is the stored one); the block trio (a part of day
+  releases it, a time alone in or across parts of day keeps it); a length
+  alone, on an unscheduled task, at the default with none stored (`{}`) and
+  on a habit; a custom item's part of day; and the five refusals
+  (`not_dated`, `not_for_subtask`, the row's `invalid` for a time under
+  Anytime, and the schema's two, `time-refused-anytime-with-a-time` and
+  `time-refused-empty`). `limits` gains `durationMax`, and two keys are new:
+  `buckets` (`getBucketForTime` and `autoCorrectBucket` on JS's edges, and
+  `BUCKET_START_TIMES`) and `durations` (`DURATION_ORDER` and
+  `durationLabel`, the lengths' words). caps.json's types gain `hasDuration`.
 - **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-13:
   the title, the notes, the keyboard, Delete, adding subtasks, Reset streak
-  and Streaks off, Add property, the chips and the Remind sheet, offline,
-  VoiceOver, the largest text size, the lime, and the platform behaviours
-  they rest on).
+  and Streaks off, Add property, the chips and the Remind sheet, from 2d the
+  Date menu and the Time sheet (checks 7 and 8), offline, VoiceOver, the
+  largest text size, the lime, and the platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -810,6 +893,12 @@ functions:
   (`reminderPatch`): a time with the cue words trimmed, or off with both
   cleared, and a time sent alone keeps the stored words. Never
   `reminder_sent_key`, so a new time re-arms itself, and never a snooze.
+- **A time edit writes as the dialog's Time chip does** (`timeEditPatch`,
+  `commitEdit` over the keys sent): one `updateItem` where the web makes up to
+  two, the same end row. A part of day picked away from the stored one
+  releases a project block (`scheduleTaskPatch`); a new time alone keeps the
+  item in its block, its bucket auto-corrected. Never the date: the Date chip
+  is `move`.
 - **The live Beeminder post** (`reportLiveCompletion`) runs after every
   `set_item_completion`, as the browser's `reportCompletion` does after a
   tick and `/api/reminders/act` after its own: through `after()` once the
@@ -857,8 +946,8 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of item detail part 2 (date
-and time, repeat, project, routines and seasons: 2d-2f), undo or restore after a
+from the bar to the braindump sheet, the rest of item detail part 2 (repeat,
+project, routines and seasons: 2e-2f), undo or restore after a
 delete (the web's Trash restores it), Change type, Duplicate and Copy link,
 the rest of the sheet (a routine's or a season's hold, the goal chip once
 goals are in the payload, the Beeminder row, the Streaks switch, which the

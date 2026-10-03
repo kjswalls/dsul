@@ -10,9 +10,10 @@ import SwiftUI
 /// - **Nudge me at**: a wheel, always up, on the stored time or, for a new
 ///   reminder, the item's start time or 9:00, which Done saves untouched
 ///   (Kirby's rule: adding a property opens its picker straight away). It
-///   runs in GMT (`ItemSheetModel.reminderCalendar`), so a stored "08:00" is
-///   8:00 whatever the phone's zone, with the hour cycle from the web's Time
-///   format. A dated type with no date says under it that it won't fire.
+///   is the Time sheet's wheel too (`ClockWheel`), and runs in GMT
+///   (`ItemSheetModel.wheelCalendar`), so a stored "08:00" is 8:00 whatever
+///   the phone's zone, with the hour cycle from the web's Time format. A
+///   dated type with no date says under it that it won't fire.
 /// - **Right after**: the cue words, one line as the web's input is, sent
 ///   only when typed in (the seed rule), so a time-only change keeps what is
 ///   stored. Return lowers the keyboard and leaves the sheet up; nothing is
@@ -95,12 +96,8 @@ struct ReminderSheet: View {
         return NavigationStack {
             Form {
                 Section {
-                    DatePicker(ItemSheetModel.reminderTimeLabel, selection: time, displayedComponents: .hourAndMinute)
-                        .datePickerStyle(.wheel)
-                        .labelsHidden()
-                        .environment(\.calendar, ItemSheetModel.reminderCalendar)
-                        .environment(\.timeZone, ItemSheetModel.reminderCalendar.timeZone)
-                        .environment(\.locale, .clock(planner.settings.timeFormat))
+                    ClockWheel(label: ItemSheetModel.reminderTimeLabel, time: $timeDraft,
+                               timeFormat: planner.settings.timeFormat)
                 } header: {
                     Text(ItemSheetModel.reminderTimeHeader)
                 } footer: {
@@ -186,16 +183,6 @@ struct ReminderSheet: View {
         }
     }
 
-    /// The wheel's selection: the drafted "HH:mm" as a date in the wheel's
-    /// calendar, and back.
-    private var time: Binding<Date> {
-        Binding(
-            // The draft is always a time; the epoch is only the type's due.
-            get: { ItemSheetModel.reminderDate(timeDraft) ?? Date(timeIntervalSince1970: 0) },
-            set: { timeDraft = ItemSheetModel.reminderClock($0) }
-        )
-    }
-
     /// Sends what changed, if anything, through the planner, which asks its
     /// gate again, measured against the item as stored now; then closes.
     private func done() {
@@ -226,16 +213,5 @@ struct ReminderSheet: View {
         } else {
             dismiss()
         }
-    }
-}
-
-private extension Locale {
-    /// The phone's locale with the hour cycle the user picked on the web
-    /// (Settings, Your day, Time format), so the wheel and the chip read the
-    /// same clock.
-    static func clock(_ format: TimeFormat) -> Locale {
-        var parts = Locale.Components(locale: .current)
-        parts.hourCycle = format == .twentyFourHour ? .zeroToTwentyThree : .oneToTwelve
-        return Locale(components: parts)
     }
 }

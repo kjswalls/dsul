@@ -9,7 +9,8 @@
     "bulkMax": 500,
     "anchor": 500,
     "outerAnchor": 10000,
-    "timesPerDayMax": 5
+    "timesPerDayMax": 5,
+    "durationMax": 1440
   },
   "cases": [
     {
@@ -1594,6 +1595,879 @@
         "repeatFrequency": "daily",
         "reminderTime": "08:00"
       }
+    },
+    {
+      "name": "time-unscheduled-dated",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d8",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "10:00"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "10:00",
+        "isScheduled": true,
+        "timeBucket": "morning",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d8",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "startTime": "10:00",
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "time-same-bucket-new-time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d9",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "startTime": "09:00",
+        "duration": 120
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "10:30"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "10:30"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d9",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "startTime": "10:30",
+        "duration": 120
+      }
+    },
+    {
+      "name": "time-crossing-buckets-by-bucket",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004da",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "evening",
+        "startTime": "17:30",
+        "duration": 60
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "morning",
+        "startTime": "07:00"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "07:00",
+        "timeBucket": "morning",
+        "isScheduled": true,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004da",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "startTime": "07:00",
+        "duration": 60,
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "time-crossing-buckets-by-time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004db",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "startTime": "10:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "15:00"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "15:00",
+        "timeBucket": "afternoon"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004db",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "startTime": "15:00"
+      }
+    },
+    {
+      "name": "time-anytime-drops-time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004dc",
+        "title": "Lunch walk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "startTime": "12:30"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": null,
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004dc",
+        "title": "Lunch walk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime",
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "time-dated-no-bucket-anytime",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004dd",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "anytime"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "anytime",
+        "startTime": null,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004dd",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime",
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "time-habit-set",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e2",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "evening",
+        "startTime": "21:00"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "21:00",
+        "timeBucket": "evening"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e2",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "evening",
+        "startTime": "21:00"
+      }
+    },
+    {
+      "name": "time-habit-no-specific-time",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e3",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "08:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": null,
+        "timeBucket": "morning"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e3",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "time-habit-clear",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e4",
+        "title": "Read",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "evening",
+        "startTime": "21:30"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": null,
+        "startTime": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": null,
+        "timeBucket": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e4",
+        "title": "Read",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "time-habit-time-overrules-bucket",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e5",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "09:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "evening"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "timeBucket": "morning",
+        "startTime": "09:00"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004e5",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "startTime": "09:00"
+      }
+    },
+    {
+      "name": "time-in-project-block-by-bucket",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ec",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-09-30"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "afternoon"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "afternoon",
+        "startTime": null,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ec",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "time-in-project-block-same-bucket",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ed",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-09-30"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "09:30"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "09:30"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ed",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-09-30",
+        "startTime": "09:30"
+      }
+    },
+    {
+      "name": "time-in-project-block-cross-bucket-by-time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ee",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-09-30"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "15:00"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "startTime": "15:00",
+        "timeBucket": "afternoon"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ee",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-09-30",
+        "startTime": "15:00"
+      }
+    },
+    {
+      "name": "time-duration-only",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ef",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "startTime": "13:30",
+        "duration": 60
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "duration": 90
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "duration": 90
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ef",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "startTime": "13:30",
+        "duration": 90
+      }
+    },
+    {
+      "name": "time-duration-only-unscheduled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f0",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "duration": 45
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "duration": 45
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f0",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime",
+        "duration": 45
+      }
+    },
+    {
+      "name": "time-duration-seed-unchanged",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f1",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "startTime": "15:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "duration": 30
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f1",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "startTime": "15:00"
+      }
+    },
+    {
+      "name": "time-duration-habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004f2",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "duration": 15
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "duration": 30
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "duration": 30
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004f2",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timeBucket": "morning",
+        "duration": 30
+      }
+    },
+    {
+      "name": "time-custom",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000004f3",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "evening"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "isScheduled": true,
+        "timeBucket": "evening",
+        "startTime": null,
+        "inProjectBlock": false,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000004f3",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "evening",
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "time-refused-undated",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f6",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "duration": 45
+      },
+      "refusal": "not_dated",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f6",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0
+      }
+    },
+    {
+      "name": "time-refused-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f7",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004d9"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "duration": 45
+      },
+      "refusal": "not_for_subtask",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f7",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004d9"
+      }
+    },
+    {
+      "name": "time-refused-time-on-anytime",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f8",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "startTime": "09:00"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f8",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime"
+      }
+    },
+    {
+      "name": "time-refused-anytime-with-a-time",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f9",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "time",
+        "timeBucket": "anytime",
+        "startTime": "09:00"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004f9",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "time-refused-empty",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004fa",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "time"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004fa",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      }
     }
   ],
   "trim": [
@@ -2457,5 +3331,177 @@
     "reminderAnchorPlaceholder": "I pour my coffee",
     "reminderAnchorHint": "Optional, and worth it. Something you already do beats a time. The reminder will say what you write here.",
     "reminderNeedsDate": "Give this a date and it will fire. Without one there is no day for the reminder to land on."
+  },
+  "buckets": {
+    "forTime": [
+      {
+        "time": "00:00",
+        "bucket": "morning"
+      },
+      {
+        "time": "11:59",
+        "bucket": "morning"
+      },
+      {
+        "time": "12:00",
+        "bucket": "afternoon"
+      },
+      {
+        "time": "16:59",
+        "bucket": "afternoon"
+      },
+      {
+        "time": "17:00",
+        "bucket": "evening"
+      },
+      {
+        "time": "23:59",
+        "bucket": "evening"
+      },
+      {
+        "time": "04:59",
+        "bucket": "morning"
+      },
+      {
+        "time": "05:00",
+        "bucket": "morning"
+      },
+      {
+        "time": "9:30",
+        "bucket": "morning"
+      },
+      {
+        "time": "24:00",
+        "bucket": "evening"
+      },
+      {
+        "time": "",
+        "bucket": "anytime"
+      },
+      {
+        "time": "x",
+        "bucket": "anytime"
+      },
+      {
+        "time": " 9:00",
+        "bucket": "morning"
+      },
+      {
+        "time": "12pm",
+        "bucket": "afternoon"
+      },
+      {
+        "time": "-1:00",
+        "bucket": "evening"
+      },
+      {
+        "time": "0x0f:00",
+        "bucket": "afternoon"
+      },
+      {
+        "time": ":30",
+        "bucket": "anytime"
+      }
+    ],
+    "corrected": [
+      {
+        "time": "15:00",
+        "bucket": "morning",
+        "expected": "afternoon"
+      },
+      {
+        "time": "09:00",
+        "bucket": "evening",
+        "expected": "morning"
+      },
+      {
+        "time": "09:00",
+        "bucket": "anytime",
+        "expected": "anytime"
+      },
+      {
+        "time": "",
+        "bucket": "morning",
+        "expected": "morning"
+      },
+      {
+        "time": "21:00",
+        "bucket": null,
+        "expected": null
+      },
+      {
+        "time": "12:00",
+        "bucket": "morning",
+        "expected": "afternoon"
+      },
+      {
+        "time": "16:59",
+        "bucket": "evening",
+        "expected": "afternoon"
+      },
+      {
+        "time": "17:00",
+        "bucket": "afternoon",
+        "expected": "evening"
+      },
+      {
+        "time": "x",
+        "bucket": "morning",
+        "expected": "anytime"
+      }
+    ],
+    "starts": {
+      "morning": "05:00",
+      "afternoon": "12:00",
+      "evening": "17:00"
+    }
+  },
+  "durations": {
+    "presets": [
+      15,
+      30,
+      45,
+      60,
+      90,
+      120
+    ],
+    "labels": [
+      {
+        "minutes": 15,
+        "label": "15 min"
+      },
+      {
+        "minutes": 30,
+        "label": "30 min"
+      },
+      {
+        "minutes": 45,
+        "label": "45 min"
+      },
+      {
+        "minutes": 60,
+        "label": "1 hour"
+      },
+      {
+        "minutes": 90,
+        "label": "1.5 hours"
+      },
+      {
+        "minutes": 120,
+        "label": "2 hours"
+      },
+      {
+        "minutes": 50,
+        "label": "50 min"
+      },
+      {
+        "minutes": 75,
+        "label": "75 min"
+      },
+      {
+        "minutes": 180,
+        "label": "180 min"
+      }
+    ]
   }
 }

@@ -247,7 +247,7 @@ enum PlannerJSON {
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
-                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder"]
+                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time"]
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -742,7 +742,10 @@ final class DragFlag {
     /// unit, would have put back only the failed write's fields. Reset streak
     /// and a tick both move the streak, so a reset is paired with a tick
     /// either way round, and with a title and a skip, on a habit. A failed
-    /// times edit is paired with a tick, which it changes (`counted`).
+    /// times edit is paired with a tick, which it changes (`counted`). A
+    /// failed date or time never rides along on a landed time edit, since
+    /// each key the edit didn't send is the item's own on replay, as the
+    /// server read it off the row.
     @Test func aRevertKeepsEveryLandedWrite() async throws {
         typealias Act = @MainActor (SamplePlanner) -> Void
         typealias Step = (SampleItem) -> SampleItem
@@ -765,6 +768,10 @@ final class DragFlag {
         let cue: Act = { $0.edit(id, .reminder(time: "08:00", anchor: .set("I fill the can"))) }
         let retime: Act = { $0.edit(id, .reminder(time: "07:30", anchor: nil)) }
         let unremind: Act = { $0.edit(id, .reminder(time: nil, anchor: nil)) }
+        let atTen: Act = { $0.edit(id, .time(bucket: nil, startTime: .set("10:00"), duration: nil)) }
+        let toEvening: Act = { $0.edit(id, .time(bucket: .set("evening"), startTime: nil, duration: nil)) }
+        let toAnytime: Act = { $0.edit(id, .time(bucket: .set("anytime"), startTime: .clear, duration: nil)) }
+        let longer: Act = { $0.edit(id, .time(bucket: nil, startTime: nil, duration: 60)) }
         // What the server made of it, as DsulCore's steps play it.
         let ticked: Step = { applying(TickIntent(done: true), to: $0, on: today) }
         let unticked: Step = { applying(TickIntent(done: false), to: $0, on: today) }
@@ -786,6 +793,10 @@ final class DragFlag {
         let cued: Step = { editing($0, .reminder(time: "08:00", anchor: .set("I fill the can"))) }
         let retimed: Step = { editing($0, .reminder(time: "07:30", anchor: nil)) }
         let unreminded: Step = { editing($0, .reminder(time: nil, anchor: nil)) }
+        let timed: Step = { editing($0, .time(bucket: nil, startTime: .set("10:00"), duration: nil)) }
+        let eveninged: Step = { editing($0, .time(bucket: .set("evening"), startTime: nil, duration: nil)) }
+        let anytimed: Step = { editing($0, .time(bucket: .set("anytime"), startTime: .clear, duration: nil)) }
+        let lengthened: Step = { editing($0, .time(bucket: nil, startTime: nil, duration: 60)) }
         // The failed write, the landed one, and the server's end state.
         let pairs: [Pair] = [
             ("tick, then title", tick, title, titled),
@@ -813,6 +824,31 @@ final class DragFlag {
             ("a time alone, then cue words", retime, cue, cued),
             ("cue words, then No reminder", cue, unremind, unreminded),
             ("reminder, then tick", cue, tick, ticked),
+            // Plants is Morning with no time and no length, and scheduled.
+            ("time, then tick", atTen, tick, ticked),
+            ("tick, then time", tick, atTen, timed),
+            ("time, then carry", atTen, move, moved),
+            ("carry, then time", move, atTen, timed),
+            ("time, then drop", atTen, drop, dropped),
+            // 10:00 over the dropped 9:00 was sent alone, so it lands against
+            // Morning with no time and files there: the drop's day, bucket
+            // and time went with the drop.
+            ("drop, then time", drop, atTen, timed),
+            ("drop, then length", drop, longer, lengthened),
+            // The failed Evening never reached the server, so 10:00 lands
+            // against Morning and stays there.
+            ("part of day, then time", toEvening, atTen, timed),
+            // The one pair where the failed write changed what the landed one
+            // meant. Under the optimistic 10:00, Evening steps to Morning at
+            // 10:00 (the time overrules the pick) with `inProjectBlock` false
+            // where Plants had none, so it was sent; the server, which never
+            // saw 10:00, files Evening with no time.
+            ("time, then part of day", atTen, toEvening, eveninged),
+            // The clear was sent because the phone showed 10:00; the row had
+            // no time, so it is already so there, and Anytime lands alone.
+            ("time, then Anytime", atTen, toAnytime, anytimed),
+            ("length, then time", longer, atTen, timed),
+            ("time, then length", atTen, longer, lengthened),
         ]
 
         // Meds, a habit on a 41-day streak, not yet done today.
@@ -823,6 +859,7 @@ final class DragFlag {
         let reset: Act = { $0.resetStreak(meds) }
         let thrice: Act = { $0.edit(meds, .timesPerDay(3)) }
         let twice: Act = { $0.edit(meds, .timesPerDay(2)) }
+        let medsEvening: Act = { $0.edit(meds, .time(bucket: .set("evening"), startTime: nil, duration: nil)) }
         let medsTitled: Step = { editing($0, .title("Take the meds")) }
         let zeroed: Step = { resettingStreak($0) }
         let thriced: Step = { editing($0, .timesPerDay(3)) }
@@ -844,6 +881,8 @@ final class DragFlag {
             ("tick, then times", medsTick, thrice, thriced),
             ("times, then times", thrice, twice, twiced),
             ("times, then reset", thrice, reset, zeroed),
+            ("part of day, then tick", medsEvening, medsTick, ticked),
+            ("tick, then part of day", medsTick, medsEvening, eveninged),
         ]
         // Each pair on a fresh planner, its item added to the payload.
         let tables: [(UUID, String, [Pair])] = [(id, PlannerJSON.plantsJSON, pairs),
@@ -869,6 +908,54 @@ final class DragFlag {
         }
     }
 
+    /// A date picked on an undated task never landed, so the time edit made
+    /// on the optimistic, dated item reached a row with no date and was
+    /// refused (`not_dated`). Both are failed writes: the refetch fails too,
+    /// so the rebase puts the task back as first fetched, undated and with no
+    /// part of day, and the banner shows.
+    @Test func aTimeOnADateThatNeverLandedIsRefused() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.bank), .offline, .status(409, "{\"error\":\"not_dated\"}"))
+        let planner = await loaded(server)
+        let bank = try #require(planner.item(PlannerJSON.bank))
+
+        planner.move(PlannerJSON.bank, to: PlannerJSON.today)   // never reaches the server
+        planner.edit(PlannerJSON.bank, .time(bucket: .set("morning"), startTime: nil, duration: nil))   // refused
+        #expect(planner.item(PlannerJSON.bank)?.timeBucket == "morning")
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.bank) == bank)
+        #expect(planner.banner?.isError == true)
+        let posts = await server.count(itemRoute(PlannerJSON.bank))
+        #expect(posts == 2)
+    }
+
+    /// Morning picked on an Anytime item never landed, so the time added
+    /// under it, sent alone (the part of day equals what the sheet opened
+    /// on), reached a row still at Anytime and was refused (the row's
+    /// `invalid`). Both turn back, to Anytime with no time.
+    @Test func aTimeOnAPartOfDayThatNeverLandedIsRefused() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(400, "{\"error\":\"invalid\"}"))
+        let planner = await loaded(server)
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+
+        planner.edit(PlannerJSON.groceries, .time(bucket: .set("morning"), startTime: nil, duration: nil))
+        planner.edit(PlannerJSON.groceries, .time(bucket: nil, startTime: .set("08:30"), duration: nil))
+        #expect(planner.item(PlannerJSON.groceries)?.startTime == "08:30")
+        await drain(planner)
+
+        let back = try #require(planner.item(PlannerJSON.groceries))
+        #expect(back == groceries)
+        #expect(back.timeBucket == "anytime")
+        #expect(back.startTime == nil)
+        #expect(planner.banner?.isError == true)
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
     /// Every part 1 write, each edit and Reset streak names its own item and
     /// nothing else; a delete names its item and every subtask it took out
     /// with it, a habit's only itself. A new subtask names the subtask, not
@@ -889,6 +976,7 @@ final class DragFlag {
             .edit(id: id, .priority("high")),
             .edit(id: id, .timesPerDay(3)),
             .edit(id: id, .reminder(time: "08:00", anchor: .set("I pour my coffee"))),
+            .edit(id: id, .time(bucket: .set("evening"), startTime: .set("18:00"), duration: 45)),
             .resetStreak(id: id),
         ]
         for write in writes {
