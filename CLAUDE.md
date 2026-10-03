@@ -66,16 +66,16 @@ CLI pinned in `.github/workflows/test.yml`). Never give it hosted keys back.
 ## Git workflow
 
 Each chat does its changes on its own branch, never directly on `main`, and reaches
-`origin/main` only through a pull request — never a direct push to `main`. This
-composes with the standing rule that commits wait for Kirby's go-ahead.
+`origin/main` only through a pull request — never a direct push to `main`. Commits,
+pushes, the PR and the merge need no separate go-ahead: Kirby set open-a-PR-and-merge
+as the standard end of every task.
 
 1. **Start of a chat**, before the first edit: branch off an up-to-date `main` —
    `git checkout main && git pull`, then `git checkout -b <descriptive-name>`.
-2. **During the chat**: make changes on that branch. Leave them uncommitted unless
-   Kirby asks otherwise — committing waits for the "done" signal.
-3. **When Kirby says the work is done** (and only then): commit on the branch, push
-   it, and open a PR — `git push -u origin <branch>` then `gh pr create --base main`.
-   Never push to `main` directly.
+2. **During the chat**: make changes on that branch, committing as the work warrants.
+3. **When the work is finished**: commit on the branch, push it, and open a PR —
+   `git push -u origin <branch>` then `gh pr create --base main`. Never push to `main`
+   directly.
 4. **Let the review bots run.** Wait for the automated reviewers (CodeRabbit, bug
    bots, CI checks — whatever the PR triggers) to weigh in. Read every comment, then
    fix or explicitly address each one and push the fixes to the same branch.
@@ -91,8 +91,9 @@ must pass before merge (native auto-merge is enabled). Docs-only PRs skip CI —
 won't fire; for a Markdown-only PR, once the bots are clean, merge with
 `gh pr merge --admin --squash` (admin override — there's no code to gate).
 
-"Done" is Kirby's word, not your own read that the task looks finished. Until he says
-so, no commits, pushes, PRs, or merges.
+What still waits for Kirby's go-ahead, typed out in the chat: writes to prod (the
+Supabase database or dashboard settings). The standing OK covers the branch, the PR and
+the merge, not production.
 
 ## Architecture
 
