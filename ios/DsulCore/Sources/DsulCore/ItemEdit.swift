@@ -21,7 +21,12 @@ import Foundation
 //   `scheduleTask` / `unscheduleTask` / `scheduleHabit`
 //   (`scheduleTaskPatch`, `UNSCHEDULE_TASK_PATCH`, `scheduleHabitPatch`).
 //   The date is not here: the Date chip writes through `move` (`moving`, in
-//   VerbWrites.swift);
+//   VerbWrites.swift). From 2e, the Repeat chip (`repeat`): a frequency the
+//   type offers, refused on a subtask (`not_for_subtask`) and outside the
+//   type's frequencies (`frequency_not_allowed`), and written as
+//   lib/item-edit.ts `repeatEditPatch` writes it: the dialog's save over the
+//   keys sent, all three keys together through the dialog's own `repeatPatch`,
+//   or nothing when the item already says it;
 // - lib/planner-store.ts `deleteTask` / `deleteHabit` (`deleting`): the item
 //   and, for anything but a habit, its live subtasks, which is also the child
 //   pass lib/app-api.ts `del` makes on the server, in the same order;
@@ -41,7 +46,7 @@ import Foundation
 // Text is measured in UTF-16 units, JavaScript's `length`, which is what every
 // cap on the server counts. What the phone SENDS is the intent (POST
 // /api/app/items/:id `title`, `notes`, `delete`, `addSubtask`, `resetStreak`,
-// `priority`, `timesPerDay`, `reminder`, `time`, built by
+// `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, built by
 // ItemWriteBody.swift), never these items. `Place` and `reinserting` are the
 // phone's alone: they put a deleted item back where it was when its delete
 // fails.
@@ -72,6 +77,12 @@ public enum ItemEdit: Sendable, Hashable {
     /// doesn't send is the item's own when the server resolves it, and when
     /// `editing` replays it.
     case time(bucket: ColumnWrite?, startTime: ColumnWrite?, duration: Int?)
+    /// The Repeat chip: one of the type's frequencies ("none", "daily",
+    /// "weekdays", "weekends", "monthly", "custom"), with `days` (0 = Sun …
+    /// 6 = Sat, ascending, at least one) for "custom" alone and `monthDay`
+    /// (1...31) for "monthly" alone; nil otherwise, and then left off the
+    /// wire. The server writes all three keys together.
+    case repeats(frequency: String, days: [Int]?, monthDay: Int?)
 
     /// The server's `action` name, which is also what `writes` lists.
     public var action: String {
@@ -82,6 +93,7 @@ public enum ItemEdit: Sendable, Hashable {
         case .timesPerDay: "timesPerDay"
         case .reminder: "reminder"
         case .time: "time"
+        case .repeats: "repeat"
         }
     }
 }
@@ -216,6 +228,10 @@ public func cleanNotes(_ raw: String, limit: Int) -> String? {
 /// - `time`: not a subtask (`not_for_subtask`), and a date-anchored type only
 ///   once it has a date (`not_dated`: the dialog shows Time only then), so a
 ///   habit's always, and an undated task's never.
+/// - `repeat`: not a subtask (`not_for_subtask`: a subtask shows only in its
+///   parent's sheet, so a repeat there would show nowhere), and a type with
+///   more than one frequency (`caps.allowedFrequencies`; the web's chip shows
+///   only then), so a task's, a habit's and a custom item's, dated or not.
 /// - any other name: false. Delete, Add a subtask and Reset streak have gates
 ///   of their own, and an action the phone doesn't know is never sent.
 /// The growth caps are the field's to keep (`growthLimit`), not this gate's.
@@ -233,6 +249,8 @@ public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
         return isRemindable(item, caps: caps)
     case "time":
         return !isSubtask(item) && (!caps.dateAnchored || !(item.startDate ?? "").isEmpty)
+    case "repeat":
+        return !isSubtask(item) && caps.allowedFrequencies.count > 1
     default:
         return false
     }
@@ -244,7 +262,12 @@ public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
 /// (`invalid`), and a length outside 1...`EditLimits.durationMax`, and
 /// `editRefusal` a length on a type with none (`no_duration`). The row's rule
 /// (a time that would land beside a STORED Anytime or none) is the sheet's to
-/// keep, as a growth cap is.
+/// keep, as a growth cap is. For `.repeats`, likewise: the frequency is one of
+/// the type's (`caps.allowedFrequencies`, else `frequency_not_allowed`), and
+/// the schema's rules (`invalid`): `days` present exactly with "custom",
+/// non-empty and strictly ascending within 0...6, as the dialog's keys sort
+/// as they toggle and never hold a day twice; `monthDay` present exactly with
+/// "monthly", within 1...31.
 public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool {
     guard editAllowed(action: edit.action, on: item, caps: caps) else { return false }
     switch edit {
@@ -254,6 +277,23 @@ public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool
             return false
         }
         if let duration, !caps.hasDuration || !(1...EditLimits.durationMax).contains(duration) {
+            return false
+        }
+        return true
+    case .repeats(let frequency, let days, let monthDay):
+        guard caps.allowedFrequencies.contains(frequency) else { return false }
+        if frequency == "custom" {
+            // Refused, never cleaned: the server answers a body that isn't
+            // already what the dialog would hold with `invalid`.
+            guard let days, !days.isEmpty, days.allSatisfy({ (0...6).contains($0) }),
+                  zip(days, days.dropFirst()).allSatisfy({ $0 < $1 })
+            else { return false }
+        } else if days != nil {
+            return false
+        }
+        if frequency == "monthly" {
+            guard let monthDay, (1...31).contains(monthDay) else { return false }
+        } else if monthDay != nil {
             return false
         }
         return true
@@ -278,6 +318,8 @@ public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool
 ///   and none when blank: a time sent alone keeps the words, as the dialog's
 ///   draft holds them and writes both.
 /// - time: `timeEditPatch` (`editingTime`), the dialog's two passes.
+/// - repeats: `repeatEditPatch` (`editingRepeat`), the dialog's save over the
+///   keys sent, all three keys or none.
 /// No cap is applied: the server refuses growth rather than cutting it, and
 /// the field never sends it.
 public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
@@ -306,6 +348,8 @@ public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
         }
     case .time(let bucket, let startTime, let duration):
         return editingTime(item, bucket: bucket, startTime: startTime, duration: duration)
+    case .repeats(let frequency, let days, let monthDay):
+        return editingRepeat(item, frequency: frequency, days: days, monthDay: monthDay)
     }
     return next
 }
@@ -403,6 +447,44 @@ private func editingTime(_ item: Item, bucket: ColumnWrite?, startTime: ColumnWr
         next.timeBucket = nil
         next.startTime = nil
     }
+    return next
+}
+
+/// lib/item-edit.ts `repeatEditPatch` applied to the item: the dialog's Repeat
+/// chip as its save writes it, over the keys sent.
+/// 1. The draft is seeded as `draftFromItem` seeds it: the stored frequency,
+///    or the type's `defaultFrequency` ("none" for a task, "daily" for a
+///    habit); the stored days, or none; the stored day of the month, or the
+///    1st (JavaScript's `|| 1`, so a stored 0 reads as 1 too). The sent keys
+///    go over it.
+/// 2. The three fields are one control: when the frequency, the days (as an
+///    ordered list, as `JSON.stringify` compares them) and the day all equal
+///    their seeds, nothing is written, so a stale day under another frequency
+///    stays as it is.
+/// 3. Else all three, as the dialog's `repeatPatch` writes them: the
+///    frequency, kept as given on a habit (it always repeats) and none for
+///    "none" on any other type; the days with "custom" alone; the day with
+///    "monthly" alone. `isHabit` is the stored type's test, the one lib/db.ts
+///    `updatesToRow` makes to choose its mapper. Nothing else moves: not the
+///    date, the status, the streak or the done days, so an undated task that
+///    starts repeating stays in the braindump, and a finished one-off stays
+///    finished.
+private func editingRepeat(_ item: Item, frequency: String, days: [Int]?, monthDay: Int?) -> Item {
+    // The seed, as draftFromItem has it.
+    let seedFrequency = item.repeatFrequency ?? caps(item.typeName).defaultFrequency
+    let seedDays = item.repeatDays ?? []
+    let seedMonthDay = item.repeatMonthDay.flatMap { $0 == 0 ? nil : $0 } ?? 1
+    // The draft: the sent keys over the seed.
+    let draftDays = days ?? seedDays
+    let draftMonthDay = monthDay ?? seedMonthDay
+    guard frequency != seedFrequency || draftDays != seedDays || draftMonthDay != seedMonthDay else {
+        return item
+    }
+    // repeatPatch.
+    var next = item
+    next.repeatFrequency = item.isHabit || frequency != "none" ? frequency : nil
+    next.repeatDays = frequency == "custom" ? draftDays : nil
+    next.repeatMonthDay = frequency == "monthly" ? draftMonthDay : nil
     return next
 }
 

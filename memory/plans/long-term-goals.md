@@ -118,8 +118,12 @@ different meanings will mislead every later reader.
    Blocking the edit would make goals constrain their members (against decision 4's
    spirit); tolerating leaves progress lying. Demotion is one join-row write, rides
    the normal undo, and fires from the store's item-update path (which must consult
-   a memoized item→roles index — the same index the milestone row flag needs) and
-   from the agent item PATCH handler. Symmetric: a check-in edited to
+   a memoized item→roles index — the same index the milestone row flag needs),
+   from the agent item PATCH handler, and (since 2026-10-03) from the iPhone app's
+   Repeat chip (`POST /api/app/items/:id` with `action: 'repeat'`, lib/app-api.ts),
+   on the user's session client and with no receipt. Both server paths run
+   lib/goal-roles.ts `demoteInvalidGoalRoles`, so a change to the rule there
+   reaches both. Symmetric: a check-in edited to
    `repeatFrequency: 'none'` demotes to `member`. `switchType` in the add dialog
    drops a draft role the target type is ineligible for (keeping the plain
    membership) — the Phase-3 "switchType discarding membership" lesson, extended to
@@ -999,6 +1003,19 @@ table as ONE set. Four rules, each closing a found defect:
   far behind `src` — the plugin's `workspace:*` resolves to whatever was last
   released, so the plugin-smoke gate ("context parses with the OLD published
   schema") is still unmet and needs the actual tarball, not a simulated omit.**
+- [x] **A third demotion point: the iPhone app's Repeat chip** (2026-10-03, iOS
+  item detail part 2e). `POST /api/app/items/:id` with `action: 'repeat'` runs
+  the agent PATCH's rule, `demoteInvalidGoalRoles` (moved with `roleShape` out of
+  lib/agent-api.ts into lib/goal-roles.ts, which lib/agent-api.ts and
+  lib/app-api.ts both import), after the item write lands and also when the edit
+  changed nothing, on the user's session client. A failure is logged and never
+  fails the write. **Recorded rather than fixed:** it shares the agent path's two
+  gaps above. It is a superset of the store's scan, so it demotes a role held in
+  a trashed goal too, and a later restore puts the Trash snapshot's role back
+  over it (the restore gap above, still Phase-1 surface). It is invisible to an
+  open web tab, whose next membership write sends all three arrays from memory
+  and puts the role back. And the phone gives no receipt, since it holds no
+  goals to name (memory/plans/ios-app.md, the repeat bullets).
 - Each phase gets the house adversarial review before its commit lands.
 
 ## Behavioral invariants to preserve (regression traps)

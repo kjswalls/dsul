@@ -21,7 +21,10 @@ import Testing
 /// the time chip and Time… opening the Time sheet, where VoiceOver goes as a
 /// sheet closes, and the Time sheet's rules (what it opens on, where the check
 /// sits, what a tap changes, Add a time's start, the lengths, what Done sends)
-/// and words.
+/// and words. From 2e: the repeat chip's menu and Add property's Repeat ▸
+/// (their rows, what a pick does), the Repeat sheet's rules (the days and the
+/// day it opens on, the keys' order, what Done sends) and words, and where
+/// VoiceOver goes as it closes.
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -802,13 +805,13 @@ import Testing
                                     seasonNames: planner.seasonNames(for: item.id))
     }
 
-    /// Priority and times per day are menus, the reminder and the time their
-    /// sheets, each only where the type takes it: no priority on a habit, no
-    /// count on a task, no reminder on a subtask, whose page still takes a
-    /// priority (Q7 a). The date is offered no Reschedule here (`offered:
-    /// []`), so it stays read-only; `theDateChipIsTheRescheduleVerb` gives it
-    /// one. Every other chip stays read-only, and with nothing taken (an older
-    /// server) every chip is.
+    /// Priority, times per day and the repeat are menus, the reminder and the
+    /// time their sheets, each only where the type takes it: no priority on a
+    /// habit, no count on a task, no reminder and no repeat on a subtask,
+    /// whose page still takes a priority (Q7 a). The date is offered no
+    /// Reschedule here (`offered: []`), so it stays read-only;
+    /// `theDateChipIsTheRescheduleVerb` gives it one. Every other chip stays
+    /// read-only, and with nothing taken (an older server) every chip is.
     @Test func aChipEditsOnlyWhereTheTypeTakesIt() throws {
         let planner = makePlanner()
         let roadmap = try named(planner, "Draft Q4 roadmap")   // a task
@@ -830,27 +833,32 @@ import Testing
                 == ChipEditor.sheet(.time(roadmap.id)))
         #expect(ItemSheetModel.chipEditor(.time, meds, offered: [], canEdit: gate(meds))
                 == ChipEditor.sheet(.time(meds.id)))
+        #expect(ItemSheetModel.chipEditor(.repeats, roadmap, offered: [], canEdit: gate(roadmap)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.repeats, meds, offered: [], canEdit: gate(meds)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.repeats, pull, offered: [], canEdit: gate(pull)) == nil)
 
-        let readOnly: [SheetChip.Kind] = [.repeats, .project, .routine, .season]
+        let readOnly: [SheetChip.Kind] = [.project, .routine, .season]
         for kind in readOnly + [.date] {
             #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: gate(roadmap)) == nil)
             #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: gate(meds)) == nil)
         }
-        for kind in readOnly + [.priority, .date, .time, .timesPerDay, .reminder] {
+        for kind in readOnly + [.priority, .date, .time, .timesPerDay, .repeats, .reminder] {
             #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: takesNothing) == nil)
             #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: takesNothing) == nil)
         }
     }
 
     /// Add property holds what is unset and editable, in chip order: a bare
-    /// task has Priority and Remind…, a habit with neither Times per day and
-    /// Remind…, Meds (a reminder already) Times per day alone, and a subtask
-    /// Priority alone. A habit counted once a day has no times chip, so its
-    /// count is offered; one counted three times has the chip. A priority the
-    /// chips can't name has no chip either, so it is offered too. Offered no
-    /// Reschedule (`offered: []`), so no Date: `addPropertyOffersTheDateAndTheTime`
-    /// offers it. Call the bank is undated, so it has no Time… either, and
-    /// Journal, Meds and the roadmap draw a time chip.
+    /// task has Priority, Repeat and Remind…, a habit with neither Times per
+    /// day and Remind…, Meds (a reminder already) Times per day alone, and a
+    /// subtask Priority alone. A habit counted once a day has no times chip,
+    /// so its count is offered; one counted three times has the chip. A
+    /// priority the chips can't name has no chip either, so it is offered
+    /// too. A one-off task is offered Repeat; a habit draws its repeat chip,
+    /// and a subtask has no repeat. Offered no Reschedule (`offered: []`), so
+    /// no Date: `addPropertyOffersTheDateAndTheTime` offers it. Call the bank
+    /// is undated, so it has no Time… either, and Journal, Meds and the
+    /// roadmap draw a time chip.
     @Test func addPropertyHoldsWhatIsUnsetAndEditable() throws {
         let planner = makePlanner()
         let bank = try named(planner, "Call the bank")   // a braindump task: nothing set
@@ -866,11 +874,11 @@ import Testing
         }
 
         #expect(shown(planner, bank).isEmpty)
-        #expect(unset(bank) == [.priority, .reminder])
+        #expect(unset(bank) == [.priority, .repeats, .reminder])
         #expect(unset(journal) == [.timesPerDay, .reminder])
         #expect(unset(meds) == [.timesPerDay])
         #expect(unset(bets) == [.priority])
-        #expect(unset(roadmap) == [.reminder])
+        #expect(unset(roadmap) == [.repeats, .reminder])
 
         journal.timesPerDay = 1
         #expect(unset(journal) == [.timesPerDay, .reminder])
@@ -878,7 +886,7 @@ import Testing
         #expect(unset(journal) == [.reminder])
 
         roadmap.priority = "urgent"
-        #expect(unset(roadmap) == [.priority, .reminder])
+        #expect(unset(roadmap) == [.priority, .repeats, .reminder])
 
         for item in [bank, journal, meds, bets, roadmap] {
             #expect(ItemSheetModel.unsetProperties(item, shown: shown(planner, item), offered: [],
@@ -910,9 +918,9 @@ import Testing
     /// The seed reads "Add property" alone on its row and is a bare plus
     /// beside chips, and is "Add property" to VoiceOver either way; its
     /// entries are the web's, Remind… and Time… with an ellipsis since each
-    /// opens a sheet, and each wears its chip's own symbol. The entries 2e and
-    /// 2f will add already read as design §3.7 words them: Repeat is the web
-    /// seed's own label.
+    /// opens a sheet, and each wears its chip's own symbol. Repeat is the web
+    /// seed's own label, a submenu, so with no ellipsis; the entries 2f will
+    /// add already read as design §3.7 words them.
     @Test func theSeedsWords() throws {
         #expect(ItemSheetModel.seedLabel(rowHasOthers: false) == "Add property")
         #expect(ItemSheetModel.seedLabel(rowHasOthers: true) == nil)
@@ -931,7 +939,7 @@ import Testing
         journal.timesPerDay = 3
         let drawn = shown(planner, roadmap) + shown(planner, journal) + shown(planner, meds)
         let symbols = drawn.reduce(into: [SheetChip.Kind: String]()) { $0[$1.kind] = $1.systemImage }
-        for kind: SheetChip.Kind in [.priority, .date, .time, .timesPerDay, .reminder] {
+        for kind: SheetChip.Kind in [.priority, .date, .time, .timesPerDay, .repeats, .reminder] {
             #expect(symbols[kind] == ItemSheetModel.seedSymbol(kind))
         }
     }
@@ -966,6 +974,7 @@ import Testing
         #expect(ItemSheetModel.chipHint(.reminder) == "Changes the reminder")
         #expect(ItemSheetModel.chipHint(.date) == "Changes the date")
         #expect(ItemSheetModel.chipHint(.time) == "Changes the time")
+        #expect(ItemSheetModel.chipHint(.repeats) == "Changes how it repeats")
         #expect(ItemSheetModel.chipHint(.project) == nil)
     }
 
@@ -1027,7 +1036,8 @@ import Testing
     /// Add property, as the page asks it (the planner's own `offeredVerbs`
     /// and `canEdit`): an undated task is offered Date and no Time…, an
     /// Anytime task Time… (part 1 draws no chip for Anytime), a dated task
-    /// with a time neither, and a subtask neither. Offered no Reschedule, the
+    /// with a time neither, and a subtask neither. A one-off task, dated or
+    /// not, is offered Repeat, and a subtask isn't. Offered no Reschedule, the
     /// date goes and nothing else moves.
     @Test func addPropertyOffersTheDateAndTheTime() throws {
         let planner = makePlanner()
@@ -1041,12 +1051,12 @@ import Testing
                                                   canEdit: { planner.canEdit($0, item) })
         }
 
-        #expect(unset(bank) == [.priority, .date, .reminder])
-        #expect(unset(groceries) == [.priority, .time, .reminder])
-        #expect(unset(roadmap) == [.reminder])
+        #expect(unset(bank) == [.priority, .date, .repeats, .reminder])
+        #expect(unset(groceries) == [.priority, .time, .repeats, .reminder])
+        #expect(unset(roadmap) == [.repeats, .reminder])
         #expect(unset(bets) == [.priority])
-        #expect(unset(bank, offered: []) == [.priority, .reminder])
-        #expect(unset(groceries, offered: []) == [.priority, .time, .reminder])
+        #expect(unset(bank, offered: []) == [.priority, .repeats, .reminder])
+        #expect(unset(groceries, offered: []) == [.priority, .time, .repeats, .reminder])
     }
 
     /// After a date pick, or Pick a date… or the Time sheet closing,
@@ -1293,17 +1303,21 @@ import Testing
         #expect(!reminderNeedsDate(meds, caps: planner.caps(for: meds)))
     }
 
-    /// Each sheet the item sheet opens over itself has its own id, and two
-    /// items' Remind, Pick a date… and Time sheets differ.
+    /// Each sheet the item sheet opens over itself has its own id, the two
+    /// Repeat sheets included, and two items' Remind, Pick a date…, Time and
+    /// Repeat sheets differ.
     @Test func eachSheetEditorHasItsOwnID() {
         let one = SampleData.uuid(1)
         let two = SampleData.uuid(2)
         let ids = [SheetEditor.reschedule(one), SheetEditor.pauseUntil(one), SheetEditor.reminder(one),
-                   SheetEditor.pickDate(one), SheetEditor.time(one)].map(\.id)
-        #expect(Set(ids).count == 5)
+                   SheetEditor.pickDate(one), SheetEditor.time(one), SheetEditor.repeatDetail(one, .custom),
+                   SheetEditor.repeatDetail(one, .monthly)].map(\.id)
+        #expect(Set(ids).count == 7)
         #expect(SheetEditor.reminder(one).id != SheetEditor.reminder(two).id)
         #expect(SheetEditor.pickDate(one).id != SheetEditor.pickDate(two).id)
         #expect(SheetEditor.time(one).id != SheetEditor.time(two).id)
+        #expect(SheetEditor.repeatDetail(one, .custom).id != SheetEditor.repeatDetail(two, .custom).id)
+        #expect(SheetEditor.repeatDetail(one, .monthly).id != SheetEditor.repeatDetail(two, .monthly).id)
     }
 
     /// The Remind sheet's words: the web's where it has them (the three
@@ -1691,6 +1705,238 @@ import Testing
         ]
         let all = words + dates.map(\.word) + bucketOrder.map(\.label)
             + EditCopy.durationPresets.map { ItemSheetModel.durationSpoken($0) }
+        let dashed = all.filter { $0.contains("\u{2014}") }
+        #expect(dashed.isEmpty)
+    }
+
+    // MARK: The repeat chip and the Repeat sheet
+
+    /// The repeat menu: the type's frequencies in the web's order and words,
+    /// Monthly… and Custom days… with an ellipsis; a habit's without No
+    /// repeat. A stored frequency the type doesn't list (a legacy "weekly")
+    /// gets a row of its own in its own word, so the Picker's selection has a
+    /// tag, and picking it is a write the gate refuses; a habit at "none"
+    /// draws no chip and adds no row. Add property's Repeat ▸ has no No
+    /// repeat.
+    @Test func theRepeatMenusRows() throws {
+        let six = ["No repeat", "Daily", "Weekdays", "Weekends", "Monthly\u{2026}", "Custom days\u{2026}"]
+        let task = ItemCaps.task.allowedFrequencies
+        let habit = ItemCaps.habit.allowedFrequencies
+        #expect(ItemSheetModel.repeatChoices(allowed: task, stored: "daily").map(\.word) == six)
+        #expect(ItemSheetModel.repeatChoices(allowed: task, stored: "daily").map(\.frequency) == repeatFrequencyOrder)
+        #expect(ItemSheetModel.repeatChoices(allowed: habit, stored: "daily").map(\.word) == Array(six.dropFirst()))
+        #expect(ItemSheetModel.repeatChoices(allowed: task, stored: nil).map(\.word) == six)
+        #expect(ItemSheetModel.repeatChoices(allowed: task, stored: "custom").map(\.word) == six)
+
+        let weekly = ItemSheetModel.repeatChoices(allowed: task, stored: "weekly")
+        #expect(weekly.count == 7)
+        #expect(weekly.last == RepeatChoice(frequency: "weekly", word: "weekly"))
+        #expect(ItemSheetModel.repeatChoices(allowed: habit, stored: "none").count == 5)
+        #expect(ItemSheetModel.repeatChoices(allowed: habit, stored: "").count == 5)
+
+        let planner = makePlanner()
+        var groceries = try named(planner, "Groceries")
+        groceries.repeatFrequency = "weekly"
+        guard case .write(let edit) = ItemSheetModel.repeatPick("weekly") else {
+            Issue.record("a frequency with no sheet is a write")
+            return
+        }
+        #expect(!planner.canEdit(edit, groceries))
+
+        #expect(ItemSheetModel.repeatSeedChoices(allowed: task).map(\.frequency)
+                == ["daily", "weekdays", "weekends", "monthly", "custom"])
+        #expect(ItemSheetModel.repeatSeedChoices(allowed: habit).map(\.frequency)
+                == ["daily", "weekdays", "weekends", "monthly", "custom"])
+    }
+
+    /// No repeat, Daily, Weekdays and Weekends write at once, the days and
+    /// the day left off; Monthly… and Custom days… open their sheet.
+    @Test func aRepeatPickWritesOrOpensTheSheet() {
+        for frequency in ["none", "daily", "weekdays", "weekends"] {
+            #expect(ItemSheetModel.repeatPick(frequency)
+                    == RepeatPick.write(.repeats(frequency: frequency, days: nil, monthDay: nil)))
+        }
+        #expect(ItemSheetModel.repeatPick("monthly") == RepeatPick.open(.monthly))
+        #expect(ItemSheetModel.repeatPick("custom") == RepeatPick.open(.custom))
+    }
+
+    /// A pick lands as the chip, on the sample: Weekdays from Add property on
+    /// Groceries draws a "Weekdays" chip that edits, takes Repeat out of Add
+    /// property and sends VoiceOver to the chip; No repeat takes the chip
+    /// away again, Repeat comes back, and VoiceOver goes to Add property.
+    /// Groceries keeps its date and its status throughout. Every key picked
+    /// reads as Daily on the chip (`cadenceLabel`), while the menu checks
+    /// Custom days…, the frequency stored.
+    @Test func aRepeatPickLandsAsTheChip() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")   // a one-off, dated today
+        func unset() throws -> [SheetChip.Kind] {
+            let item = try #require(planner.item(groceries.id))
+            return ItemSheetModel.unsetProperties(item, shown: shown(planner, item),
+                                                  offered: planner.offeredVerbs(for: item, day: .today),
+                                                  canEdit: { planner.canEdit($0, item) })
+        }
+        let before = try unset()
+        #expect(before.contains(.repeats))
+
+        guard case .write(let weekdays) = ItemSheetModel.repeatPick("weekdays") else {
+            Issue.record("Weekdays is a write")
+            return
+        }
+        planner.edit(groceries.id, weekdays)
+        let repeating = try #require(planner.item(groceries.id))
+        let repeatingChips = shown(planner, repeating)
+        let chip = try #require(repeatingChips.first(where: { $0.kind == .repeats }))
+        #expect(chip.text == "Weekdays")
+        #expect(chip.spoken == "Repeats: Weekdays")
+        #expect(ItemSheetModel.chipEditor(.repeats, repeating, offered: [],
+                                          canEdit: { planner.canEdit($0, repeating) }) == ChipEditor.menu)
+        let afterWeekdays = try unset()
+        #expect(!afterWeekdays.contains(.repeats))
+        #expect(ItemSheetModel.voiceOverTarget(after: .repeats, shown: repeatingChips) == ChipFocus.chip(.repeats))
+        #expect(repeating.startDate == groceries.startDate)
+        #expect(repeating.status == groceries.status)
+
+        guard case .write(let none) = ItemSheetModel.repeatPick("none") else {
+            Issue.record("No repeat is a write")
+            return
+        }
+        planner.edit(groceries.id, none)
+        let oneOff = try #require(planner.item(groceries.id))
+        let oneOffChips = shown(planner, oneOff)
+        #expect(oneOff.repeatFrequency == nil)
+        #expect(!oneOffChips.contains(where: { $0.kind == .repeats }))
+        let afterNone = try unset()
+        #expect(afterNone.contains(.repeats))
+        #expect(ItemSheetModel.voiceOverTarget(after: .repeats, shown: oneOffChips) == ChipFocus.seed)
+
+        let plants = try named(planner, "Water the plants")
+        let everyDay = try #require(ItemSheetModel.repeatCommit(.custom, days: Set(0...6), monthDay: 1,
+                                                                stored: plants))
+        planner.edit(plants.id, everyDay)
+        let daily = try #require(planner.item(plants.id))
+        #expect(daily.repeatFrequency == "custom")
+        #expect(shown(planner, daily).first(where: { $0.kind == .repeats })?.text == "Daily")
+    }
+
+    /// Custom days open on the stored days, or today's alone when none are
+    /// (the web's own pick), a stored day out of range read as none; Monthly
+    /// on the stored day, or the 1st when none, 0 or one past 31 is stored.
+    @Test func theRepeatSheetOpensOnWhatIsStored() throws {
+        let planner = makePlanner()
+        let plants = try named(planner, "Water the plants")   // Sundays and Wednesdays
+        let stretch = try named(planner, "Stretch 10 min")    // daily, no days
+        let rent = try named(planner, "Pay rent")             // monthly, on the 1st
+        let today = planner.today
+        #expect(today.weekday == 4)
+
+        #expect(ItemSheetModel.repeatDaysSeed(plants, today: today) == Set([0, 3]))
+        #expect(ItemSheetModel.repeatDaysSeed(stretch, today: today) == Set([today.weekday]))
+        var odd = plants
+        odd.repeatDays = [9]
+        #expect(ItemSheetModel.repeatDaysSeed(odd, today: today) == Set([today.weekday]))
+
+        #expect(ItemSheetModel.monthDaySeed(rent) == 1)
+        var fifteenth = rent
+        fifteenth.repeatMonthDay = 15
+        #expect(ItemSheetModel.monthDaySeed(fifteenth) == 15)
+        for stored: Int? in [nil, 0, 40] {
+            var other = rent
+            other.repeatMonthDay = stored
+            #expect(ItemSheetModel.monthDaySeed(other) == 1)
+        }
+    }
+
+    /// What Done sends: nothing for Custom days with no day; the days picked,
+    /// ascending; the day picked; and nothing when the item already says it
+    /// (the stored days, the stored day, a monthly item with no day and the
+    /// 1st). A clean sheet on another frequency sends: Custom days… on a
+    /// daily item, Done at once. Every edit sent passes the planner's gate.
+    @Test func repeatDoneSendsOnlyAChange() throws {
+        let planner = makePlanner()
+        let plants = try named(planner, "Water the plants")   // custom, [0, 3]
+        let stretch = try named(planner, "Stretch 10 min")    // daily
+        let rent = try named(planner, "Pay rent")             // monthly, on the 1st
+        func commit(_ detail: RepeatDetail, days: Set<Int> = [], monthDay: Int = 1,
+                    on stored: SampleItem) -> ItemEdit? {
+            let edit = ItemSheetModel.repeatCommit(detail, days: days, monthDay: monthDay, stored: stored)
+            if let edit { #expect(editAllowed(edit, on: stored, caps: planner.caps(for: stored))) }
+            return edit
+        }
+
+        #expect(commit(.custom, days: [], on: stretch) == nil)
+        #expect(commit(.custom, days: [5, 1, 3], on: stretch)
+                == ItemEdit.repeats(frequency: "custom", days: [1, 3, 5], monthDay: nil))
+        #expect(commit(.custom, days: [0, 3], on: plants) == nil)
+        #expect(commit(.monthly, monthDay: 31, on: rent)
+                == ItemEdit.repeats(frequency: "monthly", days: nil, monthDay: 31))
+        #expect(commit(.monthly, monthDay: 1, on: rent) == nil)
+        var noDay = rent
+        noDay.repeatMonthDay = nil
+        #expect(commit(.monthly, monthDay: 1, on: noDay) == nil)
+
+        let seed = ItemSheetModel.repeatDaysSeed(stretch, today: planner.today)
+        #expect(commit(.custom, days: seed, on: stretch)
+                == ItemEdit.repeats(frequency: "custom", days: [planner.today.weekday], monthDay: nil))
+        #expect(commit(.monthly, monthDay: ItemSheetModel.monthDaySeed(stretch), on: stretch)
+                == ItemEdit.repeats(frequency: "monthly", days: nil, monthDay: 1))
+    }
+
+    /// Custom days' keys run in the user's week: from Sunday, or Mon to Sun
+    /// in a Monday week (open question 2).
+    @Test func theKeysRunInTheUsersWeek() {
+        #expect(ItemSheetModel.repeatDayKeys(weekStartDay: .sunday) == [0, 1, 2, 3, 4, 5, 6])
+        #expect(ItemSheetModel.repeatDayKeys(weekStartDay: .monday) == [1, 2, 3, 4, 5, 6, 0])
+        #expect(ItemSheetModel.repeatDayKeys(weekStartDay: .saturday) == [6, 0, 1, 2, 3, 4, 5])
+    }
+
+    /// The Repeat sheet, as it closes, sends VoiceOver to the repeat chip of
+    /// the page it edited, or to Add property where there is none; another
+    /// page's sheet moves nothing.
+    @Test func theRepeatSheetClosingSendsVoiceOverToTheChip() throws {
+        let one = SampleData.uuid(1)
+        let two = SampleData.uuid(2)
+        #expect(ItemSheetModel.chipKind(closing: .repeatDetail(one, .custom), on: one) == SheetChip.Kind.repeats)
+        #expect(ItemSheetModel.chipKind(closing: .repeatDetail(one, .monthly), on: one) == SheetChip.Kind.repeats)
+        #expect(ItemSheetModel.chipKind(closing: .repeatDetail(two, .custom), on: one) == nil)
+        #expect(ItemSheetModel.chipKind(closing: .repeatDetail(two, .monthly), on: one) == nil)
+
+        let planner = makePlanner()
+        let meds = try named(planner, "Meds")             // a repeat chip
+        let groceries = try named(planner, "Groceries")   // a one-off: none
+        #expect(ItemSheetModel.voiceOverTarget(after: .repeats, shown: shown(planner, meds))
+                == ChipFocus.chip(.repeats))
+        #expect(ItemSheetModel.voiceOverTarget(after: .repeats, shown: shown(planner, groceries)) == ChipFocus.seed)
+    }
+
+    /// The Repeat sheet's words: the web's keys ("Sun" … "Sat"), each day in
+    /// full beginning with its key's word, "Day 12" for a day of the month,
+    /// the titles without the menu's ellipsis, the web's two sentences, and
+    /// no em dash in any.
+    @Test func theRepeatSheetsWords() {
+        let keys = (0...6).map { ItemSheetModel.repeatDayWord($0) }
+        let names = (0...6).map { ItemSheetModel.repeatDayName($0) }
+        #expect(keys == ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])
+        #expect(names == ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"])
+        for day in 0...6 {
+            #expect(names[day].hasPrefix(keys[day]))
+        }
+        #expect(ItemSheetModel.monthDayWord(1) == "Day 1")
+        #expect(ItemSheetModel.monthDayWord(12) == "Day 12")
+        #expect(ItemSheetModel.repeatTitle(.custom) == "Custom days")
+        #expect(ItemSheetModel.repeatTitle(.monthly) == "Monthly")
+        #expect(ItemSheetModel.selectAtLeastOneDay == "Select at least one day")
+        #expect(ItemSheetModel.monthlyNote == "For months with fewer days, it will occur on the last day.")
+        #expect(ItemSheetModel.selectAtLeastOneDay == EditCopy.selectAtLeastOneDay)
+        #expect(ItemSheetModel.monthlyNote == EditCopy.monthlyNote)
+
+        let words = keys + names + [
+            ItemSheetModel.monthDayWord(31), ItemSheetModel.repeatTitle(.custom), ItemSheetModel.repeatTitle(.monthly),
+            ItemSheetModel.selectAtLeastOneDay, ItemSheetModel.monthlyNote, ItemSheetModel.chipHint(.repeats) ?? "",
+            ItemSheetModel.seedEntry(.repeats),
+        ]
+        let rows = ItemSheetModel.repeatChoices(allowed: ItemCaps.task.allowedFrequencies, stored: nil)
+        let all = words + rows.map(\.word)
         let dashed = all.filter { $0.contains("\u{2014}") }
         #expect(dashed.isEmpty)
     }

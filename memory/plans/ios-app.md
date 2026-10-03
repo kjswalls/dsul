@@ -94,7 +94,11 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `commitEdit` over the keys sent); `bucketForTime`, `autoCorrectBucket` and
   `bucketStartTime` (← `lib/time-bucket.ts`) to `DayBuckets.swift`;
   `durationPresets` and `durationLabel` (← `lib/item-edit.ts`) to
-  `EditCopy.swift`; and `hasDuration` to `Registry.swift`.
+  `EditCopy.swift`; and `hasDuration` to `Registry.swift`. 2e adds `.repeats`
+  to `ItemEdit.swift` and `ItemWriteBody.swift` (its step ports
+  `repeatEditPatch`); `repeatFrequencyOrder`, `repeatFrequencyLabel`,
+  `weekdayLabel` and `weekdayOrder` to `Cadence.swift`; the two repeat
+  sentences to `EditCopy.swift`; and `allowedFrequencies` to `Registry.swift`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -104,8 +108,9 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
   `NotesEditor`, `SubtaskField` and `StreakPopover`, and from 2c `Editors/`:
   `PropertyMenus` and `ReminderSheet`, which 2d joins with `TimeSheet` and
-  `ClockWheel`, the wheel both sheets share) and `ItemSheetModel`, which decides
-  what it says and offers apart from the views.
+  `ClockWheel`, the wheel both sheets share, and 2e with `RepeatSheet`) and
+  `ItemSheetModel`, which decides what it says and offers apart from the
+  views.
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
 
@@ -259,10 +264,10 @@ and "+ Add property" (priority, times a day, the reminder); 2d date and time;
 2e repeat; 2f project, routines and seasons. An older server's `writes` hides
 any editor it doesn't take, so the deploy order doesn't matter: against one
 without `addSubtask` there is no Add a subtask row, without `resetStreak` the
-streak popover has no Reset, and without `priority`, `timesPerDay`, `reminder`
-and `time` those chips stay read-only; the date chip still edits, through
-`move`, which every server that sends `writes` takes, so Add property then
-holds Date alone, for an undated task.
+streak popover has no Reset, and without `priority`, `timesPerDay`, `reminder`,
+`time` and `repeat` those chips stay read-only; the date chip still edits,
+through `move`, which every server that sends `writes` takes, so Add property
+then holds Date alone, for an undated task.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
@@ -406,6 +411,22 @@ words are fixed on every surface, below.
   `scheduleTaskPatch`, and the dialog imports `planTimeEdit`). `{}` (200, no
   write) only when nothing moved from the seed; an edit whose end row is the
   stored one still writes, as the web does.
+  2e's `repeat` (`frequency`, one of the six; `days`, 0-6, with Custom days
+  only; `monthDay`, 1-31, with Monthly only; `.strict()`) goes through the
+  same handler. The schema refuses days or a day beside the wrong frequency,
+  either missing where its frequency needs it, and days not strictly
+  ascending (400 `invalid`: refused, never sorted), and a legacy `weekly`. It
+  reads `repeat_days, repeat_month_day` on top of the shared row (which
+  already has `repeat_frequency`), and is refused under a subtask (400
+  `not_for_subtask`) and with a frequency the type doesn't list (400
+  `frequency_not_allowed`, a habit's No repeat). `repeatEditPatch` is the
+  dialog's save over the sent keys: the draft seeded as `draftFromItem` seeds
+  it, all three keys written through the dialog's own `repeatPatch` (now in
+  lib/item-edit.ts, which the dialog's mappers and add path import) whenever
+  any moved, `{}` when none did. Then, on the `{}` path too, any goal role the
+  new rule left untrue is demoted (lib/goal-roles.ts, moved out of
+  lib/agent-api.ts, whose PATCH runs it as before), on the user's client; a
+  failure there is logged, and the answer is still `{ok: true}`.
 - **Add a subtask** (2b). The Subtasks section shows whenever the item has
   subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
   itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
@@ -483,8 +504,9 @@ words are fixed on every surface, below.
   `editAllowed` takes it for the type (`ItemSheetModel.chipEditor`, asking
   the planner's `canEdit`); a menu writes at once, the reminder opens a
   sheet. From 2d the date and time chips edit too (below, with the hints
-  "Changes the date" and "Changes the time"); the rest stay read-only until
-  2e-2f. An editable chip keeps
+  "Changes the date" and "Changes the time"), and from 2e the repeat chip
+  (below, with the hint "Changes how it repeats"); the rest stay read-only
+  until 2f. An editable chip keeps
   part 1's look and gains a trailing chevron; its words, symbol and chevron
   draw in the label colour (`ChipView(editable: true)`), never lime, and it
   scales when pressed (`PressScaleStyle`) rather than fading. It is hit over
@@ -578,6 +600,23 @@ words are fixed on every surface, below.
   releasing a project block. No "No specific bucket" for a habit, which the
   server still takes. An Anytime item's length shows no chip (part 1's rule),
   so a length set from Time… on one shows on the grid and the web only.
+- **Repeat** (2e). The repeat chip is a menu of the type's frequencies in the
+  web's order and words (`REPEAT_FREQUENCY_LABELS`), the current one checked;
+  No repeat (never a habit's), Daily, Weekdays and Weekends write at once, and
+  Monthly… and Custom days… open the Repeat sheet, which writes on Done. A
+  one-off task's Add property holds Repeat ▸ with the same rows but No repeat.
+  Custom days' keys run in Week starts on order and are worded as the web's
+  (`WEEKDAY_LABELS`); the stored days are picked, or today's alone when none
+  are (the web's pre-selection); none picked shows "Select at least one day"
+  and disables Done. Monthly is a 1 to 31 grid with the web's note. From
+  xxLarge the keys are rows, and at the accessibility sizes the grid is a list
+  scrolled to the picked day. Picked keys and days are the system blue, as
+  the day picker's. Gated as `editAllowed(action: "repeat")` (not a subtask,
+  more than one frequency). A repeat on an undated task leaves it undated, in
+  the braindump. The chip keeps part 1's `cadenceLabel` words ("Monthly · 1",
+  "Mon, Wed"), which Today's rows show, where the web's chip reads "Day 1" and
+  "Mon Wed"; so seven days picked read "Daily" on the chip while its menu
+  checks Custom days….
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -638,11 +677,22 @@ words are fixed on every surface, below.
   `buckets` (`getBucketForTime` and `autoCorrectBucket` on JS's edges, and
   `BUCKET_START_TIMES`) and `durations` (`DURATION_ORDER` and
   `durationLabel`, the lengths' words). caps.json's types gain `hasDuration`.
+  2e adds the repeat cases (all three keys together, the unchanged rule, the
+  type's frequencies, the schema's refusals) and `repeats`, the frequency and
+  weekday words. The unchanged rule is the dialog's seed: stored days in
+  another order write, a stale day under Daily sent Daily is `{}` and stays,
+  and Monthly with no day stored sent the 1st is `{}`. The refusals are
+  `frequency_not_allowed` (a habit's No repeat), `not_for_subtask`, and nine
+  bodies the schema refuses (days or a day beside the wrong frequency,
+  missing, empty, out of order, twice, or out of range), which the phone's
+  gate never builds. `copy` gains the two repeat sentences. caps.json's types
+  gain `allowedFrequencies`.
 - **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-13:
   the title, the notes, the keyboard, Delete, adding subtasks, Reset streak
   and Streaks off, Add property, the chips and the Remind sheet, from 2d the
-  Date menu and the Time sheet (checks 7 and 8), offline, VoiceOver, the
-  largest text size, the lime, and the platform behaviours they rest on).
+  Date menu and the Time sheet, from 2e the Repeat menu and sheet (checks 7
+  and 8), offline, VoiceOver, the largest text size, the lime, and the
+  platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -899,6 +949,18 @@ functions:
   releases a project block (`scheduleTaskPatch`); a new time alone keeps the
   item in its block, its bucket auto-corrected. Never the date: the Date chip
   is `move`.
+- **A repeat writes its three keys together**, as the dialog does
+  (`repeatPatch`): the days only with Custom days and the day only with
+  Monthly, nothing when the item already says it, and never the date, the
+  status or the streak. Then it demotes any goal role the new rule left
+  untrue (lib/goal-roles.ts, which the agent PATCH runs too), on the user's
+  client; a failure there is logged, and the write still answers 200. An
+  open web tab doesn't hear of it, and its next membership write puts the
+  role back, as after an agent PATCH (memory/plans/long-term-goals.md,
+  decision 3 and its 2e ledger line). No repeat on a task whose series
+  started before today leaves it a one-off on that first day, as the web's
+  panel does; the phone has no overdue tray, so it shows on no list until it
+  is given a new day (Search finds it).
 - **The live Beeminder post** (`reportLiveCompletion`) runs after every
   `set_item_completion`, as the browser's `reportCompletion` does after a
   tick and `/api/reminders/act` after its own: through `after()` once the
@@ -946,11 +1008,13 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of item detail part 2 (repeat,
-project, routines and seasons: 2e-2f), undo or restore after a
-delete (the web's Trash restores it), Change type, Duplicate and Copy link,
-the rest of the sheet (a routine's or a season's hold, the goal chip once
-goals are in the payload, the Beeminder row, the Streaks switch, which the
+from the bar to the braindump sheet, the rest of item detail part 2
+(project, routines and seasons: 2f), undo or restore after a delete (the
+web's Trash restores it), Change type, Duplicate and Copy link, the rest of
+the sheet (a routine's or a season's hold, the goal chip once goals are in
+the payload, and any word that a repeat took a goal role away (the web then
+lists the item as a plain member, with no notice), the Beeminder row, the
+Streaks switch, which the
 phone honours, in the sheet and on Today's rows, but can't turn on or off,
 the thread and Ask, Focus), sign-in with Apple,
 universal links (the email link uses the custom scheme), unschedule, resize

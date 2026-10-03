@@ -1,4 +1,4 @@
-import type { Habit, Priority, Task, TimeBucket } from '@dsul/types';
+import type { Habit, Priority, RepeatFrequency, Task, TimeBucket } from '@dsul/types';
 import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
 import { MAX_BULK_ITEMS } from './bulk-add';
 import { autoCorrectBucket } from './time-bucket';
@@ -47,6 +47,16 @@ import { autoCorrectBucket } from './time-bucket';
  * lengths' words (`DURATION_ORDER`, `durationLabel`). The date is not here:
  * the Date chip writes through `move`.
  *
+ * The Repeat chip's edit (2e), `repeat`: a frequency, with its days for
+ * Custom days alone and its day of the month for Monthly alone. It is refused
+ * under a subtask (`not_for_subtask`) and with a frequency its type doesn't
+ * offer (`frequency_not_allowed`, a habit's 'none'); days or a day beside the
+ * wrong frequency, and days not strictly ascending, are the schema's refusal.
+ * `repeatEditPatch` is the dialog's save over the keys sent, and
+ * `repeatPatch` is the dialog's own rule, which its mappers and its add path
+ * import back. Goal roles are not here: the route demotes any the write left
+ * untrue through lib/goal-roles.ts once the write has landed.
+ *
  * Two of the sheet's writes are not edits of a field, and have their own rule:
  *  - Add a subtask (`subtaskRefusal`) is refused on a type without subtasks (a
  *    habit) and under a subtask, since one level is all there is. It writes a
@@ -75,7 +85,12 @@ export type ItemEdit =
    * The Time chip. Each key only when it changed: a part of day (null for none, a habit's only),
    * a specific time (null for none) and a length in minutes.
    */
-  | { action: 'time'; timeBucket?: TimeBucket | null; startTime?: string | null; duration?: number };
+  | { action: 'time'; timeBucket?: TimeBucket | null; startTime?: string | null; duration?: number }
+  /**
+   * The Repeat chip: one of the type's frequencies, with its days for Custom days alone and its
+   * day of the month for Monthly alone. All three keys are written together.
+   */
+  | { action: 'repeat'; frequency: RepeatFrequency; days?: number[]; monthDay?: number };
 
 /** The columns an edit is decided on, as the route selects them. */
 export interface EditRow {
@@ -96,6 +111,10 @@ export interface EditRow {
   start_time?: string | null;
   is_scheduled?: boolean | null;
   duration?: number | null;
+  /** The Repeat chip's (2e): the frequency is in every read, the days and the day in its own. */
+  repeat_frequency?: string | null;
+  repeat_days?: number[] | null;
+  repeat_month_day?: number | null;
 }
 
 /**
@@ -123,6 +142,10 @@ export interface EditShape {
   startTime?: string | null;
   isScheduled?: boolean | null;
   duration?: number | null;
+  /** The Repeat chip's columns (2e), each absent when not read, like `notes`. */
+  repeatFrequency?: RepeatFrequency | null;
+  repeatDays?: number[] | null;
+  repeatMonthDay?: number | null;
 }
 
 export function editShapeFromRow(row: EditRow): EditShape {
@@ -144,6 +167,12 @@ export function editShapeFromRow(row: EditRow): EditShape {
     ...(row.start_time !== undefined ? { startTime: row.start_time ?? null } : {}),
     ...(row.is_scheduled !== undefined ? { isScheduled: row.is_scheduled ?? null } : {}),
     ...(row.duration !== undefined ? { duration: row.duration ?? null } : {}),
+    // The cast lib/db.ts itemFromRow makes on the same text column.
+    ...(row.repeat_frequency !== undefined
+      ? { repeatFrequency: (row.repeat_frequency ?? null) as RepeatFrequency | null }
+      : {}),
+    ...(row.repeat_days !== undefined ? { repeatDays: row.repeat_days ?? null } : {}),
+    ...(row.repeat_month_day !== undefined ? { repeatMonthDay: row.repeat_month_day ?? null } : {}),
   };
 }
 
@@ -210,6 +239,37 @@ export function reminderPatch(
   };
 }
 
+/** The three repeat keys, always all present: undefined is written as NULL. */
+export interface RepeatPatch {
+  repeatFrequency: RepeatFrequency | undefined;
+  repeatDays: number[] | undefined;
+  repeatMonthDay: number | undefined;
+}
+
+/**
+ * The Repeat chip as the item dialog writes it (components/planner/item-dialog.tsx: both
+ * mappers and the add path, which import it back). The three fields are one control, so
+ * touching any writes all three, each key present: the days only for Custom days, the day only
+ * for Monthly. A habit keeps its frequency as given (it always repeats; the registry never
+ * offers it 'none'); any other type writes 'none' as no repeat at all. `type` is the stored
+ * slug, and 'habit' is the test lib/db.ts updatesToRow makes to choose habitUpdatesToRow,
+ * which writes repeat_frequency only when it is set.
+ */
+export function repeatPatch(
+  type: 'habit',
+  frequency: RepeatFrequency,
+  days: number[],
+  monthDay: number,
+): RepeatPatch & { repeatFrequency: RepeatFrequency };
+export function repeatPatch(type: string, frequency: RepeatFrequency, days: number[], monthDay: number): RepeatPatch;
+export function repeatPatch(type: string, frequency: RepeatFrequency, days: number[], monthDay: number): RepeatPatch {
+  return {
+    repeatFrequency: type === 'habit' || frequency !== 'none' ? frequency : undefined,
+    repeatDays: frequency === 'custom' ? days : undefined,
+    repeatMonthDay: frequency === 'monthly' ? monthDay : undefined,
+  };
+}
+
 export interface EditRefusal {
   code: string;
   status: 400 | 409;
@@ -238,6 +298,11 @@ const INVALID: EditRefusal = { code: 'invalid', status: 400 };
  * not land beside Anytime or no part of day, judged as the row will be once
  * written, the sent value or else the stored one for each. A time sent beside
  * Anytime or null in the same body is the schema's refusal.
+ *
+ * A repeat edit is `not_for_subtask` under a subtask and
+ * `frequency_not_allowed` with a frequency its type doesn't offer; days or a
+ * day beside the wrong frequency, and days out of order, are the schema's
+ * refusal.
  */
 export function editRefusal(row: EditShape, edit: ItemEdit, config: ItemTypeConfig): EditRefusal | null {
   switch (edit.action) {
@@ -283,6 +348,16 @@ export function editRefusal(row: EditShape, edit: ItemEdit, config: ItemTypeConf
       }
       return null;
     }
+    case 'repeat': {
+      // As the Time chip (2d): a subtask shows only in its parent's sheet, so a repeat there
+      // would show nowhere.
+      if (row.parentItemId) return { code: 'not_for_subtask', status: 400 };
+      // The chip lists only the type's frequencies: a habit has no 'none'.
+      if (!(config.allowedFrequencies as readonly string[]).includes(edit.frequency)) {
+        return { code: 'frequency_not_allowed', status: 400 };
+      }
+      return null;
+    }
   }
 }
 
@@ -302,6 +377,9 @@ export type EditPatch = Partial<
     | 'inProjectBlock'
     | 'previousStartTime'
     | 'previousStartDate'
+    | 'repeatFrequency'
+    | 'repeatDays'
+    | 'repeatMonthDay'
   > &
     Pick<Habit, 'streak' | 'timesPerDay'>
 >;
@@ -319,7 +397,8 @@ export type EditPatch = Partial<
  * dialog's draft holds them, and touching either key writes both.
  *
  * `config` matters only to `time` (its seeded length is the type's default
- * block), and defaults to the row's own type.
+ * block) and `repeat` (its seeded frequency is the type's default), and
+ * defaults to the row's own type.
  */
 export function editPatch(
   row: EditShape,
@@ -359,6 +438,8 @@ export function editPatch(
     }
     case 'time':
       return timeEditPatch(row, edit, config);
+    case 'repeat':
+      return repeatEditPatch(row, edit, config);
   }
 }
 
@@ -605,6 +686,43 @@ export function timeEditPatch(
   return { ...first, ...second };
 }
 
+// ── The repeat write (2e) ────────────────────────────────────────────────────
+
+/**
+ * `repeat`: the dialog's Repeat chip as its save writes it. The draft is seeded as
+ * draftFromItem seeds it (the stored frequency or the type's default, the stored days or none,
+ * the stored day or the 1st), and the sent keys go over it. The three fields are one control:
+ * when any differs from its seed (by JSON, as scheduleSave compares the draft) all three are
+ * written (repeatPatch), and when none does nothing is ({}), so a stale day under another
+ * frequency stays as it is. Throws when a repeat column wasn't read: EDIT_COLUMNS.repeat and
+ * the shared read always read them.
+ */
+export function repeatEditPatch(
+  row: EditShape,
+  edit: Extract<ItemEdit, { action: 'repeat' }>,
+  config: ItemTypeConfig,
+): EditPatch {
+  const { repeatFrequency, repeatDays, repeatMonthDay } = row;
+  if (repeatFrequency === undefined || repeatDays === undefined || repeatMonthDay === undefined) {
+    throw new Error('repeatEditPatch: the row was read without its repeat columns');
+  }
+  const seed = {
+    frequency: repeatFrequency ?? config.defaultFrequency,
+    days: repeatDays || [],
+    monthDay: repeatMonthDay || 1,
+  };
+  const draft = {
+    frequency: edit.frequency,
+    days: edit.days ?? seed.days,
+    monthDay: edit.monthDay ?? seed.monthDay,
+  };
+  const moved =
+    draft.frequency !== seed.frequency ||
+    JSON.stringify(draft.days) !== JSON.stringify(seed.days) ||
+    draft.monthDay !== seed.monthDay;
+  return moved ? repeatPatch(row.type, draft.frequency, draft.days, draft.monthDay) : {};
+}
+
 /** The Time chip's lengths, in its order (item-dialog.tsx's Duration rows), as the draft holds them. */
 export const DURATION_ORDER = ['15', '30', '45', '60', '90', '120'];
 
@@ -649,6 +767,10 @@ export const EDIT_COPY = {
   /** Under the time, for a dated type with no date (lib/bulk-edit.ts reminderNeedsDate). */
   reminderNeedsDate:
     'Give this a date and it will fire. Without one there is no day for the reminder to land on.',
+  /** Under Custom days' keys while none is picked (item-dialog.tsx repeatChip). */
+  selectAtLeastOneDay: 'Select at least one day',
+  /** Under Monthly's days (item-dialog.tsx repeatChip). */
+  monthlyNote: 'For months with fewer days, it will occur on the last day.',
 } as const;
 
 /** How long a streak runs, in words: the streak flame's tooltip (components/primitives/pills.tsx). */

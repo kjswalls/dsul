@@ -543,6 +543,7 @@ describe('the payload fixture shared with DsulCore', () => {
       'timesPerDay',
       'reminder',
       'time',
+      'repeat',
     ]);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);

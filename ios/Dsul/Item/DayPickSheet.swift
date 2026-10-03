@@ -17,7 +17,9 @@ import SwiftUI
 /// disc of the tint under a white number, so it tints itself the system blue
 /// (`calendarTint`): in the sheet's lime the picked day was a faded 1.5:1
 /// disc, and in the label colour today looked like every other day and, in
-/// dark mode, a picked today was white on white.
+/// dark mode, a picked today was white on white. The Repeat sheet draws its
+/// picked weekday keys and its picked day of the month in the same blue,
+/// under white, so the two pickers look alike (`RepeatSheet`).
 struct DayPickSheet: View {
     /// The title, the confirm button's verb before the day ("Move to",
     /// "Pause until"), and the note under the calendar, if any.
@@ -93,8 +95,9 @@ struct DayPickSheet: View {
 
     /// Not lime, not the label colour, and dark enough under a white number
     /// in both modes (about 4:1 light, 3.6:1 dark): the system's own blue,
-    /// which the calendar uses untinted.
-    private static var calendarTint: Color { Color(.systemBlue) }
+    /// which the calendar uses untinted. The Repeat sheet's picked keys and
+    /// day read it too.
+    static var calendarTint: Color { Color(.systemBlue) }
 
     @ViewBuilder
     private var calendar: some View {

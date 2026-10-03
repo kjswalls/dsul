@@ -2468,6 +2468,949 @@
         "startDate": "2026-10-01",
         "timeBucket": "morning"
       }
+    },
+    {
+      "name": "repeat-none-task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000500",
+        "title": "Water the plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "morning",
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "none"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": null,
+        "repeatDays": null,
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000500",
+        "title": "Water the plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-01",
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "repeat-daily",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000501",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "daily"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "daily",
+        "repeatDays": null,
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000501",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime",
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "repeat-custom",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000502",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "evening"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          1,
+          3,
+          5
+        ]
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ],
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000502",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "evening",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3,
+          5
+        ]
+      }
+    },
+    {
+      "name": "repeat-monthly",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000503",
+        "title": "Pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "monthly",
+        "monthDay": 1
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "monthly",
+        "repeatDays": null,
+        "repeatMonthDay": 1
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000503",
+        "title": "Pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 1
+      }
+    },
+    {
+      "name": "repeat-refused-habit-none",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000504",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "none"
+      },
+      "refusal": "frequency_not_allowed",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000504",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "repeat-finished-one-off-keeps-status",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000505",
+        "title": "Renew passport",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-30"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "weekdays"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "weekdays",
+        "repeatDays": null,
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000505",
+        "title": "Renew passport",
+        "status": "completed",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-09-30",
+        "repeatFrequency": "weekdays"
+      }
+    },
+    {
+      "name": "repeat-custom-days-reordered",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000506",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          3,
+          1
+        ]
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          1,
+          3
+        ]
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ],
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000506",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ]
+      }
+    },
+    {
+      "name": "repeat-custom-to-monthly",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000507",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ]
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "monthly",
+        "monthDay": 15
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "monthly",
+        "repeatDays": null,
+        "repeatMonthDay": 15
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000507",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 15
+      }
+    },
+    {
+      "name": "repeat-unchanged-none",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000508",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "none"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000508",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-unchanged-days",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000509",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ]
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          1,
+          3
+        ]
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000509",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ]
+      }
+    },
+    {
+      "name": "repeat-stale-month-day-kept",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000050a",
+        "title": "Stretch",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "daily",
+        "repeatMonthDay": 15
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "daily"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000050a",
+        "title": "Stretch",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "daily",
+        "repeatMonthDay": 15
+      }
+    },
+    {
+      "name": "repeat-monthly-no-day-stored",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000050b",
+        "title": "Pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "monthly",
+        "monthDay": 1
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000050b",
+        "title": "Pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly"
+      }
+    },
+    {
+      "name": "repeat-habit-weekdays",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000050c",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "weekdays"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "weekdays",
+        "repeatDays": null,
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000050c",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekdays"
+      }
+    },
+    {
+      "name": "repeat-habit-custom",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000050d",
+        "title": "Water the plants",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          0,
+          3
+        ]
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0,
+          3
+        ],
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000050d",
+        "title": "Water the plants",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          0,
+          3
+        ]
+      }
+    },
+    {
+      "name": "repeat-custom-type-monthly",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000050e",
+        "title": "Pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "monthly",
+        "monthDay": 31
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "monthly",
+        "repeatDays": null,
+        "repeatMonthDay": 31
+      },
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000050e",
+        "title": "Pay rent",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      }
+    },
+    {
+      "name": "repeat-refused-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000050f",
+        "title": "Write the three bets",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "daily"
+      },
+      "refusal": "not_for_subtask",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000050f",
+        "title": "Write the three bets",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "repeat-weekends",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000510",
+        "title": "Long run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "weekends"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "repeatFrequency": "weekends",
+        "repeatDays": null,
+        "repeatMonthDay": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000510",
+        "title": "Long run",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "repeatFrequency": "weekends"
+      }
+    },
+    {
+      "name": "repeat-refused-days-without-custom",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000511",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "daily",
+        "days": [
+          1
+        ]
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000511",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-custom-without-days",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000512",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000512",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-custom-empty-days",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000513",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": []
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000513",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-days-unsorted",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000514",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          3,
+          1
+        ]
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000514",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-day-twice",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000515",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          1,
+          1
+        ]
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000515",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-day-seven",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000516",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "custom",
+        "days": [
+          7
+        ]
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000516",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-month-day-without-monthly",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000517",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "daily",
+        "monthDay": 1
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000517",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-monthly-without-day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000518",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "monthly"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000518",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "repeat-refused-month-day-32",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000519",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "repeat",
+        "frequency": "monthly",
+        "monthDay": 32
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000519",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
     }
   ],
   "trim": [
@@ -3330,7 +4273,46 @@
     "subtaskPasteCapped": "Added the first 500 subtasks. The paste had more.",
     "reminderAnchorPlaceholder": "I pour my coffee",
     "reminderAnchorHint": "Optional, and worth it. Something you already do beats a time. The reminder will say what you write here.",
-    "reminderNeedsDate": "Give this a date and it will fire. Without one there is no day for the reminder to land on."
+    "reminderNeedsDate": "Give this a date and it will fire. Without one there is no day for the reminder to land on.",
+    "selectAtLeastOneDay": "Select at least one day",
+    "monthlyNote": "For months with fewer days, it will occur on the last day."
+  },
+  "repeats": {
+    "labels": [
+      {
+        "frequency": "none",
+        "label": "No repeat"
+      },
+      {
+        "frequency": "daily",
+        "label": "Daily"
+      },
+      {
+        "frequency": "weekdays",
+        "label": "Weekdays"
+      },
+      {
+        "frequency": "weekends",
+        "label": "Weekends"
+      },
+      {
+        "frequency": "monthly",
+        "label": "Monthly"
+      },
+      {
+        "frequency": "custom",
+        "label": "Custom days"
+      }
+    ],
+    "weekdays": [
+      "Sun",
+      "Mon",
+      "Tue",
+      "Wed",
+      "Thu",
+      "Fri",
+      "Sat"
+    ]
   },
   "buckets": {
     "forTime": [

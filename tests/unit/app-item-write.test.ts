@@ -44,6 +44,13 @@ import path from 'path';
  * a project block released only when the part of day moves, and never the
  * date. It replays from the fixture as well.
  *
+ * `repeat` is the panel's Repeat chip (lib/item-edit.ts repeatEditPatch): its
+ * three columns together, or nothing when the row already says it, and then
+ * any goal role the new rule left untrue taken back (lib/goal-roles.ts), on
+ * the user's own client, a failure there logged and the answer still 200. It
+ * replays from the fixture too; the demotion is pinned here, since the
+ * fixture's store holds no goals.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
@@ -194,6 +201,8 @@ const PAUSED = { ...ONE_OFF, paused_at: '2026-09-30T14:03:22.123456+00:00' };
 let row: Record<string, unknown> | null;
 let updateResult: Result;
 let settingsResult: Result;
+/** What every goal_items query answers: the demotion's select of held roles, and its update. */
+let goalItemsResult: Result;
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -212,11 +221,13 @@ beforeEach(() => {
   row = HABIT;
   updateResult = { data: null, error: null };
   settingsResult = { data: { timezone: 'America/Los_Angeles' }, error: null };
+  goalItemsResult = { data: [], error: null };
   rpc = vi.fn(async () => ({ data: null, error: null }));
   h.reportLiveCompletion.mockResolvedValue({ ok: true, skipped: true });
   respond = (q) => {
     if (q.table === 'item_events') return { data: null, error: null };
     if (q.table === 'user_settings') return settingsResult;
+    if (q.table === 'goal_items') return goalItemsResult;
     if (q.table !== 'items') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
     if (op(q) === 'update') return updateResult;
     return { data: row, error: null };
@@ -263,6 +274,7 @@ describe('reading the row first', () => {
     ['timesPerDay', { action: 'timesPerDay', timesPerDay: 2 }],
     ['reminder', { action: 'reminder', time: '08:00' }],
     ['time', { action: 'time', duration: 45 }],
+    ['repeat', { action: 'repeat', frequency: 'daily' }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -298,12 +310,23 @@ describe('reading the row first', () => {
     ['reminder', { action: 'reminder', time: '08:00' }, `${BASE_COLUMNS}, reminder_time, reminder_anchor`],
     // start_date, time_bucket and in_project_block are in every read.
     ['time', { action: 'time', duration: 45 }, `${BASE_COLUMNS}, start_time, is_scheduled, duration`],
+    // repeat_frequency is in every read.
+    ['repeat', { action: 'repeat', frequency: 'daily' }, `${BASE_COLUMNS}, repeat_days, repeat_month_day`],
     ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
     // The type and the parent decide it, and both are in every read.
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
   ])('reads for %s only the column it decides on', async (_, body, columns) => {
     // A tick never reads the notes, which can run to 200,000 characters.
-    row = { ...ONE_OFF, title: 'Call the bank', notes: null, start_time: null, is_scheduled: true, duration: null };
+    row = {
+      ...ONE_OFF,
+      title: 'Call the bank',
+      notes: null,
+      start_time: null,
+      is_scheduled: true,
+      duration: null,
+      repeat_days: [],
+      repeat_month_day: null,
+    };
     await write(body);
     expect(called(queries[0], 'select')).toEqual([[columns]]);
   });
@@ -1023,6 +1046,8 @@ function rowFor(item: Item): Record<string, unknown> {
     start_time: i.startTime ?? null,
     is_scheduled: i.isScheduled ?? null,
     duration: i.duration ?? null,
+    repeat_days: i.repeatDays ?? null,
+    repeat_month_day: i.repeatMonthDay ?? null,
   };
 }
 
@@ -1913,6 +1938,147 @@ describe('time', () => {
   });
 });
 
+describe('repeat', () => {
+  /** A one-off with the Repeat chip's columns read: no repeat stored. */
+  const PLAIN = { ...ONE_OFF, repeat_days: null, repeat_month_day: null };
+  /** The demotion's read of the item, after the write: the four columns a role is judged on. */
+  const ROLE_COLUMNS = 'id, type, parent_item_id, repeat_frequency';
+  /** What that read finds: the row as the write left it. */
+  let written: Record<string, unknown> | null;
+  const goalItems = () => queries.filter((q) => q.table === 'goal_items');
+
+  beforeEach(() => {
+    row = PLAIN;
+    written = null;
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && op(q) === 'select' && selected(q) === ROLE_COLUMNS ? { data: written, error: null } : base(q);
+  });
+
+  it('writes its three columns together, with the web’s event', async () => {
+    const res = await write({ action: 'repeat', frequency: 'weekdays' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ repeat_frequency: 'weekdays', repeat_days: null, repeat_month_day: null }]);
+    expect(writes('item_events', 'insert')).toEqual([
+      {
+        item_id: ITEM,
+        item_type: 'task',
+        action: 'update',
+        payload: { repeatFrequency: 'weekdays', repeatDays: null, repeatMonthDay: null },
+      },
+    ]);
+  });
+
+  it('writes the days with Custom days and the day with Monthly', async () => {
+    expect((await write({ action: 'repeat', frequency: 'custom', days: [1, 3, 5] })).status).toBe(200);
+    expect((await write({ action: 'repeat', frequency: 'monthly', monthDay: 31 })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([
+      { repeat_frequency: 'custom', repeat_days: [1, 3, 5], repeat_month_day: null },
+      { repeat_frequency: 'monthly', repeat_days: null, repeat_month_day: 31 },
+    ]);
+  });
+
+  it('writes nothing for No repeat on a one-off, but still asks after its goal roles', async () => {
+    const res = await write({ action: 'repeat', frequency: 'none' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+    expect(goalItems().map(op)).toEqual(['select']);
+  });
+
+  it('refuses No repeat on a habit, and writes and asks nothing', async () => {
+    row = { ...HABIT, repeat_days: null, repeat_month_day: null };
+    const res = await write({ action: 'repeat', frequency: 'none' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'frequency_not_allowed' });
+    expect(writes('items', 'update')).toEqual([]);
+    expect(goalItems()).toEqual([]);
+  });
+
+  it('writes a habit’s frequency through the habit allowlist', async () => {
+    row = { ...HABIT, repeat_days: null, repeat_month_day: null };
+    expect((await write({ action: 'repeat', frequency: 'weekdays' })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ repeat_frequency: 'weekdays', repeat_days: null, repeat_month_day: null }]);
+  });
+
+  it('400s a subtask, writing nothing', async () => {
+    row = { ...PLAIN, parent_item_id: PARENT };
+    const res = await write({ action: 'repeat', frequency: 'daily' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_for_subtask' });
+    expect(writes('items', 'update')).toEqual([]);
+    expect(goalItems()).toEqual([]);
+  });
+
+  describe('a goal role the new rule left untrue', () => {
+    it('is taken back once the write has landed, on the user’s own client', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      row = { ...RECURRING_TASK, repeat_days: null, repeat_month_day: null };
+      goalItemsResult = { data: [{ goal_id: 'g1', role: 'checkin' }], error: null };
+      written = { id: ITEM, type: 'task', parent_item_id: null, repeat_frequency: null };
+      const res = await write({ action: 'repeat', frequency: 'none' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(writes('items', 'update')).toEqual([{ repeat_frequency: null, repeat_days: null, repeat_month_day: null }]);
+      // The roles read, then the one update: both through the session client's `from`, the only
+      // one that fills `queries` (the service client has none, and a demotion run on it would
+      // throw and be logged).
+      expect(goalItems().map(op)).toEqual(['select', 'update']);
+      const demoted = goalItems()[1];
+      expect(called(demoted, 'update')).toEqual([[{ role: 'member', sort_order: null }]]);
+      expect(called(demoted, 'eq')).toEqual([
+        ['user_id', USER],
+        ['item_id', ITEM],
+      ]);
+      expect(called(demoted, 'in')).toEqual([['goal_id', ['g1']]]);
+      // After the item write, never before it.
+      const order = queries.map((q) => `${q.table}:${op(q)}`);
+      expect(order.indexOf('items:update')).toBeLessThan(order.indexOf('goal_items:update'));
+      expect(error).not.toHaveBeenCalled();
+      error.mockRestore();
+    });
+
+    it('is put right by an edit that changes nothing', async () => {
+      // The repair: a held check-in on a one-off already at No repeat, left by an earlier write
+      // whose demotion failed.
+      goalItemsResult = { data: [{ goal_id: 'g1', role: 'checkin' }], error: null };
+      written = { id: ITEM, type: 'task', parent_item_id: null, repeat_frequency: null };
+      expect((await write({ action: 'repeat', frequency: 'none' })).status).toBe(200);
+      expect(writes('items', 'update')).toEqual([]);
+      expect(goalItems().map(op)).toEqual(['select', 'update']);
+    });
+
+    it('is logged and swallowed when it fails: the write landed, and the answer stays ok', async () => {
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      goalItemsResult = { data: null, error: { message: 'boom' } };
+      const res = await write({ action: 'repeat', frequency: 'weekdays' });
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true });
+      expect(writes('items', 'update')).toHaveLength(1);
+      expect(error).toHaveBeenCalledTimes(1);
+      expect(error.mock.calls[0][0]).toBe('[app/items] goal role demotion failed:');
+      error.mockRestore();
+    });
+  });
+
+  it('is the only action that asks after goal roles', async () => {
+    for (const [r, body] of [
+      [{ ...ONE_OFF, title: 'Call the bank', notes: null }, { action: 'title', title: 'Call the bank today' }],
+      [ONE_OFF, { action: 'priority', priority: 'high' }],
+      [{ ...ONE_OFF, start_time: null, is_scheduled: true, duration: null }, { action: 'time', duration: 45 }],
+    ] as const) {
+      row = r;
+      expect((await write(body)).status, body.action).toBe(200);
+    }
+    expect(writes('items', 'update')).toHaveLength(3);
+    expect(goalItems()).toEqual([]);
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -1983,6 +2149,23 @@ describe('validation', () => {
     ['a fractional length', { action: 'time', duration: 1.5 }],
     ['a length as a string', { action: 'time', duration: '30' }],
     ['a time edit with a date in it', { action: 'time', duration: 30, startDate: DATE }],
+    ['a repeat with no frequency', { action: 'repeat' }],
+    ['the legacy weekly, which is not rewritten', { action: 'repeat', frequency: 'weekly' }],
+    ['a frequency that never existed', { action: 'repeat', frequency: 'fortnightly' }],
+    ['days beside Daily', { action: 'repeat', frequency: 'daily', days: [1] }],
+    ['Custom days with no days', { action: 'repeat', frequency: 'custom' }],
+    ['Custom days with an empty list', { action: 'repeat', frequency: 'custom', days: [] }],
+    ['days out of order, which are refused, never sorted', { action: 'repeat', frequency: 'custom', days: [3, 1] }],
+    ['a day twice', { action: 'repeat', frequency: 'custom', days: [1, 1] }],
+    ['a day past Saturday', { action: 'repeat', frequency: 'custom', days: [7] }],
+    ['a day of the month beside Daily', { action: 'repeat', frequency: 'daily', monthDay: 1 }],
+    ['Monthly with no day', { action: 'repeat', frequency: 'monthly' }],
+    ['a day of the month past 31', { action: 'repeat', frequency: 'monthly', monthDay: 32 }],
+    ['a day as a string', { action: 'repeat', frequency: 'custom', days: ['1'] }],
+    ['a fractional day', { action: 'repeat', frequency: 'custom', days: [1.5] }],
+    ['a day of the month as a string', { action: 'repeat', frequency: 'monthly', monthDay: '1' }],
+    ['a day of the month of 0', { action: 'repeat', frequency: 'monthly', monthDay: 0 }],
+    ['a repeat with a date in it', { action: 'repeat', frequency: 'daily', startDate: DATE }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -2047,6 +2230,7 @@ describe('webhooks', () => {
       [{ ...HABIT, times_per_day: 3 }, { action: 'timesPerDay', timesPerDay: 2 }],
       [ONE_OFF, { action: 'reminder', time: '08:00' }],
       [{ ...ONE_OFF, start_time: null, is_scheduled: true, duration: null }, { action: 'time', duration: 45 }],
+      [{ ...ONE_OFF, repeat_days: null, repeat_month_day: null }, { action: 'repeat', frequency: 'daily' }],
     ] as const) {
       row = r;
       // A new subtask is a created row: 201, as a capture is.

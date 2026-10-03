@@ -49,6 +49,17 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         }
     }
 
+    /// The Repeat chip's words, read from the same table `cadenceLabel`
+    /// reads. The fixture's `repeats` (`theRepeatWordsAreTheWebs`) is what
+    /// pins them to the web.
+    @Test func eachFrequencyHasItsWord() {
+        #expect(repeatFrequencyOrder == ["none", "daily", "weekdays", "weekends", "monthly", "custom"])
+        #expect(repeatFrequencyOrder.map(repeatFrequencyLabel)
+            == ["No repeat", "Daily", "Weekdays", "Weekends", "Monthly", "Custom days"])
+        // An unknown frequency is its own word.
+        #expect(repeatFrequencyLabel("weekly") == "weekly")
+    }
+
     /// The one-off branch, as en-US reads it.
     @Test func aOneOffSaysItsDayOrNoDate() {
         let id = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
@@ -89,5 +100,19 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
         #expect(WeekStartDay.sunday.weekday == 0)
         #expect(WeekStartDay.monday.weekday == 1)
         #expect(WeekStartDay.saturday.weekday == 6)
+    }
+
+    /// The Repeat sheet's Custom days keys run in the user's week, each day
+    /// once; a day past the table has no word, as the web's `undefined` joins.
+    @Test func theWeekRunsFromWeekStartsOn() {
+        #expect(weekdayOrder(.sunday) == [0, 1, 2, 3, 4, 5, 6])
+        #expect(weekdayOrder(.monday) == [1, 2, 3, 4, 5, 6, 0])
+        #expect(weekdayOrder(.saturday) == [6, 0, 1, 2, 3, 4, 5])
+        for start in WeekStartDay.allCases {
+            #expect(weekdayOrder(start).first == start.weekday && Set(weekdayOrder(start)) == Set(0...6), "\(start)")
+        }
+        #expect((0...6).map(weekdayLabel) == ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"])
+        #expect(weekdayLabel(7) == "")
+        #expect(weekdayLabel(-1) == "")
     }
 }

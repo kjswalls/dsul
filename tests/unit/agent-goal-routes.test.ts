@@ -663,6 +663,18 @@ describe('the agent item PATCH demotes a role its own edit invalidated', () => {
     expect(db.goal_items.find((r) => r.item_id === M1)!.sort_order).toBeNull();
   });
 
+  it('demotes a milestone that has just been made a subtask', async () => {
+    // The PATCH's other trigger: a subtask surfaces only inside its parent, so
+    // the registry no longer lets it hold a role at all.
+    db.goal_items.push({ goal_id: G, item_id: M1, user_id: USER, role: 'milestone', sort_order: 3 });
+    const res = await patchTask(M1, { parentItemId: W1 });
+    expect(res.status).toBe(200);
+    expect(db.items.find((i) => i.id === M1)!.parent_item_id).toBe(W1);
+    expect(await res.json()).toEqual({ success: true, demoted: [{ goalId: G, from: 'milestone' }] });
+    expect(rolesOf(G)).toEqual({ [M1]: 'member' });
+    expect(db.goal_items.find((r) => r.item_id === M1)!.sort_order).toBeNull();
+  });
+
   it('demotes a check-in that has just stopped recurring — the mirror case', async () => {
     db.goal_items.push({ goal_id: G, item_id: C1, user_id: USER, role: 'checkin', sort_order: 0 });
     // Clearing the field, not setting it to a value: `in` rather than

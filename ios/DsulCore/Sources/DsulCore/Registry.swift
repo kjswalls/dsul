@@ -5,9 +5,10 @@ import Foundation
 // column is NULL, the block length a timed item gets when it has none, and the
 // capabilities the item sheet's verbs, chips and fields read (label, skippable,
 // pausable, dated, remindable, collectible, subtasks, the counters, priority,
-// notes, duration), with the item-level questions built on them (`isSkippable`,
-// `isPausable`, `isRemindable`, `isCollectible`, lib/item-edit.ts
-// `subtaskRefusal` as `canAddSubtask`, and lib/bulk-edit.ts
+// notes, duration, and from 2e the frequencies the Repeat chip offers), with
+// the item-level questions built on them (`isSkippable`, `isPausable`,
+// `isRemindable`, `isCollectible`, lib/item-edit.ts `subtaskRefusal` as
+// `canAddSubtask`, and lib/bulk-edit.ts
 // `reminderNeedsDate`), and the words the sheet borrows from
 // the type's `form` (the title placeholder and Delete's confirm), with
 // Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
@@ -72,6 +73,12 @@ public struct ItemCaps: Sendable, Hashable {
     /// sheet edits. Every shipped type today, so the server's `no_duration` is
     /// the answer a future type gets.
     public var hasDuration: Bool
+    /// `allowedFrequencies`: the repeats the type may take, in the registry's
+    /// order (`repeatFrequencyOrder`'s, filtered): all six for a task and a
+    /// custom type, and a habit's without "none", since a habit always
+    /// repeats. More than one is what lets the Repeat chip edit; a frequency
+    /// not here is the server's `frequency_not_allowed`.
+    public var allowedFrequencies: [String]
     /// `form.titlePlaceholder`: the empty title field's prompt ("What needs to
     /// be done?"; "Add a side quest…" for a custom type).
     public var titlePlaceholder: String
@@ -98,6 +105,7 @@ public struct ItemCaps: Sendable, Hashable {
         hasPriority: Bool,
         hasNotes: Bool = true,
         hasDuration: Bool = true,
+        allowedFrequencies: [String] = repeatFrequencyOrder,
         titlePlaceholder: String = "",
         deleteNamesHistory: Bool = false
     ) {
@@ -119,6 +127,7 @@ public struct ItemCaps: Sendable, Hashable {
         self.hasPriority = hasPriority
         self.hasNotes = hasNotes
         self.hasDuration = hasDuration
+        self.allowedFrequencies = allowedFrequencies
         self.titlePlaceholder = titlePlaceholder
         self.deleteNamesHistory = deleteNamesHistory
     }
@@ -128,8 +137,8 @@ public struct ItemCaps: Sendable, Hashable {
         label: "Task", doneStatus: "completed", skipStatus: nil, defaultFrequency: "none", defaultBlockMinutes: 30,
         dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false, dailyCounts: false,
-        hasPriority: true, hasNotes: true, hasDuration: true, titlePlaceholder: "What needs to be done?",
-        deleteNamesHistory: false
+        hasPriority: true, hasNotes: true, hasDuration: true, allowedFrequencies: repeatFrequencyOrder,
+        titlePlaceholder: "What needs to be done?", deleteNamesHistory: false
     )
 
     /// `ITEM_TYPES.habit`.
@@ -137,8 +146,9 @@ public struct ItemCaps: Sendable, Hashable {
         label: "Habit", doneStatus: "done", skipStatus: "skipped", defaultFrequency: "daily", defaultBlockMinutes: 30,
         dateAnchored: false, dateAddressable: false, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: false, subtasks: false, streakCounter: true, dailyCounts: true,
-        hasPriority: false, hasNotes: true, hasDuration: true, titlePlaceholder: "What habit to track?",
-        deleteNamesHistory: true
+        hasPriority: false, hasNotes: true, hasDuration: true,
+        allowedFrequencies: ["daily", "weekdays", "weekends", "monthly", "custom"],
+        titlePlaceholder: "What habit to track?", deleteNamesHistory: true
     )
 
     /// `buildCustomTypeConfig({ name, label })`: task-shaped in every respect
@@ -158,6 +168,7 @@ public struct ItemCaps: Sendable, Hashable {
             defaultBlockMinutes: 30, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true,
             remindable: true, collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false,
             dailyCounts: false, hasPriority: true, hasNotes: true, hasDuration: true,
+            allowedFrequencies: repeatFrequencyOrder,
             titlePlaceholder: "Add a \(jsLowercased(noun))\u{2026}", deleteNamesHistory: false
         )
     }
@@ -291,7 +302,8 @@ public func isSkippable(_ item: Item) -> Bool {
 }
 
 /// A non-empty `parentItemId`: JavaScript's truthiness, which the subtask rule
-/// below tests, and ItemEdit.swift's gate for the Time chip (`not_for_subtask`).
+/// below tests, and ItemEdit.swift's gate for the Time and Repeat chips
+/// (`not_for_subtask`).
 func isSubtask(_ item: Item) -> Bool {
     guard let parent = item.parentItemId else { return false }
     return !parent.isEmpty

@@ -35,19 +35,17 @@ import {
 import { resolvePauseWrite, type Pausable } from './active'
 import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause'
 import {
-  getItemTypeConfig,
   isCheckinEligible,
   isCollectible,
   isMilestoneEligible,
-  itemTypeName,
 } from './item-registry'
 import { toDateStr } from './recurrence'
-import { resolveGoalStateWrite, roleStillValid } from './goals'
+import { resolveGoalStateWrite } from './goals'
+import { demoteInvalidGoalRoles, roleShape, type RoleRow } from './goal-roles'
 import type {
   Goal,
   GoalRole,
   Habit,
-  Item,
   KnownItemType,
   Season,
   Routine,
@@ -911,28 +909,8 @@ type GoalMemberArrays = {
   checkinIds?: string[]
 }
 
-interface RoleRow extends MemberRow {
-  repeat_frequency: string | null
-}
-
-/**
- * The registry shape a role predicate needs — capability plus recurrence.
- *
- * `repeat_frequency` falls back to the TYPE's default rather than to undefined.
- * The column is nullable and an agent-created habit leaves it NULL, but every
- * reader in the app defaults a habit to daily (lib/db.ts's row mapper does it
- * explicitly), so a NULL habit recurs on every surface the user sees. Read raw,
- * it would be refused as a check-in — "this item does not repeat" — about an
- * item the console's own picker offers as eligible.
- */
-function roleShape(row: RoleRow): Item {
-  const shape = capabilityShape(row) as unknown as Record<string, unknown>
-  const fallback = getItemTypeConfig(itemTypeName(shape as unknown as Item)).defaultFrequency
-  return {
-    ...shape,
-    repeatFrequency: row.repeat_frequency ?? fallback,
-  } as unknown as Item
-}
+// roleShape, and the demotion the item PATCH runs (demoteInvalidGoalRoles),
+// live in lib/goal-roles.ts, which the iPhone app's repeat edit runs too.
 
 /**
  * Every id across the three arrays, checked for existence and collectibility,
@@ -1070,71 +1048,6 @@ async function goalStatePatch(
   const row = data as { state: Goal['state']; achieved_at: string | null }
   const current = { state: row.state, achievedAt: row.achieved_at ?? undefined } as Goal
   return resolveGoalStateWrite(current, state, new Date().toISOString())
-}
-
-/**
- * Decision 3's second enforcement point: an item write that invalidates a held
- * goal role demotes it, never blocks the write.
- *
- * The store does this on the UI path with a receipt toast; an agent PATCH is
- * the OTHER way `repeatFrequency` flips, and until this existed an OpenClaw
- * write could make a milestone recurring with nothing taking the role back —
- * leaving a goal permanently behind on an item whose scalar status migration
- * 016 has frozen.
- *
- * Runs AFTER the item update, against the stored row: the body may carry a
- * partial patch, and it is the resulting shape that decides the role. Failures
- * here do not fail the PATCH — the item edit is the caller's request and it has
- * already succeeded; the role is dsul's bookkeeping.
- */
-async function demoteInvalidGoalRoles(
-  client: DbClient,
-  userId: string,
-  itemId: string,
-): Promise<{ goalId: string; from: GoalRole }[]> {
-  const { data: rows, error } = await client
-    .from('goal_items')
-    .select('goal_id, role')
-    .eq('user_id', userId)
-    .eq('item_id', itemId)
-    .neq('role', 'member')
-  if (error) throw error
-  const held = (rows ?? []) as { goal_id: string; role: GoalRole }[]
-  if (held.length === 0) return []
-
-  const { data: item, error: itemError } = await client
-    .from('items')
-    .select('id, type, parent_item_id, repeat_frequency')
-    .eq('id', itemId)
-    .eq('user_id', userId)
-    .maybeSingle()
-  if (itemError) throw itemError
-  if (!item) return []
-  // The same shape the GRANT predicates are asked about, so the two agree.
-  const shape = roleShape(item as RoleRow)
-
-  // Snapshotted BEFORE the write: the receipt names the role being taken away,
-  // and reading it back off the row afterwards would report 'member' every time.
-  const invalid = held
-    .filter((r) => !roleStillValid(r.role, shape))
-    .map((r) => ({ goalId: r.goal_id, from: r.role }))
-  if (invalid.length === 0) return []
-
-  // One row per goal — the PK is (goal_id, item_id), so this is an in-place
-  // role change, never an insert that could collide with a plain membership.
-  const { error: writeError } = await client
-    .from('goal_items')
-    // `sort_order` is cleared with the role. goalMemberRows emits it as null
-    // off the member array for a stated reason — a demoted milestone that kept
-    // its old ordinal sorts ahead of every real member in the array fetchGoals
-    // hands back, and nothing later would reset it.
-    .update({ role: 'member', sort_order: null })
-    .eq('user_id', userId)
-    .eq('item_id', itemId)
-    .in('goal_id', invalid.map((r) => r.goalId))
-  if (writeError) throw writeError
-
-  return invalid
 }
 
 /**
