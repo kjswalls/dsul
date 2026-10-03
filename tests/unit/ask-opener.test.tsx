@@ -495,6 +495,48 @@ describe('room on the header row', () => {
     }
   });
 
+  // Its overflow is visible (the rim light and the ring paint past it), and a
+  // squeezed box with visible overflow reports a scrollWidth that stops at its
+  // children and leaves its end padding out: read alone, a button 8-10px short
+  // of its width stayed whole, the well and the ring cutting into the chord.
+  it('reads its natural width off what it draws, squeezed, not off a scrollWidth short by its end padding', () => {
+    const RealRO = globalThis.ResizeObserver;
+    const observers: (() => void)[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderRow();
+      // 374 + 12 + 106 = 492 fits a 500px row: whole.
+      layOut(500, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'full');
+
+      // 7px short (a 485px row, 99px of room): the slot squeezes the button
+      // to 99px. It still draws its chord out to 96px, with 10px of end
+      // padding past that (106 whole), but its scrollWidth says 96, which
+      // would "fit" in 99.
+      layOut(485, 374);
+      const button = opener() as HTMLButtonElement;
+      button.style.paddingRight = '10px';
+      Object.defineProperty(button, 'scrollWidth', { configurable: true, get: () => 96 });
+      button.getBoundingClientRect = () => ({ left: 1000, right: 1099, width: 99 }) as DOMRect;
+      const chord = button.querySelector('[data-ask-opener-chord]') as HTMLElement;
+      expect(button.lastElementChild).toBe(chord);
+      chord.getBoundingClientRect = () => ({ left: 1050, right: 1096, width: 46 }) as DOMRect;
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+      expect(opener()).toHaveAttribute('data-form', 'icon');
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+    }
+  });
+
   it("forgets the width it read in another header's face", () => {
     const RealRO = globalThis.ResizeObserver;
     const observers: (() => void)[] = [];

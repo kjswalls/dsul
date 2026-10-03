@@ -19,6 +19,26 @@ type Fit = 'full' | 'icon' | 'none';
 /** The key alone: the capsule's square controls' size (h-8 w-8). */
 const ICON_PX = 32;
 
+const px = (v: string) => parseFloat(v) || 0;
+
+/**
+ * The button's natural width, without its margins: from its left edge to its
+ * last child's far edge, plus its end padding and border. Not its scrollWidth
+ * alone: the button's overflow is visible (the key's rim light and the focus
+ * ring paint past its box), and a squeezed box with visible overflow reports a
+ * scrollWidth that stops at its children's far edge and leaves the end padding
+ * out, so a button 8-10px short of its width read as fitting and stayed whole,
+ * the well and the ring cutting into the chord. The larger of the two, since a
+ * DOM that lays nothing out (a test's) has only the scrollWidth.
+ */
+function naturalWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
+  const last = el.lastElementChild;
+  const drawn = last
+    ? last.getBoundingClientRect().right - el.getBoundingClientRect().left + px(own.paddingRight) + px(own.borderRightWidth)
+    : 0;
+  return Math.max(el.scrollWidth, drawn);
+}
+
 /**
  * The room the header row leaves this button, read off the row as laid out:
  * its content width less every other child that takes room (the capsule, a
@@ -31,7 +51,7 @@ const ICON_PX = 32;
  * hides the button on every ordinary day.
  *
  * `fullPx` is the button's natural width with its own margins, read whenever
- * it is drawn whole (its scrollWidth, squeezed or not), so a layout's own face
+ * it is drawn whole (naturalWidth, squeezed or not), so a layout's own face
  * and a rebinding's longer chord are what is measured, not a guess. A change
  * of face (`face`, the header slot) forgets it, since the other face's width
  * says nothing about this one's.
@@ -62,7 +82,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       }
       if (slot.dataset.fit === 'full') {
         const own = getComputedStyle(el);
-        fullPx.current = el.scrollWidth + (parseFloat(own.marginLeft) || 0) + (parseFloat(own.marginRight) || 0);
+        fullPx.current = naturalWidth(el, own) + px(own.marginLeft) + px(own.marginRight);
       }
       const room = content - others;
       setFit(room >= fullPx.current ? 'full' : room >= ICON_PX ? 'icon' : 'none');
