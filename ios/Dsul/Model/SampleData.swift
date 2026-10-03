@@ -114,6 +114,14 @@ enum SampleData {
                  parentItemId: roadmap, order: 1, isScheduled: false),
         ]
 
+        // A repeating task with no day: monthly on the 1st, waiting in the
+        // braindump (after the thoughts), on no day, the Repeat chip's Monthly
+        // case. Made after the subtasks so no id above moves.
+        let payRent = Item(id: next(), type: "task", title: "Pay rent", status: "pending",
+                           repeatFrequency: "monthly", duration: 15,
+                           order: untimed.count + 1 + thoughts.count, repeatMonthDay: 1,
+                           isScheduled: false)
+
         let projects = ["Work", "Home", "Writing", "dsul", "Health"].map { name in
             Project(id: "sample-" + name.lowercased(), name: name)
         }
@@ -121,7 +129,7 @@ enum SampleData {
             Routine(id: "sample-morning-routine", name: "Morning routine", sortOrder: 0,
                     itemIds: routineHabits.map(\.id)),
         ]
-        return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks,
+        return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks + [payRent],
                         projects: projects, routines: routines)
     }
 }

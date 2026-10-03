@@ -247,7 +247,7 @@ enum PlannerJSON {
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
-                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time"]
+                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat"]
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -745,7 +745,8 @@ final class DragFlag {
     /// times edit is paired with a tick, which it changes (`counted`). A
     /// failed date or time never rides along on a landed time edit, since
     /// each key the edit didn't send is the item's own on replay, as the
-    /// server read it off the row.
+    /// server read it off the row. A failed repeat never changes how a landed
+    /// tick reads: the tick replays under the rule the server held.
     @Test func aRevertKeepsEveryLandedWrite() async throws {
         typealias Act = @MainActor (SamplePlanner) -> Void
         typealias Step = (SampleItem) -> SampleItem
@@ -772,6 +773,8 @@ final class DragFlag {
         let toEvening: Act = { $0.edit(id, .time(bucket: .set("evening"), startTime: nil, duration: nil)) }
         let toAnytime: Act = { $0.edit(id, .time(bucket: .set("anytime"), startTime: .clear, duration: nil)) }
         let longer: Act = { $0.edit(id, .time(bucket: nil, startTime: nil, duration: 60)) }
+        let noRepeat: Act = { $0.edit(id, .repeats(frequency: "none", days: nil, monthDay: nil)) }
+        let toCustom: Act = { $0.edit(id, .repeats(frequency: "custom", days: [1, 4], monthDay: nil)) }
         // What the server made of it, as DsulCore's steps play it.
         let ticked: Step = { applying(TickIntent(done: true), to: $0, on: today) }
         let unticked: Step = { applying(TickIntent(done: false), to: $0, on: today) }
@@ -797,6 +800,8 @@ final class DragFlag {
         let eveninged: Step = { editing($0, .time(bucket: .set("evening"), startTime: nil, duration: nil)) }
         let anytimed: Step = { editing($0, .time(bucket: .set("anytime"), startTime: .clear, duration: nil)) }
         let lengthened: Step = { editing($0, .time(bucket: nil, startTime: nil, duration: 60)) }
+        let unrepeated: Step = { editing($0, .repeats(frequency: "none", days: nil, monthDay: nil)) }
+        let customed: Step = { editing($0, .repeats(frequency: "custom", days: [1, 4], monthDay: nil)) }
         // The failed write, the landed one, and the server's end state.
         let pairs: [Pair] = [
             ("tick, then title", tick, title, titled),
@@ -849,6 +854,17 @@ final class DragFlag {
             ("time, then Anytime", atTen, toAnytime, anytimed),
             ("length, then time", longer, atTen, timed),
             ("time, then length", atTen, longer, lengthened),
+            // Plants repeats daily from September, with no days and no day
+            // of the month. The failed No repeat never reached the server,
+            // so the tick lands on a daily task and replays under the daily
+            // rule, though it was sent while the phone showed a one-off.
+            ("repeat, then tick", noRepeat, tick, ticked),
+            ("tick, then repeat", tick, noRepeat, unrepeated),
+            // Sent against the optimistic one-off, Custom days lands on the
+            // daily row and writes the same three keys.
+            ("repeat, then repeat", noRepeat, toCustom, customed),
+            ("repeat, then carry", noRepeat, move, moved),
+            ("carry, then repeat", move, noRepeat, unrepeated),
         ]
 
         // Meds, a habit on a 41-day streak, not yet done today.
@@ -860,10 +876,12 @@ final class DragFlag {
         let thrice: Act = { $0.edit(meds, .timesPerDay(3)) }
         let twice: Act = { $0.edit(meds, .timesPerDay(2)) }
         let medsEvening: Act = { $0.edit(meds, .time(bucket: .set("evening"), startTime: nil, duration: nil)) }
+        let medsWeekdays: Act = { $0.edit(meds, .repeats(frequency: "weekdays", days: nil, monthDay: nil)) }
         let medsTitled: Step = { editing($0, .title("Take the meds")) }
         let zeroed: Step = { resettingStreak($0) }
         let thriced: Step = { editing($0, .timesPerDay(3)) }
         let twiced: Step = { editing($0, .timesPerDay(2)) }
+        let weekdayed: Step = { editing($0, .repeats(frequency: "weekdays", days: nil, monthDay: nil)) }
         // The tick as sent while the failed edit still showed 3 a day: a
         // count of 1, not done (lib/app-api.ts `complete` never reads
         // times_per_day, and the replay plays the intent as sent).
@@ -883,6 +901,9 @@ final class DragFlag {
             ("times, then reset", thrice, reset, zeroed),
             ("part of day, then tick", medsEvening, medsTick, ticked),
             ("tick, then part of day", medsTick, medsEvening, eveninged),
+            // Thursday is a weekday, so Weekdays keeps today due either way.
+            ("repeat, then tick", medsWeekdays, medsTick, ticked),
+            ("tick, then repeat", medsTick, medsWeekdays, weekdayed),
         ]
         // Each pair on a fresh planner, its item added to the payload.
         let tables: [(UUID, String, [Pair])] = [(id, PlannerJSON.plantsJSON, pairs),
@@ -956,6 +977,35 @@ final class DragFlag {
         #expect(posts == 2)
     }
 
+    /// Daily on Groceries, a one-off on today, never landed, so the tick
+    /// made under it, sent while the phone showed a daily task, reached a
+    /// one-off row: the server's `complete` reads the rule off the row, so it
+    /// finished the task rather than ticking a date. The refetch fails too,
+    /// so what is checked is the rebase: the one-off with the tick replayed
+    /// under its own rule, and the banner.
+    @Test func aFailedRepeatLeavesATickUnderTheOldRule() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        let today = try #require(DayString(PlannerJSON.today))
+
+        planner.edit(PlannerJSON.groceries, .repeats(frequency: "daily", days: nil, monthDay: nil))   // never lands
+        planner.toggle(PlannerJSON.groceries, on: today)                                               // lands
+        let shown = try #require(planner.item(PlannerJSON.groceries))
+        #expect(shown.repeatFrequency == "daily")
+        #expect(shown.completedDates.contains(PlannerJSON.today))
+        #expect(shown.status == "pending")
+        await drain(planner)
+
+        let back = try #require(planner.item(PlannerJSON.groceries))
+        #expect(back.repeatFrequency == nil)
+        #expect(back.status == "completed")
+        #expect(planner.banner?.isError == true)
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
     /// Every part 1 write, each edit and Reset streak names its own item and
     /// nothing else; a delete names its item and every subtask it took out
     /// with it, a habit's only itself. A new subtask names the subtask, not
@@ -977,6 +1027,7 @@ final class DragFlag {
             .edit(id: id, .timesPerDay(3)),
             .edit(id: id, .reminder(time: "08:00", anchor: .set("I pour my coffee"))),
             .edit(id: id, .time(bucket: .set("evening"), startTime: .set("18:00"), duration: 45)),
+            .edit(id: id, .repeats(frequency: "weekdays", days: nil, monthDay: nil)),
             .resetStreak(id: id),
         ]
         for write in writes {

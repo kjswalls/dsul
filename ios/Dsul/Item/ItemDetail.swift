@@ -20,7 +20,10 @@ import SwiftUI
 ///   and the type take the edit, and "+ Add property" ends the row while one
 ///   of those is unset (`PropertyMenus`, `ReminderSheet`). From 2d the date
 ///   chip is a menu that moves the item (the bar's Reschedule, offered where
-///   that verb is), and the time chip opens the Time sheet (`TimeSheet`);
+///   that verb is), and the time chip opens the Time sheet (`TimeSheet`).
+///   From 2e the repeat chip is a menu whose Monthly… and Custom days… open
+///   the Repeat sheet (`RepeatSheet`), and a one-off task's Add property
+///   holds Repeat ▸;
 /// - the subtasks, each ticked in place, its title opening its own page, and
 ///   Delete in its context menu; then, where one may be added, "Add a
 ///   subtask", which swaps in a field (`SubtaskField`).
@@ -60,7 +63,7 @@ struct ItemDetail: View {
     let isRoot: Bool
     @Binding var path: [UUID]
     /// The sheet open over the stack (a day picker, the Remind sheet, the
-    /// Time sheet), the stack's, shared by every page.
+    /// Time sheet, the Repeat sheet), the stack's, shared by every page.
     @Binding var editor: SheetEditor?
     /// The sheet's detent (`ItemSheetStack`'s), raised to large when a field
     /// takes focus, so the keyboard never leaves the field a sliver.
@@ -146,8 +149,8 @@ struct ItemDetail: View {
         .onDisappear {
             commitFields(leaving: true)
         }
-        // A chip's sheet closing (the Remind or Time sheet's Done, No
-        // reminder, Cancel, a swipe; Pick a date…'s confirm or Cancel):
+        // A chip's sheet closing (the Remind, Time or Repeat sheet's Done,
+        // No reminder, Cancel, a swipe; Pick a date…'s confirm or Cancel):
         // VoiceOver goes to that chip, or to Add property when there is none
         // now (Anytime takes the time chip). Only on the page whose item it
         // edited (`ItemSheetModel.chipKind`).
@@ -420,6 +423,8 @@ struct ItemDetail: View {
         // The Date menu's days, as drawn now; a pick reads them again
         // (`setDate`).
         let dates = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
+        // Repeat ▸'s rows: the type's frequencies but No repeat.
+        let repeats = ItemSheetModel.repeatSeedChoices(allowed: planner.caps(for: item).allowedFrequencies)
         if showsStreak || !chips.isEmpty || !unset.isEmpty {
             let flow = ChipFlow()
             flow {
@@ -433,10 +438,12 @@ struct ItemDetail: View {
                     AddPropertyMenu(kinds: unset,
                                     label: ItemSheetModel.seedLabel(rowHasOthers: showsStreak || !chips.isEmpty),
                                     dates: dates,
+                                    repeats: repeats,
                                     onPriority: { pick(.priority($0), settling: .priority) },
                                     onDate: { setDate($0) },
                                     onTime: { editor = .time(item.id) },
                                     onTimes: { pick(.timesPerDay($0), settling: .timesPerDay) },
+                                    onRepeat: { setRepeat($0) },
                                     onRemind: { editor = .reminder(item.id) })
                         .accessibilityFocused($chipVoiceOver, equals: .seed)
                 }
@@ -454,11 +461,12 @@ struct ItemDetail: View {
     }
 
     /// One property chip. Where it edits (`ItemSheetModel.chipEditor`), a
-    /// menu (priority, the date, times per day) or a button that opens its
-    /// sheet (the time, the reminder), labelled on the control itself, as the
-    /// streak chip and the bar's Reschedule menu are, with the button trait
-    /// and a hint, and with VoiceOver's focus bound to it so it can land there
-    /// after a change. Otherwise part 1's read-only chip, in its slot.
+    /// menu (priority, the date, times per day, the repeat) or a button that
+    /// opens its sheet (the time, the reminder), labelled on the control
+    /// itself, as the streak chip and the bar's Reschedule menu are, with the
+    /// button trait and a hint, and with VoiceOver's focus bound to it so it
+    /// can land there after a change. Otherwise part 1's read-only chip, in
+    /// its slot.
     /// `offered` is the page's `offeredVerbs`, whose Reschedule gates the
     /// date; `dates` the Date menu's entries.
     @ViewBuilder
@@ -477,6 +485,10 @@ struct ItemDetail: View {
                 TimesChipMenu(chip: chip, item: item,
                               onPick: { pick(.timesPerDay($0), settling: .timesPerDay) })
                     .accessibilityFocused($chipVoiceOver, equals: .chip(.timesPerDay))
+            } else if chip.kind == .repeats {
+                RepeatChipMenu(chip: chip, item: item, caps: planner.caps(for: item),
+                               onPick: { setRepeat($0) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.repeats))
             } else {
                 readOnlyChip(chip)
             }
@@ -564,6 +576,18 @@ struct ItemDetail: View {
         }
         withAnimation(.snappy) { planner.move(id, to: target.description) }
         settleVoiceOver(on: .date)
+    }
+
+    /// A pick in the Repeat menu, the chip's or Add property's Repeat ▸:
+    /// Daily, Weekdays, Weekends and No repeat write at once, and VoiceOver
+    /// goes to the repeat chip, or to Add property once No repeat took it;
+    /// Monthly… and Custom days… open the Repeat sheet, whose closing sends
+    /// VoiceOver there (`chipKind`).
+    private func setRepeat(_ frequency: String) {
+        switch ItemSheetModel.repeatPick(frequency) {
+        case .write(let edit): pick(edit, settling: .repeats)
+        case .open(let detail): editor = .repeatDetail(id, detail)
+        }
     }
 
     /// Sends VoiceOver to `kind`'s chip, or to Add property when the chip went

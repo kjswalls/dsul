@@ -390,6 +390,48 @@ import Testing
         #expect(planner.buckets()[.evening]?.contains { $0.id == meds.id } == true)
     }
 
+    /// The sample takes the Repeat chip's writes too, sending nothing:
+    /// Groceries made Weekdays, which keeps it on Thursday; Water the plants
+    /// given Friday beside its Sunday and Wednesday; Pay rent moved to the
+    /// 31st; and Call the bank made Daily, which leaves it undated in the
+    /// braindump, as the web's panel does.
+    @Test func theSampleTakesARepeatWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+
+        let groceries = first(planner, "Groceries")
+        #expect(groceries.repeatFrequency == nil)
+        #expect(planner.canEdit("repeat", groceries))
+        planner.edit(groceries.id, .repeats(frequency: "weekdays", days: nil, monthDay: nil))
+        #expect(planner.item(groceries.id)?.repeatFrequency == "weekdays")
+        #expect(planner.dayItems.contains { $0.id == groceries.id })
+
+        let plants = first(planner, "Water the plants")
+        #expect(plants.repeatDays == [0, 3])
+        planner.edit(plants.id, .repeats(frequency: "custom", days: [0, 3, 5], monthDay: nil))
+        let watered = try #require(planner.item(plants.id))
+        #expect(watered.repeatDays == [0, 3, 5])
+        #expect(cadenceLabel(watered) == "Sun, Wed, Fri")
+        #expect(watered.streak == plants.streak)
+
+        let rent = try #require(planner.item(SampleData.uuid(50)))
+        planner.edit(rent.id, .repeats(frequency: "monthly", days: nil, monthDay: 31))
+        let paid = try #require(planner.item(rent.id))
+        #expect(paid.repeatMonthDay == 31)
+        #expect(paid.startDate == nil)
+        #expect(planner.braindump.last?.id == rent.id)
+
+        let bank = try #require(planner.items.first { $0.title == "Call the bank" })
+        #expect(bank.repeatFrequency == nil)
+        planner.edit(bank.id, .repeats(frequency: "daily", days: nil, monthDay: nil))
+        let daily = try #require(planner.item(bank.id))
+        #expect(daily.repeatFrequency == "daily")
+        #expect(daily.startDate == nil)
+        #expect(planner.braindump.contains { $0.id == bank.id })
+        #expect(!planner.dayItems.contains { $0.id == bank.id })
+        #expect(planner.sync == nil)
+    }
+
     @Test func nextWeekStartsOnTheUsersWeekStart() {
         let planner = makePlanner()
         // Thursday 2026-10-01; the sample's week starts on Sunday (the default).
@@ -418,6 +460,26 @@ import Testing
         #expect(!planner.dayItems.contains { ids.contains($0.id) })
         #expect(!planner.braindump.contains { ids.contains($0.id) })
         #expect(subtasks.allSatisfy { planner.offeredVerbs(for: $0, day: .selected) == [.tick, .delete] })
+    }
+
+    /// Pay rent, made last so no other id moves: a task repeating monthly
+    /// on the 1st with no day, the braindump's last row, and on no day, not
+    /// even the 1st it repeats on (the sample's Thursday is October 1), since
+    /// an undated task never shows on one.
+    @Test func payRentRepeatsMonthlyAndWaitsInTheBraindump() throws {
+        let planner = makePlanner()
+        let rent = try #require(planner.item(SampleData.uuid(50)))
+        #expect(rent.title == "Pay rent")
+        #expect(rent.type == "task")
+        #expect(rent.repeatFrequency == "monthly")
+        #expect(rent.repeatMonthDay == 1)
+        #expect(rent.startDate == nil)
+        #expect(rent.timeBucket == nil)
+        #expect(rent.isScheduled == false)
+        #expect(planner.braindump.last?.id == rent.id)
+        #expect(cadenceLabel(rent) == "Monthly \u{00B7} 1")
+        #expect(!planner.scheduled.contains { $0.id == rent.id })
+        #expect(!planner.dayItems.contains { $0.id == rent.id })
     }
 
     // MARK: Completion

@@ -1262,6 +1262,11 @@ type TypeCaps = {
   hasNotes: boolean;
   /** `fields.includes('duration')`, the Time sheet's gate on its lengths (lib/item-edit.ts no_duration). */
   hasDuration: boolean;
+  /**
+   * `allowedFrequencies`, in the registry's order: the Repeat chip's rows (lib/item-edit.ts
+   * frequency_not_allowed). More than one is what lets the chip edit.
+   */
+  allowedFrequencies: string[];
   /** `form.titlePlaceholder`, the title field's empty prompt. */
   titlePlaceholder: string;
   /** The delete confirm's title (lib/item-verbs.ts deleteConfirmTitle). */
@@ -1335,6 +1340,7 @@ function buildCaps(): CapsFixture {
       hasPriority: c.fields.includes('priority'),
       hasNotes: c.fields.includes('notes'),
       hasDuration: c.fields.includes('duration'),
+      allowedFrequencies: [...c.allowedFrequencies],
       titlePlaceholder: c.form.titlePlaceholder,
       deleteTitle: deleteConfirmTitle(c.label),
       deleteDescriptions: deleteDescriptions(c),

@@ -100,6 +100,7 @@ import {
   EDIT_COPY,
   planTimeEdit,
   reminderPatch,
+  repeatPatch,
   TIMES_PER_DAY_MAX,
 } from '@/lib/item-edit';
 import type {
@@ -422,9 +423,7 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
   if (wants('startTime')) updates.startTime = d.startTime || undefined;
   // The three repeat fields are one control; touching any means writing all.
   if (wants('repeatFrequency', 'repeatDays', 'repeatMonthDay')) {
-    updates.repeatFrequency = d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined;
-    updates.repeatDays = d.repeatFrequency === 'custom' ? d.repeatDays : undefined;
-    updates.repeatMonthDay = d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined;
+    Object.assign(updates, repeatPatch('task', d.repeatFrequency, d.repeatDays, d.repeatMonthDay));
   }
   // Reminder fields are one control, so touching either writes both — the same
   // rule the three repeat fields follow. '' means "no reminder": the DB column
@@ -446,9 +445,7 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
   if (wants('startTime')) updates.startTime = d.startTime || undefined;
   if (wants('duration')) updates.duration = d.duration ? parseInt(d.duration) : undefined;
   if (wants('repeatFrequency', 'repeatDays', 'repeatMonthDay')) {
-    updates.repeatFrequency = d.repeatFrequency;
-    updates.repeatDays = d.repeatFrequency === 'custom' ? d.repeatDays : undefined;
-    updates.repeatMonthDay = d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined;
+    Object.assign(updates, repeatPatch('habit', d.repeatFrequency, d.repeatDays, d.repeatMonthDay));
   }
   // Reminder fields are one control, so touching either writes both — the same
   // rule the three repeat fields follow. '' means "no reminder": the DB column
@@ -1167,9 +1164,7 @@ function ItemDialogInner({
         duration: d.duration ? parseInt(d.duration) : undefined,
         timeBucket: effectiveTimeBucket,
         startTime: d.startTime || undefined,
-        repeatFrequency: d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined,
-        repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
-        repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
+        ...repeatPatch('task', d.repeatFrequency, d.repeatDays, d.repeatMonthDay),
         ...reminderPatch(d.reminderTime, d.reminderAnchor),
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
@@ -1182,9 +1177,7 @@ function ItemDialogInner({
         timeBucket: d.timeBucket === 'none' ? 'anytime' : d.timeBucket,
         startTime: d.startTime || undefined,
         duration: d.duration ? parseInt(d.duration) : undefined,
-        repeatFrequency: d.repeatFrequency,
-        repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
-        repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
+        ...repeatPatch('habit', d.repeatFrequency, d.repeatDays, d.repeatMonthDay),
         timesPerDay: parseInt(d.timesPerDay) || 1,
         ...reminderPatch(d.reminderTime, d.reminderAnchor),
       }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
@@ -2356,7 +2349,7 @@ function ItemDialogInner({
                       </div>
                       {d.repeatDays.length === 0 && (
                         <p className="text-destructive mt-1.5 text-xs">
-                          Select at least one day
+                          {EDIT_COPY.selectAtLeastOneDay}
                         </p>
                       )}
                     </div>
@@ -2383,7 +2376,7 @@ function ItemDialogInner({
                         ))}
                       </div>
                       <p className="text-muted-foreground mt-1.5 text-[10px]">
-                        For months with fewer days, it will occur on the last day.
+                        {EDIT_COPY.monthlyNote}
                       </p>
                     </div>
                   )}

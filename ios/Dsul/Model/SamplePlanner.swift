@@ -78,7 +78,7 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 /// lib/grouping.ts), a tick is lib/item-toggle.ts, the item sheet's verbs are
 /// lib/item-verbs.ts (their gates) and the store actions they run (DsulCore
 /// VerbWrites.swift), and its title, notes, priority, times a day, reminder,
-/// time and Delete are lib/item-edit.ts and the store's `deleteTask` /
+/// time, repeat and Delete are lib/item-edit.ts and the store's `deleteTask` /
 /// `deleteHabit` (the time as the dialog's `commitEdit` saves it; the date is
 /// Reschedule's `move`), Add a subtask the store's `addTask` and Reset streak
 /// its `resetHabitStreak` (DsulCore ItemEdit.swift), so the phone and the web
@@ -412,10 +412,10 @@ final class SamplePlanner {
     /// May `item` take the edit `action` names? The server takes the action
     /// (`canWrite`) and the item's type has the field (DsulCore
     /// `editAllowed(action:on:caps:)`, lib/item-edit.ts `editRefusal`'s type
-    /// gate: a habit has no priority, a task no count, a subtask no reminder
-    /// and no time, and a task no time until it has a date). The sheet asks
-    /// it for a chip before it has a value to send, and `edit` asks the typed
-    /// gate below before it writes.
+    /// gate: a habit has no priority, a task no count, a subtask no reminder,
+    /// no time and no repeat, and a task no time until it has a date). The
+    /// sheet asks it for a chip before it has a value to send, and `edit`
+    /// asks the typed gate below before it writes.
     func canEdit(_ action: String, _ item: SampleItem) -> Bool {
         return canWrite(action) && editAllowed(action: action, on: item, caps: caps(for: item))
     }
@@ -423,9 +423,11 @@ final class SamplePlanner {
     /// May `item` take `edit` itself? `canEdit(edit.action, item)`, and the
     /// body's own rules (DsulCore `editAllowed(_:on:caps:)`): the ones a time
     /// edit carries (no key at all, a time beside Anytime or none, a length
-    /// out of range or on a type with none) are refused here, before any
-    /// step, as the route refuses them. The row's rule, a time that would
-    /// land beside a stored Anytime, is the sheet's to keep
+    /// out of range or on a type with none) and the ones a repeat edit
+    /// carries (a frequency its type doesn't offer, days or a day beside the
+    /// wrong frequency, days out of order) are refused here, before any step,
+    /// as the route refuses them. The row's rule, a time that would land
+    /// beside a stored Anytime, is the sheet's to keep
     /// (`ItemSheetModel.timeCommit`).
     func canEdit(_ edit: ItemEdit, _ item: SampleItem) -> Bool {
         return canWrite(edit.action) && editAllowed(edit, on: item, caps: caps(for: item))
@@ -577,7 +579,9 @@ final class SamplePlanner {
     /// the server does), or off with both cleared; a part of day, a specific
     /// time and a length, only the keys that changed
     /// (`ItemSheetModel.timeCommit`), stepped as the server writes them
-    /// (DsulCore `editing`, the dialog's `commitEdit`). The sheet sends only
+    /// (DsulCore `editing`, the dialog's `commitEdit`); or a repeat, its three
+    /// keys together (`ItemSheetModel.repeatCommit`, or a menu pick), and
+    /// nothing when the item already says it. The sheet sends only
     /// what changed, already cleaned and within its growth cap
     /// (`ItemSheetModel.commit`, `reminderCommit`). Behind `canEdit(edit,
     /// item)`: the server's list, its type gate and the body's own rules. A

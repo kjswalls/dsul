@@ -3,8 +3,9 @@ import Testing
 import DsulCore
 
 // ItemWriteBody.swift: the wire JSON of the item sheet's edits (the fields and
-// the chips, the time chip's keys only when they changed), its Delete, Add a
-// subtask and Reset streak.
+// the chips, the time chip's keys only when they changed, the repeat chip's
+// days and day only beside their frequency), its Delete, Add a subtask and
+// Reset streak.
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -32,6 +33,25 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
                 continue
             }
             #expect(try json(body) == c.edit, "\(c.name)")
+        }
+        // The repeat chip's four bodies the phone builds (the route's own
+        // answers are the fixture's repeat cases, above).
+        let repeats: [(ItemEdit, JSONValue)] = [
+            (.repeats(frequency: "weekdays", days: nil, monthDay: nil),
+             .object(["action": .string("repeat"), "frequency": .string("weekdays")])),
+            (.repeats(frequency: "none", days: nil, monthDay: nil),
+             .object(["action": .string("repeat"), "frequency": .string("none")])),
+            (.repeats(frequency: "custom", days: [1, 3, 5], monthDay: nil),
+             .object([
+                "action": .string("repeat"), "days": .array([.number(1), .number(3), .number(5)]),
+                "frequency": .string("custom"),
+             ])),
+            (.repeats(frequency: "monthly", days: nil, monthDay: 31),
+             .object(["action": .string("repeat"), "frequency": .string("monthly"), "monthDay": .number(31)])),
+        ]
+        for (edit, wire) in repeats {
+            #expect(try json(ItemWriteBody.edit(edit)) == wire, "\(edit)")
+            #expect(phoneBody(wire) == .edit(edit), "\(edit): read back")
         }
     }
 
@@ -111,6 +131,21 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
             let body = try json(ItemWriteBody.edit(edit))
             #expect(body == JSONValue.object(keys.merging(["action": .string("time")]) { a, _ in a }), "\(edit)")
         }
+
+        // The repeat chip: the days with Custom days alone and the day with
+        // Monthly alone, never null.
+        let repeats: [(ItemEdit, [String: JSONValue])] = [
+            (.repeats(frequency: "weekdays", days: nil, monthDay: nil), ["frequency": .string("weekdays")]),
+            (.repeats(frequency: "none", days: nil, monthDay: nil), ["frequency": .string("none")]),
+            (.repeats(frequency: "custom", days: [1, 3, 5], monthDay: nil),
+             ["days": .array([.number(1), .number(3), .number(5)]), "frequency": .string("custom")]),
+            (.repeats(frequency: "monthly", days: nil, monthDay: 31),
+             ["frequency": .string("monthly"), "monthDay": .number(31)]),
+        ]
+        for (edit, keys) in repeats {
+            let body = try json(ItemWriteBody.edit(edit))
+            #expect(body == JSONValue.object(keys.merging(["action": .string("repeat")]) { a, _ in a }), "\(edit)")
+        }
     }
 
     /// APIClient encodes with sorted keys; this is the request it sends.
@@ -149,6 +184,12 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
              #"{"action":"time","duration":60,"timeBucket":"evening"}"#),
             (.time(bucket: .clear, startTime: .clear, duration: nil),
              #"{"action":"time","startTime":null,"timeBucket":null}"#),
+            (.repeats(frequency: "weekdays", days: nil, monthDay: nil), #"{"action":"repeat","frequency":"weekdays"}"#),
+            (.repeats(frequency: "none", days: nil, monthDay: nil), #"{"action":"repeat","frequency":"none"}"#),
+            (.repeats(frequency: "custom", days: [1, 3, 5], monthDay: nil),
+             #"{"action":"repeat","days":[1,3,5],"frequency":"custom"}"#),
+            (.repeats(frequency: "monthly", days: nil, monthDay: 31),
+             #"{"action":"repeat","frequency":"monthly","monthDay":31}"#),
         ]
         for (edit, wire) in bodies {
             let bytes = try encoder.encode(ItemWriteBody.edit(edit))
@@ -174,6 +215,8 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(ItemEdit.reminder(time: "08:00", anchor: .clear).action == "reminder")
         #expect(ItemWriteBody.edit(ItemEdit.time(bucket: nil, startTime: nil, duration: 45)).action == "time")
         #expect(ItemEdit.time(bucket: .set("evening"), startTime: .clear, duration: nil).action == "time")
+        #expect(ItemWriteBody.edit(ItemEdit.repeats(frequency: "daily", days: nil, monthDay: nil)).action == "repeat")
+        #expect(ItemEdit.repeats(frequency: "custom", days: [1], monthDay: nil).action == "repeat")
     }
 
     /// A time edit's key that didn't change is absent, never null: absent
@@ -190,6 +233,16 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.sortedKeys]
         #expect(String(decoding: try encoder.encode(longer), as: UTF8.self) == #"{"action":"time","duration":45}"#)
+
+        // A repeat's days and day are absent beside any other frequency:
+        // the route's schema refuses them there, null included.
+        let weekdays = try json(ItemWriteBody.edit(ItemEdit.repeats(frequency: "weekdays", days: nil, monthDay: nil)))
+        #expect(weekdays == JSONValue.object(["action": .string("repeat"), "frequency": .string("weekdays")]))
+        guard case .object(let repeatFields) = weekdays else {
+            Issue.record("not an object")
+            return
+        }
+        #expect(repeatFields["days"] == nil && repeatFields["monthDay"] == nil)
     }
 
     /// A count is a JSON number. `JSONValue` tries `Bool` before `Double`, and
@@ -215,5 +268,27 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         }
         #expect(phoneBody(.object(["action": .string("timesPerDay"), "timesPerDay": .number(1)]))
             == .edit(.timesPerDay(1)))
+    }
+
+    /// Custom days' days are a JSON array of numbers, Sunday's 0 included,
+    /// which a decoder that read 0 or 1 as a Bool would turn into a body the
+    /// phone never builds.
+    @Test func aDayListIsAnArrayOfNumbers() throws {
+        let custom = try json(ItemWriteBody.edit(ItemEdit.repeats(frequency: "custom", days: [1, 3, 5], monthDay: nil)))
+        guard case .object(let fields) = custom else {
+            Issue.record("not an object")
+            return
+        }
+        #expect(fields["days"] == JSONValue.array([.number(1), .number(3), .number(5)]))
+        let sunday = try json(ItemWriteBody.edit(ItemEdit.repeats(frequency: "custom", days: [0, 1], monthDay: nil)))
+        guard case .object(let sundayFields) = sunday else {
+            Issue.record("not an object")
+            return
+        }
+        #expect(sundayFields["days"] == JSONValue.array([.number(0), .number(1)]))
+        let wire = JSONValue.object([
+            "action": .string("repeat"), "days": .array([.number(0), .number(1)]), "frequency": .string("custom"),
+        ])
+        #expect(phoneBody(wire) == .edit(.repeats(frequency: "custom", days: [0, 1], monthDay: nil)))
     }
 }

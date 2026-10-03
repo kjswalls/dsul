@@ -25,7 +25,8 @@
     "priority",
     "timesPerDay",
     "reminder",
-    "time"
+    "time",
+    "repeat"
   ],
   "items": [
     {

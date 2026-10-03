@@ -4,7 +4,7 @@ import Testing
 @testable import Dsul
 
 /// The item sheet's title, notes, Delete, Add a subtask, Reset streak and
-/// chips (priority, times a day, Remind, date and time) on a signed-in
+/// chips (priority, times a day, Remind, date, time and repeat) on a signed-in
 /// planner, against PlannerSyncTests' fake server and its Thursday 2026-10-01
 /// payload: each write's optimistic step and the body it sends, the gates
 /// that refuse (sending nothing), an older server's shorter list of writes,
@@ -827,7 +827,7 @@ import Testing
     /// stays read-only and a time edit sends nothing, while the date chip
     /// still moves the item through part 1's `move`, which it takes.
     @Test func anOlderServerTakesTheDateButNotTheTime() async throws {
-        let partTwoC = PlannerJSON.allWrites.filter { $0 != "time" }
+        let partTwoC = PlannerJSON.allWrites.filter { $0 != "time" && $0 != "repeat" }
         #expect(partTwoC.last == "reminder")
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoC)))
@@ -847,6 +847,209 @@ import Testing
 
         let sent = await sentText(server, PlannerJSON.groceries)
         #expect(sent == ["{\"action\":\"move\",\"date\":\"2026-10-02\"}"])
+    }
+
+    // MARK: Repeat
+
+    /// The Repeat chip's write shows at once and sends the frequency, with
+    /// the days only for Custom days and the day only for Monthly: Groceries
+    /// (a one-off on today) made Weekdays, then Custom days, then Monthly on
+    /// the 31st, then No repeat, which clears all three. No repeat again
+    /// changes nothing and sends nothing.
+    @Test func aRepeatShowsAtOnceAndSendsItsBody() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+        let groceries = PlannerJSON.groceries
+        let oneOff = try #require(planner.item(groceries))
+        #expect(oneOff.repeatFrequency == nil)
+        #expect(planner.canEdit("repeat", oneOff))
+
+        planner.edit(groceries, .repeats(frequency: "weekdays", days: nil, monthDay: nil))
+        let weekdays = try #require(planner.item(groceries))
+        #expect(weekdays.repeatFrequency == "weekdays")
+        #expect(cadenceLabel(weekdays) == "Weekdays")
+        #expect(planner.dayItems.contains { $0.id == groceries })   // Thursday
+        planner.edit(groceries, .repeats(frequency: "custom", days: [1, 3, 5], monthDay: nil))
+        let custom = try #require(planner.item(groceries))
+        #expect(custom.repeatFrequency == "custom")
+        #expect(custom.repeatDays == [1, 3, 5])
+        #expect(custom.repeatMonthDay == nil)
+        planner.edit(groceries, .repeats(frequency: "monthly", days: nil, monthDay: 31))
+        let monthly = try #require(planner.item(groceries))
+        #expect(monthly.repeatFrequency == "monthly")
+        #expect(monthly.repeatDays == nil)
+        #expect(monthly.repeatMonthDay == 31)
+        planner.edit(groceries, .repeats(frequency: "none", days: nil, monthDay: nil))
+        let none = try #require(planner.item(groceries))
+        #expect(none.repeatFrequency == nil)
+        #expect(none.repeatDays == nil)
+        #expect(none.repeatMonthDay == nil)
+        #expect(none.startDate == PlannerJSON.today)
+        planner.edit(groceries, .repeats(frequency: "none", days: nil, monthDay: nil))   // already so
+        #expect(planner.item(groceries) == none)
+        await drain(planner)
+
+        let sent = await sentText(server, groceries)
+        #expect(sent == ["{\"action\":\"repeat\",\"frequency\":\"weekdays\"}",
+                         "{\"action\":\"repeat\",\"days\":[1,3,5],\"frequency\":\"custom\"}",
+                         "{\"action\":\"repeat\",\"frequency\":\"monthly\",\"monthDay\":31}",
+                         "{\"action\":\"repeat\",\"frequency\":\"none\"}"])
+        #expect(planner.banner == nil)
+    }
+
+    /// A habit always repeats: its type offers no No repeat
+    /// (`frequency_not_allowed`), so that edit changes nothing and sends
+    /// nothing, while Weekdays is sent.
+    @Test func aHabitAlwaysRepeats() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.medsJSON])))
+        await server.on(itemRoute(PlannerJSON.meds), .status(200, ok))
+        let planner = await loaded(server)
+        let meds = try #require(planner.item(PlannerJSON.meds))
+        #expect(planner.canEdit("repeat", meds))
+
+        let none = ItemEdit.repeats(frequency: "none", days: nil, monthDay: nil)
+        #expect(!planner.canEdit(none, meds))
+        planner.edit(PlannerJSON.meds, none)
+        #expect(planner.item(PlannerJSON.meds) == meds)
+        #expect(planner.sync?.pending == 0)
+
+        planner.edit(PlannerJSON.meds, .repeats(frequency: "weekdays", days: nil, monthDay: nil))
+        let weekdays = try #require(planner.item(PlannerJSON.meds))
+        #expect(weekdays.repeatFrequency == "weekdays")
+        #expect(weekdays.streak == meds.streak)
+        #expect(weekdays.completedDates == meds.completedDates)
+        await drain(planner)
+
+        let sent = await sentText(server, PlannerJSON.meds)
+        #expect(sent == ["{\"action\":\"repeat\",\"frequency\":\"weekdays\"}"])
+    }
+
+    /// A subtask shows only in its parent's sheet, so it has no repeat
+    /// (`not_for_subtask`): the edit changes nothing and sends nothing.
+    @Test func aSubtaskHasNoRepeat() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])))
+        let planner = await loaded(server)
+        let bags = try #require(planner.item(PlannerJSON.bags))
+        #expect(!planner.canEdit("repeat", bags))
+
+        planner.edit(PlannerJSON.bags, .repeats(frequency: "daily", days: nil, monthDay: nil))
+        #expect(planner.item(PlannerJSON.bags) == bags)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A repeat body the route's schema refuses is refused by the planner
+    /// first, before any step: Custom days with no days, none, days out of
+    /// order, a day twice or a day past Saturday; days beside Daily; Monthly
+    /// with no day or the 32nd; and a frequency no type offers. Each changes
+    /// nothing and sends nothing.
+    @Test func aRepeatBodyTheServerRefusesIsNeverBuilt() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        let planner = await loaded(server)
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        let refused: [ItemEdit] = [
+            .repeats(frequency: "custom", days: nil, monthDay: nil),
+            .repeats(frequency: "custom", days: [], monthDay: nil),
+            .repeats(frequency: "custom", days: [3, 1], monthDay: nil),
+            .repeats(frequency: "custom", days: [1, 1], monthDay: nil),
+            .repeats(frequency: "custom", days: [7], monthDay: nil),
+            .repeats(frequency: "daily", days: [1], monthDay: nil),
+            .repeats(frequency: "monthly", days: nil, monthDay: nil),
+            .repeats(frequency: "monthly", days: nil, monthDay: 32),
+            .repeats(frequency: "weekly", days: nil, monthDay: nil),
+        ]
+        for edit in refused {
+            #expect(!planner.canEdit(edit, groceries), "\(edit)")
+            planner.edit(PlannerJSON.groceries, edit)
+            #expect(planner.item(PlannerJSON.groceries) == groceries, "\(edit)")
+        }
+        #expect(planner.sync?.pending == 0)
+        #expect(planner.canEdit(.repeats(frequency: "custom", days: [0, 6], monthDay: nil), groceries))
+        #expect(planner.canEdit(.repeats(frequency: "monthly", days: nil, monthDay: 31), groceries))
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// A repeat moves nothing but the rule: a one-off ticked done stays
+    /// done when it starts repeating, its done days as they were, as the
+    /// dialog's save writes the three keys alone.
+    @Test func aFinishedOneOffKeepsItsStatusWhenItStartsRepeating() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.toggle(PlannerJSON.groceries)
+        let ticked = try #require(planner.item(PlannerJSON.groceries))
+        #expect(ticked.status == "completed")
+        planner.edit(PlannerJSON.groceries, .repeats(frequency: "weekdays", days: nil, monthDay: nil))
+        let repeating = try #require(planner.item(PlannerJSON.groceries))
+        #expect(repeating.repeatFrequency == "weekdays")
+        #expect(repeating.status == "completed")
+        #expect(repeating.completedDates == ticked.completedDates)
+        #expect(repeating.startDate == ticked.startDate)
+        await drain(planner)
+
+        let sent = await sentText(server, PlannerJSON.groceries)
+        #expect(sent.count == 2)
+        #expect(sent.last == "{\"action\":\"repeat\",\"frequency\":\"weekdays\"}")
+        #expect(planner.banner == nil)
+    }
+
+    /// A server from before 2e lists writes up to `time`: the repeat chip
+    /// stays read-only and a repeat edit sends nothing.
+    @Test func anOlderServerKeepsTheRepeatReadOnly() async throws {
+        let partTwoD = PlannerJSON.allWrites.filter { $0 != "repeat" }
+        #expect(partTwoD.last == "time")
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(writes: partTwoD)))
+        let planner = await loaded(server)
+        let groceries = try #require(planner.item(PlannerJSON.groceries))
+        #expect(!planner.canEdit("repeat", groceries))
+        #expect(planner.canEdit("time", groceries))
+
+        planner.edit(PlannerJSON.groceries, .repeats(frequency: "weekdays", days: nil, monthDay: nil))
+        #expect(planner.item(PlannerJSON.groceries) == groceries)
+        #expect(planner.sync?.pending == 0)
+        await drain(planner)
+        let posts = await postCount(server)
+        #expect(posts == 0)
+    }
+
+    /// No repeat on a task that has repeated since before today (open
+    /// question 6's default), as the web's panel writes it: the three keys
+    /// clear and the start day stays, so Water the plants becomes a one-off
+    /// on September 1, its part of day and its place on the grid kept. A
+    /// one-off shows only on its own day, and a dated, bucketed task is not
+    /// in the braindump, so it leaves Today and is in neither list.
+    @Test func noRepeatOnAnOldSeriesLeavesItOnItsFirstDay() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.plantsJSON])))
+        await server.on(itemRoute(PlannerJSON.plants), .status(200, ok))
+        let planner = await loaded(server)
+        let plants = try #require(planner.item(PlannerJSON.plants))
+        #expect(planner.dayItems.contains { $0.id == PlannerJSON.plants })
+
+        planner.edit(PlannerJSON.plants, .repeats(frequency: "none", days: nil, monthDay: nil))
+        let oneOff = try #require(planner.item(PlannerJSON.plants))
+        #expect(oneOff.repeatFrequency == nil)
+        #expect(oneOff.startDate == "2026-09-01")
+        #expect(oneOff.timeBucket == plants.timeBucket)
+        #expect(oneOff.isScheduled == plants.isScheduled)
+        #expect(!planner.dayItems.contains { $0.id == PlannerJSON.plants })
+        #expect(!planner.braindump.contains { $0.id == PlannerJSON.plants })
+        await drain(planner)
+
+        let sent = await sentText(server, PlannerJSON.plants)
+        #expect(sent == ["{\"action\":\"repeat\",\"frequency\":\"none\"}"])
     }
 
     // MARK: The banner

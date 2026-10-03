@@ -16,6 +16,8 @@ import {
   editShapeFromRow,
   planTimeEdit,
   reminderPatch,
+  repeatEditPatch,
+  repeatPatch,
   resetStreakPatch,
   resetStreakRefusal,
   scheduleHabitPatch,
@@ -25,6 +27,7 @@ import {
   timeEditPatch,
   withinGrowthLimit,
   type EditShape,
+  type ItemEdit,
   type TimeDraft,
   type TimeLive,
   type TimePlan,
@@ -179,6 +182,41 @@ describe('editShapeFromRow', () => {
     }
     const unread = editShapeFromRow({ id: ID, type: 'task', parent_item_id: null });
     for (const key of ['startDate', 'timeBucket', 'inProjectBlock', 'startTime', 'isScheduled', 'duration']) {
+      expect(key in unread, key).toBe(false);
+    }
+  });
+
+  it('carries the Repeat chip’s three columns when they were read, null included, and leaves them absent otherwise', () => {
+    expect(
+      editShapeFromRow({
+        id: ID,
+        type: 'task',
+        parent_item_id: null,
+        repeat_frequency: 'custom',
+        repeat_days: [1, 3],
+        repeat_month_day: 15,
+      }),
+    ).toEqual({
+      id: ID,
+      type: 'task',
+      parentItemId: null,
+      repeatFrequency: 'custom',
+      repeatDays: [1, 3],
+      repeatMonthDay: 15,
+    });
+    const nulls = editShapeFromRow({
+      id: ID,
+      type: 'task',
+      parent_item_id: null,
+      repeat_frequency: null,
+      repeat_days: null,
+      repeat_month_day: null,
+    });
+    for (const key of ['repeatFrequency', 'repeatDays', 'repeatMonthDay'] as const) {
+      expect(nulls[key], key).toBeNull();
+    }
+    const unread = editShapeFromRow({ id: ID, type: 'task', parent_item_id: null });
+    for (const key of ['repeatFrequency', 'repeatDays', 'repeatMonthDay']) {
       expect(key in unread, key).toBe(false);
     }
   });
@@ -517,6 +555,8 @@ describe('the shared sentences', () => {
         'Optional, and worth it. Something you already do beats a time. The reminder will say what you write here.',
       reminderNeedsDate:
         'Give this a date and it will fire. Without one there is no day for the reminder to land on.',
+      selectAtLeastOneDay: 'Select at least one day',
+      monthlyNote: 'For months with fewer days, it will occur on the last day.',
     });
   });
 
@@ -884,5 +924,162 @@ describe('time', () => {
     const fortyFive: ItemTypeConfig = { ...task, schedule: { ...task.schedule, defaultBlockMinutes: 45 } };
     expect(editPatch(dated(), { action: 'time', duration: 30 }, fortyFive)).toEqual({ duration: 30 });
     expect(editPatch(dated(), { action: 'time', duration: 45 }, fortyFive)).toEqual({});
+  });
+});
+
+describe('repeatPatch', () => {
+  const FREQUENCIES = ['none', 'daily', 'weekdays', 'weekends', 'monthly', 'custom'] as const;
+
+  it.each(['task', 'errand', 'habit'])('names all three keys for a %s, in the dialog’s order', (type) => {
+    for (const f of FREQUENCIES) {
+      expect(Object.entries(repeatPatch(type, f, [1, 3], 15)), f).toEqual([
+        // A habit keeps its frequency as given; the registry never offers it 'none'.
+        ['repeatFrequency', type === 'habit' || f !== 'none' ? f : undefined],
+        ['repeatDays', f === 'custom' ? [1, 3] : undefined],
+        ['repeatMonthDay', f === 'monthly' ? 15 : undefined],
+      ]);
+    }
+  });
+
+  it('writes no repeat at all for none on a task-like type, and keeps none for a habit', () => {
+    expect(repeatPatch('task', 'none', [1, 3], 15)).toEqual({
+      repeatFrequency: undefined,
+      repeatDays: undefined,
+      repeatMonthDay: undefined,
+    });
+    expect(repeatPatch('errand', 'none', [], 1).repeatFrequency).toBeUndefined();
+    expect(repeatPatch('habit', 'none', [], 1).repeatFrequency).toBe('none');
+  });
+});
+
+describe('repeat', () => {
+  /** A task with every repeat column read: no repeat stored. */
+  const oneOff = (over: Partial<EditShape> = {}): EditShape =>
+    shape({ repeatFrequency: null, repeatDays: null, repeatMonthDay: null, ...over });
+  const meds = (over: Partial<EditShape> = {}): EditShape =>
+    shape({ type: 'habit', repeatFrequency: 'daily', repeatDays: null, repeatMonthDay: null, ...over });
+  const notForSubtask = { code: 'not_for_subtask', status: 400 };
+  const notAllowed = { code: 'frequency_not_allowed', status: 400 };
+  const written = (frequency: string | undefined, days?: number[], monthDay?: number) => ({
+    repeatFrequency: frequency,
+    repeatDays: days,
+    repeatMonthDay: monthDay,
+  });
+
+  it('is refused under a subtask, before a frequency the type doesn’t list is', () => {
+    expect(editRefusal(oneOff({ parentItemId: ID }), { action: 'repeat', frequency: 'daily' }, task)).toEqual(
+      notForSubtask,
+    );
+    expect(editRefusal(meds({ parentItemId: ID }), { action: 'repeat', frequency: 'none' }, habit)).toEqual(
+      notForSubtask,
+    );
+  });
+
+  it('refuses No repeat on a habit, which always repeats', () => {
+    expect(editRefusal(meds(), { action: 'repeat', frequency: 'none' }, habit)).toEqual(notAllowed);
+  });
+
+  it('takes each of a type’s own frequencies, on a task, a custom item and a habit', () => {
+    for (const [row, config] of [
+      [oneOff(), task],
+      [oneOff({ type: 'errand' }), errand],
+      [meds(), habit],
+    ] as const) {
+      for (const frequency of config.allowedFrequencies) {
+        const edit: ItemEdit = {
+          action: 'repeat',
+          frequency,
+          ...(frequency === 'custom' ? { days: [1] } : {}),
+          ...(frequency === 'monthly' ? { monthDay: 1 } : {}),
+        };
+        expect(editRefusal(row, edit, config), `${row.type} ${frequency}`).toBeNull();
+      }
+    }
+  });
+
+  it('writes all three keys, the days only for Custom days and the day only for Monthly', () => {
+    expect(repeatEditPatch(oneOff(), { action: 'repeat', frequency: 'weekdays' }, task)).toEqual(written('weekdays'));
+    expect(repeatEditPatch(oneOff(), { action: 'repeat', frequency: 'custom', days: [1, 3, 5] }, task)).toEqual(
+      written('custom', [1, 3, 5]),
+    );
+    expect(repeatEditPatch(oneOff(), { action: 'repeat', frequency: 'monthly', monthDay: 31 }, task)).toEqual(
+      written('monthly', undefined, 31),
+    );
+    // Custom days to Monthly clears the days.
+    expect(
+      repeatEditPatch(
+        oneOff({ repeatFrequency: 'custom', repeatDays: [1, 3] }),
+        { action: 'repeat', frequency: 'monthly', monthDay: 15 },
+        task,
+      ),
+    ).toEqual(written('monthly', undefined, 15));
+    // Every key present, so lib/db.ts writes each, undefined as NULL.
+    expect(Object.keys(repeatEditPatch(oneOff(), { action: 'repeat', frequency: 'daily' }, task))).toEqual([
+      'repeatFrequency',
+      'repeatDays',
+      'repeatMonthDay',
+    ]);
+  });
+
+  it('clears a task’s repeat with none, and keeps a habit’s frequency as given', () => {
+    const stopped = repeatEditPatch(oneOff({ repeatFrequency: 'daily' }), { action: 'repeat', frequency: 'none' }, task);
+    expect(stopped).toEqual(written(undefined));
+    expect(Object.keys(stopped)).toEqual(['repeatFrequency', 'repeatDays', 'repeatMonthDay']);
+    expect(repeatEditPatch(meds(), { action: 'repeat', frequency: 'weekdays' }, habit)).toEqual(written('weekdays'));
+    expect(
+      repeatEditPatch(oneOff({ type: 'errand', repeatFrequency: 'daily' }), { action: 'repeat', frequency: 'none' }, errand),
+    ).toEqual(written(undefined));
+  });
+
+  it('writes nothing when the draft is its seed', () => {
+    // A NULL task frequency reads as 'none', a NULL habit frequency as 'daily'.
+    expect(repeatEditPatch(oneOff(), { action: 'repeat', frequency: 'none' }, task)).toEqual({});
+    expect(repeatEditPatch(meds({ repeatFrequency: null }), { action: 'repeat', frequency: 'daily' }, habit)).toEqual({});
+    expect(
+      repeatEditPatch(
+        oneOff({ repeatFrequency: 'custom', repeatDays: [1, 3] }),
+        { action: 'repeat', frequency: 'custom', days: [1, 3] },
+        task,
+      ),
+    ).toEqual({});
+    // A NULL day reads as the 1st.
+    expect(
+      repeatEditPatch(oneOff({ repeatFrequency: 'monthly' }), { action: 'repeat', frequency: 'monthly', monthDay: 1 }, task),
+    ).toEqual({});
+  });
+
+  it('keeps a stale day under another frequency, as the dialog does', () => {
+    const stale = oneOff({ repeatFrequency: 'daily', repeatMonthDay: 15 });
+    expect(repeatEditPatch(stale, { action: 'repeat', frequency: 'daily' }, task)).toEqual({});
+    // Monthly sent with the stale day writes: the frequency moved, so all three are written.
+    expect(repeatEditPatch(stale, { action: 'repeat', frequency: 'monthly', monthDay: 15 }, task)).toEqual(
+      written('monthly', undefined, 15),
+    );
+  });
+
+  it('compares the days by JSON, so the same days in another order write', () => {
+    expect(
+      repeatEditPatch(
+        oneOff({ repeatFrequency: 'custom', repeatDays: [3, 1] }),
+        { action: 'repeat', frequency: 'custom', days: [1, 3] },
+        task,
+      ),
+    ).toEqual(written('custom', [1, 3]));
+  });
+
+  it.each(['repeatFrequency', 'repeatDays', 'repeatMonthDay'] as const)('throws when %s was not read', (key) => {
+    expect(() => repeatEditPatch(oneOff({ [key]: undefined }), { action: 'repeat', frequency: 'daily' }, task)).toThrow();
+  });
+
+  it('editPatch takes the row’s own type when no config is passed', () => {
+    for (const [row, edit] of [
+      [oneOff(), { action: 'repeat', frequency: 'none' }],
+      [oneOff(), { action: 'repeat', frequency: 'custom', days: [0, 6] }],
+      [meds({ repeatFrequency: null }), { action: 'repeat', frequency: 'daily' }],
+      [meds(), { action: 'repeat', frequency: 'monthly', monthDay: 31 }],
+      [oneOff({ type: 'errand' }), { action: 'repeat', frequency: 'weekends' }],
+    ] as [EditShape, ItemEdit][]) {
+      expect(editPatch(row, edit), JSON.stringify(edit)).toEqual(editPatch(row, edit, getItemTypeConfig(row.type)));
+    }
   });
 });

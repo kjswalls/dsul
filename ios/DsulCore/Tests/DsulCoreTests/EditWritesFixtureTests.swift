@@ -3,10 +3,11 @@ import Testing
 import DsulCore
 
 // The web's own answers for the item sheet's edits (the fields, from 2c the
-// priority, times a day and reminder chips, and from 2d the time chip), its
-// Delete, Add a subtask and Reset streak, checked against ItemEdit.swift,
-// Registry.swift's `canAddSubtask` and `isRemindable`, DayBuckets.swift's
-// time-to-bucket rules and EditCopy.swift.
+// priority, times a day and reminder chips, from 2d the time chip, and from 2e
+// the repeat chip), its Delete, Add a subtask and Reset streak, checked
+// against ItemEdit.swift, Registry.swift's `canAddSubtask` and `isRemindable`,
+// DayBuckets.swift's time-to-bucket rules, Cadence.swift's repeat words and
+// EditCopy.swift.
 // tests/unit/edit-writes-fixtures.test.ts drives the web's real gesture for
 // each case (the item panel's draft, seeded as the panel seeds it, changed as
 // the field or chip changes it, saved by the dialog's own `commitEdit`, both
@@ -15,7 +16,8 @@ import DsulCore
 // mocked and the clock pinned, asks lib/item-edit.ts `editRefusal`,
 // `subtaskRefusal` and `resetStreakRefusal` for the refused ones (and the
 // route's schema for the bodies it refuses: an anchor with no time, a time
-// beside Anytime, an empty time edit), and writes
+// beside Anytime, an empty time edit, a repeat's days or day beside the wrong
+// frequency or out of order), and writes
 // tests/fixtures/day/edit-writes.json. Never edit the JSON by hand: regenerate
 // it from the Vitest side (UPDATE_FIXTURES=1).
 //
@@ -190,6 +192,8 @@ private struct EditWritesWords: Decodable, Sendable {
         let reminderAnchorPlaceholder: String
         let reminderAnchorHint: String
         let reminderNeedsDate: String
+        let selectAtLeastOneDay: String
+        let monthlyNote: String
     }
 
     struct StreakRun: Decodable, Sendable {
@@ -199,6 +203,23 @@ private struct EditWritesWords: Decodable, Sendable {
 
     let copy: Copy
     let streakRun: [StreakRun]
+}
+
+/// The fixture's `repeats`: lib/planner-types.ts `REPEAT_FREQUENCY_LABELS`'
+/// entries in their order (`labels`) and `WEEKDAY_LABELS` (`weekdays`). Read on
+/// its own, as `limits` is.
+private struct EditWritesRepeats: Decodable, Sendable {
+    struct Label: Decodable, Sendable {
+        let frequency: String
+        let label: String
+    }
+
+    struct Repeats: Decodable, Sendable {
+        let labels: [Label]
+        let weekdays: [String]
+    }
+
+    let repeats: Repeats
 }
 
 enum EditWritesFixtureError: Error {
@@ -229,8 +250,9 @@ func loadEditWrites(_ here: String = #filePath) throws -> EditWritesFixture {
 /// body the phone never builds (an action it doesn't send, a key it doesn't
 /// write, a value of the wrong type, an id that isn't a uuid, a count that
 /// isn't whole, words with no time, a time edit with no key, a time beside
-/// Anytime or a null part of day, a length out of range), which only a case
-/// the server refuses may hold.
+/// Anytime or a null part of day, a length out of range, a frequency it
+/// doesn't know, a repeat's days or day the route's schema refuses), which
+/// only a case the server refuses may hold.
 func phoneBody(_ wire: JSONValue) -> ItemWriteBody? {
     guard case .object(let fields) = wire, case .string(let action)? = fields["action"] else { return nil }
     switch action {
@@ -310,9 +332,60 @@ func phoneBody(_ wire: JSONValue) -> ItemWriteBody? {
         // The sheet never puts a time beside Anytime or none.
         if case .set? = startTime, bucket == .set("anytime") || bucket == .clear { return nil }
         return .edit(.time(bucket: bucket, startTime: startTime, duration: duration))
+    case "repeat":
+        guard case .string(let frequency)? = fields["frequency"] else { return nil }
+        let days: [Int]?
+        switch fields["days"] {
+        case nil:
+            days = nil
+        case .array(let values)?:
+            var whole: [Int] = []
+            for value in values {
+                guard case .number(let n) = value, let day = Int(exactly: n) else { return nil }
+                whole.append(day)
+            }
+            days = whole
+        default:
+            return nil
+        }
+        let monthDay: Int?
+        switch fields["monthDay"] {
+        case nil:
+            monthDay = nil
+        case .number(let n)?:
+            guard let whole = Int(exactly: n) else { return nil }
+            monthDay = whole
+        default:
+            return nil
+        }
+        guard fields.count == 2 + (days == nil ? 0 : 1) + (monthDay == nil ? 0 : 1),
+              isRepeatShape(frequency: frequency, days: days, monthDay: monthDay)
+        else { return nil }
+        return .edit(.repeats(frequency: frequency, days: days, monthDay: monthDay))
     default:
         return nil
     }
+}
+
+/// The route's repeat body: a frequency `RepeatFrequencySchema` names; `days`
+/// exactly with "custom", non-empty and strictly ascending within 0...6; and
+/// `monthDay` exactly with "monthly", within 1...31. Whether the item's type
+/// offers the frequency is `editRefusal`'s, not the schema's.
+private func isRepeatShape(frequency: String, days: [Int]?, monthDay: Int?) -> Bool {
+    guard repeatFrequencyOrder.contains(frequency) else { return false }
+    if frequency == "custom" {
+        guard let days, !days.isEmpty, days.allSatisfy({ (0...6).contains($0) }),
+              zip(days, days.dropFirst()).allSatisfy({ $0 < $1 })
+        else { return false }
+    } else if days != nil {
+        return false
+    }
+    if frequency == "monthly" {
+        guard let monthDay, (1...31).contains(monthDay) else { return false }
+    } else if monthDay != nil {
+        return false
+    }
+    return true
 }
 
 /// The route's `TimeStrSchema`: a 24-hour "HH:mm", 00:00 to 23:59.
@@ -335,11 +408,11 @@ extension EditWritesCase {
     }
 
     /// A typed edit's case, a field's (`title`, `notes`) or a chip's
-    /// (`priority`, `timesPerDay`, `reminder`, `time`), the phone's body or
-    /// not.
+    /// (`priority`, `timesPerDay`, `reminder`, `time`, `repeat`), the phone's
+    /// body or not.
     fileprivate var isFieldEdit: Bool {
         guard let action else { return false }
-        return ["title", "notes", "priority", "timesPerDay", "reminder", "time"].contains(action)
+        return ["title", "notes", "priority", "timesPerDay", "reminder", "time", "repeat"].contains(action)
     }
 
     /// The case's edit as the phone holds it; nil for anything but a field.
@@ -408,6 +481,12 @@ extension EditWritesCase {
         return (bucket, startTime, duration)
     }
 
+    /// A repeat edit the server takes, its keys as sent.
+    fileprivate var takenRepeat: (frequency: String, days: [Int]?, monthDay: Int?)? {
+        guard case .repeats(let frequency, let days, let monthDay)? = phoneEdit, refusal == nil else { return nil }
+        return (frequency, days, monthDay)
+    }
+
     /// The store wrote nothing (`updates` is `{}`).
     fileprivate var wroteNothing: Bool {
         return updates == .object([:])
@@ -422,7 +501,9 @@ extension EditWritesCase {
 /// edit's part of day is one of the four, its time HH:mm, and its length in
 /// range; and the row's rule: the part of day and the time as they will be
 /// once written (each sent, else the item's own) never put a time beside
-/// Anytime or none.
+/// Anytime or none. A repeat edit has no row rule: its body's shape is all
+/// (`isRepeatShape`), and the type's frequencies and the subtask are the
+/// gate's (`frequency_not_allowed`, `not_for_subtask`).
 private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     switch edit {
     case .title(let raw):
@@ -455,6 +536,8 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
             return !(willBucket ?? "").isEmpty && willBucket != "anytime"
         }
         return true
+    case .repeats(let frequency, let days, let monthDay):
+        return isRepeatShape(frequency: frequency, days: days, monthDay: monthDay)
     }
 }
 
@@ -473,7 +556,10 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     /// and one kept, a length alone, a time on a custom item, an edit equal to
     /// the seed that writes nothing, a write that ends where it began, and
     /// each refusal (`not_dated`, `not_for_subtask`, the row's `invalid` and
-    /// the schema's two).
+    /// the schema's two). And 2e's: a repeat to none and to each of the other
+    /// five, a habit's and a custom item's, one that writes nothing, stored
+    /// days in another order written in order, a stale day kept, and each
+    /// refusal (`frequency_not_allowed`, `not_for_subtask` and the schema's).
     @Test func everyKindOfCaseIsThere() throws {
         let cases = try loadEditWrites().cases
         #expect(cases.contains { $0.takenTitle && $0.after?.title != $0.item.title }, "a title that writes")
@@ -570,10 +656,40 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
                 "a time beside a stored Anytime, which the row refuses")
         #expect(cases.filter { $0.action == "time" && $0.phoneEdit == nil && $0.refusal?.code == "invalid" }.count >= 2,
                 "a time beside Anytime and an empty time edit, which the schema refuses")
+
+        #expect(cases.contains { c in
+            guard let r = c.takenRepeat, r.frequency == "none", let stored = c.item.repeatFrequency else { return false }
+            return stored != "none" && c.after?.repeatFrequency == nil && c.after?.repeatDays == nil
+                && c.after?.repeatMonthDay == nil
+        }, "a repeat to none, which clears all three")
+        for frequency in ["daily", "weekdays", "weekends", "monthly", "custom"] {
+            #expect(cases.contains { c in
+                c.takenRepeat?.frequency == frequency && !c.wroteNothing && c.after?.repeatFrequency == frequency
+            }, "a repeat to \(frequency)")
+        }
+        #expect(cases.contains { $0.takenRepeat != nil && $0.item.isHabit && $0.after != $0.item }, "a habit's repeat")
+        #expect(cases.contains { $0.takenRepeat != nil && $0.item.type == "custom" && $0.after != $0.item },
+                "a custom item's repeat")
+        #expect(cases.contains { $0.takenRepeat != nil && $0.wroteNothing && $0.after == $0.item },
+                "a repeat edit that writes nothing")
+        #expect(cases.contains { c in
+            guard let r = c.takenRepeat, let sent = r.days, let stored = c.item.repeatDays else { return false }
+            return stored != sent && stored.sorted() == sent && c.after?.repeatDays == sent
+        }, "stored days in another order, written in order")
+        #expect(cases.contains { c in
+            guard let r = c.takenRepeat, r.frequency != "monthly", let day = c.item.repeatMonthDay else { return false }
+            return c.wroteNothing && c.after?.repeatMonthDay == day
+        }, "a stale day of the month kept")
+        #expect(cases.contains { $0.action == "repeat" && $0.refusal?.code == "frequency_not_allowed" },
+                "a frequency the type doesn't offer")
+        #expect(cases.contains { $0.action == "repeat" && $0.refusal?.code == "not_for_subtask" }, "a subtask's repeat")
+        #expect(cases.filter { $0.action == "repeat" && $0.phoneEdit == nil && $0.refusal?.code == "invalid" }.count >= 9,
+                "each of the schema's repeat rules")
     }
 
     /// `editAllowed` answers the type's refusals (`no_notes`, `no_priority`,
-    /// `no_count`, `not_remindable`, `not_for_subtask`, `not_dated`), and the
+    /// `no_count`, `not_remindable`, `not_for_subtask`, `not_dated`,
+    /// `frequency_not_allowed`), and the
     /// field's growth cap or the time's row rule (`fits`) the `invalid` ones,
     /// or the body is one the phone never builds; everything else is taken.
     @Test func theGatesRefuseWhatTheServerRefuses() throws {
@@ -614,7 +730,7 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
                 let limit = growthLimit(cap: EditLimits.anchor, stored: c.item.reminderAnchor)
                 let anchor = cleanAnchor(raw, limit: limit).map(ColumnWrite.set) ?? .clear
                 #expect(fits(ItemEdit.reminder(time: time, anchor: anchor), on: c.item), "\(c.name)")
-            case .reminder?, .priority?, .timesPerDay?, .time?:
+            case .reminder?, .priority?, .timesPerDay?, .time?, .repeats?:
                 // Nothing typed to clean.
                 continue
             case nil:
@@ -626,7 +742,8 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
     /// The optimistic step is the store's end state: the whole decoded item,
     /// so a field the edit must not touch is pinned too (a habit's
     /// `dailyCounts` under a new times a day, the words under a time alone, a
-    /// project block under a new time, the day under every time edit).
+    /// project block under a new time, the day under every time edit, and the
+    /// status, the day and the streak under every repeat edit).
     @Test func editingLandsWhereTheStoreDoes() throws {
         for c in try loadEditWrites().cases where c.refusal == nil && c.isFieldEdit {
             let edit = try #require(c.phoneEdit, "\(c.name): no edit")
@@ -777,9 +894,27 @@ private func fits(_ edit: ItemEdit, on item: Item) -> Bool {
                 "reminderAnchorPlaceholder")
         #expect(same(EditCopy.reminderAnchorHint, words.copy.reminderAnchorHint), "reminderAnchorHint")
         #expect(same(EditCopy.reminderNeedsDate, words.copy.reminderNeedsDate), "reminderNeedsDate")
+        #expect(same(EditCopy.selectAtLeastOneDay, words.copy.selectAtLeastOneDay), "selectAtLeastOneDay")
+        #expect(same(EditCopy.monthlyNote, words.copy.monthlyNote), "monthlyNote")
         #expect(words.streakRun.contains { $0.streak == 0 } && words.streakRun.contains { $0.streak == 1 })
         for run in words.streakRun {
             #expect(streakRunText(run.streak) == run.text, "streak \(run.streak)")
+        }
+    }
+
+    /// The Repeat chip's frequencies, in the web's order and words, and the
+    /// Custom days keys' words, character for character.
+    @Test func theRepeatWordsAreTheWebs() throws {
+        let repeats = try JSONDecoder().decode(EditWritesRepeats.self, from: editWritesData()).repeats
+        #expect(repeats.labels.map(\.frequency) == repeatFrequencyOrder, "REPEAT_FREQUENCY_LABELS' order")
+        for l in repeats.labels {
+            // By scalar, as theCopyIsTheWebs compares.
+            #expect(Array(repeatFrequencyLabel(l.frequency).unicodeScalars) == Array(l.label.unicodeScalars),
+                    "repeatFrequencyLabel(\(l.frequency))")
+        }
+        #expect(repeats.weekdays.count == 7, "WEEKDAY_LABELS")
+        for (day, word) in repeats.weekdays.enumerated() {
+            #expect(Array(weekdayLabel(day).unicodeScalars) == Array(word.unicodeScalars), "weekdayLabel(\(day))")
         }
     }
 
