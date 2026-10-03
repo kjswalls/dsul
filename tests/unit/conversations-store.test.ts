@@ -843,6 +843,42 @@ describe('History', () => {
     expect(store().list.ids).toEqual([id]);
   });
 
+  it('a delete after saving latched off still asks the server for a conversation this browser has seen', async () => {
+    const row = summary({ id: 'c1', title: 'Biopsy results', messageCount: 2 });
+    api.rows.set('c1', row);
+    let unavailable = false;
+    api.answer.list = () => (unavailable ? fail(503, 'unavailable') : { ok: true, value: { conversations: [row], starred: [], nextCursor: null } });
+    await store().ensureLoaded();
+    expect(store().saving).toBe('on');
+    // A transient missing-schema answer on a later refresh latches the session off.
+    unavailable = true;
+    useConversationsStore.setState((s) => ({ list: { ...s.list, fetchedAt: 0 } }));
+    store().refreshIfStale(0);
+    await conversationsSettled();
+    expect(store().saving).toBe('off');
+
+    // The confirm said "removed from all your devices": it is asked for.
+    expect(await store().remove('c1')).toBe(true);
+    expect(api.removes).toEqual(['c1']);
+
+    // And a DELETE the table still cannot answer says so, and puts it back.
+    const row2 = summary({ id: 'c2' });
+    useConversationsStore.setState((s) => ({ summaries: { ...s.summaries, c2: row2 } }));
+    api.answer.remove = () => fail(503, 'unavailable');
+    expect(await store().remove('c2')).toBe(false);
+    expect(api.removes).toEqual(['c1', 'c2']);
+    expect(store().summaries.c2).toEqual(row2);
+  });
+
+  it('with the table missing, a draft whose first save was refused asks the server nothing', async () => {
+    api.answer.appendTurn = () => fail(503, 'unavailable');
+    const id = await sendNew('one');
+    expect(store().saving).toBe('off');
+    expect(await store().remove(id)).toBe(true);
+    expect(api.removes).toEqual([]);
+    expect(store().threads[id]).toBeUndefined();
+  });
+
   it('a delete while the first save is on the wire still asks the server, after the save', async () => {
     const held = deferred<void>();
     api.answer.appendTurn = async () => {

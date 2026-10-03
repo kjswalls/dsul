@@ -1376,7 +1376,14 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       // A draft no save was ever sent for has no row: nothing to ask the
       // server. One whose first save went out may have one, answered or not.
       if (!summary && !thread?.saved && !attempted.has(id)) return true;
-      if (s.saving === 'off') return true;
+      // Saving latched off (a route said `unavailable`) still asks the server
+      // for a row this browser has SEEN: a summary or a saved thread means the
+      // table answered for this conversation, so a transient missing-schema
+      // answer since must not turn "removed from all your devices" into a
+      // local-only delete that comes back on reload. An attempted first save
+      // alone proves nothing there: with the table truly missing it made no
+      // row, and a DELETE would 503 and roll a draft back.
+      if (s.saving === 'off' && !summary && !thread?.saved) return true;
 
       const st = stamp();
       removing.add(id);
