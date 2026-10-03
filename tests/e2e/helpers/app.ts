@@ -85,6 +85,28 @@ export async function waitForAppReady(page: Page): Promise<void> {
   ).toHaveAttribute('data-loaded', 'true', { timeout: 20_000 });
 
   /**
+   * …and the cached → fresh SETTLE is over.
+   *
+   * Every reload in this suite now paints this browser's copy of the last
+   * session first (lib/planner-snapshot.ts), look-only, and the fresh landing
+   * glides each moved row from where the preview drew it to where the fresh
+   * data puts it (lib/settle.ts). `data-loaded="true"` arrives at the START of
+   * that glide, so a click straight after it can be aimed at a row still in
+   * flight — or, where nothing held the old geometry (reduced motion, a scope
+   * too changed to follow), land inside the 250ms landing shield, which
+   * swallows pointer activations on purpose so a click meant for a preview row
+   * never ticks the fresh row now under the cursor. Either way the click is
+   * lost, and the test fails on whatever it asserted next.
+   *
+   * `<html data-planner-settling>` is up for exactly the run plus any shield.
+   * A first visit (no snapshot) never sets it, so this passes at once there.
+   */
+  await expect(
+    page.locator('html'),
+    'the cached → fresh settle (or its landing shield) never finished'
+  ).not.toHaveAttribute('data-planner-settling', { timeout: 5_000 });
+
+  /**
    * …and no full-screen scrim is still eating clicks.
    *
    * components/onboarding/onboarding-tour.tsx renders a `fixed inset-0 z-[100]`
