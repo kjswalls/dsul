@@ -1323,7 +1323,7 @@ const undoFailedCreate = (
   // only place the name can be hiding, so the sentence can be specific.
   toast.error(
     isUniqueViolation(error)
-      ? `Couldn't create “${name}” — a deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
+      ? `Couldn't create “${name}”. A deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
       : `Couldn't create “${name}”. Nothing was saved.`
   );
 };
@@ -1374,7 +1374,7 @@ const undoFailedContainerCreate = (
   // now loose in the braindump. Saying "nothing was saved" would be false.
   toast.error(
     keptItems > 0
-      ? `Couldn't save the ${kind} “${name}”. Its ${keptItems} new ${keptItems === 1 ? 'item was' : 'items were'} kept — ${keptItems === 1 ? "it's" : "they're"} in your braindump.`
+      ? `Couldn't save the ${kind} “${name}”. Its ${keptItems} new ${keptItems === 1 ? 'item was' : 'items were'} kept in your braindump.`
       : `Couldn't save the ${kind} “${name}”. Nothing was saved.`
   );
 };
@@ -1740,8 +1740,8 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: next,
           receipt:
             demoted.length === 1
-              ? `No longer a ${noun} of your ${goal.name} goal — ${why}.`
-              : `No longer a ${noun} of ${demoted.length} goals — ${why}.`,
+              ? `No longer a ${noun} of your ${goal.name} goal: ${why}.`
+              : `No longer a ${noun} of ${demoted.length} goals: ${why}.`,
         };
       };
 
@@ -1829,7 +1829,7 @@ export const usePlannerStore = create<PlannerStore>()(
               : `Every milestone on ${goal.name} is done`,
             {
               description: far
-                ? `Its target is ${formatGoalDay(goal.targetOn!)}. Worth a look — or call it achieved.`
+                ? `Its target is ${formatGoalDay(goal.targetOn!)}. Worth a look, or call it achieved.`
                 : 'Ready to call it achieved?',
               action: {
                 label: 'Mark achieved',

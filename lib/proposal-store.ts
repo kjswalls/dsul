@@ -365,7 +365,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
               // Every operation was refused. Saying "no changes to suggest"
               // would be a lie about a reply that suggested plenty.
               emptyMessage: rejected.length
-                ? "None of those would work here — see why below."
+                ? "None of those would work here. See why below."
                 : 'Those suggestions no longer apply.',
             }
       );
@@ -507,7 +507,7 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
         set({
           ...cleared(),
           status: 'empty',
-          emptyMessage: 'Those items have changed — nothing left to apply.',
+          emptyMessage: 'Those items have changed, so there is nothing left to apply.',
         });
         return 0;
       }

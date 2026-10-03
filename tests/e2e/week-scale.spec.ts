@@ -205,7 +205,7 @@ test.describe('week scale', () => {
     // with them.
     await expect(root.locator('[title]').last()).toHaveAttribute(
       'title',
-      /366px per column — 3 days across the canvas/
+      /366px per column, 3 days across the canvas/
     );
   });
 

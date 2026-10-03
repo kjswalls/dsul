@@ -63,7 +63,7 @@ export function UndoStrip({ className }: { className?: string }) {
         >
           {entry.label}
           {entry.receipt && (
-            <span className="text-muted-foreground"> — {entry.receipt}</span>
+            <span className="text-muted-foreground"> · {entry.receipt}</span>
           )}
         </TypewriterText>
       </div>

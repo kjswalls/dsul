@@ -583,7 +583,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           aria-label={
             multiTarget > 0
               ? // At target a click clears the day; below it a click counts up.
-                `${completed ? 'Reset' : 'Increment'} — ${habitEffectiveCount} of ${multiTarget} complete`
+                `${completed ? 'Reset' : 'Increment'}, ${habitEffectiveCount} of ${multiTarget} complete`
               : completed
                 ? 'Mark incomplete'
                 : 'Mark complete'

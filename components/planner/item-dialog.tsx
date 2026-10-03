@@ -1719,7 +1719,7 @@ function ItemDialogInner({
                   data-testid="item-dialog-container-required"
                 >
                   {config.labelPlural} always belong to a{' '}
-                  {config.form.containerLabel.toLowerCase()} — pick another to move it.
+                  {config.form.containerLabel.toLowerCase()}. Pick another to move it.
                 </p>
               )}
             </div>
@@ -2465,7 +2465,7 @@ function ItemDialogInner({
                       where the sentence is being written, not in a doc. */}
                   <p className="text-muted-foreground mt-1.5 text-[10px]">
                     Optional, and worth it. Something you already do beats a
-                    time — it&apos;s what the reminder will say.
+                    time. The reminder will say what you write here.
                   </p>
                 </div>
                 <ChipOption
@@ -3603,7 +3603,7 @@ function ItemDialogInner({
             <AlertDialogHeader>
               <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
               <AlertDialogDescription>
-                This will reset your streak counter to 0 days. Your completion history stays — days you already checked off remain checked.
+                This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -3630,7 +3630,7 @@ function ItemDialogInner({
               <AlertDialogTitle>Pause until…</AlertDialogTitle>
               <AlertDialogDescription>
                 It comes back on the day you pick, on its own. Nothing is lost
-                meanwhile — your streak and history stay exactly as they are.
+                meanwhile. Your streak and history stay exactly as they are.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="flex justify-center">

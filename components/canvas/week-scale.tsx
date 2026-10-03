@@ -144,8 +144,8 @@ export function WeekScale({ className }: { className?: string }) {
   const explain =
     stop && viewportPx !== null
       ? stop.fits
-        ? `${stop.colPx}px per column — ${daysLabel(stop.days)} across the canvas`
-        : `${stop.colPx}px is as narrow as a column goes — about ${Math.floor(
+        ? `${stop.colPx}px per column, ${daysLabel(stop.days)} across the canvas`
+        : `${stop.colPx}px is as narrow as a column goes. About ${Math.floor(
             visibleDays(stop.colPx, viewportPx, geo)
           )} of ${MAX_WEEK_DAYS} days fit, and the grid scrolls`
       : undefined;
