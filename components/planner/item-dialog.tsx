@@ -93,6 +93,7 @@ import { subscribeClickAway } from '@/lib/click-away';
 import type { ComposerBinding } from '@/lib/rail-store';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
+import { EDIT_COPY } from '@/lib/item-edit';
 import type {
   HabitItem,
   Item,
@@ -3602,9 +3603,7 @@ function ItemDialogInner({
           <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>
               <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.
-              </AlertDialogDescription>
+              <AlertDialogDescription>{EDIT_COPY.resetStreakMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>

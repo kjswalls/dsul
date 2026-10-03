@@ -78,12 +78,13 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 /// lib/grouping.ts), a tick is lib/item-toggle.ts, the item sheet's verbs are
 /// lib/item-verbs.ts (their gates) and the store actions they run (DsulCore
 /// VerbWrites.swift), and its title, notes and Delete are lib/item-edit.ts and
-/// the store's `deleteTask` / `deleteHabit` (DsulCore ItemEdit.swift), so the
-/// phone and the web agree on the same data. Every change here is optimistic
-/// and immediate; when signed in, `sync` then sends it to the server
-/// (PlannerSync). A verb or an edit re-reads its item and asks its gate again
-/// before it writes, whatever the sheet drew; a refusal changes nothing and
-/// sends nothing.
+/// the store's `deleteTask` / `deleteHabit`, Add a subtask the store's
+/// `addTask` and Reset streak its `resetHabitStreak` (DsulCore ItemEdit.swift),
+/// so the phone and the web agree on the same data. Every change here is
+/// optimistic and immediate; when signed in, `sync` then sends it to the
+/// server (PlannerSync). A verb or an edit re-reads its item and asks its gate
+/// again before it writes, whatever the sheet drew; a refusal changes nothing
+/// and sends nothing.
 @Observable @MainActor
 final class SamplePlanner {
     /// Every item, braindump and subtasks included, as the server sent them
@@ -334,10 +335,11 @@ final class SamplePlanner {
     /// task-like row (`order = tasks.length`). The id is made here, so a retry
     /// of the same capture is the same row on the server.
     func capture(_ title: String) {
-        // The route trims as JavaScript does and takes at most 500 UTF-16
-        // units (lib/app-api.ts `CaptureSchema`). Cut by whole characters,
-        // then trimmed again, so a cut can't leave a space the server strips.
-        let clean = jsTrim(clampUTF16(jsTrim(title), 500))
+        // The route trims as JavaScript does and takes at most
+        // `EditLimits.newTitle` UTF-16 units (lib/app-api.ts `CaptureSchema`,
+        // `NEW_TITLE_LIMIT`, new text's one cap). Cut by whole characters, then
+        // trimmed again, so a cut can't leave a space the server strips.
+        let clean = jsTrim(clampUTF16(jsTrim(title), EditLimits.newTitle))
         guard !clean.isEmpty else { return }
         let id = UUID()
         let order = DsulCore.project(items).tasks.count
@@ -374,15 +376,17 @@ final class SamplePlanner {
     }
 
     /// What the web's verbs are handed for `item` on `day`: the day, today,
-    /// the zone, and the item's state there (DsulCore `occurrenceOn`: absent
-    /// when a recurring item doesn't fall on the day, else done, skipped, due
-    /// from today on, or open before it; nil for a one-off).
+    /// the zone, the item's state there (DsulCore `occurrenceOn`: absent when
+    /// a recurring item doesn't fall on the day, else done, skipped, due from
+    /// today on, or open before it; nil for a one-off), and whether Streaks is
+    /// on (`settings.streaksEnabled`, the web's `streaksEnabled()`).
     func verbContext(for item: SampleItem, on day: DayString) -> VerbContext {
         let zone = timeZoneID
         let dateStr = day.description
         let todayStr = today.description
         return VerbContext(dateStr: dateStr, todayStr: todayStr, timeZone: zone,
-                           occurrence: occurrenceOn(item, on: dateStr, today: todayStr, timeZone: zone))
+                           occurrence: occurrenceOn(item, on: dateStr, today: todayStr, timeZone: zone),
+                           streaksEnabled: settings.streaksEnabled)
     }
 
     /// The item writes a server older than `PlannerPayload.writes` takes.
@@ -408,6 +412,7 @@ final class SamplePlanner {
         case .skip, .unskip: return "skip"
         case .pause, .resume: return "pause"
         case .nextDay, .reschedule: return "move"
+        case .resetStreak: return "resetStreak"
         case .delete: return "delete"
         }
     }
@@ -415,9 +420,11 @@ final class SamplePlanner {
     /// May the sheet offer `verb` on `item` in `ctx`? Three answers, all yes:
     /// - the web's gate (DsulCore `verbEligible`, lib/item-verbs.ts);
     /// - the server's own gate where it asks more (lib/app-api.ts): it never
-    ///   skips or carries a subtask, which has no day of its own, and pauses
-    ///   or resumes only what `isPausable` allows. Delete it takes on anything,
-    ///   a subtask included;
+    ///   skips or carries a subtask, which has no day of its own, pauses or
+    ///   resumes only what `isPausable` allows, and resets a streak only on a
+    ///   type that keeps one (`streakCounter`, its `no_streak`), where the
+    ///   web's gate asks only `isHabit`. Delete it takes on anything, a subtask
+    ///   included;
     /// - the server takes the write (`canWrite`).
     func offers(_ verb: VerbID, _ item: SampleItem, _ ctx: VerbContext) -> Bool {
         guard canWrite(verb), verbEligible(verb, item, ctx) else { return false }
@@ -426,14 +433,16 @@ final class SamplePlanner {
         case .skip, .unskip: return isSkippable(item) && !item.isSubtask
         case .nextDay, .reschedule: return !item.isSubtask
         case .pause, .resume: return isPausable(item)
+        case .resetStreak: return caps(for: item).streakCounter
         case .delete: return true
         }
     }
 
     /// Every verb the sheet may offer `item` on its day, in the web's
     /// declaration order (tick, skip, unskip, pause, resume, nextDay,
-    /// reschedule, delete). Which ones the bar shows, and in what slots, is
-    /// the view's.
+    /// reschedule, resetStreak, delete). Which ones the bar shows, and in what
+    /// slots, is the view's; Reset streak is the streak chip's, never the
+    /// bar's or ⋯'s.
     func offeredVerbs(for item: SampleItem, day: SheetDay) -> [VerbID] {
         let ctx = verbContext(for: item, day: day)
         return VerbID.allCases.filter { offers($0, item, ctx) }
@@ -565,6 +574,49 @@ final class SamplePlanner {
         closeSheetIfItsItemIsGone()
     }
 
+    /// Add a subtask: a new task under `parentID`, as the web's Subtasks
+    /// section adds one (lib/planner-store.ts `addTask({ title, parentItemId })`,
+    /// DsulCore `subtaskItem`), which is also the row the server's
+    /// `addSubtask` inserts: a `task` whatever the parent's type, pending,
+    /// unscheduled, and appended after every task-like row (`order` is
+    /// `tasks.length`, which no subtask counts, so the lines of one paste share
+    /// it and list in the order they were added). `title` is cleaned as new
+    /// text is sent (`cleanTitle`: one line, trimmed, at most
+    /// `EditLimits.newTitle` UTF-16 units). The id is made here and goes with
+    /// the write, so a retry is the same row. Behind `canAddSubtask(to:)`.
+    /// Returns the new subtask's id; nil when the gate refuses or the title is
+    /// blank, and then nothing changes and nothing is sent. A pasted list is
+    /// one call a line: each its own write, to the parent's route, in order.
+    @discardableResult
+    func addSubtask(_ parentID: UUID, title: String) -> UUID? {
+        guard let parent = item(parentID), canAddSubtask(to: parent),
+              let clean = cleanTitle(title, limit: EditLimits.newTitle)
+        else { return nil }
+        let id = UUID()
+        let created = subtaskItem(id: id, title: clean, parent: parentID, order: DsulCore.project(items).tasks.count)
+        items.append(created)
+        sync?.enqueue(.addSubtask(id: id, parent: parentID, title: clean),
+                      before: [.item(id): .absent(created: created)])
+        return id
+    }
+
+    /// Reset streak, once the streak popover's confirm is taken: the counter
+    /// to 0 and nothing else (lib/planner-store.ts `resetHabitStreak`, DsulCore
+    /// `resettingStreak`), so the days already ticked stay ticked. Behind
+    /// `offers(.resetStreak)`: a habit with a streak, while Streaks is on, on
+    /// a server that takes it. Dateless, so asked on today. A streak already
+    /// 0 is never offered, and would write nothing, as the server's
+    /// `resetStreakPatch` writes nothing there.
+    func resetStreak(_ id: UUID) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let before = items[i]
+        guard offers(.resetStreak, before, verbContext(for: before, on: today)) else { return }
+        let after = resettingStreak(before)
+        guard after != before else { return }
+        items[i] = after
+        sync?.enqueue(.resetStreak(id: id), snapshot: before)
+    }
+
     /// What `item`'s type can do, and the words it lends the sheet (the
     /// title placeholder, Delete's confirm): lib/item-registry.ts
     /// `getItemTypeConfig` after `hydrateCustomTypes`, so a custom type reads
@@ -577,6 +629,23 @@ final class SamplePlanner {
     /// for the sheet's eyebrow and Delete's words.
     func typeLabel(for item: SampleItem) -> String {
         return DsulCore.typeLabel(item.typeName, labels: typeLabels)
+    }
+
+    /// May a subtask be added under `item`? The server's gate (DsulCore
+    /// `canAddSubtask`, lib/item-edit.ts `subtaskRefusal`): its type grows
+    /// subtasks and it isn't a subtask itself; and the server takes the write
+    /// (`canWrite`). The sheet's "Add a subtask" row shows only then.
+    func canAddSubtask(to item: SampleItem) -> Bool {
+        return DsulCore.canAddSubtask(under: item, caps: caps(for: item)) && canWrite("addSubtask")
+    }
+
+    /// Does `item`'s sheet show the streak chip? Its type keeps a streak
+    /// (`streakCounter`) and Streaks is on (`settings.streaksEnabled`): off,
+    /// the web hides the streak everywhere. Today's rows read
+    /// `settings.streaksEnabled` themselves, since a row already asks
+    /// `isHabit`.
+    func showsStreak(for item: SampleItem) -> Bool {
+        return caps(for: item).streakCounter && settings.streaksEnabled
     }
 
     /// `id`'s subtasks, in stored order: the items whose `parentItemId` is
@@ -827,17 +896,32 @@ final class SamplePlanner {
     /// is drawn where focus isn't, and a refused write is otherwise only a
     /// slot's label quietly turning back. Said here, once, rather than by
     /// `BannerView`, which more than one view draws. An error interrupts
-    /// whatever is being said, such as that slot's new label.
+    /// whatever is being said, such as that slot's new label. The same words
+    /// of the same kind over a banner still up replace it, so its five seconds
+    /// start again, but aren't said again (`speaks`).
     func show(_ text: String, isError: Bool) {
+        let aloud = Self.speaks(text, isError: isError, over: banner)
         let shown = PlannerBanner(text, isError: isError)
         banner = shown
-        var spoken = AttributedString(text)
-        if isError { spoken.accessibilitySpeechAnnouncementPriority = .high }
-        AccessibilityNotification.Announcement(spoken).post()
+        if aloud {
+            var spoken = AttributedString(text)
+            if isError { spoken.accessibilitySpeechAnnouncementPriority = .high }
+            AccessibilityNotification.Announcement(spoken).post()
+        }
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             self?.dismissBanner(shown.id)
         }
+    }
+
+    /// Does a banner of `text` say itself aloud over `shown`, the one up now?
+    /// Not when `shown` already says it, as the same kind: a paste of N lines
+    /// sent offline fails N times, each with "Couldn't reach dsul. Checking
+    /// what was saved…", and N high-priority announcements would each cut off
+    /// the one before. Ticks that fail one after another are said once too.
+    nonisolated static func speaks(_ text: String, isError: Bool, over shown: PlannerBanner?) -> Bool {
+        guard let shown else { return true }
+        return shown.text != text || shown.isError != isError
     }
 
     func dismissBanner(_ id: UUID) {

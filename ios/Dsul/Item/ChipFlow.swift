@@ -4,9 +4,16 @@ import SwiftUI
 /// property field wraps. Each chip is offered the full width and held to it,
 /// so a long one (a reminder's cue words, a long project name) truncates on
 /// its own line instead of running off the sheet.
+///
+/// The lines touch (`lineSpacing` 0): every chip comes in its slot
+/// (`chipSlot()`), which brings 6pt above and below its capsule, so capsules
+/// sit 12pt apart on every line at every text size, whichever chip on a line
+/// is the tallest. The slot is also what gives the streak chip, a button, its
+/// 44pt of height to hit inside its own line; were it the only chip in one,
+/// its line would sit further from the next than the others do.
 struct ChipFlow: Layout {
     var spacing: CGFloat = 6
-    var lineSpacing: CGFloat = 6
+    var lineSpacing: CGFloat = 0
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
         let lines = arrange(subviews, maxWidth: proposal.width)
@@ -104,5 +111,17 @@ extension View {
             .padding(.horizontal, 10)
             .padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color(.secondarySystemFill)))
+    }
+
+    /// A chip's slot in `ChipFlow`: 6pt above and below its capsule, and at
+    /// least 44pt tall, the capsule centred. At the default text size a
+    /// capsule is about 32pt, so the slot is 44pt and a chip that is a button
+    /// is hit over all of it, inside its own line, never overhanging the next.
+    /// At larger sizes the capsule grows and the 6pt stay. Every chip takes
+    /// one, the read-only ones too, so the lines stay evenly spaced.
+    func chipSlot() -> some View {
+        self
+            .padding(.vertical, 6)
+            .frame(minHeight: 44)
     }
 }

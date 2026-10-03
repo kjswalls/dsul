@@ -3,9 +3,9 @@ import Testing
 import DsulCore
 
 // ItemEdit.swift on hand-written text and lists: the cleaners at their limits,
-// JavaScript's trim, the growth caps, and where a failed delete puts things
-// back. The web's own answers for the same functions are in
-// EditWritesFixtureTests.
+// JavaScript's trim, the growth caps, a new subtask and a streak reset, and
+// where a failed delete puts things back. The web's own answers for the same
+// functions are in EditWritesFixtureTests.
 
 /// 00000000-0000-4000-8000-000000000012 for 12.
 private func uuid(_ n: Int) -> UUID {
@@ -123,6 +123,8 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(growthLimit(cap: 500, stored: String(repeating: "😀", count: 300)) == 600)
         #expect(EditLimits.title == 500 && EditLimits.notes == 50_000)
         #expect(EditLimits.outerTitle == 10_000 && EditLimits.outerNotes == 200_000)
+        // New text has nothing stored to grow from: the plain cap.
+        #expect(EditLimits.newTitle == 500)
     }
 }
 
@@ -159,6 +161,109 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(!editAllowed(ItemEdit.notes("x"), on: item, caps: noNotes))
         // A title is every type's.
         #expect(editAllowed(ItemEdit.title("x"), on: item, caps: noNotes))
+    }
+}
+
+@Suite struct SubtaskItemTests {
+    /// Every field the store sets, and nothing else: no date, no bucket, no
+    /// project, no priority, no notes.
+    @Test func itIsAPendingUnscheduledTaskUnderItsParent() {
+        let child = subtaskItem(id: uuid(20), title: "Adapter plug", parent: uuid(3), order: 4)
+        #expect(child == Item(
+            id: uuid(20), type: "task", title: "Adapter plug", status: "pending",
+            parentItemId: "00000000-0000-4000-8000-000000000003", order: 4, isScheduled: false
+        ))
+        #expect(child.customType == nil && child.startDate == nil && child.timeBucket == nil)
+        #expect(child.project == nil && child.priority == nil && child.notes == nil)
+        #expect(child.completedDates.isEmpty && child.skippedDates.isEmpty && child.dailyCounts.isEmpty)
+    }
+
+    /// A custom parent's subtask is a task, as `addTask` makes it, never the
+    /// parent's type, and takes none of the parent's fields: built as the
+    /// planner builds it, from the parent's id and the task count. The
+    /// signature never sees the parent's type, so this holds by construction;
+    /// the store's own answer is `subtask-under-custom` in
+    /// `aNewSubtaskIsTheStoresTask`.
+    @Test func aCustomParentsSubtaskIsATask() {
+        let errand = Item(id: uuid(5), type: "custom", customType: "errand", title: "Post office",
+                          startDate: "2026-10-01", timeBucket: "morning", project: "Home", priority: "high")
+        #expect(canAddSubtask(under: errand, caps: caps(errand.typeName)))
+        let child = subtaskItem(id: uuid(21), title: "Stamps", parent: errand.id, order: project([errand]).tasks.count)
+        #expect(child.type == "task" && child.customType == nil && child.typeName == "task")
+        #expect(!child.isHabit)
+        #expect(child.startDate == nil && child.timeBucket == nil && child.project == nil && child.priority == nil)
+        #expect(child.order == 1)
+        #expect(isDeletedWith(child, parent: errand.id))
+    }
+
+    /// The parent is named by its lowercase id, as Postgres stores it, so the
+    /// cascade and the Subtasks section find the child.
+    @Test func theParentIdIsLowercase() {
+        let parent = UUID(uuidString: "0000000A-0000-4000-8000-00000000000B")!
+        let child = subtaskItem(id: uuid(22), title: "Passport", parent: parent, order: 1)
+        #expect(child.parentItemId == "0000000a-0000-4000-8000-00000000000b")
+        #expect(isDeletedWith(child, parent: parent))
+        #expect(!canAddSubtask(under: child, caps: caps(child.typeName)))
+    }
+
+    /// A new subtask is never one of Today's tasks: the next one's `order`
+    /// counts the same rows.
+    @Test func itIsNotCountedInTheOrder() {
+        let parent = task(1, "Pack for Lisbon")
+        let first = subtaskItem(id: uuid(23), title: "Passport", parent: uuid(1), order: project([parent]).tasks.count)
+        #expect(first.order == 1)
+        #expect(project([parent, first]).tasks.count == 1)
+    }
+}
+
+@Suite struct CanAddSubtaskTests {
+    @Test func aTaskOrACustomItemMayGrowOne() {
+        #expect(canAddSubtask(under: task(1, "Roadmap"), caps: caps("task")))
+        let errand = Item(id: uuid(2), type: "custom", customType: "errand", title: "Post office")
+        #expect(canAddSubtask(under: errand, caps: caps(errand.typeName)))
+    }
+
+    /// A habit grows none (`no_subtasks`), and a subtask none either
+    /// (`nested`), whatever its type's caps say.
+    @Test func aHabitOrASubtaskMayNot() {
+        let habit = Item(id: uuid(1), type: "habit", title: "Floss", repeatFrequency: "daily")
+        #expect(!canAddSubtask(under: habit, caps: caps("habit")))
+        #expect(!canAddSubtask(under: task(2, "Passport", parent: 1), caps: caps("task")))
+    }
+
+    /// An empty `parentItemId` is no parent, as JavaScript's truthiness reads
+    /// it.
+    @Test func anEmptyParentIsNone() {
+        let item = Item(id: uuid(1), title: "Roadmap", parentItemId: "")
+        #expect(canAddSubtask(under: item, caps: caps("task")))
+    }
+}
+
+@Suite struct ResettingStreakTests {
+    private let meds = Item(
+        id: uuid(1), type: "habit", title: "Meds", status: "pending", timeBucket: "morning",
+        repeatFrequency: "daily", streak: 41, currentDayCount: 1,
+        completedDates: ["2026-09-29", "2026-09-30"], skippedDates: ["2026-09-27"], dailyCounts: ["2026-09-30": 1]
+    )
+
+    /// The streak goes to 0 and nothing else moves: the done days, the
+    /// skips and the counts are the habit's history.
+    @Test func onlyTheStreakChanges() {
+        var want = meds
+        want.streak = 0
+        #expect(resettingStreak(meds) == want)
+    }
+
+    /// Nil reads as 0: nothing to reset, so nothing changes, and a missing
+    /// streak isn't written as 0 either, as the server writes nothing there.
+    @Test func zeroOrNoneIsLeftAlone() {
+        var zero = meds
+        zero.streak = 0
+        #expect(resettingStreak(zero) == zero)
+        var none = meds
+        none.streak = nil
+        #expect(resettingStreak(none) == none)
+        #expect(resettingStreak(none).streak == nil)
     }
 }
 

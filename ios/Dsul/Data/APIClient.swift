@@ -68,7 +68,7 @@ enum APIError: Error, Equatable, Sendable {
 /// The app's writes and one read on /api/app (lib/app-api.ts), with a
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
-/// notes and Delete).
+/// notes, Delete, Add a subtask and Reset streak).
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -141,6 +141,23 @@ final class APIClient {
     /// refusal; PlannerSync reads it as landed.
     func delete(id: UUID) async throws {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.delete))
+    }
+
+    /// POST /api/app/items/:parent `addSubtask`: a new subtask under `parent`,
+    /// sent to the parent's route under the phone's own id for it, so a retry
+    /// after a lost response is answered 200 for the same row. The route
+    /// answers 201 for a new row. A 404 is the parent's: gone, or never
+    /// committed.
+    func addSubtask(parent: UUID, id: UUID, title: String) async throws {
+        let body = ItemWriteBody.addSubtask(id: id, title: title)
+        _ = try await send("POST", Self.itemPath(parent), body: try Self.encode(body))
+    }
+
+    /// POST /api/app/items/:id `resetStreak`: the streak counter to 0, the
+    /// completion history kept. A streak already 0 is answered 200 with
+    /// nothing written.
+    func resetStreak(id: UUID) async throws {
+        _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.resetStreak))
     }
 
     /// POST /api/app/items: a capture, under the phone's own id, so a retry

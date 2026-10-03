@@ -61,6 +61,7 @@ private struct BucketCard: View {
                         isNow: planner.isOnToday && PlannerFormat.isNow(startMin: item.startMin,
                                                                        durationMin: item.durationMin,
                                                                        nowMin: nowMin),
+                        streaksEnabled: planner.settings.streaksEnabled,
                         onToggle: {
                             withAnimation(.snappy) { planner.toggle(item.id) }
                         },

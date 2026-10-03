@@ -10,6 +10,10 @@ import Foundation
 // - lib/planner-store.ts `deleteTask` / `deleteHabit` (`deleting`): the item
 //   and, for anything but a habit, its live subtasks, which is also the child
 //   pass lib/app-api.ts `del` makes on the server, in the same order;
+// - lib/planner-store.ts `addTask({title, parentItemId})`, as the Subtasks
+//   section calls it (`subtaskItem`), which is also the row lib/app-api.ts
+//   `addSubtask` inserts; and `resetHabitStreak` (`resettingStreak`), which
+//   lib/item-edit.ts `resetStreakPatch` writes on the server;
 // - the phone's own cleaning before it sends (`cleanTitle`, `cleanNotes`,
 //   `clampUTF16`), which keeps a body inside what the server takes, so a field
 //   never sends a request the route refuses.
@@ -21,9 +25,10 @@ import Foundation
 //
 // Text is measured in UTF-16 units, JavaScript's `length`, which is what every
 // cap on the server counts. What the phone SENDS is the intent (POST
-// /api/app/items/:id `title`, `notes`, `delete`, built by ItemWriteBody.swift),
-// never these items. `Place` and `reinserting` are the phone's alone: they put
-// a deleted item back where it was when its delete fails.
+// /api/app/items/:id `title`, `notes`, `delete`, `addSubtask`, `resetStreak`,
+// built by ItemWriteBody.swift), never these items. `Place` and `reinserting`
+// are the phone's alone: they put a deleted item back where it was when its
+// delete fails.
 
 /// One typed edit, as the phone sends it (lib/item-edit.ts `ItemEdit`). Each
 /// is its own server action, so a server that doesn't list one in `writes`
@@ -43,17 +48,19 @@ public enum ItemEdit: Sendable, Hashable {
     }
 }
 
-/// lib/item-edit.ts `EDIT_LIMITS` and `OUTER_LIMITS`, in UTF-16 units, which
-/// edit-writes.json's `limits` pins. The first are growth-only caps: nothing
-/// else in dsul caps these fields, so stored text may already be longer, and
-/// it may stay as long but never grow (`growthLimit`). The outer ones are what
-/// one request may carry at all; a stored value past them is too long to edit
-/// on the phone.
+/// lib/item-edit.ts `EDIT_LIMITS`, `OUTER_LIMITS` and `NEW_TITLE_LIMIT`, in
+/// UTF-16 units, which edit-writes.json's `limits` pins. The first are
+/// growth-only caps: nothing else in dsul caps these fields, so stored text may
+/// already be longer, and it may stay as long but never grow (`growthLimit`).
+/// The outer ones are what one request may carry at all; a stored value past
+/// them is too long to edit on the phone. `newTitle` is the plain cap on a
+/// title that has nothing stored to grow from: a new subtask, and a capture.
 public enum EditLimits {
     public static let title = 500
     public static let notes = 50_000
     public static let outerTitle = 10_000
     public static let outerNotes = 200_000
+    public static let newTitle = 500
 }
 
 /// The longest a field may grow to: `cap`, or what is stored when that is
@@ -64,9 +71,10 @@ public func growthLimit(cap: Int, stored: String?) -> Int {
 }
 
 /// What `String.prototype.trim` strips: ECMAScript's WhiteSpace and
-/// LineTerminator. Not Foundation's `.whitespacesAndNewlines`, which keeps
+/// LineTerminator, which is also a JavaScript regex's `\s` (BulkLines.swift
+/// reads it there). Not Foundation's `.whitespacesAndNewlines`, which keeps
 /// U+FEFF and strips U+0085.
-private func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
     switch scalar.value {
     case 0x0009...0x000D, 0x0020, 0x00A0, 0x1680, 0x2000...0x200A,
          0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF:
@@ -160,6 +168,38 @@ public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
         let notes = jsTrim(raw ?? "")
         next.notes = notes.isEmpty ? nil : notes
     }
+    return next
+}
+
+// MARK: - Add a subtask, Reset streak
+
+/// lib/planner-store.ts `addTask({ title, parentItemId })`, as the Subtasks
+/// section calls it (components/planner/item-detail-sections.tsx `addSubtask`),
+/// which is also the row lib/app-api.ts `addSubtask` inserts: a `task` whatever
+/// the parent's type (a custom parent's subtask included), pending, unscheduled
+/// (no bucket, so `isScheduled` is false), at `order`, naming its parent by the
+/// lowercase id Postgres stores. Nothing else is set, and nothing is inherited
+/// from the parent: no date, no project, no priority. `title` is already
+/// cleaned (`cleanTitle` with `EditLimits.newTitle`). `order` is the web's
+/// `get().tasks.length`, the count of task-like items that aren't subtasks
+/// (`project(items).tasks.count`); the server counts the same rows
+/// (`nextTaskOrder`).
+public func subtaskItem(id: UUID, title: String, parent: UUID, order: Int) -> Item {
+    return Item(
+        id: id, type: "task", title: title, status: "pending",
+        parentItemId: parent.uuidString.lowercased(), order: order, isScheduled: false
+    )
+}
+
+/// lib/planner-store.ts `resetHabitStreak`: the streak counter to 0 and nothing
+/// else. `completedDates` and `dailyCounts` are completion history and survive
+/// it, as the confirm's words promise. A streak already 0 (or never stored) is
+/// 0 after, which is what the server writes: lib/item-edit.ts
+/// `resetStreakPatch` answers `{}` there, and the item is unchanged.
+public func resettingStreak(_ item: Item) -> Item {
+    guard (item.streak ?? 0) != 0 else { return item }
+    var next = item
+    next.streak = 0
     return next
 }
 

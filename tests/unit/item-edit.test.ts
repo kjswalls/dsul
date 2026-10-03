@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EDIT_COPY,
   EDIT_LIMITS,
+  NEW_TITLE_LIMIT,
   OUTER_LIMITS,
   cleanNotes,
   editPatch,
   editRefusal,
   editShapeFromRow,
+  resetStreakPatch,
+  resetStreakRefusal,
+  streakRunText,
+  subtaskRefusal,
   withinGrowthLimit,
   type EditShape,
 } from '@/lib/item-edit';
@@ -75,6 +81,17 @@ describe('editShapeFromRow', () => {
     expect(
       editShapeFromRow({ id: ID, type: 'task', parent_item_id: 'p', title: 'Call', notes: null }),
     ).toEqual({ id: ID, type: 'task', parentItemId: 'p', title: 'Call', notes: null });
+  });
+
+  it('carries the streak when it was read, null included', () => {
+    expect(editShapeFromRow({ id: ID, type: 'habit', parent_item_id: null, streak: 41 })).toEqual({
+      id: ID,
+      type: 'habit',
+      parentItemId: null,
+      streak: 41,
+    });
+    expect(editShapeFromRow({ id: ID, type: 'habit', parent_item_id: null, streak: null }).streak).toBeNull();
+    expect('streak' in editShapeFromRow({ id: ID, type: 'habit', parent_item_id: null })).toBe(false);
   });
 });
 
@@ -154,5 +171,59 @@ describe('the limits', () => {
   it('lets a request carry more than any cap allows to grow to, so stored text can come back', () => {
     expect(OUTER_LIMITS.title).toBeGreaterThan(EDIT_LIMITS.title);
     expect(OUTER_LIMITS.notes).toBeGreaterThan(EDIT_LIMITS.notes);
+  });
+});
+
+describe('Add a subtask', () => {
+  it('goes under a task or a custom item', () => {
+    expect(subtaskRefusal(shape(), task)).toBeNull();
+    expect(subtaskRefusal(shape({ type: 'errand' }), getItemTypeConfig('errand'))).toBeNull();
+  });
+
+  it('is refused on a habit, which holds no subtasks', () => {
+    expect(subtaskRefusal(shape({ type: 'habit' }), habit)).toEqual({ code: 'no_subtasks', status: 400 });
+  });
+
+  it('is refused under a subtask, as a 409: one level is all there is', () => {
+    expect(subtaskRefusal(shape({ parentItemId: ID }), task)).toEqual({ code: 'nested', status: 409 });
+  });
+
+  it('caps new text at 500, the plain cap', () => {
+    expect(NEW_TITLE_LIMIT).toBe(500);
+  });
+});
+
+describe('Reset streak', () => {
+  it('is a habit’s, and no task’s', () => {
+    expect(resetStreakRefusal(habit)).toBeNull();
+    expect(resetStreakRefusal(task)).toEqual({ code: 'no_streak', status: 400 });
+    expect(resetStreakRefusal(getItemTypeConfig('errand'))).toEqual({ code: 'no_streak', status: 400 });
+  });
+
+  it('writes the counter alone, back to 0', () => {
+    expect(resetStreakPatch(shape({ type: 'habit', streak: 41 }))).toEqual({ streak: 0 });
+  });
+
+  it('writes nothing at 0, at null, or when the streak was not read', () => {
+    expect(resetStreakPatch(shape({ type: 'habit', streak: 0 }))).toEqual({});
+    expect(resetStreakPatch(shape({ type: 'habit', streak: null }))).toEqual({});
+    expect(resetStreakPatch(shape({ type: 'habit' }))).toEqual({});
+  });
+});
+
+describe('the shared sentences', () => {
+  it('are the web’s words, character for character', () => {
+    expect(EDIT_COPY).toEqual({
+      resetStreakMessage:
+        'This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.',
+      subtaskPlaceholder: 'Add subtask\u2026',
+      subtaskPasteCapped: 'Added the first 500 subtasks. The paste had more.',
+    });
+  });
+
+  it('say how long a streak runs, as the flame’s tooltip does', () => {
+    expect(streakRunText(0)).toBe('No streak yet');
+    expect(streakRunText(1)).toBe('1 day in a row');
+    expect(streakRunText(2)).toBe('2 days in a row');
   });
 });

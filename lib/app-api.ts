@@ -10,6 +10,7 @@ import {
   fetchProjects,
   fetchRoutines,
   fetchSeasons,
+  fetchUserExtensions,
   isMissingColumnError,
   loadPlannerData,
   setItemCompletion,
@@ -18,7 +19,17 @@ import {
   type PlannerData,
 } from './db';
 import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
-import { editPatch, editRefusal, editShapeFromRow, OUTER_LIMITS } from './item-edit';
+import {
+  editPatch,
+  editRefusal,
+  editShapeFromRow,
+  NEW_TITLE_LIMIT,
+  OUTER_LIMITS,
+  resetStreakPatch,
+  resetStreakRefusal,
+  subtaskRefusal,
+} from './item-edit';
+import { EXT_STREAKS, resolveEnabled } from './extension-registry';
 import { isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { isRecurring } from './recurrence';
@@ -40,14 +51,14 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * WRITES ARE INTENTS, NEVER ARRAYS. Each thing the phone does (capture; tick,
  * skip or unskip a day; drop a braindump row on an hour; carry an item to
  * another day; pause or resume one; retitle it, rewrite its notes or delete
- * it) is one verb here that does what the web's own store action does for the
- * same gesture, through the same lib/db.ts calls. Nothing accepts an absolute
- * completedDates, skippedDates or dailyCounts: the phone reads a 400-day
- * window, and an array written back from a window deletes what the window did
- * not show. Nor is there a generic `edit`: each field is its own action, so a
- * server that doesn't take one refuses it (400) rather than dropping the key
- * and answering 200, and the phone hides any editor whose action `writes`
- * doesn't list.
+ * it; add a subtask under it, reset its streak) is one verb here that does
+ * what the web's own store action does for the same gesture, through the same
+ * lib/db.ts calls. Nothing accepts an absolute completedDates, skippedDates or
+ * dailyCounts: the phone reads a 400-day window, and an array written back
+ * from a window deletes what the window did not show. Nor is there a generic
+ * `edit`: each field is its own action, so a server that doesn't take one
+ * refuses it (400) rather than dropping the key and answering 200, and the
+ * phone hides any editor whose action `writes` doesn't list.
  *
  * WEBHOOKS MATCH THE BROWSER UI, WHICH FIRES NONE. The store never passes a
  * userId to updateItem or deleteItem (planner-store.ts updateItemAction,
@@ -96,7 +107,7 @@ export const CaptureSchema = z.object({
     .string()
     .regex(UUID, 'expected a uuid')
     .transform((id) => id.toLowerCase()),
-  title: z.string().trim().min(1).max(500),
+  title: z.string().trim().min(1).max(NEW_TITLE_LIMIT),
 });
 
 /**
@@ -153,6 +164,19 @@ const ItemWriteActions = z.discriminatedUnion('action', [
     })
     .strict(),
   z.object({ action: z.literal('delete') }).strict(),
+  // A new subtask under this item, with the phone's own id, so a retry is the
+  // same row. New text, so the plain cap: there is nothing stored to grow from.
+  z
+    .object({
+      action: z.literal('addSubtask'),
+      id: z
+        .string()
+        .regex(UUID, 'expected a uuid')
+        .transform((id) => id.toLowerCase()),
+      title: z.string().trim().min(1).max(NEW_TITLE_LIMIT),
+    })
+    .strict(),
+  z.object({ action: z.literal('resetStreak') }).strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -209,6 +233,12 @@ export interface AppPlannerPayload {
      * without migration 056), so the phone leaves its icon as it is.
      */
     appIcon: AppIcon | null;
+    /**
+     * The Streaks extension (lib/extension-registry.ts EXT_STREAKS, on unless
+     * the user turned it off): off hides the sheet's streak chip and the flame
+     * on Today's rows. Absent, from an older server, reads as on.
+     */
+    streaksEnabled: boolean;
   };
   /**
    * The item-write intents this server takes (ITEM_WRITES). The phone hides
@@ -267,6 +297,22 @@ async function readSettings(userId: string, client: Client): Promise<SettingsRow
   return result.data as SettingsRow | null;
 }
 
+/**
+ * Whether the Streaks extension is on, as the web's gate reads it
+ * (lib/extension-gates.ts streaksEnabled): the user's row, else the manifest's
+ * default. fetchUserExtensions answers null for a missing table and rethrows
+ * anything else, which is caught here: a flame shown by mistake costs less
+ * than a planner that won't load.
+ */
+async function readStreaksEnabled(userId: string, client: Client): Promise<boolean> {
+  try {
+    return resolveEnabled((await fetchUserExtensions(userId, client)) ?? {}, EXT_STREAKS);
+  } catch (err) {
+    console.error('[app/planner] extensions read failed:', err instanceof Error ? err.message : err);
+    return resolveEnabled({}, EXT_STREAKS); // the manifest default, true
+  }
+}
+
 /** The web's rule (migration 056): an unknown slug is Aurora, null is unchosen. */
 function appIconFrom(value: string | null | undefined): AppIcon | null {
   if (value == null) return null;
@@ -312,9 +358,10 @@ export async function getPlanner(req: Request): Promise<Response> {
     // 400-day completion window) and cannot drift from what the web shows. It
     // falls back to the per-table read rather than answering 503 on a missing
     // RPC, so its module-level latch can slow an instance but never fail one.
-    const [data, settings] = await Promise.all([
+    const [data, settings, streaksEnabled] = await Promise.all([
       loadPlannerData(userId, () => perTable(userId, client), client),
       readSettings(userId, client),
+      readStreaksEnabled(userId, client),
     ]);
 
     const payload: AppPlannerPayload = {
@@ -328,6 +375,7 @@ export async function getPlanner(req: Request): Promise<Response> {
         weekStartDay: weekStartDayFrom(settings?.week_start_day),
         timeFormat: timeFormatFrom(settings?.time_format),
         appIcon: appIconFrom(settings?.app_icon),
+        streaksEnabled,
       },
       writes: ITEM_WRITES,
       items: data.items,
@@ -365,16 +413,12 @@ export async function postCapture(req: Request): Promise<Response> {
   if (body instanceof Response) return body;
   const { id, title } = body;
 
-  // `order` is the web's `tasks.length`: every live task-like row that is not
-  // a subtask, which is the store's `tasks` projection.
-  const { count, error: countError } = await client
-    .from('items')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .neq('type', 'habit')
-    .is('parent_item_id', null)
-    .is('deleted_at', null);
-  if (countError) return dbErrorResponse(countError, 'app/items');
+  let order: number;
+  try {
+    order = await nextTaskOrder(client, userId);
+  } catch (err) {
+    return dbErrorResponse(err, 'app/items');
+  }
 
   const item: TaskItem = {
     type: 'task',
@@ -382,7 +426,7 @@ export async function postCapture(req: Request): Promise<Response> {
     title,
     status: 'pending',
     isScheduled: false,
-    order: count ?? 0,
+    order,
   };
 
   try {
@@ -392,6 +436,23 @@ export async function postCapture(req: Request): Promise<Response> {
     return dbErrorResponse(err, 'app/items');
   }
   return NextResponse.json({ ok: true, id }, { status: 201 });
+}
+
+/**
+ * The `order` the web's addTask gives a new task: `tasks.length`, every live
+ * task-like row that is not a subtask, which is the store's `tasks`
+ * projection. A capture and a new subtask both take it. Throws a failed count.
+ */
+async function nextTaskOrder(client: Client, userId: string): Promise<number> {
+  const { count, error } = await client
+    .from('items')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .neq('type', 'habit')
+    .is('parent_item_id', null)
+    .is('deleted_at', null);
+  if (error) throw error;
+  return count ?? 0;
 }
 
 async function captureRetry(client: Client, id: string): Promise<Response> {
@@ -426,6 +487,7 @@ const WRITE_ROW_COLUMNS =
 const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   title: 'title',
   notes: 'notes',
+  resetStreak: 'streak',
 };
 
 interface WriteRow {
@@ -445,6 +507,7 @@ interface WriteRow {
   /** EDIT_COLUMNS: present only when the action read it. */
   title?: string | null;
   notes?: string | null;
+  streak?: number | null;
 }
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -502,6 +565,8 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   title     the title, typed (the dialog's title field → updateTask / updateHabit)
  *   notes     the notes, typed or cleared (the dialog's notes field, likewise)
  *   delete    Delete (deleteTask, with its subtasks / deleteHabit)
+ *   addSubtask  a new subtask, typed (SubtasksSection → addTask) or one line of a paste (→ addTasksBulk)
+ *   resetStreak Reset streak (resetHabitStreak)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -568,6 +633,10 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
         return await edit(ctx, body);
       case 'delete':
         return await del(client, userId, id, row.type);
+      case 'addSubtask':
+        return await addSubtask(ctx, body);
+      case 'resetStreak':
+        return await resetStreak(ctx);
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');
@@ -790,6 +859,99 @@ async function edit(ctx: WriteContext, body: IntentBody<'title' | 'notes'>): Pro
   const refusal = editRefusal(shape, body, config);
   if (refusal) return refused(refusal.code, refusal.status);
   const patch = editPatch(shape, body);
+  if (Object.keys(patch).length === 0) return ok();
+  await updateItem(id, type, patch, undefined, client);
+  return ok();
+}
+
+/**
+ * `addSubtask`: the web's new subtask, SubtasksSection's addTask({title,
+ * parentItemId}), under the item this route names. A `task` even under a
+ * custom item, pending and unscheduled, with nothing of its parent's
+ * inherited: the store's addTask with no bucket, as capture is.
+ *
+ * `order` is capture's (nextTaskOrder), the web's `tasks.length`, which a
+ * subtask doesn't count itself in. A pasted list arrives as one add per line,
+ * so its subtasks share that order and list in the order they were inserted
+ * (load_planner sorts by order, then created_at); the web's addTasksBulk writes
+ * base+i in one INSERT instead. Same list, either way.
+ *
+ * Idempotent by the phone's id, as capture is (addSubtaskRetry). And the parent
+ * is read again once the child is in: one deleted on another device between
+ * the two reads would leave a live child under a parent in the Trash, out of
+ * every view, so the child follows it there and the answer is 409
+ * `parent_gone`.
+ */
+async function addSubtask(ctx: WriteContext, body: IntentBody<'addSubtask'>): Promise<Response> {
+  const { userId, client, id, config, row } = ctx;
+  const refusal = subtaskRefusal(editShapeFromRow(row), config);
+  if (refusal) return refused(refusal.code, refusal.status);
+
+  const order = await nextTaskOrder(client, userId);
+  const child: TaskItem = {
+    type: 'task',
+    id: body.id,
+    title: body.title,
+    status: 'pending',
+    isScheduled: false,
+    order,
+    parentItemId: id,
+  };
+  try {
+    await createItem(userId, child, client, { notify: false });
+  } catch (err) {
+    if (errorCode(err) === '23505') return addSubtaskRetry(client, body.id, id);
+    throw err;
+  }
+
+  const { data, error } = await client
+    .from('items')
+    .select('id')
+    .eq('id', id)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) {
+    await deleteItem(body.id, 'task', undefined, client);
+    return refused('parent_gone', 409);
+  }
+  return NextResponse.json({ ok: true, id: body.id }, { status: 201 });
+}
+
+/**
+ * A new subtask whose id is taken: the first try landed when the row under it
+ * is this user's live task under this parent, and the retry answers 200.
+ * Anything else is a conflict, said no more about than capture's
+ * (captureRetry): another user's row is invisible under RLS.
+ */
+async function addSubtaskRetry(client: Client, childId: string, parentId: string): Promise<Response> {
+  const { data, error } = await client
+    .from('items')
+    .select('id, type, parent_item_id, deleted_at')
+    .eq('id', childId)
+    .maybeSingle();
+  if (error) throw error;
+  const found = data as { type?: string; parent_item_id?: string | null; deleted_at?: string | null } | null;
+  if (found && found.type === 'task' && found.parent_item_id === parentId && found.deleted_at == null) {
+    return NextResponse.json({ ok: true, id: childId }, { status: 200 });
+  }
+  return refused('conflict', 409);
+}
+
+/**
+ * `resetStreak`: Reset streak, the store's resetHabitStreak, through
+ * lib/item-edit.ts. The counter alone (habitUpdatesToRow writes `streak` and
+ * nothing else), never completed_dates or daily_counts, the completion history
+ * a reset keeps. A streak already 0 is 200 with no write and no event. The
+ * Streaks extension isn't asked, as the store doesn't ask it: the phone hides
+ * the control when it is off.
+ */
+async function resetStreak(ctx: WriteContext): Promise<Response> {
+  const { client, id, type, config, row } = ctx;
+  const refusal = resetStreakRefusal(config);
+  if (refusal) return refused(refusal.code, refusal.status);
+  const patch = resetStreakPatch(editShapeFromRow(row));
   if (Object.keys(patch).length === 0) return ok();
   await updateItem(id, type, patch, undefined, client);
   return ok();

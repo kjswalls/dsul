@@ -1,12 +1,17 @@
 import Foundation
 
-// The JSON body of POST /api/app/items/:id for the item sheet's edits and its
-// Delete, as lib/app-api.ts `ItemWriteActions` takes them:
+// The JSON body of POST /api/app/items/:id for the item sheet's edits, its
+// Delete, Add a subtask and Reset streak, as lib/app-api.ts `ItemWriteActions`
+// takes them:
 // - `{"action":"title","title":…}`;
 // - `{"action":"notes","notes":…}`, where clearing sends `"notes":null`, never
 //   a missing key: the route's schema is `.nullable()`, not `.optional()`, so
 //   a body without the key is refused;
-// - `{"action":"delete"}`.
+// - `{"action":"delete"}`;
+// - `{"action":"addSubtask","id":…,"title":…}`, sent to the PARENT's route,
+//   with the new subtask's id, lowercase (the route lowercases it too, so the
+//   parsed body is what was sent);
+// - `{"action":"resetStreak"}`.
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -22,17 +27,25 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
     case edit(ItemEdit)
     /// Delete: the item, and, unless it is a habit, its subtasks.
     case delete
+    /// A new subtask under the item the route names: the phone's own id for
+    /// it, and its title, already cleaned (`cleanTitle` with
+    /// `EditLimits.newTitle`).
+    case addSubtask(id: UUID, title: String)
+    /// Reset streak: the counter to 0, the completion history kept.
+    case resetStreak
 
     /// The route's `action`, which is also the name `writes` lists.
     public var action: String {
         switch self {
         case .edit(let edit): edit.action
         case .delete: "delete"
+        case .addSubtask: "addSubtask"
+        case .resetStreak: "resetStreak"
         }
     }
 
     private enum Key: String, CodingKey {
-        case action, title, notes
+        case action, id, title, notes
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -47,7 +60,10 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
             } else {
                 try c.encodeNil(forKey: .notes)
             }
-        case .delete:
+        case .addSubtask(let id, let title):
+            try c.encode(id.uuidString.lowercased(), forKey: .id)
+            try c.encode(title, forKey: .title)
+        case .delete, .resetStreak:
             break
         }
     }

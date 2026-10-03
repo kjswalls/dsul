@@ -5,9 +5,9 @@ import DsulCore
 // The web's own answers for lib/item-verbs.ts, checked against ItemVerbs.swift.
 // tests/unit/day-fixtures.test.ts asks the real `ITEM_VERBS` for each of the
 // sheet's verbs (its gate, label, and the carry's detail and landing day) per
-// item, day, today, zone and occurrence, and `eligibleVerbs` in order, then
-// writes tests/fixtures/day/verbs.json. Never edit the JSON by hand: regenerate
-// it from the Vitest side (UPDATE_FIXTURES=1).
+// item, day, today, zone, occurrence and Streaks switch, and `eligibleVerbs`
+// in order, then writes tests/fixtures/day/verbs.json. Never edit the JSON by
+// hand: regenerate it from the Vitest side (UPDATE_FIXTURES=1).
 
 /// One verb's answer. `detail` and `target` are the carry's only.
 private struct VerbAnswer: Decodable, Sendable {
@@ -26,6 +26,9 @@ private struct VerbsCase: Decodable, Sendable {
     /// What the caller knew: an occurrence, "absent", or null for unknown.
     /// Taken as given, never recomputed.
     let occurrence: String?
+    /// The Streaks extension, as lib/extension-gates.ts `streaksEnabled()`
+    /// answered it for the case.
+    let streaksEnabled: Bool
     let verbs: [String: VerbAnswer]
     let eligible: [String]
 }
@@ -53,13 +56,16 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
     throw FixtureError.notFound("\(relative) above \(here)")
 }
 
-/// The case's context, its occurrence read as given.
+/// The case's context, its occurrence and Streaks switch read as given.
 private func context(_ c: VerbsCase) throws -> VerbContext {
     var occurrence: Occurrence?
     if let raw = c.occurrence {
         occurrence = try #require(Occurrence(rawValue: raw), "\(c.name): unknown occurrence \(raw)")
     }
-    return VerbContext(dateStr: c.dateStr, todayStr: c.todayStr, timeZone: c.timeZone, occurrence: occurrence)
+    return VerbContext(
+        dateStr: c.dateStr, todayStr: c.todayStr, timeZone: c.timeZone, occurrence: occurrence,
+        streaksEnabled: c.streaksEnabled
+    )
 }
 
 @Suite struct ItemVerbsFixtureTests {
@@ -78,6 +84,26 @@ private func context(_ c: VerbsCase) throws -> VerbContext {
         #expect(deletes.allSatisfy { $0 }, "delete is always eligible")
         #expect(cases.contains { $0.occurrence == nil })
         #expect(cases.contains { $0.occurrence == "absent" })
+    }
+
+    /// Reset streak is declared after the ported verbs and before Delete
+    /// (`braindump` before it and `leaveProjectBlock` after it aren't
+    /// ported), so it sits just ahead of Delete, here and in every list the
+    /// web answers with it.
+    @Test func resetStreakComesJustBeforeDelete() throws {
+        let all = VerbID.allCases
+        let reset = try #require(all.firstIndex(of: .resetStreak))
+        #expect(all.index(after: reset) == all.firstIndex(of: .delete))
+        #expect(all.firstIndex(of: .reschedule).map { all.index(after: $0) } == reset)
+        let cases = try loadFixture().cases
+        for c in cases {
+            if let i = c.eligible.firstIndex(of: VerbID.resetStreak.rawValue) {
+                #expect(Array(c.eligible[(i + 1)...]) == [VerbID.delete.rawValue], "\(c.name): just before delete")
+            }
+        }
+        // The extension's switch decides it: the same habit both ways.
+        #expect(cases.contains { $0.streaksEnabled && $0.verbs[VerbID.resetStreak.rawValue]?.eligible == true })
+        #expect(cases.contains { !$0.streaksEnabled && $0.item.isHabit && ($0.item.streak ?? 0) > 0 })
     }
 
     /// `ITEM_VERBS` declares delete last, so every eligible list ends with it,
@@ -167,6 +193,27 @@ private func context(_ c: VerbsCase) throws -> VerbContext {
         #expect(!isTaskLike(Item(id: id, type: "habit", title: "H")))
     }
 
+    /// Reset streak wants a habit with a streak above 0, and the Streaks
+    /// extension on. A context that doesn't say has it on, its default.
+    @Test func resetStreakAsksForAStreakWithStreaksOn() {
+        let on = VerbContext(dateStr: "2026-10-02", todayStr: "2026-10-02", timeZone: "UTC")
+        let off = VerbContext(dateStr: "2026-10-02", todayStr: "2026-10-02", timeZone: "UTC", streaksEnabled: false)
+        #expect(on.streaksEnabled)
+        let meds = Item(id: id, type: "habit", title: "Meds", repeatFrequency: "daily", streak: 41)
+        #expect(verbEligible(.resetStreak, meds, on))
+        #expect(!verbEligible(.resetStreak, meds, off))
+        #expect(verbLabel(.resetStreak, meds, on) == "Reset streak")
+        #expect(verbDetail(.resetStreak, meds, on) == nil)
+        var zero = meds
+        zero.streak = 0
+        #expect(!verbEligible(.resetStreak, zero, on))
+        var none = meds
+        none.streak = nil
+        #expect(!verbEligible(.resetStreak, none, on))
+        // Only a habit keeps a streak the verb resets.
+        #expect(!verbEligible(.resetStreak, Item(id: id, title: "T", streak: 3), on))
+    }
+
     /// Delete asks nothing of the item: a cancelled task, a day a habit
     /// doesn't fall on and a paused item may all be deleted.
     @Test func deleteTakesAnything() {
@@ -188,5 +235,10 @@ private func context(_ c: VerbsCase) throws -> VerbContext {
         #expect(ctx.dateStr == "2026-10-08")
         #expect(ctx.todayStr == "2026-10-02")
         #expect(ctx.occurrence == nil)
+        #expect(ctx.streaksEnabled)
+        let off = VerbContext(
+            day: DayString("2026-10-08")!, today: DayString("2026-10-02")!, timeZone: "UTC", streaksEnabled: false
+        )
+        #expect(!off.streaksEnabled)
     }
 }

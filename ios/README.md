@@ -3,9 +3,9 @@
 A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
 and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
 the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
-and notes, and Delete are saved to the server. "Try with sample data" on the
-sign-in screen opens a made-up day instead, which needs no account and whose
-changes last until the app quits.
+and notes, Delete, a new subtask and a streak reset are saved to the server.
+"Try with sample data" on the sign-in screen opens a made-up day instead,
+which needs no account and whose changes last until the app quits.
 
 Today shows one day in three layouts: List (filter chips, then sections per
 routine and per project), Buckets (Morning, Afternoon, Evening, Anytime) and
@@ -18,8 +18,10 @@ Tap an item anywhere (a row, a block on the grid, a braindump row, a search
 result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
 Pause until, Resume, whichever apply), and Delete behind ⋯. Tap the title or
-the notes to edit them in place; the chips are read-only for now. A tap on a
-row's circle still just ticks it.
+the notes to edit them in place; the chips are read-only for now, except the
+streak chip, which opens this week and Reset streak. Add a subtask from the
+Subtasks section, one at a time or by pasting a list. A tap on a row's circle
+still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
@@ -227,10 +229,11 @@ three bets), and no sample note runs past four lines.
 
 The hosted tests pin what each field sends and what Delete says, but not how
 typing feels. Check on the iPhone, on the sample or signed in once the
-server's `title`, `notes` and `delete` writes are deployed (against an older
-server the title and notes stay text, and ⋯ has no Delete); a check that
-needs one or the other says so. The sample comes back whole each time the app
-starts, so relaunch it to undo a delete.
+server's `title`, `notes`, `delete`, `addSubtask` and `resetStreak` writes are
+deployed (against an older server the title and notes stay text, ⋯ has no
+Delete, there is no Add a subtask row and the streak popover has no Reset); a
+check that needs one or the other says so. The sample comes back whole each
+time the app starts, so relaunch it to undo a delete or a reset.
 
 1. **Title.**
    - Tap the title: the keyboard rises, the sheet goes full height, the bar
@@ -267,22 +270,77 @@ starts, so relaunch it to undo a delete.
      showing the subtask's page as it leaves.
    - A habit's ⋯ is Delete habit alone, and so is a paused item's.
 
-Checks 5 to 8 (adding subtasks, Reset streak, the chips) come with the PRs
-that add them, so the numbers match memory/plans/ios-app.md.
+5. **Add a subtask.**
+   - On a task with none (Call the dentist on the sample), "Subtasks" and then
+     "Add a subtask" show under the chips. Tap anywhere along that row, right
+     of the words too. Type and press Return five times: five subtasks, each
+     Return adding exactly one, the keyboard stays, and the field stays in
+     view above it.
+   - Press Return on the empty field: the keyboard goes, and the row reads
+     "Add a subtask" again.
+   - Copy a three-line bulleted list (Notes: "- Eggs", "- Milk", "- Bread")
+     and paste it into the field: three subtasks, without the bullets.
+     Anything you had typed stays in the field.
+   - Type a few letters, then drag the content down until the keyboard goes:
+     the letters become a subtask, and the row comes back.
+   - Type a few letters and switch apps, then come back: nothing was added,
+     and the letters are still in the field.
+   - A habit's sheet, and a subtask's page, have no "Add a subtask" row.
+   - Signed in: the web shows the new subtasks under the task, in the order
+     added.
+6. **Reset streak.**
+   - Tap Meds' streak chip: a popover with this week's days and "41 days in a
+     row", then Reset streak. Tap just above, then just below, the chip's
+     capsule: the popover still opens.
+   - Reset streak → Reset streak in the confirm: the popover closes, the chip
+     reads 0, and this week's done days are still done.
+   - Open it again at 0: "No streak yet", and no Reset streak.
+   - Signed in, with Streaks off on the web (Settings → Extensions) and a pull
+     to refresh: no streak chip, and no flame or count on Today's rows, in
+     List or Buckets. Turn it back on and refresh: both are back.
+   - At the largest text size the chip opens a sheet, and Reset's confirm
+     still appears.
+   - Where the chips wrap onto two or more lines (a larger text size makes
+     Meds' or Draft Q4 roadmap's wrap), the gaps between the lines are even,
+     and the first line sits as far under the notes as before.
+
+Checks 7 and 8 (the chips) come with the PRs that add them, so the numbers
+match memory/plans/ios-app.md.
 
 9. **Offline** (signed in only: the sample sends nothing, so nothing fails).
    With Airplane Mode and Wi-Fi off:
    - change a title: the banner shows, and the title turns back;
    - delete a task with subtasks: it comes back, with its subtasks, in its
-     place, and the banner ends "so that change was undone".
+     place, and the banner ends "so that change was undone";
+   - add a subtask: it goes again, with the banner;
+   - paste three lines into Add a subtask: all three go again, and VoiceOver,
+     if on, says "Couldn't reach dsul. Checking what was saved…" once, not
+     three times, then "Couldn't reach dsul, so that change was undone."
+     once;
+   - on a habit of your own with a streak, not yet done today: reset its
+     streak. It turns back, with the banner. Then, back online, tick it today:
+     the count is one more than before the reset, and matches the web.
 10. **VoiceOver.**
     - The title reads as "Title", a text field and a heading; the notes, and
       "Notes" where there are none, as a button with the hint "Edits the
       notes".
     - The rotor's Actions on a subtask row include Delete.
     - Delete asks to confirm, and once done VoiceOver says "Task deleted".
+    - The streak chip reads "Streak 41; this week: N done" (N depends on the
+      weekday), a button, with the hint "Shows this week, and Reset streak".
+      Reset streak asks to confirm.
+    - "Subtasks" is a heading, even on a task with none.
+    - "Add a subtask" is a button. Double-tap it: VoiceOver moves to the
+      field, which reads "New subtask". Type a subtask and press Return:
+      VoiceOver says "Added …". Press Return on the empty field: VoiceOver is
+      back on "Add a subtask".
+    - Type "Milk" in the field without pressing Return, then close the sheet.
+      Milk is added, and VoiceOver says "Added Milk" after the sheet has gone.
 11. **The largest text size.** The title and the notes still edit, and
-    Delete's confirm shows all its words.
+    Delete's confirm shows all its words. The streak chip opens a sheet, not a
+    popover, at half height with a grabber. The flame and the count sit above
+    the week's seven days, the week and Reset streak fit, and a swipe down
+    closes it.
 12. **Lime, in light and dark mode.**
     - The caret, the selection, the nav bar's Done and the confirm's Cancel
       aren't lime.
@@ -290,8 +348,17 @@ that add them, so the numbers match memory/plans/ios-app.md.
       are the system blue, not lime, and today is still told apart in dark
       mode, picked and not.
     - Delete is red. The done tick stays full lime.
+    - Reset streak is red, in the popover and in the confirm. The subtask
+      field's caret isn't lime. The streak chip's count is the label colour,
+      at rest and while pressed.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
+    - Return in the subtask field (a vertical field with a Next key) adds
+      exactly one subtask each time and keeps the keyboard; Return on the
+      empty field ends entry.
+    - The streak chip opens a popover at the default text size
+      (presentationCompactAdaptation), and its confirm comes up from inside
+      the popover.
     - The title field is still a heading to VoiceOver.
     - A swipe down saves what was typed: `.onDisappear` runs while the
       page's state is still there.

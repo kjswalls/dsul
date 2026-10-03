@@ -29,6 +29,12 @@ import path from 'path';
  * own gestures wrote, is replayed through the route: every write it records is
  * the row update the route makes, column for column.
  *
+ * `addSubtask` is the panel's subtask field, addTask under the item: a new
+ * task row with capture's `order`, idempotent by the phone's id, and taken
+ * back to the Trash when the parent went while it was added. `resetStreak` is
+ * resetHabitStreak, the counter alone, and nothing at 0. Both replay from the
+ * same fixture.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
@@ -242,6 +248,8 @@ describe('reading the row first', () => {
     ['pause', { action: 'pause', paused: true }],
     ['title', { action: 'title', title: 'Mine now' }],
     ['notes', { action: 'notes', notes: null }],
+    ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }],
+    ['resetStreak', { action: 'resetStreak' }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -253,7 +261,8 @@ describe('reading the row first', () => {
     expect(rpc).not.toHaveBeenCalled();
     expect(writes('items', 'update')).toEqual([]);
     expect(h.after).not.toHaveBeenCalled();
-    // Nothing past the row: not even the pause's zone.
+    // Nothing past the row: not even the pause's zone, or a new subtask's
+    // count and insert.
     expect(queries.map((q) => q.table)).toEqual(['items']);
   });
 
@@ -270,7 +279,10 @@ describe('reading the row first', () => {
   it.each([
     ['title', { action: 'title', title: 'Renamed' }, `${BASE_COLUMNS}, title`],
     ['notes', { action: 'notes', notes: 'Noted.' }, `${BASE_COLUMNS}, notes`],
+    ['resetStreak', { action: 'resetStreak' }, `${BASE_COLUMNS}, streak`],
     ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
+    // The type and the parent decide it, and both are in every read.
+    ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
   ])('reads for %s only the column it decides on', async (_, body, columns) => {
     // A tick never reads the notes, which can run to 200,000 characters.
     row = { ...ONE_OFF, title: 'Call the bank', notes: null };
@@ -946,7 +958,7 @@ describe('pause: the zone "today" is read in', () => {
   });
 });
 
-// ── title, notes and delete ──────────────────────────────────────────────────
+// ── title, notes, delete, addSubtask and resetStreak ─────────────────────────
 
 type EditCase = {
   name: string;
@@ -956,6 +968,7 @@ type EditCase = {
   refusal: string | null;
   updates: Record<string, unknown> | null;
   removed: string[];
+  created: Item | null;
 };
 
 const EDIT_WRITES = JSON.parse(
@@ -984,10 +997,15 @@ function rowFor(item: Item): Record<string, unknown> {
     paused_until: i.pausedUntil ?? null,
     title: item.title,
     notes: i.notes ?? null,
+    streak: i.streak ?? null,
   };
 }
 
 const selected = (q: Query) => String(called(q, 'select')[0]?.[0] ?? '');
+/** A head count, as nextTaskOrder asks it: `select('id', { count: 'exact', head: true })`. */
+const isCount = (q: Query) => (called(q, 'select')[0]?.[1] as { head?: boolean } | undefined)?.head === true;
+/** What a refusal code answers: the row saying no to a well-formed body is a 409, anything else a 400. */
+const REFUSAL_STATUS: Record<string, number> = { nested: 409 };
 /** The ids the route stamped deleted_at on, by id: the cascade's parent_item_id updates aside. */
 const deletedIds = () =>
   queries
@@ -1001,12 +1019,23 @@ const deleteEvents = () =>
 describe('the web’s own edits, replayed through the route (edit-writes.json)', () => {
   /** What a delete's child read finds. */
   let children: { id: string; type: string }[];
+  /** What a new subtask's count finds: the store's `tasks.length` beside the case. */
+  let taskCount: number;
+  /** The item, which a new subtask's re-check finds still live. */
+  let parentId: string;
 
   beforeEach(() => {
     children = [];
+    taskCount = 0;
+    parentId = ITEM;
     const base = respond;
-    respond = (q) =>
-      q.table === 'items' && op(q) === 'select' && selected(q) === 'id, type' ? { data: children, error: null } : base(q);
+    respond = (q) => {
+      if (q.table !== 'items' || op(q) !== 'select') return base(q);
+      if (isCount(q)) return { data: null, error: null, count: taskCount };
+      if (selected(q) === 'id, type') return { data: children, error: null };
+      if (selected(q) === 'id') return { data: { id: parentId }, error: null };
+      return base(q);
+    };
   });
 
   it('has cases to replay', () => {
@@ -1020,13 +1049,44 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
       children = c.children
         .filter((ch) => (ch as { parentItemId?: string }).parentItemId === c.item.id && ch.type !== 'habit')
         .map((ch) => ({ id: ch.id, type: itemTypeName(ch) }));
+      taskCount = [c.item, ...c.children].filter(
+        (i) => i.type !== 'habit' && !(i as { parentItemId?: string }).parentItemId,
+      ).length;
+      parentId = c.item.id;
       const res = await write(c.edit, c.item.id);
       await settle();
 
       if (c.refusal) {
-        // Every refusal an edit records is the row's 400: a cap or a missing field.
-        expect(res.status).toBe(400);
+        // A refusal is the row's: a cap, a missing field or capability (400),
+        // or a subtask under a subtask (409). Nothing is written or created.
+        expect(res.status).toBe(REFUSAL_STATUS[c.refusal] ?? 400);
         expect(await res.json()).toEqual({ error: c.refusal });
+        expect(writes('items', 'update')).toEqual([]);
+        expect(writes('items', 'insert')).toEqual([]);
+        return;
+      }
+
+      if (c.edit.action === 'addSubtask') {
+        // The store's new row, column for column, under the item, and its
+        // 'create' event, which carries the user (createItem passes it on).
+        const created = c.created!;
+        expect(res.status).toBe(201);
+        expect(await res.json()).toEqual({ ok: true, id: created.id });
+        const inserted = writes('items', 'insert');
+        expect(inserted).toHaveLength(1);
+        expect(inserted[0]).toMatchObject({
+          id: created.id,
+          user_id: USER,
+          type: 'task',
+          title: created.title,
+          status: 'pending',
+          is_scheduled: false,
+          order: (created as { order?: number }).order,
+          parent_item_id: c.item.id,
+        });
+        expect(writes('item_events', 'insert')).toEqual([
+          { user_id: USER, item_id: created.id, item_type: 'task', action: 'create', payload: { title: created.title } },
+        ]);
         expect(writes('items', 'update')).toEqual([]);
         return;
       }
@@ -1287,6 +1347,250 @@ describe('delete', () => {
   });
 });
 
+describe('addSubtask', () => {
+  const CHILD = '9c3d4e5f-6a7b-4c8d-9e0f-1a2b3c4d5e6f';
+  const ADD = { action: 'addSubtask', id: CHILD, title: 'Eggs' };
+  const DUPLICATE = { code: '23505', message: 'duplicate key value violates unique constraint "items_pkey"' };
+  /** The count, the insert, the retry's read by id and the parent's re-check. */
+  let countResult: Result;
+  let insertResult: Result;
+  let existing: Record<string, unknown> | null;
+  let recheck: Result;
+
+  const countQuery = () => queries.find(isCount);
+  const recheckQuery = () => queries.find((q) => q.table === 'items' && op(q) === 'select' && selected(q) === 'id' && !isCount(q));
+
+  beforeEach(() => {
+    row = ONE_OFF;
+    countResult = { data: null, error: null, count: 4 };
+    insertResult = { data: null, error: null };
+    existing = null;
+    recheck = { data: { id: ITEM }, error: null };
+    const base = respond;
+    respond = (q) => {
+      if (q.table !== 'items') return base(q);
+      if (op(q) === 'insert') return insertResult;
+      if (op(q) !== 'select') return base(q);
+      if (isCount(q)) return countResult;
+      if (selected(q) === 'id') return recheck;
+      if (selected(q) === 'id, type, parent_item_id, deleted_at') return { data: existing, error: null };
+      return base(q);
+    };
+  });
+
+  it('creates the web’s new subtask under the item, and answers 201 with its id', async () => {
+    const res = await write(ADD);
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ ok: true, id: CHILD });
+    await settle();
+    expect(writes('items', 'insert')).toEqual([
+      expect.objectContaining({
+        id: CHILD,
+        user_id: USER,
+        type: 'task',
+        title: 'Eggs',
+        status: 'pending',
+        is_scheduled: false,
+        time_bucket: null,
+        start_date: null,
+        start_time: null,
+        parent_item_id: ITEM,
+        order: 4,
+        completed_dates: [],
+        skipped_dates: [],
+      }),
+    ]);
+    // The parent is never written; the child's 'create' event is the only one.
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([
+      { user_id: USER, item_id: CHILD, item_type: 'task', action: 'create', payload: { title: 'Eggs' } },
+    ]);
+    expect(h.notifyPlugins).not.toHaveBeenCalled();
+  });
+
+  it('trims the title, as the panel does before addTask', async () => {
+    expect((await write({ ...ADD, title: '  Eggs \n' })).status).toBe(201);
+    expect(writes('items', 'insert')[0].title).toBe('Eggs');
+  });
+
+  it('stores the phone’s uppercase uuid in Postgres’s lowercase', async () => {
+    const res = await write({ ...ADD, id: CHILD.toUpperCase() });
+    expect(res.status).toBe(201);
+    expect(await res.json()).toEqual({ ok: true, id: CHILD });
+    expect(writes('items', 'insert')[0].id).toBe(CHILD);
+  });
+
+  it('makes a task even under a custom item', async () => {
+    row = { ...ONE_OFF, type: 'errand' };
+    expect((await write(ADD)).status).toBe(201);
+    expect(writes('items', 'insert')[0]).toMatchObject({ type: 'task', parent_item_id: ITEM });
+  });
+
+  it('counts `order` with capture’s own query, the store’s tasks.length', async () => {
+    await write(ADD);
+    expect(countQuery()!.calls).toEqual([
+      ['select', ['id', { count: 'exact', head: true }]],
+      ['eq', ['user_id', USER]],
+      ['neq', ['type', 'habit']],
+      ['is', ['parent_item_id', null]],
+      ['is', ['deleted_at', null]],
+    ]);
+    countResult = { data: null, error: null, count: null };
+    await write(ADD);
+    expect(writes('items', 'insert').map((r) => r.order)).toEqual([4, 0]);
+  });
+
+  it('reads the parent again once the child is in, as the user, live only', async () => {
+    await write(ADD);
+    const insert = queries.findIndex((q) => q.table === 'items' && op(q) === 'insert');
+    const again = recheckQuery()!;
+    expect(queries.indexOf(again)).toBeGreaterThan(insert);
+    expect(again.calls).toEqual([
+      ['select', ['id']],
+      ['eq', ['id', ITEM]],
+      ['eq', ['user_id', USER]],
+      ['is', ['deleted_at', null]],
+      ['maybeSingle', []],
+    ]);
+  });
+
+  it.each([
+    ['a habit, which holds no subtasks', HABIT, 400, 'no_subtasks'],
+    ['a subtask, since one level is all there is', { ...ONE_OFF, parent_item_id: PARENT }, 409, 'nested'],
+  ])('refuses %s, and counts and writes nothing', async (_, r, status, error) => {
+    row = r;
+    const res = await write(ADD);
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual({ error });
+    expect(queries.map((q) => q.table)).toEqual(['items']);
+  });
+
+  it('500s a count that fails, before anything is inserted', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    countResult = { data: null, error: { code: 'XX000', message: 'internal error' }, count: null };
+    const res = await write(ADD);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    expect(writes('items', 'insert')).toEqual([]);
+    spy.mockRestore();
+  });
+
+  describe('a retry', () => {
+    beforeEach(() => {
+      insertResult = { data: null, error: DUPLICATE };
+    });
+
+    it('of a subtask that landed answers 200 with the same body', async () => {
+      existing = { id: CHILD, type: 'task', parent_item_id: ITEM, deleted_at: null };
+      const res = await write(ADD);
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ ok: true, id: CHILD });
+      // Read by id under the user's client, which is what makes "visible" mean "theirs".
+      const read = queries.find((q) => selected(q) === 'id, type, parent_item_id, deleted_at')!;
+      expect(read.calls).toEqual([
+        ['select', ['id, type, parent_item_id, deleted_at']],
+        ['eq', ['id', CHILD]],
+        ['maybeSingle', []],
+      ]);
+      expect(writes('items', 'update')).toEqual([]);
+    });
+
+    it.each([
+      ['someone else’s row, invisible under RLS', null],
+      ['a subtask of another item', { id: CHILD, type: 'task', parent_item_id: PARENT, deleted_at: null }],
+      ['a trashed subtask', { id: CHILD, type: 'task', parent_item_id: ITEM, deleted_at: '2026-10-02T21:00:00+00:00' }],
+      ['a row of another type', { id: CHILD, type: 'habit', parent_item_id: null, deleted_at: null }],
+    ])('against %s is a 409 that says nothing about it', async (_, r) => {
+      existing = r;
+      const res = await write(ADD);
+      expect(res.status).toBe(409);
+      const text = await res.text();
+      expect(JSON.parse(text)).toEqual({ error: 'conflict' });
+      expect(text).not.toMatch(/duplicate|items_pkey|habit|deleted/);
+    });
+
+    it('is only for the primary key: any other insert failure is a 500', async () => {
+      const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+      insertResult = { data: null, error: { code: '23514', message: 'new row violates check constraint "items_status_check"' } };
+      const res = await write(ADD);
+      expect(res.status).toBe(500);
+      expect(await res.json()).toEqual({ error: 'failed' });
+      expect(queries.some((q) => selected(q) === 'id, type, parent_item_id, deleted_at')).toBe(false);
+      spy.mockRestore();
+    });
+  });
+
+  it('sends the child to the Trash, and answers parent_gone, when the parent went while it was added', async () => {
+    // Deleted on another device between the row read and the insert: a live
+    // child under a parent in the Trash would be out of every view.
+    recheck = { data: null, error: null };
+    const res = await write(ADD);
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'parent_gone' });
+    await settle();
+    expect(deletedIds()).toEqual([CHILD]);
+    // deleteItem gets no user, as the web's delete doesn't, so its event has none.
+    expect(writes('item_events', 'insert').filter((e) => e.action === 'delete')).toEqual([
+      { item_id: CHILD, item_type: 'task', action: 'delete', payload: {} },
+    ]);
+  });
+
+  it('answers a failed re-check as an error, and leaves the child for the next fetch to show', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    recheck = { data: null, error: { code: '57014', message: 'canceling statement due to statement timeout' } };
+    const res = await write(ADD);
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    expect(writes('items', 'insert')).toHaveLength(1);
+    expect(deletedIds()).toEqual([]);
+    spy.mockRestore();
+  });
+});
+
+describe('resetStreak', () => {
+  beforeEach(() => {
+    row = { ...HABIT, streak: 41 };
+  });
+
+  it('reads the streak, and never the completion history', async () => {
+    await write({ action: 'resetStreak' });
+    expect(called(queries[0], 'select')).toEqual([[`${BASE_COLUMNS}, streak`]]);
+    expect(selected(queries[0])).not.toContain('completed_dates');
+  });
+
+  it('writes the counter alone, back to 0, with the web’s event', async () => {
+    const res = await write({ action: 'resetStreak' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    // No daily_counts, no status, no per-date RPC: days already ticked stay ticked.
+    expect(writes('items', 'update')).toEqual([{ streak: 0 }]);
+    expect(queries.find((q) => op(q) === 'update')!.calls).toContainEqual(['eq', ['type', 'habit']]);
+    expect(rpc).not.toHaveBeenCalled();
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'habit', action: 'update', payload: { streak: 0 } },
+    ]);
+  });
+
+  it.each([0, null])('answers a streak of %s with no write and no event', async (streak) => {
+    row = { ...HABIT, streak };
+    const res = await write({ action: 'resetStreak' });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('400s a task, which has no streak', async () => {
+    row = { ...ONE_OFF, streak: null };
+    const res = await write({ action: 'resetStreak' });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'no_streak' });
+    expect(writes('items', 'update')).toEqual([]);
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -1323,6 +1627,13 @@ describe('validation', () => {
     ['notes over 200,000 characters', { action: 'notes', notes: 'x'.repeat(200_001) }],
     ['notes with a key they do not take', { action: 'notes', notes: 'x', title: 'y' }],
     ['a delete with anything else in it', { action: 'delete', cascade: false }],
+    ['a new subtask with a key it does not take', { action: 'addSubtask', id: ITEM, title: 'Eggs', notes: 'x' }],
+    ['a new subtask with no id', { action: 'addSubtask', title: 'Eggs' }],
+    ['a new subtask whose id is not a uuid', { action: 'addSubtask', id: 'eggs', title: 'Eggs' }],
+    ['a new subtask with no title', { action: 'addSubtask', id: ITEM }],
+    ['a new subtask with a blank title', { action: 'addSubtask', id: ITEM, title: ' \n ' }],
+    ['a new subtask over 500 characters', { action: 'addSubtask', id: ITEM, title: 'x'.repeat(501) }],
+    ['a reset with anything else in it', { action: 'resetStreak', streak: 0 }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -1381,9 +1692,12 @@ describe('webhooks', () => {
       [{ ...ONE_OFF, title: 'Call the bank', notes: null }, { action: 'title', title: 'Call the bank today' }],
       [{ ...ONE_OFF, title: 'Call the bank', notes: null }, { action: 'notes', notes: 'Wire fee.' }],
       [{ ...HABIT, title: 'Stretch', notes: null }, { action: 'delete' }],
+      [ONE_OFF, { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }],
+      [{ ...HABIT, streak: 3 }, { action: 'resetStreak' }],
     ] as const) {
       row = r;
-      expect((await write(body)).status).toBe(200);
+      // A new subtask is a created row: 201, as a capture is.
+      expect((await write(body)).status).toBe(body.action === 'addSubtask' ? 201 : 200);
     }
     await settle();
     expect(h.notifyPlugins).not.toHaveBeenCalled();

@@ -227,6 +227,11 @@ describe('every /api/app route is behind it', () => {
     ['POST /api/app/items/:id title', itemWrite({ action: 'title', title: 'Buy stamps today' })],
     ['POST /api/app/items/:id notes', itemWrite({ action: 'notes', notes: null })],
     ['POST /api/app/items/:id delete', itemWrite({ action: 'delete' })],
+    [
+      'POST /api/app/items/:id addSubtask',
+      itemWrite({ action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }),
+    ],
+    ['POST /api/app/items/:id resetStreak', itemWrite({ action: 'resetStreak' })],
   ];
 
   it('lists every intent the item route takes', () => {
