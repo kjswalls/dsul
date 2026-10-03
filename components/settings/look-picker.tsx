@@ -113,8 +113,10 @@ const PLANS: Record<string, ReactNode> = {
   ),
 };
 
+// focus-visible keeps a deep-linked anchor marked after the highlight clears,
+// as SettingRow does.
 const ANCHOR_RING =
-  'outline-none data-[highlight]:ring-2 data-[highlight]:ring-ring data-[highlight]:ring-offset-4 data-[highlight]:ring-offset-background';
+  'outline-none focus-visible:ring-2 focus-visible:ring-ring data-[highlight]:ring-2 data-[highlight]:ring-ring data-[highlight]:ring-offset-4 data-[highlight]:ring-offset-background';
 
 const QUIET = 'text-muted-foreground text-xs';
 
@@ -500,7 +502,7 @@ function TintLine({
       <span className="text-muted-foreground">{themeLabel}</span>
       {plain ? (
         <>
-          <span className="flex items-center gap-1.5">
+          <span className="flex items-center gap-2">
             {THEME_PALETTES.map((p) => {
               const pressed = tint === p.value;
               return (
@@ -515,7 +517,8 @@ function TintLine({
                     if (!pressed) onPick(p.value);
                   }}
                   className={cn(
-                    'size-4 rounded-full border border-black/10 transition-shadow',
+                    // A 16px dot with a 24px hit area (WCAG 2.5.8), 24px apart.
+                    "relative size-4 rounded-full border border-black/10 transition-shadow before:absolute before:-inset-[5px] before:rounded-full before:content-['']",
                     'focus-visible:ring-ring focus-visible:ring-offset-background focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none',
                     pressed && 'ring-foreground ring-offset-background ring-2 ring-offset-2'
                   )}

@@ -121,7 +121,9 @@ export function LookMini({
     const inner = innerRef.current;
     if (!outer || !inner) return;
     const fit = () => {
-      const width = outer.getBoundingClientRect().width;
+      // The padding box, where the inner is placed and clipped: the border
+      // box would overhang the 1px border on the right and bottom.
+      const width = outer.clientWidth;
       inner.style.transform = `scale(${width / MINI_W})`;
       inner.style.visibility = width > 0 ? 'visible' : 'hidden';
     };
