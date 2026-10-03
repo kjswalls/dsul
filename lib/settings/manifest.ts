@@ -55,6 +55,7 @@ import {
   layoutStyles,
 } from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
+import { lookChanges, type LookPreset } from '@/lib/looks';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -801,7 +802,19 @@ export const SETTINGS: SettingRecord[] = [
       { value: 'dark', label: 'Dark' },
       { value: 'system', label: 'System' },
     ],
-    keywords: ['theme', 'appearance', 'night', 'colour scheme', 'color scheme', 'contrast'],
+    // The Look pane draws this as two previews you tap and a "Follow device"
+    // switch, so the switch's words have to find it too.
+    keywords: [
+      'theme',
+      'appearance',
+      'night',
+      'colour scheme',
+      'color scheme',
+      'contrast',
+      'follow device',
+      'follow system',
+      'automatic',
+    ],
     read: (ctx) => ctx.theme ?? 'system',
     // The one setter in the app that does NOT persist itself.
     write: (v, ctx) => {
@@ -870,15 +883,15 @@ export const SETTINGS: SettingRecord[] = [
       'text editor',
     ],
     read: () => layoutDef(look().layout).family,
+    // The Look pane's floor plans call pickLayoutFamily alone: the Looks row
+    // and the "for <Layout>" marks sit beside them, so a toast there would say
+    // it a third time. This write is the path a SEARCH hit takes, where
+    // neither is drawn, so it still offers the pairing once.
     write: (v, ctx) => {
-      if (!isLayoutTheme(v)) return;
-      // Picking the family you are already in keeps the style you chose.
-      if (layoutDef(look().layout).family === v) return;
-      look().setLayout(v);
-      if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+      if (!isLayoutTheme(v) || !pickLayoutFamily(v, ctx)) return;
       // Offer the colour theme the layout was designed with — offer, never
-      // impose: every look works with every layout. Dark first, since the only
-      // pairing that exists is dark (Console with Terminal).
+      // impose: every look works with every layout. Dark first, so a layout
+      // paired both ways (Classic) names the night it was made for.
       const { light, dark } = layoutDef(v).pairsWith;
       const offer =
         dark && look().dark !== dark
@@ -1704,6 +1717,54 @@ export const DESTINATIONS: DestinationRecord[] = [
  * `data-setting-alias` anchors.
  */
 export const CONNECT_PANEL_RECORD_IDS: ReadonlySet<string> = new Set(['beacon.apiKey', 'beacon.model']);
+
+/**
+ * Records the Look pane's picker (components/settings/look-picker.tsx) draws as
+ * previews, swatches, dots and floor plans, so the pane's flat row list leaves
+ * them out (settings-shell). Same contract as CONNECT_PANEL_RECORD_IDS: they
+ * stay in SETTINGS, so search draws each as an ordinary row, and the picker
+ * gives each one `data-setting-row` anchor for `?focus=`.
+ */
+export const LOOK_PICKER_RECORD_IDS: ReadonlySet<string> = new Set([
+  'look.theme',
+  'look.lightTheme',
+  'look.darkTheme',
+  'look.palette',
+  'look.layout',
+  'look.layoutStyle',
+]);
+
+/**
+ * Picks a layout FAMILY. Picking the family you are already in keeps the style
+ * you chose, so re-tapping Notepad never drops Retro. Changes the layout only,
+ * never a colour. True when something changed.
+ */
+export function pickLayoutFamily(v: string | boolean, ctx: SettingCtx): boolean {
+  if (!isLayoutTheme(v)) return false;
+  if (layoutDef(look().layout).family === v) return false;
+  look().setLayout(v);
+  if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+  return true;
+}
+
+/**
+ * Applies a Look (lib/looks.ts): its exact layout, style included, and the
+ * theme for each mode it pairs with, as one settings patch. The mode is left
+ * alone, so following the device keeps following it.
+ */
+export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
+  const { layout, light, dark } = lookChanges(preset);
+  look().setLayout(layout);
+  if (light && look().light !== light) look().setLight(light, { eased: true });
+  if (dark && look().dark !== dark) look().setDark(dark, { eased: true });
+  if (ctx.userId) {
+    saveSettings(ctx.userId, {
+      layout,
+      ...(light && { theme_light: light }),
+      ...(dark && { theme_dark: dark }),
+    });
+  }
+}
 
 /* ---------------------------------------------------------------- lookups */
 

@@ -329,7 +329,7 @@ export default function SettingsPage() {
       `${s.model?.authMethod}|${s.openclaw.gateway}|${s.openclaw.pluginChat}`
   );
   const paletteTick = usePaletteStore((s) => s.palette);
-  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}`);
+  const lookTick = useLookStore((s) => `${s.light}|${s.dark}|${s.layout}|${s.appIcon}`);
   // JSON.stringify because `enabled` is an object; `available` rides along so
   // the unavailable() reason appears without a reload once hydration settles.
   const extensionsTick = useExtensionsStore(

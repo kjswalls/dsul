@@ -15,6 +15,7 @@
    (design/redesign/darkModeColorReference.png) with the lime accent retained.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+[data-theme-preview],
 :root {
   /* ── 1. Raw ramps (do not use in components) ─────────────────────────── */
   /* Values sampled from the Figma file (6ZFClj80tMQOCYUhzyuWFL) */
@@ -407,6 +408,7 @@
    color-mix and re-tune automatically. */
 
 /* Slate — cool blue-gray ground; the teal-slate of the relay field's cousin. */
+[data-theme-preview][data-preview-tint='slate']:not(.dark),
 :root[data-theme='slate']:not(.dark) {
   --paper-0: oklch(0.977 0.004 235);
   --paper-1: oklch(0.982 0.004 235);
@@ -423,6 +425,7 @@
   --scrim: oklch(0.24 0.02 250 / 12%);
   --sidebar-border: oklch(0.91 0.008 235);
 }
+[data-theme-preview][data-preview-tint='slate'].dark,
 :root[data-theme='slate'].dark {
   --paper-0: oklch(0.168 0.014 240);
   --paper-1: oklch(0.174 0.013 240);
@@ -435,6 +438,7 @@
 }
 
 /* Dune — warm sand ground; the paper leans into its own hue instead of near-neutral. */
+[data-theme-preview][data-preview-tint='dune']:not(.dark),
 :root[data-theme='dune']:not(.dark) {
   --paper-0: oklch(0.973 0.007 85);
   --paper-1: oklch(0.979 0.006 85);
@@ -451,6 +455,7 @@
   --scrim: oklch(0.3 0.03 70 / 12%);
   --sidebar-border: oklch(0.905 0.012 85);
 }
+[data-theme-preview][data-preview-tint='dune'].dark,
 :root[data-theme='dune'].dark {
   --paper-0: oklch(0.172 0.007 65);
   --paper-1: oklch(0.178 0.007 65);
@@ -463,6 +468,7 @@
 }
 
 /* Iris — faint violet ground; the coolest pairing the lime accent tolerates. */
+[data-theme-preview][data-preview-tint='iris']:not(.dark),
 :root[data-theme='iris']:not(.dark) {
   --paper-0: oklch(0.977 0.005 305);
   --paper-1: oklch(0.982 0.005 305);
@@ -479,6 +485,7 @@
   --scrim: oklch(0.26 0.025 295 / 12%);
   --sidebar-border: oklch(0.91 0.008 305);
 }
+[data-theme-preview][data-preview-tint='iris'].dark,
 :root[data-theme='iris'].dark {
   --paper-0: oklch(0.168 0.012 300);
   --paper-1: oklch(0.174 0.012 300);
@@ -670,6 +677,7 @@
    Light values are crisp neutral-black drops (≈ the original hardcoded pill/
    canvas shadows): the defined contrast reads better on the near-white paper
    than a softer, warmer shadow. */
+[data-theme-preview],
 :root {
   --shadow-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
   --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
@@ -1133,6 +1141,7 @@
    up the light list. Unset means the shipped colours. */
 
 /* Studio — crisp white, black ink, hairlines instead of soft shadows, cobalt. */
+[data-theme-preview][data-preview-light='studio']:not(.dark),
 :root[data-look-light='studio']:not(.dark) {
   --paper-0: oklch(0.975 0 0);
   --paper-1: oklch(0.98 0 0);
@@ -1165,11 +1174,13 @@
   --relay-light-quiet: oklch(0.42 0 0), oklch(0.5 0 0), oklch(0.58 0 0), oklch(0.46 0 0), oklch(0.54 0 0),
     oklch(0.55 0.2 262), oklch(0.55 0.2 262), oklch(0.65 0.13 225), oklch(0.48 0.18 270);
 }
+[data-theme-preview][data-preview-light='studio']:not(.dark),
 :root[data-look-light='studio']:not(.dark) body {
   --font-ui: var(--font-geist), 'Geist', system-ui, sans-serif;
 }
 
 /* Sorbet — pastel peach, big round corners, pillowy warm shadows, pink. */
+[data-theme-preview][data-preview-light='sorbet']:not(.dark),
 :root[data-look-light='sorbet']:not(.dark) {
   --paper-0: oklch(0.965 0.018 50);
   --paper-1: oklch(0.972 0.016 50);
@@ -1204,11 +1215,13 @@
   --relay-light-quiet: oklch(0.8 0.04 40), oklch(0.74 0.05 35), oklch(0.84 0.03 45), oklch(0.78 0.04 30),
     oklch(0.72 0.15 0), oklch(0.72 0.15 0), oklch(0.78 0.12 50), oklch(0.72 0.1 170), oklch(0.7 0.11 300);
 }
+[data-theme-preview][data-preview-light='sorbet']:not(.dark),
 :root[data-look-light='sorbet']:not(.dark) body {
   --font-ui: var(--font-nunito), 'Nunito', system-ui, sans-serif;
 }
 
 /* Terminal — true black, monospace everything, square corners, amber. */
+[data-theme-preview][data-preview-dark='terminal'].dark,
 :root[data-look-dark='terminal'].dark {
   --paper-0: oklch(0 0 0);
   --paper-1: oklch(0.04 0 0);
@@ -1234,17 +1247,20 @@
   --relay-dark: oklch(0.8 0.15 70), oklch(0.8 0.15 70), oklch(0.8 0.15 70), oklch(0.72 0.14 60),
     oklch(0.68 0.15 45), oklch(0.86 0.12 90), oklch(0.62 0.12 55), oklch(0.75 0.13 80), oklch(0.7 0.14 65);
 }
+[data-theme-preview][data-preview-dark='terminal'].dark,
 :root[data-look-dark='terminal'].dark body {
   --font-ui: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
   --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
 }
 /* @theme inline bakes the system mono stack straight into .font-mono, and the
    preflight gives code/pre their own; point both at the theme's one face. */
+[data-theme-preview][data-preview-dark='terminal'].dark :is(.font-mono, code, pre, kbd, samp),
 :root[data-look-dark='terminal'].dark :is(.font-mono, code, pre, kbd, samp) {
   font-family: var(--font-mono);
 }
 
 /* Dusk — deep indigo-violet ground, soft round corners, apricot. */
+[data-theme-preview][data-preview-dark='dusk'].dark,
 :root[data-look-dark='dusk'].dark {
   --paper-0: oklch(0.17 0.04 285);
   --paper-1: oklch(0.18 0.042 285);
@@ -1279,6 +1295,7 @@
    --font-source-serif) are defined by classNames on <body>, so an inner
    var() chain only resolves at body or below — defined on :root it
    computes to guaranteed-invalid and font-family silently falls back. */
+[data-theme-preview],
 body {
   /* The chrome face. A theme re-points it (see Themes above); item titles
      follow it unless the Typeface setting asks for serif. */
@@ -1303,6 +1320,44 @@ body {
   --font-content-weight: 600;
   --text-content: 12px;
   --text-content--line-height: 17px;
+}
+
+/* ── Theme previews (Settings → Look) ───────────────────────────────────────
+   A preview draws a theme that is not the one showing: Studio while the app is
+   on Paper, or the light side while the app is dark. Every token above
+   resolves on <html>, so stamping a subtree with a theme's attribute alone
+   changes nothing below it. The preview root ([data-theme-preview],
+   components/settings/look-mini.tsx) is therefore made to match what <html>
+   matches: it is listed beside :root on the base blocks (and beside body on
+   the type tokens), carries `dark` for a dark preview, and each palette and
+   theme block above has a twin keyed on data-preview-tint / -light / -dark at
+   the same (0,3,0) weight, so the formulas re-resolve on the root with the
+   previewed values. The twins come FIRST in each selector list, which keeps
+   every `:root[...] {` head the drift tests read exactly as it was.
+
+   What only a theme block declares would still inherit from the live theme,
+   so the root sets it back to the shipped value: the relay colours (unset is
+   "the shipped colours") and the mono face Terminal re-points. --shadow-soft-*
+   and `dark:` utilities follow the live mode whatever this does, so nothing
+   inside a preview uses them. */
+[data-theme-preview] {
+  --relay-light: initial;
+  --relay-light-quiet: initial;
+  --relay-dark: initial;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Cascadia Code', 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Liberation Mono', monospace;
+}
+/* Layered, so a utility on the root still wins. font-family and color inherit
+   as values computed at body, so the root states its own. */
+@layer base {
+  [data-theme-preview] {
+    font-family: var(--font-ui);
+    color: var(--foreground);
+    color-scheme: light;
+  }
+  [data-theme-preview].dark {
+    color-scheme: dark;
+  }
 }
 
 /* Utilities consumed by item titles (task-row, drag ghost, schedule blocks,
@@ -2372,6 +2427,7 @@ body {
    The paper is its own, not a theme's: a planner's page is cream whatever the
    colour theme does, and it pairs with Paper. --nb-* are inert anywhere a
    [data-book] (desktop-shell's `canvas: 'spread'`) is not rendered. */
+[data-theme-preview],
 :root {
   --nb-desk: oklch(0.83 0.025 65);
   --nb-page: oklch(0.975 0.014 88);
@@ -2414,7 +2470,7 @@ body {
   padding-inline: 20px 14px;
   box-shadow: inset -22px 0 22px -22px var(--nb-spine);
 }
-[data-book] > main::before {
+[data-book] > :is(main, [data-preview-canvas])::before {
   content: '';
   position: absolute;
   inset-block: 0;
@@ -2542,6 +2598,7 @@ body {
    the day tabs and the status bar. The sheet is the theme's canvas and the
    chrome a step darker, so Notepad wears whatever colour theme is on unless
    its style brings its own skin. */
+[data-theme-preview],
 :root {
   --np-chrome: color-mix(in oklab, var(--canvas) 94%, black);
 }
@@ -2762,7 +2819,7 @@ body {
 [data-layout-buckets='focus'] [data-testid='bucket-card'][data-current='true'] [data-bucket-label]::after {
   content: ' · now';
 }
-[data-layout-buckets='focus'] main:has([data-testid='bucket-card'][data-current='true'])
+[data-layout-buckets='focus'] :is(main, [data-preview-canvas]):has([data-testid='bucket-card'][data-current='true'])
   [data-testid='bucket-card'][data-current='false'] {
   --foreground: var(--muted-foreground);
   color: var(--muted-foreground);
@@ -2839,8 +2896,12 @@ body {
    every layout: menus and dialogs portal out and keep the colour theme.
    Tokens DERIVED from those (muted, the schedule panes, the drop trays, the
    shadows a theme re-cuts) were also resolved at :root, so the skin restates
-   each formula as well, or it would inherit the theme's finished colours. */
-[data-layout-skin='retro'] {
+   each formula as well, or it would inherit the theme's finished colours.
+   A light Settings preview inside a dark app restates the light block at a
+   weight that beats `.dark [data-layout-skin='retro']`, which would otherwise
+   reach it through <html>. */
+[data-layout-skin='retro'],
+[data-theme-preview]:not(.dark) [data-layout-skin='retro'] {
   --np-chrome: #f3f3f3;
   --canvas: #ffffff;
   --background: #f3f3f3;
