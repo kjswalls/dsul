@@ -7,6 +7,7 @@ import { bumpSettleEpoch } from '@/lib/settle-epoch';
 import {
   EASE_MOVE,
   EASE_SETTLE,
+  EASE_TYPE,
   SETTLE,
   SETTLE_LIMITS,
   createKeyDeduper,
@@ -60,8 +61,10 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  * stacking, for its length only (see "Stacking"): an inline z-index (and
  * `position: relative` where none applies) on the outermost box a row glides
  * in from outside of and on a row that crosses its neighbours, plus that
- * row's ground (a background-color, clipped to its content box) — each value
- * put back exactly as found by finishSettle, whatever ends the run.
+ * row's ground (a background-color, clipped to its content box), a
+ * translucent fill made solid (background-image layers) and a soft shadow
+ * (box-shadow, the app's lightest elevation token) — each value put back
+ * exactly as found by finishSettle, whatever ends the run.
  *
  * THE LANDING SHIELD. A landing that changed what is on screen with nothing
  * holding the old geometry (reduced motion, `static` mode, a veto at play, a
@@ -226,8 +229,10 @@ interface ScopeRun {
   shielded: boolean;
   /** Retargeted out, or gone from the document: nothing of it animates any more. */
   done: boolean;
-  /** Raised and lifted for the run (see Stacking), each with what it had before. */
+  /** Raised and lifted while its rows move (see Stacking), each with what it had before. */
   stacked: Map<HTMLElement, Stacked>;
+  /** Puts back the next element whose rows have landed (see RELEASE). */
+  releaseTimer: ReturnType<typeof setTimeout> | null;
 }
 
 interface Run {
@@ -327,6 +332,7 @@ export function onLandingCommitted(): void {
         shielded: false,
         done: false,
         stacked: new Map(),
+        releaseTimer: null,
       });
     }
     if (scopes.length === 0) return;
@@ -676,30 +682,67 @@ function signature(el: Element, raw = el.textContent ?? ''): string {
 }
 
 /**
- * Where each retype's type-in starts, as its clip's right inset: the x of its
- * first changed character in LAST, so what reads the same (the checkbox, an
- * unchanged prefix) stays drawn throughout. Read at layout, before any of the
- * scope's animations exist (hold cancels them first): one Range per retype,
- * and only the first maxRetypes are planned. A row left out types in whole —
- * its text is unchanged (an attribute changed), or nothing could be measured.
+ * Where a row's type-in clip starts and where its text ends, as right insets
+ * on its box: `from` only for a retype (the x of its first changed character,
+ * so what reads the same, the checkbox and an unchanged prefix, stays drawn
+ * throughout; absent, the clip starts with nothing drawn), `text` at the right
+ * edge of the row's text, which the clip reaches at `typeTextAt` (absent, it
+ * opens in one stroke).
  */
-function retypeInsets(plan: SettlePlan, m: Measured): Map<string, number> {
-  const out = new Map<string, number>();
-  for (const { key, at } of plan.retypes) {
+interface TypeInsets {
+  from?: number;
+  text?: number;
+}
+
+/**
+ * Each type-in's insets: every appearing row's, and every retype whose text
+ * changed. Read at layout, before any of the scope's animations exist (hold
+ * cancels them first; a retarget, its translates): one Range per row, and only
+ * the first maxRetypes are planned. A row left out types in whole, as it always
+ * has: a retype whose text is unchanged (an attribute changed, a tick), or one
+ * nothing could be measured for. An appear left without `text` opens in one
+ * stroke.
+ */
+function typeInsets(plan: SettlePlan, m: Measured): Map<string, TypeInsets> {
+  const out = new Map<string, TypeInsets>();
+  if (!rangeGeometry()) return out;
+  const measure = (key: string, at: number | undefined) => {
     const el = m.els.get(key);
     const rect = m.side.nodes.get(key)?.rect;
-    if (at === undefined || !el || !rect) continue;
-    let x: number | null = null;
-    try {
-      x = caretX(el, at);
-    } catch {
-      /* a caret that cannot be placed types the whole row in */
-    }
-    if (x === null) continue;
+    if (!el || !rect) return;
     const right = rect.left + rect.width;
-    out.set(key, right - Math.min(right, Math.max(rect.left, x)));
-  }
+    const inset = (x: number) => right - Math.min(right, Math.max(rect.left, x));
+    const range = document.createRange();
+    try {
+      let from: number | undefined;
+      if (at !== undefined) {
+        const x = caretX(el, at, range);
+        if (x === null) return;
+        from = inset(x);
+      }
+      const end = textEndX(el, range);
+      const text = end === null ? undefined : inset(end);
+      // The text segment only where the text runs on past where the clip starts.
+      const paced = text !== undefined && text < (from ?? rect.width) - PX;
+      if (from === undefined && !paced) return;
+      out.set(key, paced ? (from === undefined ? { text } : { from, text }) : { from });
+    } catch {
+      /* a row that cannot be measured types in as it always has */
+    }
+  };
+  for (const a of plan.appears) if (a.role === 'row') measure(a.key, undefined);
+  for (const { key, at } of plan.retypes) if (at !== undefined) measure(key, at);
   return out;
+}
+
+/** Text geometry this engine can read: jsdom, for one, has no Range rects. */
+function rangeGeometry(): boolean {
+  return (
+    typeof document.createTreeWalker === 'function' &&
+    typeof document.createRange === 'function' &&
+    typeof Range !== 'undefined' &&
+    typeof (Range.prototype as Partial<Range>).getBoundingClientRect === 'function'
+  );
 }
 
 /**
@@ -709,8 +752,7 @@ function retypeInsets(plan: SettlePlan, m: Measured): Map<string, number> {
  * character not rendered (inside display: none) falls back to where the text
  * starts; null when even that cannot be measured.
  */
-function caretX(el: Element, at: number): number | null {
-  if (typeof document.createTreeWalker !== 'function' || typeof document.createRange !== 'function') return null;
+function caretX(el: Element, at: number, range: Range): number | null {
   const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
   let first: Text | null = null;
   let hit: Text | null = null;
@@ -730,8 +772,6 @@ function caretX(el: Element, at: number): number | null {
     offset = len;
   }
   if (!first || !hit) return null;
-  const range = document.createRange();
-  if (typeof range.getBoundingClientRect !== 'function') return null;
   // One character, never a collapsed caret, whose rect not every engine reports.
   const edge = (node: Text, i: number): number | null => {
     const past = i >= node.data.length;
@@ -745,6 +785,28 @@ function caretX(el: Element, at: number): number | null {
   const x = edge(hit, offset);
   if (x !== null || (hit === first && offset === 0)) return x;
   return edge(first, 0);
+}
+
+/**
+ * The right edge of the row's text: its first text node with anything in it,
+ * which in every planner row is the title (tests/unit/settle-participants.test.tsx
+ * pins it), as drawn (a wrapped title's widest line) and only as far as its own
+ * box shows it (a truncated title ends at its ellipsis). Null when not drawn.
+ */
+function textEndX(el: Element, range: Range): number | null {
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    if (t.data.trim() === '') continue;
+    range.setStart(t, 0);
+    range.setEnd(t, t.data.length);
+    const r = range.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return null;
+    const own = t.parentElement?.getBoundingClientRect();
+    const right = r.left + r.width;
+    return own && own.width > 0 ? Math.min(right, own.left + own.width) : right;
+  }
+  return null;
 }
 
 // ── Motion ──────────────────────────────────────────────────────────────
@@ -791,15 +853,15 @@ interface AnimSpec {
  * the clip reveals that ride it — run on EASE_MOVE; appears, retypes and
  * rises on EASE_SETTLE. A retarget passes its own glide length and asks for
  * reveals without their lead: what it re-aims is already on its way.
- * `typeFrom` is each retype's measured start (retypeInsets).
+ * `typeIn` is each type-in's measured insets (typeInsets).
  */
 function describeAnimations(
   plan: SettlePlan,
   {
     moveMs = SETTLE.moveMs,
     immediate = false,
-    typeFrom,
-  }: { moveMs?: number; immediate?: boolean; typeFrom?: Map<string, number> } = {}
+    typeIn,
+  }: { moveMs?: number; immediate?: boolean; typeIn?: Map<string, TypeInsets> } = {}
 ): AnimSpec[] {
   const out: AnimSpec[] = [];
   const add = (spec: Omit<AnimSpec, 'glide' | 'easing'>, easing = EASE_SETTLE, glide = false) =>
@@ -845,23 +907,48 @@ function describeAnimations(
       ? SETTLE.appearLead + Math.min(a.rank, SETTLE.appearMaxRank) * SETTLE.appearStagger
       : SETTLE.frameAppearLead;
     const delay = immediate ? 0 : lead;
-    const keyframes = [{ clipPath: row ? TYPE_IN : UNFOLD }, { clipPath: OPEN }];
-    add({ key: a.key, from: null, keyframes, duration: SETTLE.appearMs, delay, composite: 'replace' });
+    if (row) {
+      const { keyframes, easing } = typeInFrames(TYPE_IN, typeIn?.get(a.key)?.text);
+      add({ key: a.key, from: null, keyframes, duration: SETTLE.appearMs, delay, composite: 'replace' }, easing);
+    } else {
+      const keyframes = [{ clipPath: UNFOLD }, { clipPath: OPEN }];
+      add({ key: a.key, from: null, keyframes, duration: SETTLE.appearMs, delay, composite: 'replace' });
+    }
     lift(a.key, row ? APPEAR_ROW_PX : APPEAR_FRAME_PX, SETTLE.appearMs, delay);
   }
   // Changed in place: the new content types in once, from its first changed
   // character — clipped from there through the hold, which reads as the start
   // of the rewrite. Unmeasured, the whole row types in.
   for (const { key } of plan.retypes) {
-    const right = typeFrom?.get(key);
-    const start = right === undefined ? TYPE_IN : `inset(${BLEED} ${right}px ${BLEED} ${BLEED})`;
-    const keyframes = [{ clipPath: start }, { clipPath: OPEN }];
-    add({ key, from: null, keyframes, duration: SETTLE.retypeMs, delay: 0, composite: 'replace' });
+    const at = typeIn?.get(key);
+    const start = at?.from === undefined ? TYPE_IN : `inset(${BLEED} ${at.from}px ${BLEED} ${BLEED})`;
+    const { keyframes, easing } = typeInFrames(start, at?.text);
+    add({ key, from: null, keyframes, duration: SETTLE.retypeMs, delay: 0, composite: 'replace' }, easing);
   }
   for (const rise of plan.rises) {
     lift(rise.key, SETTLE.riseOffsetPx, SETTLE.riseMs, Math.min(rise.rank, SETTLE.riseMaxRank) * SETTLE.riseStagger);
   }
   return out;
+}
+
+/**
+ * A row's type-in clip from `start`. With the end of its text measured
+ * (`text`, a right inset), the text is uncovered first, on EASE_TYPE, by
+ * `typeTextAt`, and the rest of the row (the empty space, a right-aligned
+ * chip) on EASE_SETTLE after it: run on EASE_SETTLE as one stroke across the
+ * full width, the title was uncovered in its first few tens of ms and read as
+ * a swap. Without it, that one stroke.
+ */
+function typeInFrames(start: string, text: number | undefined): { keyframes: Keyframe[]; easing: string } {
+  if (text === undefined) return { keyframes: [{ clipPath: start }, { clipPath: OPEN }], easing: EASE_SETTLE };
+  return {
+    keyframes: [
+      { clipPath: start, offset: 0, easing: EASE_TYPE },
+      { clipPath: `inset(${BLEED} ${text}px ${BLEED} ${BLEED})`, offset: SETTLE.typeTextAt, easing: EASE_SETTLE },
+      { clipPath: OPEN, offset: 1 },
+    ],
+    easing: 'linear',
+  };
 }
 
 /** The described animations, created on their boxes (running: the caller pauses or schedules them). */
@@ -881,8 +968,10 @@ function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
 // ── Stacking: raises and lifts ──────────────────────────────────────────
 //
 // FLIP moves a box in paint only, so it is drawn where the stacking order of
-// its NEW place says. Two ways that shows, both fixed for the run alone, with
-// plain inline values put back exactly by finishSettle on every exit:
+// its NEW place says. Two ways that shows, both fixed only while the rows that
+// need it move, with plain inline values put back exactly: each element as the
+// last move that asked for it ends (RELEASE, below), and whatever is left by
+// finishSettle on every exit:
 //
 //  - RAISE. A row that moved into a stacking context (a bucket card is
 //    `relative isolate`) starts its glide outside that context's box, and
@@ -898,25 +987,68 @@ function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
 //  - LIFT (SETTLE.liftRows). Rows have no ground of their own, so a row gliding
 //    past others overprints their text. A row whose own move is longer than its
 //    height is stacked above its siblings and given the nearest painted ground
-//    in the scope behind it (its own, when it has one, stands) — clipped to its
-//    content box, the band its text lives in, so the padding around it never
-//    slices the neighbour it is settling against.
+//    in the scope behind it, over its whole box: the box its shadow outlines,
+//    so it reads as a card passing over its neighbours. A ground of its own
+//    stands; a translucent one (a skipped row's, a selected row's wash) is made
+//    SOLID, see below. A block that draws its surface on a child (a schedule
+//    block's pane, `data-settle-plate`) takes no ground: its plates are made
+//    solid instead. The lifted box casts a soft shadow (LIFT_SHADOW) when the
+//    row has a surface and no shadow of its own; a plate casts it, when it has
+//    none.
+//  - SOLID. A raised or lifted box whose own fill is translucent would show
+//    whatever it crosses through it. Its fill is redrawn as it reads at rest,
+//    composited: background-image layers of its own colour over each painted
+//    ancestor's, down to the first opaque one. Image layers only, never its
+//    background-color, which a pane transitions (a write would fade it). A box
+//    that already draws an image (a hover wash) is left as it is.
+//  - RELEASE. Each element comes off when the last move that asked for it
+//    ends, not when the run does: a row that has landed rests as it will while
+//    the others play on. A ground and a solid fill read at rest exactly as the
+//    row's own surface does, so taking them off shows nothing; the shadow
+//    would, so it is set down over the last SETTLE.liftSetDownMs of that move
+//    (a box-shadow fade, held at none by `fill: forwards` until the release
+//    cancels it, in the same task as its inline value comes off).
 //
 // Every raised or lifted box in a scope is ranked in ONE order by how far its
 // rows travel, cousins included: two of them in one stacking context compare by
 // z-index wherever they sit in the DOM, and a tie would fall to tree order.
 //
-// Neither touches opacity, filter, transform or any custom property, and
-// nothing is written where nothing animates (vetoes, static mode).
+// None of it touches opacity, filter, transform or any custom property, none of
+// it is written where it would start a CSS transition, and nothing is written
+// where nothing animates (vetoes, static mode). The set-down is the run's only
+// animation of anything but transform and clip-path.
 
-type StackProp = 'z-index' | 'position' | 'background-color' | 'background-clip';
+type StackProp = 'z-index' | 'position' | 'background-color' | 'background-clip' | 'background-image' | 'box-shadow';
 
-/** What a pass wants for one element: stacked (by how far its rows travel — the farther, the higher), a ground, or both. */
+/** The lightest elevation the app draws (app/globals.css, re-tuned per theme), read, never written. */
+const LIFT_SHADOW = 'var(--shadow-soft-sm)';
+/** A block's own surface, drawn on a child of the row: a schedule block's pane. */
+const PLATE_SELECTOR = '[data-settle-plate]';
+
+/** What a pass wants for one element: stacked (by how far its rows travel — the farther, the higher), a ground, a solid fill, a shadow. */
 interface Want {
   stack: boolean;
   travel: number;
+  /** A ground behind a row with none of its own, over its whole box. */
   background: string | null;
+  /** A translucent fill made solid, as background-image layers (solidOf). */
+  image: string | null;
+  shadow: boolean;
+  /** The gliding boxes whose moves asked for it: it is released when the last of them lands. */
+  movers: HTMLElement[];
 }
+
+const NO_WANT: Want = { stack: false, travel: 0, background: null, image: null, shadow: false, movers: [] };
+
+/** Two wants for one element: either's stack and shadow, the longer travel, the later ground and fill, both's movers. */
+const mergeWant = (was: Want, w: Want): Want => ({
+  stack: was.stack || w.stack,
+  travel: Math.max(was.travel, w.travel),
+  background: w.background ?? was.background,
+  image: w.image ?? was.image,
+  shadow: was.shadow || w.shadow,
+  movers: [...new Set([...was.movers, ...w.movers])],
+});
 
 /** An element the run has written to, with each inline value it found there. */
 interface Stacked extends Want {
@@ -928,6 +1060,10 @@ interface Stacked extends Want {
   /** Static, and not a flex or grid item: z-index needs `position: relative` to apply. */
   positions: boolean;
   saved: Map<StackProp, { value: string; priority: string; wrote: string }>;
+  /** performance.now() at which its last mover lands, and it comes off; 0 until the moves play, or held to the run's end. */
+  due: number;
+  /** Its shadow being set down (see RELEASE), cancelled as it comes off. */
+  fade: Animation | null;
 }
 
 const UNSET = new Set(['', 'none', 'auto', 'normal']);
@@ -980,18 +1116,69 @@ function stacks(el: Element, styleOf: StyleOf): boolean {
   return cs.willChange.split(',').some((v) => STACKING_HINTS.has(v.trim()));
 }
 
-/** Any alpha at all: `transparent` and `rgba(…, 0)` / `… / 0)` are no ground. */
-function painted(color: string): boolean {
+/** A computed colour's alpha, 0 to 1: `transparent`, `rgba(…, a)` and the `… / a)` and `… / a%)` forms; anything else is opaque. */
+function alphaOf(color: string): number {
   const c = color.trim().toLowerCase();
-  if (c === '' || c === 'transparent') return false;
+  if (c === '' || c === 'transparent') return 0;
+  const clamp = (a: number) => (Number.isFinite(a) ? Math.min(1, Math.max(0, a)) : 1);
   const slash = /\/\s*(-?[\d.]+)(%?)\s*\)$/.exec(c);
-  if (slash) return Number(slash[1]) > 0;
+  if (slash) return clamp(Number(slash[1]) / (slash[2] ? 100 : 1));
   const legacy = /^(?:rgba|hsla)\(([^)]*)\)$/.exec(c);
   if (legacy) {
     const parts = legacy[1].split(',');
-    if (parts.length === 4) return Number.parseFloat(parts[3]) > 0;
+    if (parts.length === 4) {
+      const a = parts[3].trim();
+      return clamp(Number.parseFloat(a) / (a.endsWith('%') ? 100 : 1));
+    }
   }
-  return true;
+  return 1;
+}
+
+/** Any alpha at all: `transparent` and `rgba(…, 0)` / `… / 0)` are no ground. */
+const painted = (color: string) => alphaOf(color) > 0;
+
+/** Whether writing `prop` inline would start a CSS transition on it: a run animates transform and clip-path only. */
+function transitions(cs: CSSStyleDeclaration, prop: string): boolean {
+  const names = cs.transitionProperty.split(',').map((v) => v.trim());
+  const durations = cs.transitionDuration.split(',').map((v) => Number.parseFloat(v) || 0);
+  return names.some((n, i) => (n === 'all' || n === prop) && durations[i % durations.length] > 0);
+}
+
+/**
+ * A translucent fill made solid, as it reads at rest (see Stacking): its own
+ * colour over each painted ancestor's, down to the first opaque one, as
+ * background-image layers, the first on top. Null when its fill is opaque or
+ * absent, when it already draws an image (a hover wash), when the image would
+ * transition, or when nothing opaque is under it at all.
+ */
+function solidOf(el: Element, styleOf: StyleOf): string | null {
+  const cs = styleOf(el);
+  const own = cs.backgroundColor;
+  const a = alphaOf(own);
+  if (a <= 0 || a >= 1) return null;
+  if (!UNSET.has(cs.backgroundImage.trim()) || transitions(cs, 'background-image')) return null;
+  const layers = [own];
+  for (let up = el.parentElement; up; up = up.parentElement) {
+    const ucs = styleOf(up);
+    if (!hasBox(ucs)) continue; // `display: contents` paints no fill
+    const bg = ucs.backgroundColor;
+    const ua = alphaOf(bg);
+    if (ua <= 0) continue;
+    layers.push(bg);
+    if (ua >= 1) return layers.map((c) => `linear-gradient(${c}, ${c})`).join(', ');
+  }
+  return null;
+}
+
+/** Whether `el` may take the lift's shadow: it casts none of its own, and the write would not transition. */
+function shadowless(el: Element, styleOf: StyleOf): boolean {
+  const cs = styleOf(el);
+  return UNSET.has(cs.boxShadow.trim()) && !transitions(cs, 'box-shadow');
+}
+
+/** The row's own plates (PLATE_SELECTOR), never a nested row's. */
+function platesOf(row: HTMLElement): HTMLElement[] {
+  return [...row.querySelectorAll<HTMLElement>(PLATE_SELECTOR)].filter((p) => p.closest(KEY_SELECTOR) === row);
 }
 
 /** The ground a lifted row crosses on: none when it has its own, else the nearest painted one within the scope. */
@@ -1115,14 +1302,10 @@ function raiser(
  */
 function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live[], styleOf: StyleOf): Map<HTMLElement, Want> {
   const wants = new Map<HTMLElement, Want>();
-  const want = (el: HTMLElement, w: Want) => {
+  const want = (el: HTMLElement, w: Partial<Want>) => {
+    const full = { ...NO_WANT, ...w };
     const was = wants.get(el);
-    wants.set(
-      el,
-      was
-        ? { stack: was.stack || w.stack, travel: Math.max(was.travel, w.travel), background: w.background ?? was.background }
-        : w
-    );
+    wants.set(el, was ? mergeWant(was, full) : full);
   };
   // What each box's own animations add at the first frame, and which boxes animate at all.
   const offsets = new Map<Element, Vec>();
@@ -1157,15 +1340,29 @@ function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live
     const box = m.boxes.get(sp.key);
     if (!node || node.role !== 'row' || !box) continue;
     const travel = Math.hypot(sp.from.x, sp.from.y);
+    const movers = [box];
     if (SETTLE.liftRows && travel > node.rect.height) {
-      want(box, { stack: true, travel, background: null });
+      want(box, { stack: true, travel, movers });
       // The ground goes on the row itself: on a phone its box is the SwipeRow, which has no padding to clip to.
       const row = m.els.get(sp.key) ?? box;
-      const ground = groundOf(row, root, styleOf);
-      if (ground) want(row, { stack: false, travel: 0, background: ground });
+      const plates = platesOf(row);
+      if (plates.length > 0) {
+        // The block draws its own surface: no ground behind the whole band, each plate made solid and lit.
+        for (const plate of plates) {
+          const image = solidOf(plate, styleOf);
+          const shadow = painted(styleOf(plate).backgroundColor) && shadowless(plate, styleOf);
+          if (image || shadow) want(plate, { image, shadow, movers });
+        }
+      } else {
+        const image = solidOf(row, styleOf);
+        const ground = groundOf(row, root, styleOf);
+        if (image || ground) want(row, { background: ground, image, movers });
+        const surface = ground !== null || painted(styleOf(row).backgroundColor);
+        if (surface && shadowless(box, styleOf)) want(box, { shadow: true, movers });
+      }
     }
     const raise = raiseFor(box, node.rect);
-    if (raise) want(raise.el, { stack: true, travel: raise.travel, background: null });
+    if (raise) want(raise.el, { stack: true, travel: raise.travel, image: solidOf(raise.el, styleOf), movers });
   }
   return wants;
 }
@@ -1202,49 +1399,35 @@ function restoreStacked(s: Stacked): void {
 /**
  * Applies one pass's stacking to a scope. A hold re-plans from FIRST, so its
  * pass replaces the last; a retarget only adds (`merge`), so nothing gliding
- * on loses its ground mid-flight. The run's own writes are taken off the
- * scope's observer: they move nothing.
+ * on loses its ground mid-flight. Each pass is judged as the scope rests: the
+ * last pass's writes come off first, or a row would read its own ground as
+ * one of its own, and lose it. The run's own writes are taken off the scope's
+ * observer: they move nothing.
  */
 function stackScope(s: ScopeRun, specs: AnimSpec[], m: Measured, kept: Live[], merge: boolean): void {
+  const carried = merge ? [...s.stacked.values()].filter((st) => st.el.isConnected) : [];
+  unstackScope(s);
   const styleOf = styleCache();
   const wants = stackingWants(s.root, specs, m, kept, styleOf);
-  for (const [el, was] of s.stacked) {
-    const now = wants.get(el);
-    if (merge && el.isConnected) {
-      wants.set(el, {
-        stack: was.stack || !!now?.stack,
-        travel: Math.max(was.travel, now?.travel ?? 0),
-        background: now?.background ?? was.background,
-      });
-    } else if (!now) {
-      restoreStacked(was);
-      s.stacked.delete(el);
-    }
-  }
+  for (const was of carried) wants.set(was.el, mergeWant(was, wants.get(was.el) ?? NO_WANT));
   if (wants.size === 0) {
     s.observer?.takeRecords();
     return;
   }
   const raised: Stacked[] = [];
   for (const [el, w] of wants) {
-    let st = s.stacked.get(el);
-    if (!st) {
-      const cs = styleOf(el);
-      st = {
-        el,
-        hadStyle: el.hasAttribute('style'),
-        z: zOf(cs),
-        positions: !zApplies(el, styleOf),
-        saved: new Map(),
-        stack: false,
-        travel: 0,
-        background: null,
-      };
-      s.stacked.set(el, st);
-    }
-    st.stack = w.stack;
-    st.travel = w.travel;
-    st.background = w.background;
+    const cs = styleOf(el);
+    const st: Stacked = {
+      el,
+      hadStyle: el.hasAttribute('style'),
+      z: zOf(cs),
+      positions: !zApplies(el, styleOf),
+      saved: new Map(),
+      ...w,
+      due: 0,
+      fade: null,
+    };
+    s.stacked.set(el, st);
     if (st.stack) raised.push(st);
   }
   // Siblings are compared as they rest: what each had before the run, what the others have now.
@@ -1263,25 +1446,113 @@ function stackScope(s: ScopeRun, specs: AnimSpec[], m: Measured, kept: Live[], m
     if (st.stack) {
       writeProp(st, 'z-index', String(base + 1 + levels.indexOf(st.travel)));
       if (st.positions) writeProp(st, 'position', 'relative');
-    } else {
-      restoreProp(st, 'z-index');
-      restoreProp(st, 'position');
     }
     if (st.background) {
       writeProp(st, 'background-color', st.background);
-      writeProp(st, 'background-clip', 'content-box');
-    } else {
-      restoreProp(st, 'background-color');
-      restoreProp(st, 'background-clip');
+      // The box the shadow outlines, whatever clip its classes set: a narrower ground leaves a see-through ring inside it.
+      writeProp(st, 'background-clip', 'border-box');
     }
+    if (st.image) writeProp(st, 'background-image', st.image);
+    if (st.shadow) writeProp(st, 'box-shadow', LIFT_SHADOW);
   }
   s.observer?.takeRecords();
 }
 
+/** One element put back exactly: its inline values first, then its set-down, in the same task, so no frame shows its shadow again. */
+function unstack(st: Stacked): void {
+  restoreStacked(st);
+  if (!st.fade) return;
+  try {
+    st.fade.cancel();
+  } catch {
+    /* already gone with its element */
+  }
+  st.fade = null;
+}
+
 /** Everything the run stacked in a scope, put back exactly. */
 function unstackScope(s: ScopeRun): void {
-  for (const st of s.stacked.values()) restoreStacked(st);
+  if (s.releaseTimer !== null) clearTimeout(s.releaseTimer);
+  s.releaseTimer = null;
+  for (const st of s.stacked.values()) unstack(st);
   s.stacked.clear();
+}
+
+/**
+ * Times each stacked element's release (see RELEASE) from the moves as they
+ * now run: when the last of its movers lands. An element with a mover that
+ * runs no move is held to the run's end, as before any of this. Called once
+ * the moves have their ends: at play, and after a retarget re-aims them.
+ */
+function timeReleases(s: ScopeRun): void {
+  const ends = new Map<Element, number>();
+  for (const l of s.live) if (l.kind === 'translate' && l.end > 0) ends.set(l.box, Math.max(ends.get(l.box) ?? 0, l.end));
+  const now = performance.now();
+  for (const st of s.stacked.values()) {
+    let due = st.movers.length > 0 ? 0 : -1;
+    for (const box of st.movers) {
+      const end = ends.get(box);
+      if (end === undefined) {
+        due = -1;
+        break;
+      }
+      due = Math.max(due, end);
+    }
+    st.due = Math.max(0, due);
+    if (st.due > 0 && st.shadow && !st.fade) st.fade = setDown(st.el, st.due - now);
+  }
+  armRelease(s);
+}
+
+/**
+ * The lift's shadow eased to none over the last SETTLE.liftSetDownMs of the
+ * move, `left` ms from now, and held there until the release. Keyed from its
+ * computed value, so the token's resolved shadow interpolates. Null when there
+ * is nothing to fade or no time to fade it in.
+ */
+function setDown(el: HTMLElement, left: number): Animation | null {
+  const duration = Math.min(SETTLE.liftSetDownMs, left);
+  if (duration <= 0 || typeof el.animate !== 'function') return null;
+  try {
+    const lifted = getComputedStyle(el).boxShadow;
+    if (UNSET.has(lifted.trim())) return null;
+    return el.animate([{ boxShadow: lifted }, { boxShadow: 'none' }], {
+      duration,
+      delay: left - duration,
+      easing: EASE_SETTLE,
+      fill: 'forwards',
+    });
+  } catch {
+    return null;
+  }
+}
+
+/** The release timer, for the next element due. */
+function armRelease(s: ScopeRun): void {
+  if (s.releaseTimer !== null) clearTimeout(s.releaseTimer);
+  s.releaseTimer = null;
+  let next = Infinity;
+  for (const st of s.stacked.values()) if (st.due > 0) next = Math.min(next, st.due);
+  if (next === Infinity) return;
+  s.releaseTimer = setTimeout(() => releaseDue(s), Math.max(0, next - performance.now()));
+}
+
+/** Every element whose movers have all landed, put back; its own writes are taken off the scope's observer, since they move nothing. */
+function releaseDue(s: ScopeRun): void {
+  s.releaseTimer = null;
+  const now = performance.now();
+  try {
+    for (const [el, st] of s.stacked) {
+      if (st.due === 0 || st.due > now + 1) continue;
+      unstack(st);
+      s.stacked.delete(el);
+    }
+    s.observer?.takeRecords();
+    armRelease(s);
+  } catch (err) {
+    console.warn('[settle] release abandoned', err);
+    finishSettle();
+  }
 }
 
 function cancelLive(live: Live[]): void {
@@ -1473,8 +1744,8 @@ function listen(r: Run): void {
 function hold(s: ScopeRun): void {
   cancelLive(s.live);
   s.live = [];
-  // Nothing of this scope animates now: the retypes measure at LAST.
-  const specs = describeAnimations(s.plan, { typeFrom: retypeInsets(s.plan, s.last) });
+  // Nothing of this scope animates now: the type-ins measure at LAST.
+  const specs = describeAnimations(s.plan, { typeIn: typeInsets(s.plan, s.last) });
   stackScope(s, specs, s.last, [], false);
   s.live = realize(specs, s.last.boxes);
   for (const l of s.live) l.anim.pause();
@@ -1582,6 +1853,7 @@ function play(r: Run): void {
       l.end = r.playedAt + endTimeOf(l);
       l.anim.play();
     }
+    timeReleases(s);
   }
   scheduleFinish(r);
 }
@@ -1674,13 +1946,15 @@ function retarget(r: Run, s: ScopeRun): void {
     return;
   }
 
-  const specs = describeAnimations(plan, { moveMs, immediate: true });
+  // No translate of this scope runs now (the clips it kept move no rect): a new row's text measures at layout.
+  const specs = describeAnimations(plan, { moveMs, immediate: true, typeIn: typeInsets(plan, now) });
   stackScope(s, specs, now, kept, true);
   const fresh = realize(specs, now.boxes);
   const t0 = performance.now();
   for (const l of fresh) l.end = t0 + endTimeOf(l);
   s.live = [...kept, ...fresh];
   s.last = now;
+  timeReleases(s);
   scheduleFinish(r);
 }
 

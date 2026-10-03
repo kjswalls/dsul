@@ -996,6 +996,8 @@ export function ScheduleBlock({
           <div
             onClick={() => openEditFor(item, itemType)}
             style={{ marginLeft: LANE_PX }}
+            // The strip is this block's surface, as the pane is a live one's.
+            data-settle-plate=""
             className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
           >
             <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
@@ -1224,6 +1226,9 @@ export function ScheduleBlock({
           // share one band — only their panes tile inside it. So the pane is the
           // only honest handle on "this item's pixels", for a test or anything else.
           data-slot="pane"
+          // The block's surface: a settle that lifts this block makes it solid
+          // for the glide instead of grounding the whole band (lib/settle.ts).
+          data-settle-plate=""
           {...attributes}
           {...listeners}
           // The pane is the block's only stable handle: the wrapper is

@@ -10,10 +10,14 @@ import { act, renderHook } from '@testing-library/react';
  * tests/unit/command-bar-ask.test.ts; the tab itself, tests/unit/ask-tab.test.tsx.
  */
 
-const planner = vi.hoisted(() => ({ items: [] as unknown[] }));
+/** `preview`: the look-only preview's cached rows, still loading (lib/planner-ready.ts). */
+const planner = vi.hoisted(() => ({ items: [] as unknown[], preview: false }));
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
     getState: () => ({
+      userId: 'u1',
+      isLoading: planner.preview,
+      isPreview: planner.preview,
       items: planner.items,
       projects: [],
       itemTypes: [],
@@ -75,6 +79,7 @@ beforeEach(() => {
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useViewStore.setState({ zenOpen: false, zenMoving: false });
   planner.items = [];
+  planner.preview = false;
 });
 
 afterEach(async () => {
@@ -726,6 +731,34 @@ describe('openConversation (C4)', () => {
     expect(rail().stacks.phone).toEqual([{ kind: 'history' }, { kind: 'item', itemId: 'i1', returnFocus: 'conv:c6' }]);
     expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
     expect(useUIStore.getState().activeDialog).toBeNull();
+  });
+
+  // The preview's rows are cached: they cannot say whether the item exists now.
+  // So the item is pushed either way, and the view (ask-tab.test.tsx) resolves
+  // it on fresh rows, falling back to the conversation if it is gone.
+  it.each([
+    ['in the cache', [{ id: 'i1', type: 'task', title: 'Cached title', status: 'pending' }]],
+    ['missing from the cache', []],
+  ])('on the phone, over the preview: an item %s is pushed as its item, with the conversation to fall back to', (_what, items) => {
+    planner.preview = true;
+    planner.items = items;
+    seedSummaries(summary({ id: 'c8', itemId: 'i1' }));
+    rail().push('phone', { kind: 'history' });
+    openConversation('c8', true, { returnFocus: 'conv:c8' });
+    expect(rail().stacks.phone).toEqual([
+      { kind: 'history' },
+      { kind: 'item', itemId: 'i1', fallbackConversation: 'c8', returnFocus: 'conv:c8' },
+    ]);
+    expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+    expect(useUIStore.getState().activeDialog).toBeNull();
+  });
+
+  it('on the phone, over the preview: a general conversation is pushed as it is', () => {
+    planner.preview = true;
+    seedSummaries(summary({ id: 'c9' }));
+    openConversation('c9', true);
+    expect(rail().stacks.phone).toEqual([{ kind: 'conversation', id: 'c9' }]);
+    expect(rail().pendingReveal).toBeNull();
   });
 
   it('from anywhere on desktop: closes an item on top, shows Ask, and pushes', () => {

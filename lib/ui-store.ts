@@ -109,6 +109,15 @@ export interface ConfirmRequest {
    * the closing dialog's button. Without it, focus falls to <body>.
    */
   fallbackFocus?: () => void;
+  /**
+   * `false` declares that `onConfirm` reads and writes no planner row (deleting
+   * a conversation, disconnecting the model). Only such a confirm is raised on
+   * `/` while the planner is the look-only preview; every other one is refused
+   * there, because one decided on cached rows would act on them after the
+   * landing. Absent means it may touch rows, so a new confirm is refused until
+   * someone has checked and said otherwise.
+   */
+  touchesPlanner?: false;
 }
 
 interface UIStore {
@@ -146,7 +155,10 @@ interface UIStore {
 
   /** Shared AlertDialog rendered once in the shell. */
   confirmRequest: ConfirmRequest | null;
-  /** Refused while previewing on `/`, where every confirm guards a data action. */
+  /**
+   * Refused while previewing on `/`, where confirms guard data actions, unless
+   * the request says it touches no planner row (`touchesPlanner: false`).
+   */
   confirm: (request: ConfirmRequest) => void;
   resolveConfirm: (confirmed: boolean) => void;
 
@@ -258,8 +270,10 @@ export const useUIStore = create<UIStore>()((set, get) => ({
   confirm: (request) => {
     // Decided on cached rows, a confirm accepted after landing would act on
     // them. The planner's route only: the preview outlives a client navigation,
-    // and /settings's one confirm (disconnecting the model) touches no row.
-    if (isPlannerPreviewing() && onPlannerRoute()) return;
+    // and no page off `/` raises a row-acting confirm through this slot. One
+    // that declares itself row-free is raised anyway: refused, its button
+    // would do nothing at all.
+    if (request.touchesPlanner !== false && isPlannerPreviewing() && onPlannerRoute()) return;
     set({ confirmRequest: request });
   },
   resolveConfirm: (confirmed) => {

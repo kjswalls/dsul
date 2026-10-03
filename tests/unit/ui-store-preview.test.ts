@@ -12,6 +12,7 @@ import {
   type ConfirmRequest,
 } from '@/lib/ui-store';
 import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
+import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
 import { usePlannerStore } from '@/lib/planner-store';
 import type { Item, Task } from '@/lib/planner-types';
 
@@ -24,7 +25,8 @@ import type { Item, Task } from '@/lib/planner-types';
  * from a cached row would write a decision about it after the fresh data had
  * replaced it. The request is opened when — and only when — fresh data lands
  * for the same account, re-resolved against that data. `confirm` is refused
- * outright on `/`, where every confirm guards a data action.
+ * on `/`, where confirms guard data actions, unless the request declares it
+ * touches no planner row (`touchesPlanner: false`).
  */
 
 const A = 'user-a';
@@ -62,6 +64,14 @@ const CHROME_SLOTS: ActiveDialog[] = [
 ];
 
 const CONFIRM: ConfirmRequest = { title: 'Delete?', description: 'Gone.', onConfirm: () => {} };
+/** Delete reads no context; the rest is here to type-check. */
+const VERB_CTX = {
+  dateStr: '2026-10-03',
+  date: new Date('2026-10-03T12:00:00Z'),
+  todayStr: '2026-10-03',
+  tz: 'UTC',
+  milestoneIds: new Set<string>(),
+} as unknown as VerbContext;
 
 /** The planner as the preview leaves it: cached rows, still loading. */
 function previewing(userId = A) {
@@ -206,6 +216,22 @@ describe('confirm while previewing', () => {
     landFresh();
     ui().confirm(CONFIRM);
     expect(ui().confirmRequest).toBe(CONFIRM);
+  });
+
+  it('is raised on `/` for a confirm that declares it touches no planner row (deleting a conversation)', () => {
+    const rowFree: ConfirmRequest = { ...CONFIRM, touchesPlanner: false };
+    ui().confirm(rowFree);
+    expect(ui().confirmRequest).toBe(rowFree);
+  });
+
+  it("still refuses a row-acting one: an item's delete, asked through the verbs", () => {
+    ITEM_VERBS.delete.run(task('t-kept', 'Cached title'), VERB_CTX);
+    expect(ui().confirmRequest).toBeNull();
+    // The same verb on real data asks, and does not declare itself row-free.
+    landFresh();
+    ITEM_VERBS.delete.run(task('t-kept', 'Fresh title'), VERB_CTX);
+    expect(ui().confirmRequest).not.toBeNull();
+    expect(ui().confirmRequest?.touchesPlanner).toBeUndefined();
   });
 });
 

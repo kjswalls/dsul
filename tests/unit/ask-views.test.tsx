@@ -900,6 +900,26 @@ describe("a conversation's ⌄", () => {
     expect(toasts.error).not.toHaveBeenCalled();
   });
 
+  // ui-store refuses a confirm on `/` while the planner is the look-only
+  // preview, unless it declares it touches no planner row, as this one does.
+  it('asks and deletes over the look-only preview too: a conversation is not a planner row', async () => {
+    push({ kind: 'history' });
+    await openSaved(TRIP, EXCHANGE);
+    act(() => usePlannerStore.setState({ isLoading: true, isPreview: true } as never));
+    try {
+      openMenu(trigger());
+      fireEvent.click(screen.getByTestId('conversation-delete'));
+      await timers();
+      expect(useUIStore.getState().confirmRequest).toMatchObject({ touchesPlanner: false });
+      fireEvent.click(screen.getByTestId('conversation-delete-confirm'));
+      await settle();
+      expect(api.removes).toEqual(['c1']);
+      expect(stack()).toEqual([{ kind: 'history' }]);
+    } finally {
+      act(() => usePlannerStore.setState({ isLoading: false, isPreview: false } as never));
+    }
+  });
+
   it("lands focus on the view beneath once the confirm's exit is over, and keeps its words till then", async () => {
     const exit = animatedConfirm();
     try {

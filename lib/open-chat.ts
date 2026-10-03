@@ -16,6 +16,7 @@ import {
 } from './rail-store';
 import { closeItemPanel, openEditFor, useUIStore } from './ui-store';
 import { usePlannerStore } from './planner-store';
+import { selectPlannerSettled } from './planner-ready';
 import { useViewStore } from './view-store';
 import { chatPlaceholder, itemChatPlaceholder } from './chat-utils';
 import type { Item, Task } from './planner-types';
@@ -311,19 +312,36 @@ export function openHistory(
  *    when the item is gone; the conversation can still go on, with no item to
  *    focus its context on. Nothing focuses the box: a row is not a request to
  *    type.
+ *
+ * "Is the item gone?" is asked of fresh rows only. Before the planner settles
+ * it holds the look-only preview's cached rows (or, on a cold load, none), so
+ * on the phone an item's conversation pushes its item whatever they say, with
+ * the conversation as `fallbackConversation`: the item view waits for the load
+ * and resolves both ways there (components/mobile/ask-tab.tsx PhoneItemView).
+ * On desktop the item goes through openEditFor, which ui-store defers while
+ * previewing and promotion re-resolves against fresh rows, so the cached row
+ * is only an address.
  */
 export function openConversation(id: string, isMobile: boolean, o: { returnFocus?: string } = {}): void {
   if (!getAICapabilities().canChat) return;
   const rid = resolveConversationId(id);
   const conversations = useConversationsStore.getState();
   const itemId = conversations.summaries[rid]?.itemId ?? conversations.threads[rid]?.itemId ?? null;
-  const item = itemId ? usePlannerStore.getState().items.find((i) => i.id === itemId) : undefined;
+  const planner = usePlannerStore.getState();
+  const item = itemId ? planner.items.find((i) => i.id === itemId) : undefined;
 
   if (isMobile) {
     showAskTab();
     const rail = useRailStore.getState();
-    if (item) rail.setPendingReveal(item.id);
-    const view: AskView = item ? { kind: 'item', itemId: item.id } : { kind: 'conversation', id: rid };
+    let view: AskView;
+    if (itemId && !selectPlannerSettled(planner)) {
+      view = { kind: 'item', itemId, fallbackConversation: rid };
+    } else if (item) {
+      view = { kind: 'item', itemId: item.id };
+    } else {
+      view = { kind: 'conversation', id: rid };
+    }
+    if (view.kind === 'item') rail.setPendingReveal(view.itemId);
     rail.push('phone', o.returnFocus ? { ...view, returnFocus: o.returnFocus } : view);
     return;
   }

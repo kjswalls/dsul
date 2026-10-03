@@ -22,8 +22,9 @@
  *    exactly once on each side: a task rescheduled Monday → Wednesday glides
  *    across the week's columns. A recurring item drawn on several days stays
  *    unpaired — which Monday went to which Wednesday is a guess.
- *  - APPEAR: new on screen; rows type in left → right, frames unfold top →
- *    down. A node under an appearing frame rides that frame's reveal instead —
+ *  - APPEAR: new on screen; rows type in left → right (their text first, at
+ *    a pace that reads as typing, then the rest of the row), frames unfold
+ *    top → down. A node under an appearing frame rides that frame's reveal instead —
  *    a row that moved into it too, whose glide would only show through the
  *    unfold's clip.
  *  - REVEAL: a frame holding rows that grew taller uncovers its new height as
@@ -47,14 +48,16 @@
  * Timings, holds and caps, in ms / frames / px / counts. Pinned by a test.
  * Moves run on EASE_MOVE (ease-out-soft today, which covers ~96% of a 420ms
  * move by ~210ms, so the glide reads as arriving rather than travelling); the
- * worst case (appear rank 6) is done by ~584ms, inside the completed-sinks
+ * worst case (appear rank 6) is done by ~624ms, inside the completed-sinks
  * hold's 700ms.
  */
 export const SETTLE = {
   // Treatment durations. A move (and the clip reveals that ride it) and a retarget's re-aim take moveMs.
   moveMs: 420,
-  appearMs: 340,
-  retypeMs: 300,
+  appearMs: 380,
+  retypeMs: 340,
+  // A type-in reaches the end of the row's text this far through (EASE_TYPE), and opens the rest after.
+  typeTextAt: 0.8,
   riseMs: 320,
   riseOffsetPx: 6,
   // A new row waits for the gap it lands in to open, then cascades by rank (capped).
@@ -84,9 +87,11 @@ export const SETTLE = {
   shieldMs: 250,
   // Clip insets run this far outside the box, so focus rings and shadows aren't shaved mid-reveal.
   clipBleedPx: 8,
-  // A row gliding farther than its own height is lifted for the run: stacked above its
+  // A row gliding farther than its own height is lifted while it moves: stacked above its
   // siblings on the nearest painted ground, so texts never overprint as it crosses them.
   liftRows: true as boolean,
+  // A lifted row's shadow is set down over the last this-many ms of its own move, then the lift comes off.
+  liftSetDownMs: 120,
 } as const;
 
 /**
@@ -103,6 +108,15 @@ export const EASE_SETTLE = 'cubic-bezier(0.22, 1, 0.36, 1)';
  * with each other: nested moves compose exactly only on the same curve.
  */
 export const EASE_MOVE: string = EASE_SETTLE;
+
+/**
+ * The curve a type-in uncovers the row's TEXT on, up to `typeTextAt`: close to
+ * an even pace, easing into the text's last character, so a title reads as
+ * typed rather than swapped. EASE_SETTLE, whose first quarter covers three
+ * quarters of the way, uncovered the text in a few tens of ms. The rest of the
+ * row (the empty space, a right-aligned chip) then opens on EASE_SETTLE.
+ */
+export const EASE_TYPE = 'cubic-bezier(0.3, 0.4, 0.5, 1)';
 
 export type SettleRole = 'row' | 'frame';
 

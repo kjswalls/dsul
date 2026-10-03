@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   EASE_MOVE,
   EASE_SETTLE,
+  EASE_TYPE,
   SETTLE,
   SETTLE_LIMITS,
   createKeyDeduper,
@@ -63,8 +64,9 @@ describe('SETTLE constants', () => {
   it('pins every timing, hold and cap', () => {
     expect(SETTLE).toEqual({
       moveMs: 420,
-      appearMs: 340,
-      retypeMs: 300,
+      appearMs: 380,
+      retypeMs: 340,
+      typeTextAt: 0.8,
       riseMs: 320,
       riseOffsetPx: 6,
       appearLead: 100,
@@ -88,12 +90,13 @@ describe('SETTLE constants', () => {
       shieldMs: 250,
       clipBleedPx: 8,
       liftRows: true,
+      liftSetDownMs: 120,
     });
   });
 
   it('keeps the worst case inside the completed-sinks hold (700ms), whatever the move is tuned to', () => {
     const worstAppear = SETTLE.appearLead + SETTLE.appearMaxRank * SETTLE.appearStagger + SETTLE.appearMs;
-    expect(worstAppear).toBe(584);
+    expect(worstAppear).toBe(624);
     const worstRise = SETTLE.riseMaxRank * SETTLE.riseStagger + SETTLE.riseMs;
     // A move (and the clip reveals that ride it) runs moveMs from play; a re-aim never outlasts it by design.
     const worst = Math.max(worstAppear, worstRise, SETTLE.retypeMs, SETTLE.moveMs);
@@ -104,6 +107,12 @@ describe('SETTLE constants', () => {
   it('EASE_MOVE is the curve moves run on — ease-out-soft today, pinned so a change is deliberate', () => {
     expect(EASE_MOVE).toBe('cubic-bezier(0.22, 1, 0.36, 1)');
     expect(EASE_MOVE).toBe(EASE_SETTLE);
+  });
+
+  it('EASE_TYPE paces a type-in over the text, pinned; the text is reached inside the clip, before it opens', () => {
+    expect(EASE_TYPE).toBe('cubic-bezier(0.3, 0.4, 0.5, 1)');
+    expect(SETTLE.typeTextAt).toBeGreaterThan(0.5);
+    expect(SETTLE.typeTextAt).toBeLessThan(1);
   });
 
   it('EASE_SETTLE is --ease-out-soft from app/globals.css, read as text', () => {

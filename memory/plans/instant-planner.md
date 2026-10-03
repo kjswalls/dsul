@@ -166,7 +166,12 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   `new-container`, `bulk-add`, `organize`) stores the request in `deferredDialog`
   instead; the last request wins. `closeDialog` leaves the deferral alone, because the
   launcher closes itself right after running "Open Organize". `confirm` refuses while
-  previewing on `/`, where every confirm guards a data action.
+  previewing on `/`, where confirms guard data actions, unless the request declares
+  `touchesPlanner: false`: its `onConfirm` reads and writes no planner row. Two do today,
+  deleting a conversation (the Ask title menu) and disconnecting the model. Absent means
+  it may touch rows, so a new confirm is refused there until someone has checked; every
+  other confirm (Organize, the bulk bar, the row and sheet deletes, the item verbs) acts
+  on rows and stays unmarked.
 - **Promotion** ([hooks/use-deferred-dialog.ts](../../hooks/use-deferred-dialog.ts)),
   mounted once in AppShell. On the preview's end it opens the request only after a
   successful landing for the same account, into a free slot with no confirm up. An
@@ -179,6 +184,18 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   interceptor, so the open goes to the slot and is deferred like any other; promotion
   opens an `edit-item` through `openStampedEdit` too, so a promoted item still lands over
   Ask.
+- **An item's conversation on the phone** ([lib/open-chat.ts](../../lib/open-chat.ts)
+  `openConversation`, from Ask's history rows and the AI activity rows). It pushes the
+  conversation's item over Ask when the item is there. Before the planner settles it pushes
+  the item whatever the cached rows say, with the conversation as `fallbackConversation`,
+  and PhoneItemView ([components/mobile/ask-tab.tsx](../../components/mobile/ask-tab.tsx))
+  looks the item up only once settled, as the deep-link pages do: "Loading…" until then,
+  then the autosaving editor seeded from the fresh row. Not found in that mount, the
+  conversation shows in its place (a push, which the level rule lets replace the item);
+  found and later deleted, the view pops. Settled rather than loaded, so a failed load's
+  empty store shows the conversation instead of loading for ever. The conversation view
+  says its item is gone only on loaded rows. On desktop the item goes through
+  `openEditFor`, deferred and re-resolved like any edit.
 - **Commands** ([lib/commands/types.ts](../../lib/commands/types.ts)). While previewing,
   `isAvailable` is false for every command in the `create`, `items`, `rituals` and
   `history` groups, plus `workspace.selectAll` and `goto.overdue`. It is a group rule
@@ -411,6 +428,9 @@ Declarative, tracked by key and never by element, re-queried every pass.
   `grid`, hour slots and cells `hour:${h}`, now markers `now`, the week gutter (`gutter`,
   `gutter-hour:${h}`, `gutter-now`), Zen's `zen:hero` and `zen:ledger`, and the
   braindump's `braindump:paused` and `braindump:quickadd`.
+- **Plates** (`data-settle-plate`): a row's surface drawn on a child of it, which a lift
+  makes solid in place of grounding the row. ScheduleBlock's pane and the skipped block's
+  strip carry it. A row that paints its own background (TaskRow) needs none.
 - A frame's key is qualified by its nearest frame ancestor's key, else its `[data-date]`
   (seven columns each have an `hour:9`). Repeats get `#2`, `#3` in DOM order. On a phone a
   row animates its SwipeRow box (`[data-sink-row]`).
@@ -438,9 +458,9 @@ opacity.
 | Move: matched, own displacement of 1px or more | `translate(dx, dy)` to zero, 420ms, composite `add` |
 | A row that grew | a clip reveal of its new extent, alongside the move |
 | A frame of rows that grew | a bottom-edge clip reveal on the rows' curve |
-| Appear, row | clip type-in left to right plus a 4px lift, 340ms, after 100ms plus 24ms per rank (rank capped at 6) |
-| Appear, frame | clip unfold top down plus a 3px drop, 340ms, after 80ms |
-| Retype: in place, signature changed | clip type-in from the first changed character, 300ms; the first 12 by position |
+| Appear, row | clip type-in left to right, its text paced (below), plus a 4px lift, 380ms, after 100ms plus 24ms per rank (rank capped at 6) |
+| Appear, frame | clip unfold top down plus a 3px drop, 380ms, after 80ms |
+| Retype: in place, signature changed | clip type-in from the first changed character, its text paced, 340ms; the first 12 by position |
 | Exit | nothing: counted, never animated; the neighbours glide into the gap |
 | Large | lists emptied; the visible top-level nodes rise 6px, 320ms, 24ms cascade (rank capped at 8) |
 
@@ -457,6 +477,21 @@ opacity.
   starts there. A character that is not drawn (inside `display: none`) falls back to where
   the text starts. The whole row types in, as before, when the text is the same and only an
   attribute changed (a tick), or when no Range geometry is available (jsdom).
+- **A type-in paces the text.** On `EASE_SETTLE` in one stroke across the row's full width,
+  a title was uncovered in its first few tens of ms and read as a swap. With the same Range
+  (one per animated row, read at LAST before any of the scope's animations exist), the
+  conductor also reads where the row's text ends: its first text node with anything in it,
+  which in every planner row is the title (`settle-participants.test.tsx` pins it), as
+  drawn (a wrapped title's widest line) and only as far as its own box shows it (a
+  truncated title ends at its ellipsis). The clip then runs three keyframes on a linear
+  effect: from its start to the text's end by `typeTextAt` (0.8) on `EASE_TYPE`
+  (`cubic-bezier(0.3, 0.4, 0.5, 1)`, close to an even pace, easing into the last
+  character), then the rest of the row (the empty space, a right-aligned chip) on
+  `EASE_SETTLE`. Appearing rows are paced too, including one new since the landing at a
+  retarget (its translates are cancelled before it reads; the clips it keeps move no
+  rect). Where the text does not run on past where the clip starts (a change in a
+  right-hand duration, a title cut short), or nothing could be measured, it opens in one
+  stroke as before. Frames still unfold in one stroke.
 - A row whose key changed is still a move when its item id is unmatched exactly once on
   each side. A task rescheduled Monday to Wednesday glides across the columns; a recurring
   item drawn on several days stays unpaired.
@@ -468,17 +503,22 @@ opacity.
 - The curve is `cubic-bezier(0.22, 1, 0.36, 1)`, spelled-out `--ease-out-soft` (a test
   pins the pair). Moves (the glide, the grow and frame reveals that ride it, a retarget's
   re-aim) read `SETTLE.moveMs` and `EASE_MOVE`, which is `EASE_SETTLE` today and exists so
-  the glide can be tuned alone; appears, retypes and rises stay on `EASE_SETTLE`. The
-  worst case ends about 584ms after play, and a test keeps it, whatever `moveMs` is, under
+  the glide can be tuned alone; appears, retypes and rises stay on `EASE_SETTLE` (a type-in
+  that paces its text carries `EASE_TYPE` and `EASE_SETTLE` on its keyframes instead). The
+  worst case ends about 624ms after play, and a test keeps it, whatever `moveMs` is, under
   the sink-hold's 700ms. Every number lives in `SETTLE` in `lib/settle-plan.ts`, and a
   test pins each one.
 
-**Stacking, for the run only.** FLIP draws a box where the stacking order of its NEW
+**Stacking, only while its rows move.** FLIP draws a box where the stacking order of its NEW
 place says, which showed twice in a recording of Day × Buckets. Both are inline values
 written at the hold (and added to, never taken away, by a retarget) and put back exactly
-as found by `finishSettle` or a scope's snap, on every exit. The whole list of what a run
-writes outside its animations: `z-index`, `position: relative`, `background-color` and
-`background-clip`.
+as found: each element as the rows that asked for it land (Release, below), and whatever
+is left by `finishSettle` or a scope's snap, on every exit. The whole list of what a run
+writes outside its animations: `z-index`, `position: relative`, `background-color`,
+`background-clip`, `background-image` and `box-shadow`. Each pass is judged as the scope
+rests: the last pass's writes come off first, so a re-hold no longer reads a lifted row's
+own ground as a ground of its own and drops it. A retarget carries the last pass's wants
+forward on top of its own.
 
 - **Raise.** A row retimed Afternoon → Morning lives in Morning's card from the landing,
   and every card root is `relative isolate`, so the later Afternoon card painted over its
@@ -510,19 +550,52 @@ writes outside its animations: `z-index`, `position: relative`, `background-colo
 - **Lift** (`SETTLE.liftRows`, on). Rows have no ground of their own, so a row gliding past
   others overprinted their text. A row whose own move is longer than its height is stacked
   above its siblings and given the background of its nearest painted ancestor inside the
-  scope (a row with a ground of its own, like a selected row's wash, keeps it), clipped to
-  its content box. TaskRow is a flex row with `py-1.5` (`py-1` compact), centred, with a
-  line-clamped title, so its content box is the band its checkbox, title and rail live in;
-  a full-height ground sliced the top off the neighbour a row was settling against, in the
-  glide's tail (about 160 to 240ms in), where the row sits a few pixels short of its slot.
-  Two rows' text bands meet only once they overlap by more than both paddings (12px by
-  default), which is where hiding the one beneath is right. The ground goes on the row
-  itself and the z-index on its box, which differ on a phone (the SwipeRow, which has no
-  padding to clip to). Where nothing inside the scope is painted, as on the plain canvas
-  (its ground is `<main>`, outside view-root), it is stacked and given no ground.
+  scope (a row with a ground of its own, like a selected row's wash, keeps it), over its
+  whole box (`background-clip: border-box`, written so no class can narrow it): the box
+  its shadow outlines, so it reads as a card passing over its neighbours. An earlier pass
+  clipped it to the content box, because before the shadow a full-height ground sliced the
+  top off the neighbour a row was settling against with no visible edge; once the shadow
+  drew that edge, the content-box clip left a see-through ring inside it, and crossed text
+  showed sliced in the ring. The ground goes on the row itself and the z-index on its box,
+  which differ on a phone (the SwipeRow). Where nothing inside the scope is painted, as on
+  the plain canvas (its ground is `<main>`, outside view-root), it is stacked and given no
+  ground.
+- **Solid.** A raised or lifted box whose OWN fill is translucent (a skipped row's
+  `bg-surface-3/60`, a selected row's wash, a raised card's) showed what it crossed
+  through it. Its fill is redrawn for the run as it reads at rest: `background-image`
+  layers, `linear-gradient(c, c)` for its own colour, then each painted ancestor's
+  (`display: contents` skipped), down to the first opaque one. Image layers only, never its
+  `background-color`: the schedule pane transitions that for 150ms, so a write would fade
+  it in and out. A box that already draws an image (`hover-wash`) is left alone, as is
+  one whose fill is opaque or absent, or with nothing opaque under it at all. The task
+  asked for the own colour over a written `background-color` ground; the layers do the
+  same without that write.
+- **Plates.** A schedule block draws its surface on a child, the pane (and the skipped
+  block's strip), marked `data-settle-plate`. A lifted block takes no ground across its
+  whole band (lane, rail and bead included); each of its own plates is made solid
+  instead, and casts the lift's shadow if it has none of its own (the live pane has
+  `--sched-shadow`, so in practice only the skipped strip takes one). A plate inside a
+  nested row belongs to that row.
+- **Shadow.** A lifted box casts `var(--shadow-soft-sm)`, the lightest elevation token
+  (re-tuned per theme in `globals.css`, read and never written), when the row has a
+  surface (its own fill or the ground) and the box casts no shadow of its own, which is
+  kept. A row with no surface gets none: it would outline nothing.
+- **Release.** Each raised or lifted element comes off when the last move that asked for
+  it lands (its "movers"), not when the run ends, which can be 250ms later while new rows
+  type in: a row that has landed rests exactly as it will. The ground and a solid fill read
+  at rest as the row's own surface does, so taking them off shows nothing; the shadow
+  would snap, so it is set down over the last `SETTLE.liftSetDownMs` (120ms) of the move,
+  a `box-shadow` fade from its computed value to none with `fill: forwards`, cancelled in
+  the same task as the inline shadow comes off. It is the run's only animation of
+  anything but transform and clip-path; it runs on the main thread, on the handful of
+  lifted boxes, while they are nearly still. A retarget re-times every release from the
+  re-aimed moves (and a row it lifts again is set down again); an element with a mover
+  that runs no move is held to the run's end, as before.
 
-Neither touches opacity, filter, transform or a custom property, and nothing is written
-where nothing animates.
+None of it touches opacity, filter, transform or a custom property; nothing is written
+that would start a CSS transition (a property named in the element's own
+`transition-property`, or `all`, with a duration); and nothing is written where nothing
+animates.
 
 ### Hold, play, retarget
 
@@ -710,10 +783,15 @@ chose differently, each for a reason found while building or testing it.
   bucket card for half its glide, and texts overprinting as rows crossed. A second one
   showed the raise tie between cousin cards, and the lift's full-height ground slicing a
   neighbour; the raise moved to the outermost box with one order per scope, and the
-  ground to the content box.
+  ground to the content box. A third gave the lift its shadow, which moved the ground
+  back to the whole box (see Lift), and released each lift as its row lands.
 - **Retypes start at the first changed character.** The design typed the whole row in,
   checkbox included, so a renamed row went blank at the landing and its unchanged title
   typed in again.
+- **Type-ins pace their text, and run longer** (appear 340 to 380ms, retype 300 to
+  340ms). On one stroke of `EASE_SETTLE` the text was uncovered too fast to read as typed.
+- **Solid fills, plates and the lift's shadow** (see Treatments). The settle once wrote
+  only stacking and a ground.
 
 **Participants**
 
@@ -758,7 +836,10 @@ chose differently, each for a reason found while building or testing it.
   (the `/settings` arm-then-push) just as AppShell mounted to open it. A real unmount
   still drops it.
 - **`confirm` refuses only on `/`.** The preview outlives a client navigation, and the one
-  confirm on `/settings` (disconnecting the model) touches no row.
+  confirm on `/settings` (disconnecting the model) touches no row; it now says so too.
+- **A row-free confirm is raised on `/` anyway** (`touchesPlanner: false`). Refused, Ask's
+  "Delete conversation" did nothing at all during the preview. The opt-out is explicit
+  and per request, so a new confirm is refused until someone has checked it.
 - **⌘A and `n` are kept from the browser while the preview holds them.** A key whose
   command is greyed only by the preview (`heldByPreview`) is `preventDefault`ed, as a cold
   load with no preview always consumed it. Handed back, ⌘A became a page-wide browser
@@ -792,6 +873,15 @@ chose differently, each for a reason found while building or testing it.
   the sync.
 - **Paused rows** do not settle one by one; the paused strip moves as a whole.
 - **Only title-only captures are queued.** Every other verb is unavailable or refused.
+- **A card that lost a row** (a bucket card or group whose row moved out or left) takes
+  its new, shorter height at once: its bottom edge jumps up while the rows inside it are
+  still gliding, visible for about 75ms. Transform and clip-path cannot draw a box taller
+  than its layout box, so it cannot be held, and nothing tries. The grown case is the
+  bottom-edge reveal above.
+- **An item's conversation on desktop, during the preview, for an item deleted since the
+  snapshot,** opens nothing: the item's deferred edit is dropped at promotion, and the
+  conversation is not shown in its place (the phone shows it). Data-safe; a second click
+  after the landing opens the conversation.
 
 ## Tests that pin it
 
@@ -802,15 +892,23 @@ chose differently, each for a reason found while building or testing it.
   `planner-snapshot-writer.test.ts`, the ledger in `planner-bundle.test.ts`, the audits in
   `local-state.test.ts`. The provider's offer, warm and purges:
   `planner-load-by-route.test.tsx`.
-- The guards: `ui-store-preview`, `commands-preview` (a frozen classification of every
-  static command), `held-captures`, `omnibar-capture`, `deep-link-preview`,
+- The guards: `ui-store-preview` (including the `touchesPlanner: false` opt-out, and a
+  row-acting verb's confirm still refused), `commands-preview` (a frozen classification
+  of every static command), `held-captures`, `omnibar-capture`, `deep-link-preview`,
   `extension-preview`, `preview-unattended-writers`, plus additions to the existing
-  notice, braindump, Zen, Organize and view-store tests.
+  notice, braindump, Zen, Organize and view-store tests. An item's conversation over the
+  preview: `open-chat` (what the phone pushes), `ask-tab` (loading, the fresh editor from
+  both a history row and an AI activity row, the fallback conversation, a delete, a
+  failed load) and `ask-views` (a conversation deleted over the preview).
 - Rendering: `planner-skeleton.test.tsx` (the amended contract: skeleton iff not visible,
   `data-loaded` fresh only), `preview-crash-boundary`, `planner-sync-line`,
   `planner-preview-css`, and `week-column-hover` (no ancestor of a lime mark carries
   opacity in the preview).
-- The settle: `settle-plan`, `settle-conductor`, `settle-participants`, `use-sink-hold`.
+- The settle: `settle-plan` (every constant, `EASE_TYPE`, the 624ms worst case),
+  `settle-conductor` (the paced type-ins; the stacking writes, pinned as a list, with
+  solid fills, plates and the shadow, each put back exactly on every exit),
+  `settle-participants` (a row's first text is its title; one plate per schedule block),
+  `use-sink-hold`.
 - E2E: `tests/e2e/instant-planner.spec.ts` with `tests/e2e/helpers/preview.ts` (the
   preview held on screen, a capture during it, a failed load, sign-out, reduced motion),
   plus the settle wait in `waitForAppReady`.

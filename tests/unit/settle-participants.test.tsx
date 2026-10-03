@@ -19,7 +19,11 @@ import { DndContext } from '@dnd-kit/core';
  *  - a frame's key, qualified the way settle.ts qualifies it, is unique in its
  *    scope with no dedupe needed — a `#2` in normal use would pair the wrong
  *    boxes the moment the duplicates' order differed;
- *  - nothing interpolates a missing value into a key.
+ *  - nothing interpolates a missing value into a key;
+ *  - a row's first drawn text is its title, which is what a type-in paces
+ *    itself to (lib/settle.ts textEndX), and a schedule block draws its
+ *    surface on one plate of its own (`data-settle-plate`), which a lift makes
+ *    solid in place of a ground.
  */
 
 beforeAll(() => {
@@ -314,6 +318,21 @@ describe('settle participants', () => {
       }
     });
 
+    it("a row's first drawn text is its title: what a type-in paces to", () => {
+      const scope = mount();
+      const titles = new Map<string, string>([...TASKS, ...HABITS].map((it) => [it.id, it.title]));
+      const rows = [...scope.querySelectorAll<HTMLElement>(`${KEY}:not(${FRAME})`)];
+      expect(rows.length).toBeGreaterThan(0);
+      for (const el of rows) {
+        const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+        let first: string | null = null;
+        for (let n = walker.nextNode(); n && first === null; n = walker.nextNode()) {
+          if ((n as Text).data.trim() !== '') first = (n as Text).data;
+        }
+        expect(first, el.getAttribute('data-settle-key')!).toBe(titles.get(el.getAttribute('data-item-id')!));
+      }
+    });
+
     it('needs no dedupe: each resolved key is unique in its scope', () => {
       const scope = mount();
       const keys = [...scope.querySelectorAll(KEY)]
@@ -338,6 +357,28 @@ describe('settle participants', () => {
     const skipped = [...document.querySelectorAll(`[data-settle-key="${D}|h-skip"]`)];
     expect(skipped.map((el) => el.getAttribute('data-testid')).sort()).toEqual(['item-card', 'schedule-block']);
     for (const el of skipped) expect(el).toHaveAttribute('data-row-variant', 'skipped');
+  });
+
+  it('a schedule block draws its surface on one plate of its own, live and skipped alike; a list row on itself', () => {
+    render(
+      <DndContext>
+        {inCanvas(
+          <>
+            <DayList />
+            <DaySchedule activeId={null} />
+          </>
+        )}
+      </DndContext>
+    );
+    const blocks = [...document.querySelectorAll<HTMLElement>('[data-testid="schedule-block"]')];
+    expect(blocks.map((b) => b.getAttribute('data-row-variant'))).toEqual(expect.arrayContaining(['default', 'skipped']));
+    for (const b of blocks) {
+      const plates = [...b.querySelectorAll('[data-settle-plate]')].filter((p) => p.closest(KEY) === b);
+      expect(plates, b.getAttribute('data-settle-key')!).toHaveLength(1);
+    }
+    const rows = [...document.querySelectorAll('[data-testid="item-card"]')];
+    expect(rows.length).toBeGreaterThan(0);
+    for (const r of rows) expect(r.querySelector('[data-settle-plate]')).toBeNull();
   });
 
   it('every attribute the change signature reads is written by some row', () => {

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, act, fireEvent, createEvent } from '@testing-library/react';
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 import { create } from 'zustand';
 
 /**
@@ -55,7 +55,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { SETTLING_ATTR } from '@/lib/settle';
 import { settleEpoch } from '@/lib/settle-epoch';
-import { EASE_MOVE, EASE_SETTLE, SETTLE } from '@/lib/settle-plan';
+import { EASE_MOVE, EASE_SETTLE, EASE_TYPE, SETTLE } from '@/lib/settle-plan';
 import { useViewStore } from '@/lib/view-store';
 
 // ── Fake WAAPI ──────────────────────────────────────────────────────────
@@ -149,6 +149,8 @@ const live = () => animations.filter((a) => !a.cancelled);
 const keyOf = (a: FakeAnimation) => a.target.getAttribute('data-settle-key');
 const on = (key: string, list = live()) => list.filter((a) => keyOf(a) === key);
 const kind = (a: FakeAnimation) => ('transform' in a.from ? 'translate' : 'clip');
+/** What a keyframe animates: its offset and easing say when and how, not what. */
+const animated = (kf: Keyframe) => Object.keys(kf).filter((k) => k !== 'offset' && k !== 'easing');
 
 // ── Fake layout ─────────────────────────────────────────────────────────
 
@@ -279,17 +281,39 @@ const SELECTED = new Date('2026-10-03T12:00:00Z');
 /**
  * `rail`: a second text node, right of the title (a duration). `railHidden`
  * draws it `display: none`. `done`: data-completed. `sink`: wrapped in a
- * SwipeRow-shaped box, which is what animates on a phone.
+ * SwipeRow-shaped box, which is what animates on a phone. `bg`, `image`,
+ * `shadow` and `fades` (a 150ms transition on the named properties) are the
+ * row's own inline style. `plate`: its content drawn on a child surface of
+ * that colour (`data-settle-plate`, a schedule block's pane), which casts
+ * `plateShadow`.
  */
 type Row = Item & {
   h?: number;
   bucket?: string;
   bg?: string;
+  image?: string;
+  shadow?: string;
+  fades?: string;
+  plate?: string;
+  plateShadow?: string;
   rail?: string;
   railHidden?: boolean;
   done?: boolean;
   sink?: boolean;
 };
+
+/** Only what is given: a row with none of it carries no style attribute at all. */
+function ownStyle(o: { bg?: string; image?: string; shadow?: string; fades?: string }): CSSProperties | undefined {
+  const style: CSSProperties = {};
+  if (o.bg) style.backgroundColor = o.bg;
+  if (o.image) style.backgroundImage = o.image;
+  if (o.shadow) style.boxShadow = o.shadow;
+  if (o.fades) {
+    style.transitionProperty = o.fades;
+    style.transitionDuration = '150ms';
+  }
+  return Object.keys(style).length > 0 ? style : undefined;
+}
 const item = (id: string, title = id, extra: Partial<Row> = {}): Row =>
   ({ type: 'task', id, title, status: 'pending', isScheduled: false, order: 0, completedDates: [], ...extra }) as Row;
 
@@ -314,16 +338,8 @@ const TITLE_X = 32;
 const RAIL_X = 600;
 
 function TaskRow({ it }: { it: Row }) {
-  const row = (
-    <div
-      data-settle-key={`${DAY}|${it.id}`}
-      data-item-id={it.id}
-      data-h={it.h ?? 40}
-      data-completed={it.done ? 'true' : 'false'}
-      style={it.bg ? { backgroundColor: it.bg } : undefined}
-      onClick={onRowClick}
-      onMouseDown={onRowMouseDown}
-    >
+  const content = (
+    <>
       <span data-top="0" data-x="8" data-w="16" data-h="16" />
       <span data-top="0" data-x={TITLE_X} data-h="20">
         {it.title}
@@ -332,6 +348,30 @@ function TaskRow({ it }: { it: Row }) {
         <span data-top="0" data-x={RAIL_X} data-h="20" style={it.railHidden ? { display: 'none' } : undefined}>
           {it.rail}
         </span>
+      )}
+    </>
+  );
+  const row = (
+    <div
+      data-settle-key={`${DAY}|${it.id}`}
+      data-item-id={it.id}
+      data-h={it.h ?? 40}
+      data-completed={it.done ? 'true' : 'false'}
+      style={ownStyle(it)}
+      onClick={onRowClick}
+      onMouseDown={onRowMouseDown}
+    >
+      {it.plate ? (
+        <div
+          data-settle-plate=""
+          data-testid={`plate-${it.id}`}
+          data-h={it.h ?? 40}
+          style={ownStyle({ bg: it.plate, shadow: it.plateShadow })}
+        >
+          {content}
+        </div>
+      ) : (
+        content
       )}
     </div>
   );
@@ -396,9 +436,10 @@ function Braindump({ scrollH }: { scrollH?: number }) {
  * static div[data-dnd-bucket], the only thing in it, inside a flex column
  * (`flex`). `block` makes the list a plain block, so a wrapper's z-index needs
  * a position; `anchoring` also gives each wrapper an absolutely positioned
- * child, which a position on the wrapper would re-anchor.
+ * child, which a position on the wrapper would re-anchor. `cardBg` paints
+ * each card root.
  */
-function Buckets({ wrap }: { wrap?: 'flex' | 'block' | 'anchoring' }) {
+function Buckets({ wrap, cardBg }: { wrap?: 'flex' | 'block' | 'anchoring'; cardBg?: string }) {
   const items = usePlannerStore((s) => s.items) as Row[];
   const band = useHarness((s) => s.band);
   const card = (b: string) => (
@@ -407,7 +448,7 @@ function Buckets({ wrap }: { wrap?: 'flex' | 'block' | 'anchoring' }) {
       data-testid={`bucket-${b}`}
       data-settle-key={`bucket:${b}`}
       data-settle-role="frame"
-      style={{ position: 'relative', isolation: 'isolate' }}
+      style={{ position: 'relative', isolation: 'isolate', ...(cardBg ? { backgroundColor: cardBg } : null) }}
     >
       <header data-testid={`caption-${b}`} data-h={20}>
         {b}
@@ -573,7 +614,7 @@ describe('animation shape', () => {
     expect(animations.length).toBeGreaterThan(0);
     for (const a of animations) {
       for (const kf of a.keyframes) {
-        for (const prop of Object.keys(kf)) expect(['transform', 'clipPath']).toContain(prop);
+        for (const prop of animated(kf)) expect(['transform', 'clipPath']).toContain(prop);
       }
       expect(a.options.fill).toBe('backwards');
       const glide = [`${DAY}|a`, `${DAY}|b`].includes(keyOf(a)!);
@@ -595,13 +636,13 @@ describe('animation shape', () => {
     const clip = appear.find((a) => kind(a) === 'clip')!;
     const lift = appear.find((a) => kind(a) === 'translate')!;
     expect(clip.keyframes).toEqual([{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]);
-    expect(clip.options).toMatchObject({ duration: 340, delay: 100, composite: 'replace' });
+    expect(clip.options).toMatchObject({ duration: 380, delay: 100, composite: 'replace' });
     expect(lift.keyframes).toEqual([{ transform: 'translateY(4px)' }, { transform: 'translateY(0px)' }]);
-    expect(lift.options).toMatchObject({ duration: 340, delay: 100, composite: 'add' });
+    expect(lift.options).toMatchObject({ duration: 380, delay: 100, composite: 'add' });
 
     const [retype] = on(`${DAY}|d`);
     expect(retype.keyframes).toEqual([{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]);
-    expect(retype.options).toMatchObject({ duration: 300, delay: 0, composite: 'replace' });
+    expect(retype.options).toMatchObject({ duration: 340, delay: 0, composite: 'replace' });
 
     expect(on('group:inbox')).toEqual([]);
     expect(animations).toHaveLength(5);
@@ -620,7 +661,7 @@ describe('animation shape', () => {
       [{ clipPath: 'inset(-8px -8px 100% -8px)' }, { clipPath: 'inset(-8px)' }],
       [{ transform: 'translateY(-3px)' }, { transform: 'translateY(0px)' }],
     ]);
-    expect(frame.every((a) => a.options.delay === 80 && a.options.duration === 340)).toBe(true);
+    expect(frame.every((a) => a.options.delay === 80 && a.options.duration === 380)).toBe(true);
     // Its row rides the frame's unfold.
     expect(on(`${DAY}|w1`)).toEqual([]);
 
@@ -976,8 +1017,8 @@ describe('lifecycle', () => {
     land(FRESH());
     expect(settling()).toBe('true');
     frame();
-    frame(); // playing; the latest end is e's reveal, 100 + 340
-    advance(100 + 340 + 50 - 1);
+    frame(); // playing; the latest end is e's reveal, 100 + 380
+    advance(100 + 380 + 50 - 1);
     expect(settling()).toBe('true');
     advance(1);
     expect(settling()).toBeNull();
@@ -1589,8 +1630,8 @@ describe('a row that glides out from behind a later stacking context', () => {
     expect(bucket('afternoon').style.zIndex).toBe('');
     expect(document.querySelector<HTMLElement>('[data-testid="bucket-list"]')!.getAttribute('style')).toBeNull();
     // Only stacking is written, never opacity, filter or a transform, and no keyframe animates anything else.
-    expect([...changedProps(before)].sort()).toEqual(['background-clip', 'background-color', 'position', 'z-index']);
-    for (const a of animations) for (const kf of a.keyframes) for (const p of Object.keys(kf)) expect(['transform', 'clipPath']).toContain(p);
+    expect([...changedProps(before)].sort()).toEqual(['background-clip', 'background-color', 'box-shadow', 'position', 'z-index']);
+    for (const a of animations) for (const kf of a.keyframes) for (const p of animated(kf)) expect(['transform', 'clipPath']).toContain(p);
 
     frame();
     frame(); // playing
@@ -1728,10 +1769,12 @@ describe('a row that crosses its neighbours is lifted', () => {
     expect(m3.style.zIndex).toBe('1');
     expect(m3.style.position).toBe('relative'); // it was static: z-index needs a position
     expect(m3.style.backgroundColor).toBe(PAINTED); // the card body's, the nearest painted ancestor
-    expect(m3.style.backgroundClip).toBe('content-box'); // the text band only: its padding never slices a neighbour
+    expect(m3.style.backgroundClip).toBe('border-box'); // the whole box its shadow outlines: no see-through ring inside it
+    expect(m3.style.boxShadow).toBe('var(--shadow-soft-sm)'); // lifted: the lightest elevation, read from its token
+    expect(m3.style.backgroundImage).toBe(''); // no fill of its own to make solid
     expect(row('m1').hasAttribute('style')).toBe(false);
     expect(row('m2').hasAttribute('style')).toBe(false);
-    expect([...changedProps(before)].sort()).toEqual(['background-clip', 'background-color', 'position', 'z-index']);
+    expect([...changedProps(before)].sort()).toEqual(['background-clip', 'background-color', 'box-shadow', 'position', 'z-index']);
 
     frame();
     frame();
@@ -1754,6 +1797,7 @@ describe('a row that crosses its neighbours is lifted', () => {
     const d = row('d');
     expect(d.style.zIndex).toBe('1');
     expect(d.style.backgroundColor).toBe('');
+    expect(d.style.boxShadow).toBe(''); // no surface: a shadow would outline nothing
     expect(row('a').hasAttribute('style')).toBe(false);
     act(() => fireEvent.keyDown(document.body, { key: 'j' }));
     expect(inlineStyles()).toEqual(before);
@@ -1954,8 +1998,8 @@ describe('a raise between cousins: each card the only thing in its own wrapper',
 
 // ── Retypes ─────────────────────────────────────────────────────────────
 
-describe('a retype types in from its first changed character', () => {
-  let reads: { live: number }[] = [];
+describe('a type-in starts where the text changed, and paces the text', () => {
+  let reads: { live: number; translating: number }[] = [];
   let ranges = 0;
   const proto = Range.prototype as unknown as { getBoundingClientRect?: () => DOMRect };
 
@@ -1966,7 +2010,8 @@ describe('a retype types in from its first changed character', () => {
     proto.getBoundingClientRect = function (this: Range) {
       const el = this.startContainer.parentElement!;
       const scope = el.closest('[data-settle-scope]');
-      reads.push({ live: animations.filter((a) => !a.cancelled && scope?.contains(a.target)).length });
+      const running = animations.filter((a) => !a.cancelled && scope?.contains(a.target));
+      reads.push({ live: running.length, translating: running.filter((a) => kind(a) === 'translate').length });
       const box = layoutOf(el);
       if (box.width === 0 && box.height === 0) return box;
       return rect(box.left + this.startOffset * CH, box.top, (this.endOffset - this.startOffset) * CH, 16);
@@ -1982,16 +2027,30 @@ describe('a retype types in from its first changed character', () => {
     delete proto.getBoundingClientRect;
   });
 
-  const clipOf = (id: string) => on(`${DAY}|${id}`).filter((a) => kind(a) === 'clip').map((a) => a.keyframes);
-  /** Clipped from viewport x `x` rightward (the rows span the 1024px canvas), revealed to the bleed. */
-  const typedFrom = (x: number) => [[{ clipPath: `inset(-8px ${VIEW_W - x}px -8px -8px)` }, { clipPath: 'inset(-8px)' }]];
-  const WHOLE = [[{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]];
+  const clips = (id: string) => on(`${DAY}|${id}`).filter((a) => kind(a) === 'clip');
+  const clipOf = (id: string) => clips(id).map((a) => a.keyframes);
+  const right = (x: number) => `inset(-8px ${VIEW_W - x}px -8px -8px)`;
+  /** Clipped from viewport x `x` rightward (the rows span the 1024px canvas), revealed to the bleed in one stroke. */
+  const typedFrom = (x: number) => [[{ clipPath: right(x) }, { clipPath: 'inset(-8px)' }]];
+  /** From `start` (a clip), the text uncovered to viewport x `end` by typeTextAt on EASE_TYPE, then the rest of the row. */
+  const pacedFrom = (start: string, end: number) => [
+    [
+      { clipPath: start, offset: 0, easing: EASE_TYPE },
+      { clipPath: right(end), offset: SETTLE.typeTextAt, easing: EASE_SETTLE },
+      { clipPath: 'inset(-8px)', offset: 1 },
+    ],
+  ];
+  const paced = (x: number, end: number) => pacedFrom(right(x), end);
+  const TYPE_IN = 'inset(-8px 100% -8px -8px)';
+  const WHOLE = [[{ clipPath: TYPE_IN }, { clipPath: 'inset(-8px)' }]];
 
-  it('keeps the checkbox and the unchanged prefix drawn: only what was added types in', () => {
+  it('keeps the checkbox and the unchanged prefix drawn: only what was added types in, at a reading pace', () => {
     startPreview(<Canvas />, [item('a'), item('d', 'Draft the Q4 plan')]);
     land([item('a'), item('d', "Draft the Q4 plan with Maya's notes")]);
-    expect(clipOf('d')).toEqual(typedFrom(TITLE_X + 17 * CH));
-    // One Range for the one retype, read at layout with nothing in the scope animating.
+    expect(clipOf('d')).toEqual(paced(TITLE_X + 17 * CH, TITLE_X + 35 * CH));
+    // The keyframes carry the curves: the effect itself runs linear.
+    expect(clips('d')[0].options).toMatchObject({ duration: SETTLE.retypeMs, easing: 'linear' });
+    // One Range for the one retype, its start and its text's end, read at layout with nothing in the scope animating.
     expect(ranges).toBe(1);
     expect(reads.length).toBeGreaterThan(0);
     expect(reads.every((r) => r.live === 0)).toBe(true);
@@ -2000,20 +2059,21 @@ describe('a retype types in from its first changed character', () => {
   it('a change with no common prefix starts at the text’s left edge — the checkbox (8–24) stays drawn', () => {
     startPreview(<Canvas />, [item('a'), item('d', 'Call Sam')]);
     land([item('a'), item('d', 'Email Sam')]);
-    expect(clipOf('d')).toEqual(typedFrom(TITLE_X));
+    expect(clipOf('d')).toEqual(paced(TITLE_X, TITLE_X + 9 * CH));
     expect(TITLE_X).toBeGreaterThan(24);
   });
 
-  it('a change in a later text node starts there: the title before it stays drawn', () => {
+  it('a change in a later text node starts there: the title before it stays drawn, and it opens in one stroke', () => {
     startPreview(<Canvas />, [item('a'), item('d', 'Stretch', { rail: '30m' })]);
     land([item('a'), item('d', 'Stretch', { rail: '45m' })]);
     expect(clipOf('d')).toEqual(typedFrom(RAIL_X));
+    expect(clips('d')[0].options.easing).toBe(EASE_SETTLE);
   });
 
-  it('a mid-word change starts mid-word; a text cut short starts after its last character', () => {
+  it('a mid-word change starts mid-word; a text cut short starts after its last character, with no text left to pace', () => {
     startPreview(<Canvas />, [item('a', 'Reply to Sam'), item('d', 'Draft the Q4 plan with notes')]);
     land([item('a', 'Reply to Sal'), item('d', 'Draft the Q4 plan')]);
-    expect(clipOf('a')).toEqual(typedFrom(TITLE_X + 11 * CH));
+    expect(clipOf('a')).toEqual(paced(TITLE_X + 11 * CH, TITLE_X + 12 * CH));
     expect(clipOf('d')).toEqual(typedFrom(TITLE_X + 17 * CH));
     expect(ranges).toBe(2);
   });
@@ -2021,8 +2081,52 @@ describe('a retype types in from its first changed character', () => {
   it('a changed character that is not drawn falls back to where the text starts', () => {
     startPreview(<Canvas />, [item('a'), item('d', 'Stretch', { rail: '30m', railHidden: true })]);
     land([item('a'), item('d', 'Stretch', { rail: '45m', railHidden: true })]);
-    expect(clipOf('d')).toEqual(typedFrom(TITLE_X));
+    expect(clipOf('d')).toEqual(paced(TITLE_X, TITLE_X + 7 * CH));
     expect(ranges).toBe(1);
+  });
+
+  it('a title clipped by its own box is paced to where its box ends', () => {
+    startPreview(<Canvas />, [item('a'), item('d', 'Plan')]);
+    land([item('a'), item('d', 'Plan '.repeat(40).trim())]);
+    // 199 characters run far past the row: the text ends where the title's box does, the row's right edge.
+    expect(clipOf('d')).toEqual(paced(TITLE_X + 4 * CH, VIEW_W));
+  });
+
+  it('a new row types its title in at a reading pace, then opens the rest of the row: one Range, its lift unchanged', () => {
+    startPreview(<Canvas />, [item('a'), item('d')]);
+    land([item('a'), item('e', 'Email the landlord'), item('d')]);
+    expect(clipOf('e')).toEqual(pacedFrom(TYPE_IN, TITLE_X + 18 * CH));
+    expect(clips('e')[0].options).toMatchObject({ duration: SETTLE.appearMs, delay: SETTLE.appearLead, easing: 'linear' });
+    const lift = on(`${DAY}|e`).find((a) => kind(a) === 'translate')!;
+    expect(lift.keyframes).toEqual([{ transform: 'translateY(4px)' }, { transform: 'translateY(0px)' }]);
+    expect(lift.options.easing).toBe(EASE_SETTLE);
+    expect(ranges).toBe(1);
+    expect(reads.every((r) => r.live === 0)).toBe(true);
+  });
+
+  it('a new frame still unfolds in one stroke: only rows type in', () => {
+    startPreview(<Canvas />, [item('a')]);
+    land([item('a'), item('w1', 'w1', { project: 'work' })]);
+    expect(on('group:work').find((a) => kind(a) === 'clip')!.keyframes).toEqual([
+      { clipPath: 'inset(-8px -8px 100% -8px)' },
+      { clipPath: 'inset(-8px)' },
+    ]);
+    expect(ranges).toBe(0);
+  });
+
+  it('a row new since the landing types in at a pace too, measured at the retarget with nothing in the scope translating', async () => {
+    startPreview(<Canvas />, CACHED());
+    land(FRESH());
+    frame();
+    frame();
+    advance(100);
+    reads = [];
+    await commit(() => usePlannerStore.setState({ items: [...FRESH(), item('late', 'Late arrival')] }));
+    expect(clipOf('late')).toEqual(pacedFrom(TYPE_IN, TITLE_X + 12 * CH));
+    expect(clips('late')[0].options).toMatchObject({ delay: 0, easing: 'linear' });
+    expect(reads.length).toBeGreaterThan(0);
+    // The clip reveals it keeps run on (a clip moves no rect); its translates are cancelled before it reads.
+    expect(reads.every((r) => r.translating === 0 && r.live > 0)).toBe(true);
   });
 
   it('types the whole row in when only an attribute changed (a tick), or with no Range geometry at all', () => {
@@ -2043,7 +2147,7 @@ describe('a retype types in from its first changed character', () => {
     land([item('a'), item('d', "Draft the Q4 plan with Maya's notes")]);
     frame();
     await commit(() => useHarness.setState({ band: 30 }));
-    expect(clipOf('d')).toEqual(typedFrom(TITLE_X + 17 * CH));
+    expect(clipOf('d')).toEqual(paced(TITLE_X + 17 * CH, TITLE_X + 35 * CH));
     expect(ranges).toBe(2);
     expect(reads.every((r) => r.live === 0)).toBe(true);
   });
@@ -2051,8 +2155,8 @@ describe('a retype types in from its first changed character', () => {
 
 // ── The lifted row's ground ─────────────────────────────────────────────
 
-describe('a lifted row’s ground covers its text band only', () => {
-  it('on a phone the box (SwipeRow) is stacked and the row inside it takes the ground, clipped to its content box', () => {
+describe('a lifted row’s ground covers the box its shadow outlines', () => {
+  it('on a phone the box (SwipeRow) is stacked and the row inside it takes the ground, over its whole box', () => {
     startPreview(<Buckets />, [item('m1'), item('m2'), item('m3', 'm3', { sink: true })]);
     const before = inlineStyles();
     land([item('m3', 'm3', { sink: true }), item('m1'), item('m2')]);
@@ -2064,9 +2168,248 @@ describe('a lifted row’s ground covers its text band only', () => {
     const m3 = row('m3');
     expect(m3.style.zIndex).toBe('');
     expect(m3.style.backgroundColor).toBe(PAINTED);
-    expect(m3.style.backgroundClip).toBe('content-box');
+    expect(m3.style.backgroundClip).toBe('border-box');
     act(() => fireEvent.keyDown(document.body, { key: 'j' }));
     expect(inlineStyles()).toEqual(before);
     expect(m3.hasAttribute('style')).toBe(false);
+  });
+});
+
+// ── A lifted or raised box is solid, and a lifted one casts a soft shadow ──
+
+describe('a lifted or raised box is solid, and a lifted one casts a soft shadow', () => {
+  const SHADOW = 'var(--shadow-soft-sm)';
+  const solid = (...colors: string[]) => colors.map((c) => `linear-gradient(${c}, ${c})`).join(', ');
+  /** m3 crosses m1 and m2 (80px > 40px): lifted. */
+  const lift = (m3: Partial<Row>) => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3', 'm3', m3)]);
+    const before = inlineStyles();
+    land([item('m3', 'm3', m3), item('m1'), item('m2')]);
+    return before;
+  };
+
+  it.each([
+    ['rgba(10, 20, 30, 0.5)', 'the legacy form'],
+    ['rgb(10 20 30 / 50%)', 'the slash form, in percent'],
+    ['oklab(0.5 0.1 0.1 / 0.6)', 'a modern space'],
+  ])('a translucent own fill (%s, %s) is redrawn over the card, as it reads at rest, and put back exactly', (bg) => {
+    const before = lift({ bg });
+    const m3 = row('m3');
+    const own = getComputedStyle(m3).backgroundColor;
+    expect(m3.style.backgroundImage).toBe(solid(own, PAINTED)); // its own colour on top, the card's opaque one under it
+    expect(m3.style.backgroundColor).toBe(own); // never written: a pane transitions it
+    expect(m3.style.backgroundClip).toBe(''); // its own fill covers its whole box at rest, and still does
+    expect(m3.style.zIndex).toBe('1');
+    expect(m3.style.boxShadow).toBe(SHADOW);
+    expect([...changedProps(before)].sort()).toEqual(['background-image', 'box-shadow', 'position', 'z-index']);
+    frame();
+    frame();
+    advance(SETTLE.moveMs + 50);
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('an opaque own fill is left as it is: nothing to solidify', () => {
+    const before = lift({ bg: 'rgb(1, 2, 3)' });
+    expect(row('m3').style.backgroundImage).toBe('');
+    expect([...changedProps(before)].sort()).toEqual(['box-shadow', 'position', 'z-index']);
+  });
+
+  it('a fill that already draws an image (a hover wash) is left as it is', () => {
+    const image = 'linear-gradient(rgb(0, 0, 255), rgb(0, 0, 255))';
+    const before = lift({ bg: 'rgba(10, 20, 30, 0.5)', image });
+    expect(row('m3').style.backgroundImage).toBe(image);
+    expect(changedProps(before).has('background-image')).toBe(false);
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('a shadow of its own is kept, never replaced', () => {
+    const shadow = 'rgb(255, 0, 0) 0px 0px 0px 1px';
+    const before = lift({ shadow });
+    const m3 = row('m3');
+    expect(m3.style.boxShadow).toBe(shadow);
+    expect(m3.style.backgroundColor).toBe(PAINTED); // the ground still goes on
+    expect(changedProps(before).has('box-shadow')).toBe(false);
+  });
+
+  it('nothing is written that would start a CSS transition: a run animates transform and clip-path only', () => {
+    lift({ bg: 'rgba(10, 20, 30, 0.5)', fades: 'background-color, box-shadow' });
+    const m3 = row('m3');
+    expect(m3.style.boxShadow).toBe('');
+    expect(m3.style.backgroundImage).not.toBe(''); // background-image is not among them
+    cleanup();
+    const before = lift({ bg: 'rgba(10, 20, 30, 0.5)', fades: 'all' });
+    expect([...changedProps(before)].sort()).toEqual(['position', 'z-index']);
+  });
+
+  it('a block that draws its surface on a plate: no ground on the band, the plate solid and lit, put back exactly', () => {
+    const plate = 'rgba(200, 200, 200, 0.8)';
+    const before = lift({ plate });
+    const m3 = row('m3');
+    const pane = document.querySelector<HTMLElement>('[data-testid="plate-m3"]')!;
+    expect(m3.style.zIndex).toBe('1'); // the block is stacked as before…
+    expect(m3.style.backgroundColor).toBe(''); // …with no ground behind the whole band
+    expect(m3.style.boxShadow).toBe('');
+    expect(pane.style.backgroundImage).toBe(solid(plate, PAINTED));
+    expect(pane.style.boxShadow).toBe(SHADOW);
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('a plate with a shadow of its own keeps it, and is still made solid', () => {
+    const before = lift({ plate: 'rgba(200, 200, 200, 0.8)', plateShadow: 'rgb(0, 0, 0) 0px 1px 2px 0px' });
+    const pane = document.querySelector<HTMLElement>('[data-testid="plate-m3"]')!;
+    expect(pane.style.boxShadow).toBe('rgb(0, 0, 0) 0px 1px 2px 0px');
+    expect(pane.style.backgroundImage).not.toBe('');
+    expect(changedProps(before).has('box-shadow')).toBe(false);
+    // m1 and m2 have no plate and do not cross a row: untouched.
+    expect(row('m1').hasAttribute('style')).toBe(false);
+  });
+
+  it('a raised box with a translucent fill is made solid too, with no shadow, and put back when the host unmounts', () => {
+    const useHost = create(() => ({ on: true }));
+    const MaybeHost = () => (useHost((s) => s.on) ? <SettleHost /> : null);
+    const cardBg = 'rgba(250, 250, 250, 0.9)';
+    act(() => usePlannerStore.setState({ ...READY, isLoading: true, isPreview: true, items: INTO_MORNING.cached() }));
+    render(
+      <>
+        <MaybeHost />
+        <Buckets cardBg={cardBg} />
+      </>
+    );
+    frame();
+    frame();
+    const before = inlineStyles();
+    land(INTO_MORNING.fresh());
+    const morning = bucket('morning');
+    expect(morning.style.zIndex).toBe('1');
+    // Over the scope's own box: the opaque canvas outside view-root is what it reads against.
+    expect(morning.style.backgroundImage).toBe(solid(cardBg, 'rgb(9, 9, 9)'));
+    expect(morning.style.boxShadow).toBe('');
+    expect(bucket('afternoon').style.backgroundImage).toBe(''); // not raised
+    frame();
+    frame();
+    advance(100);
+    act(() => useHost.setState({ on: false }));
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('a follow-up mid-hold keeps the ground, the fill and the shadow: each pass is judged as the scope rests', async () => {
+    const before = lift({});
+    const m3 = row('m3');
+    expect(m3.style.backgroundColor).toBe(PAINTED);
+    frame();
+    await commit(() => useHarness.setState({ band: 30 })); // a re-hold
+    expect(m3.style.backgroundColor).toBe(PAINTED);
+    expect(m3.style.backgroundClip).toBe('border-box');
+    expect(m3.style.boxShadow).toBe(SHADOW);
+    expect(m3.style.zIndex).toBe('1');
+    frame();
+    frame();
+    advance(SETTLE.moveMs + 50);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('nothing at all under a veto', () => {
+    reduceMotionOS();
+    const before = lift({ bg: 'rgba(10, 20, 30, 0.5)', plate: 'rgba(200, 200, 200, 0.8)' });
+    expect(changedProps(before).size).toBe(0);
+  });
+});
+
+// ── A lifted row comes off as it lands ──────────────────────────────────
+
+describe('a lifted row comes off as its own move lands, while the rest play on', () => {
+  const SHADOW = 'var(--shadow-soft-sm)';
+  /** The set-down: the one animation of anything but transform and clip-path. */
+  const fadeOf = (el: Element) => (animsOn.get(el) ?? []).find((a) => 'boxShadow' in a.from && !a.cancelled);
+  /** Every row that was there before the landing is as it was: m4 and the band are new. */
+  const asBefore = (before: Record<string, string | null>) => {
+    const now = inlineStyles();
+    for (const id of Object.keys(before)) expect([id, now[id]]).toEqual([id, before[id]]);
+  };
+  /** m3 crosses m1 and m2 (80px > 40px): lifted. m4 appears, and its reveal outlasts every move. */
+  const liftAndAppear = () => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3')]);
+    const before = inlineStyles();
+    land([item('m3'), item('m1'), item('m2'), item('m4')]);
+    return before;
+  };
+
+  it('sets its shadow down over the last liftSetDownMs of the move, then puts every write back, mid-run', () => {
+    const before = liftAndAppear();
+    const m3 = row('m3');
+    expect(fadeOf(m3)).toBeUndefined(); // nothing is timed while the moves are held
+    frame();
+    frame(); // plays
+    const fade = fadeOf(m3)!;
+    expect(fade.keyframes).toEqual([{ boxShadow: getComputedStyle(m3).boxShadow }, { boxShadow: 'none' }]);
+    expect(fade.options).toMatchObject({
+      duration: SETTLE.liftSetDownMs,
+      delay: SETTLE.moveMs - SETTLE.liftSetDownMs,
+      easing: EASE_SETTLE,
+      fill: 'forwards', // held at none until the release takes the inline shadow off
+    });
+    expect(m3.style.boxShadow).toBe(SHADOW); // the lift stands under it
+    advance(SETTLE.moveMs - 1);
+    expect(m3.style.zIndex).toBe('1');
+    expect(fade.cancelled).toBe(false);
+    advance(2);
+    // Landed: every write is back, the set-down with it, and the run plays on.
+    expect(m3.hasAttribute('style')).toBe(false);
+    expect(fade.cancelled).toBe(true);
+    expect(settling()).toBe('true');
+    expect(live().length).toBeGreaterThan(0);
+    asBefore(before);
+    expect(row('m4').hasAttribute('style')).toBe(false);
+    advance(SETTLE.appearLead + SETTLE.appearMs);
+    expect(live()).toEqual([]);
+    asBefore(before);
+  });
+
+  it('an interrupt mid-set-down puts the row back and cancels the fade in the same task', () => {
+    const before = liftAndAppear();
+    frame();
+    frame();
+    advance(SETTLE.moveMs - 40);
+    const fade = fadeOf(row('m3'))!;
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(fade.cancelled).toBe(true);
+    asBefore(before);
+  });
+
+  it('a retarget re-times the release from the re-aimed move, and a row it lifts again is set down again', async () => {
+    const before = liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    advance(250);
+    const first = fadeOf(m3)!;
+    await commit(() => useHarness.setState({ band: 30 })); // re-aims every move: SETTLE.retargetMinMs from here
+    expect(first.cancelled).toBe(true);
+    const again = fadeOf(m3)!;
+    expect(again.options).toMatchObject({ delay: SETTLE.retargetMinMs - SETTLE.liftSetDownMs, fill: 'forwards' });
+    advance(SETTLE.moveMs - 250); // where the first move would have landed
+    expect(m3.style.zIndex).not.toBe('');
+    advance(SETTLE.retargetMinMs - (SETTLE.moveMs - 250) + 1);
+    expect(m3.hasAttribute('style')).toBe(false);
+    expect(again.cancelled).toBe(true);
+    advance(SETTLE.runTimeoutMs);
+    expect(live()).toEqual([]);
+    asBefore(before);
+  });
+
+  it('a raised card comes off with the row that asked for it', () => {
+    const before = intoMorning();
+    expect(bucket('morning').style.zIndex).toBe('1');
+    frame();
+    frame();
+    advance(SETTLE.moveMs + 1);
+    expect(bucket('morning').style.zIndex).toBe('');
+    expect(row('a2').hasAttribute('style')).toBe(false);
+    advance(SETTLE.runTimeoutMs);
+    expect(inlineStyles()).toEqual(before);
   });
 });

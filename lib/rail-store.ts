@@ -96,8 +96,13 @@ export type AskView =
   | { kind: 'history'; returnFocus?: string; memo?: HistoryMemo }
   /** `returnTo`: asked with "?" over an item; Back re-opens that item if it still exists. */
   | { kind: 'conversation'; id: string; returnTo?: { itemId: string }; returnFocus?: string }
-  /** Phone only: on desktop the item is ui-store's slot. */
-  | { kind: 'item'; itemId: string; returnFocus?: string };
+  /**
+   * Phone only: on desktop the item is ui-store's slot. `fallbackConversation`:
+   * pushed for that conversation before the planner settled, when nobody could
+   * yet say whether the item exists (lib/open-chat.ts openConversation). If the
+   * view finds it gone on fresh rows, the conversation shows in its place.
+   */
+  | { kind: 'item'; itemId: string; returnFocus?: string; fallbackConversation?: string };
 
 export type AskSurface = 'desktop' | 'phone';
 
