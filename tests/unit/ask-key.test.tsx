@@ -89,6 +89,91 @@ function items(value: string): string[] {
 
 const ACCENT = /--(?:lime-solid|ask-icon-accent|ask-key-accent)\b/;
 
+interface Rule {
+  /** Its selector list, split at the top level. */
+  selectors: string[];
+  body: string;
+  /** Where it starts in the source it was read from: later wins a tie. */
+  at: number;
+}
+
+/** Every style rule in `src` (comments stripped), @media blocks opened, at-rules like @property skipped. */
+function rules(src: string): Rule[] {
+  const out: Rule[] = [];
+  const walk = (text: string, offset: number) => {
+    let i = 0;
+    while (i < text.length) {
+      const open = text.indexOf('{', i);
+      if (open === -1) break;
+      let depth = 0;
+      let j = open;
+      for (; j < text.length; j++) {
+        if (text[j] === '{') depth++;
+        else if (text[j] === '}' && --depth === 0) break;
+      }
+      const prelude = text.slice(i, open).trim();
+      if (prelude.startsWith('@media')) walk(text.slice(open + 1, j), offset + open + 1);
+      else if (!prelude.startsWith('@')) out.push({ selectors: items(prelude), body: text.slice(open + 1, j), at: offset + open });
+      i = j + 1;
+    }
+  };
+  walk(src, 0);
+  return out;
+}
+
+type Specificity = [number, number, number];
+const bySpecificity = (x: Specificity, y: Specificity) => x[0] - y[0] || x[1] - y[1] || x[2] - y[2];
+
+/** A selector's specificity: :is/:not/:has take their most specific argument, :where none. */
+function specificity(sel: string): Specificity {
+  const out: Specificity = [0, 0, 0];
+  const word = /[\w-]/;
+  let i = 0;
+  while (i < sel.length) {
+    const ch = sel[i];
+    if (ch === '[') {
+      out[1]++;
+      i = sel.indexOf(']', i) + 1;
+    } else if (ch === '#' || ch === '.') {
+      out[ch === '#' ? 0 : 1]++;
+      for (i++; word.test(sel[i] ?? ''); i++);
+    } else if (ch === ':' && sel[i + 1] === ':') {
+      out[2]++;
+      for (i += 2; word.test(sel[i] ?? ''); i++);
+    } else if (ch === ':') {
+      const m = /^:([\w-]+)(\()?/.exec(sel.slice(i))!;
+      i += m[0].length;
+      if (!m[2]) {
+        out[1]++;
+        continue;
+      }
+      let depth = 1;
+      let j = i;
+      for (; j < sel.length && depth > 0; j++) {
+        if (sel[j] === '(') depth++;
+        else if (sel[j] === ')') depth--;
+      }
+      const arg = sel.slice(i, j - 1);
+      i = j;
+      if (m[1] === 'where') continue;
+      if (['is', 'not', 'has'].includes(m[1])) {
+        const best = items(arg).map(specificity).sort(bySpecificity).at(-1)!;
+        best.forEach((v, k) => (out[k] += v));
+      } else out[1]++;
+    } else if (/[a-zA-Z]/.test(ch)) {
+      out[2]++;
+      for (; word.test(sel[i] ?? ''); i++);
+    } else i++;
+  }
+  return out;
+}
+
+/** True when rule `a`'s selector `as` beats rule `b`'s selector `bs` on the same element. */
+const beats = (a: Rule, as: string, b: Rule, bs: string) => {
+  const c = bySpecificity(specificity(as), specificity(bs));
+  return c > 0 || (c === 0 && a.at > b.at);
+};
+
 beforeAll(() => {
   if (!('ResizeObserver' in globalThis)) {
     (globalThis as unknown as { ResizeObserver: unknown }).ResizeObserver = class {
@@ -307,5 +392,29 @@ describe("the key's paint (app/globals.css)", () => {
     );
     // Never the base layer's faded ring.
     expect(block).not.toMatch(/ring\/|color-mix\([^)]*--ring/);
+  });
+
+  // The design's docked key took the page's --input edge in these headers, as
+  // the whole key did. Scoped to the whole key only, the key alone's edge away
+  // from the light read as the raised key's faint 9% mix on paper.
+  it("draws the page's --input hairline under the light in the plain and masthead headers, whole or alone, in light only", () => {
+    const all = rules(stripComments(askBlock()));
+    const onInput = all.filter((r) => values(r.body, '--ask-key-rim').some((v) => /--input\b/.test(v)));
+    const selectors = onInput.flatMap((r) => r.selectors);
+    expect(
+      selectors.some(
+        (s) => s.includes("[data-layout-header='plain']") && s.includes("[data-layout-header='masthead']") && !s.includes('data-form')
+      ),
+      'one rule, for both forms, in both headers'
+    ).toBe(true);
+    // Never in dark, where --input is translucent: the partner's steps mix
+    // into the rim, and must stay solid colours there too.
+    for (const s of selectors) expect(s).toMatch(/^:root:not\(\.dark\) /);
+    const dark = all.filter((r) => r.selectors.some((s) => /(?<!:not\()\.dark\b/.test(s)));
+    const darkRims = dark.flatMap((r) => values(r.body, '--ask-key-rim'));
+    expect(darkRims.length).toBeGreaterThan(0);
+    for (const v of darkRims) {
+      expect(v).toMatch(/^color-mix\(in oklab, var\(--[\w-]+(?:, var\(--[\w-]+\))?\), var\(--foreground\) \d+%\)$/);
+    }
   });
 });

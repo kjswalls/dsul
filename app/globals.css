@@ -2165,10 +2165,12 @@ body {
 /* The plain and masthead headers (Notebook, Notepad, Writer) take the
    capsule's material away, so the whole key is drawn on the page: the page's
    own colour, the light over an --input hairline, a 1px lip under it, and a
-   flat wash under key and chord on hover. The hairline under the light is
-   solid in dark too (--input is translucent there, and a partner step mixed
-   with it would be). */
-:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] {
+   flat wash under key and chord on hover. The key alone keeps the raised
+   key's fill but takes the page's hairline too, as the design's docked key
+   did. In light only: in dark --input is translucent, and a partner step
+   mixed with it would be, so the hairline is a solid mix there (the page's
+   for the whole key, below; the raised key's 7% for the key alone). */
+:root:not(.dark) :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener] {
   --ask-key-rim: var(--input);
 }
 .dark :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] {
