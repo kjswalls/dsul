@@ -9,7 +9,7 @@ import { useAISettingsStore } from './ai-settings-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import type { ChatErrorCode } from './ai-types';
 import { buildCatchUpProposal, buildProposalContext, validateProposal } from './proposal';
-import { useConversationsStore } from './conversations-store';
+import { noteOpenclawAsked, useConversationsStore } from './conversations-store';
 import { tallyOperations } from './conversation-summary';
 import type { Proposal, ProposalOperation } from './planner-types';
 
@@ -303,6 +303,12 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
       // throw out here would park `status` at 'loading' forever — a spinner
       // with no exit that also greys out every other AI button.
       const ctx = plannerContext();
+
+      // A plan asked from a conversation carries an excerpt of it (both
+      // sides): asked of an OpenClaw gateway, OpenClaw now holds that much of
+      // it, which the conversation's delete confirm must say.
+      const surface = get().lastRequest?.surface;
+      if (proposeTarget === 'openclaw' && surface?.startsWith('conv:')) noteOpenclawAsked(surface.slice('conv:'.length));
 
       const res = await fetch('/api/ai/propose', {
         method: 'POST',

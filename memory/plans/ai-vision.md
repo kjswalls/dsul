@@ -920,7 +920,12 @@ conversation is saved to the account.
   backups age it out on the provider's backup schedule.
 - *OpenClaw* keeps its own session memory, and dsul cannot delete that. Continuing a
   conversation with OpenClaw sends its last few turns to OpenClaw (at most 12, as context),
-  so a conversation another answerer started becomes part of that memory too.
+  so a conversation another answerer started becomes part of that memory too. A message
+  sent to OpenClaw stays in that session even when no reply was kept (one stopped before
+  it began), and so does the excerpt of a conversation a plan is asked from while an
+  OpenClaw gateway makes the plans. The delete confirm's "OpenClaw may keep its own copy"
+  counts both when they happened in this browser; across devices it knows only of a saved
+  OpenClaw reply (`openclaw_seen`, which a turn with no reply never sets).
 - *Disconnecting* a model or OpenClaw deletes no conversation (the disconnect confirm says
   so). *Changing who answers* deletes nothing either.
 - *History, and deleting from it,* is reachable only while a model or OpenClaw can answer.

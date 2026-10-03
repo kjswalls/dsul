@@ -39,6 +39,8 @@ import {
   clearChatState,
   configureConversations,
   conversationsSettled,
+  noteOpenclawAsked,
+  openclawWasAsked,
   resolveConversationId,
   useConversationsStore,
   type ChatMessage,
@@ -1500,6 +1502,48 @@ describe('pagehide', () => {
     expect(api.keepaliveRemoves).toEqual(['c1']);
     answer.resolve(fail(404, 'not_found'));
     expect(await removing).toBe(true);
+  });
+});
+
+describe('OpenClaw was asked', () => {
+  it('a message handed to OpenClaw and stopped before its one-piece reply still counts, with no reply saved', async () => {
+    unseed();
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    tx.next = hangs('').run;
+    const id = store().newDraft();
+    const sending = store().send(id, 'My biopsy came back positive');
+    await flush();
+    expect(tx.inputs[0]).toMatchObject({ target: 'openclaw', via: 'plugin' });
+    store().stop(id);
+    await sending;
+    await conversationsSettled();
+    // Only the question was saved, so the server's flag stays down...
+    expect(api.turns.map((t) => t.body.messages.map((m) => m.role))).toEqual([['user']]);
+    expect(store().summaries[id].openclawSeen).toBe(false);
+    // ...but this browser knows OpenClaw has it.
+    expect(openclawWasAsked(id)).toBe(true);
+  });
+
+  it('a model-only conversation was never asked of OpenClaw; a reset forgets', async () => {
+    const id = await sendNew('hello');
+    expect(openclawWasAsked(id)).toBe(false);
+    noteOpenclawAsked(id);
+    expect(openclawWasAsked(id)).toBe(true);
+    clearChatState();
+    expect(openclawWasAsked(id)).toBe(false);
+  });
+
+  it('follows a draft rebound to its item conversation', async () => {
+    unseed();
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    planner.items = [{ id: 'i1', type: 'task', title: 'Dentist' }];
+    api.rows.set('c-existing', summary({ id: 'c-existing', itemId: 'i1' }));
+    api.answer.appendTurn = (_id, body) => (body.create ? fail(409, 'conflict', 'c-existing') : undefined);
+    const draft = store().newDraft({ itemId: 'i1' });
+    await store().send(draft, 'hi');
+    await conversationsSettled();
+    expect(resolveConversationId(draft)).toBe('c-existing');
+    expect(openclawWasAsked('c-existing')).toBe(true);
   });
 });
 

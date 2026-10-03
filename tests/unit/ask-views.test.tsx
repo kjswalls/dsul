@@ -41,6 +41,7 @@ import {
   clearChatState,
   configureConversations,
   conversationsSettled,
+  noteOpenclawAsked,
   useConversationsStore,
   type ChatMessage,
 } from '@/lib/conversations-store';
@@ -934,6 +935,22 @@ describe("a conversation's ⌄", () => {
       { ...TRIP, openclawSeen: false },
       stored({ id: 'm1', role: 'user', content: 'Book it' }, { id: 'm2', role: 'assistant', content: 'Done.', replyTo: 'm1', answerer: 'openclaw' })
     );
+    openMenu(trigger());
+    fireEvent.click(screen.getByTestId('conversation-delete'));
+    await timers();
+    expect(within(screen.getByTestId('confirm-dialog')).getByText(/OpenClaw may keep its own copy\.$/)).toBeInTheDocument();
+  });
+
+  it('adds it when OpenClaw was asked here and no reply was kept (stopped before it began)', async () => {
+    await openSaved({ ...TRIP, openclawSeen: false }, EXCHANGE);
+    openMenu(trigger());
+    fireEvent.click(screen.getByTestId('conversation-delete'));
+    await timers();
+    expect(within(screen.getByTestId('confirm-dialog')).queryByText(/OpenClaw may keep its own copy\.$/)).toBeNull();
+    pressEscapeHere();
+    await timers();
+
+    act(() => noteOpenclawAsked('c1'));
     openMenu(trigger());
     fireEvent.click(screen.getByTestId('conversation-delete'));
     await timers();

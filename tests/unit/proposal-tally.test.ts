@@ -59,6 +59,7 @@ import {
   clearChatState,
   configureConversations,
   conversationsSettled,
+  openclawWasAsked,
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { tallyOperations } from '@/lib/conversation-summary';
@@ -147,6 +148,22 @@ describe('the surface a request is stamped with', () => {
     expect(proposals().lastRequest?.surface).toBe('item:task-1');
     await proposals().request('ask', 'plan it');
     expect(proposals().lastRequest?.surface).toBe('chat');
+  });
+});
+
+describe("a plan asked of OpenClaw from a conversation", () => {
+  it("records that OpenClaw was handed that conversation's excerpt; a model's plan does not", async () => {
+    proposeAnswers(PLAN);
+    await proposals().request('ask', 'make my week lighter', undefined, { conversationId: CONV });
+    expect(openclawWasAsked(CONV)).toBe(false);
+
+    unseed();
+    unseed = seedAI({ phase: 'ready', available: true, model: null, openclaw: { gateway: true }, choice: 'openclaw' });
+    await proposals().request('ask', 'make my week lighter', undefined, { conversationId: CONV });
+    expect(openclawWasAsked(CONV)).toBe(true);
+    // An item's breakdown is the item's own surface, not a conversation's.
+    await proposals().request('breakdown', undefined, 'task-1');
+    expect(openclawWasAsked(ITEM_CONV)).toBe(false);
   });
 });
 

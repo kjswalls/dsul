@@ -274,11 +274,31 @@ const touch = (id: string) => {
 const resolving = new Map<string, Promise<string>>();
 const opening = new Map<string, Promise<void>>();
 /**
+ * Conversations OpenClaw was ASKED in from this browser: a turn handed to it,
+ * or a plan asked of an OpenClaw gateway from the conversation. The server's
+ * `openclawSeen` is set only by a saved OpenClaw REPLY, and a turn stopped
+ * before its first token saves none (the plugin answers in one piece, so a
+ * Stop there almost always is one), yet OpenClaw has the message all the
+ * same, and maybe a continuity note of earlier turns. The delete confirm's
+ * "OpenClaw may keep its own copy" reads this too (openclawWasAsked).
+ */
+const openclawAsked = new Set<string>();
+/**
  * The store's `fire`, reached from outside its closure, so retryQueued (module
  * scope, for the window listeners) shares the one implementation. Assigned
  * when the store is created.
  */
 let fireQueued: (job: SaveJob) => Promise<void> = async () => {};
+
+/** OpenClaw was handed something from this conversation, here (see `openclawAsked`). */
+export function noteOpenclawAsked(id: string): void {
+  openclawAsked.add(resolveConversationId(id));
+}
+
+/** Whether OpenClaw was asked anything in this conversation from this browser. */
+export function openclawWasAsked(id: string): boolean {
+  return openclawAsked.has(resolveConversationId(id));
+}
 
 /** The id a conversation goes by now (a 409 rebind may have renamed it). */
 export function resolveConversationId(id: string): string {
@@ -631,6 +651,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       pendingTallies.delete(from);
       pendingTallies.set(to, [...(pendingTallies.get(to) ?? []), ...tallies]);
     }
+    if (openclawAsked.delete(from)) openclawAsked.add(to);
     set((s) => {
       const fromT = s.threads[from];
       const toT = s.threads[to];
@@ -1293,6 +1314,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       try {
         const { context, typeNouns } = plannerContext(base.itemId);
         const note = continuityNote(prior, answerer, via, now);
+        // Whatever comes back, OpenClaw has the message from here on.
+        if (answerer === 'openclaw') noteOpenclawAsked(id);
         outcome = await deps.transport.streamTurn({
           conversationId: id,
           target: answerer,
@@ -1641,6 +1664,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       parked.clear();
       resolving.clear();
       opening.clear();
+      openclawAsked.clear();
       listInflight = null;
       moreInflight = null;
       touchedDuringList.clear();

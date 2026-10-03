@@ -10,7 +10,7 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
-import { resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
+import { openclawWasAsked, resolveConversationId, useConversationsStore } from '@/lib/conversations-store';
 import { CHAT_LIMITS } from '@/lib/conversation-types';
 import { useUIStore } from '@/lib/ui-store';
 
@@ -37,7 +37,8 @@ export const CONVERSATION_COPY = Object.freeze({
   /**
    * Added when OpenClaw ever answered in it (`openclawSeen`, never cleared),
    * not when it answered last: a conversation OpenClaw answered three times
-   * and a model once still went through OpenClaw's own sessions.
+   * and a model once still went through OpenClaw's own sessions. And when
+   * OpenClaw was asked in it from this browser, answered or not.
    */
   openclawCopy: ' OpenClaw may keep its own copy.',
 });
@@ -55,15 +56,17 @@ function focusShownHeading(): void {
 }
 
 /**
- * Whether OpenClaw ever answered in a conversation, as this browser knows it:
- * the server's `openclawSeen`, or an OpenClaw reply held here whose save is
- * still on its way, waiting for a retry, or never landed (OpenClaw has the
- * words all the same). The server's own rule, over the same messages.
+ * Whether OpenClaw may hold any of a conversation, as this browser knows it:
+ * the server's `openclawSeen`; an OpenClaw reply held here whose save is still
+ * on its way, waiting for a retry, or never landed (the server's own rule,
+ * over the same messages); or OpenClaw ASKED here and no reply kept, a turn
+ * stopped before its first token, or a plan asked of an OpenClaw gateway
+ * (conversations-store `openclawWasAsked`). OpenClaw has the words either way.
  */
 function openclawSeenIn(id: string): boolean {
   const s = useConversationsStore.getState();
   const rid = resolveConversationId(id);
-  if (s.summaries[rid]?.openclawSeen) return true;
+  if (s.summaries[rid]?.openclawSeen || openclawWasAsked(rid)) return true;
   return !!s.threads[rid]?.messages.some((m) => m.role === 'assistant' && m.answerer === 'openclaw');
 }
 
