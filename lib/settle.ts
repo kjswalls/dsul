@@ -5,6 +5,7 @@ import { PREVIEW_MODE } from '@/lib/planner-snapshot';
 import { usePlannerStore } from '@/lib/planner-store';
 import { bumpSettleEpoch } from '@/lib/settle-epoch';
 import {
+  EASE_MOVE,
   EASE_SETTLE,
   SETTLE,
   SETTLE_LIMITS,
@@ -55,7 +56,12 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  * Transform and clip-path only, on the participants' own boxes: no overlay, no
  * opacity, no filter, so lime is never faded (CLAUDE.md) and nothing escapes a
  * scroller's clip. No custom-property writes and nothing on the hover path, so
- * the week recede rule is untouched.
+ * the week recede rule is untouched. The one other thing a run writes is
+ * stacking, for its length only (see "Stacking"): an inline z-index (and
+ * `position: relative` where none applies) on the outermost box a row glides
+ * in from outside of and on a row that crosses its neighbours, plus that
+ * row's ground (a background-color, clipped to its content box) — each value
+ * put back exactly as found by finishSettle, whatever ends the run.
  *
  * THE LANDING SHIELD. A landing that changed what is on screen with nothing
  * holding the old geometry (reduced motion, `static` mode, a veto at play, a
@@ -176,6 +182,8 @@ interface Participant {
 interface Measured {
   side: SettleSide;
   boxes: Map<string, HTMLElement>;
+  /** Each participant itself, by key: a row's text and ground live on it, not on its SwipeRow. */
+  els: Map<string, HTMLElement>;
   /** As resolved for the pass: a mutation that cannot change who takes part is checked against these. */
   parts: Participant[];
   scroll: ScrollMarks;
@@ -218,6 +226,8 @@ interface ScopeRun {
   shielded: boolean;
   /** Retargeted out, or gone from the document: nothing of it animates any more. */
   done: boolean;
+  /** Raised and lifted for the run (see Stacking), each with what it had before. */
+  stacked: Map<HTMLElement, Stacked>;
 }
 
 interface Run {
@@ -316,6 +326,7 @@ export function onLandingCommitted(): void {
         retargets: 0,
         shielded: false,
         done: false,
+        stacked: new Map(),
       });
     }
     if (scopes.length === 0) return;
@@ -349,6 +360,7 @@ export function finishSettle(): void {
       s.observer?.disconnect();
       cancelLive(s.live);
       s.live = [];
+      unstackScope(s);
     }
     for (const off of r.off) {
       try {
@@ -469,6 +481,7 @@ function measureParticipants(root: Element, parts: Participant[]): Measured {
   const scrollers = scrollLinker(styleOf);
   const nodes = new Map<string, SettleNode>();
   const boxes = new Map<string, HTMLElement>();
+  const els = new Map<string, HTMLElement>();
   const links = new Map<string, ScrollLink[]>();
   for (const p of parts) {
     const r = p.box.getBoundingClientRect();
@@ -477,12 +490,17 @@ function measureParticipants(root: Element, parts: Participant[]): Measured {
     const node: SettleNode = { key: p.key, role: p.role, rect, visible, topLevel: p.parent === undefined };
     if (p.id) node.id = p.id;
     if (p.parent !== undefined) node.parent = p.parent;
-    if (p.role === 'row' && visible) node.sig = signature(p.el);
+    if (p.role === 'row' && visible) {
+      // Raw, for where a retype starts; squeezed into the signature.
+      node.text = p.el.textContent ?? '';
+      node.sig = signature(p.el, node.text);
+    }
     nodes.set(p.key, node);
     boxes.set(p.key, p.box);
+    els.set(p.key, p.el);
     links.set(p.key, scrollers.of(p.box));
   }
-  return { side: { nodes }, boxes, parts, scroll: { links, at: scrollers.at } };
+  return { side: { nodes }, boxes, els, parts, scroll: { links, at: scrollers.at } };
 }
 
 function measureScope(root: Element): Measured | null {
@@ -652,9 +670,81 @@ function overlaps(r: Rect, c: Bounds | null): boolean {
   return r.left < c.right && r.left + r.width > c.left && r.top < c.bottom && r.top + r.height > c.top;
 }
 
-function signature(el: Element): string {
-  const text = (el.textContent ?? '').replace(/\s+/g, ' ').trim();
+function signature(el: Element, raw = el.textContent ?? ''): string {
+  const text = raw.replace(/\s+/g, ' ').trim();
   return [text, ...SIG_ATTRS.map((a) => el.getAttribute(a) ?? '')].join('|');
+}
+
+/**
+ * Where each retype's type-in starts, as its clip's right inset: the x of its
+ * first changed character in LAST, so what reads the same (the checkbox, an
+ * unchanged prefix) stays drawn throughout. Read at layout, before any of the
+ * scope's animations exist (hold cancels them first): one Range per retype,
+ * and only the first maxRetypes are planned. A row left out types in whole —
+ * its text is unchanged (an attribute changed), or nothing could be measured.
+ */
+function retypeInsets(plan: SettlePlan, m: Measured): Map<string, number> {
+  const out = new Map<string, number>();
+  for (const { key, at } of plan.retypes) {
+    const el = m.els.get(key);
+    const rect = m.side.nodes.get(key)?.rect;
+    if (at === undefined || !el || !rect) continue;
+    let x: number | null = null;
+    try {
+      x = caretX(el, at);
+    } catch {
+      /* a caret that cannot be placed types the whole row in */
+    }
+    if (x === null) continue;
+    const right = rect.left + rect.width;
+    out.set(key, right - Math.min(right, Math.max(rect.left, x)));
+  }
+  return out;
+}
+
+/**
+ * The x at which index `at` of `el`'s textContent is drawn: that character's
+ * left edge — or, past the end (the text was cut short), the right edge of the
+ * last one. Text nodes in tree order are exactly what textContent joins. A
+ * character not rendered (inside display: none) falls back to where the text
+ * starts; null when even that cannot be measured.
+ */
+function caretX(el: Element, at: number): number | null {
+  if (typeof document.createTreeWalker !== 'function' || typeof document.createRange !== 'function') return null;
+  const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  let first: Text | null = null;
+  let hit: Text | null = null;
+  let offset = 0;
+  let seen = 0;
+  for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+    const t = n as Text;
+    const len = t.data.length;
+    if (len === 0) continue;
+    first ??= t;
+    hit = t;
+    if (at < seen + len) {
+      offset = at - seen;
+      break;
+    }
+    seen += len;
+    offset = len;
+  }
+  if (!first || !hit) return null;
+  const range = document.createRange();
+  if (typeof range.getBoundingClientRect !== 'function') return null;
+  // One character, never a collapsed caret, whose rect not every engine reports.
+  const edge = (node: Text, i: number): number | null => {
+    const past = i >= node.data.length;
+    const start = past ? node.data.length - 1 : i;
+    range.setStart(node, start);
+    range.setEnd(node, start + 1);
+    const r = range.getBoundingClientRect();
+    if (r.width === 0 && r.height === 0) return null;
+    return past ? r.left + r.width : r.left;
+  };
+  const x = edge(hit, offset);
+  if (x !== null || (hit === first && offset === 0)) return x;
+  return edge(first, 0);
 }
 
 // ── Motion ──────────────────────────────────────────────────────────────
@@ -682,47 +772,60 @@ function motionAllowed(): boolean {
 
 const translate = (dx: number, dy: number) => `translate(${dx}px, ${dy}px)`;
 
+/** One animation, described before it exists: the stacking pass reads layout first. */
+interface AnimSpec {
+  key: string;
+  /** A translate's first keyframe; null for a clip. */
+  from: Vec | null;
+  /** A move's own glide — not an appear's lift or a rise: what a lift and a raise are decided on. */
+  glide: boolean;
+  keyframes: Keyframe[];
+  duration: number;
+  delay: number;
+  easing: string;
+  composite: CompositeOperation;
+}
+
 /**
- * One scope's plan as WAAPI animations, §9.6's table exactly. A retarget
- * passes its own glide length and asks for reveals without their lead: what
- * it re-aims is already on its way.
+ * One scope's plan as animations, §9.6's table exactly. Moves — the glide and
+ * the clip reveals that ride it — run on EASE_MOVE; appears, retypes and
+ * rises on EASE_SETTLE. A retarget passes its own glide length and asks for
+ * reveals without their lead: what it re-aims is already on its way.
+ * `typeFrom` is each retype's measured start (retypeInsets).
  */
-function buildAnimations(
+function describeAnimations(
   plan: SettlePlan,
-  boxes: Map<string, HTMLElement>,
-  { moveMs = SETTLE.moveMs, immediate = false }: { moveMs?: number; immediate?: boolean } = {}
-): Live[] {
-  const out: Live[] = [];
-  const add = (
-    key: string,
-    from: Vec | null,
-    keyframes: Keyframe[],
-    duration: number,
-    delay: number,
-    composite: CompositeOperation
-  ) => {
-    const box = boxes.get(key);
-    if (!box || typeof box.animate !== 'function') return;
-    // `backwards` only: a delayed reveal shows its first frame through the
-    // delay, and nothing is left behind once it ends.
-    const anim = box.animate(keyframes, { duration, delay, easing: EASE_SETTLE, fill: 'backwards', composite });
-    out.push({ anim, kind: from ? 'translate' : 'clip', box, from, span: delay + duration, end: 0 });
-  };
+  {
+    moveMs = SETTLE.moveMs,
+    immediate = false,
+    typeFrom,
+  }: { moveMs?: number; immediate?: boolean; typeFrom?: Map<string, number> } = {}
+): AnimSpec[] {
+  const out: AnimSpec[] = [];
+  const add = (spec: Omit<AnimSpec, 'glide' | 'easing'>, easing = EASE_SETTLE, glide = false) =>
+    out.push({ ...spec, easing, glide });
   const lift = (key: string, y: number, duration: number, delay: number) =>
-    add(key, { x: 0, y }, [{ transform: `translateY(${y}px)` }, { transform: REST }], duration, delay, 'add');
+    add({
+      key,
+      from: { x: 0, y },
+      keyframes: [{ transform: `translateY(${y}px)` }, { transform: REST }],
+      duration,
+      delay,
+      composite: 'add',
+    });
 
   for (const m of plan.moves) {
     // `add`: on top of the box's own transform (the gutter live-time's -translate-y-1/2).
     if (Math.abs(m.dx) >= PX || Math.abs(m.dy) >= PX) {
       const keyframes = [{ transform: translate(m.dx, m.dy) }, { transform: translate(0, 0) }];
-      add(m.key, { x: m.dx, y: m.dy }, keyframes, moveMs, 0, 'add');
+      add({ key: m.key, from: { x: m.dx, y: m.dy }, keyframes, duration: moveMs, delay: 0, composite: 'add' }, EASE_MOVE, true);
     }
     if (m.grow) {
       // The box's new extent is revealed as it glides: it starts clipped to its old size.
       const right = m.grow.dw > 1 ? `${m.grow.dw}px` : BLEED;
       const bottom = m.grow.dh > 1 ? `${m.grow.dh}px` : BLEED;
       const keyframes = [{ clipPath: `inset(${BLEED} ${right} ${bottom} ${BLEED})` }, { clipPath: OPEN }];
-      add(m.key, null, keyframes, moveMs, 0, 'replace');
+      add({ key: m.key, from: null, keyframes, duration: moveMs, delay: 0, composite: 'replace' }, EASE_MOVE);
     }
     if (m.reveal) {
       // A frame's new height is uncovered as its rows glide in, on their curve,
@@ -732,7 +835,7 @@ function buildAnimations(
         { clipPath: `inset(${REACH} ${REACH} ${m.reveal}px ${REACH})` },
         { clipPath: `inset(${REACH} ${REACH} ${BLEED} ${REACH})` },
       ];
-      add(m.key, null, keyframes, moveMs, 0, 'replace');
+      add({ key: m.key, from: null, keyframes, duration: moveMs, delay: 0, composite: 'replace' }, EASE_MOVE);
     }
   }
   for (const a of plan.appears) {
@@ -742,18 +845,443 @@ function buildAnimations(
       ? SETTLE.appearLead + Math.min(a.rank, SETTLE.appearMaxRank) * SETTLE.appearStagger
       : SETTLE.frameAppearLead;
     const delay = immediate ? 0 : lead;
-    add(a.key, null, [{ clipPath: row ? TYPE_IN : UNFOLD }, { clipPath: OPEN }], SETTLE.appearMs, delay, 'replace');
+    const keyframes = [{ clipPath: row ? TYPE_IN : UNFOLD }, { clipPath: OPEN }];
+    add({ key: a.key, from: null, keyframes, duration: SETTLE.appearMs, delay, composite: 'replace' });
     lift(a.key, row ? APPEAR_ROW_PX : APPEAR_FRAME_PX, SETTLE.appearMs, delay);
   }
-  // Changed in place: the new content types in once. Fully clipped through
-  // the hold, which reads as the start of the rewrite.
-  for (const key of plan.retypes) {
-    add(key, null, [{ clipPath: TYPE_IN }, { clipPath: OPEN }], SETTLE.retypeMs, 0, 'replace');
+  // Changed in place: the new content types in once, from its first changed
+  // character — clipped from there through the hold, which reads as the start
+  // of the rewrite. Unmeasured, the whole row types in.
+  for (const { key } of plan.retypes) {
+    const right = typeFrom?.get(key);
+    const start = right === undefined ? TYPE_IN : `inset(${BLEED} ${right}px ${BLEED} ${BLEED})`;
+    const keyframes = [{ clipPath: start }, { clipPath: OPEN }];
+    add({ key, from: null, keyframes, duration: SETTLE.retypeMs, delay: 0, composite: 'replace' });
   }
   for (const rise of plan.rises) {
     lift(rise.key, SETTLE.riseOffsetPx, SETTLE.riseMs, Math.min(rise.rank, SETTLE.riseMaxRank) * SETTLE.riseStagger);
   }
   return out;
+}
+
+/** The described animations, created on their boxes (running: the caller pauses or schedules them). */
+function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
+  const out: Live[] = [];
+  for (const { key, from, keyframes, duration, delay, easing, composite } of specs) {
+    const box = boxes.get(key);
+    if (!box || typeof box.animate !== 'function') continue;
+    // `backwards` only: a delayed reveal shows its first frame through the
+    // delay, and nothing is left behind once it ends.
+    const anim = box.animate(keyframes, { duration, delay, easing, fill: 'backwards', composite });
+    out.push({ anim, kind: from ? 'translate' : 'clip', box, from, span: delay + duration, end: 0 });
+  }
+  return out;
+}
+
+// ── Stacking: raises and lifts ──────────────────────────────────────────
+//
+// FLIP moves a box in paint only, so it is drawn where the stacking order of
+// its NEW place says. Two ways that shows, both fixed for the run alone, with
+// plain inline values put back exactly by finishSettle on every exit:
+//
+//  - RAISE. A row that moved into a stacking context (a bucket card is
+//    `relative isolate`) starts its glide outside that context's box, and
+//    whatever paints later at its old place covers it: the row is hidden
+//    behind the next card, then surfaces over its caption. The raise goes on
+//    the OUTERMOST ancestor whose box does not hold where the row starts — the
+//    child of the lowest one that does — since that is the box that must paint
+//    above whatever sits there. Day × Buckets wraps each card in its own
+//    div[data-dnd-bucket], so raising the card itself compared it with no
+//    sibling at all. Judged in each ancestor's own frame, so a frame that
+//    glides with its rows needs nothing; a box that animates counts as a
+//    context, since its transform or clip makes it one while it runs.
+//  - LIFT (SETTLE.liftRows). Rows have no ground of their own, so a row gliding
+//    past others overprints their text. A row whose own move is longer than its
+//    height is stacked above its siblings and given the nearest painted ground
+//    in the scope behind it (its own, when it has one, stands) — clipped to its
+//    content box, the band its text lives in, so the padding around it never
+//    slices the neighbour it is settling against.
+//
+// Every raised or lifted box in a scope is ranked in ONE order by how far its
+// rows travel, cousins included: two of them in one stacking context compare by
+// z-index wherever they sit in the DOM, and a tie would fall to tree order.
+//
+// Neither touches opacity, filter, transform or any custom property, and
+// nothing is written where nothing animates (vetoes, static mode).
+
+type StackProp = 'z-index' | 'position' | 'background-color' | 'background-clip';
+
+/** What a pass wants for one element: stacked (by how far its rows travel — the farther, the higher), a ground, or both. */
+interface Want {
+  stack: boolean;
+  travel: number;
+  background: string | null;
+}
+
+/** An element the run has written to, with each inline value it found there. */
+interface Stacked extends Want {
+  el: HTMLElement;
+  /** Had a style attribute at all: one the run created comes off again. */
+  hadStyle: boolean;
+  /** Its own z-index before the run, as computed. */
+  z: number;
+  /** Static, and not a flex or grid item: z-index needs `position: relative` to apply. */
+  positions: boolean;
+  saved: Map<StackProp, { value: string; priority: string; wrote: string }>;
+}
+
+const UNSET = new Set(['', 'none', 'auto', 'normal']);
+const STACKING_PROPS = [
+  'transform',
+  'translate',
+  'rotate',
+  'scale',
+  'filter',
+  'backdrop-filter',
+  'perspective',
+  'clip-path',
+  'mask-image',
+  'mix-blend-mode',
+  'view-transition-name',
+];
+/** `will-change` names a property that would make a stacking context: it makes one now. */
+const STACKING_HINTS = new Set([...STACKING_PROPS, 'opacity', 'isolation', 'z-index', 'position', 'mask', 'contain']);
+
+const flexOrGrid = (display: string) => /flex|grid/.test(display);
+const isStatic = (cs: CSSStyleDeclaration) => cs.position === '' || cs.position === 'static';
+const hasBox = (cs: CSSStyleDeclaration) => cs.display !== 'contents' && cs.display !== 'none';
+
+/** The box an element is laid out in: its nearest ancestor that is not `display: contents`. */
+function layoutParent(el: Element, styleOf: StyleOf): Element | null {
+  let p = el.parentElement;
+  while (p && styleOf(p).display === 'contents') p = p.parentElement;
+  return p;
+}
+
+/** z-index applies as it stands: positioned, or a flex or grid item. */
+function zApplies(el: Element, styleOf: StyleOf): boolean {
+  if (!isStatic(styleOf(el))) return true;
+  const parent = layoutParent(el, styleOf);
+  return !!parent && flexOrGrid(styleOf(parent).display);
+}
+
+/** Whether `el` forms a stacking context of its own, as it rests. */
+function stacks(el: Element, styleOf: StyleOf): boolean {
+  const cs = styleOf(el);
+  if (!hasBox(cs)) return false;
+  const position = cs.position;
+  if (position === 'fixed' || position === 'sticky') return true;
+  if (!UNSET.has(cs.zIndex) && zApplies(el, styleOf)) return true;
+  if (cs.isolation === 'isolate') return true;
+  const opacity = Number.parseFloat(cs.opacity);
+  if (Number.isFinite(opacity) && opacity < 1) return true;
+  for (const prop of STACKING_PROPS) if (!UNSET.has(cs.getPropertyValue(prop).trim())) return true;
+  if (/layout|paint|strict|content/.test(cs.contain)) return true;
+  return cs.willChange.split(',').some((v) => STACKING_HINTS.has(v.trim()));
+}
+
+/** Any alpha at all: `transparent` and `rgba(…, 0)` / `… / 0)` are no ground. */
+function painted(color: string): boolean {
+  const c = color.trim().toLowerCase();
+  if (c === '' || c === 'transparent') return false;
+  const slash = /\/\s*(-?[\d.]+)(%?)\s*\)$/.exec(c);
+  if (slash) return Number(slash[1]) > 0;
+  const legacy = /^(?:rgba|hsla)\(([^)]*)\)$/.exec(c);
+  if (legacy) {
+    const parts = legacy[1].split(',');
+    if (parts.length === 4) return Number.parseFloat(parts[3]) > 0;
+  }
+  return true;
+}
+
+/** The ground a lifted row crosses on: none when it has its own, else the nearest painted one within the scope. */
+function groundOf(row: Element, root: Element, styleOf: StyleOf): string | null {
+  if (painted(styleOf(row).backgroundColor)) return null;
+  for (let el = row.parentElement; el; el = el.parentElement) {
+    const bg = styleOf(el).backgroundColor;
+    if (painted(bg)) return bg;
+    if (el === root) break;
+  }
+  return null;
+}
+
+const zOf = (cs: CSSStyleDeclaration) => {
+  const z = Number.parseInt(cs.zIndex, 10);
+  return Number.isFinite(z) ? z : 0;
+};
+
+/** Whether `position: relative` on `el` would re-anchor an absolutely positioned descendant: one with no positioned box between them. */
+function anchorsAbsolute(el: Element, styleOf: StyleOf): boolean {
+  const todo = [...el.children];
+  while (todo.length > 0) {
+    const c = todo.pop()!;
+    const cs = styleOf(c);
+    if (cs.display === 'none') continue;
+    if (cs.position === 'absolute') return true;
+    if (isStatic(cs)) todo.push(...c.children);
+  }
+  return false;
+}
+
+/**
+ * The raise one gliding row needs, if any (see Stacking): the outermost
+ * ancestor below the scope root whose LAST box does not hold where the row
+ * starts — each judged in its own frame, `offsets` being what each animating
+ * box adds at the first frame. Only when something on the way traps the row's
+ * paint (a stacking context, or a box animating in the run): with nothing in
+ * between, the row already paints in the context its old place is in.
+ *
+ * z-index needs `position: relative` on a static block that is not a flex or
+ * grid item. Where that would re-anchor an absolutely positioned descendant,
+ * the raise steps down toward the row to the first box it is safe on — and is
+ * dropped at a stacking context it is not safe on, since a raise inside one
+ * cannot leave it. Memoized per pass: rows that share a card share its answer.
+ */
+function raiser(
+  root: Element,
+  offsets: Map<Element, Vec>,
+  animated: Set<Element>,
+  rectOf: (el: Element) => Bounds,
+  styleOf: StyleOf
+): (box: HTMLElement, r: Rect) => { el: HTMLElement; travel: number } | null {
+  const anchoring = new Map<Element, boolean>();
+  const contexts = new Map<Element, boolean>();
+  const isContext = (el: Element): boolean => {
+    let known = contexts.get(el);
+    if (known === undefined) {
+      known = animated.has(el) || stacks(el, styleOf);
+      contexts.set(el, known);
+    }
+    return known;
+  };
+  /** A context at `el` or anywhere above it in the scope: with none, nothing from here up can trap a row. */
+  const above = new Map<Element, boolean>();
+  const contextFrom = (el: Element | null): boolean => {
+    if (!el || el === root) return false;
+    let known = above.get(el);
+    if (known === undefined) {
+      known = isContext(el) || contextFrom(el.parentElement);
+      above.set(el, known);
+    }
+    return known;
+  };
+  const safe = (el: HTMLElement): boolean => {
+    if (zApplies(el, styleOf)) return true;
+    let anchors = anchoring.get(el);
+    if (anchors === undefined) {
+      anchors = anchorsAbsolute(el, styleOf);
+      anchoring.set(el, anchors);
+    }
+    return !anchors;
+  };
+  return (box, r) => {
+    // Every ancestor the row starts outside of, innermost first, with the row's travel in its frame.
+    const out: { el: HTMLElement; travel: number; context: boolean }[] = [];
+    let trapped = false;
+    let rel: Vec = { x: 0, y: 0 };
+    for (let el: Element = box; ; ) {
+      const o = offsets.get(el);
+      if (o) rel = { x: rel.x + o.x, y: rel.y + o.y };
+      const up = el.parentElement;
+      if (!up || up === root) break;
+      el = up;
+      if (!(up instanceof HTMLElement) || !hasBox(styleOf(up))) continue;
+      // Nothing left to trap the row: no rect is read for a raise that cannot happen.
+      if (!trapped && !contextFrom(up)) return null;
+      const b = rectOf(up);
+      const left = r.left + rel.x;
+      const top = r.top + rel.y;
+      const holds =
+        left >= b.left - PX && top >= b.top - PX && left + r.width <= b.right + PX && top + r.height <= b.bottom + PX;
+      if (holds) break;
+      const context = isContext(up);
+      trapped ||= context;
+      out.push({ el: up, travel: Math.hypot(rel.x, rel.y), context });
+    }
+    if (!trapped) return null;
+    for (let i = out.length - 1; i >= 0; i -= 1) {
+      const { el, travel, context } = out[i];
+      if (safe(el)) return { el, travel };
+      if (context) return null;
+    }
+    return null;
+  };
+}
+
+/**
+ * What one pass of a scope wants stacked, read from layout before any of its
+ * animations exist: `boxes` and `m` are the pass's LAST, `kept` the clip
+ * reveals a retarget leaves running.
+ */
+function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live[], styleOf: StyleOf): Map<HTMLElement, Want> {
+  const wants = new Map<HTMLElement, Want>();
+  const want = (el: HTMLElement, w: Want) => {
+    const was = wants.get(el);
+    wants.set(
+      el,
+      was
+        ? { stack: was.stack || w.stack, travel: Math.max(was.travel, w.travel), background: w.background ?? was.background }
+        : w
+    );
+  };
+  // What each box's own animations add at the first frame, and which boxes animate at all.
+  const offsets = new Map<Element, Vec>();
+  const animated = new Set<Element>(kept.map((l) => l.box));
+  for (const sp of specs) {
+    const box = m.boxes.get(sp.key);
+    if (!box) continue;
+    animated.add(box);
+    if (!sp.from) continue;
+    const o = offsets.get(box);
+    offsets.set(box, o ? { x: o.x + sp.from.x, y: o.y + sp.from.y } : sp.from);
+  }
+  // A participant's rect is already measured; anything else is read once.
+  const rects = new Map<Element, Bounds>();
+  for (const [key, box] of m.boxes) {
+    const r = m.side.nodes.get(key)?.rect;
+    if (r) rects.set(box, { left: r.left, top: r.top, right: r.left + r.width, bottom: r.top + r.height });
+  }
+  const rectOf = (el: Element): Bounds => {
+    let b = rects.get(el);
+    if (!b) {
+      b = boundsOf(el);
+      rects.set(el, b);
+    }
+    return b;
+  };
+  const raiseFor = raiser(root, offsets, animated, rectOf, styleOf);
+
+  for (const sp of specs) {
+    if (!sp.glide || !sp.from) continue;
+    const node = m.side.nodes.get(sp.key);
+    const box = m.boxes.get(sp.key);
+    if (!node || node.role !== 'row' || !box) continue;
+    const travel = Math.hypot(sp.from.x, sp.from.y);
+    if (SETTLE.liftRows && travel > node.rect.height) {
+      want(box, { stack: true, travel, background: null });
+      // The ground goes on the row itself: on a phone its box is the SwipeRow, which has no padding to clip to.
+      const row = m.els.get(sp.key) ?? box;
+      const ground = groundOf(row, root, styleOf);
+      if (ground) want(row, { stack: false, travel: 0, background: ground });
+    }
+    const raise = raiseFor(box, node.rect);
+    if (raise) want(raise.el, { stack: true, travel: raise.travel, background: null });
+  }
+  return wants;
+}
+
+function writeProp(s: Stacked, prop: StackProp, value: string): void {
+  const style = s.el.style;
+  if (!s.saved.has(prop)) {
+    s.saved.set(prop, { value: style.getPropertyValue(prop), priority: style.getPropertyPriority(prop), wrote: '' });
+  }
+  style.setProperty(prop, value);
+  s.saved.get(prop)!.wrote = style.getPropertyValue(prop);
+}
+
+/** One inline value back as the run found it — unless something else has written it since: theirs stands. */
+function restoreProp(s: Stacked, prop: StackProp): void {
+  const saved = s.saved.get(prop);
+  if (!saved) return;
+  s.saved.delete(prop);
+  const style = s.el.style;
+  if (style.getPropertyValue(prop) !== saved.wrote) return;
+  if (saved.value === '') style.removeProperty(prop);
+  else style.setProperty(prop, saved.value, saved.priority);
+}
+
+function restoreStacked(s: Stacked): void {
+  try {
+    for (const prop of [...s.saved.keys()]) restoreProp(s, prop);
+    if (!s.hadStyle && s.el.getAttribute('style') === '') s.el.removeAttribute('style');
+  } catch {
+    /* an element already gone is gone */
+  }
+}
+
+/**
+ * Applies one pass's stacking to a scope. A hold re-plans from FIRST, so its
+ * pass replaces the last; a retarget only adds (`merge`), so nothing gliding
+ * on loses its ground mid-flight. The run's own writes are taken off the
+ * scope's observer: they move nothing.
+ */
+function stackScope(s: ScopeRun, specs: AnimSpec[], m: Measured, kept: Live[], merge: boolean): void {
+  const styleOf = styleCache();
+  const wants = stackingWants(s.root, specs, m, kept, styleOf);
+  for (const [el, was] of s.stacked) {
+    const now = wants.get(el);
+    if (merge && el.isConnected) {
+      wants.set(el, {
+        stack: was.stack || !!now?.stack,
+        travel: Math.max(was.travel, now?.travel ?? 0),
+        background: now?.background ?? was.background,
+      });
+    } else if (!now) {
+      restoreStacked(was);
+      s.stacked.delete(el);
+    }
+  }
+  if (wants.size === 0) {
+    s.observer?.takeRecords();
+    return;
+  }
+  const raised: Stacked[] = [];
+  for (const [el, w] of wants) {
+    let st = s.stacked.get(el);
+    if (!st) {
+      const cs = styleOf(el);
+      st = {
+        el,
+        hadStyle: el.hasAttribute('style'),
+        z: zOf(cs),
+        positions: !zApplies(el, styleOf),
+        saved: new Map(),
+        stack: false,
+        travel: 0,
+        background: null,
+      };
+      s.stacked.set(el, st);
+    }
+    st.stack = w.stack;
+    st.travel = w.travel;
+    st.background = w.background;
+    if (st.stack) raised.push(st);
+  }
+  // Siblings are compared as they rest: what each had before the run, what the others have now.
+  let base = 0;
+  const parents = new Set<Element>();
+  for (const st of raised) {
+    base = Math.max(base, st.z);
+    const parent = st.el.parentElement;
+    if (!parent || parents.has(parent)) continue;
+    parents.add(parent);
+    for (const sib of parent.children) if (!wants.get(sib as HTMLElement)?.stack) base = Math.max(base, zOf(styleOf(sib)));
+  }
+  // One order for the scope (see Stacking): the farther, the higher; equal travel shares a level.
+  const levels = [...new Set(raised.map((st) => st.travel))].sort((a, b) => a - b);
+  for (const st of s.stacked.values()) {
+    if (st.stack) {
+      writeProp(st, 'z-index', String(base + 1 + levels.indexOf(st.travel)));
+      if (st.positions) writeProp(st, 'position', 'relative');
+    } else {
+      restoreProp(st, 'z-index');
+      restoreProp(st, 'position');
+    }
+    if (st.background) {
+      writeProp(st, 'background-color', st.background);
+      writeProp(st, 'background-clip', 'content-box');
+    } else {
+      restoreProp(st, 'background-color');
+      restoreProp(st, 'background-clip');
+    }
+  }
+  s.observer?.takeRecords();
+}
+
+/** Everything the run stacked in a scope, put back exactly. */
+function unstackScope(s: ScopeRun): void {
+  for (const st of s.stacked.values()) restoreStacked(st);
+  s.stacked.clear();
 }
 
 function cancelLive(live: Live[]): void {
@@ -938,10 +1466,17 @@ function listen(r: Run): void {
   // conductor's existing subscription: interruptsRun.
 }
 
-/** (Re)builds a scope's animations, paused at 0 — the first painted frame still shows FIRST. */
+/**
+ * (Re)builds a scope's animations, paused at 0 — the first painted frame still
+ * shows FIRST — and its stacking for them, read while the scope is at layout.
+ */
 function hold(s: ScopeRun): void {
   cancelLive(s.live);
-  s.live = buildAnimations(s.plan, s.last.boxes);
+  s.live = [];
+  // Nothing of this scope animates now: the retypes measure at LAST.
+  const specs = describeAnimations(s.plan, { typeFrom: retypeInsets(s.plan, s.last) });
+  stackScope(s, specs, s.last, [], false);
+  s.live = realize(specs, s.last.boxes);
   for (const l of s.live) l.anim.pause();
   if (s.live.length > 0) raise();
 }
@@ -1139,7 +1674,9 @@ function retarget(r: Run, s: ScopeRun): void {
     return;
   }
 
-  const fresh = buildAnimations(plan, now.boxes, { moveMs, immediate: true });
+  const specs = describeAnimations(plan, { moveMs, immediate: true });
+  stackScope(s, specs, now, kept, true);
+  const fresh = realize(specs, now.boxes);
   const t0 = performance.now();
   for (const l of fresh) l.end = t0 + endTimeOf(l);
   s.live = [...kept, ...fresh];
@@ -1160,6 +1697,7 @@ function endScope(s: ScopeRun, moving = isMoving(s)): void {
   s.observer = null;
   cancelLive(s.live);
   s.live = [];
+  unstackScope(s);
   if (moving && s.root.isConnected) {
     // From the snap, on its own clock, whether or not it was shielded before.
     s.shielded = true;

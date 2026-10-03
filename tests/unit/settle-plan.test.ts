@@ -2,10 +2,12 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import {
+  EASE_MOVE,
   EASE_SETTLE,
   SETTLE,
   SETTLE_LIMITS,
   createKeyDeduper,
+  firstDifference,
   planScope,
   type Rect,
   type SettleLimits,
@@ -85,13 +87,23 @@ describe('SETTLE constants', () => {
       largeStructural: 24,
       shieldMs: 250,
       clipBleedPx: 8,
+      liftRows: true,
     });
   });
 
-  it('keeps the worst case inside the completed-sinks hold (700ms)', () => {
+  it('keeps the worst case inside the completed-sinks hold (700ms), whatever the move is tuned to', () => {
     const worstAppear = SETTLE.appearLead + SETTLE.appearMaxRank * SETTLE.appearStagger + SETTLE.appearMs;
     expect(worstAppear).toBe(584);
-    expect(worstAppear).toBeLessThan(700);
+    const worstRise = SETTLE.riseMaxRank * SETTLE.riseStagger + SETTLE.riseMs;
+    // A move (and the clip reveals that ride it) runs moveMs from play; a re-aim never outlasts it by design.
+    const worst = Math.max(worstAppear, worstRise, SETTLE.retypeMs, SETTLE.moveMs);
+    expect(worst).toBeLessThan(700);
+    expect(SETTLE.retargetMinMs).toBeLessThanOrEqual(SETTLE.moveMs);
+  });
+
+  it('EASE_MOVE is the curve moves run on — ease-out-soft today, pinned so a change is deliberate', () => {
+    expect(EASE_MOVE).toBe('cubic-bezier(0.22, 1, 0.36, 1)');
+    expect(EASE_MOVE).toBe(EASE_SETTLE);
   });
 
   it('EASE_SETTLE is --ease-out-soft from app/globals.css, read as text', () => {
@@ -148,10 +160,10 @@ describe('planScope', () => {
         { key: `${MON}|d`, fromKey: `${MON}|d`, dx: 0, dy: 32 },
       ]);
       expect(p.appears).toEqual([{ key: `${MON}|e`, role: 'row', rank: 0 }]);
-      expect(p.retypes).toEqual([`${MON}|a`]);
+      expect(p.retypes).toEqual([{ key: `${MON}|a` }]);
       expect(p.rises).toEqual([]);
       // b exits: nothing names it.
-      const named = [...p.moves.map((m) => m.key), ...p.appears.map((a) => a.key), ...p.retypes];
+      const named = [...p.moves.map((m) => m.key), ...p.appears.map((a) => a.key), ...p.retypes.map((r) => r.key)];
       expect(named).not.toContain(`${MON}|b`);
     });
 
@@ -438,7 +450,7 @@ describe('planScope', () => {
       const shrunk = side(row(`${MON}|b`, box(0, 120, 180, 30), { sig: 'dur 30' }));
       const p = plan(first, shrunk);
       expect(p.moves).toEqual([]);
-      expect(p.retypes).toEqual([`${MON}|b`]);
+      expect(p.retypes).toEqual([{ key: `${MON}|b` }]);
     });
   });
 
@@ -491,7 +503,7 @@ describe('planScope', () => {
         row(`${MON}|c`, box(0, 64), { sig: 'c1' }) // stayed, unchanged
       );
       const p = plan(first, last);
-      expect(p.retypes).toEqual([`${MON}|a`]);
+      expect(p.retypes).toEqual([{ key: `${MON}|a` }]);
       expect(p.moves.map((m) => m.key)).toEqual([`${MON}|b`]);
     });
 
@@ -506,7 +518,7 @@ describe('planScope', () => {
       );
       const p = plan(first, last);
       expect(p.moves.map((m) => m.key)).toEqual(['group:Work']);
-      expect(p.retypes).toEqual([`${MON}|a`]);
+      expect(p.retypes).toEqual([{ key: `${MON}|a` }]);
     });
 
     it('never on a missing sig (the row was off screen at capture) or for a frame', () => {
@@ -527,7 +539,38 @@ describe('planScope', () => {
       const last = side(...tops.map((t) => row(`${MON}|r${t}`, box(0, t * 32), { sig: 'new' })));
       const p = plan(first, last);
       expect(p.mode).toBe('fine');
-      expect(p.retypes).toEqual(Array.from({ length: 12 }, (_, t) => `${MON}|r${t}`));
+      expect(p.retypes.map((r) => r.key)).toEqual(Array.from({ length: 12 }, (_, t) => `${MON}|r${t}`));
+    });
+
+    it('carries where the text first differs, so the row types in from there and not from its left edge', () => {
+      const at = (was: string, now: string, extra: Partial<SettleNode> = {}) =>
+        plan(
+          side(row(`${MON}|a`, box(0, 0), { sig: `${was}|`, text: was })),
+          side(row(`${MON}|a`, box(0, 0), { sig: `${now}|`, text: now, ...extra }))
+        ).retypes;
+      expect(at('Draft the Q4 plan', "Draft the Q4 plan with Maya's notes")).toEqual([{ key: `${MON}|a`, at: 17 }]);
+      expect(at('Call Sam', 'Email Sam')).toEqual([{ key: `${MON}|a`, at: 0 }]); // no common prefix
+      expect(at('Reply to Sam', 'Reply to Sal')).toEqual([{ key: `${MON}|a`, at: 11 }]); // mid-word
+      expect(at('Draft the Q4 plan with notes', 'Draft the Q4 plan')).toEqual([{ key: `${MON}|a`, at: 17 }]); // cut short
+      // The text is the same and only an attribute changed (a tick): nothing to start from, the whole row types in.
+      expect(
+        plan(
+          side(row(`${MON}|a`, box(0, 0), { sig: 'x|false', text: 'x' })),
+          side(row(`${MON}|a`, box(0, 0), { sig: 'x|true', text: 'x' }))
+        ).retypes
+      ).toEqual([{ key: `${MON}|a` }]);
+      // A side whose text is unknown says nothing about where.
+      expect(at('a', 'b', { text: undefined })).toEqual([{ key: `${MON}|a` }]);
+    });
+
+    it('firstDifference: the first index the texts disagree at, null when they agree', () => {
+      expect(firstDifference('abc', 'abc')).toBeNull();
+      expect(firstDifference('', '')).toBeNull();
+      expect(firstDifference('abc', 'abd')).toBe(2);
+      expect(firstDifference('abc', 'xbc')).toBe(0);
+      expect(firstDifference('ab', 'abc')).toBe(2);
+      expect(firstDifference('abc', 'ab')).toBe(2);
+      expect(firstDifference('', 'a')).toBe(0);
     });
   });
 

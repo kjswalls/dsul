@@ -36,6 +36,18 @@ vi.mock('@/lib/planner-snapshot', async (importOriginal) => {
   };
 });
 
+/** When set, the curve moves run on (EASE_MOVE) reads this instead: proves which animations read it. */
+const easeMove = vi.hoisted(() => ({ value: null as string | null }));
+vi.mock('@/lib/settle-plan', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/settle-plan')>();
+  return {
+    ...actual,
+    get EASE_MOVE() {
+      return easeMove.value ?? actual.EASE_MOVE;
+    },
+  };
+});
+
 import { SettleHost } from '@/components/shell/settle-host';
 import { useDragStore } from '@/lib/drag-store';
 import { hoveredItem, setHoveredItemRef } from '@/lib/hovered-item';
@@ -43,7 +55,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { SETTLING_ATTR } from '@/lib/settle';
 import { settleEpoch } from '@/lib/settle-epoch';
-import { EASE_SETTLE, SETTLE } from '@/lib/settle-plan';
+import { EASE_MOVE, EASE_SETTLE, SETTLE } from '@/lib/settle-plan';
 import { useViewStore } from '@/lib/view-store';
 
 // ── Fake WAAPI ──────────────────────────────────────────────────────────
@@ -209,20 +221,26 @@ function drawnOffset(el: Element): Vec {
 let rectCalls: Element[] = [];
 let throwNextRect = false;
 
+const rect = (left: number, top: number, width: number, height: number) =>
+  ({ left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} }) as DOMRect;
+
+function layoutOf(el: Element): DOMRect {
+  if (hidden(el)) return rect(0, 0, 0, 0);
+  const o = drawnOffset(el);
+  return rect(leftOf(el) + o.x, topOf(el) + o.y, widthOf(el), heightOf(el));
+}
+
 function fakeRect(this: HTMLElement): DOMRect {
   rectCalls.push(this);
   if (throwNextRect) {
     throwNextRect = false;
     throw new Error('layout exploded');
   }
-  if (hidden(this)) return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0, x: 0, y: 0 } as DOMRect;
-  const o = drawnOffset(this);
-  const left = leftOf(this) + o.x;
-  const top = topOf(this) + o.y;
-  const width = widthOf(this);
-  const height = heightOf(this);
-  return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top, toJSON() {} } as DOMRect;
+  return layoutOf(this);
 }
+
+/** The fake text layout a retype measures: CH px per character, from the left of its text node's element. */
+const CH = 8;
 
 // ── Frames, microtasks ──────────────────────────────────────────────────
 
@@ -258,7 +276,20 @@ const U = 'user-a';
 const DAY = '2026-10-03';
 const SELECTED = new Date('2026-10-03T12:00:00Z');
 
-type Row = Item & { h?: number };
+/**
+ * `rail`: a second text node, right of the title (a duration). `railHidden`
+ * draws it `display: none`. `done`: data-completed. `sink`: wrapped in a
+ * SwipeRow-shaped box, which is what animates on a phone.
+ */
+type Row = Item & {
+  h?: number;
+  bucket?: string;
+  bg?: string;
+  rail?: string;
+  railHidden?: boolean;
+  done?: boolean;
+  sink?: boolean;
+};
 const item = (id: string, title = id, extra: Partial<Row> = {}): Row =>
   ({ type: 'task', id, title, status: 'pending', isScheduled: false, order: 0, completedDates: [], ...extra }) as Row;
 
@@ -278,26 +309,47 @@ function groupsOf(items: Row[]): [string, Row[]][] {
   return [...groups];
 }
 
+/** Where a row's text is drawn, across from its left edge: the checkbox stand-in takes 8–24. */
+const TITLE_X = 32;
+const RAIL_X = 600;
+
 function TaskRow({ it }: { it: Row }) {
-  return (
+  const row = (
     <div
       data-settle-key={`${DAY}|${it.id}`}
       data-item-id={it.id}
       data-h={it.h ?? 40}
+      data-completed={it.done ? 'true' : 'false'}
+      style={it.bg ? { backgroundColor: it.bg } : undefined}
       onClick={onRowClick}
       onMouseDown={onRowMouseDown}
     >
-      {it.title}
+      <span data-top="0" data-x="8" data-w="16" data-h="16" />
+      <span data-top="0" data-x={TITLE_X} data-h="20">
+        {it.title}
+      </span>
+      {it.rail !== undefined && (
+        <span data-top="0" data-x={RAIL_X} data-h="20" style={it.railHidden ? { display: 'none' } : undefined}>
+          {it.rail}
+        </span>
+      )}
     </div>
+  );
+  return it.sink ? (
+    <div data-sink-row="" data-testid={`sink-${it.id}`} data-h={it.h ?? 40}>
+      {row}
+    </div>
+  ) : (
+    row
   );
 }
 
-/** The canvas: view-root is `display: contents` under a 600px box, groups are frames. */
+/** The canvas: view-root is `display: contents` under a 600px box (painted, outside the scope), groups are frames. */
 function Canvas() {
   const items = usePlannerStore((s) => s.items) as Row[];
   const band = useHarness((s) => s.band);
   return (
-    <div data-testid="canvas-box" data-h={600}>
+    <div data-testid="canvas-box" data-h={600} style={{ backgroundColor: 'rgb(9, 9, 9)' }}>
       <div data-testid="canvas-scope" data-settle-scope="canvas" style={{ display: 'contents' }}>
         {band > 0 && <div data-testid="band" data-h={band} />}
         {groupsOf(items).map(([name, rows]) => (
@@ -332,6 +384,61 @@ function Braindump({ scrollH }: { scrollH?: number }) {
         <input data-testid="quickadd-input" aria-label="Add" />
       </div>
     </section>
+  );
+}
+
+/**
+ * Day × Buckets: each card root is `relative isolate` — a stacking context, as
+ * BucketCard's is — and the card body under its 20px caption paints the ground.
+ * A row's bucket is `bucket` (morning by default); its key stays `${DAY}|id`.
+ *
+ * `wrap` reproduces the real nesting: day-buckets.tsx puts each card in its own
+ * static div[data-dnd-bucket], the only thing in it, inside a flex column
+ * (`flex`). `block` makes the list a plain block, so a wrapper's z-index needs
+ * a position; `anchoring` also gives each wrapper an absolutely positioned
+ * child, which a position on the wrapper would re-anchor.
+ */
+function Buckets({ wrap }: { wrap?: 'flex' | 'block' | 'anchoring' }) {
+  const items = usePlannerStore((s) => s.items) as Row[];
+  const band = useHarness((s) => s.band);
+  const card = (b: string) => (
+    <section
+      key={b}
+      data-testid={`bucket-${b}`}
+      data-settle-key={`bucket:${b}`}
+      data-settle-role="frame"
+      style={{ position: 'relative', isolation: 'isolate' }}
+    >
+      <header data-testid={`caption-${b}`} data-h={20}>
+        {b}
+      </header>
+      <div data-testid={`card-${b}`} style={{ backgroundColor: 'rgb(250, 250, 250)' }}>
+        {items
+          .filter((it) => (it.bucket ?? 'morning') === b)
+          .map((it) => (
+            <TaskRow key={it.id} it={it} />
+          ))}
+      </div>
+    </section>
+  );
+  return (
+    <div data-testid="buckets-box" data-h={600} style={{ backgroundColor: 'rgb(9, 9, 9)' }}>
+      <div data-testid="buckets-scope" data-settle-scope="canvas" style={{ display: 'contents' }}>
+        {band > 0 && <div data-h={band} />}
+        <div data-testid="bucket-list" style={wrap === 'flex' ? { display: 'flex', flexDirection: 'column' } : undefined}>
+          {['morning', 'afternoon'].map((b) =>
+            wrap ? (
+              <div key={b} data-testid={`wrap-${b}`} data-dnd-bucket={b}>
+                {wrap === 'anchoring' && <span data-top="0" data-h="0" style={{ position: 'absolute' }} />}
+                {card(b)}
+              </div>
+            ) : (
+              card(b)
+            )
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -420,6 +527,7 @@ let consoleWarn: ReturnType<typeof vi.spyOn>;
 beforeEach(() => {
   vi.useFakeTimers();
   mode.value = 'on';
+  easeMove.value = null;
   animations = [];
   animsOn.clear();
   endTimeOverride = null;
@@ -459,7 +567,7 @@ afterEach(() => {
 // ── Tests ───────────────────────────────────────────────────────────────
 
 describe('animation shape', () => {
-  it('animates transform and clip-path ONLY — never opacity or filter — fill backwards, on ease-out-soft', () => {
+  it('animates transform and clip-path ONLY — never opacity or filter — fill backwards, moves on EASE_MOVE, the rest on ease-out-soft', () => {
     startPreview(<Canvas />, CACHED());
     land(FRESH());
     expect(animations.length).toBeGreaterThan(0);
@@ -468,7 +576,8 @@ describe('animation shape', () => {
         for (const prop of Object.keys(kf)) expect(['transform', 'clipPath']).toContain(prop);
       }
       expect(a.options.fill).toBe('backwards');
-      expect(a.options.easing).toBe(EASE_SETTLE);
+      const glide = [`${DAY}|a`, `${DAY}|b`].includes(keyOf(a)!);
+      expect(a.options.easing).toBe(glide ? EASE_MOVE : EASE_SETTLE);
     }
   });
 
@@ -1373,5 +1482,591 @@ describe('a frame that grew', () => {
     land([item('a'), item('w2'), item('w1', 'w1', { project: 'work' })]);
     expect(on('group:inbox')).toEqual([]);
     expect(on(`${DAY}|w2`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 40px)' });
+  });
+});
+
+// ── The move curve ──────────────────────────────────────────────────────
+
+describe('moves run on EASE_MOVE; appears, retypes and rises on EASE_SETTLE', () => {
+  beforeEach(() => {
+    easeMove.value = 'linear';
+  });
+
+  it('the glide is EASE_MOVE; the type-in, its lift and the retype stay on ease-out-soft', () => {
+    startPreview(<Canvas />, CACHED());
+    land(FRESH());
+    expect(on(`${DAY}|a`).map((a) => a.options.easing)).toEqual(['linear']);
+    expect(on(`${DAY}|b`).map((a) => a.options.easing)).toEqual(['linear']);
+    expect(on(`${DAY}|e`).map((a) => a.options.easing)).toEqual([EASE_SETTLE, EASE_SETTLE]);
+    expect(on(`${DAY}|d`).map((a) => a.options.easing)).toEqual([EASE_SETTLE]);
+  });
+
+  it('the clip reveals that ride a move share its curve: a row that grew, a frame that grew', () => {
+    startPreview(<Canvas />, [item('a'), item('w1', 'w1', { project: 'work' })]);
+    land([item('a', 'a', { h: 80 }), item('n'), item('w1', 'w1', { project: 'work' })]);
+    expect(on(`${DAY}|a`).map((a) => [kind(a), a.options.easing])).toEqual([['clip', 'linear']]);
+    expect(on('group:inbox').map((a) => [kind(a), a.options.easing])).toEqual([['clip', 'linear']]);
+    expect(on('group:work').map((a) => [kind(a), a.options.easing])).toEqual([['translate', 'linear']]);
+  });
+
+  it('a retarget re-aims on EASE_MOVE too', async () => {
+    startPreview(<Canvas />, CACHED());
+    land(FRESH());
+    frame();
+    frame();
+    advance(100);
+    await commit(() => useHarness.setState({ band: 50 }));
+    expect(on('group:inbox').map((a) => a.options.easing)).toEqual(['linear']);
+    expect(on(`${DAY}|a`).map((a) => a.options.easing)).toEqual(['linear']);
+  });
+
+  it('a rise stays on ease-out-soft', () => {
+    const old = Array.from({ length: 26 }, (_, i) => item(`o${i}`, `o${i}`, { project: 'old', h: 20 }));
+    startPreview(<Canvas />, old);
+    land([item('x1', 'x1', { project: 'x' }), item('y1', 'y1', { project: 'y' })]);
+    expect(live().map((a) => a.options.easing)).toEqual([EASE_SETTLE, EASE_SETTLE]);
+    expect(EASE_MOVE).toBe('linear'); // the mock is live, so the rise really did not read it
+  });
+});
+
+// ── Stacking: raises and lifts ──────────────────────────────────────────
+
+/** Every inline style the harness's named elements carry now, by testid or item id (SettleHost's own status aside). */
+function inlineStyles(): Record<string, string | null> {
+  const out: Record<string, string | null> = {};
+  for (const el of document.querySelectorAll('[data-testid]:not([role="status"]), [data-item-id]')) {
+    out[el.getAttribute('data-testid') ?? el.getAttribute('data-item-id')!] = el.getAttribute('style');
+  }
+  return out;
+}
+
+const props = (style: string | null): Record<string, string> =>
+  Object.fromEntries(
+    (style ?? '')
+      .split(';')
+      .map((d) => d.split(':').map((x) => x.trim()))
+      .filter(([k]) => k)
+      .map(([k, ...v]) => [k, v.join(':')])
+  );
+
+/** Which inline properties differ from a snapshot, anywhere in it. */
+function changedProps(before: Record<string, string | null>): Set<string> {
+  const now = inlineStyles();
+  const changed = new Set<string>();
+  for (const id of new Set([...Object.keys(before), ...Object.keys(now)])) {
+    const a = props(before[id] ?? null);
+    const b = props(now[id] ?? null);
+    for (const k of new Set([...Object.keys(a), ...Object.keys(b)])) if (a[k] !== b[k]) changed.add(k);
+  }
+  return changed;
+}
+
+const bucket = (b: string) => document.querySelector<HTMLElement>(`[data-testid="bucket-${b}"]`)!;
+const PAINTED = 'rgb(250, 250, 250)';
+
+/** m1 m2 | a1 a2 → m1 m2 a2 | a1: a2 is retimed into Morning, 60px up, out from behind the Afternoon card. */
+const INTO_MORNING = {
+  cached: () => [item('m1'), item('m2'), item('a1', 'a1', { bucket: 'afternoon' }), item('a2', 'a2', { bucket: 'afternoon' })],
+  fresh: () => [item('m1'), item('m2'), item('a2'), item('a1', 'a1', { bucket: 'afternoon' })],
+};
+
+function intoMorning() {
+  startPreview(<Buckets />, INTO_MORNING.cached());
+  const before = inlineStyles();
+  land(INTO_MORNING.fresh());
+  return before;
+}
+
+describe('a row that glides out from behind a later stacking context', () => {
+  it('raises the context it moved into above its siblings, for the run, and puts back exactly what was there', () => {
+    const before = intoMorning();
+    expect(before['bucket-morning']).toBe('position: relative; isolation: isolate;');
+    expect(on(`${DAY}|a2`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 60px)' });
+
+    // Morning (static z) now stacks over Afternoon; nothing else moved stacking.
+    expect(bucket('morning').style.zIndex).toBe('1');
+    expect(bucket('morning').style.position).toBe('relative'); // already positioned: untouched
+    expect(bucket('afternoon').style.zIndex).toBe('');
+    expect(document.querySelector<HTMLElement>('[data-testid="bucket-list"]')!.getAttribute('style')).toBeNull();
+    // Only stacking is written, never opacity, filter or a transform, and no keyframe animates anything else.
+    expect([...changedProps(before)].sort()).toEqual(['background-clip', 'background-color', 'position', 'z-index']);
+    for (const a of animations) for (const kf of a.keyframes) for (const p of Object.keys(kf)) expect(['transform', 'clipPath']).toContain(p);
+
+    frame();
+    frame(); // playing
+    advance(200);
+    expect(bucket('morning').style.zIndex).toBe('1');
+    advance(SETTLE.moveMs + 50 - 200);
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+    expect(row('a2').hasAttribute('style')).toBe(false); // a style attribute the run created comes off again
+  });
+
+  it('puts it back the moment an interrupt ends the run', () => {
+    const before = intoMorning();
+    frame();
+    frame();
+    advance(100);
+    expect(bucket('morning').style.zIndex).toBe('1');
+    act(() => {
+      fireEvent.keyDown(document.body, { key: 'j' });
+    });
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('puts it back when the host unmounts mid-run', () => {
+    // One root, so the landing commits the host and the rows together; the host alone goes away.
+    const useHost = create(() => ({ on: true }));
+    const MaybeHost = () => (useHost((s) => s.on) ? <SettleHost /> : null);
+    act(() => usePlannerStore.setState({ ...READY, isLoading: true, isPreview: true, items: INTO_MORNING.cached() }));
+    render(
+      <>
+        <MaybeHost />
+        <Buckets />
+      </>
+    );
+    frame();
+    frame();
+    const before = inlineStyles();
+    land(INTO_MORNING.fresh());
+    expect(bucket('morning').style.zIndex).toBe('1');
+    frame();
+    frame();
+    advance(100);
+    expect(bucket('morning').style.zIndex).toBe('1');
+    act(() => useHost.setState({ on: false }));
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('keeps it through a retarget, and puts it back when the scope snaps past maxRetargets', async () => {
+    const before = intoMorning();
+    frame();
+    frame();
+    advance(300);
+    // a2 has ~17px left: re-aimed, it no longer crosses a row's height, but it still overlaps m2 — it keeps its lift.
+    await commit(() => useHarness.setState({ band: 20 })); // retarget 1
+    expect(Math.abs(parseTranslate(on(`${DAY}|a2`)[0].keyframes[0].transform).y)).toBeLessThan(40);
+    expect(bucket('morning').style.zIndex).toBe('1');
+    expect(row('a2').style.zIndex).toBe('1');
+    expect(row('a2').style.backgroundColor).toBe(PAINTED);
+    await commit(() => useHarness.setState({ band: 40 })); // retarget 2
+    expect(bucket('morning').style.zIndex).toBe('1');
+    await commit(() => useHarness.setState({ band: 60 })); // the scope snaps
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('a scope that snaps puts back its own stacking while another scope plays on', async () => {
+    startPreview(
+      <>
+        <Buckets />
+        <Braindump />
+      </>,
+      INTO_MORNING.cached()
+    );
+    const before = inlineStyles();
+    land(INTO_MORNING.fresh()); // the braindump swaps a1 and a2 as well
+    frame();
+    frame();
+    advance(100);
+    const braindump = document.querySelector('[data-testid="braindump-scope"]')!;
+    const glides = live().filter((a) => braindump.contains(a.target));
+    expect(glides.length).toBeGreaterThan(0);
+    for (const band of [20, 40, 60]) await commit(() => useHarness.setState({ band }));
+    // The canvas snapped past maxRetargets; the braindump is still gliding.
+    expect(glides.every((a) => !a.cancelled)).toBe(true);
+    expect(settling()).toBe('true');
+    expect(bucket('morning').getAttribute('style')).toBe(before['bucket-morning']);
+    expect(document.querySelector('[data-testid="buckets-scope"] [data-item-id="a2"]')!.hasAttribute('style')).toBe(false);
+  });
+
+  it('raises nothing when the row starts inside its own context: a reorder within one bucket', () => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3')]);
+    const before = inlineStyles();
+    land([item('m3'), item('m1'), item('m2')]);
+    expect(on(`${DAY}|m3`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 80px)' });
+    expect(bucket('morning').getAttribute('style')).toBe(before['bucket-morning']);
+    expect(bucket('afternoon').getAttribute('style')).toBe(before['bucket-afternoon']);
+  });
+
+  it('two raised siblings: the one whose row travels farther stacks on top', () => {
+    // a2 goes up into Morning (100px), m2 down into Afternoon (60px): each starts outside the other card.
+    startPreview(<Buckets />, INTO_MORNING.cached());
+    const before = inlineStyles();
+    land([item('m1'), item('a2'), item('m2', 'm2', { bucket: 'afternoon' }), item('a1', 'a1', { bucket: 'afternoon' })]);
+    expect(on(`${DAY}|a2`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 100px)' });
+    expect(on(`${DAY}|m2`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, -60px)' });
+    expect(bucket('morning').style.zIndex).toBe('2');
+    expect(bucket('afternoon').style.zIndex).toBe('1');
+    act(() => window.dispatchEvent(new Event('resize')));
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('a frame that glides with its rows raises nothing: judged in the frame’s own coordinates', () => {
+    // A row lands at Morning's top, so Afternoon glides down 40 — and inside it a1 and a2 swap.
+    // a1 starts above Afternoon's resting box, but inside the box as Afternoon is drawn then.
+    startPreview(<Buckets />, INTO_MORNING.cached());
+    const before = inlineStyles();
+    land([item('m0'), item('m1'), item('m2'), item('a2', 'a2', { bucket: 'afternoon' }), item('a1', 'a1', { bucket: 'afternoon' })]);
+    expect(on('bucket:afternoon')[0].keyframes[0]).toEqual({ transform: 'translate(0px, -40px)' });
+    expect(on(`${DAY}|a1`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, -40px)' });
+    expect(row('a1').getBoundingClientRect().top).toBe(120); // its FIRST: above Afternoon's LAST top (140)
+    expect(bucket('afternoon').getAttribute('style')).toBe(before['bucket-afternoon']);
+    expect(bucket('morning').getAttribute('style')).toBe(before['bucket-morning']);
+  });
+});
+
+describe('a row that crosses its neighbours is lifted', () => {
+  it('only when its own move is longer than its height: stacked above its siblings, on the nearest painted ground', () => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3')]);
+    const before = inlineStyles();
+    land([item('m3'), item('m1'), item('m2')]);
+    // m3 crosses two rows (80px > 40px); m1 and m2 each move exactly their own height.
+    const m3 = row('m3');
+    expect(m3.style.zIndex).toBe('1');
+    expect(m3.style.position).toBe('relative'); // it was static: z-index needs a position
+    expect(m3.style.backgroundColor).toBe(PAINTED); // the card body's, the nearest painted ancestor
+    expect(m3.style.backgroundClip).toBe('content-box'); // the text band only: its padding never slices a neighbour
+    expect(row('m1').hasAttribute('style')).toBe(false);
+    expect(row('m2').hasAttribute('style')).toBe(false);
+    expect([...changedProps(before)].sort()).toEqual(['background-clip', 'background-color', 'position', 'z-index']);
+
+    frame();
+    frame();
+    advance(SETTLE.moveMs + 50);
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('the row moved into another bucket is lifted on its new card’s ground', () => {
+    intoMorning();
+    const a2 = row('a2');
+    expect(a2.style.zIndex).toBe('1');
+    expect(a2.style.backgroundColor).toBe(PAINTED);
+  });
+
+  it('with no painted ground inside the scope it is stacked but given none — never the canvas outside it', () => {
+    startPreview(<Canvas />, CACHED());
+    const before = inlineStyles();
+    land([item('d'), item('a'), item('b'), item('c')]);
+    const d = row('d');
+    expect(d.style.zIndex).toBe('1');
+    expect(d.style.backgroundColor).toBe('');
+    expect(row('a').hasAttribute('style')).toBe(false);
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('keeps a ground of its own (a selected row’s wash): stacked, its background untouched, then put back exactly', () => {
+    const own = 'rgb(1, 2, 3)';
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3', 'm3', { bg: own })]);
+    const before = inlineStyles();
+    land([item('m3', 'm3', { bg: own }), item('m1'), item('m2')]);
+    const m3 = row('m3');
+    expect(m3.style.zIndex).toBe('1');
+    expect(m3.style.backgroundColor).toBe(own); // not the card's
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(m3.getAttribute('style')).toBe('background-color: rgb(1, 2, 3);');
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('is off when SETTLE.liftRows is false — and the raise still runs', () => {
+    const settle = SETTLE as unknown as { liftRows: boolean };
+    settle.liftRows = false;
+    try {
+      const before = intoMorning();
+      expect(row('a2').hasAttribute('style')).toBe(false);
+      expect(bucket('morning').style.zIndex).toBe('1');
+      expect([...changedProps(before)]).toEqual(['z-index']);
+      cleanup();
+      startPreview(<Buckets />, [item('m1'), item('m2'), item('m3')]);
+      land([item('m3'), item('m1'), item('m2')]);
+      expect(row('m3').hasAttribute('style')).toBe(false);
+    } finally {
+      settle.liftRows = true;
+    }
+  });
+});
+
+describe('nothing is stacked where nothing animates', () => {
+  const vetoes: [string, () => void][] = [
+    ['the OS reduced-motion preference', reduceMotionOS],
+    ['the in-app animations toggle', () => document.documentElement.setAttribute('data-reduce-motion', 'true')],
+    ['static mode', () => (mode.value = 'static')],
+  ];
+
+  it.each(vetoes)('under %s: no raise, no lift, no inline write at all', async (_, veto) => {
+    startPreview(<Buckets />, INTO_MORNING.cached());
+    act(veto);
+    const before = inlineStyles();
+    land(INTO_MORNING.fresh());
+    expect(animations).toEqual([]);
+    expect(settling()).toBe('true'); // shielded instead
+    expect(inlineStyles()).toEqual(before);
+    // A follow-up the vetoed run watches is shielded, never stacked either.
+    await commit(() => usePlannerStore.setState({ items: [item('m0'), ...INTO_MORNING.fresh()] }));
+    expect(animations).toEqual([]);
+    expect(inlineStyles()).toEqual({ ...before, m0: null });
+    advance(SETTLE.shieldMs);
+    expect(inlineStyles()).toEqual({ ...before, m0: null });
+  });
+
+  it('a veto that lands mid-hold snaps the run and puts back what the hold stacked', () => {
+    const before = intoMorning();
+    expect(bucket('morning').style.zIndex).toBe('1');
+    frame();
+    document.documentElement.setAttribute('data-reduce-motion', 'true');
+    frame();
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+});
+
+// ── Stacking across cousins ─────────────────────────────────────────────
+
+/**
+ * CSS paint order, from computed position / z-index / isolation and the live
+ * fake animations (a transform or clip in effect makes a stacking context):
+ * whether `a` is drawn over `b` where the two overlap.
+ */
+function isContext(el: Element): boolean {
+  const cs = getComputedStyle(el);
+  const parent = el.parentElement;
+  const positioned = cs.position !== '' && cs.position !== 'static';
+  const flexItem = !!parent && /flex|grid/.test(getComputedStyle(parent).display);
+  const z = cs.zIndex !== '' && cs.zIndex !== 'auto';
+  return (z && (positioned || flexItem)) || cs.isolation === 'isolate' || (animsOn.get(el) ?? []).some((x) => x.progress() !== null);
+}
+
+/** Where `el` sits in its stacking context: its z-index as a context, 0 positioned, -1 in flow. */
+function levelOf(el: Element): number {
+  const cs = getComputedStyle(el);
+  const z = Number.parseInt(cs.zIndex, 10);
+  if (isContext(el)) return Number.isFinite(z) ? z : 0;
+  return cs.position !== '' && cs.position !== 'static' ? 0 : -1;
+}
+
+/** Each stacking context `el` is inside, outermost first, then what it is painted with in the innermost one. */
+function stackPath(el: Element): Element[] {
+  const contexts: Element[] = [];
+  let painter: Element | null = null;
+  for (let e: Element | null = el; e && e !== document.documentElement; e = e.parentElement) {
+    if (isContext(e)) contexts.unshift(e);
+    else if (contexts.length === 0 && !painter && levelOf(e) === 0) painter = e;
+  }
+  return isContext(el) ? contexts : [...contexts, painter ?? el];
+}
+
+function paintsAbove(a: Element, b: Element): boolean {
+  const pa = stackPath(a);
+  const pb = stackPath(b);
+  let i = 0;
+  while (i < pa.length && i < pb.length && pa[i] === pb[i]) i += 1;
+  // One inside the other's context: the inner one paints over its ground.
+  if (i === pa.length || i === pb.length) return pa.length > pb.length;
+  const la = levelOf(pa[i]);
+  const lb = levelOf(pb[i]);
+  if (la !== lb) return la > lb;
+  // A tie goes to tree order: the later one paints last.
+  return (pa[i].compareDocumentPosition(pb[i]) & Node.DOCUMENT_POSITION_PRECEDING) !== 0;
+}
+
+const wrapOf = (b: string) => document.querySelector<HTMLElement>(`[data-testid="wrap-${b}"]`)!;
+const cardOf = (b: string) => document.querySelector<HTMLElement>(`[data-testid="card-${b}"]`)!;
+const captionOf = (b: string) => document.querySelector<HTMLElement>(`[data-testid="caption-${b}"]`)!;
+
+/**
+ * m1 m2 | a1 a2 a3 → m1 m2 a2 | a1 a3, the recording's shape: a2 goes up into
+ * Morning (60px), and Afternoon slides 40px down around a3, which stays put —
+ * so a3 starts outside Afternoon's box as well, and Afternoon is raised too.
+ */
+const COUSINS = {
+  cached: () => [
+    item('m1'),
+    item('m2'),
+    item('a1', 'a1', { bucket: 'afternoon' }),
+    item('a2', 'a2', { bucket: 'afternoon' }),
+    item('a3', 'a3', { bucket: 'afternoon' }),
+  ],
+  fresh: () => [
+    item('m1'),
+    item('m2'),
+    item('a2'),
+    item('a1', 'a1', { bucket: 'afternoon' }),
+    item('a3', 'a3', { bucket: 'afternoon' }),
+  ],
+};
+
+describe('a raise between cousins: each card the only thing in its own wrapper', () => {
+  it('raises the outermost box the row starts outside of — the wrapper — so the card it left never paints over it', () => {
+    startPreview(<Buckets wrap="flex" />, COUSINS.cached());
+    const before = inlineStyles();
+    land(COUSINS.fresh());
+    expect(on(`${DAY}|a2`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 60px)' });
+    expect(on('bucket:afternoon')[0].keyframes[0]).toEqual({ transform: 'translate(0px, -40px)' });
+    expect(on(`${DAY}|a3`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 40px)' });
+
+    // Drawn over the Afternoon card and its caption, where it starts.
+    expect(paintsAbove(row('a2'), cardOf('afternoon'))).toBe(true);
+    expect(paintsAbove(row('a2'), captionOf('afternoon'))).toBe(true);
+    // Morning's wrapper (a flex item: z-index alone) outranks Afternoon's card, whose row travels less.
+    expect(wrapOf('morning').style.zIndex).toBe('2');
+    expect(wrapOf('morning').style.position).toBe('');
+    expect(bucket('afternoon').style.zIndex).toBe('1');
+    expect(bucket('morning').getAttribute('style')).toBe(before['bucket-morning']);
+    expect(wrapOf('afternoon').getAttribute('style')).toBeNull();
+
+    frame();
+    frame();
+    advance(200);
+    expect(paintsAbove(row('a2'), cardOf('afternoon'))).toBe(true);
+    advance(SETTLE.moveMs + 50 - 200);
+    expect(live()).toEqual([]);
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('a static block wrapper takes `position: relative` with its z-index, and gives it back', () => {
+    startPreview(<Buckets wrap="block" />, COUSINS.cached());
+    const before = inlineStyles();
+    land(COUSINS.fresh());
+    expect(wrapOf('morning').style.zIndex).toBe('2');
+    expect(wrapOf('morning').style.position).toBe('relative');
+    expect(paintsAbove(row('a2'), cardOf('afternoon'))).toBe(true);
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(inlineStyles()).toEqual(before);
+  });
+
+  it('steps down to the card where a position on the wrapper would re-anchor an absolute child', () => {
+    startPreview(<Buckets wrap="anchoring" />, COUSINS.cached());
+    const before = inlineStyles();
+    land(COUSINS.fresh());
+    expect(wrapOf('morning').getAttribute('style')).toBeNull();
+    expect(bucket('morning').style.zIndex).toBe('2'); // already positioned: no position written
+    expect(bucket('morning').style.position).toBe('relative');
+    expect(bucket('afternoon').style.zIndex).toBe('1');
+    expect(paintsAbove(row('a2'), cardOf('afternoon'))).toBe(true);
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(inlineStyles()).toEqual(before);
+  });
+});
+
+// ── Retypes ─────────────────────────────────────────────────────────────
+
+describe('a retype types in from its first changed character', () => {
+  let reads: { live: number }[] = [];
+  let ranges = 0;
+  const proto = Range.prototype as unknown as { getBoundingClientRect?: () => DOMRect };
+
+  beforeEach(() => {
+    reads = [];
+    ranges = 0;
+    // jsdom draws no text: a character is CH px wide, from the left of its text node's element.
+    proto.getBoundingClientRect = function (this: Range) {
+      const el = this.startContainer.parentElement!;
+      const scope = el.closest('[data-settle-scope]');
+      reads.push({ live: animations.filter((a) => !a.cancelled && scope?.contains(a.target)).length });
+      const box = layoutOf(el);
+      if (box.width === 0 && box.height === 0) return box;
+      return rect(box.left + this.startOffset * CH, box.top, (this.endOffset - this.startOffset) * CH, 16);
+    };
+    const createRange = document.createRange.bind(document);
+    vi.spyOn(document, 'createRange').mockImplementation(() => {
+      ranges += 1;
+      return createRange();
+    });
+  });
+
+  afterEach(() => {
+    delete proto.getBoundingClientRect;
+  });
+
+  const clipOf = (id: string) => on(`${DAY}|${id}`).filter((a) => kind(a) === 'clip').map((a) => a.keyframes);
+  /** Clipped from viewport x `x` rightward (the rows span the 1024px canvas), revealed to the bleed. */
+  const typedFrom = (x: number) => [[{ clipPath: `inset(-8px ${VIEW_W - x}px -8px -8px)` }, { clipPath: 'inset(-8px)' }]];
+  const WHOLE = [[{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]];
+
+  it('keeps the checkbox and the unchanged prefix drawn: only what was added types in', () => {
+    startPreview(<Canvas />, [item('a'), item('d', 'Draft the Q4 plan')]);
+    land([item('a'), item('d', "Draft the Q4 plan with Maya's notes")]);
+    expect(clipOf('d')).toEqual(typedFrom(TITLE_X + 17 * CH));
+    // One Range for the one retype, read at layout with nothing in the scope animating.
+    expect(ranges).toBe(1);
+    expect(reads.length).toBeGreaterThan(0);
+    expect(reads.every((r) => r.live === 0)).toBe(true);
+  });
+
+  it('a change with no common prefix starts at the text’s left edge — the checkbox (8–24) stays drawn', () => {
+    startPreview(<Canvas />, [item('a'), item('d', 'Call Sam')]);
+    land([item('a'), item('d', 'Email Sam')]);
+    expect(clipOf('d')).toEqual(typedFrom(TITLE_X));
+    expect(TITLE_X).toBeGreaterThan(24);
+  });
+
+  it('a change in a later text node starts there: the title before it stays drawn', () => {
+    startPreview(<Canvas />, [item('a'), item('d', 'Stretch', { rail: '30m' })]);
+    land([item('a'), item('d', 'Stretch', { rail: '45m' })]);
+    expect(clipOf('d')).toEqual(typedFrom(RAIL_X));
+  });
+
+  it('a mid-word change starts mid-word; a text cut short starts after its last character', () => {
+    startPreview(<Canvas />, [item('a', 'Reply to Sam'), item('d', 'Draft the Q4 plan with notes')]);
+    land([item('a', 'Reply to Sal'), item('d', 'Draft the Q4 plan')]);
+    expect(clipOf('a')).toEqual(typedFrom(TITLE_X + 11 * CH));
+    expect(clipOf('d')).toEqual(typedFrom(TITLE_X + 17 * CH));
+    expect(ranges).toBe(2);
+  });
+
+  it('a changed character that is not drawn falls back to where the text starts', () => {
+    startPreview(<Canvas />, [item('a'), item('d', 'Stretch', { rail: '30m', railHidden: true })]);
+    land([item('a'), item('d', 'Stretch', { rail: '45m', railHidden: true })]);
+    expect(clipOf('d')).toEqual(typedFrom(TITLE_X));
+    expect(ranges).toBe(1);
+  });
+
+  it('types the whole row in when only an attribute changed (a tick), or with no Range geometry at all', () => {
+    startPreview(<Canvas />, [item('a'), item('d')]);
+    land([item('a'), item('d', 'd', { done: true })]);
+    expect(clipOf('d')).toEqual(WHOLE);
+    expect(ranges).toBe(0);
+    cleanup();
+
+    delete proto.getBoundingClientRect; // jsdom, or an engine without it
+    startPreview(<Canvas />, [item('a'), item('d', 'Draft')]);
+    land([item('a'), item('d', 'Draft two')]);
+    expect(clipOf('d')).toEqual(WHOLE);
+  });
+
+  it('a follow-up mid-hold measures again at the new layout, still with nothing in the scope animating', async () => {
+    startPreview(<Canvas />, [item('a'), item('d', 'Draft the Q4 plan')]);
+    land([item('a'), item('d', "Draft the Q4 plan with Maya's notes")]);
+    frame();
+    await commit(() => useHarness.setState({ band: 30 }));
+    expect(clipOf('d')).toEqual(typedFrom(TITLE_X + 17 * CH));
+    expect(ranges).toBe(2);
+    expect(reads.every((r) => r.live === 0)).toBe(true);
+  });
+});
+
+// ── The lifted row's ground ─────────────────────────────────────────────
+
+describe('a lifted row’s ground covers its text band only', () => {
+  it('on a phone the box (SwipeRow) is stacked and the row inside it takes the ground, clipped to its content box', () => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3', 'm3', { sink: true })]);
+    const before = inlineStyles();
+    land([item('m3', 'm3', { sink: true }), item('m1'), item('m2')]);
+    const sink = document.querySelector<HTMLElement>('[data-testid="sink-m3"]')!;
+    expect(on(`${DAY}|m3`)).toEqual([]); // the box animates, not the row
+    expect(animsOn.get(sink)?.[0].keyframes[0]).toEqual({ transform: 'translate(0px, 80px)' });
+    expect(sink.style.zIndex).toBe('1');
+    expect(sink.style.backgroundColor).toBe('');
+    const m3 = row('m3');
+    expect(m3.style.zIndex).toBe('');
+    expect(m3.style.backgroundColor).toBe(PAINTED);
+    expect(m3.style.backgroundClip).toBe('content-box');
+    act(() => fireEvent.keyDown(document.body, { key: 'j' }));
+    expect(inlineStyles()).toEqual(before);
+    expect(m3.hasAttribute('style')).toBe(false);
   });
 });

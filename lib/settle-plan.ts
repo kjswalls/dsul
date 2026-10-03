@@ -33,7 +33,8 @@
  *  - EXIT: gone at landing, counted and never animated. The neighbours' moves
  *    close the gap, which reads as the row leaving without a ghost overlay.
  *  - RETYPE: a row that stayed put but whose content changed has its new
- *    content type in once.
+ *    content type in once, from its first changed character: what reads the
+ *    same (the checkbox, an unchanged prefix) never blanks.
  *  - LARGE: too much changed for each move to be followed, so instead of a
  *    storm of crossing glides the scope's top-level blocks rise into place in
  *    one short cascade.
@@ -44,12 +45,13 @@
 
 /**
  * Timings, holds and caps, in ms / frames / px / counts. Pinned by a test.
- * The curve is ease-out-soft, which covers ~96% of a 420ms move by ~210ms, so
- * the glide reads as arriving rather than travelling; the worst case (appear
- * rank 6) is done by ~584ms, inside the completed-sinks hold's 700ms.
+ * Moves run on EASE_MOVE (ease-out-soft today, which covers ~96% of a 420ms
+ * move by ~210ms, so the glide reads as arriving rather than travelling); the
+ * worst case (appear rank 6) is done by ~584ms, inside the completed-sinks
+ * hold's 700ms.
  */
 export const SETTLE = {
-  // Treatment durations.
+  // Treatment durations. A move (and the clip reveals that ride it) and a retarget's re-aim take moveMs.
   moveMs: 420,
   appearMs: 340,
   retypeMs: 300,
@@ -82,13 +84,25 @@ export const SETTLE = {
   shieldMs: 250,
   // Clip insets run this far outside the box, so focus rings and shadows aren't shaved mid-reveal.
   clipBleedPx: 8,
+  // A row gliding farther than its own height is lifted for the run: stacked above its
+  // siblings on the nearest painted ground, so texts never overprint as it crosses them.
+  liftRows: true as boolean,
 } as const;
 
 /**
  * `--ease-out-soft` (app/globals.css), spelled out: element.animate() cannot
- * read a custom property. A test pins the two together.
+ * read a custom property. A test pins the two together. Appears, retypes and
+ * rises run on it.
  */
 export const EASE_SETTLE = 'cubic-bezier(0.22, 1, 0.36, 1)';
+
+/**
+ * The curve every move runs on — the glide, the clip reveals that ride it (a
+ * row's grow, a frame's bottom edge) and a retarget's re-aim — kept apart from
+ * EASE_SETTLE so the glide can be tuned on its own. They must share one curve
+ * with each other: nested moves compose exactly only on the same curve.
+ */
+export const EASE_MOVE: string = EASE_SETTLE;
 
 export type SettleRole = 'row' | 'frame';
 
@@ -111,6 +125,8 @@ export interface SettleNode {
   visible: boolean;
   /** A visible row's change signature; absent for frames and for rows off screen. */
   sig?: string;
+  /** A visible row's raw textContent, beside its sig: where a retype starts. */
+  text?: string;
   /** The nearest ancestor participant's key, on the same side. */
   parent?: string;
   /** No participant ancestor. */
@@ -153,6 +169,16 @@ export interface SettleAppear {
   rank: number;
 }
 
+export interface SettleRetype {
+  key: string;
+  /**
+   * The first index at which the row's raw text differs from FIRST's — the
+   * conductor types in from that character's x. Absent when the text is the
+   * same (an attribute changed: the whole row types in) or unknown.
+   */
+  at?: number;
+}
+
 export interface SettleRise {
   key: string;
   rank: number;
@@ -162,7 +188,7 @@ export interface SettlePlan {
   mode: 'none' | 'fine' | 'large';
   moves: SettleMove[];
   appears: SettleAppear[];
-  retypes: string[];
+  retypes: SettleRetype[];
   /** Large mode only. */
   rises: SettleRise[];
   /** Any visible difference — drives the landing shield, whatever the mode. */
@@ -208,6 +234,14 @@ export function createKeyDeduper(): (key: string) => string {
   };
 }
 
+/** The first index at which two texts differ, or null when they are the same. */
+export function firstDifference(a: string, b: string): number | null {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a.charCodeAt(i) === b.charCodeAt(i)) i += 1;
+  return i === a.length && i === b.length ? null : i;
+}
+
 const byPosition = (a: SettleNode, b: SettleNode): number =>
   a.rect.top - b.rect.top || a.rect.left - b.rect.left;
 
@@ -244,7 +278,7 @@ interface Classified {
   exits: number;
   rowExits: number;
   /** Every in-place change, by position; the plan keeps the first `maxRetypes`. */
-  retypes: string[];
+  retypes: SettleRetype[];
 }
 
 /**
@@ -406,17 +440,19 @@ function classify(first: SettleSide, last: SettleSide): Classified {
   // In place means no move at all — not even a grow, whose reveal already
   // shows the row's new extent — and no unfolding frame around it. A missing
   // sig (off screen at capture) is not a difference.
-  const retyped: [string, SettleNode][] = [];
+  const retyped: [SettleRetype, SettleNode][] = [];
   for (const [key, node] of last.nodes) {
     const fromKey = from.get(key);
     if (node.role !== 'row' || !node.visible || fromKey === undefined || motion.get(key)) continue;
     if (underAppearing(node)) continue;
     const was = first.nodes.get(fromKey)!;
-    if (was.sig !== undefined && node.sig !== undefined && was.sig !== node.sig) retyped.push([key, node]);
+    if (was.sig === undefined || node.sig === undefined || was.sig === node.sig) continue;
+    const at = was.text !== undefined && node.text !== undefined ? firstDifference(was.text, node.text) : null;
+    retyped.push([at === null ? { key } : { key, at }, node]);
   }
   retyped.sort(([, a], [, b]) => byPosition(a, b));
 
-  return { moves, rowMoves, appears, exits, rowExits, retypes: retyped.map(([key]) => key) };
+  return { moves, rowMoves, appears, exits, rowExits, retypes: retyped.map(([r]) => r) };
 }
 
 const emptyPlan = (mode: SettlePlan['mode'], changed: boolean): SettlePlan => ({

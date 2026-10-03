@@ -429,12 +429,23 @@ opacity.
 | A frame of rows that grew | a bottom-edge clip reveal on the rows' curve |
 | Appear, row | clip type-in left to right plus a 4px lift, 340ms, after 100ms plus 24ms per rank (rank capped at 6) |
 | Appear, frame | clip unfold top down plus a 3px drop, 340ms, after 80ms |
-| Retype: in place, signature changed | clip type-in, 300ms; the first 12 by position |
+| Retype: in place, signature changed | clip type-in from the first changed character, 300ms; the first 12 by position |
 | Exit | nothing: counted, never animated; the neighbours glide into the gap |
 | Large | lists emptied; the visible top-level nodes rise 6px, 320ms, 24ms cascade (rank capped at 8) |
 
 - A move's own delta is net of its nearest animated ancestor's, so nested moves compose
   exactly: one duration, one curve.
+- **A retype starts where the text changed.** Capture keeps each visible row's raw
+  `textContent` beside its signature, and the plan carries the first index at which FIRST
+  and LAST differ (`SettleRetype.at`). At the hold, with nothing in the scope animating,
+  the conductor walks the row's text nodes to that index and reads one character's rect
+  with a single Range: the clip starts at that character's left edge (past the end, when
+  the text was cut short, at the last character's right edge) and opens to the bleed. The
+  checkbox and the unchanged prefix are never blanked: "Draft the Q4 plan" growing "with
+  Maya's notes" types in only the addition. A change in a later text node (a duration)
+  starts there. A character that is not drawn (inside `display: none`) falls back to where
+  the text starts. The whole row types in, as before, when the text is the same and only an
+  attribute changed (a tick), or when no Range geometry is available (jsdom).
 - A row whose key changed is still a move when its item id is unmatched exactly once on
   each side. A task rescheduled Monday to Wednesday glides across the columns; a recurring
   item drawn on several days stays unpaired.
@@ -444,8 +455,63 @@ opacity.
   exceed 24, or the animations would exceed 300. Frame moves never count toward the row
   threshold, so a range change that slides some 130 hour cells is still fine.
 - The curve is `cubic-bezier(0.22, 1, 0.36, 1)`, spelled-out `--ease-out-soft` (a test
-  pins the pair). The worst case ends about 584ms after play. Every number lives in
-  `SETTLE` in `lib/settle-plan.ts`, and a test pins each one.
+  pins the pair). Moves (the glide, the grow and frame reveals that ride it, a retarget's
+  re-aim) read `SETTLE.moveMs` and `EASE_MOVE`, which is `EASE_SETTLE` today and exists so
+  the glide can be tuned alone; appears, retypes and rises stay on `EASE_SETTLE`. The
+  worst case ends about 584ms after play, and a test keeps it, whatever `moveMs` is, under
+  the sink-hold's 700ms. Every number lives in `SETTLE` in `lib/settle-plan.ts`, and a
+  test pins each one.
+
+**Stacking, for the run only.** FLIP draws a box where the stacking order of its NEW
+place says, which showed twice in a recording of Day × Buckets. Both are inline values
+written at the hold (and added to, never taken away, by a retarget) and put back exactly
+as found by `finishSettle` or a scope's snap, on every exit. The whole list of what a run
+writes outside its animations: `z-index`, `position: relative`, `background-color` and
+`background-clip`.
+
+- **Raise.** A row retimed Afternoon → Morning lives in Morning's card from the landing,
+  and every card root is `relative isolate`, so the later Afternoon card painted over its
+  glide until it surfaced over the Afternoon caption. The raise goes on the OUTERMOST
+  ancestor whose LAST box does not hold where the row starts: the child of the lowest
+  ancestor that does, which is the box that must paint above whatever sits at the row's
+  old place. Each ancestor is judged in its own frame (what the animating boxes between
+  add), so a frame that glides with its rows needs nothing. It is raised only when
+  something on the way traps the row's paint, a stacking context or a box animating in the
+  run (its transform or clip makes it one); otherwise the row already paints where its old
+  place does. In Day × Buckets that box is `div[data-dnd-bucket]`, the card's wrapper,
+  which is a flex item of the canvas column, so z-index applies with no position.
+  Raising the card itself was the second recording's bug: each card is the only child of
+  its wrapper, so "above its siblings" compared it with nothing, both cards got
+  `z-index: 1`, and tree order put Afternoon (whose own rows had moved too) back over the
+  row for three frames.
+- **One order per scope.** Every raised and lifted box in a scope is ranked together by how
+  far its rows travel, the farthest highest and equal travel sharing a level, above the
+  resting z-index of every sibling. Two of them in one stacking context compare by
+  z-index wherever they sit in the DOM, so cousins are ranked too.
+- **Position.** A static block that is not a flex or grid item takes `position: relative`
+  for its z-index. Where that would re-anchor an absolutely positioned descendant (one with
+  no positioned box between them), the raise steps down toward the row to the first box it
+  is safe on, and is dropped at a stacking context it is not safe on. In the real views it
+  never steps: the boxes it lands on are flex items (bucket wrappers, the week's cells and
+  columns), already positioned (BucketCard, ProjectBlock), or static blocks with no such
+  descendant (GroupSection, the week list's day; TaskRow is `relative`, so nothing under it
+  counts).
+- **Lift** (`SETTLE.liftRows`, on). Rows have no ground of their own, so a row gliding past
+  others overprinted their text. A row whose own move is longer than its height is stacked
+  above its siblings and given the background of its nearest painted ancestor inside the
+  scope (a row with a ground of its own, like a selected row's wash, keeps it), clipped to
+  its content box. TaskRow is a flex row with `py-1.5` (`py-1` compact), centred, with a
+  line-clamped title, so its content box is the band its checkbox, title and rail live in;
+  a full-height ground sliced the top off the neighbour a row was settling against, in the
+  glide's tail (about 160 to 240ms in), where the row sits a few pixels short of its slot.
+  Two rows' text bands meet only once they overlap by more than both paddings (12px by
+  default), which is where hiding the one beneath is right. The ground goes on the row
+  itself and the z-index on its box, which differ on a phone (the SwipeRow, which has no
+  padding to clip to). Where nothing inside the scope is painted, as on the plain canvas
+  (its ground is `<main>`, outside view-root), it is stacked and given no ground.
+
+Neither touches opacity, filter, transform or a custom property, and nothing is written
+where nothing animates.
 
 ### Hold, play, retarget
 
@@ -628,6 +694,15 @@ chose differently, each for a reason found while building or testing it.
   only show through the unfold's clip.
 - The move's own delta is net of the nearest **animated** ancestor; appear ranks are
   counted per role; the key deduper guards against a raw key that already ends in `#n`.
+- **Raise and lift** (see Treatments). Not in the design, which kept every write to
+  transform and clip-path. A real-browser recording showed a row hidden behind the next
+  bucket card for half its glide, and texts overprinting as rows crossed. A second one
+  showed the raise tie between cousin cards, and the lift's full-height ground slicing a
+  neighbour; the raise moved to the outermost box with one order per scope, and the
+  ground to the content box.
+- **Retypes start at the first changed character.** The design typed the whole row in,
+  checkbox included, so a renamed row went blank at the landing and its unchanged title
+  typed in again.
 
 **Participants**
 
