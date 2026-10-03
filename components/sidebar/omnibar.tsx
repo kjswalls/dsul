@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/command';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
+import { captureTask } from '@/lib/held-captures';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
 import { useChatStore } from '@/lib/chat-store';
@@ -166,7 +167,6 @@ export function Omnibar({
   const {
     tasks,
     habits,
-    addTask,
     userTimezone,
     routines,
     seasons,
@@ -569,10 +569,16 @@ export function Omnibar({
       openAddDialog('task');
       useCommandUsageStore.getState().record('create.task');
       closeAndClear();
-      // openAddDialog replaced the launcher slot — nothing to close here.
+      // openAddDialog replaced the launcher slot, so this is a no-op — except
+      // during the look-only preview, which DEFERS the dialog (lib/ui-store.ts)
+      // and leaves the launcher in the slot. Its promotion at landing waits for
+      // a free slot, so a launcher left open would cost the dialog.
+      closeLauncher();
       return;
     }
-    addTask({ title: addTitle });
+    // Held until the planner has loaded (lib/held-captures.ts), so the text is
+    // never lost to a cold load or the preview; everything below runs as for an add.
+    captureTask(addTitle);
     // The launcher is a one-shot command surface: close after the add. The dock
     // stays open and refocuses for rapid successive capture. Nothing to strike
     // on the way out — `relayOnCapture` is false here by construction (the field

@@ -38,6 +38,7 @@ import { OnboardingTour } from '@/components/onboarding/onboarding-tour';
 import { BugReportDialog } from '@/components/bug-report/bug-report-dialog';
 import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { HelpMenu } from '@/components/shell/help-menu';
+import { SettleHost } from '@/components/shell/settle-host';
 
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
@@ -65,6 +66,7 @@ import { useUndoToast } from '@/hooks/use-undo-toast';
 import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
+import { useDeferredDialogPromotion } from '@/hooks/use-deferred-dialog';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
@@ -195,6 +197,11 @@ export function AppShell() {
   // that day is over (lib/completion-filing.ts). Always on; same mount point
   // and the same load-time gates as the sweep above.
   useCompletionFiling();
+  // A data dialog asked for during the look-only preview opens once fresh data
+  // lands (lib/ui-store.ts). Here, above the desktop/mobile/Zen swap, so no
+  // shell change drops the request; leaving `/` does. <SettleHost /> below is
+  // mounted at the same level for the same reason.
+  useDeferredDialogPromotion();
 
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
@@ -648,6 +655,12 @@ export function AppShell() {
           both only for the second the Relay Lift switch takes. Zen has no
           droppables, so the brief overlap registers no duplicate ids. */}
       {isMobile ? <MobileShell /> : <ZenStage planner={<DesktopShell />} />}
+
+      {/* The cached → fresh settle's React end and the preview's one
+          announcement (settle-host.tsx). A sibling of the shell swap, not a
+          child of either shell, so a desktop⇄mobile or Zen switch mid-preview
+          neither drops the landing edge nor announces it twice. */}
+      <SettleHost />
 
       <DragGhost />
 

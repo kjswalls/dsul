@@ -6,17 +6,23 @@ import { DaySchedule } from '@/components/views/day-schedule';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import { useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
-import { usePlannerSettled } from '@/lib/planner-ready';
+import { usePlannerPreviewing, usePlannerSettled } from '@/lib/planner-ready';
 
 /**
  * The Today tab's view. Mobile ships a clamped subset of the desktop matrix —
  * day scope only, in Buckets / List / Schedule. It reuses the exact desktop
  * view components + the shared derivation, and reads its own drag state (drop
  * hints) rather than threading it down from the shell.
+ *
+ * Skeleton until there is something to show, then the view — the look-only
+ * preview or the fresh load, in one element tree that is never keyed on which.
+ * See the desktop ViewRouter for both edges and why.
  */
 export function MobileViewRouter() {
   const layout = useViewStore((s) => s.layout);
   const settled = usePlannerSettled();
+  const previewing = usePlannerPreviewing();
+  const visible = settled || previewing;
   const activeId = useDragStore((s) => s.activeId);
 
   const view = (() => {
@@ -38,11 +44,15 @@ export function MobileViewRouter() {
       data-view-layout={layout}
       data-shell="mobile"
       // See the desktop ViewRouter — one readiness contract (and one skeleton
-      // swap) for both shells.
+      // swap) for both shells: data-loaded is FRESH only, data-preview and
+      // inert mark the look-only state.
       data-loaded={settled ? 'true' : 'false'}
+      data-preview={previewing ? 'true' : undefined}
+      data-settle-scope="canvas"
+      inert={previewing}
       style={{ display: 'contents' }}
     >
-      {settled ? view : <PlannerSkeleton variant={layout} scope="day" />}
+      {visible ? view : <PlannerSkeleton variant={layout} scope="day" />}
     </div>
   );
 }

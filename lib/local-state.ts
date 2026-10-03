@@ -6,6 +6,7 @@ import { useCommandUsageStore } from './command-usage-store';
 import { useEODStore } from './eod-store';
 import { useKeyboardShortcutsStore } from './keyboard-shortcuts-store';
 import { useMorningStore } from './morning-store';
+import { clearPlannerSnapshot } from './planner-snapshot';
 import { usePlannerStore } from './planner-store';
 import { useSidebarStore } from './sidebar-store';
 import { clearReleased } from './sweep-grace';
@@ -270,12 +271,15 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
 ];
 
 /**
- * Per-user state that reaches localStorage without a zustand persist blob, so
- * the audit test cannot walk it by key: chat transcripts span one fixed key
+ * Per-user state that reaches browser storage without a zustand persist blob,
+ * so the audit test cannot walk it by key: chat transcripts span one fixed key
  * plus one per item thread, and sweep-grace is plain functions over a raw map.
- * Both are wholly disclosive, so neither takes a scope. Covered by named tests.
+ * The planner snapshot (lib/planner-snapshot.ts) is IndexedDB, which the
+ * localStorage audit cannot see at all — a copy of every title and note, so it
+ * has its own audit line and named tests. All three are wholly disclosive, so
+ * none takes a scope.
  */
-const RAW_CLEARERS: readonly (() => void)[] = [clearChatState, clearReleased];
+const RAW_CLEARERS: readonly (() => void)[] = [clearChatState, clearReleased, clearPlannerSnapshot];
 
 /** The account whose local state is on disk right now, or null for none. */
 export function localStateOwner(): string | null {
@@ -306,7 +310,7 @@ function setLocalStateOwner(userId: string | null): void {
  * is a zustand `set()`, and the persist middleware calls `storage.setItem`
  * UNWRAPPED — a browser at its quota, or one with site data blocked, throws
  * `QuotaExceededError`/`SecurityError` straight back out of `set()`. In a bare
- * loop that one throw aborts the stores after it, both raw clearers and the
+ * loop that one throw aborts the stores after it, every raw clearer and the
  * stamp write; and because this runs FIRST inside the provider's `adoptUser`,
  * it would take `loadPlanner`, `hydrateSettings` and both extension hydrates
  * down with it. The app would come up as a blank shell on a browser that,

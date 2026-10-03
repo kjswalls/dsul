@@ -62,6 +62,8 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
 import { Braindump } from '@/components/sidebar/braindump';
 import { usePlannerStore } from '@/lib/planner-store';
+import { useUIStore } from '@/lib/ui-store';
+import { __resetHeldCapturesForTests } from '@/lib/held-captures';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { EMPTY_VIEW_FILTERS } from '@/lib/filters';
@@ -295,5 +297,135 @@ describe('braindump header: tooltips', () => {
     fireEvent.focus(add);
     await new Promise((r) => setTimeout(r, 300));
     expect(screen.queryByRole('tooltip')).toBeNull();
+  });
+});
+
+/**
+ * The quick-add row before the planner has LOADED (cold load, look-only
+ * preview, failed load). Typed text is never lost: Enter holds the capture
+ * (lib/held-captures.ts) and it lands with the fresh data — an intended fix,
+ * since a cold-load capture used to be erased by the landing set() — and ＋
+ * keeps the text rather than handing it to a dialog that cannot open yet.
+ */
+describe('braindump quick-add: before the planner has loaded', () => {
+  let frames: FrameRequestCallback[] = [];
+  let scrolls: number[] = [];
+
+  const input = () => screen.getByTestId('braindump-quick-add-input') as HTMLInputElement;
+  const type = (text: string) => fireEvent.change(input(), { target: { value: text } });
+  /** Two rounds: the scroll waits two frames (commit, then layout). */
+  const runFrames = () => {
+    for (let i = 0; i < 2; i++) {
+      const due = frames;
+      frames = [];
+      due.forEach((cb) => cb(0));
+    }
+  };
+  /** The scroll port, with something to scroll and every write to it recorded. */
+  const watchScroll = () => {
+    const port = document.querySelector('[data-testid="braindump"] .overflow-y-auto') as HTMLElement;
+    Object.defineProperty(port, 'scrollHeight', { configurable: true, value: 640 });
+    Object.defineProperty(port, 'scrollTop', {
+      configurable: true,
+      get: () => 0,
+      set: (v: number) => scrolls.push(v),
+    });
+  };
+  /** Cached rows on screen, the load still out: the look-only preview. */
+  const seedPreview = () => seed(FOUR, { isLoading: true, isPreview: true });
+
+  beforeEach(() => {
+    frames = [];
+    scrolls = [];
+    vi.spyOn(window, 'requestAnimationFrame').mockImplementation((cb) => {
+      frames.push(cb);
+      return frames.length;
+    });
+    __resetHeldCapturesForTests();
+    useUIStore.setState({ activeDialog: null, deferredDialog: null });
+  });
+  afterEach(() => {
+    vi.mocked(window.requestAnimationFrame).mockRestore();
+    __resetHeldCapturesForTests();
+    usePlannerStore.setState({ isPreview: false, loadFailedUserId: null });
+  });
+
+  it('scrolls the new row into view on a loaded Enter — the control for the case below', () => {
+    seed(FOUR);
+    renderBraindump();
+    watchScroll();
+
+    type('Gamma');
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    act(runFrames);
+
+    expect(usePlannerStore.getState().items.filter((i) => i.title === 'Gamma')).toHaveLength(1);
+    expect(scrolls).toEqual([640]);
+    expect(screen.queryByTestId('quick-add-held')).toBeNull();
+  });
+
+  it('holds an Enter while previewing: clears, says so, does not scroll, and lands once', async () => {
+    seedPreview();
+    renderBraindump();
+    watchScroll();
+
+    type('Gamma');
+    fireEvent.keyDown(input(), { key: 'Enter' });
+    act(runFrames);
+
+    expect(input().value).toBe('');
+    expect(document.activeElement).toBe(input());
+    expect(screen.getByTestId('quick-add-held')).toHaveTextContent('Adds once synced');
+    expect(screen.getByTestId('quick-add-held')).toHaveAttribute('role', 'status');
+    // A held capture lands mid-settle; scrolling for a row that does not exist
+    // yet would yank the list under the landing.
+    expect(scrolls).toEqual([]);
+    expect(usePlannerStore.getState().items.some((i) => i.title === 'Gamma')).toBe(false);
+
+    // The fresh data lands.
+    await act(async () => {
+      usePlannerStore.setState({ isLoading: false, isPreview: false });
+      await Promise.resolve();
+    });
+
+    expect(usePlannerStore.getState().items.filter((i) => i.title === 'Gamma')).toHaveLength(1);
+    expect(screen.getAllByText('Gamma')).toHaveLength(1);
+    expect(screen.queryByTestId('quick-add-held')).toBeNull();
+  });
+
+  it('keeps the text on ＋ while not loaded, and opens nothing', () => {
+    seedPreview();
+    renderBraindump();
+
+    type('Delta');
+    fireEvent.click(screen.getByRole('button', { name: 'Open the full add dialog' }));
+
+    expect(input().value).toBe('Delta');
+    expect(document.activeElement).toBe(input());
+    const ui = useUIStore.getState();
+    expect(ui.activeDialog).toBeNull();
+    expect(ui.deferredDialog).toBeNull();
+  });
+
+  it('keeps it after a failed load too, whose empty store is settled but not loaded', () => {
+    seed([], { error: 'Failed to load data', loadFailedUserId: 'user-1' });
+    renderBraindump();
+
+    type('Delta');
+    fireEvent.click(screen.getByRole('button', { name: 'Open the full add dialog' }));
+
+    expect(input().value).toBe('Delta');
+    expect(useUIStore.getState().activeDialog).toBeNull();
+  });
+
+  it('hands the text to the full dialog on ＋ once loaded, as it always has', () => {
+    seed(FOUR);
+    renderBraindump();
+
+    type('Delta');
+    fireEvent.click(screen.getByRole('button', { name: 'Open the full add dialog' }));
+
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'add', tab: 'task', title: 'Delta' });
+    expect(input().value).toBe('');
   });
 });

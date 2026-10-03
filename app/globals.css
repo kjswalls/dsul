@@ -1951,6 +1951,113 @@ body {
   animation: none;
 }
 
+/* ── Planner preview: sync line ──────────────────────────────────────────
+   components/shell/planner-sync-line.tsx — the look-only preview's one signal
+   (lib/planner-snapshot.ts). Neutral ink, never lime: nothing on the canvas
+   dims while the cached planner is up, and the only opacity here is on the
+   line's OWN elements, which contain nothing but these spans.
+
+   The root's fade-in is never overridden. A landing can arrive mid-fade, so
+   the done state animates the track (out) and ::after (the sweep) only — a
+   root rule there would cancel the fade and pop the line.
+
+   The 300ms delay with fill-mode `both` keeps a warm load from ever showing
+   it. No transitions in this section. Reduced motion keeps the delay (a 1ms
+   step-in) and swaps the travelling segment for a still, full-width hairline;
+   the component never enters the done state under either veto. */
+@keyframes planner-sync-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes planner-sync-travel {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+@keyframes planner-sync-track-out {
+  to {
+    opacity: 0;
+  }
+}
+@keyframes planner-sync-done {
+  0% {
+    transform: scaleX(0);
+    opacity: 1;
+  }
+  60% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0;
+  }
+}
+.planner-sync-line {
+  position: absolute;
+  height: 2px;
+  overflow: hidden;
+  pointer-events: none;
+  animation: planner-sync-in 200ms var(--ease-out-soft) 300ms both;
+}
+.planner-sync-line__track {
+  position: absolute;
+  inset: 0;
+}
+.planner-sync-line__bar {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 40%;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in oklch, var(--muted-foreground) 55%, transparent),
+    transparent
+  );
+  animation: planner-sync-travel 1.4s var(--ease-roll) 300ms infinite;
+}
+.planner-sync-line::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform: scaleX(0);
+  transform-origin: left;
+  opacity: 0;
+  background: color-mix(in oklch, var(--muted-foreground) 45%, transparent);
+}
+.planner-sync-line[data-state='done'] .planner-sync-line__track {
+  animation: planner-sync-track-out 160ms var(--ease-out-soft) both;
+}
+.planner-sync-line[data-state='done']::after {
+  animation: planner-sync-done 400ms var(--ease-out-soft) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .planner-sync-line {
+    animation: planner-sync-in 1ms steps(1) 300ms both;
+  }
+  .planner-sync-line__bar {
+    animation: none;
+    width: 100%;
+    background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
+  }
+}
+[data-reduce-motion='true'] .planner-sync-line {
+  animation: planner-sync-in 1ms steps(1) 300ms both;
+}
+[data-reduce-motion='true'] .planner-sync-line__bar {
+  animation: none;
+  width: 100%;
+  background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
+}
+
 /* ── Zen room ────────────────────────────────────────────────────────────
    components/zen/zen-room.tsx. Two pieces of motion, both deliberately
    below the threshold of "something is happening".

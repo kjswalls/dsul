@@ -1,4 +1,5 @@
 import type { LucideIcon } from 'lucide-react';
+import { isPlannerPreviewing } from '../planner-ready';
 
 /**
  * The command model. One registry (lib/commands/registry.ts) is the source of
@@ -263,6 +264,49 @@ export function isHidden(command: Command, ctx: CommandContext): boolean {
   return typeof command.hidden === 'function' ? command.hidden(ctx) : !!command.hidden;
 }
 
+/**
+ * The groups whose every command acts on planner rows: creates, item verbs
+ * (and the provider-generated routine, season and goal rows, which ride
+ * `items`), the rituals that send or snapshot the day, and undo/redo.
+ */
+export const PREVIEW_GATED_GROUPS: ReadonlySet<CommandGroupId> = new Set<CommandGroupId>([
+  'create',
+  'items',
+  'rituals',
+  'history',
+]);
+
+/**
+ * Data commands in otherwise-chrome groups. ⌘A reads row ids straight out of
+ * the DOM, `inert` or not; the overdue tray triages cached rows.
+ */
+export const PREVIEW_GATED_IDS: ReadonlySet<string> = new Set([
+  'workspace.selectAll',
+  'goto.overdue',
+]);
+
+/**
+ * Greyed while the planner is the look-only preview (lib/planner-ready.ts).
+ * By group, not by flag, because availability defaults to true: a command
+ * added to a data group tomorrow is gated without anyone remembering this.
+ * The `app.*` console doors stay open — ui-store defers what they open.
+ */
+export const gatedDuringPreview = (command: Command): boolean =>
+  PREVIEW_GATED_GROUPS.has(command.group) || PREVIEW_GATED_IDS.has(command.id);
+
 export function isAvailable(command: Command, ctx: CommandContext): boolean {
+  if (gatedDuringPreview(command) && isPlannerPreviewing()) return false;
+  return command.availableWhen ? command.availableWhen(ctx) : true;
+}
+
+/**
+ * Unavailable ONLY because the preview is up: its own answer is yes, so it
+ * would run if the data were real. The dispatcher keeps such a key rather than
+ * handing it to the browser — a cold load with no preview runs the command and
+ * consumes it, and ⌘A handed back is a page-wide text selection that outlives
+ * the landing.
+ */
+export function heldByPreview(command: Command, ctx: CommandContext): boolean {
+  if (!gatedDuringPreview(command) || !isPlannerPreviewing()) return false;
   return command.availableWhen ? command.availableWhen(ctx) : true;
 }

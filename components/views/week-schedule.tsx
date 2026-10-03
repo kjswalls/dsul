@@ -95,6 +95,10 @@ function WeekHourCell({
       ref={setNodeRef}
       data-dnd-id={`weekhour:${dateStr}:${hour}`}
       data-dnd-over={isOver ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts), qualified by its column's data-date:
+      // the hairline glides with the blocks when the landing moves the window.
+      data-settle-key={`hour:${hour}`}
+      data-settle-role="frame"
       className={cn('relative transition-colors', isOver && 'bg-primary/10')}
       style={{ height: hourPx }}
     >
@@ -390,8 +394,10 @@ function WeekScheduleColumn({
       </div>
 
       {/* Hour grid. Every column carries its own lane: rail, beads, and — on
-          today — the now-marker. */}
-      <div className="relative">
+          today — the now-marker. A settle frame (lib/settle.ts): when the
+          landing grows or shrinks the Anytime band above, the hours and blocks
+          glide with it. */}
+      <div data-settle-key="grid" data-settle-role="frame" className="relative">
         <div>
           {hours.map((h) => (
             <WeekHourCell key={h} dateStr={col.dateStr} hour={h} isActive={dragging} hourPx={hourPx} />
@@ -618,10 +624,15 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
             <div style={{ height: HEADER_H }} />
             <div style={{ height: anytimeH }} className="mt-2" />
           </div>
-          <div ref={anchorRef} className="relative">
+          {/* Settle frames (lib/settle.ts), all three: the labels and the live
+              time glide with the columns' hours, so the gutter never reads a
+              time the grid beside it has already left. */}
+          <div ref={anchorRef} data-settle-key="gutter" data-settle-role="frame" className="relative">
             {hours.map((h) => (
               <div
                 key={h}
+                data-settle-key={`gutter-hour:${h}`}
+                data-settle-role="frame"
                 style={{ height: hourPx }}
                 className={cn(
                   'pt-[3px] font-num text-2xs text-muted-foreground',
@@ -635,6 +646,8 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
             ))}
             {nowY !== null && (
               <span
+                data-settle-key="gutter-now"
+                data-settle-role="frame"
                 className={cn(
                   'pointer-events-none absolute left-0 z-[6] -translate-y-1/2 font-num text-2xs font-medium text-success-text',
                   DAY_GUTTER_INSET

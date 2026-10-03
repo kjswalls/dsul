@@ -10,6 +10,7 @@ import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
 import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
+import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
 import { useMobileNavStore, mobileTabOrder, shownMobileTab } from '@/lib/mobile-nav-store';
 import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
@@ -189,7 +190,12 @@ export const MobileShell = memo(function MobileShell() {
           halves of the open-flag fix, because the desktop⇄mobile shell swap can
           still strand a tray. */}
 
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
+      <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
+        {/* The look-only preview's sync line (planner-sync-line.tsx), along the
+            content's top edge under the header card. Here, outside the keyed
+            tab below, so a tab change neither remounts it nor fades it. */}
+        <PlannerSyncLine className="absolute inset-x-6 top-0 z-[5]" />
+
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
             under [data-reduce-motion]). */}
         <div

@@ -15,6 +15,7 @@ import { useCommandUsageStore } from '@/lib/command-usage-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useMorningStore } from '@/lib/morning-store';
+import { getSnapshotEpoch } from '@/lib/planner-snapshot';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSidebarStore, SIDEBAR_DEFAULT_WIDTH } from '@/lib/sidebar-store';
 import { recordReleased, releasedOn } from '@/lib/sweep-grace';
@@ -211,6 +212,41 @@ describe('the sweep grace map', () => {
   });
 });
 
+/**
+ * The planner snapshot is IndexedDB, which jsdom does not have — so what this
+ * file can see is the clear's SYNCHRONOUS half, the epoch bump that drops every
+ * read, prefetch and write already in flight. That half is the one that has to
+ * hold: the async IDB clear can be aborted by sign-out's hard navigation. The
+ * disk half is pinned in planner-snapshot.test.ts.
+ */
+describe('the planner snapshot', () => {
+  it('is in RAW_CLEARERS: a sign-out and an account switch both bump its epoch', () => {
+    adoptLocalState(USER_A);
+
+    let before = getSnapshotEpoch();
+    clearUserScopedLocalState();
+    expect(getSnapshotEpoch()).toBeGreaterThan(before);
+
+    adoptLocalState(USER_A);
+    before = getSnapshotEpoch();
+    expect(adoptLocalState(USER_B)).toBe(true);
+    expect(getSnapshotEpoch()).toBeGreaterThan(before);
+  });
+
+  it('is left alone when the same user signs in again', () => {
+    adoptLocalState(USER_A);
+    const before = getSnapshotEpoch();
+    expect(adoptLocalState(USER_A)).toBe(false);
+    expect(getSnapshotEpoch()).toBe(before);
+  });
+
+  it('is dropped on an unstamped browser — every title and note is disclosive', () => {
+    const before = getSnapshotEpoch();
+    adoptUnstamped(USER_A);
+    expect(getSnapshotEpoch()).toBeGreaterThan(before);
+  });
+});
+
 describe('the ownership stamp', () => {
   it('never outlives a session', () => {
     adoptLocalState(USER_A);
@@ -244,7 +280,7 @@ describe('hostile storage cannot take the clear — or the boot — down with it
 
     // zustand's persist calls storage.setItem UNWRAPPED, so this throw comes
     // straight back out of the first store's set(). In a bare loop it would
-    // abort the seven stores after it, both raw clearers and the stamp write.
+    // abort the seven stores after it, every raw clearer and the stamp write.
     const setItem = Storage.prototype.setItem;
     Storage.prototype.setItem = () => {
       throw new DOMException('The operation is insecure.', 'SecurityError');
@@ -668,6 +704,16 @@ describe('nothing persists per-user state outside the registry', () => {
       // that did it. The loop guard's whole state; it dies with the tab and is
       // written only when nobody is signed in, so there is no one to clear it for.
       'lib/signed-out-redirect.ts',
+      // the per-tab crash marker (sessionStorage, '1'): tab-scoped and says nothing about anyone
+      'lib/planner-snapshot.ts',
     ].sort());
+  });
+
+  it('every IndexedDB database in the app is accounted for', () => {
+    // IndexedDB is invisible to every scan above. The planner snapshot is the
+    // one database, wholly disclosive, and cleared through RAW_CLEARERS (its
+    // own describe in this file). A second entry here is per-user state that
+    // nothing has been told to clear.
+    expect(filesMatching(/\bindexedDB\.(open|deleteDatabase)\(/)).toEqual(['lib/planner-snapshot.ts']);
   });
 });

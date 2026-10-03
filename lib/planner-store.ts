@@ -83,6 +83,10 @@ import {
   type PlannerData,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
+// Already reached through completion-confetti, so this adds no cycle.
+import { useExtensionsStore } from './extensions-store';
+import { markPreviewPending, readPlannerSnapshot, type PlannerSnapshotData } from './planner-snapshot';
+import { guardPreviewWrites } from './preview-write-guard';
 import type { CommitResult, SeedPlan } from './seed-containers';
 import { ITEM_TYPES, getItemTypeConfig, itemTypeName, isSkippable, isPausable, isCollectible, hydrateCustomTypes } from './item-registry';
 import {
@@ -185,6 +189,14 @@ interface PlannerStore {
   // Supabase state
   userId: string | null;
   isLoading: boolean;
+  /**
+   * True while the canvas shows THIS BROWSER's copy of the last session (lib/planner-snapshot.ts)
+   * and the fresh load has not landed. Look-only: isLoading stays TRUE for the whole preview, so
+   * every settled/!isLoading gate stays shut, and every data action refuses
+   * (lib/preview-write-guard.ts). Set in the same set() as the cached slices; cleared in the same
+   * set() as the fresh slices, the failure drop, dropPreview, or emptyAccountData. Never persisted.
+   */
+  isPreview: boolean;
   error: string | null;
   /**
    * The account whose most recent load FAILED, or null.
@@ -236,7 +248,15 @@ interface PlannerStore {
    * last load did not fail, so the stamp must not look like a finished load.
    */
   identifyUser: (userId: string) => void;
-  initializeStore: (userId: string) => Promise<void>;
+  /**
+   * `opts.preview` OFFERS the cached planner while this load is in flight — the
+   * provider passes it on the page's first load attempt only, never on a
+   * Retry. It is evaluated at APPLY time and may decline (wrong route, a data
+   * dialog already armed). Omitted, nothing is read.
+   */
+  initializeStore: (userId: string, opts?: { preview?: () => boolean }) => Promise<void>;
+  /** Crash recovery only (components/shell/preview-crash-boundary.tsx). True if a preview was dropped. */
+  dropPreview: () => boolean;
   clearStore: () => void;
   /**
    * Drop the persisted PREFERENCES slice — see lib/local-state.ts.
@@ -599,21 +619,14 @@ export const projectItems = (items: Item[]) => ({
 });
 
 /**
- * Everything on this store that BELONGED TO AN ACCOUNT, back to empty.
+ * The account's DATA back to empty — shared by emptyAccountData, the failed-preview drop and dropPreview.
  *
- * Shared by the two callers that drop a previous user: `clearStore` on
- * sign-out, and `identifyUser` when the account changes under it. One list
- * rather than two, because the failure mode of the second copy is silent and
- * expensive — the `goals` note below is a bug that was found exactly that way,
- * a slice the reset had never been taught about, leaving user B holding user
- * A's rows.
- *
- * Deliberately NOT included: `userId` and `isLoading`, which say who we are and
- * where the fetch has got to. The two callers disagree about those (a sign-out
- * has no user and nothing loading; an account switch has both) so they stay at
- * the call sites, where the difference is visible.
+ * `isPreview` rides here because cached rows ARE the account's data: whichever
+ * of those paths empties the slices must end the preview in the same set().
+ * `userTimezone` stays out: a failed load must not wipe a zone that
+ * `hydrateSettings` already landed.
  */
-const emptyAccountData = () => ({
+const emptyPlannerData = () => ({
   ...projectItems([]),
   projects: [],
   itemTypes: [],
@@ -622,9 +635,10 @@ const emptyAccountData = () => ({
   collectionsAvailable: true,
   // Goals reset with every other slice. Missed, the previous account's goal
   // names, whys and target dates stay in memory after SIGNED_OUT — and
-  // initializeStore's catch branch sets only its status flags, never the data,
-  // so a FAILED next sign-in leaves user B looking at user A's goals in the
-  // chip and the console, with updateGoal firing user-B writes at user-A ids.
+  // initializeStore's catch branch sets only its status flags, never the data
+  // (it empties only a preview's cached rows), so a FAILED next sign-in leaves
+  // user B looking at user A's goals in the chip and the console, with
+  // updateGoal firing user-B writes at user-A ids.
   goals: [],
   goalsAvailable: true,
   // Its two siblings above were here and this was not — a gap inherited from
@@ -633,6 +647,26 @@ const emptyAccountData = () => ({
   // makes `addItemType`'s opening guard silently drop the NEXT account's custom
   // types until their own fetch resolves.
   itemTypesAvailable: true,
+  isPreview: false,
+});
+
+/**
+ * Everything on this store that BELONGED TO AN ACCOUNT, back to empty.
+ *
+ * Shared by the two callers that drop a previous user: `clearStore` on
+ * sign-out, and `identifyUser` when the account changes under it. One list
+ * rather than two, because the failure mode of the second copy is silent and
+ * expensive — the `goals` note in emptyPlannerData is a bug that was found
+ * exactly that way, a slice the reset had never been taught about, leaving
+ * user B holding user A's rows.
+ *
+ * Deliberately NOT included: `userId` and `isLoading`, which say who we are and
+ * where the fetch has got to. The two callers disagree about those (a sign-out
+ * has no user and nothing loading; an account switch has both) so they stay at
+ * the call sites, where the difference is visible.
+ */
+const emptyAccountData = () => ({
+  ...emptyPlannerData(),
   error: null,
   loadFailedUserId: null,
   canUndo: false,
@@ -2050,7 +2084,74 @@ export const usePlannerStore = create<PlannerStore>()(
         return toDateStr(date ?? get().selectedDate, userTimezone);
       };
 
-      return {
+      /**
+       * Paint the last session's planner while THIS load is in flight. Fire-and-forget: it can
+       * neither delay, fail, nor outlive the load. Never touches userId, isLoading, error,
+       * loadFailedUserId, userTimezone or any history field.
+       */
+      const offerPreview = (userId: string, generation: number, allowed: () => boolean): void => {
+        let read: Promise<PlannerSnapshotData | null>;
+        try {
+          read = readPlannerSnapshot(userId);
+        } catch {
+          return;
+        }
+        read
+          .then((snap) => {
+            // The same ownership questions the landing asks, plus two of its own: the
+            // load is still out, and nothing has been put in the store since it began.
+            if (!snap || loadGeneration !== generation) return;
+            const s = get();
+            if (s.userId !== userId || !s.isLoading || s.isPreview) return;
+            // Paint over EMPTY only: anything already here is newer than the cache.
+            if (
+              s.items.length || s.projects.length || s.itemTypes.length ||
+              s.routines.length || s.seasons.length || s.goals.length
+            ) return;
+            if (!allowed()) return;
+            // Custom types must be resolvable before any item renders — the landing's rule.
+            hydrateCustomTypes(snap.itemTypes);
+            if (snap.extensionsEnabled) {
+              try {
+                useExtensionsStore.getState?.()?.seedPreviewEnabled?.(userId, snap.extensionsEnabled);
+              } catch {
+                /* display-only: a preview grouped by manifest defaults is still a preview */
+              }
+            }
+            markPreviewPending(true); // crash marker — removed on the isPreview true→false edge
+            // Never a history entry, never the baseline. The load holds the suppressor
+            // for its whole window already; saved and restored rather than assumed.
+            const was = isUpdatingUndoRedo;
+            isUpdatingUndoRedo = true;
+            try {
+              set({
+                ...projectItems(snap.items),
+                projects: snap.projects,
+                itemTypes: snap.itemTypes,
+                routines: snap.routines,
+                seasons: snap.seasons,
+                goals: snap.goals,
+                itemTypesAvailable: snap.itemTypesAvailable,
+                collectionsAvailable: snap.collectionsAvailable,
+                goalsAvailable: snap.goalsAvailable,
+                isPreview: true,
+              });
+            } catch (e) {
+              // Undo what was staged only if the preview never took; one that did (a
+              // subscriber threw after the state moved) ends like any other.
+              if (!get().isPreview) {
+                hydrateCustomTypes([]);
+                markPreviewPending(false);
+              }
+              throw e;
+            } finally {
+              isUpdatingUndoRedo = was;
+            }
+          })
+          .catch((err) => console.warn('[preview] skipped', err));
+      };
+
+      const store: PlannerStore = {
       ...projectItems([]),
       selectedDate: new Date(),
       viewMode: 'day',
@@ -2135,6 +2236,7 @@ export const usePlannerStore = create<PlannerStore>()(
       // Supabase state
       userId: null,
       isLoading: false,
+      isPreview: false,
       error: null,
       loadFailedUserId: null,
 
@@ -2604,7 +2706,7 @@ export const usePlannerStore = create<PlannerStore>()(
         }
       },
 
-      initializeStore: async (userId: string) => {
+      initializeStore: async (userId: string, opts) => {
         // Re-initializing the account that is already loaded is never a
         // refresh — it is a reset. It refetches six tables, flips isLoading
         // back to true (blanking any surface that gates on it), and throws away
@@ -2668,6 +2770,13 @@ export const usePlannerStore = create<PlannerStore>()(
           // this ONE await, so the single set() below still clears isLoading
           // with seasons, goals and routines in the same commit — the overdue
           // sweep's hydration gate (see loadPlannerTables).
+          //
+          // CALLED FIRST and synchronously, before the preview is even offered:
+          // the fetchers start in the same frame as this call (loadPlannerData's
+          // contract, which the load-race tests rely on). The cache read races
+          // the fetch and never delays it.
+          const dataPromise = loadPlannerData(userId, () => loadPlannerTables(userId));
+          if (opts?.preview) offerPreview(userId, generation, opts.preview);
           const {
             items,
             projects,
@@ -2675,7 +2784,7 @@ export const usePlannerStore = create<PlannerStore>()(
             routines: routinesResult,
             seasons: seasonsResult,
             goals: goalsResult,
-          } = await loadPlannerData(userId, () => loadPlannerTables(userId));
+          } = await dataPromise;
           // A SLOWER RESPONSE FOR A PREVIOUS ACCOUNT MUST NEVER LAND ON THE
           // CURRENT ONE — the rule supabase-provider's `hydrateSettings`
           // already follows across its own await, and the one place on this
@@ -2748,6 +2857,9 @@ export const usePlannerStore = create<PlannerStore>()(
             goals,
             goalsAvailable: goalsResult !== null,
             isLoading: false,
+            // In the SAME set() as the fresh slices, so no subscriber ever sees
+            // fresh rows marked as cache, or cached rows marked as fresh.
+            isPreview: false,
             canUndo: false,
             canRedo: false,
             actionLog: [...actionLog].reverse(),
@@ -2768,12 +2880,33 @@ export const usePlannerStore = create<PlannerStore>()(
           // Errors, so the message below is nearly always the fallback text.
           // This line is the only record of the cause.
           console.error('planner load failed', err);
+          // A FAILED load is settled (planner-ready.ts). Cached rows must not survive it:
+          // drop them IN THIS set(). The subscriber is awake here (released above, as
+          // today), so a wipe in a later set() would make the cached rows the undo
+          // baseline and ⌘Z would undelete/delete/revert server rows.
+          const dropped = get().isPreview;
+          if (dropped) hydrateCustomTypes([]);
           set({
+            ...(dropped ? emptyPlannerData() : null),
+            isPreview: false,
             isLoading: false,
             error: err instanceof Error ? err.message : 'Failed to load data',
             loadFailedUserId: userId,
           });
         }
+      },
+
+      dropPreview: () => {
+        if (!get().isPreview) return false;
+        hydrateCustomTypes([]);
+        const was = isUpdatingUndoRedo;
+        isUpdatingUndoRedo = true;
+        try {
+          set({ ...emptyPlannerData() });
+        } finally {
+          isUpdatingUndoRedo = was;
+        }
+        return true; // isLoading stays true → skeleton; the in-flight load lands normally
       },
 
       clearStore: () => {
@@ -4403,6 +4536,15 @@ export const usePlannerStore = create<PlannerStore>()(
         }));
 
         const projectByName = new Map(projects.map((p) => [p.name, p]));
+        // Matched on the EXACT stored text, never a trimmed copy. The adopting
+        // UPDATE filters on the name it is given, so a store that links
+        // " Personal" while the database matches "Personal" produces a link
+        // that looks right until the next reload drops it. planSeed keeps names
+        // exact for the same reason.
+        const adopt = (item: Item): Item => {
+          const p = item.project ? projectByName.get(item.project) : undefined;
+          return p && !item.projectId ? { ...item, projectId: p.id } : item;
+        };
 
         /**
          * NO HISTORY ENTRY, and this is a change of mind the review earned.
@@ -4431,17 +4573,7 @@ export const usePlannerStore = create<PlannerStore>()(
         try {
           set((s) => ({
             projects: [...s.projects, ...projects],
-            ...projectItems(
-              s.items.map((item) => {
-                // Matched on the EXACT stored text, never a trimmed copy. The
-                // adopting UPDATE filters on the name it is given, so a store
-                // that links " Personal" while the database matches "Personal"
-                // produces a link that looks right until the next reload drops
-                // it. planSeed keeps names exact for the same reason.
-                const p = item.project ? projectByName.get(item.project) : undefined;
-                return p && !item.projectId ? { ...item, projectId: p.id } : item;
-              })
-            ),
+            ...projectItems(s.items.map(adopt)),
           }));
           /**
            * BOTH BASELINES, and the second one is not optional — the first
@@ -4461,6 +4593,12 @@ export const usePlannerStore = create<PlannerStore>()(
            * exactly what 'Session start' is supposed to name. Length and index
            * are untouched, so it cannot break the invariant that `historyIndex`
            * names the state the store holds.
+           *
+           * EVERY snapshot, not only that one: 'Session start' is not always
+           * where the index sits. A quick capture held through the load is
+           * filed between the landing and this commit (lib/held-captures.ts),
+           * and undoing it into a snapshot without the seed would soft-delete
+           * all six. Same reasoning as forgetFailedContainer, in reverse.
            */
           const s = get();
           const seeded = {
@@ -4471,9 +4609,16 @@ export const usePlannerStore = create<PlannerStore>()(
             goals: s.goals,
           };
           updatePrevStateBaseline(seeded);
-          if (historyStack[historyIndex]) {
-            historyStack[historyIndex] = JSON.parse(JSON.stringify(seeded));
-          }
+          historyStack.forEach((snapshot, i) => {
+            historyStack[i] =
+              i === historyIndex
+                ? JSON.parse(JSON.stringify(seeded))
+                : {
+                    ...snapshot,
+                    projects: [...snapshot.projects, ...JSON.parse(JSON.stringify(projects))],
+                    items: snapshot.items.map(adopt),
+                  };
+          });
         } finally {
           isUpdatingUndoRedo = wasSuppressed;
         }
@@ -4987,6 +5132,10 @@ export const usePlannerStore = create<PlannerStore>()(
         isUndoRedoAction = false;
       },
       };
+      // The look-only preview's write barrier: every action off the allowlist refuses while
+      // isPreview. Persist merges only the prefs `partialize` names — no functions — so the
+      // wrapped actions survive rehydration.
+      return guardPreviewWrites(store, () => get().isPreview);
     },
     {
       name: 'planner-storage',

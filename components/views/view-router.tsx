@@ -9,22 +9,32 @@ import { DaySchedule } from '@/components/views/day-schedule';
 import { PlannerSkeleton } from '@/components/primitives/planner-skeleton';
 import { useCanvasWide, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
-import { usePlannerSettled } from '@/lib/planner-ready';
+import { usePlannerPreviewing, usePlannerSettled } from '@/lib/planner-ready';
 
 /**
  * Routes the canvas to one of the six scope × layout views. Subscribes to drag
  * state here (not via a prop) so a drag only re-renders the canvas subtree —
  * the views need it for drop hints, the rest of the shell doesn't.
  *
- * Until the planner's load has landed it renders a PlannerSkeleton in the
- * view's place instead of the view itself. Rendering the view over an empty
- * store drew a real, EMPTY day — "nothing planned" — for the length of every
- * cold load, which is a claim about the account, not a loading state. The
- * view mounts on the settled edge, with its data.
+ * Until there is something to show it renders a PlannerSkeleton in the view's
+ * place instead of the view itself. Rendering the view over an empty store drew
+ * a real, EMPTY day — "nothing planned" — for the length of every cold load,
+ * which is a claim about the account, not a loading state. The view mounts on
+ * the first of two edges, with data either way:
+ *  - the look-only PREVIEW (lib/planner-snapshot.ts): this browser's copy of
+ *    the last session, painted while the load is still in flight. Inert, and
+ *    marked `data-preview`; never `data-loaded`.
+ *  - the settled edge, when the fresh load lands (or fails).
+ * Preview → fresh is the SAME element tree, just its data swapped and `inert`
+ * lifted, so nothing here may be keyed on settled or previewing: rows keep
+ * their identity (and their scroll) across the swap, which the settle's FLIP
+ * depends on.
  */
 export function ViewRouter() {
   const activeId = useDragStore((s) => s.activeId);
   const settled = usePlannerSettled();
+  const previewing = usePlannerPreviewing();
+  const visible = settled || previewing;
   const wide = useCanvasWide();
   const { scope, layout } = useViewStore();
 
@@ -56,10 +66,19 @@ export function ViewRouter() {
       // interactive" instead could create a project, watch it appear, and find
       // it gone when initializeStore's wholesale replace landed. Why the
       // predicate is `userId && !isLoading` lives at lib/planner-ready.ts.
+      // FRESH only, never the preview: e2e acts on this, and a persistence
+      // spec must never pass by reading this browser's cache back.
       data-loaded={settled ? 'true' : 'false'}
+      // The look-only state: the real view, painted from the cache, refusing
+      // every pointer and focus (`inert`) until the fresh data replaces it.
+      // Store writes are refused underneath regardless (lib/preview-write-guard.ts);
+      // inert is so nothing on screen is a silent no-op.
+      data-preview={previewing ? 'true' : undefined}
+      data-settle-scope="canvas"
+      inert={previewing}
       style={{ display: 'contents' }}
     >
-      {settled ? view : <PlannerSkeleton variant={layout} scope={scope} wide={wide} />}
+      {visible ? view : <PlannerSkeleton variant={layout} scope={scope} wide={wide} />}
     </div>
   );
 }

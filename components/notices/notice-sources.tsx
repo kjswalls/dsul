@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { CloudOff, MoonStar, Sunset } from 'lucide-react';
 
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerLoaded } from '@/lib/planner-ready';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { minutesOfDay, nowMinutesIn, shouldShowEodNotice } from '@/lib/eod';
@@ -98,6 +99,11 @@ export function useSyncErrorNotice(): DockNotice | null {
 export function useSweepNotice(): DockNotice | null {
   const userId = usePlannerStore((s) => s.userId);
   const restoreScheduling = usePlannerStore((s) => s.restoreScheduling);
+  // Put back restores from the LOADED rows and then clears the receipt either
+  // way, so pressed over an empty store (a cold load, the preview, a failed
+  // load) it would spend the only receipt on nothing. The line stays mounted —
+  // nothing inserted mid-landing — and only its verb waits.
+  const loaded = usePlannerLoaded();
   const receiptsByUser = useMorningStore((s) => s.morningAutoAgeReceiptByUser);
   const clearAutoAgeReceipt = useMorningStore((s) => s.clearAutoAgeReceipt);
   const { todayStr } = useToday();
@@ -125,14 +131,18 @@ export function useSweepNotice(): DockNotice | null {
         morning
       </>
     ),
-    actionLabel: 'Put back',
-    onSelect: () => {
-      restoreScheduling(receipt.items);
-      clearAutoAgeReceipt(userId);
-    },
+    actionLabel: loaded ? 'Put back' : 'Syncing…',
+    // Undefined is inert in both renderers (the dock's NoticeRow, InPlaceNotice).
+    onSelect: loaded
+      ? () => {
+          restoreScheduling(receipt.items);
+          clearAutoAgeReceipt(userId);
+        }
+      : undefined,
     // Waving it away is not the same as putting them back — it drops the
     // receipt only. The items stay where the sweep left them, in the braindump,
-    // which is where the setting the user turned on says they belong.
+    // which is where the setting the user turned on says they belong. Live
+    // while syncing: dropping the receipt is the user's own call either way.
     onDismiss: () => clearAutoAgeReceipt(userId),
     dismissLabel: 'Dismiss this receipt',
   };
@@ -168,6 +178,9 @@ export function useEodNotice(): DockNotice | null {
   const hasHydrated = useEODStore((s) => s._hasHydrated);
   const open = useEODStore((s) => s.open);
   const deferToday = useEODStore((s) => s.deferToday);
+  // The review freezes its pending list the moment it opens: opened before the
+  // planner has loaded, it would review an empty or cached day. Start waits.
+  const loaded = usePlannerLoaded();
   const { todayStr, tz } = useToday();
 
   const nowMinutes = nowMinutesIn(new Date(), tz);
@@ -216,8 +229,8 @@ export function useEodNotice(): DockNotice | null {
     icon: Sunset,
     iconClassName: 'text-sunrise-glyph',
     label: <span className="font-semibold">Today’s review is waiting</span>,
-    actionLabel: 'Start',
-    onSelect: open,
+    actionLabel: loaded ? 'Start' : 'Syncing…',
+    onSelect: loaded ? open : undefined,
     onDismiss: () => deferToday(todayStr),
     dismissLabel: 'Not tonight',
   };

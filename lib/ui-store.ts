@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { Task, HabitItem, Item, KnownItemType, TimeBucket } from './planner-types';
+import { isPlannerPreviewing } from './planner-ready';
 
 /**
  * Ephemeral UI state for the desktop shell: which dialog is open, the shared
@@ -104,7 +105,19 @@ export interface ConfirmRequest {
 
 interface UIStore {
   activeDialog: ActiveDialog | null;
+  /**
+   * A data slot (PREVIEW_DEFERRED_SLOTS) asked for while the planner was the
+   * look-only preview. Held here instead of opened, last request wins, and
+   * opened by useDeferredDialogPromotion (hooks/use-deferred-dialog.ts) once
+   * fresh data lands. Never rendered from.
+   */
+  deferredDialog: ActiveDialog | null;
+  /**
+   * While previewing, a data slot is deferred rather than opened. Any other
+   * slot opens as usual; a data slot opened on real data drops the deferral.
+   */
   openDialog: (dialog: ActiveDialog) => void;
+  /** Leaves `deferredDialog` alone: the launcher closes itself right after running "Open Organize". */
   closeDialog: () => void;
   /**
    * True while the open dialog arrived by the "new" surface's type menu
@@ -117,6 +130,7 @@ interface UIStore {
 
   /** Shared AlertDialog rendered once in the shell. */
   confirmRequest: ConfirmRequest | null;
+  /** Refused while previewing on `/`, where every confirm guards a data action. */
   confirm: (request: ConfirmRequest) => void;
   resolveConfirm: (confirmed: boolean) => void;
 
@@ -155,6 +169,36 @@ interface UIStore {
 
 const NEW_SURFACE_SLOTS: ReadonlySet<ActiveDialog['type']> = new Set(['add', 'new-container']);
 
+/**
+ * The slots that seed from, or write to, planner rows. Opened over the
+ * look-only preview, the autosaving docked panel and the modal's save would
+ * seed from cached rows and write the result after landing; so while
+ * previewing they are deferred instead (lib/planner-ready.ts).
+ */
+export const PREVIEW_DEFERRED_SLOTS: ReadonlySet<ActiveDialog['type']> = new Set([
+  'add',
+  'edit-item',
+  'new-container',
+  'bulk-add',
+  'organize',
+]);
+
+export const isDataDialog = (dialog: ActiveDialog | null | undefined): boolean =>
+  !!dialog && PREVIEW_DEFERRED_SLOTS.has(dialog.type);
+
+/**
+ * A data slot is open or waiting to open. The preview is not offered then:
+ * /settings arms Organize and pushes '/', and that console must open on fresh
+ * data, as it does today.
+ */
+export const isDataDialogArmed = (): boolean => {
+  const { activeDialog, deferredDialog } = useUIStore.getState();
+  return isDataDialog(activeDialog) || deferredDialog !== null;
+};
+
+const onPlannerRoute = (): boolean =>
+  typeof window !== 'undefined' && window.location.pathname === '/';
+
 /** An item's "new" ↔ an organizer's "new": one surface, two slots. */
 function isNewSurfaceSwap(prev: ActiveDialog | null, next: ActiveDialog): boolean {
   return (
@@ -167,13 +211,31 @@ function isNewSurfaceSwap(prev: ActiveDialog | null, next: ActiveDialog): boolea
 
 export const useUIStore = create<UIStore>()((set, get) => ({
   activeDialog: null,
-  openDialog: (dialog) =>
-    set((s) => ({ activeDialog: dialog, dialogHandoff: isNewSurfaceSwap(s.activeDialog, dialog) })),
+  deferredDialog: null,
+  openDialog: (dialog) => {
+    const data = isDataDialog(dialog);
+    if (data && isPlannerPreviewing()) {
+      set({ deferredDialog: dialog });
+      return;
+    }
+    set((s) => ({
+      activeDialog: dialog,
+      dialogHandoff: isNewSurfaceSwap(s.activeDialog, dialog),
+      // A data slot opened on real data supersedes whatever was waiting.
+      ...(data ? { deferredDialog: null } : {}),
+    }));
+  },
   closeDialog: () => set({ activeDialog: null, dialogHandoff: false }),
   dialogHandoff: false,
 
   confirmRequest: null,
-  confirm: (request) => set({ confirmRequest: request }),
+  confirm: (request) => {
+    // Decided on cached rows, a confirm accepted after landing would act on
+    // them. The planner's route only: the preview outlives a client navigation,
+    // and /settings's one confirm (disconnecting the model) touches no row.
+    if (isPlannerPreviewing() && onPlannerRoute()) return;
+    set({ confirmRequest: request });
+  },
   resolveConfirm: (confirmed) => {
     const request = get().confirmRequest;
     set({ confirmRequest: null });

@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { format } from 'date-fns';
 import { usePlannerStore } from './planner-store';
+import { isPlannerLoaded } from './planner-ready';
 import { inactiveItemIdsOn } from './active';
 import { milestoneItemIds } from './goals';
 import { useAISettingsStore } from './ai-settings-store';
@@ -411,6 +412,10 @@ export const useProposalStore = create<ProposalStore>()((set, get) => {
     },
 
     accept: (operations) => {
+      // Before claim(), so the card stays: applyProposal re-validates against
+      // the CURRENT planner, which before landing is empty or the look-only
+      // preview, and a 0 from there would close it as "those items have changed".
+      if (!isPlannerLoaded()) return 0;
       const { proposal } = get();
       if (!proposal) return 0;
       const chosen = operations ?? proposal.operations;

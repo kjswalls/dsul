@@ -170,6 +170,10 @@ export function ProjectBlock({
       // A project block only accepts a task whose project matches, so a test
       // asserting the reject path needs to see the distinction.
       data-dnd-accepts={canAcceptDrop ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts). By id, not by the name the droppable
+      // uses: a rename elsewhere is the same block, retitled.
+      data-settle-key={`project:${project.id}`}
+      data-settle-role="frame"
       // A card floating ON the bucket's card, not a dashed outline drawn on it.
       // The dashed 2px project-coloured border was the loudest edge inside a
       // bucket — heavier than the bucket's own — and it read as a dropzone

@@ -130,7 +130,7 @@ afterEach(() => {
   cleanup();
   unseed();
   unseed = () => {};
-  usePlannerStore.setState({ addTask: originalAddTask });
+  usePlannerStore.setState({ addTask: originalAddTask, userId: null });
   useChatStore.setState({ send: originalSend });
   useProposalStore.getState().dismiss();
 });
@@ -505,6 +505,8 @@ describe('with a connected model', () => {
   it('files a plain Enter as a task, as it always has', () => {
     // The control for the ⌘Enter cases: this harness DOES see an add when one
     // happens, so "addTask was not called" above is a real absence.
+    // Loaded: a capture before landing is now held, not added (lib/held-captures.ts).
+    usePlannerStore.setState({ userId: 'u1', isLoading: false, error: null });
     const input = renderDock('plan my day');
     fireEvent.keyDown(input, { key: 'Enter' });
     expect(addTask).toHaveBeenCalledWith({ title: 'plan my day' });

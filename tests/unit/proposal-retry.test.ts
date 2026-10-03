@@ -24,6 +24,9 @@ const parent = {
 const existingChild = { ...parent, id: 'child-1', title: 'Pull the numbers', parentItemId: 'parent-1' };
 const unrelated = { ...parent, id: 'other-1', title: 'Book the dentist', notes: undefined };
 
+/** The planner's load state as planner-ready reads it; loaded unless a test says otherwise. */
+const planner = vi.hoisted(() => ({ isLoading: false, error: null as string | null }));
+
 vi.mock('@/lib/planner-store', () => ({
   usePlannerStore: {
     getState: () => ({
@@ -35,6 +38,11 @@ vi.mock('@/lib/planner-store', () => ({
       // clears a date is a bulk date verb and must subtract milestones.
       goals: [],
       userTimezone: 'UTC',
+      // A LOADED planner: accept refuses before landing now (lib/planner-ready.ts isPlannerLoaded).
+      userId: 'u1',
+      isLoading: planner.isLoading,
+      error: planner.error,
+      loadFailedUserId: planner.error ? 'u1' : null,
       applyProposal,
     }),
   },
@@ -191,6 +199,42 @@ describe('retry', () => {
 
     expect(bodies[2].prompt).toBe('a different question');
     expect(useProposalStore.getState().rejected).toEqual([]);
+  });
+});
+
+describe('accepting before the planner has loaded', () => {
+  afterEach(() => {
+    planner.isLoading = false;
+    planner.error = null;
+  });
+
+  it('applies nothing and keeps the card while the planner is loading or previewing', async () => {
+    mockPropose(draft('Plan A', 2));
+    await useProposalStore.getState().request('ask', 'x');
+
+    planner.isLoading = true;
+    expect(useProposalStore.getState().accept()).toBe(0);
+
+    expect(applyProposal).not.toHaveBeenCalled();
+    // Not "those items have changed": the card is still there to accept.
+    const s = useProposalStore.getState();
+    expect(s.status).toBe('ready');
+    expect(s.proposal?.summary).toBe('Plan A');
+    expect(s.emptyMessage).toBeNull();
+
+    planner.isLoading = false;
+    expect(useProposalStore.getState().accept()).toBe(1);
+    expect(applyProposal).toHaveBeenCalledTimes(1);
+  });
+
+  it('applies nothing over a failed load’s empty store either', async () => {
+    mockPropose(draft('Plan A', 2));
+    await useProposalStore.getState().request('ask', 'x');
+
+    planner.error = 'Failed to load data';
+    expect(useProposalStore.getState().accept()).toBe(0);
+    expect(applyProposal).not.toHaveBeenCalled();
+    expect(useProposalStore.getState().status).toBe('ready');
   });
 });
 

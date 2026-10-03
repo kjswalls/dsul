@@ -22,6 +22,7 @@ import { StatusLine } from '@/components/shell/status-line';
 import { PageTabs, Ribbon } from '@/components/shell/page-tabs';
 import { DayTabs } from '@/components/shell/day-tabs';
 import { PageCount, StatusBar } from '@/components/shell/status-bar';
+import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
 import { cn } from '@/lib/utils';
 
 /** Below this the panel stops compressing the canvas and overlays it instead. */
@@ -146,6 +147,11 @@ export const DesktopShell = memo(function DesktopShell() {
           plate && 'rounded-[30px] border border-border shadow-[var(--shadow-elev-panel)]'
         )}
       >
+        {/* The look-only preview's sync line (planner-sync-line.tsx): across
+            the canvas's top edge, clipped by this panel's rounded corners.
+            Absolute, so it takes no row from the header below. */}
+        <PlannerSyncLine className="absolute inset-x-0 top-0 z-[5]" />
+
         {/* The hover-peek trigger used to be a 12px strip here, on this panel's
             left edge. <Sidebar/>'s expand zone now covers those same pixels and
             sits above them, so this one could only ever have gone dead — the

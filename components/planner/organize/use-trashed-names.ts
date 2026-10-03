@@ -44,14 +44,12 @@ import { fetchTrashedNames, type TrashedName } from '@/lib/db';
  * A container that comes BACK — undo, or a Trash restore — drops out of the
  * union again, because it is live once more.
  *
- * `enabled` exists because two of this hook's callers are the item dialog, and
- * BOTH of its instances — app-shell's modal and desktop-shell's docked panel —
- * are mounted for the whole session whether or not anything is open in them.
- * Left ungated that is four SELECTs fired during first paint, on the same
- * connection as the fetches that actually put the app on screen, to answer a
- * question nobody has asked yet. Gate it on open and the cost moves to the
- * moment a create becomes possible, which is the first moment the answer can
- * matter — and it is fresher there, which the dialog's own comment wanted.
+ * `enabled` gates the FETCH only, never the subscription. The item dialog
+ * mounts its body (and this hook) only while open, plus a short exit grace, and
+ * passes `!!state` so the closing frames fire no SELECT; container-dialog and
+ * container-page pass `kind === 'project'`, the one kind whose name a trashed
+ * row can hold. The cost lands at the moment a create becomes possible, which
+ * is the first moment the answer can matter, and it is fresher there.
  */
 export function useTrashedNames(
   { enabled = true }: { enabled?: boolean } = {},
@@ -89,7 +87,9 @@ export function useTrashedNames(
     // Optional-called: a unit test that mocks `@/lib/planner-store` with only
     // the members it needs has no `subscribe`, and this runs on mount.
     return usePlannerStore.subscribe?.((next, prev) => {
-      if (next.projects === prev.projects) return;
+      // A container the look-only preview showed and the fresh load lacks was
+      // not deleted in this session; the server's bin speaks for it if it was.
+      if (next.projects === prev.projects || prev.isPreview) return;
       setGone((current) => ({
         projects: stillGone([...current.projects, ...vanished(prev.projects, next.projects)], next.projects),
       }));

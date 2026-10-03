@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { ChevronLeft, Settings2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { usePlannerStore } from '@/lib/planner-store';
+import { usePlannerSettled } from '@/lib/planner-ready';
 import { useOrganizeEnabled } from '@/lib/extension-gates';
 import { useOpenConsole } from '@/lib/console-door';
 import {
@@ -85,7 +86,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   const projects = usePlannerStore((s) => s.projects);
   const items = usePlannerStore((s) => s.items);
   const userId = usePlannerStore((s) => s.userId);
-  const isLoading = usePlannerStore((s) => s.isLoading);
+  const settled = usePlannerSettled();
   const timeFormat = usePlannerStore((s) => s.timeFormat);
   const updateRoutine = usePlannerStore((s) => s.updateRoutine);
   const setRoutinePaused = usePlannerStore((s) => s.setRoutinePaused);
@@ -100,8 +101,12 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
   const { todayStr, tz } = useToday();
   const liveIds = useLiveItemIds();
 
-  const container: Routine | Season | Project | undefined =
-    kind === 'routine'
+  // Only once SETTLED: during the look-only preview (reached by client
+  // navigation from `/`) the containers are cached, and the pause and state
+  // toggles below write at once.
+  const container: Routine | Season | Project | undefined = !settled
+    ? undefined
+    : kind === 'routine'
       ? routines.find((r) => r.id === id)
       : kind === 'season'
         ? seasons.find((p) => p.id === id)
@@ -143,8 +148,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
 
   if (!container) {
     // userId is stamped before the fetches resolve, so "signed in" is not
-    // "loaded" — without isLoading a valid link flashes not-found.
-    const settled = !!userId && !isLoading;
+    // "loaded" — without the settled check a valid link flashes not-found.
     return (
       <Shell>
         <h1 className="text-foreground text-lg font-semibold" data-testid="container-page-missing">

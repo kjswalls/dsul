@@ -90,6 +90,7 @@ vi.stubGlobal(
 );
 
 import { DesktopShell } from '@/components/shell/desktop-shell';
+import { usePlannerStore } from '@/lib/planner-store';
 
 /** Gives a control its place at rest, which moves left as <main> scrolls. */
 function place(id: string, left: number, width: number) {
@@ -2407,5 +2408,24 @@ describe("DesktopShell's <main>: focus may scroll it sideways, and only focus", 
         }
       }
     );
+  });
+});
+
+describe("DesktopShell's <main>: the preview's sync line", () => {
+  afterEach(() => usePlannerStore.setState({ isLoading: false, isPreview: false }));
+
+  it("is <main>'s first child while previewing, and absent at rest", () => {
+    usePlannerStore.setState({ userId: 'u1', isLoading: true, isPreview: true });
+    render(<DesktopShell />);
+    const main = document.querySelector('main')!;
+    const line = screen.getByTestId('planner-sync-line');
+    // First child: absolute over the header row, clipped by <main>'s rounded top.
+    expect(main.firstElementChild).toBe(line);
+    expect(line).toHaveClass('absolute', 'top-0', 'inset-x-0');
+    cleanup();
+
+    usePlannerStore.setState({ isLoading: false, isPreview: false });
+    render(<DesktopShell />);
+    expect(screen.queryByTestId('planner-sync-line')).toBeNull();
   });
 });

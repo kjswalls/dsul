@@ -130,6 +130,17 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
   const suppressionDate = inBraindump ? toDateStr(new Date(), timezone) : dateStr;
 
   /**
+   * This row to the cached → fresh settle (lib/settle.ts): its day and its
+   * item, so one habit in seven week columns is seven rows, and a row that
+   * changed group is found again in its new one. Both variants carry it, so a
+   * row skipped on another device swaps shape in place rather than leaving
+   * and arriving. The braindump keys on the item alone: it has no day of its
+   * own, and its `dateStr` is just the selected day, which says nothing about
+   * the row.
+   */
+  const settleKey = `${inBraindump ? '' : dateStr}|${item.id}`;
+
+  /**
    * Is this row's work set aside on the day it is rendered for?
    *
    * Asked per row rather than threaded down from a caller, because a week column
@@ -415,6 +426,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           data-item-id={item.id}
           data-item-kind={itemType}
           data-item-type={typeName}
+          data-settle-key={settleKey}
           // A skipped row is a COMPLETELY different DOM shape under the same
           // testid — no complete button, no rail. Tests must be able to tell the
           // two apart, or a drill to item-complete-button times out mysteriously.
@@ -505,6 +517,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
         // Registry type name ('task' | 'habit' | custom slug) — the Phase 6
         // selector policy.
         data-item-type={typeName}
+        data-settle-key={settleKey}
         data-row-variant="default"
         // Selected == in the multi-select set; drives the persistent highlight and
         // marks the current / open row.

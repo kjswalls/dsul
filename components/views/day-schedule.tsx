@@ -152,6 +152,10 @@ export function NowMarker({ top, lanes }: { top: number; lanes?: number[] }) {
   const stubs = lanes?.length ? lanes : [0];
   return (
     <div
+      // A settle frame (lib/settle.ts), in both schedule views: it glides with
+      // the hour lines when the landing moves the grid's window.
+      data-settle-key="now"
+      data-settle-role="frame"
       className="pointer-events-none absolute left-0 right-0 z-[var(--now-z)]"
       style={{ top, '--now-z': NOW_MARKER_Z } as React.CSSProperties}
       aria-hidden
@@ -359,6 +363,11 @@ function HourSlot({
       ref={setNodeRef}
       data-dnd-id={`hour:${hour}`}
       data-dnd-over={isOver ? 'true' : 'false'}
+      // A settle frame (lib/settle.ts): the hour's label and line glide with the
+      // blocks when the landing widens or narrows the window, so no block sits
+      // off its hairline mid-settle.
+      data-settle-key={`hour:${hour}`}
+      data-settle-role="frame"
       className="relative flex"
       style={{ height: hourPx }}
     >
@@ -612,6 +621,10 @@ export function ScheduleBlock({
   const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rowDate = date ?? selectedDate;
   const dateStr = toDateStr(rowDate, timezone);
+  // This block to the cached → fresh settle (lib/settle.ts): the same key a
+  // TaskRow for this item on this day carries, so a task timed elsewhere glides
+  // from its Anytime row into the grid. Both variants, like the row.
+  const settleKey = `${dateStr}|${item.id}`;
   // Asked at THIS block's date, same as TaskRow and for the same reason: a week
   // column and the day view are different questions, and only the block knows
   // which one it is. Non-null only when the item is set aside, so it doubles as
@@ -936,6 +949,7 @@ export function ScheduleBlock({
         data-item-id={item.id}
         data-item-kind={itemType}
         data-item-type={typeName}
+        data-settle-key={settleKey}
         data-row-variant="skipped"
         data-completed="false"
         data-start-min={entry.startMin}
@@ -1099,6 +1113,7 @@ export function ScheduleBlock({
       data-item-id={item.id}
       data-item-kind={itemType}
       data-item-type={typeName}
+      data-settle-key={settleKey}
       // A skipped block is a different DOM shape under the same testid (no
       // checkbox, no resize handles) — same disambiguation TaskRow carries.
       data-row-variant="default"
@@ -1696,7 +1711,9 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
         <LaneCapRow plan={lanePlan} fieldLeft={DAY_FIELD_LEFT} />
 
         {/* Hour grid with absolutely positioned blocks */}
-        <div ref={anchorRef} className="relative">
+        {/* A settle frame (lib/settle.ts): when the landing changes the length
+            of the Anytime strip above, the hours and blocks glide with it. */}
+        <div ref={anchorRef} data-settle-key="grid" data-settle-role="frame" className="relative">
           <div>
             {hours.map((hour, i) => (
               <HourSlot
@@ -1719,6 +1736,10 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               why the label it lands on steps aside. */}
           {nowY !== null && (
             <span
+              // A settle frame, the week gutter's `gutter-now`: it glides with
+              // the now-marker's diamond rather than snapping beside it.
+              data-settle-key="gutter-now"
+              data-settle-role="frame"
               className={cn(
                 'pointer-events-none absolute left-0 z-[6] -translate-y-1/2 font-num text-2xs font-medium text-success-text',
                 DAY_GUTTER_INSET
