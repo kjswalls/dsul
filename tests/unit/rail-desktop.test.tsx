@@ -1439,6 +1439,71 @@ describe('the Ask button', () => {
     expect(document.activeElement).toBe(opener());
   });
 
+  // Nothing to go back to: the summon came from <body>, or Ask was open since
+  // boot and focus entered it from nowhere. The button is right there.
+  it('takes focus when Ask closes with no record of where focus came from', async () => {
+    renderShell();
+    act(() => (document.activeElement as HTMLElement | null)?.blur());
+    pressCtrlJHere();
+    await timers();
+    expect(document.activeElement).toBe(askBox());
+    pressCtrlJHere();
+    await timers();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(document.activeElement).toBe(opener());
+
+    // Open since boot (a reload), and clicked into from <body>: no summon, no entry noted.
+    cleanup();
+    useSidebarStore.setState({ askOpen: true });
+    renderShell();
+    act(() => askBox().focus());
+    pressCtrlJHere();
+    await timers();
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(document.activeElement).toBe(opener());
+  });
+
+  // Settings' "Try it": the button that summoned Ask is gone with the page.
+  it('takes focus when the control that summoned Ask has left the page', async () => {
+    renderShell();
+    const tryIt = document.createElement('button');
+    document.body.appendChild(tryIt);
+    tryIt.focus();
+    act(() => useRailStore.getState().summon({ focus: true }));
+    tryIt.remove();
+    await timers();
+    expect(document.activeElement).toBe(askBox());
+    pressCtrlJHere();
+    await timers();
+    expect(document.activeElement).toBe(opener());
+  });
+
+  // At 1280 the closing column still holds its width when the button
+  // measures its room, so it hides until the column has eased out; focus()
+  // on it then would do nothing and leave focus on <body>.
+  it('waits for the button to be drawn before handing focus to it', async () => {
+    renderShell();
+    clickOpener();
+    await timers();
+    expect(document.activeElement).toBe(askBox());
+    const focusedWhileHidden: boolean[] = [];
+    const realFocus = opener().focus.bind(opener());
+    opener().focus = (o?: FocusOptions) => {
+      focusedWhileHidden.push(pill().hasAttribute('hidden'));
+      realFocus(o);
+    };
+    pressCtrlJHere();
+    // Squeezed: no room yet (useHeaderFit's 'none').
+    pill().setAttribute('hidden', '');
+    await act(() => new Promise((r) => setTimeout(r, 60)));
+    expect(focusedWhileHidden).toEqual([]);
+    // The column has gone: there is room again.
+    pill().removeAttribute('hidden');
+    await act(() => new Promise((r) => setTimeout(r, 60)));
+    expect(focusedWhileHidden).toEqual([false]);
+    expect(document.activeElement).toBe(opener());
+  });
+
   it('hides while an item is open, and is back when the item and the rail close', async () => {
     renderShell();
     openFromRow('a');

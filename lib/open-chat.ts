@@ -46,12 +46,17 @@ function showAskTab(): void {
  * it opened, so a caller (a command, the catch-up card, the settings
  * no-results button) can do something else when there is nothing to open: an
  * open into a surface that is hidden is a button that does nothing.
+ *
+ * `boxOnPhone: false` asks for no box on the phone, for an open that lands on
+ * something to tap rather than type into (catch-up's card): there the box's
+ * keyboard would cover what the open came to show. Desktop has no keyboard to
+ * raise, so it always asks.
  */
-export function revealChat(isMobile: boolean): boolean {
+export function revealChat(isMobile: boolean, o: { boxOnPhone?: boolean } = {}): boolean {
   if (!getAICapabilities().canChat) return false;
   if (isMobile) {
     showAskTab();
-    useRailStore.getState().focusComposer();
+    if (o.boxOnPhone !== false) useRailStore.getState().focusComposer();
   } else {
     leaveZen();
     useRailStore.getState().summon({ focus: true });

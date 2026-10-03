@@ -6,6 +6,7 @@ import { AskHome } from '@/components/ai/ask/ask-home';
 import { ConversationView } from '@/components/ai/ask/conversation-view';
 import { ConversationTitleMenu } from '@/components/ai/ask/conversation-title-menu';
 import { HistoryView } from '@/components/ai/ask/history-view';
+import { keepInView } from '@/components/ai/ask/keep-in-view';
 import { NewChatButton } from '@/components/ai/ask/new-chat-empty';
 import {
   conversationHeaderAction,
@@ -64,7 +65,8 @@ function leaveItem(itemId: string): void {
  *  - FOCUS ACROSS A MOVE, as in the rail: a push or a Back removes what held
  *    focus, so when focus was this tab's (or lost), the new view's heading
  *    takes it, or after a Back the control that pushed the view
- *    (`returnFocus`). A send from the dock that pushed a conversation leaves
+ *    (`returnFocus`), scrolled into sight in its own scroller (keepInView).
+ *    A send from the dock that pushed a conversation leaves
  *    focus with the dock; a move to Ask home or History takes it from the
  *    dock, so the keyboard goes down over what is there to tap.
  */
@@ -129,6 +131,10 @@ export function AskTab({ headerAccessory }: { headerAccessory?: ReactNode }) {
           )
         : undefined;
       (opener ?? root.querySelector<HTMLElement>('[data-ask-heading]'))?.focus({ preventScroll: true });
+      // The view beneath remounts at its top (History puts its list back
+      // first; Ask home keeps no scroll of its own): the opener is scrolled
+      // to, so focus never lands out of sight.
+      if (opener) keepInView(opener);
     }, 0);
   }, [viewKey, top]);
 

@@ -35,7 +35,7 @@ import {
   useRailCovers,
   useRailStore,
 } from '@/lib/rail-store';
-import { useSidebarStore } from '@/lib/sidebar-store';
+import { askOpenOf, useSidebarStore } from '@/lib/sidebar-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { prefersReducedMotion } from '@/lib/zen-transition';
 import { cn } from '@/lib/utils';
@@ -427,7 +427,7 @@ export const RailColumn = memo(function RailColumn({
   spread,
   flatPanel,
 }: RailColumnProps) {
-  const askOpen = useSidebarStore((s) => s.askOpen);
+  const askOpen = useSidebarStore(askOpenOf);
   const summoned = useRailStore((s) => s.summoned);
   const askTop = useRailStore((s) => s.stacks.desktop.at(-1));
   const { canChat } = useAICapabilities();

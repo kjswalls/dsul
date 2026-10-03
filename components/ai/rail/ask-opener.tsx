@@ -88,10 +88,14 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
  * `toggleRail`): leave Zen, summon Ask with its box focused, and write
  * `askOpen`, so it stays open across reloads until closed again. The summon
  * notes this button as where focus came from (rail-store `rememberFocus`), so
- * closing Ask by ✕ or Ctrl+J from inside it hands focus back here. It stays
- * mounted, `hidden`, while the column shows, so that hand-back has a node to
- * land on the moment Ask goes. A click focuses it first: Safari leaves a
- * clicked button unfocused, and there would be nothing to note.
+ * closing Ask by ✕ or Ctrl+J from inside it hands focus back here; so does a
+ * close with no record of its own (Ask summoned from <body>, or open since
+ * boot). It stays mounted, `hidden`, while the column shows, so that hand-back
+ * has a node to land on, and the hand-back waits out the column's ease for it
+ * to be drawn (rail-store `restoreFocus`): squeezed by the closing column, it
+ * can measure no room and stay hidden until the column has gone. A click
+ * focuses it first: Safari leaves a clicked button unfocused, and there would
+ * be nothing to note.
  *
  * WHEN it shows: something answers (the AI gate's `canChat`, asked, never
  * re-derived; unknown is no), on the desktop, outside Zen, and only while the
@@ -115,7 +119,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
  *
  * The chord is the live binding through chordLabel (Ctrl+J; ⌘J on a Mac), in
  * the hint's muted mono, and in the title; never typed by hand. The spark is
- * the rail header's (`text-ai`).
+ * the rail header's (`text-ai`), except alone, where it is the foreground's.
  */
 export function AskOpener({ className, rowOffset }: { className?: string; rowOffset: string }) {
   const { canChat } = useAICapabilities();
@@ -163,7 +167,11 @@ export function AskOpener({ className, rowOffset }: { className?: string; rowOff
           fit === 'icon' ? 'w-8 justify-center' : 'px-2.5'
         )}
       >
-        <Sparkles className="size-4 shrink-0 text-ai" aria-hidden />
+        {/* Honey beside the words; alone, the glyph is the whole control, and
+            honey is too faint to be that in light mode (about 1.6:1 on the
+            surface; globals.css --sunrise-glyph has the same reason), so it
+            takes the words' own colour. A token, never an opacity. */}
+        <Sparkles className={cn('size-4 shrink-0', fit === 'icon' ? 'text-foreground' : 'text-ai')} aria-hidden />
         {fit === 'full' && (
           <>
             <span>Ask</span>

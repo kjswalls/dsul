@@ -3,7 +3,7 @@ import { create } from 'zustand';
 import { usePlannerStore } from './planner-store';
 import { useProposalStore } from './proposal-store';
 import { openEditFor, setEditItemInterceptor, useUIStore } from './ui-store';
-import { useSidebarStore } from './sidebar-store';
+import { askOpenOf, useSidebarStore } from './sidebar-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { useAISettingsStore } from './ai-settings-store';
 import { useViewStore } from './view-store';
@@ -470,6 +470,10 @@ export const useRailStore = create<RailState>()((set, get) => {
 // or anything the user moved to meanwhile, wins. The record is per showing:
 // a close takes it, and the column hiding by any other path drops it
 // (clearRailFocusRecord), so an old one never answers a later close.
+// With no record (Ask summoned from <body>, or open since boot and entered
+// from nowhere) or one gone from the page (a settings button that summoned it
+// and navigated home), the hand-back goes to the header's Ask button, which
+// shows again as Ask closes (components/ai/rail/ask-opener.tsx).
 // Module state, not store state: it is a DOM node, and nothing renders from it.
 
 let focusBeforeSummon: HTMLElement | null = null;
@@ -518,7 +522,17 @@ export function focusIsInRail(): boolean {
   return !el || el === document.body || !!el.closest('[data-rail]');
 }
 
-function restoreFocus(el: HTMLElement | null): void {
+/**
+ * How long a hand-back waits for its target to be drawn: the column's width
+ * ease (desktop-shell.tsx RailColumn, 300ms) and a frame or two past it.
+ */
+const HANDBACK_WAIT_MS = 450;
+
+function restoreFocus(record: HTMLElement | null): void {
+  const el =
+    record?.isConnected || typeof document === 'undefined'
+      ? record
+      : document.querySelector<HTMLElement>('[data-ask-opener]');
   if (!el) return;
   // Deferred past the commit that hides the rail, as a FocusRequest's focus
   // is: a Radix layer closing in the same tick hands focus back on its own
@@ -526,10 +540,23 @@ function restoreFocus(el: HTMLElement | null): void {
   // then (on <body>, or inside the rail): ItemDialog's own return to the row
   // that opened the item lands in that commit, and must not be overridden by
   // an element from before an earlier summon.
-  setTimeout(() => {
-    if (!focusIsInRail()) return;
-    if (el.isConnected) el.focus({ preventScroll: true });
-  }, 0);
+  //
+  // A target still `hidden` then is waited for, a frame at a time: the Ask
+  // button measures its room while the column is still easing shut, finds
+  // none, and hides until the column has gone (ask-opener.tsx useHeaderFit).
+  // focus() on it then would do nothing, and leave focus on <body>.
+  const start = Date.now();
+  const nextFrame =
+    typeof requestAnimationFrame === 'function' ? requestAnimationFrame : (fn: () => void) => setTimeout(fn, 16);
+  const attempt = () => {
+    if (!focusIsInRail() || !el.isConnected) return;
+    if (el.closest('[hidden]') && Date.now() - start < HANDBACK_WAIT_MS) {
+      nextFrame(attempt);
+      return;
+    }
+    el.focus({ preventScroll: true });
+  };
+  setTimeout(attempt, 0);
 }
 
 // ── Reading the rule ─────────────────────────────────────────────────────────
@@ -543,7 +570,7 @@ function overlaysNow(): boolean {
 function modeFromStores(overlays: boolean): RailMode {
   return railMode({
     itemOpen: useUIStore.getState().activeDialog?.type === 'edit-item',
-    askOpen: useSidebarStore.getState().askOpen,
+    askOpen: askOpenOf(useSidebarStore.getState()),
     canChat: getAICapabilities().canChat,
     overlays,
     summoned: useRailStore.getState().summoned,

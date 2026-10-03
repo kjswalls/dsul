@@ -148,7 +148,12 @@ function NeedsYouCard({ item, onAnswered }: { item: AgentItem; onAnswered: (item
           type="button"
           data-ask-focus={`needs:${item.id}`}
           data-testid="needs-you-title"
-          onClick={() => openItemFromAsk(item)}
+          onClick={(e) => {
+            // Focused first, as WebKit leaves a tapped button unfocused: the
+            // open reads it as where Back returns to (ai-activity.tsx has why).
+            if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
+            openItemFromAsk(item);
+          }}
           className="rounded-sm text-left font-medium underline-offset-2 hover:underline focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
         >
           {item.title}

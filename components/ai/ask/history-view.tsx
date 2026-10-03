@@ -457,11 +457,12 @@ function LoadError({ onRetry }: { onRetry: () => void }) {
 }
 
 /**
- * "History" in an Ask header. Hidden while saving is off (the migration is
+ * "History" in the rail's header. Hidden while saving is off (the migration is
  * missing): there would be nothing to list. Back from History hands focus
- * back here (`data-ask-focus`).
+ * back here (`data-ask-focus`). The phone's capsule draws its own, the clock
+ * (ask-tab.tsx PhoneHistoryButton).
  */
-export function HistoryButton({ surface = 'desktop' }: { surface?: AskSurface }) {
+export function HistoryButton() {
   const off = useConversationsStore((s) => s.saving === 'off');
   if (off) return null;
   return (
@@ -469,7 +470,7 @@ export function HistoryButton({ surface = 'desktop' }: { surface?: AskSurface })
       type="button"
       data-testid="ask-history"
       data-ask-focus="history"
-      onClick={() => openHistory(surface === 'phone', { returnFocus: 'history' })}
+      onClick={() => openHistory(false, { returnFocus: 'history' })}
       className="shrink-0 rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
     >
       History

@@ -5,6 +5,7 @@ import { AskHome } from '@/components/ai/ask/ask-home';
 import { ConversationView } from '@/components/ai/ask/conversation-view';
 import { ConversationTitleMenu } from '@/components/ai/ask/conversation-title-menu';
 import { HistoryButton, HistoryView } from '@/components/ai/ask/history-view';
+import { keepInView } from '@/components/ai/ask/keep-in-view';
 import { NewChatButton } from '@/components/ai/ask/new-chat-empty';
 import { ComposerAwakeContext } from '@/components/ai/bound-composer';
 import {
@@ -39,20 +40,6 @@ function ownsEscape(el: HTMLElement): boolean {
   if (!typing) return false;
   if (el instanceof HTMLInputElement && el.hasAttribute('data-ask-search')) return el.value !== '';
   return !(el instanceof HTMLTextAreaElement && el.closest('[data-ask-composer]') && !el.value.trim());
-}
-
-/**
- * A control Back handed focus to, kept in sight inside its own scroller
- * (History's list, Ask home's): only that box scrolls, never
- * `scrollIntoView`, which would move every ancestor, <main> included.
- */
-function keepInView(el: HTMLElement): void {
-  const box = el.closest<HTMLElement>('[data-ask-scroller]');
-  if (!box) return;
-  const r = el.getBoundingClientRect();
-  const b = box.getBoundingClientRect();
-  if (r.top < b.top) box.scrollTop -= b.top - r.top;
-  else if (r.bottom > b.bottom) box.scrollTop += r.bottom - b.bottom;
 }
 
 const back = () => useRailStore.getState().back('desktop');

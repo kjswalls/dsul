@@ -865,9 +865,14 @@ export const STATIC_COMMANDS: Command[] = [
     // through the one flushing close BEFORE the request, because `request`
     // builds the catch-up proposal at once from the planner store, and a title
     // typed a moment ago must already be in it.
+    //
+    // On the phone it asks for no box: the card is Apply and Not now, things
+    // to tap, and the box's keyboard would come up over it (D11's reason for
+    // Ask home asking for none on arrival). The omnibar the command was typed
+    // into unmounts with Today's dock, so the keyboard goes down.
     run: (ctx) => {
       if (getAICapabilities().canChat) closeItemPanel();
-      if (revealChat(ctx.isMobile)) {
+      if (revealChat(ctx.isMobile, { boxOnPhone: false })) {
         useRailStore.getState().popToHome(ctx.isMobile ? 'phone' : 'desktop');
       } else if (!ctx.isMobile) {
         revealDock();
@@ -890,15 +895,14 @@ export const STATIC_COMMANDS: Command[] = [
     run: (ctx) => askNew('Plan my day', { title: 'Plan my day', isMobile: ctx.isMobile }),
   },
   // Ask's own two doors, palette only (no shortcut id: the frozen list in
-  // commands.test.ts stays as it is). Desktop only until the phone's Ask tab
-  // shows its stack (C5): there, nothing would show what these push.
+  // commands.test.ts stays as it is).
   {
     id: 'ask.newChat',
     label: 'New chat',
     group: 'rituals',
     icon: MessageSquarePlus,
     keywords: 'ask ai chat conversation new start fresh',
-    hidden: (ctx) => ctx.isMobile || !getAICapabilities().canChat,
+    hidden: () => !getAICapabilities().canChat,
     availableWhen: () => getAICapabilities().canChat,
     run: (ctx) => void newChat(ctx.isMobile, { reveal: true }),
   },
@@ -909,8 +913,7 @@ export const STATIC_COMMANDS: Command[] = [
     icon: HistoryIcon,
     keywords: 'ask ai chat conversations history past saved search',
     // With saving off (the migration missing) there is nothing to list.
-    hidden: (ctx) =>
-      ctx.isMobile || !getAICapabilities().canChat || useConversationsStore.getState().saving === 'off',
+    hidden: () => !getAICapabilities().canChat || useConversationsStore.getState().saving === 'off',
     availableWhen: () => getAICapabilities().canChat && useConversationsStore.getState().saving !== 'off',
     run: (ctx) => openHistory(ctx.isMobile, { reveal: true, focusSearch: true }),
   },

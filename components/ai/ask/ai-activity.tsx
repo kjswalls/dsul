@@ -123,7 +123,13 @@ function ActivityButton({
       data-ask-focus={focusKey}
       data-testid="ai-activity-row"
       data-state={state}
-      onClick={onClick}
+      onClick={(e) => {
+        // WebKit leaves a tapped or clicked button unfocused, and an item's
+        // open reads the focused control as where Back returns to (rail-store
+        // pushItemOverAsk's `returnFocus`, ItemDialog's own return).
+        if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
+        onClick();
+      }}
       className="flex w-full min-w-0 items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-sm text-foreground transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none"
     >
       <span className="flex size-4 shrink-0 items-center justify-center">{glyph}</span>

@@ -29,8 +29,6 @@ interface ChatComposerProps {
    * phone's dock bar says 'phone'. Absent: the desktop rail's.
    */
   surface?: AskSurface;
-  /** Grows the panel variant's icon buttons to touch size. 'dock' is already 48px. */
-  touch?: boolean;
   /**
    * The text, held by the caller (BoundComposer keeps it in rail-store, so a
    * half-typed message outlives the view it was typed in). Absent: the field
@@ -82,7 +80,6 @@ export function ChatComposer({
   variant,
   binding,
   surface,
-  touch,
   value,
   onValueChange,
   awake = true,
@@ -266,41 +263,41 @@ export function ChatComposer({
         <Button
           variant="ghost"
           size="icon"
-          className={cn('rounded-full text-muted-foreground', touch ? 'h-9 w-9' : 'h-8 w-8')}
+          className="h-8 w-8 rounded-full text-muted-foreground"
           disabled
           title="Attach files (coming soon)"
         >
-          <Plus className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
+          <Plus className="h-4 w-4" />
         </Button>
         {isLoading ? (
           <Button
             size="icon"
-            className={cn('rounded-full', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            className="h-8 w-8 rounded-full"
             onClick={stop}
             aria-label="Stop generating"
             data-testid="chat-stop"
           >
-            <Square className={cn('fill-current', touch ? 'h-3.5 w-3.5' : 'h-3 w-3')} />
+            <Square className="h-3 w-3 fill-current" />
           </Button>
         ) : hasText ? (
           <Button
             size="icon"
-            className={cn('rounded-full', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            className="h-8 w-8 rounded-full"
             onClick={handleSend}
             disabled={isLoading}
             aria-label="Send"
           >
-            <ArrowUp className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
+            <ArrowUp className="h-4 w-4" />
           </Button>
         ) : (
           <Button
             variant="ghost"
             size="icon"
-            className={cn('rounded-full text-muted-foreground', touch ? 'h-9 w-9' : 'h-8 w-8')}
+            className="h-8 w-8 rounded-full text-muted-foreground"
             disabled
             title="Voice input (coming soon)"
           >
-            <Mic className={cn(touch ? 'h-5 w-5' : 'h-4 w-4')} />
+            <Mic className="h-4 w-4" />
           </Button>
         )}
       </div>

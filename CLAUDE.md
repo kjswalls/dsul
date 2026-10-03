@@ -350,15 +350,21 @@ rather than taking the flag.
   The right-click menus are pointer-only (long-press is drag on touch) and hold no Delete
   for containers — each Organize pane words its own delete consequence.
 - **The right rail is Ask, and an item opens on top of it.** The item is still ui-store's
-  `edit-item` slot (every reader and every `openEditFor` caller is unchanged);
+  `edit-item` slot (on desktop, every reader and every `openEditFor` caller is unchanged);
   [rail-store.ts](lib/rail-store.ts) holds only what Ask shows under it (a stack per
   surface, with a level rule: history < conversation < item), and `railMode()` is the one
-  visibility rule. **Ask starts closed.** Whether it is open is sidebar-store v3's
+  visibility rule. On the phone, while the Ask tab is mounted (rail-store's
+  `hostPhoneAsk()`, a count whose last release uninstalls it), `openEditFor` goes through
+  ui-store's `setEditItemInterceptor` slot and pushes `{kind:'item'}` onto `stacks.phone`
+  instead of filling the slot; Today and Braindump never mount the tab, so they keep the
+  drawer. **Ask starts closed.** Whether it is open is sidebar-store v3's
   persisted `askOpen`: every explicit open writes it (the Ask button at the end of the
   canvas's header row, [ask-opener.tsx](components/ai/rail/ask-opener.tsx); Ctrl+J; `?` in
   the dock), Ctrl+J or the rail's ✕ clears it, and the tour's summon never touches it
-  (`summon({persist:false})`). Someone who never chose gets `ASK_OPEN_DEFAULT` (false,
-  Kirby's call on 2026-10-02), so making Ask start open is that one constant. Anything outside
+  (`summon({persist:false})`). Someone who never chose has `askOpen: null`, read through
+  `askOpenOf()` as `ASK_OPEN_DEFAULT` (false, Kirby's call on 2026-10-02); only a choice is
+  ever stored, so making Ask start open is that one constant, even for a browser that has
+  already run the build. Never read `askOpen` directly. Anything outside
   ItemDialog that closes the item (Ctrl+J, `?`, catch-up) goes through `closeItemPanel()`
   in ui-store, which flushes the queued autosave and applies the selection rule; a bare
   `closeDialog()` leaves the row selected and the save waiting out the unmount grace.

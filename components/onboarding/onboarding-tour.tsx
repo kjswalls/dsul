@@ -227,8 +227,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
    * something answers) with AI, and the capture dock (`dock`) without.
    */
   const { canChat } = useAICapabilities();
-  // Ask's key as the user has it bound (Ctrl+J by default), for step 4's copy.
+  // Keys as the user has them bound, never typed: Ask's (Ctrl+J by default)
+  // for step 4's copy, the launcher's (Ctrl+K) for the no-AI dock card.
   const askKeys = useShortcutKeys('toggle_right_sidebar');
+  const launcherBinding = useShortcutKeys('system_search');
   // Spotlight selector based on current step/sub-step
   const spotlightSelector = (() => {
     if (step === 3) {
@@ -456,24 +458,26 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   // Keys as this platform prints them, so a Ctrl user never reads a ⌘. Safe in
   // render: the tour only mounts on the client, after the completion check.
   const isMac = isApplePlatform();
-  const launcherKeys = isMac ? '⌘K' : 'Ctrl+K';
+  const launcherKeys = chordLabel(launcherBinding, isMac);
 
   /**
    * Step 4's card. Without anything to answer it says AI is optional and where
    * to connect one, never that something is missing. With it, how to ask. On
    * the desktop Ask is up for the tour (sub-step C summoned it) and closes when
    * the tour ends, since it starts closed (sidebar-store ASK_OPEN_DEFAULT), so
-   * the card names every way back to it: the Ask button on the canvas's header
-   * row, the chord as bound (chordLabel, so a rebinding reads right), and `?`
-   * in the dock. On the phone the step has just switched to the Ask tab, where
-   * the dock's bar IS the box and there is no chord to press.
+   * the card names every way back to it: the Ask button, the chord as bound
+   * (chordLabel, so a rebinding reads right), and `?` in the dock. The button
+   * hides while Ask shows, so this card, which shows beside Ask, says when it
+   * is there and where: once Ask is closed, at the end of the date row. On the
+   * phone the step has just switched to the Ask tab, where the dock's bar IS
+   * the box and there is no chord to press.
    */
   const aiCard = canChat
     ? {
         title: 'Your AI is ready',
         body: isMobile
           ? 'Type in the bar below to ask about your day.'
-          : `Open Ask any time with the Ask button or ${chordLabel(askKeys, isMac)}, or type ? in the dock, to ask about your day.`,
+          : `When Ask is closed, open it with the Ask button at the end of the date row or ${chordLabel(askKeys, isMac)}, or type ? in the dock, to ask about your day.`,
       }
     : {
         title: 'Bring your own AI (optional)',

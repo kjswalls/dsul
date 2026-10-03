@@ -226,6 +226,7 @@ describe('room on the header row', () => {
       resized(observers);
       expect(pill()).toHaveAttribute('data-fit', 'full');
       expect(opener()).toHaveTextContent('Ask');
+      expect(opener()!.querySelector('svg')).toHaveClass('text-ai');
 
       // 374 + 12 + 32 = 418 fits, 492 does not: the spark alone, still named.
       layOut(450, 374);
@@ -233,6 +234,10 @@ describe('room on the header row', () => {
       expect(pill()).toHaveAttribute('data-fit', 'icon');
       expect(opener()).not.toHaveTextContent('Ask');
       expect(screen.getByRole('button', { name: 'Open Ask' })).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
+      // Alone it is the whole control: the words' colour, since honey reads
+      // about 1.6:1 on the light surface (WCAG 1.4.11 asks 3:1).
+      expect(opener()!.querySelector('svg')).toHaveClass('text-foreground');
+      expect(opener()!.querySelector('svg')).not.toHaveClass('text-ai');
 
       // Not even the spark: nothing, rather than over the capsule or a line of its own.
       layOut(400, 374);

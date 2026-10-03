@@ -9,8 +9,10 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
  * user learns the ways back to it, and they are pinned here:
  *
  *  - 3C, with AI: "Ask", what it is for, and the shell asked to show it.
- *  - 4, with AI on the desktop: the Ask button, the chord AS BOUND (through
- *    chordLabel, never typed; a rebinding reads right) and `?` in the dock.
+ *  - 4, with AI on the desktop: the Ask button (once Ask is closed: it hides
+ *    while Ask shows, as it does beside this card), the chord AS BOUND
+ *    (through chordLabel, never typed; a rebinding reads right) and `?` in
+ *    the dock.
  *  - 4 on the phone: the bar below, with no chord to press.
  *  - The phone's mode step names the third surface "Ask".
  *  - With no AI, none of that: the dock, and AI as optional.
@@ -93,7 +95,7 @@ describe('the desktop tour, with AI', () => {
     expect(chordLabel(DEFAULT_ASK_KEYS, false)).toBe('Ctrl+J');
     expect(
       screen.getByText(
-        `Open Ask any time with the Ask button or ${chordLabel(DEFAULT_ASK_KEYS, false)}, or type ? in the dock, to ask about your day.`
+        `When Ask is closed, open it with the Ask button at the end of the date row or ${chordLabel(DEFAULT_ASK_KEYS, false)}, or type ? in the dock, to ask about your day.`
       )
     ).toBeInTheDocument();
     // The ⌘↵ / Ctrl↵ hint is gone: ? in the dock is the way to ask from there.
@@ -109,7 +111,7 @@ describe('the desktop tour, with AI', () => {
     next();
     expect(
       screen.getByText(
-        'Open Ask any time with the Ask button or Ctrl+Shift+K, or type ? in the dock, to ask about your day.'
+        'When Ask is closed, open it with the Ask button at the end of the date row or Ctrl+Shift+K, or type ? in the dock, to ask about your day.'
       )
     ).toBeInTheDocument();
   });
@@ -126,6 +128,24 @@ describe('the desktop tour, with no AI', () => {
     next();
     expect(screen.getByText('Bring your own AI (optional)')).toBeInTheDocument();
     expect(screen.queryByText(/Ask button|Ctrl\+J/)).toBeNull();
+  });
+
+  it("names the launcher's chord as the user has it bound", () => {
+    renderTour(NOTHING_CONNECTED);
+    toStep3();
+    next();
+    next();
+    expect(screen.getByText('Add, search and run commands from here. Ctrl+K works anywhere.')).toBeInTheDocument();
+    cleanup();
+    cleanupAI?.();
+    useKeyboardShortcutsStore.setState({ overrides: { system_search: ['meta', 'shift', 'p'] } });
+    renderTour(NOTHING_CONNECTED);
+    toStep3();
+    next();
+    next();
+    expect(
+      screen.getByText('Add, search and run commands from here. Ctrl+Shift+P works anywhere.')
+    ).toBeInTheDocument();
   });
 });
 

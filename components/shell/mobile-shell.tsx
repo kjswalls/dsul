@@ -1,7 +1,7 @@
 'use client';
 
 import { memo, useEffect, useState } from 'react';
-import { useSwipeable } from 'react-swipeable';
+import { useSwipeable, type SwipeEventData } from 'react-swipeable';
 
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { MobileHeader } from '@/components/mobile/mobile-header';
@@ -15,6 +15,7 @@ import { useUIStore } from '@/lib/ui-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useRailStore } from '@/lib/rail-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
+import { cn } from '@/lib/utils';
 
 /**
  * The shell's height while a soft keyboard is up.
@@ -52,6 +53,25 @@ function useKeyboardSafeHeight(): number | null {
   }, []);
 
   return height;
+}
+
+/**
+ * Whether a swipe began inside something that scrolls sideways (a reply's
+ * code block: chat-transcript.tsx's `[&_pre]:overflow-x-auto`). That drag is
+ * the box's own scroll, and is not also Back or a tab change: swiping a long
+ * line back into view must not pop the conversation it is in. Read off the
+ * box as laid out, so one that fits its content takes the swipe as usual.
+ */
+function startedInSideScroller(e: SwipeEventData | undefined): boolean {
+  let el = e?.event.target instanceof Element ? e.event.target : null;
+  while (el && el !== document.body) {
+    if (el.scrollWidth > el.clientWidth) {
+      const x = getComputedStyle(el).overflowX;
+      if (x === 'auto' || x === 'scroll') return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
 }
 
 /**
@@ -98,16 +118,17 @@ export const MobileShell = memo(function MobileShell() {
   useEffect(() => closeAllRowSwipes(), [activeTab]);
 
   const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => {
+    onSwipedLeft: (e?: SwipeEventData) => {
       if (rowSwipeActive.current) return; // a row swipe is in progress, not a tab swipe
+      if (startedInSideScroller(e)) return;
       const order = mobileTabOrder(canChat);
       const idx = order.indexOf(activeTab);
       if (idx < order.length - 1) {
         useMobileNavStore.getState().setActiveTab(order[idx + 1]);
       }
     },
-    onSwipedRight: () => {
-      if (rowSwipeActive.current) return;
+    onSwipedRight: (e?: SwipeEventData) => {
+      if (rowSwipeActive.current || startedInSideScroller(e)) return;
       // Inside Ask, a swipe right is back before it is a tab change: a
       // conversation or an item pops to what it was opened from, and only Ask
       // home walks left to Today — the iOS edge-swipe, and the one gesture the
@@ -199,10 +220,15 @@ export const MobileShell = memo(function MobileShell() {
 
       <div className="flex min-h-0 flex-1 flex-col overflow-hidden" {...swipeHandlers}>
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
-            under [data-reduce-motion]). */}
+            under [data-reduce-motion]). Not into Ask: its home carries the lime
+            accent (a run come back), which never fades through a parent's
+            opacity (CLAUDE.md), and AskTab slides its own views instead. */}
         <div
           key={activeTab}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
+          className={cn(
+            'flex min-h-0 flex-1 flex-col overflow-hidden',
+            activeTab !== 'chat' && 'animate-in fade-in-0 duration-200'
+          )}
         >
           {activeTab === 'chat' && canChat && <AskTab headerAccessory={userMenu} />}
 

@@ -83,8 +83,6 @@ vi.mock('@/lib/proposal-store', () => {
   };
 });
 
-vi.mock('@/lib/use-time-format', () => ({ useTimeFormat: () => 'HH:mm' }));
-
 vi.mock('@/lib/supabase', () => ({
   createClient: () => ({ auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) } }),
 }));

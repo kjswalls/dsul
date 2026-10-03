@@ -24,14 +24,20 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testi
  * tap does).
  */
 
+/** What the shell's handlers read off a swipe: where it began. */
+type Swiped = { event: { target: EventTarget } };
 const swipe = vi.hoisted(() => ({
-  handlers: null as null | { onSwipedLeft?: () => void; onSwipedRight?: () => void },
+  handlers: null as null | { onSwipedLeft?: (e?: Swiped) => void; onSwipedRight?: (e?: Swiped) => void },
 }));
 
 // The shell's handlers: a row's (SwipeRow, which tracks its own start) never
 // mounts here, but is told apart anyway.
 vi.mock('react-swipeable', () => ({
-  useSwipeable: (handlers: { onSwipedLeft?: () => void; onSwipedRight?: () => void; onSwipeStart?: unknown }) => {
+  useSwipeable: (handlers: {
+    onSwipedLeft?: (e?: Swiped) => void;
+    onSwipedRight?: (e?: Swiped) => void;
+    onSwipeStart?: unknown;
+  }) => {
     if (!handlers.onSwipeStart) swipe.handlers = handlers;
     return {};
   },
@@ -116,7 +122,8 @@ import { useProposalStore } from '@/lib/proposal-store';
 import { phoneArrivalFocuses, useRailStore, type AskView } from '@/lib/rail-store';
 import { openEditFor, useUIStore } from '@/lib/ui-store';
 import type { TaskItem } from '@/lib/planner-types';
-import { CONNECTED_MODEL, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { matchCommands, STATIC_COMMANDS, type CommandContext } from '@/lib/commands';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeTransport } from './helpers/conversations-fakes';
 
 beforeAll(() => {
@@ -343,6 +350,18 @@ describe('one stack under one capsule', () => {
     expect(document.activeElement).toBe(log);
   });
 
+  // Ask home carries the lime accent (a run come back): nothing above the tab
+  // may fade it in through an opacity, as the shell's tab cross-fade would.
+  it('enters with no fade around it: no ancestor animates opacity', () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderShell();
+    act(() => useMobileNavStore.getState().setActiveTab('chat'));
+    const tabRoot = document.querySelector('[data-ask-tab]') as HTMLElement;
+    for (let el = tabRoot.parentElement; el; el = el.parentElement) {
+      expect(el.className).not.toMatch(/fade-|opacity-/);
+    }
+  });
+
   it('keeps the stack and every draft through a trip to Today', () => {
     seedConversation('c1');
     renderShell([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
@@ -456,6 +475,43 @@ describe('swipe right', () => {
     expect(tab()).toBe('today');
   });
 
+  // A drag along a reply's long code line scrolls that line; it is not Back.
+  it('is left to a code block that scrolls sideways, and is Back from anywhere else', () => {
+    seedConversation('c1', 'Run this:\n\n```\nnpx supabase db push --include-all --linked --debug\n```');
+    renderShell([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    const pre = document.querySelector('[data-ask-conversation] pre, [data-testid="chat-transcript"] pre') as HTMLElement;
+    expect(pre).not.toBeNull();
+    // As laid out: 970px of line in a 350px box that scrolls it.
+    pre.style.overflowX = 'auto';
+    Object.defineProperty(pre, 'scrollWidth', { value: 970, configurable: true });
+    Object.defineProperty(pre, 'clientWidth', { value: 350, configurable: true });
+    const inLine = pre.querySelector('code') ?? pre;
+
+    act(() => swipe.handlers?.onSwipedRight?.({ event: { target: inLine } }));
+    act(() => swipe.handlers?.onSwipedLeft?.({ event: { target: inLine } }));
+    expect(phone()).toEqual([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }]);
+    expect(tab()).toBe('chat');
+
+    // A box that fits its content takes no swipe.
+    Object.defineProperty(pre, 'scrollWidth', { value: 350, configurable: true });
+    act(() => swipe.handlers?.onSwipedRight?.({ event: { target: inLine } }));
+    expect(phone()).toEqual([{ kind: 'history' }]);
+  });
+
+  it('nor a tab change, either way, from inside something that scrolls sideways', () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderShell();
+    const strip = document.createElement('div');
+    strip.style.overflowX = 'scroll';
+    Object.defineProperty(strip, 'scrollWidth', { value: 900, configurable: true });
+    Object.defineProperty(strip, 'clientWidth', { value: 390, configurable: true });
+    screen.getByTestId('today-row').after(strip);
+    act(() => swipe.handlers?.onSwipedLeft?.({ event: { target: strip } }));
+    act(() => swipe.handlers?.onSwipedRight?.({ event: { target: strip } }));
+    expect(tab()).toBe('today');
+    strip.remove();
+  });
+
   it('on Today is the plain tab walk, whatever the Ask stack holds', () => {
     useMobileNavStore.setState({ activeTab: 'today' });
     renderShell([{ kind: 'history' }]);
@@ -558,8 +614,9 @@ describe('arriving on the tab', () => {
 
   it("the mode sheet's focus return asks the same question", () => {
     // The sheet hands focus back to the mode card unless the box is about to
-    // take it (mode-switcher-sheet.tsx onCloseAutoFocus); vaul never unmounts
-    // its content under jsdom, so the predicate both read is pinned here.
+    // take it (mode-switcher-sheet.tsx onCloseAutoFocus, driven through a
+    // stand-in drawer in mode-switcher-sheet.test.tsx); the predicate both
+    // read is pinned here.
     expect(phoneArrivalFocuses([])).toBe(false);
     expect(phoneArrivalFocuses([{ kind: 'history' }])).toBe(false);
     expect(phoneArrivalFocuses([{ kind: 'history' }, { kind: 'conversation', id: 'c1' }])).toBe(true);
@@ -576,6 +633,109 @@ describe('arriving on the tab', () => {
     await act(() => new Promise((r) => setTimeout(r, 0)));
     await waitFor(() => expect(document.activeElement).toBe(dockInput()));
     expect(phone()).toEqual([]);
+  });
+});
+
+describe('Back to Ask home', () => {
+  const WAITING = {
+    ...TASK,
+    id: 'item-2',
+    title: 'Pick a plumber',
+    assignee: 'openclaw',
+    aiStatus: 'blocked',
+    aiResult: 'Which one?',
+  } as unknown as TaskItem;
+  const WORKING = {
+    ...TASK,
+    id: 'item-3',
+    title: 'Draft the invite',
+    assignee: 'openclaw',
+    aiStatus: 'working',
+    aiStatusAt: new Date().toISOString(),
+  } as unknown as TaskItem;
+
+  /**
+   * Ask home's scroller shows y 100–300, and the opener sits below that, at
+   * y 400–430, until the scroller moves: the remounted home is back at its top.
+   */
+  function stubGeometry(opener: () => HTMLElement | null, grown: () => number = () => 0) {
+    return vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      const rect = (top: number, bottom: number) =>
+        ({ top, bottom, left: 0, right: 390, width: 390, height: bottom - top, x: 0, y: top }) as DOMRect;
+      if (this.hasAttribute('data-ask-scroller')) return rect(100, 300);
+      if (this === opener()) {
+        const scrolled = (this.closest('[data-ask-scroller]') as HTMLElement | null)?.scrollTop ?? 0;
+        return rect(400 + grown() - scrolled, 430 + grown() - scrolled);
+      }
+      return rect(0, 0);
+    });
+  }
+
+  // A tap in WebKit focuses nothing, and jsdom's click does not either: the
+  // opener must take focus itself, or the push records no `returnFocus` and
+  // Back lands on the heading at the top.
+  it.each([
+    ['a Needs-you title', 'needs-you-title', WAITING],
+    ['an activity row', 'ai-activity-row', WORKING],
+  ])('hands focus back to %s that opened an item, scrolled into sight', async (_what, testId, item) => {
+    usePlannerStore.setState({ items: [TASK, item] });
+    renderShell();
+    const opener = () => document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+    const geometry = stubGeometry(opener);
+    try {
+      expect(document.activeElement).toBe(document.body);
+      fireEvent.click(opener()!);
+      expect(phone()).toEqual([{ kind: 'item', itemId: item.id, returnFocus: expect.stringMatching(/:item-[23]$/) }]);
+
+      fireEvent.click(back());
+      expect(phone()).toEqual([]);
+      await waitFor(() => expect(document.activeElement).toBe(opener()));
+      const scroller = opener()!.closest('[data-ask-scroller]') as HTMLElement;
+      // 430 - 300: just enough to bring its foot into the box.
+      expect(scroller.scrollTop).toBe(130);
+    } finally {
+      geometry.mockRestore();
+    }
+  });
+
+  // The remounted home settles a moment after Back: a Needs-you card's
+  // question arrives and pushes every row under it down 33px.
+  it('keeps the opener in sight while the view beneath settles, and only while it has focus', async () => {
+    const RealRO = globalThis.ResizeObserver;
+    const fired: (() => void)[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        fired.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    let grown = 0;
+    usePlannerStore.setState({ items: [TASK, WORKING] });
+    renderShell();
+    const opener = () => document.querySelector<HTMLElement>('[data-testid="ai-activity-row"]');
+    const geometry = stubGeometry(opener, () => grown);
+    try {
+      fireEvent.click(opener()!);
+      fireEvent.click(back());
+      await waitFor(() => expect(document.activeElement).toBe(opener()));
+      const scroller = opener()!.closest('[data-ask-scroller]') as HTMLElement;
+      await waitFor(() => expect(scroller.scrollTop).toBe(130));
+
+      grown = 33;
+      act(() => fired.forEach((fire) => fire()));
+      expect(scroller.scrollTop).toBe(163);
+
+      // Focus moved on: a later settle leaves the scroll alone.
+      act(() => opener()!.blur());
+      grown = 66;
+      act(() => fired.forEach((fire) => fire()));
+      expect(scroller.scrollTop).toBe(163);
+    } finally {
+      geometry.mockRestore();
+      globalThis.ResizeObserver = RealRO;
+    }
   });
 });
 
@@ -614,5 +774,64 @@ describe('the History button', () => {
     expect(screen.getByRole('button', { name: 'History' })).toHaveAttribute('title', 'History');
     act(() => useConversationsStore.setState({ saving: 'off' }));
     expect(screen.queryByRole('button', { name: 'History' })).toBeNull();
+  });
+});
+
+describe("the palette's Ask commands on the phone", () => {
+  const phoneCtx: CommandContext = {
+    theme: { resolved: 'light', value: 'light', set: () => {} },
+    openChat: () => {},
+    userId: 'user-1',
+    isMobile: true,
+  };
+  const ids = () => matchCommands('', phoneCtx).map((r) => r.command.id);
+  const run = (id: string) => act(() => void STATIC_COMMANDS.find((c) => c.id === id)!.run(phoneCtx));
+
+  // D10 gates "New chat" and "Conversation history" on the AI (and History on
+  // saving), never on the surface: the tab shows what both push.
+  it('lists "New chat" and "Conversation history" while something answers, and neither with no AI', () => {
+    expect(ids()).toEqual(expect.arrayContaining(['ask.newChat', 'ask.history']));
+    act(() => useConversationsStore.setState({ saving: 'off' }));
+    expect(ids()).toContain('ask.newChat');
+    expect(ids()).not.toContain('ask.history');
+    unseed();
+    unseed = seedAI(NOTHING_CONNECTED);
+    expect(ids()).not.toContain('ask.newChat');
+    expect(ids()).not.toContain('ask.history');
+  });
+
+  it('"New chat" from Today shows the tab with a draft on top and the caret in its box', async () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderShell();
+    run('ask.newChat');
+    expect(tab()).toBe('chat');
+    expect(phone()).toMatchObject([{ kind: 'conversation' }]);
+    expect(rail().stacks.desktop).toEqual([]);
+    expect(back()).toHaveAccessibleName('Back to Ask');
+    await waitFor(() => expect(document.activeElement).toBe(dockInput()));
+  });
+
+  it('"Conversation history" from Today shows History with its search field focused', async () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderShell();
+    run('ask.history');
+    expect(tab()).toBe('chat');
+    expect(phone()).toEqual([{ kind: 'history' }]);
+    await waitFor(() => expect(document.activeElement).toBe(screen.getByTestId('history-search')));
+    expect(rail().pendingFocus).toBeNull();
+  });
+
+  // Catch-up lands on its card, which is tapped, not typed into: a box asked
+  // for here would raise the keyboard over Apply and Not now.
+  it('"Pick things back up" pops to Ask home and asks for no box', async () => {
+    useMobileNavStore.setState({ activeTab: 'today' });
+    renderShell([{ kind: 'history' }]);
+    run('rituals.catchUp');
+    expect(tab()).toBe('chat');
+    expect(phone()).toEqual([]);
+    expect(rail().pendingFocus).toBeNull();
+    expect(useProposalStore.getState().lastRequest?.intent).toBe('catch-up');
+    await act(() => new Promise((r) => setTimeout(r, 0)));
+    expect(document.activeElement).not.toBe(dockInput());
   });
 });

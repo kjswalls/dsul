@@ -121,13 +121,14 @@ export function clampSidebarGrowth(
 }
 
 /**
- * Whether Ask rests open in the right rail for someone who has never chosen:
- * the store's default, and what the v3 migration gives every older record.
+ * Whether Ask rests open in the right rail for someone who has never chosen.
  * Kirby's call (2026-10-02): Ask starts CLOSED, with the Ask button
  * (components/ai/rail/ask-opener.tsx) on the canvas's header row to open it.
- * Flipping this one constant makes it start open instead. Either way the
- * user's own choice wins from then on: Ctrl+J, the Ask button and the rail's
- * ✕ write `askOpen`, and it persists.
+ * Flipping this one constant makes it start open instead, for every browser
+ * whose user has not chosen yet, including ones that have already run this
+ * build: nothing stores the default (`askOpen` is null until a choice; read it
+ * through askOpenOf). The user's own choice wins from then on: Ctrl+J, the
+ * Ask button and the rail's ✕ write `askOpen`, and it persists.
  */
 export const ASK_OPEN_DEFAULT = false
 
@@ -136,13 +137,14 @@ interface SidebarState {
   leftSidebarOpen: boolean
   /**
    * Ask rests open in the right rail (the user keeps it there). Ctrl+J, the
-   * Ask button and the rail's ✕ open and close it, and it stays as left
-   * (ASK_OPEN_DEFAULT until the first choice). It is chrome
-   * for this browser, like the width: never synced, never cleared. Whether Ask
-   * actually SHOWS is rail-store's `railMode`, which also needs something to
-   * answer, and, at or below 1180px, an explicit summon this session.
+   * Ask button and the rail's ✕ open and close it, and it stays as left.
+   * `null` is "never chosen", and reads as ASK_OPEN_DEFAULT: never read the
+   * field directly, read askOpenOf. It is chrome for this browser, like the
+   * width: never synced, never cleared. Whether Ask actually SHOWS is
+   * rail-store's `railMode`, which also needs something to answer, and, at or
+   * below 1180px, an explicit summon this session.
    */
-  askOpen: boolean
+  askOpen: boolean | null
   // Hover state (transient, not persisted)
   leftSidebarHovered: boolean
   // Settings (persisted)
@@ -186,11 +188,20 @@ const USER_SCOPED_DEFAULTS = {
   leftSidebarHoverEnabled: false,
 }
 
+/**
+ * Whether Ask rests open: the user's choice, else ASK_OPEN_DEFAULT. The one
+ * read of `askOpen` (DesktopShell's rail column, rail-store's railMode), so
+ * the default is applied when it is read and never written down as a choice.
+ */
+export function askOpenOf(s: Pick<SidebarState, 'askOpen'>): boolean {
+  return s.askOpen ?? ASK_OPEN_DEFAULT
+}
+
 export const useSidebarStore = create<SidebarState>()(
   persist(
     (set) => ({
       leftSidebarOpen: true,
-      askOpen: ASK_OPEN_DEFAULT,
+      askOpen: null,
       leftSidebarHovered: false,
       ...USER_SCOPED_DEFAULTS,
       leftSidebarWidth: SIDEBAR_DEFAULT_WIDTH,
@@ -227,12 +238,13 @@ export const useSidebarStore = create<SidebarState>()(
         // v1 → v2 turned the right sidebar into the in-sidebar chat panel.
         // v1/v2 → v3: the left-dock chat is gone. `askOpen` is a NEW surface, so
         // the old `chatExpanded` (or v1's `rightSidebarOpen`) is not mapped onto
-        // it: everyone starts at ASK_OPEN_DEFAULT, as a new browser does. The
-        // width is carried over; merge() clamps it, as it always has.
+        // it: everyone starts never having chosen (null, read as
+        // ASK_OPEN_DEFAULT), as a new browser does. The width is carried over;
+        // merge() clamps it, as it always has.
         const state = (persisted ?? {}) as Record<string, unknown>;
         return {
           leftSidebarOpen: (state.leftSidebarOpen as boolean) ?? true,
-          askOpen: ASK_OPEN_DEFAULT,
+          askOpen: null as boolean | null,
           leftSidebarHoverEnabled: (state.leftSidebarHoverEnabled as boolean) ?? false,
           leftSidebarWidth: state.leftSidebarWidth as number | undefined,
         };
@@ -245,10 +257,16 @@ export const useSidebarStore = create<SidebarState>()(
       }),
       // The default merge would hand a persisted width straight into state
       // without passing the setter, so this is the only place a record written
-      // by an older build (or edited by hand) gets bounded on the way in.
+      // by an older build (or edited by hand) gets bounded on the way in. An
+      // `askOpen` that is not a choice is "never chosen".
       merge: (persisted, current) => {
         const p = (persisted ?? {}) as Partial<SidebarState>;
-        return { ...current, ...p, leftSidebarWidth: clampSidebarWidth(p.leftSidebarWidth as number) };
+        return {
+          ...current,
+          ...p,
+          askOpen: typeof p.askOpen === 'boolean' ? p.askOpen : null,
+          leftSidebarWidth: clampSidebarWidth(p.leftSidebarWidth as number),
+        };
       },
     }
   )

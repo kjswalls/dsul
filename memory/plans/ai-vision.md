@@ -15,7 +15,8 @@ decision 6, superseded).
 and conversations pushed over it and "‹" to go back. Ask starts closed: the Ask button on
 the canvas's header row, Ctrl+J (⌘J on a Mac) or `?` in the dock opens it, and it then stays
 as the user leaves it across reloads. Starting closed is one constant, `ASK_OPEN_DEFAULT` in
-`lib/sidebar-store.ts` (Kirby's call, 2026-10-02); flipping it makes Ask start open. While
+`lib/sidebar-store.ts` (Kirby's call, 2026-10-02); flipping it makes Ask start open for
+everyone who has not chosen, since only a choice is ever stored. While
 Ask or an item is docked in the right column the braindump narrows, and it goes back to its
 own width when the column closes. On the phone the Ask tab is the same home. Every
 conversation is saved to the account, once per finished turn, in `chat_conversations` /
@@ -863,9 +864,11 @@ conversation is saved to the account.
   Ctrl+J (⌘J: the frozen `toggle_right_sidebar` id re-defaulted) and `?` in the dock (or
   "Ask AI" in ⌘K). Every one of those writes sidebar-store's persisted `askOpen`, and Ctrl+J
   or the rail's ✕ clear it, so Ask stays as the user left it across reloads; the tour's
-  summon is the one open that persists nothing. Someone who has never chosen gets
-  `ASK_OPEN_DEFAULT` (`false`, Kirby's call on 2026-10-02, over the design's "rests open"),
-  and flipping that one constant makes Ask start open instead. At or below 1180px
+  summon is the one open that persists nothing. Someone who has never chosen has
+  `askOpen: null`, read (`askOpenOf`) as `ASK_OPEN_DEFAULT` (`false`, Kirby's call on
+  2026-10-02, over the design's "rests open"). The default is applied when read and never
+  stored, so flipping that one constant makes Ask start open instead for every browser whose
+  user has not chosen, including ones that have already run the build. At or below 1180px
   (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows only when summoned in this
   session, and parks on click-away or Escape.
 - **The braindump narrows while the right column is docked**, for Ask and an item alike:
@@ -879,7 +882,11 @@ conversation is saved to the account.
   `dsul-chat-<id>`.
 - `chooseChatTarget()` no longer deletes anything.
 - On the phone the Ask tab is the same home, on its own stack: an item opened from it pushes
-  over Ask, while Today and Braindump keep the drawer.
+  over Ask (ui-store's `setEditItemInterceptor`, installed by rail-store's `hostPhoneAsk()`
+  while the tab is mounted), while Today and Braindump keep the drawer. Arriving on the tab
+  puts the caret in the dock's box only at a conversation or an item; an explicit open asks
+  for it at any view, except catch-up ("Pick things back up"), which lands on a card to tap
+  and asks for none, so no keyboard comes up over it (`revealChat(…, { boxOnPhone: false })`).
 - End to end: `tests/e2e/rail.spec.ts` (desktop, Notepad's three styles included) and
   `tests/e2e/ask-mobile.spec.ts` (`@mobile`) run against the local stack only, with the gate
   and `/api/chat` stubbed in the browser (`tests/e2e/helpers/ai.ts`) and the conversations
