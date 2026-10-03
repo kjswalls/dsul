@@ -49,6 +49,8 @@ export interface FakeApi {
   patches: { id: string; patch: ConversationPatch }[];
   keepalives: { id: string; body: string }[];
   removes: string[];
+  /** Every keepalive DELETE sent from pagehide, in order. */
+  keepaliveRemoves: string[];
   /** Script an answer; each falls back to the default when it gives undefined. */
   answer: {
     list?: Answer<[o?: { cursor?: string | null }], ConversationListResponse>;
@@ -69,6 +71,7 @@ export function fakeApi(): FakeApi {
     patches: [],
     keepalives: [],
     removes: [],
+    keepaliveRemoves: [],
     answer: {},
     rows: new Map(),
     api: undefined as unknown as ConversationsApi,
@@ -120,6 +123,9 @@ export function fakeApi(): FakeApi {
     appendTurnKeepalive: (id, body) => {
       f.keepalives.push({ id, body });
     },
+    removeKeepalive: (id) => {
+      f.keepaliveRemoves.push(id);
+    },
   };
   f.api = {
     list: vi.fn(impl.list),
@@ -130,6 +136,7 @@ export function fakeApi(): FakeApi {
     patch: vi.fn(impl.patch),
     remove: vi.fn(impl.remove),
     appendTurnKeepalive: vi.fn(impl.appendTurnKeepalive),
+    removeKeepalive: vi.fn(impl.removeKeepalive),
   };
   return f;
 }

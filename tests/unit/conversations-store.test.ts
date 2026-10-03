@@ -1408,6 +1408,76 @@ describe('pagehide', () => {
     useConversationsStore.setState({ saving: 'off' });
     store().flushOnPageHide();
     expect(api.keepalives).toHaveLength(0);
+    expect(api.keepaliveRemoves).toHaveLength(0);
+  });
+
+  it('sends a delete still waiting behind a save on the wire, as a keepalive DELETE, after the saves', async () => {
+    const id = await sendNew('My biopsy came back positive');
+    // The next turn's save reached the server; its answer is slow.
+    const slow = deferred<void>();
+    api.answer.appendTurn = async () => {
+      await slow.promise;
+      return undefined;
+    };
+    await store().send(id, 'and the oncologist said stage 2');
+    await flush();
+    expect(api.turns).toHaveLength(2);
+    const removing = store().remove(id);
+    await flush();
+    // Behind the save, so not sent yet...
+    expect(api.removes).toEqual([]);
+
+    // ...and the tab closes: the DELETE goes anyway, with nothing re-sent for it.
+    store().flushOnPageHide();
+    expect(api.keepalives).toEqual([]);
+    expect(api.keepaliveRemoves).toEqual([id]);
+
+    slow.resolve();
+    expect(await removing).toBe(true);
+    // Answered: nothing left to send at a later hide.
+    store().flushOnPageHide();
+    expect(api.keepaliveRemoves).toEqual([id]);
+  });
+
+  it('sends a delete on the wire again, and only after every save body', async () => {
+    const held = deferred<void>();
+    api.answer.appendTurn = async (_id, _b, n) => {
+      if (n === 2) await held.promise;
+      return undefined;
+    };
+    const gone = await sendNew('delete me');
+    const other = store().newDraft();
+    await store().send(other, 'keep me');
+    await flush();
+    const order: string[] = [];
+    (api.api.appendTurnKeepalive as ReturnType<typeof vi.fn>).mockImplementation((cid: string) => order.push(`save:${cid}`));
+    (api.api.removeKeepalive as ReturnType<typeof vi.fn>).mockImplementation((cid: string) => order.push(`delete:${cid}`));
+    const answer = deferred<ReturnType<typeof fail>>();
+    api.answer.remove = () => answer.promise;
+    const removing = store().remove(gone);
+    await flush();
+    expect(api.removes).toEqual([gone]);
+
+    store().flushOnPageHide();
+    expect(order).toEqual([`save:${other}`, `delete:${gone}`]);
+    answer.resolve(fail(404, 'not_found'));
+    held.resolve();
+    expect(await removing).toBe(true);
+  });
+
+  it('sends a pending delete with saving off, for the row it was sent for', async () => {
+    const row = summary({ id: 'c1' });
+    useConversationsStore.setState({ saving: 'off', summaries: { c1: row } });
+    const answer = deferred<ReturnType<typeof fail>>();
+    api.answer.remove = () => answer.promise;
+    const removing = store().remove('c1');
+    await flush();
+    expect(api.removes).toEqual(['c1']);
+    store().flushOnPageHide();
+    expect(api.keepalives).toEqual([]);
+    expect(api.keepaliveRemoves).toEqual(['c1']);
+    answer.resolve(fail(404, 'not_found'));
+    expect(await removing).toBe(true);
   });
 });
 

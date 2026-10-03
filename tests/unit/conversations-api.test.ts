@@ -138,4 +138,17 @@ describe('the routes', () => {
     }));
     expect(() => api.appendTurnKeepalive(ID, 'x')).not.toThrow();
   });
+
+  it('sends a keepalive delete as fetch keepalive, with no body, and never throws', () => {
+    const calls = stubFetch(() => json(200, { ok: true }));
+    api.removeKeepalive(ID);
+    expect(calls[0].url).toBe(`/api/ai/conversations/${ID}`);
+    expect(calls[0].init).toMatchObject({ method: 'DELETE', keepalive: true, credentials: 'same-origin' });
+    expect(calls[0].init.body).toBeUndefined();
+
+    vi.stubGlobal('fetch', vi.fn(() => {
+      throw new TypeError('refused');
+    }));
+    expect(() => api.removeKeepalive(ID)).not.toThrow();
+  });
 });

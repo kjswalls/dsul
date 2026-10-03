@@ -57,6 +57,12 @@ export interface ConversationsApi {
    * keepalive budget by the caller.
    */
   appendTurnKeepalive(id: string, body: string): void;
+  /**
+   * A delete sent from `pagehide`: `fetch(…, { method: 'DELETE', keepalive:
+   * true })`, fire and forget. It carries no body, so it costs the keepalive
+   * budget nothing.
+   */
+  removeKeepalive(id: string): void;
 }
 
 const BASE = '/api/ai/conversations';
@@ -206,6 +212,14 @@ export const httpConversationsApi: ConversationsApi = {
     } catch {
       // A browser that refuses the body (over its keepalive budget) throws
       // synchronously; the page is going away either way.
+    }
+  },
+
+  removeKeepalive(id) {
+    try {
+      void fetch(`${BASE}/${enc(id)}`, { method: 'DELETE', keepalive: true, credentials: 'same-origin' }).catch(() => {});
+    } catch {
+      // The page is going away either way.
     }
   },
 };

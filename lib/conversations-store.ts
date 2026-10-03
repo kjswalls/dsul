@@ -167,7 +167,11 @@ export interface ConversationsState {
   noteChanges(id: string, tally: ConversationChanges): void;
   /** The caller debounces (250ms). Under the 2-character minimum it clears. */
   runSearch(q: string): void;
-  /** `pagehide` (registered below, once): keepalive saves within one 60,000-byte budget. */
+  /**
+   * `pagehide` (registered below, once): keepalive saves within one
+   * 60,000-byte budget, then a keepalive DELETE for every delete still
+   * waiting on its answer.
+   */
   flushOnPageHide(): void;
   /** Mark a binding as sending; false when it already is (a second send in the same tick). */
   beginSend(key: string): boolean;
@@ -829,6 +833,89 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
     swallowed.set(id, [...(swallowed.get(id) ?? []), job]);
   }
   fireQueued = (job) => fire(job);
+
+  /**
+   * pagehide's saves (flushOnPageHide): every turn not yet known to be saved,
+   * as keepalive bodies within one KEEPALIVE_BUDGET_BYTES.
+   */
+  const keepaliveSaves = (s: ConversationsState, ownerId: string) => {
+    const encoder = new TextEncoder();
+    let budget = KEEPALIVE_BUDGET_BYTES;
+    const bytes = (body: TurnRequest) => encoder.encode(JSON.stringify(body)).byteLength;
+    /** Room for a body, taken from the one budget; false when it does not fit what is left. */
+    const reserve = (body: TurnRequest): string | null => {
+      const json = JSON.stringify(body);
+      const n = encoder.encode(json).byteLength;
+      if (n > budget) return null;
+      budget -= n;
+      return json;
+    };
+    // Never a conversation deleted here or found deleted elsewhere: a body
+    // with `create` would bring it back.
+    const live = (id: string) => {
+      const t = s.threads[id];
+      return !!t && t.load !== 'gone' && !removed.has(id);
+    };
+
+    // The budget goes in this priority order: the streaming turn, saves on
+    // the wire, saves waiting on a chain, saves waiting for a retry. It is
+    // not the order they are SENT in (below).
+    //
+    // 1. A turn still streaming, as stopped, its reply cut from the end to fit.
+    const streamed: { id: string; json: string }[] = [];
+    for (const thread of Object.values(s.threads)) {
+      if (!thread.streaming || !live(thread.id)) continue;
+      const reply = [...thread.messages].reverse().find((m) => m.role === 'assistant' && m.status === 'streaming');
+      const user = reply && thread.messages.find((m) => m.id === reply.replyTo);
+      if (!reply || !user) continue;
+      const head: Omit<TurnRequest, 'messages'> = thread.saved
+        ? { ownerId }
+        : { ownerId, create: { itemId: thread.itemId, title: thread.draftTitle ?? deriveTitle(user.content) } };
+      const alone: TurnRequest = { ...head, messages: [toTurn(user)] };
+      const partial = cleanText(reply.content, CHAT_LIMITS.assistantChars);
+      const withReply = (n: number): TurnRequest => ({
+        ...head,
+        messages: [toTurn(user), toTurn({ ...reply, content: cleanText(partial, n), status: 'stopped' })],
+      });
+      let body = alone;
+      if (partial && bytes(withReply(1)) <= budget) {
+        // The longest prefix that fits what is left of the budget.
+        let lo = 1;
+        let hi = partial.length;
+        while (lo < hi) {
+          const mid = Math.ceil((lo + hi) / 2);
+          if (bytes(withReply(mid)) <= budget) lo = mid;
+          else hi = mid - 1;
+        }
+        body = withReply(lo);
+      }
+      const json = reserve(body);
+      if (json) streamed.push({ id: thread.id, json });
+    }
+    const saves: { seq: number; id: string; json: string }[] = [];
+    const take = (job: SaveJob, id: string, body: TurnRequest) => {
+      if (isStale(job) || !live(resolveId(id))) return;
+      const json = reserve(body);
+      if (json) saves.push({ seq: job.seq, id, json });
+    };
+    // 2. Saves on the wire: an ordinary fetch is cancelled at unload, and the
+    //    ids make a re-send harmless.
+    for (const [job, { id, body }] of inflight) take(job, id, body);
+    // 3. Saves on a chain, behind an earlier save or a tally, then 4. saves
+    //    waiting for a retry, while they fit.
+    for (const job of [...waiting, ...queue]) {
+      const id = resolveId(job.threadId);
+      const thread = s.threads[id];
+      if (thread) take(job, id, turnBody(job, thread));
+    }
+
+    // Sent per conversation in the order the turns were said: the oldest
+    // save first, the streaming turn last. A row's positions are handed out
+    // as bodies arrive, so the other order could save a transcript backwards.
+    saves.sort((a, b) => a.seq - b.seq);
+    for (const b of saves) deps.api.appendTurnKeepalive(b.id, b.json);
+    for (const b of streamed) deps.api.appendTurnKeepalive(b.id, b.json);
+  };
 
   return {
     ownerId: null,
@@ -1508,83 +1595,20 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
     flushOnPageHide: () => {
       const s = get();
       const ownerId = s.ownerId;
-      if (!ownerId || s.saving === 'off' || ownerId !== useAIConnectionStore.getState().hydratedUserId) return;
-      const encoder = new TextEncoder();
-      let budget = KEEPALIVE_BUDGET_BYTES;
-      const bytes = (body: TurnRequest) => encoder.encode(JSON.stringify(body)).byteLength;
-      /** Room for a body, taken from the one budget; false when it does not fit what is left. */
-      const reserve = (body: TurnRequest): string | null => {
-        const json = JSON.stringify(body);
-        const n = encoder.encode(json).byteLength;
-        if (n > budget) return null;
-        budget -= n;
-        return json;
-      };
-      // Never a conversation deleted here or found deleted elsewhere: a body
-      // with `create` would bring it back.
-      const live = (id: string) => {
-        const t = s.threads[id];
-        return !!t && t.load !== 'gone' && !removed.has(id);
-      };
+      if (!ownerId || ownerId !== useAIConnectionStore.getState().hydratedUserId) return;
+      if (s.saving !== 'off') keepaliveSaves(s, ownerId);
 
-      // The budget goes in this priority order: the streaming turn, saves on
-      // the wire, saves waiting on a chain, saves waiting for a retry. It is
-      // not the order they are SENT in (below).
-      //
-      // 1. A turn still streaming, as stopped, its reply cut from the end to fit.
-      const streamed: { id: string; json: string }[] = [];
-      for (const thread of Object.values(s.threads)) {
-        if (!thread.streaming || !live(thread.id)) continue;
-        const reply = [...thread.messages].reverse().find((m) => m.role === 'assistant' && m.status === 'streaming');
-        const user = reply && thread.messages.find((m) => m.id === reply.replyTo);
-        if (!reply || !user) continue;
-        const head: Omit<TurnRequest, 'messages'> = thread.saved
-          ? { ownerId }
-          : { ownerId, create: { itemId: thread.itemId, title: thread.draftTitle ?? deriveTitle(user.content) } };
-        const alone: TurnRequest = { ...head, messages: [toTurn(user)] };
-        const partial = cleanText(reply.content, CHAT_LIMITS.assistantChars);
-        const withReply = (n: number): TurnRequest => ({
-          ...head,
-          messages: [toTurn(user), toTurn({ ...reply, content: cleanText(partial, n), status: 'stopped' })],
-        });
-        let body = alone;
-        if (partial && bytes(withReply(1)) <= budget) {
-          // The longest prefix that fits what is left of the budget.
-          let lo = 1;
-          let hi = partial.length;
-          while (lo < hi) {
-            const mid = Math.ceil((lo + hi) / 2);
-            if (bytes(withReply(mid)) <= budget) lo = mid;
-            else hi = mid - 1;
-          }
-          body = withReply(lo);
-        }
-        const json = reserve(body);
-        if (json) streamed.push({ id: thread.id, json });
-      }
-      const saves: { seq: number; id: string; json: string }[] = [];
-      const take = (job: SaveJob, id: string, body: TurnRequest) => {
-        if (isStale(job) || !live(resolveId(id))) return;
-        const json = reserve(body);
-        if (json) saves.push({ seq: job.seq, id, json });
-      };
-      // 2. Saves on the wire: an ordinary fetch is cancelled at unload, and the
-      //    ids make a re-send harmless.
-      for (const [job, { id, body }] of inflight) take(job, id, body);
-      // 3. Saves on a chain, behind an earlier save or a tally, then 4. saves
-      //    waiting for a retry, while they fit.
-      for (const job of [...waiting, ...queue]) {
-        const id = resolveId(job.threadId);
-        const thread = s.threads[id];
-        if (thread) take(job, id, turnBody(job, thread));
-      }
-
-      // Sent per conversation in the order the turns were said: the oldest
-      // save first, the streaming turn last. A row's positions are handed out
-      // as bodies arrive, so the other order could save a transcript backwards.
-      saves.sort((a, b) => a.seq - b.seq);
-      for (const b of saves) deps.api.appendTurnKeepalive(b.id, b.json);
-      for (const b of streamed) deps.api.appendTurnKeepalive(b.id, b.json);
+      // Then every delete still waiting on its answer: queued on the
+      // conversation's chain behind a save on the wire, or on the wire itself.
+      // Either way an ordinary fetch dies with the page, and the save ahead of
+      // it has already reached the server, so the conversation the user just
+      // deleted would survive on every device. Even with saving off, since
+      // remove() only asks for a row it has seen. A DELETE carries no body
+      // (nothing from the budget), and a second one is harmless: a 404 is the
+      // same outcome. A save landing after it finds no row, and fails; only a
+      // FIRST save, carrying `create`, can still bring a row back, if the
+      // server takes it after this.
+      for (const id of removing) deps.api.removeKeepalive(id);
     },
 
     beginSend: (key) => {
