@@ -747,6 +747,23 @@ function shieldSummonSpot(rect: { left: number; top: number; right: number; bott
   }, RAIL_HEADER_HOLD_MS);
 }
 
+// ── The tour ─────────────────────────────────────────────────────────────────
+
+/**
+ * The tour's Ask step: Ask shown for it, then put back. A summon that never
+ * persists (it sets only `summoned`, which railMode reads as open), so it
+ * never writes `askOpen`, a choice the user did not make ("Ask starts
+ * closed"), and a park after, so someone who had closed Ask finds it closed
+ * again. AppShell passes these to the tour as they are.
+ */
+export function tourShowAsk(): void {
+  useRailStore.getState().summon({ persist: false });
+}
+
+export function tourHideAsk(): void {
+  useRailStore.getState().park();
+}
+
 // ── Reading the rule ─────────────────────────────────────────────────────────
 
 function overlaysNow(): boolean {

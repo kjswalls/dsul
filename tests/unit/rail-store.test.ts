@@ -26,6 +26,8 @@ import {
   noteRailEntry,
   railMode,
   railModeNow,
+  tourHideAsk,
+  tourShowAsk,
   usePanelOverlays,
   useRailMode,
   useRailCovers,
@@ -393,6 +395,22 @@ describe('summon, park, closeRail', () => {
     rail().park();
     expect(railModeNow()).toBe('hidden');
     expect(useSidebarStore.getState().askOpen).toBe(false);
+  });
+
+  it("the tour's own pair, as AppShell hands it to the tour, never writes a choice the user did not make", () => {
+    useSidebarStore.setState({ askOpen: null });
+    tourShowAsk();
+    expect(railModeNow()).toBe('ask');
+    expect(useSidebarStore.getState().askOpen).toBeNull();
+    tourHideAsk();
+    expect(railModeNow()).toBe('hidden');
+    expect(useSidebarStore.getState().askOpen).toBeNull();
+
+    // AppShell passes exactly these, not an inline summon that could persist.
+    const shell = readFileSync(path.resolve(__dirname, '../../components/shell/app-shell.tsx'), 'utf8');
+    expect(shell).toMatch(/onExpandChat=\{tourShowAsk\}/);
+    expect(shell).toMatch(/onCollapseChat=\{tourHideAsk\}/);
+    expect(shell).not.toMatch(/summon\(/);
   });
 
   it('park leaves a docked Ask the user keeps open where it is', () => {

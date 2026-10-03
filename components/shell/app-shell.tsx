@@ -41,7 +41,7 @@ import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
 import { milestoneItemIds } from '@/lib/goals';
-import { useRailStore } from '@/lib/rail-store';
+import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
 import { flushSettings } from '@/lib/settings-service';
@@ -703,12 +703,10 @@ export function AppShell() {
           // The tour calls handleComplete() before this fires, so navigating
           // away doesn't abandon it. Beacon is the pane the step is about.
           onOpenSettings={() => router.push('/settings/beacon')}
-          // The tour shows Ask for its step and puts it back: a summon that
-          // never persists (it sets only `summoned`, which the rail reads as
-          // open), then a park. So it never writes `askOpen`, a choice the user
-          // did not make, and someone who had closed Ask finds it closed again.
-          onExpandChat={() => useRailStore.getState().summon({ persist: false })}
-          onCollapseChat={() => useRailStore.getState().park()}
+          // The tour shows Ask for its step and puts it back, never writing
+          // `askOpen` (lib/rail-store.ts tourShowAsk, tourHideAsk).
+          onExpandChat={tourShowAsk}
+          onCollapseChat={tourHideAsk}
           onSetActiveTab={(tab) => useMobileNavStore.getState().setActiveTab(tab as MobileTab)}
         />
       )}
