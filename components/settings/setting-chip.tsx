@@ -79,7 +79,7 @@ function describe(
   pending: boolean,
   reason: string | null
 ): string | undefined {
-  const status = pending ? 'Still loading…' : reason ? `Unavailable — ${reason}` : undefined;
+  const status = pending ? 'Still loading…' : reason ? `Unavailable: ${reason}` : undefined;
   return [description, status].filter(Boolean).join(' ') || undefined;
 }
 
@@ -209,13 +209,13 @@ function PickerChip({
       aliasId={toggle ? record.id : undefined}
       highlighted={highlighted}
       modified={modified}
-      title={reason ? `Unavailable — ${reason}` : (toggle?.description ?? record.description)}
+      title={reason ? `Unavailable: ${reason}` : (toggle?.description ?? record.description)}
       descId={descId}
       description={description}
     >
       <PropertyChip
         id={controlId}
-        ariaLabel={pending ? `${label} — still loading` : `${label}: ${current}`}
+        ariaLabel={pending ? `${label}, still loading` : `${label}: ${current}`}
         ariaDescribedBy={description ? descId : undefined}
         label={label}
         value={current}
@@ -340,7 +340,7 @@ function TimeChip({
       hostId={record.id}
       highlighted={highlighted}
       modified={modified}
-      title={reason ? `Unavailable — ${reason}` : record.description}
+      title={reason ? `Unavailable: ${reason}` : record.description}
       descId={descId}
       description={description}
     >
@@ -359,7 +359,7 @@ function TimeChip({
           <span
             data-testid={`setting-${record.id}`}
             aria-describedby={description ? descId : undefined}
-            aria-label={`${record.label} — still loading`}
+            aria-label={`${record.label}, still loading`}
             role="status"
           >
             <span className="text-muted-foreground">{record.label}</span>{' '}
@@ -429,7 +429,7 @@ function ActionChip({
       hostId={record.id}
       highlighted={highlighted}
       modified={false}
-      title={reason ? `Unavailable — ${reason}` : record.description}
+      title={reason ? `Unavailable: ${reason}` : record.description}
       descId={descId}
       description={description}
     >

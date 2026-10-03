@@ -367,7 +367,7 @@ export function GoalsSection({
                 // sounds like it takes a year of work with it, and it does not.
                 description:
                   `The goal moves to the trash for 30 days. Its habits, tasks and milestones ` +
-                  `are ordinary items and stay exactly where they are — only the goal and its ` +
+                  `are ordinary items and stay exactly where they are. Only the goal and its ` +
                   `links go.`,
                 confirmLabel: 'Delete goal',
                 destructive: true,
@@ -380,7 +380,7 @@ export function GoalsSection({
           />
         ) : (
           <SectionWelcome section="goals">
-            A goal is the reason a stretch of work exists — learning a language, building
+            A goal is the reason a stretch of work exists, like learning a language or building
             something over years. It holds the habits and tasks that serve it, the checkpoints
             along the way, and a recurring check-in. It never hides anything.
           </SectionWelcome>
@@ -459,7 +459,7 @@ function GoalDetail({
           aria-pressed={done}
           aria-label={done ? `Mark ${item.title} not reached` : `Mark ${item.title} reached`}
           // The diamond is the milestone's own tick box — it says so on hover.
-          title={done ? 'Milestone · reached — click to undo' : 'Milestone · not reached yet — click to mark reached'}
+          title={done ? 'Milestone reached. Click to undo.' : 'Milestone not reached yet. Click to mark it reached.'}
           className={cn(
             'flex size-4 shrink-0 items-center justify-center rounded-[5px] border transition-colors',
             'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
@@ -648,7 +648,7 @@ function GoalDetail({
           testPrefix="goal-milestone"
           orderable
           eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(goal, 'milestoneIds', i.id)}
-          emptyPool="Nothing eligible yet — a milestone is a one-shot item."
+          emptyPool="Nothing eligible yet. A milestone is a one-shot item."
           lead={<GoalProgressTrack goal={goal} achieved={achieved} total={total} />}
           row={{ ...milestoneRow, ...milestoneControls }}
           onChange={(ids) => members({ milestoneIds: ids })}
@@ -663,13 +663,13 @@ function GoalDetail({
 
         <RoleList
           title="Check-ins"
-          pickerHint="Repeating items only — a check-in comes round again."
+          pickerHint="Repeating items only. A check-in comes round again."
           goal={goal}
           ids={goal.checkinIds}
           itemsById={itemsById}
           testPrefix="goal-checkin"
           eligible={(i) => isCheckinEligible(i) && !heldElsewhere(goal, 'checkinIds', i.id)}
-          emptyPool="Nothing eligible yet — a check-in is a repeating item."
+          emptyPool="Nothing eligible yet. A check-in is a repeating item."
           row={{ ...checkinRow, ...checkinControls }}
           onChange={(ids) => members({ checkinIds: ids })}
           footer={
@@ -787,7 +787,7 @@ function EndedNotice({
         {recurring.length === 1
           ? 'This still repeats on its own schedule.'
           : `${recurring.length} of its items still repeat on their own schedules.`}{' '}
-        Nothing was changed for you — {goal.state === 'achieved' ? 'an achieved' : 'a set-aside'}{' '}
+        Nothing was changed for you. {goal.state === 'achieved' ? 'An achieved' : 'A set-aside'}{' '}
         goal never edits its members. Keep them as they are, open one to park it in a season,
         or delete it for good.
       </p>

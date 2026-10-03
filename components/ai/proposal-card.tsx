@@ -284,7 +284,7 @@ export function ProposalCard({
       {refused.count > 0 && (
         <p className="mt-2 pl-6 text-2xs leading-relaxed text-muted-foreground" data-testid="proposal-refused">
           {refused.count === 1 ? 'One other change' : `${refused.count} other changes`} couldn&apos;t
-          be made here — {refused.reasons.join('; ')}.
+          be made here: {refused.reasons.join('; ')}.
         </p>
       )}
 

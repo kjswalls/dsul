@@ -367,7 +367,7 @@ function seasonStateCopy(d: ContainerDraft, todayStr: string): string | null {
   // written — so say so, rather than store something the form no longer shows.
   const waiting = d.startsOn || d.endsOn ? ' Its dates are kept, unused, for if you put it back on them.' : '';
   if (d.seasonState === 'active') return `On until you switch it off.${waiting}`;
-  if (d.seasonState === 'paused') return `Off from the start — everything it holds is on hold.${waiting}`;
+  if (d.seasonState === 'paused') return `Off from the start. Everything it holds is on hold.${waiting}`;
   return seasonRunsCopy(d.startsOn, d.endsOn, todayStr);
 }
 
@@ -619,8 +619,8 @@ export function ContainerDraftFields({
     notes.push({
       key: 'state',
       text: draft.pausedUntil
-        ? `Paused from the start — its items come back on ${formatShort(draft.pausedUntil)}.`
-        : 'Paused from the start — its items stay hidden until you resume it.',
+        ? `Paused from the start. Its items come back on ${formatShort(draft.pausedUntil)}.`
+        : 'Paused from the start. Its items stay hidden until you resume it.',
     });
   }
   if (consequence.hides > 0) {
@@ -741,7 +741,7 @@ export function ContainerDraftFields({
               removeIcon="x"
               pickerHint="One-time items only. A repeating item never finishes."
               eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
-              emptyPoolLabel="Nothing eligible yet — a milestone is a one-shot item."
+              emptyPoolLabel="Nothing eligible yet. A milestone is a one-shot item."
               onChange={(milestoneIds) => onChange({ milestoneIds })}
               footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="milestone" onChange={onChange} testPrefix={`${p}-create-milestone`} placeholder="Add a milestone…" autoFocus={focusKey === 'milestone'} />}
             />
@@ -757,9 +757,9 @@ export function ContainerDraftFields({
               testPrefix={`${p}-checkins`}
               picker="popover"
               removeIcon="x"
-              pickerHint="Repeating items only — a check-in comes round again."
+              pickerHint="Repeating items only. A check-in comes round again."
               eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
-              emptyPoolLabel="Nothing eligible yet — a check-in is a repeating item."
+              emptyPoolLabel="Nothing eligible yet. A check-in is a repeating item."
               onChange={(checkinIds) => onChange({ checkinIds })}
               footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="checkin" onChange={onChange} testPrefix={`${p}-create-checkin`} placeholder="Add a weekly check-in…" autoFocus={focusKey === 'checkin'} />}
             />
@@ -1044,13 +1044,13 @@ function LinkAnything({
     kind === 'goal' && role === 'milestone'
       ? 'One-time items only. A repeating item never finishes.'
       : kind === 'goal' && role === 'checkin'
-        ? 'Repeating items only — a check-in comes round again.'
+        ? 'Repeating items only. A check-in comes round again.'
         : undefined;
   const emptyPool =
     kind === 'goal' && role === 'milestone'
-      ? 'Nothing eligible yet — a milestone is a one-shot item.'
+      ? 'Nothing eligible yet. A milestone is a one-shot item.'
       : kind === 'goal' && role === 'checkin'
-        ? 'Nothing eligible yet — a check-in is a repeating item.'
+        ? 'Nothing eligible yet. A check-in is a repeating item.'
         : undefined;
 
   return (

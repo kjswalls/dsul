@@ -246,8 +246,8 @@ public func resolvePauseWrite<P: Pausable>(
     if pausedUntil != nil {
         if !pausedNow {
             return .refused(
-                "pausedUntil was sent without paused: true, but this is not currently paused — "
-                    + "a resume date on its own would change nothing"
+                "pausedUntil was sent without paused: true, but this is not currently paused. "
+                    + "A resume date on its own would change nothing."
             )
         }
         return .patch(PauseWindowPatch(pausedUntil: untilWrite))

@@ -178,7 +178,7 @@ function SubtasksSection({ item }: { item: Item }) {
             // The parser's contract: a capped tail is surfaced, never silent.
             // This surface has no dialog to say it in, so the toast does.
             if (truncated) {
-              toast(`Added the first ${MAX_BULK_ITEMS} subtasks — the paste had more.`);
+              toast(`Added the first ${MAX_BULK_ITEMS} subtasks. The paste had more.`);
             }
             setTitle('');
           }}
@@ -475,12 +475,12 @@ function eventLabel(e: ItemEvent): string {
       : [];
     if (!question) return 'Agent asked a question';
     return options.length > 0
-      ? `Agent asked — ${question} (${options.join(' / ')})`
-      : `Agent asked — ${question}`;
+      ? `Agent asked: ${question} (${options.join(' / ')})`
+      : `Agent asked: ${question}`;
   }
   if (e.action === 'agent_reply') {
     const text = typeof e.payload?.text === 'string' ? e.payload.text.trim() : '';
-    return text ? `You answered — ${text}` : 'You answered';
+    return text ? `You answered: ${text}` : 'You answered';
   }
   // A check-in note reads here as well as on the goal page. It is the one event
   // whose payload is something the user WROTE, so showing the action alone
@@ -489,7 +489,7 @@ function eventLabel(e: ItemEvent): string {
   // history.
   if (e.action === 'checkin') {
     const note = typeof e.payload?.note === 'string' ? e.payload.note.trim() : '';
-    return note ? `Checked in — ${note}` : 'Checked in';
+    return note ? `Checked in: ${note}` : 'Checked in';
   }
   const payload = e.payload ?? {};
   // The container ids ride along with every re-file (migration 027) and are an

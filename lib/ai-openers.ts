@@ -162,7 +162,7 @@ export function openToday(ctx: OpenerContext): Item[] {
 const REFLECT: ChatOpener = {
   id: 'reflect',
   label: "How's this week going?",
-  prompt: "How's this week going? Give me an honest read — I'd rather hear it straight than be cheered on.",
+  prompt: "How's this week going? Give me an honest read. I'd rather hear it straight than be cheered on.",
 }
 
 /** "Help me start…": the start of a sentence, put in the box for the user to finish. */
@@ -192,7 +192,7 @@ export function buildChatOpeners(ctx: OpenerContext, o: OpenerOptions): ChatOpen
     if (openToday(ctx).length >= BUSY_DAY_THRESHOLD) {
       openers.push({
         id: 'triage',
-        label: "Today's a lot — what matters?",
+        label: "Today's a lot. What matters?",
         prompt:
           "Today has more on it than I'll get through. Help me work out what actually matters today and what can move.",
       })
@@ -200,7 +200,7 @@ export function buildChatOpeners(ctx: OpenerContext, o: OpenerOptions): ChatOpen
       openers.push({
         id: 'plan',
         label: 'Plan my day',
-        prompt: "Help me put together a realistic plan for today — small enough that I'll actually do it.",
+        prompt: "Help me put together a realistic plan for today, small enough that I'll actually do it.",
       })
     }
   } else {

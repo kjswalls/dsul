@@ -88,7 +88,7 @@ function ConnectPageInner() {
             openclaw dsul-context setup
           </code>
           <p className="text-xs text-muted-foreground">
-            The setup command will print a URL — open it here to authorize.
+            The setup command will print a URL. Open it here to authorize.
           </p>
         </div>
       </div>

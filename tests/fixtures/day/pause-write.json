@@ -275,7 +275,7 @@
       "nowIso": "2026-10-02T15:00:00.000Z",
       "timeZone": "America/New_York",
       "expected": {
-        "reason": "pausedUntil was sent without paused: true, but this is not currently paused — a resume date on its own would change nothing"
+        "reason": "pausedUntil was sent without paused: true, but this is not currently paused. A resume date on its own would change nothing."
       }
     },
     {

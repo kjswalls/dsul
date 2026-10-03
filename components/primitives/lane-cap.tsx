@@ -70,7 +70,7 @@ function Cap({
       aria-pressed={focused}
       data-lane={lane.key}
       data-focused={focused ? 'true' : 'false'}
-      title={`${lane.label} — ${lane.count} ${lane.count === 1 ? 'block' : 'blocks'}`}
+      title={`${lane.label}: ${lane.count} ${lane.count === 1 ? 'block' : 'blocks'}`}
       style={band ? { left: `${lane.leftPct}%`, right: `${lane.rightPct}%` } : undefined}
       className={cn(
         'flex h-[18px] min-w-0 items-center gap-1.5 rounded-[4px] px-1.5 text-2xs transition-colors hover:bg-accent',

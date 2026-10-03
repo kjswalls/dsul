@@ -238,7 +238,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'create.bulk',
     label: 'Add many items…',
-    description: 'Paste a list or import a file — one item per line',
+    description: 'Paste a list or import a file, one item per line',
     group: 'create',
     icon: ListPlus,
     keywords: 'bulk multiple paste import csv list batch many',
@@ -354,7 +354,7 @@ export const STATIC_COMMANDS: Command[] = [
         description:
           'They’ll be removed along with any subtasks.' +
           (habits
-            ? ` ${habits === 1 ? 'One is a habit' : `${habits} are habits`} — ${
+            ? ` ${habits === 1 ? 'One is a habit' : `${habits} are habits`}, so ${
                 habits === 1 ? 'its' : 'their'
               } completion history goes too.`
             : '') +
@@ -387,7 +387,7 @@ export const STATIC_COMMANDS: Command[] = [
   itemCommand({
     id: 'items.skip',
     label: 'Skip today',
-    description: "Marks the day skipped — for a habit, without breaking the streak",
+    description: 'Marks the day skipped. A habit keeps its streak',
     icon: SkipForward,
     keywords: 'skip habit rest day pass miss recurring',
     aliases: ['skip'],
@@ -432,7 +432,7 @@ export const STATIC_COMMANDS: Command[] = [
   itemCommand({
     id: 'items.pause',
     label: 'Pause',
-    description: 'Sets it aside — hidden until you resume, streak untouched',
+    description: 'Sets it aside. Hidden until you resume, streak untouched',
     icon: PauseIcon,
     keywords: 'pause hold suspend set aside break vacation hide later',
     aliases: ['pause'],
@@ -622,7 +622,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.groupBy',
     label: 'Group by',
-    description: 'Sections every layout — Buckets groups its untimed rows, Schedule its Anytime strip',
+    description: 'Sections every layout: Buckets groups its untimed rows, Schedule its Anytime strip',
     group: 'view',
     icon: Layers,
     keywords: 'group sort organise organize project priority bucket',
@@ -643,7 +643,7 @@ export const STATIC_COMMANDS: Command[] = [
   {
     id: 'view.filterProject',
     label: 'Filter by project',
-    description: 'Narrow the canvas to one project — habits stay, filed by their group',
+    description: 'Narrow the canvas to one project. Habits stay, filed by their group',
     group: 'view',
     icon: Filter,
     keywords: 'filter project only narrow',
@@ -724,7 +724,7 @@ export const STATIC_COMMANDS: Command[] = [
     icon: CalendarRange,
     keywords: 'day week scope toggle switch flip view',
     aliases: ['toggle'],
-    shortcut: { id: 'toggle_view_scope', keys: ['v'], context: 'Desktop only — mobile is day-only.' },
+    shortcut: { id: 'toggle_view_scope', keys: ['v'], context: 'Desktop only. Mobile is day-only.' },
     // Same reason as the two commands above: mobile is day-only by
     // construction, so this would silently write default_view with no
     // visible effect.
@@ -755,7 +755,7 @@ export const STATIC_COMMANDS: Command[] = [
     shortcut: {
       id: 'toggle_zen',
       keys: ['z'],
-      context: 'Desktop only — the phone opens on its own Today tab.',
+      context: 'Desktop only. The phone opens on its own Today tab.',
     },
     /*
      * availableWhen, not just `hidden`. The two are independent: `hidden` keeps
@@ -962,7 +962,7 @@ export const STATIC_COMMANDS: Command[] = [
       id: 'toggle_left_sidebar',
       keys: ['meta', '['],
       allowInInput: true,
-      context: 'Desktop only — nothing on mobile reads the sidebar.',
+      context: 'Desktop only. Nothing on mobile reads the sidebar.',
     },
     // Deliberately never a palette row: the omnibar lives INSIDE the sidebar,
     // so running this from the palette makes the palette disappear — and

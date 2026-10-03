@@ -765,7 +765,7 @@ export function SettingsShell({
                   <p className="text-muted-foreground mt-1 text-xs">
                     {includeAdvanced
                       ? 'Advanced settings are included in this search.'
-                      : 'Advanced settings are excluded — turn on Adv to include them.'}
+                      : 'Advanced settings are excluded. Turn on Adv to include them.'}
                   </p>
                   <div className="mt-4 flex flex-wrap gap-2">
                     <Button variant="outline" size="sm" onClick={() => setIncludeAdvanced(true)}>

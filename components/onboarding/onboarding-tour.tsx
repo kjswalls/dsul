@@ -360,7 +360,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     onCollapseChatRef.current?.();
     onSetActiveTabRef.current?.('braindump');
     setIsVisible(false);
-    toast.success("You're all set ✨ One thing at a time — you've got this.", {
+    toast.success("You're all set. One thing at a time.", {
       description: 'Tip: replay this tour anytime from Settings.',
       duration: 5000,
     });
@@ -541,7 +541,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
               <h2 className="text-lg font-semibold text-foreground">
                 What&apos;s one thing you want to do today?
               </h2>
-              <p className="text-xs text-muted-foreground">Just one — we&apos;ll build from there.</p>
+              <p className="text-xs text-muted-foreground">Just one. We&apos;ll build from there.</p>
             </div>
 
             <Input

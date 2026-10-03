@@ -581,7 +581,7 @@ describe('catch-up when chat is hidden', () => {
     act(() => {
       useProposalStore.setState({
         status: 'empty',
-        emptyMessage: 'Those items have changed — nothing left to apply.',
+        emptyMessage: 'Those items have changed, so there is nothing left to apply.',
         proposal: null,
         lastRequest: null,
       });

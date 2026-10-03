@@ -58,9 +58,9 @@ export function BugReportDialog({ open, onOpenChange }: BugReportDialogProps) {
       });
       if (res.ok) {
         if (type === 'bug') {
-          toast.success("Bug reported! We'll look into it 🐉");
+          toast.success("Bug reported. We'll look into it 🐉");
         } else {
-          toast.success('Feature request sent! Love the idea 🐉');
+          toast.success('Feature request sent. Thanks for the idea 🐉');
         }
         handleOpenChange(false);
       } else {

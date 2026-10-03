@@ -208,7 +208,7 @@ export function UserCard() {
                 );
               })}
               <div className="px-1.5 pt-1 font-mono text-2xs text-muted-foreground/50">
-                — Session start —
+                Session start
               </div>
             </div>
 

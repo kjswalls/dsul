@@ -850,7 +850,7 @@ export function DisplayMenu({
         {
           kind: 'note',
           key: 'priority-note',
-          text: 'Habits carry no priority — they are unaffected.',
+          text: 'Habits carry no priority, so they are unaffected.',
         },
       ],
     },
@@ -954,7 +954,7 @@ export function DisplayMenu({
                 key: 'goal-note',
                 text:
                   goalRows.length === 0
-                    ? 'No goals yet — make one in Organize.'
+                    ? 'No goals yet. Make one in Organize.'
                     : 'Milestones and check-ins count as members.',
               } satisfies Entry,
               ...(unknownGoalIds.length > 0
@@ -962,7 +962,7 @@ export function DisplayMenu({
                     {
                       kind: 'note',
                       key: 'goal-unknown-note',
-                      text: 'A goal that is gone narrows nothing — untick it to clear the clause.',
+                      text: 'A goal that is gone narrows nothing. Untick it to clear the clause.',
                     } satisfies Entry,
                   ]
                 : []),

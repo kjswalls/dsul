@@ -266,7 +266,7 @@ export function buildCatchUpProposal(
     summary: picked.length === 1 ? 'Pick one thing back up' : `Pick ${picked.length} things back up`,
     rationale:
       remaining > 0
-        ? `Moving these to today. The other ${remaining} can keep waiting — they're not going anywhere.`
+        ? `Moving these to today. The other ${remaining} can keep waiting. They're not going anywhere.`
         : 'Moving these to today. Nothing else is waiting on you.',
     operations: picked.map((item) => ({
       kind: 'update' as const,
@@ -335,7 +335,7 @@ export function describeOperation(operation: ProposalOperation, ctx: ProposalCon
       const parent = ctx.items.find((i) => i.id === operation.parentItemId)
       // Naming the parent matters when a breakdown card sits beside a plan
       // card: "Step: x" alone does not say what it is a step of.
-      return parent ? `${operation.title} — under ${parent.title}` : `Step: ${operation.title}`
+      return parent ? `${operation.title} (under ${parent.title})` : `Step: ${operation.title}`
     }
     const label = getItemTypeConfig(operation.itemType).label.toLowerCase()
     const when = operation.startDate ? ` for ${friendlyDate(operation.startDate)}` : ''
@@ -359,5 +359,5 @@ export function describeOperation(operation: ProposalOperation, ctx: ProposalCon
     parts.push(operation.status === config?.doneStatus ? 'mark done' : `mark ${operation.status}`)
   }
 
-  return parts.length > 0 ? `${title} — ${parts.join(', ')}` : title
+  return parts.length > 0 ? `${title}: ${parts.join(', ')}` : title
 }

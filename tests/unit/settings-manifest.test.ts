@@ -873,7 +873,7 @@ describe('the push row in the desktop app', () => {
   };
   const record = settingById('rituals.push')!;
   const DESKTOP_COPY =
-    'not available in the desktop app yet — turn push on from your phone or browser';
+    'not available in the desktop app yet, so turn push on from your phone or browser';
 
   afterEach(() => {
     delete window.dsulDesktop;
