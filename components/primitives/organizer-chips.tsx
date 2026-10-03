@@ -433,12 +433,15 @@ export function InlineAddRow({
   testIdPrefix,
   disabled,
   className,
+  autoFocus,
 }: {
   placeholder: string;
   onAdd: (title: string) => void;
   testIdPrefix: string;
   disabled?: boolean;
   className?: string;
+  /** Focus on mount — a section the user just asked for, by its adder. */
+  autoFocus?: boolean;
 }) {
   const [text, setText] = useState('');
   const ref = useRef<HTMLInputElement>(null);
@@ -484,6 +487,7 @@ export function InlineAddRow({
         placeholder={placeholder}
         aria-label={placeholder.replace(/…$/, '')}
         disabled={disabled}
+        autoFocus={autoFocus}
         data-testid={`${testIdPrefix}-new-name`}
         className="placeholder:text-muted-foreground text-foreground -mx-1 min-w-0 flex-1 border-0 bg-transparent px-1 text-[13.5px] outline-none disabled:opacity-50"
       />

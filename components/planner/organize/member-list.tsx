@@ -1,9 +1,10 @@
 'use client';
 
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { LinkExistingPill, OrganizerSection } from '@/components/primitives/organizer-chips';
 import { CategoryIcon } from '@/lib/category-icons';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -229,6 +230,8 @@ export function ItemMemberList({
   emptyHint,
   removable,
   openItems = false,
+  picker = 'well',
+  removeIcon = 'trash',
   onChange,
 }: {
   /** The section heading — "Items", "Milestones". */
@@ -307,111 +310,70 @@ export function ItemMemberList({
    * be a button that silently does nothing.
    */
   removable?: (item: Item) => boolean;
+  /**
+   * Where "Link existing" opens its search: an inset `well` inside the section
+   * (the detail panes), or a `popover` anchored to the pill (the create forms,
+   * Kirby 2026-10-03), so a form never grows a list inside itself.
+   */
+  picker?: 'well' | 'popover';
+  /**
+   * The remove button's glyph. A bin in the panes, where leaving is a write; an
+   * × in a create form, where nothing exists yet and the row is only unlinked —
+   * and where the NEW rows beside it already wear one.
+   */
+  removeIcon?: 'trash' | 'x';
   onChange: (ids: string[]) => void;
 }) {
-  const items = usePlannerStore((s) => s.items);
   const [adding, setAdding] = useState(false);
-  const [query, setQuery] = useState('');
-  /** Index into `candidates` of the highlighted row. See the keyboard block. */
-  const [cursor, setCursor] = useState(0);
   const rootRef = useRef<HTMLDivElement>(null);
-  const searchRef = useRef<HTMLInputElement>(null);
-  const activeRef = useRef<HTMLButtonElement>(null);
 
   // The two-pane layout never remounts this component — it swaps the props
   // under it — so without this an open search box AND its typed query survive a
   // click on a different container, and Enter adds the top match to whichever
-  // one is selected NOW. A silent write to the wrong owner.
+  // one is selected NOW. A silent write to the wrong owner. The picker's own
+  // query and cursor go with it: it is keyed on the owner below.
   //
   // Adjusted during render, not in an effect: an effect paints one frame with
-  // the PREVIOUS owner's query still in the box, and that frame is live — the
-  // candidate list under it is already resolved against the new owner, so a fast
-  // Enter lands the old query's top match on the new container.
+  // the PREVIOUS owner's picker still open.
   const [lastOwnerId, setLastOwnerId] = useState(ownerId);
   if (ownerId !== lastOwnerId) {
     setLastOwnerId(ownerId);
     setAdding(false);
-    setQuery('');
-    setCursor(0);
   }
-
-  /**
-   * STAYS OPEN. Collecting is almost never a single act — a routine is built by
-   * adding four things in a row — and closing after each one made that four
-   * round trips through a button that is 30px away and re-focuses the field
-   * each time. The query clears instead, which drops back to the browse list
-   * with the item just added removed from it, so the next one is one ↓↵ away.
-   *
-   * The cursor goes home rather than staying put: the list underneath has
-   * changed completely (a cleared query re-shows the whole pool), so holding an
-   * index would leave the highlight on an unrelated row.
-   */
-  const add = (id: string) => {
-    onChange([...memberIds, id]);
-    setQuery('');
-    setCursor(0);
-    searchRef.current?.focus();
-  };
 
   // Rung: close the search before the plate. The active-section guard is
   // belt-and-braces — see inActiveSection for why it is worth keeping even
-  // though Radix does not mount inactive panels today.
+  // though Radix does not mount inactive panels today. A popover picker is its
+  // own Radix layer and takes Escape before the dialog sees it.
   useEscapeRung(() => {
-    if (!adding || !inActiveSection(rootRef.current)) return false;
+    if (!adding || picker === 'popover' || !inActiveSection(rootRef.current)) return false;
     setAdding(false);
-    setQuery('');
-    setCursor(0);
     return true;
   });
 
-  /**
-   * BROWSES ON AN EMPTY QUERY. The old picker showed nothing until you typed,
-   * which quietly required you to already know the title of the thing you were
-   * looking for — in a console whose entire job is finding one of thirty
-   * objects you have half-forgotten. An empty query now means "everything
-   * eligible", and typing narrows it.
-   *
-   * `isCollectible` is the registry's answer, not a type check, so a
-   * user-defined type joins routines the day it is created.
-   */
-  const q = query.trim().toLowerCase();
-  const admits = eligible ?? isCollectible;
-  const pool = items.filter((i) => admits(i) && !memberIds.includes(i.id));
-  const matches = q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool;
-  const candidates = matches.slice(0, PICKER_LIMIT);
-  const overflow = matches.length - candidates.length;
+  const closePicker = () => setAdding(false);
 
-  /**
-   * Clamped during render, not in an effect, and at BOTH ends.
-   *
-   * The top clamp is for the list shrinking underneath the cursor — an item
-   * deleted in another tab, an agent write, a redo — which the picker staying
-   * open across adds made a much longer window.
-   *
-   * The bottom clamp is for ↓ on an EMPTY list, which is not a hypothetical:
-   * `Math.min(active + 1, candidates.length - 1)` is `Math.min(1, -1)` there, so
-   * one press against "Everything is already in here." parks the cursor at -1
-   * and it stays there when the list refills — remove a member with its trash
-   * button and the pool grows back with no row highlighted, no
-   * `aria-activedescendant`, and Enter doing nothing until ↑ is pressed. The
-   * first version of this clamped only the top and its own comment claimed the
-   * user could not move the cursor out of range; ↓ is a user move.
-   */
-  const active = Math.max(0, Math.min(cursor, candidates.length - 1));
-
-  // Keep the highlight on screen. Without this the cursor can walk off the
-  // bottom of the scrolling surface and ↓ appears to stop working — the selection is moving,
-  // just where nobody can see it. `nearest` so it never scrolls when it doesn't
-  // have to, which is what keeps the list from lurching on every keystroke.
-  useEffect(() => {
-    activeRef.current?.scrollIntoView({ block: 'nearest' });
-  }, [active, query]);
-
-  const closePicker = () => {
-    setAdding(false);
-    setQuery('');
-    setCursor(0);
+  const pickerProps = {
+    testPrefix,
+    memberIds,
+    eligible,
+    emptyPoolLabel,
+    pickerHint,
+    // STAYS OPEN across adds — see MemberPicker.
+    onPick: (id: string) => onChange([...memberIds, id]),
   };
+
+  const pill = (
+    <LinkExistingPill
+      testId={`${testPrefix}-member-add`}
+      aria-expanded={adding}
+      onClick={
+        picker === 'popover'
+          ? undefined
+          : () => setAdding((a) => !a)
+      }
+    />
+  );
 
   return (
     <div ref={rootRef}>
@@ -422,17 +384,13 @@ export function ItemMemberList({
         hint={members.length === 0 && !adding ? emptyHint : undefined}
         hintTestId={`${testPrefix}-empty-hint`}
         action={
-          <LinkExistingPill
-            testId={`${testPrefix}-member-add`}
-            aria-expanded={adding}
-            onClick={() => {
-              if (adding) closePicker();
-              else {
-                setAdding(true);
-                setCursor(0);
-              }
-            }}
-          />
+          picker === 'popover' ? (
+            <PickerPopover open={adding} onOpenChange={setAdding} trigger={pill} testId={`${testPrefix}-member-popover`}>
+              <MemberPicker key={ownerId} {...pickerProps} variant="popover" />
+            </PickerPopover>
+          ) : (
+            pill
+          )
         }
       >
         {lead}
@@ -552,7 +510,7 @@ export function ItemMemberList({
                       label={`Remove ${item.title} from ${ownerName}`}
                       testId={`${testPrefix}-member-remove`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      {removeIcon === 'x' ? <X className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
                     </RailButton>}
                     {row?.menu?.(item)}
                   </ControlRail>
@@ -564,141 +522,11 @@ export function ItemMemberList({
           </div>
         )}
 
-        {/* The picker is ONE inset well — search, results and the way out — so
-            it reads as a thing that opened inside the section rather than more
-            form. The results never scroll inside the dialog's own scroll: they
-            stop at PICKER_LIMIT and say how many more a narrower query finds. */}
-        {adding && (
-          <div className="bg-surface-3 mt-1 flex flex-col gap-1 rounded-lg p-1.5">
-            <div className="flex items-center gap-1.5 pl-[7px]">
-              <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
-              <Input
-                ref={searchRef}
-                autoFocus
-                placeholder="Find an item…"
-                value={query}
-                onChange={(e) => {
-                  setQuery(e.target.value);
-                  // Home on every keystroke: the list under the cursor is a
-                  // different list now, so the old index points at nothing the user
-                  // chose.
-                  setCursor(0);
-                }}
-                /**
-                 * The whole keyboard contract, on the input rather than the rows.
-                 *
-                 * The rows are buttons and could take focus themselves, but then ↓
-                 * from the field moves focus OUT of it and the next character typed
-                 * goes nowhere. This is the combobox pattern for exactly that
-                 * reason: focus never leaves the input, `aria-activedescendant`
-                 * tells a screen reader which row is current, and the highlight is
-                 * ours to draw.
-                 */
-                role="combobox"
-                aria-expanded
-                aria-controls={`${testPrefix}-member-candidates`}
-                aria-activedescendant={
-                  candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
-                }
-                onKeyDown={(e) => {
-                  if (e.key === 'ArrowDown') {
-                    e.preventDefault();
-                    setCursor(Math.min(active + 1, candidates.length - 1));
-                  } else if (e.key === 'ArrowUp') {
-                    e.preventDefault();
-                    setCursor(Math.max(active - 1, 0));
-                  } else if (e.key === 'Enter') {
-                    // Guarded on the row existing, not on the list being non-empty:
-                    // Enter on "Nothing matches" must do nothing, not add whatever
-                    // happens to be at index 0 of a stale render.
-                    if (candidates[active]) {
-                      e.preventDefault();
-                      add(candidates[active].id);
-                    }
-                  }
-                }}
-                className="h-8 flex-1 border-0 bg-transparent px-1 shadow-none"
-                data-testid={`${testPrefix}-member-search`}
-              />
-              {/* THE WAY OUT, and it became load-bearing when the picker started
-                  staying open across adds. Before that, adding something closed
-                  it; now the only other exits are the Escape rung and switching
-                  container — and the console is a vaul bottom SHEET below `md`,
-                  where there is no Escape key at all. On the search row, so it
-                  is always in reach however long the list. */}
-              <button
-                type="button"
-                onClick={closePicker}
-                className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-7 shrink-0 items-center rounded-[5px] px-2 text-xs font-medium"
-                data-testid={`${testPrefix}-member-add-done`}
-              >
-                Done
-              </button>
-            </div>
-            {pickerHint && (
-              <p
-                className="text-muted-foreground px-[7px] text-[11px]"
-                data-testid={`${testPrefix}-member-hint`}
-              >
-                {pickerHint}
-              </p>
-            )}
-
-            <div id={`${testPrefix}-member-candidates`} role="listbox" className="space-y-px">
-              {candidates.map((item, i) => (
-                <button
-                  key={item.id}
-                  ref={i === active ? activeRef : undefined}
-                  type="button"
-                  role="option"
-                  id={`${testPrefix}-cand-${item.id}`}
-                  aria-selected={i === active}
-                  // Pointer and keyboard drive the SAME cursor, so moving the
-                  // mouse over a row and pressing Enter does what the highlight
-                  // says. Two independent "current" notions is the classic way a
-                  // picker adds the wrong thing.
-                  onMouseMove={() => i !== active && setCursor(i)}
-                  onClick={() => add(item.id)}
-                  data-testid={`${testPrefix}-member-candidate`}
-                  data-item-id={item.id}
-                  data-active={i === active || undefined}
-                  className={cn(
-                    'flex h-8 w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left text-sm',
-                    i === active && 'bg-background'
-                  )}
-                >
-                  {/* The same glyph as the row it will become. Without it, choosing
-                      between two same-titled items is a coin flip — and this is the
-                      half where getting it wrong is a write. */}
-                  <TypeGlyph item={item} />
-                  <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                </button>
-              ))}
-
-              {/* Inside the list, never a replacement screen, so ↑/↓/↵ keep meaning
-                  something and the field keeps focus. Two different empties: one
-                  is a query that found nothing, the other is a pool with nothing
-                  left in it, and telling someone to refine a search that cannot
-                  succeed is the worse of the two wrong answers. */}
-              {candidates.length === 0 && (
-                <p
-                  className="text-muted-foreground px-[7px] py-1 text-xs"
-                  data-testid={`${testPrefix}-member-none`}
-                >
-                  {pool.length === 0
-                    ? (emptyPoolLabel ?? 'Everything is already in here.')
-                    : `Nothing matches “${query.trim()}”.`}
-                </p>
-              )}
-            </div>
-            {overflow > 0 && (
-              <p
-                className="text-muted-foreground/70 px-[7px] py-1 text-[11px]"
-                data-testid={`${testPrefix}-member-more`}
-              >
-                {overflow} more. Type to narrow.
-              </p>
-            )}
+        {/* The well: the picker opened inside the section, for the detail
+            panes. The create forms float it instead (picker="popover"). */}
+        {adding && picker === 'well' && (
+          <div className="bg-surface-3 mt-1 rounded-lg p-1.5">
+            <MemberPicker key={ownerId} {...pickerProps} variant="well" onDone={closePicker} />
           </div>
         )}
 
@@ -706,6 +534,300 @@ export function ItemMemberList({
             column's 18, and 8px puts the two on one centre line. */}
         {footer && <div className="px-2">{footer}</div>}
       </OrganizerSection>
+    </div>
+  );
+}
+
+/* ── the picker ───────────────────────────────────────────────────────── */
+
+/**
+ * How many rows the popover draws. Fewer than the well's eight: it floats over
+ * the form, and five rows plus the search is about the height of the form's
+ * own fields, so it never reaches past the dialog. The rest is reached by
+ * narrowing, which the count in the field ("6 of 24") says.
+ */
+const POPOVER_LIMIT = 5;
+
+/**
+ * "Link existing", anchored to its pill. A Radix popover, so it is its own
+ * dismiss layer: Escape and an outside click close it before the dialog under
+ * it hears either, and nothing in the form moves when it opens.
+ */
+export function PickerPopover({
+  open,
+  onOpenChange,
+  trigger,
+  testId,
+  focusFirst = false,
+  children,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  trigger: ReactElement;
+  testId?: string;
+  /** Let Radix focus the first control — for a list with no search field of its own. */
+  focusFirst?: boolean;
+  children: ReactNode;
+}) {
+  return (
+    <Popover open={open} onOpenChange={onOpenChange}>
+      <PopoverTrigger asChild>{trigger}</PopoverTrigger>
+      <PopoverContent
+        align="end"
+        sideOffset={6}
+        collisionPadding={12}
+        data-testid={testId}
+        // Focus goes to the search field, from HERE: Radix's own first-focus
+        // would pick the first tabbable (a goal's role switch), and the input's
+        // autoFocus fires while the dialog's focus trap is still the active one,
+        // which pulls focus straight back to the trigger (the content is
+        // portalled out of the dialog's DOM).
+        onOpenAutoFocus={
+          focusFirst
+            ? undefined
+            : (e) => {
+                e.preventDefault();
+                (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="combobox"]')?.focus();
+              }
+        }
+        // bg-popover, not the dialog's bg-modal: in dark mode the two were one
+        // surface with a hairline between them.
+        className="w-[min(320px,calc(100vw-2rem))] rounded-lg p-1.5 shadow-lg"
+      >
+        {children}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
+/**
+ * The search over the items that may join, with the whole keyboard contract.
+ * One body for the detail panes' inset well and the create forms' popover.
+ */
+export function MemberPicker({
+  testPrefix,
+  memberIds,
+  eligible,
+  emptyPoolLabel,
+  pickerHint,
+  onPick,
+  variant,
+  onDone,
+}: {
+  testPrefix: string;
+  /** Already in — never offered again. */
+  memberIds: readonly string[];
+  eligible?: (item: Item) => boolean;
+  emptyPoolLabel?: string;
+  pickerHint?: string;
+  onPick: (id: string) => void;
+  variant: 'well' | 'popover';
+  /** The well's way out. The popover has its own (Escape, a click outside). */
+  onDone?: () => void;
+}) {
+  const items = usePlannerStore((s) => s.items);
+  const [query, setQuery] = useState('');
+  /** Index into `candidates` of the highlighted row. See the keyboard block. */
+  const [cursor, setCursor] = useState(0);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const activeRef = useRef<HTMLButtonElement>(null);
+
+  /**
+   * STAYS OPEN. Collecting is almost never a single act — a routine is built by
+   * adding four things in a row — and closing after each one made that four
+   * round trips through a button that is 30px away and re-focuses the field
+   * each time. The query clears instead, which drops back to the browse list
+   * with the item just added removed from it, so the next one is one ↓↵ away.
+   *
+   * The cursor goes home rather than staying put: the list underneath has
+   * changed completely (a cleared query re-shows the whole pool), so holding an
+   * index would leave the highlight on an unrelated row.
+   */
+  const add = (id: string) => {
+    onPick(id);
+    setQuery('');
+    setCursor(0);
+    searchRef.current?.focus();
+  };
+
+  /**
+   * BROWSES ON AN EMPTY QUERY. The old picker showed nothing until you typed,
+   * which quietly required you to already know the title of the thing you were
+   * looking for — in a console whose entire job is finding one of thirty
+   * objects you have half-forgotten. An empty query now means "everything
+   * eligible", and typing narrows it.
+   *
+   * `isCollectible` is the registry's answer, not a type check, so a
+   * user-defined type joins routines the day it is created.
+   */
+  const q = query.trim().toLowerCase();
+  const admits = eligible ?? isCollectible;
+  const pool = items.filter((i) => admits(i) && !memberIds.includes(i.id));
+  const matches = q ? pool.filter((i) => i.title.toLowerCase().includes(q)) : pool;
+  const candidates = matches.slice(0, variant === 'popover' ? POPOVER_LIMIT : PICKER_LIMIT);
+  const overflow = matches.length - candidates.length;
+
+  /**
+   * Clamped during render, not in an effect, and at BOTH ends.
+   *
+   * The top clamp is for the list shrinking underneath the cursor — an item
+   * deleted in another tab, an agent write, a redo — which the picker staying
+   * open across adds made a much longer window.
+   *
+   * The bottom clamp is for ↓ on an EMPTY list: `Math.min(active + 1,
+   * candidates.length - 1)` is `Math.min(1, -1)` there, so one press parks the
+   * cursor at -1 and it stays there when the list refills.
+   */
+  const active = Math.max(0, Math.min(cursor, candidates.length - 1));
+
+  // Keep the highlight on screen. `nearest` so it never scrolls when it doesn't
+  // have to, which is what keeps the list from lurching on every keystroke.
+  useEffect(() => {
+    activeRef.current?.scrollIntoView({ block: 'nearest' });
+  }, [active, query]);
+
+  return (
+    <div className="flex flex-col gap-1">
+      <div className="flex items-center gap-1.5 pl-[7px]">
+        <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+        <Input
+          ref={searchRef}
+          autoFocus
+          placeholder="Find an item…"
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            // Home on every keystroke: the list under the cursor is a
+            // different list now, so the old index points at nothing the user
+            // chose.
+            setCursor(0);
+          }}
+          /**
+           * The whole keyboard contract, on the input rather than the rows.
+           *
+           * The rows are buttons and could take focus themselves, but then ↓
+           * from the field moves focus OUT of it and the next character typed
+           * goes nowhere. This is the combobox pattern for exactly that
+           * reason: focus never leaves the input, `aria-activedescendant`
+           * tells a screen reader which row is current, and the highlight is
+           * ours to draw.
+           */
+          role="combobox"
+          aria-expanded
+          aria-controls={`${testPrefix}-member-candidates`}
+          aria-activedescendant={
+            candidates[active] ? `${testPrefix}-cand-${candidates[active].id}` : undefined
+          }
+          onKeyDown={(e) => {
+            if (e.key === 'ArrowDown') {
+              e.preventDefault();
+              setCursor(Math.min(active + 1, candidates.length - 1));
+            } else if (e.key === 'ArrowUp') {
+              e.preventDefault();
+              setCursor(Math.max(active - 1, 0));
+            } else if (e.key === 'Enter') {
+              // Guarded on the row existing, not on the list being non-empty:
+              // Enter on "Nothing matches" must do nothing, not add whatever
+              // happens to be at index 0 of a stale render.
+              if (candidates[active]) {
+                e.preventDefault();
+                add(candidates[active].id);
+              }
+            }
+          }}
+          className="h-8 flex-1 border-0 bg-transparent px-1 shadow-none"
+          data-testid={`${testPrefix}-member-search`}
+        />
+        {/* The popover says how many more a narrower query finds in the field
+            itself, so the list ends at its last row with no line under it. */}
+        {variant === 'popover' && overflow > 0 && (
+          <span
+            className="text-muted-foreground font-num shrink-0 pr-1.5 text-[11px]"
+            data-testid={`${testPrefix}-member-more`}
+          >
+            {candidates.length} of {matches.length}
+          </span>
+        )}
+        {/* THE WAY OUT for the well, and it became load-bearing when the picker
+            started staying open across adds: the console is a vaul bottom SHEET
+            below `md`, where there is no Escape key at all. */}
+        {onDone && (
+          <button
+            type="button"
+            onClick={onDone}
+            className="text-muted-foreground hover:text-foreground hover:bg-accent flex h-7 shrink-0 items-center rounded-[5px] px-2 text-xs font-medium"
+            data-testid={`${testPrefix}-member-add-done`}
+          >
+            Done
+          </button>
+        )}
+      </div>
+      {pickerHint && variant === 'well' && (
+        <p className="text-muted-foreground px-[7px] text-[11px]" data-testid={`${testPrefix}-member-hint`}>
+          {pickerHint}
+        </p>
+      )}
+
+      <div id={`${testPrefix}-member-candidates`} role="listbox" className="space-y-px">
+        {candidates.map((item, i) => (
+          <button
+            key={item.id}
+            ref={i === active ? activeRef : undefined}
+            type="button"
+            role="option"
+            id={`${testPrefix}-cand-${item.id}`}
+            aria-selected={i === active}
+            // Pointer and keyboard drive the SAME cursor, so moving the
+            // mouse over a row and pressing Enter does what the highlight
+            // says. Two independent "current" notions is the classic way a
+            // picker adds the wrong thing.
+            onMouseMove={() => i !== active && setCursor(i)}
+            onClick={() => add(item.id)}
+            data-testid={`${testPrefix}-member-candidate`}
+            data-item-id={item.id}
+            data-active={i === active || undefined}
+            className={cn(
+              'flex h-8 w-full items-center gap-[9px] rounded-[5px] px-[7px] text-left text-sm',
+              i === active && (variant === 'popover' ? 'bg-accent' : 'bg-background')
+            )}
+          >
+            {/* The same glyph as the row it will become. Without it, choosing
+                between two same-titled items is a coin flip — and this is the
+                half where getting it wrong is a write. */}
+            <TypeGlyph item={item} />
+            <span className="min-w-0 flex-1 truncate">{item.title}</span>
+          </button>
+        ))}
+
+        {/* Inside the list, never a replacement screen, so ↑/↓/↵ keep meaning
+            something and the field keeps focus. Two different empties: one
+            is a query that found nothing, the other is a pool with nothing
+            left in it, and telling someone to refine a search that cannot
+            succeed is the worse of the two wrong answers. */}
+        {candidates.length === 0 && (
+          <p className="text-muted-foreground px-[7px] py-1 text-xs" data-testid={`${testPrefix}-member-none`}>
+            {pool.length === 0
+              ? (emptyPoolLabel ?? 'Everything is already in here.')
+              : `Nothing matches “${query.trim()}”.`}
+          </p>
+        )}
+      </div>
+      {variant === 'well' && overflow > 0 && (
+        <p className="text-muted-foreground/70 px-[7px] py-1 text-[11px]" data-testid={`${testPrefix}-member-more`}>
+          {overflow} more. Type to narrow.
+        </p>
+      )}
+      {/* Who qualifies, as the popover's quiet foot rather than a line above
+          the results: it is the answer to "why isn't my item here?", read
+          after looking, not before. */}
+      {pickerHint && variant === 'popover' && (
+        <p
+          className="text-muted-foreground border-t px-[7px] pt-1.5 pb-0.5 text-[11px]"
+          data-testid={`${testPrefix}-member-hint`}
+        >
+          {pickerHint}
+        </p>
+      )}
     </div>
   );
 }
@@ -729,6 +851,9 @@ export function RoutineMemberList({
   onRemove,
   testPrefix = 'season',
   emptyHint,
+  picker = 'well',
+  openOnMount = false,
+  removeIcon = 'trash',
 }: {
   season: { id: string; name: string };
   live: boolean;
@@ -740,9 +865,15 @@ export function RoutineMemberList({
   testPrefix?: string;
   /** See ItemMemberList's `emptyHint`. */
   emptyHint?: string;
+  /** See ItemMemberList's `picker`. */
+  picker?: 'well' | 'popover';
+  /** Open the picker at once — the create form's "Routines" adder, which has no add row to focus. */
+  openOnMount?: boolean;
+  /** See ItemMemberList's `removeIcon`. */
+  removeIcon?: 'trash' | 'x';
 }) {
   const liveIds = useLiveItemIds();
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(openOnMount);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Same render-phase reset as ItemMemberList, and for the same reason: above
@@ -762,12 +893,29 @@ export function RoutineMemberList({
   // and that handler never got in front of anything. The ladder goes through
   // Radix's own `onEscapeKeyDown` instead.
   useEscapeRung(() => {
-    if (!adding || !inActiveSection(rootRef.current)) return false;
+    if (!adding || picker === 'popover' || !inActiveSection(rootRef.current)) return false;
     setAdding(false);
     return true;
   });
 
   const none = candidates.length === 0;
+  // Nothing left to pick closes the picker rather than leaving it armed: with
+  // `open={adding && !none}` a stale `adding` would spring it open unasked the
+  // moment a routine became available again.
+  if (none && adding) setAdding(false);
+
+  const pill = (
+    <LinkExistingPill
+      testId={`${testPrefix}-routine-add`}
+      aria-expanded={adding && !none}
+      // Disabled with its reason on hover, rather than hidden: a missing
+      // pill reads as "seasons cannot hold routines".
+      disabled={none}
+      title={none ? 'Every routine is already here' : undefined}
+      className="disabled:pointer-events-none disabled:opacity-50"
+      onClick={picker === 'popover' ? undefined : () => setAdding((a) => !a)}
+    />
+  );
 
   return (
     <div ref={rootRef}>
@@ -778,16 +926,36 @@ export function RoutineMemberList({
         hint={members.length === 0 && !adding ? emptyHint : undefined}
         hintTestId={`${testPrefix}-routines-empty-hint`}
         action={
-          <LinkExistingPill
-            testId={`${testPrefix}-routine-add`}
-            aria-expanded={adding}
-            // Disabled with its reason on hover, rather than hidden: a missing
-            // pill reads as "seasons cannot hold routines".
-            disabled={none}
-            title={none ? 'Every routine is already here' : undefined}
-            className="disabled:pointer-events-none disabled:opacity-50"
-            onClick={() => setAdding((a) => !a)}
-          />
+          picker === 'popover' ? (
+            <PickerPopover
+              open={adding && !none}
+              onOpenChange={setAdding}
+              trigger={pill}
+              testId={`${testPrefix}-routine-popover`}
+              focusFirst
+            >
+              <div className="flex flex-col gap-px">
+                {candidates.map((routine) => (
+                  <button
+                    key={routine.id}
+                    type="button"
+                    onClick={() => {
+                      setAdding(false);
+                      onRequestAttach(routine);
+                    }}
+                    data-testid={`${testPrefix}-routine-candidate`}
+                    data-routine-id={routine.id}
+                    className="hover:bg-accent focus:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm outline-none"
+                  >
+                    <CategoryIcon glyph={routine.icon} name={routine.name} className="h-3.5 w-3.5" />
+                    <span className="truncate">{routine.name}</span>
+                  </button>
+                ))}
+              </div>
+            </PickerPopover>
+          ) : (
+            pill
+          )
         }
       >
         {members.length > 0 && (
@@ -819,7 +987,7 @@ export function RoutineMemberList({
                     label={`Remove ${routine.name} from ${season.name}`}
                     testId={`${testPrefix}-routine-remove`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    {removeIcon === 'x' ? <X className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
                   </RailButton>
                 </ControlRail>
               </div>
@@ -827,7 +995,7 @@ export function RoutineMemberList({
           </div>
         )}
 
-        {adding && !none && (
+        {adding && !none && picker === 'well' && (
           <div className="flex flex-col gap-1">
             {candidates.map((routine) => (
               <button
