@@ -335,7 +335,7 @@ function LoginPageInner() {
               height keeps the form still while a larger hover flavor is up. */}
           <div className="space-y-1.5">
             <Wordmark className="h-[13px]" />
-            <p className="text-[11.5px] text-muted-foreground">Say it like “diesel”.</p>
+            <p className="text-[11.5px] text-muted-foreground">dee·zul, like Vin Diesel minus the Vin</p>
           </div>
 
           {handoffUrl ? (
