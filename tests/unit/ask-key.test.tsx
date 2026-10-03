@@ -541,6 +541,89 @@ describe("the key's paint (app/globals.css)", () => {
     expect(block).not.toMatch(/ring\/|color-mix\([^)]*--ring/);
   });
 
+  // The key alone wears its ring on the key, and ring and line read as one:
+  // the rim stops being the light and becomes the line (--success-text in
+  // light, the ring's colour in dark, where the outline steps 1px in over it).
+  it('focuses the key alone with its rim as the line: the plate drops its outline, and nothing outranks the rim', () => {
+    const all = rules(stripComments(askBlock()));
+    const find = (sel: string) => {
+      const r = all.find((x) => x.selectors.includes(sel));
+      expect(r, sel).toBeDefined();
+      return r!;
+    };
+    const decl = (r: Rule, prop: string) => values(r.body, prop).at(-1);
+    expect(decl(find("[data-ask-opener][data-form='icon']:focus-visible"), 'outline')).toBe('none');
+    const keySel = "[data-ask-opener][data-form='icon']:focus-visible [data-ask-key]";
+    const key = find(keySel);
+    for (const p of ['--ask-key-accent', '--ask-key-pair', '--ask-key-rim']) expect(decl(key, p), p).toBe('var(--ask-focus-rim)');
+    expect(decl(key, 'outline')).toBe('2px solid var(--ring)');
+    expect(decl(key, 'outline-offset')).toBe('var(--ask-focus-rim-offset)');
+    // The line's colour and the outline's step, per mode.
+    const light = find('[data-ask-opener]');
+    const dark = find('.dark [data-ask-opener]');
+    expect(decl(light, '--ask-focus-rim')).toBe('var(--success-text)');
+    expect(decl(light, '--ask-focus-rim-offset')).toBe('0px');
+    expect(decl(dark, '--ask-focus-rim')).toBe('var(--ring)');
+    expect(decl(dark, '--ask-focus-rim-offset')).toBe('-1px');
+    // No rule that paints the key's rim on the key alone outranks the focus.
+    for (const r of all) {
+      if (r === key || !['--ask-key-accent', '--ask-key-pair', '--ask-key-rim'].some((p) => values(r.body, p).length)) continue;
+      for (const s of r.selectors) {
+        if (!s.endsWith('[data-ask-key]') || s.includes("[data-form='full']")) continue;
+        expect(beats(key, keySel, r, s), `${s} outranks the key alone's focus`).toBe(true);
+      }
+    }
+  });
+
+  // Notepad Retro re-points the accent under whichever look is on, so its
+  // partner has to win over every look's, in both modes.
+  it("gives Notepad Retro its own partner over every look's, in light and dark", () => {
+    const all = rules(stripComments(askBlock()));
+    const pairs = all.filter((r) => values(r.body, '--ask-icon-pair').length);
+    const retro = pairs.filter((r) => r.selectors.some((s) => s.includes("[data-layout-skin='retro']")));
+    const looks = pairs.filter((r) => r.selectors.some((s) => /\[data-look-(?:light|dark)=/.test(s)));
+    expect(looks.length).toBeGreaterThanOrEqual(4);
+    for (const mode of [':root:not(.dark) ', ':root.dark ']) {
+      const own = retro.find((r) => r.selectors.every((s) => s.startsWith(mode)));
+      expect(own, `a Retro partner under ${mode.trim()}`).toBeDefined();
+      for (const s of own!.selectors) {
+        for (const look of looks) {
+          for (const ls of look.selectors) expect(beats(own!, s, look, ls), `${s} loses to ${ls}`).toBe(true);
+        }
+      }
+    }
+  });
+
+  // The plain and masthead headers take the capsule's material away, so the
+  // whole key is drawn on the page: the page's colour (Notebook's page in the
+  // masthead) and a 1px --input lip, at rest and pressed.
+  it('draws the whole key on the page in the plain and masthead headers, at rest and pressed', () => {
+    const all = rules(stripComments(askBlock()));
+    const fill = (r: Rule) => values(r.body, '--ask-key-fill').at(-1);
+    const find = (sel: string) => {
+      const r = all.find((x) => x.selectors.includes(sel));
+      expect(r, sel).toBeDefined();
+      return r!;
+    };
+    const DRAWN = ":is([data-layout-header='plain'], [data-layout-header='masthead'])";
+    const plainRest = `${DRAWN} [data-ask-opener][data-form='full'] [data-ask-key]`;
+    const mastRest = "[data-layout-header='masthead'] [data-ask-opener][data-form='full'] [data-ask-key]";
+    const plainPressed = `${DRAWN} [data-ask-opener][data-form='full']:active [data-ask-key]`;
+    const mastPressed = "[data-layout-header='masthead'] [data-ask-opener][data-form='full']:active [data-ask-key]";
+    expect(fill(find(plainRest))).toBe('var(--canvas)');
+    expect(values(find(plainRest).body, 'box-shadow').at(-1)).toBe('inset 0 -1px 0 0 var(--input)');
+    expect(fill(find(mastRest))).toBe('var(--nb-page, var(--canvas))');
+    expect(fill(find(plainPressed))).toBe('var(--canvas)');
+    expect(fill(find(mastPressed))).toBe('var(--nb-page, var(--canvas))');
+    // Each wins over the raised key's fill in the same state.
+    const raisedRest = find('[data-ask-key]');
+    const raisedPressed = find('[data-ask-opener]:active [data-ask-key]');
+    expect(beats(find(plainRest), plainRest, raisedRest, '[data-ask-key]')).toBe(true);
+    expect(beats(find(mastRest), mastRest, find(plainRest), plainRest)).toBe(true);
+    expect(beats(find(plainPressed), plainPressed, raisedPressed, '[data-ask-opener]:active [data-ask-key]')).toBe(true);
+    expect(beats(find(mastPressed), mastPressed, find(plainPressed), plainPressed)).toBe(true);
+  });
+
   // In light the ring carries a 1px --success-text line inside it, so the pair
   // reads at 3:1 on paper (the lime ring alone is 1.4:1). The plain and
   // masthead headers' wash took it away from a focused key under the pointer
