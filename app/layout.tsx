@@ -49,7 +49,7 @@ const dmMono = DM_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'dsul | Do Stuff Unlimited',
+  title: 'dsul - Do Stuff Unlimited',
   description: 'A calm, minimal daily planner designed for neurodivergent minds. Plan your day with gentle structure.',
   generator: 'v0.app',
   manifest: '/manifest.json',
