@@ -77,16 +77,22 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `null` a cleared field sends, which a missing key is not), checked on Linux
   against the fixture. `Registry.swift` gains the notes gate, the title
   placeholder, Delete's words and a custom type's own label (`ItemTypeLabel`,
-  `caps(_:labels:)`).
+  `caps(_:labels:)`). 2b adds `subtaskItem` (the store's `addTask` for a new
+  subtask) and `resettingStreak` (`resetHabitStreak`) to `ItemEdit.swift`,
+  `canAddSubtask` to `Registry.swift`, `BulkLines.swift` ← `lib/bulk-add.ts`
+  (`isBulkPaste`, `splitBulkLinesWithMeta`: the list markers matched by hand,
+  with JS's `\s` and ASCII digits, since NSRegularExpression's are
+  Unicode-wide) and `EditCopy.swift` ← `EDIT_COPY` and `streakRunText`
+  (lib/item-edit.ts).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
   `ios/Dsul/Auth`: `AuthStore`, `TokenStore` (Keychain, or memory in tests),
   `SignInView`. `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
-  `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField` and
-  `NotesEditor`) and `ItemSheetModel`, which decides what it says and offers
-  apart from the views.
+  `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField`,
+  `NotesEditor`, `SubtaskField` and `StreakPopover`) and `ItemSheetModel`,
+  which decides what it says and offers apart from the views.
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
 
@@ -235,10 +241,12 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
 ## Item detail, part 2
 Six PRs, each shipping its routes with the app: 2a the title, the notes and
 Delete (below); 2b Add a subtask and Reset streak (in the streak chip's
-popover); 2c the chips as controls and "+ Add property" (priority, times a
-day, the reminder); 2d date and time; 2e repeat; 2f project, routines and
-seasons. An older server's `writes` hides any editor it doesn't take, so the
-deploy order doesn't matter.
+popover), and the Streaks switch honoured (below); 2c the chips as controls
+and "+ Add property" (priority, times a day, the reminder); 2d date and time;
+2e repeat; 2f project, routines and seasons. An older server's `writes` hides
+any editor it doesn't take, so the deploy order doesn't matter: against one
+without `addSubtask` there is no Add a subtask row, and without
+`resetStreak` the streak popover has no Reset.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
@@ -332,6 +340,89 @@ Delete. Delete's words are fixed on every surface, below.
   its subtasks still live are deleted on the way (`deleteItem`'s own cascade
   only logs a failure, so a retry is what repairs it); no row at all is 404
   `not_found`.
+  2b's `addSubtask` (`id`, lowercased, and `title`, trimmed, 1-500: new text,
+  so the plain cap) is refused on a habit (400 `no_subtasks`) and under a
+  subtask (409 `nested`), creates the task through `createItem` with
+  `{notify:false}` and capture's `nextTaskOrder`, and answers 201 `{ok, id}`.
+  A retry whose id is taken answers 200 only for this user's live task under
+  this parent, else 409 `conflict`. The parent is then read again: one that
+  went to the Trash between the reads (on another device) takes the new child
+  with it, and the answer is 409 `parent_gone`. `resetStreak` (no fields)
+  reads `streak` on top of the shared row (never `completed_dates`), refuses
+  a type without a streak counter (400
+  `no_streak`), and writes `{streak: 0}`, never the completion history; at 0
+  or null it is 200 with no write and no event.
+- **Add a subtask** (2b). The Subtasks section shows whenever the item has
+  subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
+  itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
+  heading to VoiceOver on a task with none, with "N of M" only once it has
+  some, as on the web. Its last row, "Add a subtask" in `.secondary`, its
+  plus in the subtask circles' column so the words line up with the titles
+  above and stay put when the field swaps in, is a full-width button that
+  swaps in `SubtaskField`: a
+  vertical `TextField` labelled "New subtask", with the web's placeholder
+  ("Add subtask…"), `.submitLabel(.next)` and the label colour's caret,
+  focused from its own `.onAppear`. A Return adds one subtask and keeps the
+  keyboard, and the page scrolls the field back into view as each new row
+  lands above it. iOS may report a Return as a line break in the text, as
+  `.onSubmit`, or as both in either order, so `ItemSheetModel.subtaskEntry` /
+  `subtaskSubmit` is a small pure state machine (`SubtaskReturn`) that adds on
+  whichever report comes first and lets the other go: one Return, one
+  subtask. A Return on an empty field ends entry. A paste of two or more
+  lines (`isBulkPaste`) adds one subtask per non-empty line, list markers
+  stripped, each clamped to 500 UTF-16 units, up to 500 lines (past that, the
+  banner says so in the web's words), and leaves what was already typed in
+  the field, where the web clears it. A line pasted with a trailing line
+  break is added at once, as a typed Return would be. Leaving the field (a
+  tap on another field, Done, a swipe down, Close, dragging the keyboard
+  away) adds what was typed, as Reminders does; switching apps never does,
+  and leaves the text in the field. VoiceOver moves to the field as entry
+  starts, and back to the row as it ends, unless focus went to the title or
+  the notes, where VoiceOver stays; it hears "Added Eggs" or "Added 3
+  subtasks". The step
+  (`subtaskItem`) is the store's `addTask`: a `task` even under a custom
+  item, pending, unscheduled, `order` the task count, nothing inherited.
+  Each subtask is its own `addSubtask` write to the parent's route, so a
+  pasted list's subtasks share one `order` and list by `created_at`
+  (load_planner's tiebreak), where the web's `addTasksBulk` writes base+i in
+  one INSERT: the same list either way. A paste sent offline fails once per
+  line, and `show` says "Couldn't reach dsul. Checking what was saved…" aloud
+  once, not once per line: it speaks only a banner that isn't already up with
+  the same words.
+- **Reset streak** (2b). The streak chip is now a button (a trailing chevron
+  after the week's dots, the count in the label colour, in a hit frame at
+  least 44pt square; VoiceOver hears the same label, the button trait and the
+  hint "Shows this week", plus ", and Reset streak" when it is offered). It
+  opens `StreakPopover`: this week's seven days drawn larger, "N days in a
+  row" or "No streak yet" (`streakRunText`, the web's flame tooltip), and, when
+  offered, Reset streak in red after a divider. At accessibility sizes it is a
+  half-height sheet with a grabber (`presentationCompactAdaptation`),
+  scrolling when its words need more. The
+  confirm is the popover's own `confirmationDialog`, since the page showing
+  the popover can't also show a dialog: "Reset streak?", the web's message
+  (`EDIT_COPY.resetStreakMessage`), Reset streak and Cancel, in sentence case
+  on the phone while the web's dialog keeps "Reset Streak?". It is offered
+  (`offers(.resetStreak)`) by the verb's gate (a habit, a streak above 0,
+  Streaks on), the server's `streakCounter` and `canWrite("resetStreak")`, and
+  never enters the bar or ⋯. The step (`resettingStreak`) sets the streak to
+  0 and touches nothing else, so the week's done days stay done. Every chip
+  now sits in a slot (`chipSlot()`: 6pt above and below, at least 44pt tall)
+  and the flow's line spacing is 0, so the lines stay 12pt apart at every
+  text size whichever chip is tallest. The flow takes `.padding(.vertical,
+  -6)`, so the capsules keep part 1's distance from the notes above and the
+  subtasks below. One overlap is left: under notes long enough for Show all,
+  Show all's 12pt overhang (NotesEditor) and the slot's 6pt share 4pt of the
+  stack's 14pt gap, and the chip, drawn later and nearer, takes those taps.
+  The sample never shows it; if Show all's 44pt should hold there too, the
+  gap or NotesEditor changes in a later PR.
+- **Streaks** (2b). The payload's `settings.streaksEnabled` is the Streaks
+  extension (`resolveEnabled` over the user's `user_extensions` rows, on by
+  default), read in its own try/catch, so a failed read answers on rather
+  than failing the load; a missing key (an older server) or a non-boolean
+  reads on. Off hides the sheet's streak chip, and the flame, the count and
+  the spoken "streak N" on Today's List and Buckets rows, as the web hides
+  them (task-row.tsx) and as the extension promises ("hides them
+  everywhere"). The phone honours the switch but can't turn it on or off.
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -353,13 +444,20 @@ Delete. Delete's words are fixed on every surface, below.
   `updateHabit`; `deleteTask` / `deleteHabit`): each case's exact wire body,
   the refusal, the `updateItem` payload, the store's end item and the ids it
   deleted, in order, plus `String.prototype.trim` cases and the caps
-  themselves (`limits`: `EDIT_LIMITS` and `OUTER_LIMITS`). Vitest checks
+  themselves (`limits`: `EDIT_LIMITS`, `OUTER_LIMITS`, `NEW_TITLE_LIMIT` and
+  `MAX_BULK_ITEMS`). From 2b a new subtask's case also holds the row the
+  store's `addTask` `created` (its id pinned), a reset's runs the verb as the
+  phone offers it, and three more keys pin what the phone ports by hand:
+  `bulk` (lib/bulk-add.ts on line breaks, every list marker, JS's `\s`, the
+  cap), `streakRun` (`streakRunText`) and `copy` (`EDIT_COPY`). Vitest checks
   lib/item-edit.ts and replays every case through the route; DsulCore checks
-  `editAllowed`, `editing`, `deleting`, `reinserting`, `ItemWriteBody`,
-  `jsTrim` and `EditLimits` against the same file.
-- **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-4 and
-  9-13: the title, the notes, the keyboard, Delete, offline, VoiceOver, the
-  largest text size, the lime, and the platform behaviours they rest on).
+  `editAllowed`, `editing`, `deleting`, `reinserting`, `subtaskItem`,
+  `canAddSubtask`, `resettingStreak`, `ItemWriteBody`, `BulkLines`,
+  `EditCopy`, `jsTrim` and `EditLimits` against the same file.
+- **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-6 and
+  9-13: the title, the notes, the keyboard, Delete, adding subtasks, Reset
+  streak and Streaks off, offline, VoiceOver, the largest text size, the
+  lime, and the platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -458,13 +556,13 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
-  routines, seasons, the user's item types, five settings and the `writes` it
+  routines, seasons, the user's item types, six settings and the `writes` it
   takes, `completedDates` windowed to 400 days), `POST /api/app/items`
   (capture, under the phone's own lowercase id, so a retry is answered 200
   for the same row) and `POST /api/app/items/:id` (`complete` with a date, an
   end state and a counted habit's tally, `schedule` with a date and `HH:mm`,
-  or the item sheet's `skip`, `move`, `pause`, `title`, `notes` and `delete`,
-  above). Bearer Supabase access token only;
+  or the item sheet's `skip`, `move`, `pause`, `title`, `notes`, `delete`,
+  `addSubtask` and `resetStreak`, above). Bearer Supabase access token only;
   RLS on a user-scoped client is the tenant guard; an Auth outage is 503,
   never 401, and the phone never signs out on a 503.
 - **The day** is the stored timezone, trimmed, else the device's
@@ -515,10 +613,11 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   fields (a carry keeps the time a failed drop set, a skip leaves the tally a
   failed tick set, a resume of an item the server never paused writes
   nothing), so it is replayed, never trusted. A write's 200 can also prove a
-  row it hangs on without changing it (`proves`: from 2b, a new subtask
-  proves its parent), so a failed capture takes its item with it unless a
-  later write that names or proves it landed: the route answers 404 for a
-  missing row. A delete answered 404 counts as landed only with the code
+  row it hangs on without changing it (`proves`): an `addSubtask` names the
+  new child it creates (`.absent(created:)`, so a failed one takes the child
+  with it) and proves its parent, so a failed capture takes its item with it
+  unless a later write that names or proves it landed: the route answers 404
+  for a missing row. A delete answered 404 counts as landed only with the code
   `not_found` (the row is gone either way); a 404 without it (an edge's, an
   HTML page) is a failure. A subject with a write still queued
   (`queuedBySubject` counts subjects and proves), or under a queued delete
@@ -596,6 +695,15 @@ functions:
 - **Delete is to the Trash**, as on the web: `deleteItem` stamps
   `deleted_at`, the web's Trash restores for 30 days, and a delete of an item
   already there answers 200.
+- **A new subtask is created as the web creates it**: `createItem` with
+  `{notify:false}`, a `task` with capture's `order` (`nextTaskOrder`, the
+  web's `tasks.length`), one write per subtask. So the lines of a paste tie on
+  `order` and keep paste order by `created_at`, unlike the web's one-INSERT
+  `addTasksBulk`, which writes base+i. The parent is read again after the
+  insert, and a parent deleted in between sends the child to the Trash too
+  and answers 409 `parent_gone`.
+- **Reset streak writes `streak` alone**, as `resetHabitStreak` does: never
+  `completedDates` or `dailyCounts`, and nothing at all at 0.
 - **The live Beeminder post** (`reportLiveCompletion`) runs after every
   `set_item_completion`, as the browser's `reportCompletion` does after a
   tick and `/api/reminders/act` after its own: through `after()` once the
@@ -609,8 +717,9 @@ recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
 streak stays an opaque stored counter. Item detail ports `lib/item-verbs.ts`'s
 gates, labels and details (its `run`s stay the web's; the phone's optimistic
 steps are `VerbWrites.swift`, checked against the real store), and part 2
-`lib/item-edit.ts` with the store's delete (`ItemEdit.swift`, checked against
-`edit-writes.json`). Shared JSON fixtures:
+`lib/item-edit.ts` with the store's delete, new subtask and streak reset
+(`ItemEdit.swift`), and `lib/bulk-add.ts`'s line splitting (`BulkLines.swift`),
+all checked against `edit-writes.json`. Shared JSON fixtures:
 Vitest runs the real TS and writes cases and expected results
 (`tests/fixtures/recurrence/`, `tests/fixtures/day/`, and
 `tests/fixtures/app/planner-response.json` for the payload), DsulCore's tests
@@ -642,13 +751,13 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of item detail part 2 (Add a
-subtask and Reset streak, which Round 5 moves into the streak chip's popover,
-in 2b; the chips as controls and "+ Add property", 2c-2f), undo or restore
-after a delete (the web's Trash restores it), Change type, Duplicate and Copy
-link, the rest of the sheet (a routine's or a season's hold, the goal chip
-once goals are in the payload, the Beeminder row, the Streaks switch, the
-thread and Ask, Focus), sign-in with Apple,
+from the bar to the braindump sheet, the rest of item detail part 2 (the
+chips as controls and "+ Add property", 2c-2f), undo or restore after a
+delete (the web's Trash restores it), Change type, Duplicate and Copy link,
+the rest of the sheet (a routine's or a season's hold, the goal chip once
+goals are in the payload, the Beeminder row, the Streaks switch, which the
+phone honours, in the sheet and on Today's rows, but can't turn on or off,
+the thread and Ask, Focus), sign-in with Apple,
 universal links (the email link uses the custom scheme), unschedule, resize
 and moving existing blocks from the phone, the overdue tray, sinking completed rows,
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the

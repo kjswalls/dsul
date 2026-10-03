@@ -2,7 +2,8 @@ import Foundation
 import Testing
 import DsulCore
 
-// ItemWriteBody.swift: the wire JSON of the item sheet's edits and its Delete.
+// ItemWriteBody.swift: the wire JSON of the item sheet's edits, its Delete,
+// Add a subtask and Reset streak.
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -15,6 +16,9 @@ private func json(_ body: ItemWriteBody) throws -> JSONValue {
     let data = try JSONEncoder().encode(body)
     return try JSONDecoder().decode(JSONValue.self, from: data)
 }
+
+/// A new subtask's id, as `UUID` holds it (uppercase when printed).
+private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
 
 @Suite struct ItemWriteBodyTests {
     @Test func eachBodyIsTheWireJSON() throws {
@@ -48,6 +52,13 @@ private func json(_ body: ItemWriteBody) throws -> JSONValue {
         #expect(title == JSONValue.object(["action": .string("title"), "title": .string("Draft Q4 plan")]))
         let delete = try json(ItemWriteBody.delete)
         #expect(delete == JSONValue.object(["action": .string("delete")]))
+        let add = try json(ItemWriteBody.addSubtask(id: eggs, title: "Eggs"))
+        #expect(add == JSONValue.object([
+            "action": .string("addSubtask"), "id": .string("22222222-2222-4222-8222-22222222222a"),
+            "title": .string("Eggs"),
+        ]))
+        let reset = try json(ItemWriteBody.resetStreak)
+        #expect(reset == JSONValue.object(["action": .string("resetStreak")]))
     }
 
     /// APIClient encodes with sorted keys; this is the request it sends.
@@ -58,6 +69,12 @@ private func json(_ body: ItemWriteBody) throws -> JSONValue {
         #expect(String(decoding: cleared, as: UTF8.self) == #"{"action":"notes","notes":null}"#)
         let delete = try encoder.encode(ItemWriteBody.delete)
         #expect(String(decoding: delete, as: UTF8.self) == #"{"action":"delete"}"#)
+        // The id lowercase, as Postgres stores it and the route parses it.
+        let add = try encoder.encode(ItemWriteBody.addSubtask(id: eggs, title: "Eggs"))
+        #expect(String(decoding: add, as: UTF8.self)
+            == #"{"action":"addSubtask","id":"22222222-2222-4222-8222-22222222222a","title":"Eggs"}"#)
+        let reset = try encoder.encode(ItemWriteBody.resetStreak)
+        #expect(String(decoding: reset, as: UTF8.self) == #"{"action":"resetStreak"}"#)
     }
 
     /// The action is the name `writes` lists, so the app can ask `canWrite`
@@ -66,6 +83,8 @@ private func json(_ body: ItemWriteBody) throws -> JSONValue {
         #expect(ItemWriteBody.edit(ItemEdit.title("A")).action == "title")
         #expect(ItemWriteBody.edit(ItemEdit.notes(nil)).action == "notes")
         #expect(ItemWriteBody.delete.action == "delete")
+        #expect(ItemWriteBody.addSubtask(id: eggs, title: "Eggs").action == "addSubtask")
+        #expect(ItemWriteBody.resetStreak.action == "resetStreak")
         #expect(ItemEdit.title("A").action == "title")
         #expect(ItemEdit.notes("B").action == "notes")
     }

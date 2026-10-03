@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { Bot, Flame, Loader2 } from 'lucide-react';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { agentStatusView, hasAgentState } from '@/lib/agent-status';
+import { streakRunText } from '@/lib/item-edit';
 import type { Priority, RepeatFrequency } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -221,10 +222,7 @@ export function PriorityGlyph({ priority, className }: { priority: Priority; cla
 export function StreakFlame({ streak, className }: { streak: number; className?: string }) {
   const active = streak > 0;
   return (
-    <RailTooltip
-      label="Streak"
-      detail={active ? `${streak} ${streak === 1 ? 'day' : 'days'} in a row` : 'No streak yet'}
-    >
+    <RailTooltip label="Streak" detail={streakRunText(streak)}>
       <span
         role="img"
         aria-label={active ? `${streak}-day streak` : 'No streak yet'}

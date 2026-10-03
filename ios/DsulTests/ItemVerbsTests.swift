@@ -355,13 +355,15 @@ import Testing
         #expect(posts == 0)
     }
 
+    /// Water is on a two-day streak, so Reset streak is offered too, in the
+    /// web's order: just before Delete.
     @Test func theCurrentServerListsEveryWrite() async throws {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
         let planner = await loaded(server)
         #expect(planner.writes == PlannerJSON.allWrites)
         let water = try #require(planner.item(PlannerJSON.water))
-        #expect(planner.offeredVerbs(for: water, day: .selected) == [.tick, .skip, .pause, .delete])
+        #expect(planner.offeredVerbs(for: water, day: .selected) == [.tick, .skip, .pause, .resetStreak, .delete])
     }
 
     // MARK: The sheet

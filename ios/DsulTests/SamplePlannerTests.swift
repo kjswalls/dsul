@@ -230,7 +230,7 @@ import Testing
         let today = planner.today
 
         let journal = first(planner, "Journal")
-        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause, .delete])
+        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause, .resetStreak, .delete])
         planner.skip(journal.id, on: today)
         #expect(planner.item(journal.id)?.skippedDates == ["2026-10-01"])
         #expect(planner.item(journal.id)?.status == "skipped")
@@ -288,6 +288,37 @@ import Testing
         planner.deleteItem(journal.id)
         #expect(planner.item(journal.id) == nil)
         #expect(planner.items.count == count - 1)
+    }
+
+    /// The sample adds a subtask and resets a streak too, sending nothing: a
+    /// subtask under a task that had none (but not under it in turn, nor
+    /// under a habit), and Meds' 41 days to 0 with the days ticked kept.
+    @Test func theSampleAddsASubtaskAndResetsAStreakWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.canWrite("addSubtask"))
+        #expect(planner.canWrite("resetStreak"))
+
+        let dentist = first(planner, "Call the dentist")
+        #expect(planner.subtasks(of: dentist.id).isEmpty)
+        #expect(planner.canAddSubtask(to: dentist))
+        let id = try #require(planner.addSubtask(dentist.id, title: "Ask about the crown"))
+        #expect(planner.subtasks(of: dentist.id).map(\.title) == ["Ask about the crown"])
+        #expect(!planner.dayItems.contains { $0.id == id })
+        let child = try #require(planner.item(id))
+        #expect(!planner.canAddSubtask(to: child))
+        #expect(planner.addSubtask(id, title: "Bring the X-rays") == nil)
+
+        let meds = first(planner, "Meds")
+        #expect(planner.showsStreak(for: meds))
+        #expect(!planner.canAddSubtask(to: meds))
+        #expect(planner.offeredVerbs(for: meds, day: .selected).contains(.resetStreak))
+        planner.resetStreak(meds.id)
+        let reset = try #require(planner.item(meds.id))
+        #expect(reset.streak == 0)
+        #expect(reset.completedDates == meds.completedDates)
+        #expect(planner.isDone(reset))
+        #expect(!planner.offeredVerbs(for: reset, day: .selected).contains(.resetStreak))
     }
 
     @Test func nextWeekStartsOnTheUsersWeekStart() {

@@ -45,6 +45,7 @@ struct ListLayout: View {
                                     isNow: planner.isOnToday && PlannerFormat.isNow(startMin: item.startMin,
                                                                                    durationMin: item.durationMin,
                                                                                    nowMin: nowMin),
+                                    streaksEnabled: planner.settings.streaksEnabled,
                                     onToggle: { toggle(item.id) },
                                     onOpen: { planner.open(item.id, day: .selected) })
                         }

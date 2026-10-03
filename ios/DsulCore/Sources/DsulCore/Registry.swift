@@ -6,9 +6,10 @@ import Foundation
 // capabilities the item sheet's verbs, chips and fields read (label, skippable,
 // pausable, dated, remindable, collectible, subtasks, the counters, priority,
 // notes), with the item-level questions built on them (`isSkippable`,
-// `isPausable`, `isRemindable`, `isCollectible`), and the words the sheet
-// borrows from the type's `form` (the title placeholder and Delete's
-// confirm), with Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
+// `isPausable`, `isRemindable`, `isCollectible`, and lib/item-edit.ts
+// `subtaskRefusal` as `canAddSubtask`), and the words the sheet borrows from
+// the type's `form` (the title placeholder and Delete's confirm), with
+// Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
 // Keep in step with `ITEM_TYPES` and `buildCustomTypeConfig` there.
 // Checked against the web by RegistryCapsFixtureTests
 // (tests/fixtures/day/caps.json).
@@ -293,6 +294,16 @@ private func isSubtask(_ item: Item) -> Bool {
 public func isPausable(_ item: Item) -> Bool {
     if isSubtask(item) { return false }
     return caps(item.typeName).pausable
+}
+
+/// May a subtask be added under `item`? lib/item-edit.ts `subtaskRefusal`,
+/// the server's gate: the type grows subtasks (`caps.subtasks`, else 400
+/// `no_subtasks`) AND `item` isn't a subtask itself (else 409 `nested`), since
+/// one level is all the web's panel renders and lib/db.ts refuses a
+/// grandchild. `caps` is the item's own (`caps(_:labels:)`), so a custom type
+/// answers as its template does. The app adds `canWrite("addSubtask")`.
+public func canAddSubtask(under item: Item, caps: ItemCaps) -> Bool {
+    return caps.subtasks && !isSubtask(item)
 }
 
 /// lib/item-registry.ts `isRemindable`: the capability AND not a subtask.

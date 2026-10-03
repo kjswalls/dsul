@@ -11,6 +11,10 @@ import Testing
 /// time ranges. From part 2: Delete's words, with a custom type's own label
 /// and the subtasks that go with it, and the typed fields' rules (what a
 /// keystroke may put in the title or the notes, and what leaving one sends).
+/// From 2b: what the subtask field adds as it is typed in or pasted into, one
+/// Return adding one subtask whichever way iOS reports it, the streak
+/// popover's words, Reset never entering the bar or ⋯, and a row with Streaks
+/// off.
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -167,6 +171,20 @@ import Testing
         #expect(SheetVerb.pauseUntil.verb == VerbID.pause)
         #expect(SheetVerb.delete.verb == VerbID.delete)
         #expect(SheetVerb.delete.slotID == "delete")
+    }
+
+    /// Reset streak is offered to a habit with a streak, and lives in the
+    /// streak chip's popover alone: the bar and ⋯ are what they would be
+    /// without it, done today or not.
+    @Test func resetStreakNeverEntersTheBarOrMore() throws {
+        let planner = makePlanner()
+        for title in ["Meds", "Journal"] {   // done today with 41; not yet, with 3
+            let habit = try named(planner, title)
+            let (ctx, offered, verbs) = sheet(planner, habit)
+            #expect(offered.contains(.resetStreak))
+            #expect(verbs == ItemSheetModel.verbs(habit, ctx, offered: offered.filter { $0 != .resetStreak }))
+            #expect(verbLabel(.resetStreak, habit, ctx) == "Reset streak")
+        }
     }
 
     // MARK: ⋯ and Delete
@@ -508,6 +526,154 @@ import Testing
         #expect(ItemSheetModel.tooLongToEdit(String(repeating: "t", count: 10_001), kind: .title) == true)
     }
 
+    // MARK: Adding a subtask
+
+    /// A typed Return adds the whole line, wherever the caret was, and the
+    /// field empties for the next one; an autocorrection that arrives with
+    /// the Return is kept.
+    @Test func aTypedReturnAddsTheLine() {
+        let added = SubtaskStep(titles: ["Eggs"], draft: "", end: false, capped: false, lastReturn: .fromText)
+        #expect(ItemSheetModel.subtaskEntry(previous: "Eggs", next: "Eggs\n", lastReturn: .none) == added)
+        #expect(ItemSheetModel.subtaskEntry(previous: "  Eggs ", next: "  Eggs \n", lastReturn: .none) == added)
+
+        let inside = ItemSheetModel.subtaskEntry(previous: "Eggs and milk", next: "Eggs\n and milk", lastReturn: .none)
+        #expect(inside == SubtaskStep(titles: ["Eggs and milk"], draft: "", end: false, capped: false,
+                                      lastReturn: .fromText))
+
+        let corrected = ItemSheetModel.subtaskEntry(previous: "Call teh", next: "Call the\n", lastReturn: .none)
+        #expect(corrected.titles == ["Call the"])
+        #expect(corrected.lastReturn == .fromText)
+    }
+
+    /// Return on an empty field, or one of spaces, ends entry and adds
+    /// nothing.
+    @Test func aReturnOnAnEmptyFieldEndsEntry() {
+        let ended = SubtaskStep(titles: [], draft: "", end: true, capped: false, lastReturn: .none)
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "\n", lastReturn: .none) == ended)
+        #expect(ItemSheetModel.subtaskEntry(previous: "  ", next: "  \n", lastReturn: .none) == ended)
+        #expect(ItemSheetModel.subtaskSubmit(draft: "", lastReturn: .none) == ended)
+        #expect(ItemSheetModel.subtaskSubmit(draft: " \n ", lastReturn: .none) == ended)
+        // A second Return that only `.onSubmit` reports, on the field the
+        // first one emptied.
+        #expect(ItemSheetModel.subtaskSubmit(draft: "", lastReturn: .fromSubmit("Eggs")) == ended)
+    }
+
+    /// The field's own write of the draft a Return answered puts nothing in,
+    /// so it keeps which report acted: the `.onSubmit` still to come finds
+    /// the Return taken. A deletion is the same.
+    @Test func theFieldsOwnWriteKeepsWhichReportActed() {
+        #expect(ItemSheetModel.subtaskEntry(previous: "Eggs\n", next: "", lastReturn: .fromText)
+                == SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .fromText))
+        #expect(ItemSheetModel.subtaskEntry(previous: "Milk", next: "Mil", lastReturn: .none)
+                == SubtaskStep(titles: [], draft: "Mil", end: false, capped: false, lastReturn: .none))
+    }
+
+    /// One Return, one subtask, whichever way iOS reports it: the line break
+    /// first and `.onSubmit` after, `.onSubmit` first and a late line break
+    /// after (on the emptied field, or on the line it took), or `.onSubmit`
+    /// alone. Each keeps entry going and leaves the next Return new.
+    @Test func oneReturnAddsOnceWhicheverWayItIsReported() {
+        // The line break first.
+        let typed = ItemSheetModel.subtaskEntry(previous: "Eggs", next: "Eggs\n", lastReturn: .none)
+        #expect(typed.titles == ["Eggs"])
+        let ownWrite = ItemSheetModel.subtaskEntry(previous: "Eggs\n", next: "", lastReturn: typed.lastReturn)
+        let thenSubmit = ItemSheetModel.subtaskSubmit(draft: ownWrite.draft, lastReturn: ownWrite.lastReturn)
+        #expect(thenSubmit == SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .none))
+
+        // `.onSubmit` first.
+        let submitted = ItemSheetModel.subtaskSubmit(draft: "Eggs", lastReturn: .none)
+        #expect(submitted == SubtaskStep(titles: ["Eggs"], draft: "", end: false, capped: false,
+                                         lastReturn: .fromSubmit("Eggs")))
+        let letGo = SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .none)
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "\n", lastReturn: submitted.lastReturn) == letGo)
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "Eggs\n", lastReturn: submitted.lastReturn)
+                == letGo)
+
+        // `.onSubmit` alone: a later line pasted with a break is its own.
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "Milk\n", lastReturn: submitted.lastReturn)
+                == SubtaskStep(titles: ["Milk"], draft: "", end: false, capped: false, lastReturn: .fromText))
+        // Typing after `.onSubmit` makes the next Return new.
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "M", lastReturn: submitted.lastReturn)
+                == SubtaskStep(titles: [], draft: "M", end: false, capped: false, lastReturn: .none))
+    }
+
+    /// A pasted list adds one subtask per line, markers gone, and leaves what
+    /// was typed in the field, where the web's clears it. "\r\n" is one
+    /// break.
+    @Test func aPastedListAddsALineEachAndKeepsWhatWasTyped() {
+        let list = ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy - Eggs\n- Milk\n- Bread", lastReturn: .none)
+        #expect(list == SubtaskStep(titles: ["Eggs", "Milk", "Bread"], draft: "Buy ", end: false, capped: false,
+                                    lastReturn: .none))
+
+        let windows = ItemSheetModel.subtaskEntry(previous: "", next: "a\r\nb", lastReturn: .none)
+        #expect(windows.titles == ["a", "b"])
+        #expect(windows.draft == "")
+
+        // A paste after `.onSubmit` is a paste.
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "1. Eggs\n2. Milk",
+                                            lastReturn: .fromSubmit("Eggs")).titles == ["Eggs", "Milk"])
+    }
+
+    /// Past 500 lines, the first 500 and `capped`, for the banner; each line
+    /// cut to 500 UTF-16 units, never splitting an emoji.
+    @Test func aPasteIsCappedByLineAndByLength() {
+        let lines = (1...501).map { "Item \($0)" }.joined(separator: "\n")
+        let capped = ItemSheetModel.subtaskEntry(previous: "", next: lines, lastReturn: .none)
+        #expect(capped.titles.count == 500)
+        #expect(capped.titles.first == "Item 1")
+        #expect(capped.titles.last == "Item 500")
+        #expect(capped.capped)
+
+        let long = String(repeating: "x", count: 600)
+        let emoji = String(repeating: "y", count: 499) + "\u{1F600}"
+        let cut = ItemSheetModel.subtaskEntry(previous: "", next: long + "\n" + emoji + "\nb", lastReturn: .none)
+        #expect(cut.titles == [String(repeating: "x", count: 500), String(repeating: "y", count: 499), "b"])
+        #expect(!cut.capped)
+    }
+
+    /// One line pasted with no break is typed text. One pasted with a break
+    /// at its end is added at once, as a typed Return would be (the web's
+    /// input keeps it): the line it lands on is the subtask.
+    @Test func aOneLinePasteIsTextUnlessItEndsInABreak() {
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy Eggs", lastReturn: .none)
+                == SubtaskStep(titles: [], draft: "Buy Eggs", end: false, capped: false, lastReturn: .none))
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy Eggs\n", lastReturn: .none)
+                == SubtaskStep(titles: ["Buy Eggs"], draft: "", end: false, capped: false, lastReturn: .fromText))
+    }
+
+    /// A paste that isn't a list (one line that survives, with a break inside
+    /// it) is text with its breaks as spaces; typing stops at 500 UTF-16
+    /// units, cut from what was put in.
+    @Test func aBreakInsideAPasteIsASpaceAndTypingStopsAtTheCap() {
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy \nEggs", lastReturn: .none).draft
+                == "Buy  Eggs")
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy Eggs\n\n", lastReturn: .none)
+                == SubtaskStep(titles: [], draft: "Buy Eggs  ", end: false, capped: false, lastReturn: .none))
+
+        let full = String(repeating: "a", count: 499)
+        #expect(EditLimits.newTitle == 500)
+        #expect(ItemSheetModel.subtaskEntry(previous: full, next: full + "bc", lastReturn: .none).draft == full + "b")
+        #expect(ItemSheetModel.subtaskEntry(previous: full, next: full + "\u{1F600}", lastReturn: .none).draft == full)
+    }
+
+    /// The subtask field is never an edit of anything stored, and never too
+    /// long to type in.
+    @Test func theSubtaskFieldIsNeverAnEdit() {
+        #expect(ItemSheetModel.commit(draft: "Eggs", seed: "", stored: nil, kind: .subtask) == nil)
+        #expect(ItemSheetModel.commit(draft: "Eggs", seed: "", stored: "Groceries", kind: .subtask) == nil)
+        #expect(ItemSheetModel.tooLongToEdit(String(repeating: "s", count: 20_000), kind: .subtask) == false)
+    }
+
+    /// The row, the field and what VoiceOver hears once subtasks are added.
+    @Test func theSubtaskWords() {
+        #expect(ItemSheetModel.subtaskRowTitle == "Add a subtask")
+        #expect(ItemSheetModel.subtaskFieldLabel == "New subtask")
+        #expect(ItemSheetModel.subtaskPlaceholder == "Add subtask\u{2026}")
+        #expect(ItemSheetModel.subtaskAddedAnnouncement([]) == nil)
+        #expect(ItemSheetModel.subtaskAddedAnnouncement(["Eggs"]) == "Added Eggs")
+        #expect(ItemSheetModel.subtaskAddedAnnouncement(["Eggs", "Milk", "Bread"]) == "Added 3 subtasks")
+    }
+
     // MARK: The header and the chips
 
     @Test func theEyebrowNamesTheTypeAndTheFirstRoutine() throws {
@@ -596,6 +762,23 @@ import Testing
         #expect(ItemSheetModel.streakSpoken(streak: 3, dots: dots) == "Streak 3; this week: 3 done, 1 skipped")
     }
 
+    /// The chip's hint says what a tap shows; the popover's run is the web's
+    /// flame tooltip; Reset's confirm is in sentence case with the web's
+    /// message; and the popover is a sheet at the accessibility sizes.
+    @Test func theStreakPopoversWords() {
+        #expect(ItemSheetModel.streakHint(resetOffered: false) == "Shows this week")
+        #expect(ItemSheetModel.streakHint(resetOffered: true) == "Shows this week, and Reset streak")
+        #expect(ItemSheetModel.streakRun(0) == "No streak yet")
+        #expect(ItemSheetModel.streakRun(1) == "1 day in a row")
+        #expect(ItemSheetModel.streakRun(41) == "41 days in a row")
+        #expect(ItemSheetModel.resetConfirmTitle == "Reset streak?")
+        #expect(ItemSheetModel.resetConfirmMessage
+                == "This will reset your streak counter to 0 days. Your completion history stays \u{2014} "
+                + "days you already checked off remain checked.")
+        #expect(ItemSheetModel.streakPopoverStyle(accessibilitySize: false) == .popover)
+        #expect(ItemSheetModel.streakPopoverStyle(accessibilitySize: true) == .sheet)
+    }
+
     // MARK: A row to VoiceOver
 
     @Test func aRowsTimeIsSpokenAsItReads() {
@@ -613,5 +796,18 @@ import Testing
         #expect(PlannerFormat.rowLabel(roadmap, isNow: false) == "Draft Q4 roadmap, 9 to 11 AM")
         #expect(PlannerFormat.rowLabel(roadmap, isNow: true) == "Draft Q4 roadmap, now, 9 to 11 AM")
         #expect(PlannerFormat.rowLabel(meds, isNow: false) == "Meds, streak 41")
+    }
+
+    /// With Streaks off, a habit's row says nothing of its streak, as it
+    /// draws none; a task's row is the same either way.
+    @Test func aRowWithStreaksOffSaysNoStreak() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let meds = try named(planner, "Meds")
+
+        #expect(PlannerFormat.rowLabel(meds, isNow: false, streaksEnabled: false) == "Meds")
+        #expect(PlannerFormat.rowLabel(meds, isNow: false, streaksEnabled: true) == "Meds, streak 41")
+        #expect(PlannerFormat.rowLabel(roadmap, isNow: true, streaksEnabled: false)
+                == "Draft Q4 roadmap, now, 9 to 11 AM")
     }
 }

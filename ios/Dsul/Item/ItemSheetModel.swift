@@ -12,7 +12,11 @@ import Foundation
 // rules too: what a keystroke may put in the title or the notes, and what
 // leaving a field sends (DsulCore ItemEdit.swift, lib/item-edit.ts), and
 // Delete's words (lib/item-verbs.ts `deleteConfirmTitle` and the registry's
-// `form.deleteDescription`, both in DsulCore Registry.swift).
+// `form.deleteDescription`, both in DsulCore Registry.swift). From 2b, what
+// the subtask field adds as it is typed in or pasted into (DsulCore
+// BulkLines.swift, lib/bulk-add.ts, as the web's Subtasks section reads a
+// paste), and the streak popover's words, the web's where it has them
+// (DsulCore EditCopy.swift, lib/item-edit.ts `EDIT_COPY`).
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
@@ -65,9 +69,39 @@ enum RescheduleChoice: Hashable, Sendable {
 }
 
 /// A typed field of the item sheet, and so where a page's focus can be: the
-/// title and the notes.
+/// title, the notes, and the new subtask's field (`SubtaskField`), whose text
+/// is never an edit of anything stored: each line of it becomes a subtask.
 enum SheetField: Hashable, Sendable {
-    case title, notes
+    case title, notes, subtask
+}
+
+/// Which report of the last Return the subtask field has acted on. iOS may
+/// report a Return typed in a vertical field as a line break in the text, as
+/// `.onSubmit`, or as both, in either order. The title can take both, since
+/// its `.onSubmit` only ends the edit; an add can't, so whichever report
+/// comes first adds the subtask and this lets the other go
+/// (`ItemSheetModel.subtaskEntry`, `.subtaskSubmit`).
+enum SubtaskReturn: Hashable, Sendable {
+    case none
+    /// The line break added the subtask; an `.onSubmit` after it does nothing.
+    case fromText
+    /// `.onSubmit` added this title; a line break after it, on a line that
+    /// cleans to this title or to nothing, does nothing.
+    case fromSubmit(String)
+}
+
+/// What the subtask field does after a change or a submit.
+struct SubtaskStep: Hashable, Sendable {
+    /// The subtasks to add, in order.
+    var titles: [String]
+    /// What the field holds now.
+    var draft: String
+    /// Entry ends: focus goes, and the "Add a subtask" row comes back.
+    var end: Bool
+    /// A paste held more lines than one paste adds (`maxBulkItems`).
+    var capped: Bool
+    /// Which report of a Return has acted, for the next change or submit.
+    var lastReturn: SubtaskReturn
 }
 
 /// The sheet's day picker's words: its title, the confirm button's verb
@@ -106,6 +140,11 @@ enum StreakDot: Hashable, Sendable {
     /// Missed, still to come, or a day the habit doesn't fall on: all drawn
     /// alike, as a neutral dot.
     case rest
+}
+
+/// The form the streak chip's popover takes: a popover, or a sheet.
+enum StreakPopoverStyle: Hashable, Sendable {
+    case popover, sheet
 }
 
 enum ItemSheetModel {
@@ -356,12 +395,14 @@ enum ItemSheetModel {
     static let tooLongNote = "Too long to edit on the phone."
 
     /// Is `stored` too long for the phone to send back as `kind`? Then the
-    /// field stays text, with `tooLongNote` under it.
+    /// field stays text, with `tooLongNote` under it. Never for the subtask
+    /// field, which starts empty and sends only new text.
     static func tooLongToEdit(_ stored: String?, kind: SheetField) -> Bool {
         let length = stored?.utf16.count ?? 0
         switch kind {
         case .title: return length > EditLimits.outerTitle
         case .notes: return length > EditLimits.outerNotes
+        case .subtask: return false
         }
     }
 
@@ -415,6 +456,8 @@ enum ItemSheetModel {
     /// to nothing clear them. The caller sends the edit through the planner,
     /// which gates it again, and then takes the draft as its new seed, so the
     /// next trigger (a scene change, then `.onDisappear`) sends nothing more.
+    /// Never an edit for the subtask field: its text is a new item, added
+    /// through the planner's `addSubtask`, never a change to one stored.
     static func commit(draft: String, seed: String, stored: String?, kind: SheetField) -> ItemEdit? {
         guard draft != seed else { return nil }
         switch kind {
@@ -427,6 +470,8 @@ enum ItemSheetModel {
             let notes = cleanNotes(draft, limit: growthLimit(cap: EditLimits.notes, stored: stored))
             guard notes != stored else { return nil }
             return ItemEdit.notes(notes)
+        case .subtask:
+            return nil
         }
     }
 
@@ -454,6 +499,97 @@ enum ItemSheetModel {
     private static func fitted(_ head: String, _ inserted: String, _ tail: String, limit: Int) -> String {
         let room = max(0, limit - head.utf16.count - tail.utf16.count)
         return head + clampUTF16(inserted, room) + tail
+    }
+
+    // MARK: Add a subtask
+
+    /// The Subtasks section's last row, after a plus, which swaps in the
+    /// subtask field.
+    static let subtaskRowTitle = "Add a subtask"
+
+    /// The subtask field's name to VoiceOver.
+    static let subtaskFieldLabel = "New subtask"
+
+    /// The subtask field's placeholder: the web's ("Add subtask…",
+    /// `EDIT_COPY.subtaskPlaceholder`).
+    static let subtaskPlaceholder = EditCopy.subtaskPlaceholder
+
+    /// What the subtask field does after a change from `previous` to `next`,
+    /// asked, as `titleEntry` is, only of the text put in (`splice`), and only
+    /// while the field has focus, so the page clearing it is never typing:
+    /// 1. **Nothing put in**: a deletion, or the field's own write of a draft
+    ///    this answered ("Eggs\n" → ""). The text as it is, and `lastReturn`
+    ///    kept: the write that follows a typed Return must not reset it, or
+    ///    the `.onSubmit` after it would read an empty field and end entry.
+    /// 2. **An insertion whose only line break is its last character**: a
+    ///    typed Return (an autocorrection may arrive with it), or one line
+    ///    pasted with a break at its end, which is added at once, as a typed
+    ///    Return would be (the web's one-line input keeps that line). The
+    ///    whole line, the break gone, is the subtask (`cleanTitle` within
+    ///    `EditLimits.newTitle`), and the field empties. A Return `.onSubmit`
+    ///    has already taken, on a line that cleans to its title or to
+    ///    nothing, adds nothing; one on a blank line ends entry.
+    /// 3. **A pasted list** (`isBulkPaste`): one subtask per non-empty line,
+    ///    list markers stripped, at most `maxBulkItems` (`capped` past it,
+    ///    lib/bulk-add.ts `splitBulkLinesWithMeta`), each cut to 500 UTF-16
+    ///    units and trimmed. What was typed before stays in the field, where
+    ///    the web's clears it.
+    /// 4. **Anything else** is typing: a pasted line break becomes a space,
+    ///    and growth past `EditLimits.newTitle` is cut from what was put in.
+    static func subtaskEntry(previous: String, next: String, lastReturn: SubtaskReturn) -> SubtaskStep {
+        let change = splice(previous, next)
+        let inserted = change.inserted
+        if inserted.isEmpty {
+            return SubtaskStep(titles: [], draft: next, end: false, capped: false, lastReturn: lastReturn)
+        }
+        if let last = inserted.last, last.isNewline, !inserted.dropLast().contains(where: \.isNewline) {
+            let line = change.head + String(inserted.dropLast()) + change.tail
+            let cleaned = cleanTitle(line, limit: EditLimits.newTitle)
+            if case .fromSubmit(let taken) = lastReturn, cleaned == nil || cleaned == taken {
+                return SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .none)
+            }
+            guard let title = cleaned else {
+                return SubtaskStep(titles: [], draft: "", end: true, capped: false, lastReturn: .none)
+            }
+            return SubtaskStep(titles: [title], draft: "", end: false, capped: false, lastReturn: .fromText)
+        }
+        if isBulkPaste(inserted) {
+            let split = splitBulkLinesWithMeta(inserted)
+            let titles = split.titles.compactMap { cleanTitle($0, limit: EditLimits.newTitle) }
+            return SubtaskStep(titles: titles, draft: change.head + change.tail, end: false,
+                               capped: split.truncated, lastReturn: .none)
+        }
+        let typed = String(inserted.map { $0.isNewline ? Character(" ") : $0 })
+        return SubtaskStep(titles: [], draft: fitted(change.head, typed, change.tail, limit: EditLimits.newTitle),
+                           end: false, capped: false, lastReturn: .none)
+    }
+
+    /// What the subtask field does on `.onSubmit`, with `draft` as it stands:
+    /// - the line break already added this Return (`.fromText`): nothing,
+    ///   and the next Return is new;
+    /// - a draft that cleans to a title: that subtask, and the field empties;
+    ///   a line break arriving after this, on that line or a blank one, adds
+    ///   nothing (`subtaskEntry`);
+    /// - a blank draft: entry ends.
+    static func subtaskSubmit(draft: String, lastReturn: SubtaskReturn) -> SubtaskStep {
+        if lastReturn == .fromText {
+            return SubtaskStep(titles: [], draft: draft, end: false, capped: false, lastReturn: .none)
+        }
+        if let title = cleanTitle(draft, limit: EditLimits.newTitle) {
+            return SubtaskStep(titles: [title], draft: "", end: false, capped: false, lastReturn: .fromSubmit(title))
+        }
+        return SubtaskStep(titles: [], draft: "", end: true, capped: false, lastReturn: .none)
+    }
+
+    /// What VoiceOver hears once subtasks are added: "Added Eggs", or "Added
+    /// 3 subtasks" for a paste. The new rows land above the field, away from
+    /// VoiceOver's focus, so this is all that says so. Nil when none was.
+    static func subtaskAddedAnnouncement(_ titles: [String]) -> String? {
+        switch titles.count {
+        case 0: return nil
+        case 1: return "Added " + titles[0]
+        default: return "Added \(titles.count) subtasks"
+        }
     }
 
     // MARK: The day picker
@@ -642,5 +778,35 @@ enum ItemSheetModel {
         var text = "Streak \(streak); this week: \(done) done"
         if skipped > 0 { text += ", \(skipped) skipped" }
         return text
+    }
+
+    /// The streak chip's hint, now that it is a button: what a tap shows,
+    /// and Reset streak when the popover offers it.
+    static func streakHint(resetOffered: Bool) -> String {
+        return resetOffered ? "Shows this week, and Reset streak" : "Shows this week"
+    }
+
+    /// The popover's line under the week: the web's streak flame tooltip
+    /// (DsulCore `streakRunText`, lib/item-edit.ts): "41 days in a row", or
+    /// "No streak yet".
+    static func streakRun(_ streak: Int) -> String {
+        return streakRunText(streak)
+    }
+
+    /// Reset streak's confirm title, in sentence case as `deleteConfirmTitle`
+    /// is, matching the verb's own label ("Reset streak", which its buttons
+    /// carry); the web's dialog says "Reset Streak?".
+    static let resetConfirmTitle = "Reset streak?"
+
+    /// Reset streak's confirm message: the web's
+    /// (`EDIT_COPY.resetStreakMessage`), which says the days already ticked
+    /// stay ticked.
+    static let resetConfirmMessage = EditCopy.resetStreakMessage
+
+    /// The popover's form: a sheet at the accessibility text sizes, where a
+    /// popover would crop the week and Reset, else a popover. Asked by the
+    /// popover itself, since an adaptation applies only to presented content.
+    static func streakPopoverStyle(accessibilitySize: Bool) -> StreakPopoverStyle {
+        return accessibilitySize ? .sheet : .popover
     }
 }

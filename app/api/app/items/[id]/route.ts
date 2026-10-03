@@ -10,6 +10,8 @@ import { postItemWrite } from '@/lib/app-api';
  *   { action: 'title', title }                            the title, typed
  *   { action: 'notes', notes }                            the notes, typed; null clears them
  *   { action: 'delete' }                                  Delete, with its subtasks, to the Trash
+ *   { action: 'addSubtask', id, title }                   a new subtask under this item
+ *   { action: 'resetStreak' }                             Reset streak
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

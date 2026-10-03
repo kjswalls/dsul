@@ -7,7 +7,8 @@
     "showCompletedTasks": true,
     "weekStartDay": "monday",
     "timeFormat": "24h",
-    "appIcon": "lime"
+    "appIcon": "lime",
+    "streaksEnabled": false
   },
   "writes": [
     "complete",
@@ -17,7 +18,9 @@
     "pause",
     "title",
     "notes",
-    "delete"
+    "delete",
+    "addSubtask",
+    "resetStreak"
   ],
   "items": [
     {

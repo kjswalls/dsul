@@ -60,7 +60,11 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.appIcon == .lime)
         #expect(p.settings.weekStartDay == .monday)
         #expect(p.settings.timeFormat == .twentyFourHour)
-        #expect(p.writes == ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete"])
+        #expect(p.writes == [
+            "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
+        ])
+        // The route's test turns Streaks off, a value no default gives.
+        #expect(p.settings.streaksEnabled == false)
         #expect(p.droppedItems == 0)
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
@@ -226,6 +230,8 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twelveHour)
         #expect(p.writes == nil)
         #expect(p.itemTypes == nil)
+        // ... and Streaks is on, the extension's default.
+        #expect(p.settings.streaksEnabled)
     }
 
     @Test func theWeekAndTheClockAreReadLeniently() throws {
@@ -247,6 +253,28 @@ private struct RawItems: Decodable, Sendable {
         let wrong = try settings(#"{"weekStartDay":1,"timeFormat":null}"#)
         #expect(wrong.weekStartDay == .sunday)
         #expect(wrong.timeFormat == .twelveHour)
+    }
+
+    /// The Streaks switch: missing (a server older than the field), null or
+    /// not a bool reads as on, the extension's default; only a real false
+    /// turns it off.
+    @Test func theStreaksSwitchIsReadLeniently() throws {
+        func streaks(_ value: String?) throws -> Bool {
+            let field = value.map { #","streaksEnabled":"# + $0 } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{"timezone":"UTC"\(field)},
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).settings.streaksEnabled
+        }
+        #expect(try streaks(nil))
+        #expect(try streaks("null"))
+        #expect(try streaks(#""yes""#))
+        #expect(try streaks(#""false""#))
+        #expect(try streaks("true"))
+        #expect(try streaks("false") == false)
+        // The inline payload has no key at all.
+        #expect(try decode(payload(items: "")).settings.streaksEnabled)
     }
 
     @Test func theWritesListIsReadLeniently() throws {
@@ -353,9 +381,15 @@ private struct RawItems: Decodable, Sendable {
     @Test func theSettingsRoundTrip() throws {
         let settings = PlannerSettings(
             timezone: "Europe/Paris", showCompletedTasks: false, appIcon: .lime,
-            weekStartDay: .saturday, timeFormat: .twentyFourHour
+            weekStartDay: .saturday, timeFormat: .twentyFourHour, streaksEnabled: false
         )
         let data = try JSONEncoder().encode(settings)
         #expect(try JSONDecoder().decode(PlannerSettings.self, from: data) == settings)
+        // The default round-trips too, and is written, not left to the reader.
+        let defaults = try JSONEncoder().encode(PlannerSettings())
+        let decoded = try JSONDecoder().decode(PlannerSettings.self, from: defaults)
+        #expect(decoded == PlannerSettings())
+        #expect(decoded.streaksEnabled)
+        #expect(String(decoding: defaults, as: UTF8.self).contains(#""streaksEnabled":true"#))
     }
 }

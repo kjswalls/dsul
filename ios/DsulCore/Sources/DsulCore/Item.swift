@@ -342,23 +342,31 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     public var weekStartDay: WeekStartDay
     /// 12h or 24h clock. 12h, the web's default, when missing or unknown.
     public var timeFormat: TimeFormat
+    /// The Streaks extension (lib/extension-registry.ts `EXT_STREAKS`, read
+    /// through `resolveEnabled`): off hides the sheet's streak chip and the
+    /// flame on Today's rows, and Reset streak is never offered. True, the
+    /// extension's default, when missing (a server older than the field) or
+    /// not a bool.
+    public var streaksEnabled: Bool
 
     public init(
         timezone: String? = nil,
         showCompletedTasks: Bool = true,
         appIcon: AppIcon? = nil,
         weekStartDay: WeekStartDay = .sunday,
-        timeFormat: TimeFormat = .twelveHour
+        timeFormat: TimeFormat = .twelveHour,
+        streaksEnabled: Bool = true
     ) {
         self.timezone = timezone
         self.showCompletedTasks = showCompletedTasks
         self.appIcon = appIcon
         self.weekStartDay = weekStartDay
         self.timeFormat = timeFormat
+        self.streaksEnabled = streaksEnabled
     }
 
     enum CodingKeys: String, CodingKey {
-        case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat
+        case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat, streaksEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -368,6 +376,7 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.appIcon = AppIcon(stored: c.lenientString(.appIcon))
         self.weekStartDay = c.lenientString(.weekStartDay).flatMap { WeekStartDay(rawValue: $0) } ?? .sunday
         self.timeFormat = c.lenientString(.timeFormat).flatMap { TimeFormat(rawValue: $0) } ?? .twelveHour
+        self.streaksEnabled = c.lenientBool(.streaksEnabled) ?? true
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -377,6 +386,7 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         try c.encodeIfPresent(appIcon?.rawValue, forKey: .appIcon)
         try c.encode(weekStartDay.rawValue, forKey: .weekStartDay)
         try c.encode(timeFormat.rawValue, forKey: .timeFormat)
+        try c.encode(streaksEnabled, forKey: .streaksEnabled)
     }
 }
 
