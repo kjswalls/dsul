@@ -2,7 +2,8 @@ import Foundation
 
 // The words the item sheet shares with the web's, from lib/item-edit.ts
 // `EDIT_COPY` and `streakRunText`, which the web's own surfaces read too:
-// Reset streak's confirm (components/planner/item-dialog.tsx), the Subtasks
+// Reset streak's confirm and Remind's Right after field, its hint and its
+// needs-a-date note (components/planner/item-dialog.tsx), the Subtasks
 // section's placeholder and its capped-paste toast
 // (components/planner/item-detail-sections.tsx), and the streak flame's
 // tooltip (components/primitives/pills.tsx `StreakFlame`). Keep in step: a
@@ -23,6 +24,14 @@ public enum EditCopy {
     public static let subtaskPlaceholder = "Add subtask\u{2026}"
     /// Said when a paste held more lines than one paste adds (`maxBulkItems`).
     public static let subtaskPasteCapped = "Added the first \(maxBulkItems) subtasks. The paste had more."
+    /// The Right after field's placeholder: the cue words of a reminder.
+    public static let reminderAnchorPlaceholder = "I pour my coffee"
+    /// Under Right after: what the words are for.
+    public static let reminderAnchorHint = "Optional, and worth it. Something you already do beats a time. "
+        + "The reminder will say what you write here."
+    /// Under the time, for a dated type with no date (`reminderNeedsDate`).
+    public static let reminderNeedsDate = "Give this a date and it will fire. "
+        + "Without one there is no day for the reminder to land on."
 }
 
 /// lib/item-edit.ts `streakRunText`, the streak flame's tooltip: "No streak

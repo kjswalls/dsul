@@ -8,7 +8,8 @@
     "weekStartDay": "monday",
     "timeFormat": "24h",
     "appIcon": "lime",
-    "streaksEnabled": false
+    "streaksEnabled": false,
+    "remindersEnabled": true
   },
   "writes": [
     "complete",
@@ -20,7 +21,10 @@
     "notes",
     "delete",
     "addSubtask",
-    "resetStreak"
+    "resetStreak",
+    "priority",
+    "timesPerDay",
+    "reminder"
   ],
   "items": [
     {

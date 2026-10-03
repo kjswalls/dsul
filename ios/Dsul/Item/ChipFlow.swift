@@ -8,9 +8,10 @@ import SwiftUI
 /// The lines touch (`lineSpacing` 0): every chip comes in its slot
 /// (`chipSlot()`), which brings 6pt above and below its capsule, so capsules
 /// sit 12pt apart on every line at every text size, whichever chip on a line
-/// is the tallest. The slot is also what gives the streak chip, a button, its
-/// 44pt of height to hit inside its own line; were it the only chip in one,
-/// its line would sit further from the next than the others do.
+/// is the tallest. The slot is also what gives a chip that is a control (the
+/// streak chip, an editable chip, Add property: `chipHit()`) its 44pt of
+/// height to hit inside its own line; were it the only chip in one, its line
+/// would sit further from the next than the others do.
 struct ChipFlow: Layout {
     var spacing: CGFloat = 6
     var lineSpacing: CGFloat = 0
@@ -73,14 +74,20 @@ struct ChipFlow: Layout {
     }
 }
 
-/// One read-only property chip: its symbol (or a project's colour dot) and
-/// its words. Not a button and no press state in part 1, so it doesn't
-/// promise an edit it can't make; to VoiceOver, one element with a spoken
-/// label ("Time: 9:00 to 11:00 am").
+/// One property chip: its symbol (or a project's colour dot) and its words.
+/// Read-only unless `editable`, when it is a menu's or a button's label and
+/// ends in a chevron, as the streak chip does, saying it opens something; a
+/// read-only chip has none, so it doesn't promise an edit it can't make. Its
+/// words are the label colour, set here, so a menu's or a button's tint (the
+/// 1.5:1 lime) never reaches them, and its symbol and chevron are gray
+/// against that. To VoiceOver, one element with a spoken label ("Time: 9:00
+/// to 11:00 am"); the control around an editable one adds its trait and hint.
 struct ChipView: View {
     let chip: SheetChip
     /// A project's colour, drawn as a dot in place of a symbol.
     var dot: Color? = nil
+    /// The label of a control that edits the chip's property.
+    var editable: Bool = false
 
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ScaledMetric(relativeTo: .subheadline) private var dotSize: CGFloat = 8
@@ -95,7 +102,14 @@ struct ChipView: View {
             }
             Text(chip.text)
                 .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+            if editable {
+                Image(systemName: "chevron.down")
+                    .imageScale(.small)
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
         }
+        .foregroundStyle(Color.primary)
         .font(.subheadline)
         .chipBackground()
         .accessibilityElement(children: .ignore)
@@ -123,5 +137,16 @@ extension View {
         self
             .padding(.vertical, 6)
             .frame(minHeight: 44)
+    }
+
+    /// The hit area of a chip that is a control (the streak chip, an editable
+    /// chip, Add property): its slot, at least 44pt wide too, all of it taking
+    /// taps. Put inside the control's label, where a `Button` or a `Menu`
+    /// tests its taps; a frame outside it wouldn't widen the tap.
+    func chipHit() -> some View {
+        self
+            .chipSlot()
+            .frame(minWidth: 44)
+            .contentShape(Rectangle())
     }
 }

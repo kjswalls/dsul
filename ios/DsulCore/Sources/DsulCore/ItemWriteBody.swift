@@ -11,7 +11,14 @@ import Foundation
 // - `{"action":"addSubtask","id":…,"title":…}`, sent to the PARENT's route,
 //   with the new subtask's id, lowercase (the route lowercases it too, so the
 //   parsed body is what was sent);
-// - `{"action":"resetStreak"}`.
+// - `{"action":"resetStreak"}`;
+// - `{"action":"priority","priority":…}`, where clearing sends
+//   `"priority":null`, as for the notes;
+// - `{"action":"timesPerDay","timesPerDay":…}`, a JSON number;
+// - `{"action":"reminder","time":…}`, with `"anchor":…` (a string, or null to
+//   clear the words) only when the words changed, since an absent anchor keeps
+//   the stored one. A null time turns the reminder off and never carries an
+//   anchor: the route's schema refuses that body, so the phone can't build it.
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -23,7 +30,8 @@ import Foundation
 
 /// One write the item sheet sends, ready to encode.
 public enum ItemWriteBody: Encodable, Sendable, Hashable {
-    /// A typed edit: `title` or `notes`.
+    /// A typed edit: `title`, `notes`, `priority`, `timesPerDay` or
+    /// `reminder`.
     case edit(ItemEdit)
     /// Delete: the item, and, unless it is a habit, its subtasks.
     case delete
@@ -45,7 +53,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
     }
 
     private enum Key: String, CodingKey {
-        case action, id, title, notes
+        case action, id, title, notes, priority, timesPerDay, time, anchor
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -59,6 +67,29 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
                 try c.encode(notes, forKey: .notes)
             } else {
                 try c.encodeNil(forKey: .notes)
+            }
+        case .edit(.priority(let priority)):
+            if let priority {
+                try c.encode(priority, forKey: .priority)
+            } else {
+                try c.encodeNil(forKey: .priority)
+            }
+        case .edit(.timesPerDay(let count)):
+            try c.encode(count, forKey: .timesPerDay)
+        case .edit(.reminder(let time, let anchor)):
+            if let time {
+                try c.encode(time, forKey: .time)
+                switch anchor {
+                case .set(let words)?:
+                    try c.encode(words, forKey: .anchor)
+                case .clear?:
+                    try c.encodeNil(forKey: .anchor)
+                case nil:
+                    break
+                }
+            } else {
+                // Off: both columns cleared, so the words have nothing to say.
+                try c.encodeNil(forKey: .time)
             }
         case .addSubtask(let id, let title):
             try c.encode(id.uuidString.lowercased(), forKey: .id)

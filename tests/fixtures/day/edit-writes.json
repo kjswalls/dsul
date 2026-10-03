@@ -6,7 +6,10 @@
     "outerTitle": 10000,
     "outerNotes": 200000,
     "newTitle": 500,
-    "bulkMax": 500
+    "bulkMax": 500,
+    "anchor": 500,
+    "outerAnchor": 10000,
+    "timesPerDayMax": 5
   },
   "cases": [
     {
@@ -865,6 +868,731 @@
         "status": "pending",
         "isScheduled": true,
         "order": 0
+      }
+    },
+    {
+      "name": "priority-set",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ba",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "high"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": "high"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ba",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "priority": "high"
+      }
+    },
+    {
+      "name": "priority-clear",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bb",
+        "title": "Reply to Avery",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "priority": "high"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bb",
+        "title": "Reply to Avery",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      }
+    },
+    {
+      "name": "priority-unchanged",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bc",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "priority": "medium"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "medium"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bc",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "priority": "medium"
+      }
+    },
+    {
+      "name": "priority-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bd",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ba"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "low"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": "low"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bd",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ba",
+        "priority": "low"
+      }
+    },
+    {
+      "name": "priority-custom",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000004be",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "medium"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": "medium"
+      },
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000004be",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "priority": "medium"
+      }
+    },
+    {
+      "name": "priority-refused-habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004bf",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "high"
+      },
+      "refusal": "no_priority",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004bf",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "times-per-day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c4",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-01": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 5
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "timesPerDay": 5
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c4",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-01": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 5
+      }
+    },
+    {
+      "name": "times-back-to-one",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c5",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 1
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "timesPerDay": 1
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c5",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 1
+      }
+    },
+    {
+      "name": "times-unchanged",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c6",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 1
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c6",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "times-refused-task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004c7",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 2
+      },
+      "refusal": "no_count",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004c7",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      }
+    },
+    {
+      "name": "reminder-set",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ce",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "14:45"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "14:45",
+        "reminderAnchor": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ce",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "reminderTime": "14:45"
+      }
+    },
+    {
+      "name": "reminder-anchor",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004cf",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "08:00",
+        "anchor": "  I pour my coffee "
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004cf",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      }
+    },
+    {
+      "name": "reminder-time-only-keeps-anchor",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d0",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "07:30"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "07:30",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d0",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "07:30",
+        "reminderAnchor": "I pour my coffee"
+      }
+    },
+    {
+      "name": "reminder-anchor-cleared",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d1",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "08:00",
+        "anchor": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "08:00",
+        "reminderAnchor": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d1",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      }
+    },
+    {
+      "name": "reminder-unchanged",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d2",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "08:00",
+        "anchor": "I pour my coffee"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d2",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      }
+    },
+    {
+      "name": "reminder-clear",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d3",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "I brush my teeth"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": null,
+        "reminderAnchor": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d3",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "reminder-anchor-stored-over-cap-kept-length",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d4",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "21:00",
+        "anchor": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "21:00",
+        "reminderAnchor": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d4",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "reminder-anchor-growth-refused",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d5",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "I brush my teeth"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "21:00",
+        "anchor": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d5",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "I brush my teeth"
+      }
+    },
+    {
+      "name": "reminder-refused-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d6",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ce"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "09:00"
+      },
+      "refusal": "not_remindable",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d6",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ce"
+      }
+    },
+    {
+      "name": "reminder-anchor-without-time",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d7",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": null,
+        "anchor": "I pour my coffee"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d7",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
       }
     }
   ],
@@ -1725,6 +2453,9 @@
   "copy": {
     "resetStreakMessage": "This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.",
     "subtaskPlaceholder": "Add subtask…",
-    "subtaskPasteCapped": "Added the first 500 subtasks. The paste had more."
+    "subtaskPasteCapped": "Added the first 500 subtasks. The paste had more.",
+    "reminderAnchorPlaceholder": "I pour my coffee",
+    "reminderAnchorHint": "Optional, and worth it. Something you already do beats a time. The reminder will say what you write here.",
+    "reminderNeedsDate": "Give this a date and it will fire. Without one there is no day for the reminder to land on."
   }
 }

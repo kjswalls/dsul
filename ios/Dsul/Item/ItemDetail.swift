@@ -15,7 +15,10 @@ import SwiftUI
 /// - the chips, in the web panel's order (ItemSheetModel.chips), with the
 ///   streak chip first for a type that keeps a streak while Streaks is on
 ///   (`showsStreak`), a button that opens this week and Reset streak
-///   (`StreakPopover`);
+///   (`StreakPopover`). From 2c the priority and times per day chips are
+///   menus and the reminder chip opens the Remind sheet, where the server
+///   and the type take the edit, and "+ Add property" ends the row while one
+///   of those is unset (`PropertyMenus`, `ReminderSheet`);
 /// - the subtasks, each ticked in place, its title opening its own page, and
 ///   Delete in its context menu; then, where one may be added, "Add a
 ///   subtask", which swaps in a field (`SubtaskField`).
@@ -54,7 +57,9 @@ struct ItemDetail: View {
     /// has the stack's back button instead.
     let isRoot: Bool
     @Binding var path: [UUID]
-    @Binding var dayPick: DayPick?
+    /// The sheet open over the stack (a day picker, the Remind sheet), the
+    /// stack's, shared by every page.
+    @Binding var editor: SheetEditor?
     /// The sheet's detent (`ItemSheetStack`'s), raised to large when a field
     /// takes focus, so the keyboard never leaves the field a sliver.
     @Binding var detent: PresentationDetent
@@ -90,6 +95,9 @@ struct ItemDetail: View {
     /// Where VoiceOver goes as subtask entry starts and ends: to the field,
     /// then back to the row, rather than staying on a view that has gone.
     @AccessibilityFocusState private var subtaskVoiceOver: SubtaskEntry?
+    /// Where VoiceOver goes once a chip's property has changed: its chip, or
+    /// Add property when the chip went (`settleVoiceOver`).
+    @AccessibilityFocusState private var chipVoiceOver: ChipFocus?
 
     var body: some View {
         let live = planner.item(id)
@@ -135,6 +143,12 @@ struct ItemDetail: View {
         }
         .onDisappear {
             commitFields(leaving: true)
+        }
+        // The Remind sheet closing (Done, No reminder, Cancel, a swipe):
+        // VoiceOver goes to the reminder's chip, or to Add property when
+        // there is none now. Only on the page whose item it edited.
+        .onChange(of: editor) { old, new in
+            if old == .reminder(id), new == nil { settleVoiceOver(on: .reminder) }
         }
         .confirmationDialog(confirmTitle, isPresented: $confirming, titleVisibility: .visible,
                             presenting: confirm) { pending in
@@ -304,7 +318,7 @@ struct ItemDetail: View {
                     .foregroundStyle(.secondary)
             }
 
-            chipRow(item, ctx, offered: offered, routines: routines)
+            chipRow(item, ctx, offered: offered)
 
             if typeCaps.subtasks {
                 subtaskSection(item, children: children)
@@ -377,42 +391,107 @@ struct ItemDetail: View {
         }
     }
 
-    /// The streak chip (a type that keeps a streak, while Streaks is on) and
-    /// the property chips, each in its slot (`chipSlot()`), so the lines sit
-    /// 12pt apart. The flow gives the slots' outer 6pt back to the stack's
-    /// 14pt spacing, so the capsules keep their distance from the notes above
-    /// and the subtasks below. That 6pt never reaches a neighbour's hit area,
-    /// with one exception: right under notes that run past four lines, Show
-    /// all's 12pt overhang reaches into the same gap, and the 4pt they share
-    /// go to the chip, drawn later, whose capsule is the nearer of the two.
+    /// The streak chip (a type that keeps a streak, while Streaks is on), the
+    /// property chips, and "+ Add property" while a property is unset and
+    /// editable (`ItemSheetModel.unsetProperties`), each in its slot
+    /// (`chipSlot()`), so the lines sit 12pt apart. A chip whose edit the
+    /// server and the type take is a control (`chipControl`); the rest are
+    /// part 1's read-only chips. A page drawn as it leaves draws its row as it
+    /// was, chevrons and seed included, and takes no taps (`page`).
+    ///
+    /// The flow gives the slots' outer 6pt back to the stack's 14pt spacing,
+    /// so the capsules keep their distance from the notes above and the
+    /// subtasks below. That 6pt never reaches a neighbour's hit area, with one
+    /// exception, which now applies to any editable chip and to Add property:
+    /// right under notes that run past four lines, Show all's 12pt overhang
+    /// reaches into the same gap, and the 4pt they share go to the chip, drawn
+    /// later, whose capsule is the nearer of the two.
     @ViewBuilder
-    private func chipRow(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID],
-                         routines: [String]) -> some View {
-        let chips = ItemSheetModel.chips(item, today: planner.today, timeFormat: planner.settings.timeFormat,
-                                         routineNames: routines, seasonNames: planner.seasonNames(for: item.id))
+    private func chipRow(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> some View {
+        let chips = shownChips(item)
         let showsStreak = planner.showsStreak(for: item)
-        if showsStreak || !chips.isEmpty {
+        let canEdit: (String) -> Bool = { planner.canEdit($0, item) }
+        let unset = ItemSheetModel.unsetProperties(item, shown: chips, canEdit: canEdit)
+        if showsStreak || !chips.isEmpty || !unset.isEmpty {
             let flow = ChipFlow()
             flow {
                 if showsStreak {
                     streakChip(item, ctx, offered: offered)
                 }
                 ForEach(chips) { chip in
-                    ChipView(chip: chip,
-                             dot: chip.kind == .project ? ProjectPalette.color(for: chip.text, in: planner.projects) : nil)
-                        .chipSlot()
+                    chipControl(chip, item, canEdit: canEdit)
+                }
+                if !unset.isEmpty {
+                    AddPropertyMenu(kinds: unset,
+                                    label: ItemSheetModel.seedLabel(rowHasOthers: showsStreak || !chips.isEmpty),
+                                    onPriority: { pick(.priority($0), settling: .priority) },
+                                    onTimes: { pick(.timesPerDay($0), settling: .timesPerDay) },
+                                    onRemind: { editor = .reminder(item.id) })
+                        .accessibilityFocused($chipVoiceOver, equals: .seed)
                 }
             }
             .padding(.vertical, -6)
         }
     }
 
+    /// The property chips as the page draws them now (`ItemSheetModel.chips`),
+    /// which the row lays out and VoiceOver's move after a change reads.
+    private func shownChips(_ item: SampleItem) -> [SheetChip] {
+        return ItemSheetModel.chips(item, today: planner.today, timeFormat: planner.settings.timeFormat,
+                                    routineNames: planner.routineNames(for: item.id),
+                                    seasonNames: planner.seasonNames(for: item.id))
+    }
+
+    /// One property chip. Where it edits (`ItemSheetModel.chipEditor`), a
+    /// menu (priority, times per day) or a button that opens its sheet (the
+    /// reminder), labelled on the control itself, as the streak chip and the
+    /// bar's Reschedule menu are, with the button trait and a hint, and with
+    /// VoiceOver's focus bound to it so it can land there after a change.
+    /// Otherwise part 1's read-only chip, in its slot.
+    @ViewBuilder
+    private func chipControl(_ chip: SheetChip, _ item: SampleItem, canEdit: (String) -> Bool) -> some View {
+        switch ItemSheetModel.chipEditor(chip.kind, item, canEdit: canEdit) {
+        case .menu?:
+            if chip.kind == .priority {
+                PriorityChipMenu(chip: chip, item: item,
+                                 onPick: { pick(.priority($0), settling: .priority) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.priority))
+            } else if chip.kind == .timesPerDay {
+                TimesChipMenu(chip: chip, item: item,
+                              onPick: { pick(.timesPerDay($0), settling: .timesPerDay) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.timesPerDay))
+            } else {
+                readOnlyChip(chip)
+            }
+        case .sheet(let sheet)?:
+            Button {
+                editor = sheet
+            } label: {
+                ChipView(chip: chip, editable: true)
+                    .chipHit()
+            }
+            .buttonStyle(PressScaleStyle())
+            .accessibilityLabel(Text(chip.spoken))
+            .accessibilityHint(Text(ItemSheetModel.chipHint(chip.kind) ?? ""))
+            .accessibilityFocused($chipVoiceOver, equals: .chip(chip.kind))
+        case nil:
+            readOnlyChip(chip)
+        }
+    }
+
+    /// Part 1's chip: no chevron, no trait, no hint; a project's wears its
+    /// colour dot.
+    private func readOnlyChip(_ chip: SheetChip) -> some View {
+        ChipView(chip: chip,
+                 dot: chip.kind == .project ? ProjectPalette.color(for: chip.text, in: planner.projects) : nil)
+            .chipSlot()
+    }
+
     /// The stored streak, lit once wall-clock today is ticked, and this
     /// week's dots, as a button that opens them larger with the run's length
     /// and, when offered, Reset streak (`StreakPopover`). The capsule sits in
-    /// a hit frame at least 44pt square, inside the label, where a `Button`
-    /// tests its taps: a frame outside it wouldn't widen the tap. It presses
-    /// by scaling, never by fading.
+    /// its hit frame (`chipHit()`), at least 44pt square. It presses by
+    /// scaling, never by fading.
     private func streakChip(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> some View {
         let streak = item.streak ?? 0
         let dots = ItemSheetModel.weekDots(item, today: planner.today, weekStartDay: planner.settings.weekStartDay)
@@ -423,9 +502,7 @@ struct ItemDetail: View {
             showingStreak = true
         } label: {
             StreakChip(streak: streak, dots: dots, lit: lit, spoken: spoken)
-                .chipSlot()
-                .frame(minWidth: 44)
-                .contentShape(Rectangle())
+                .chipHit()
         }
         .buttonStyle(PressScaleStyle())
         .accessibilityLabel(Text(spoken))
@@ -444,6 +521,31 @@ struct ItemDetail: View {
             planner.resetStreak(id)
         }
         showingStreak = false
+    }
+
+    /// A pick in a chip's menu or an Add property submenu: written at once,
+    /// through the planner, which asks its gate again; then VoiceOver goes to
+    /// the property's chip, or to Add property when the pick emptied it.
+    private func pick(_ edit: ItemEdit, settling kind: SheetChip.Kind) {
+        withAnimation(.snappy) {
+            planner.edit(id, edit)
+        }
+        settleVoiceOver(on: kind)
+    }
+
+    /// Sends VoiceOver to `kind`'s chip, or to Add property when the chip went
+    /// (`ItemSheetModel.voiceOverTarget`), once the screen has settled, as
+    /// `announceSettled` waits: by then the menu or the sheet has closed, the
+    /// target is drawn, and iOS has handed focus back to their source, which
+    /// a pick may have taken away (a seed pick that set the last unset
+    /// property; None, 1× a day or No reminder taking its chip). Never in the
+    /// same transaction as the edit. A gone item moves nothing.
+    private func settleVoiceOver(on kind: SheetChip.Kind) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard let item = planner.item(id) else { return }
+            chipVoiceOver = ItemSheetModel.voiceOverTarget(after: kind, shown: shownChips(item))
+        }
     }
 
     // MARK: Subtasks
@@ -766,7 +868,7 @@ struct ItemDetail: View {
         case .pause:
             withAnimation(.snappy) { planner.pause(id, until: nil) }
         case .pauseUntil:
-            dayPick = .pauseUntil(id)
+            editor = .pauseUntil(id)
         case .resume:
             withAnimation(.snappy) { planner.resume(id) }
         case .nextDay:
@@ -776,7 +878,7 @@ struct ItemDetail: View {
             let target = nextDayOf(item, planner.verbContext(for: item, day: day))
             withAnimation(.snappy) { planner.move(id, to: target) }
         case .reschedule:
-            dayPick = .reschedule(id)
+            editor = .reschedule(id)
         case .delete:
             askDelete(id)
         }
@@ -793,7 +895,7 @@ struct ItemDetail: View {
             let target = planner.nextWeekStart.description
             withAnimation(.snappy) { planner.move(id, to: target) }
         case .pick:
-            dayPick = .reschedule(id)
+            editor = .reschedule(id)
         }
     }
 }

@@ -25,7 +25,8 @@ import path from 'path';
  * reminder with an anchor and one without, and the custom type's own label
  * (item_types), which the sheet words that item by. The user has turned
  * Streaks off (user_extensions), the one value of `streaksEnabled` the
- * default can't produce.
+ * default can't produce, and Habit reminders on, the one value of
+ * `remindersEnabled` no default can (a missing row is false, a retry null).
  */
 
 const FIXTURE = path.resolve(__dirname, '../fixtures/app/planner-response.json');
@@ -423,6 +424,7 @@ const SETTINGS_ROW = {
   week_start_day: 'monday',
   time_format: '24h',
   app_icon: 'lime',
+  habit_reminders_enabled: true,
   openclaw_api_key: `dsul_${'ab'.repeat(32)}`,
   openclaw_webhook_url: 'https://hooks.example.com',
 };
@@ -522,6 +524,7 @@ describe('the payload fixture shared with DsulCore', () => {
       timeFormat: '24h',
       appIcon: 'lime',
       streaksEnabled: false,
+      remindersEnabled: true,
     });
     // The intents the item route takes. Additive: an older server sends no
     // list, which the phone reads as ['complete', 'schedule'].
@@ -536,6 +539,9 @@ describe('the payload fixture shared with DsulCore', () => {
       'delete',
       'addSubtask',
       'resetStreak',
+      'priority',
+      'timesPerDay',
+      'reminder',
     ]);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
@@ -617,7 +623,7 @@ describe('GET /api/app/planner', () => {
     expect(settings).toHaveLength(1);
     expect(settings[0].calls).toContainEqual([
       'select',
-      ['timezone, show_completed_tasks, week_start_day, time_format, app_icon'],
+      ['timezone, show_completed_tasks, week_start_day, time_format, app_icon, habit_reminders_enabled'],
     ]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
     // The Streaks switch, by its two columns, as the user.
@@ -642,6 +648,8 @@ describe('GET /api/app/planner', () => {
       appIcon: null,
       // No extension rows either: the manifest's default.
       streaksEnabled: true,
+      // The column's default, and what the reminder scan reads a missing row as.
+      remindersEnabled: false,
     });
   });
 
@@ -677,10 +685,12 @@ describe('GET /api/app/planner', () => {
       timeFormat: '24h',
       appIcon: null,
       streaksEnabled: true,
+      // Unread, so unknown: the phone says nothing rather than "off".
+      remindersEnabled: null,
     });
     const selects = queries.filter((q) => q.table === 'user_settings').map((q) => q.calls.find(([m]) => m === 'select')?.[1][0]);
     expect(selects).toEqual([
-      'timezone, show_completed_tasks, week_start_day, time_format, app_icon',
+      'timezone, show_completed_tasks, week_start_day, time_format, app_icon, habit_reminders_enabled',
       'timezone, show_completed_tasks, week_start_day, time_format',
     ]);
   });
@@ -748,6 +758,36 @@ describe('GET /api/app/planner', () => {
       expect(body.items).toHaveLength(ITEM_ROWS.length);
       expect(error).toHaveBeenCalled();
       error.mockRestore();
+    });
+  });
+
+  describe('remindersEnabled', () => {
+    const remindersEnabled = async () => {
+      const res = await get();
+      expect(res.status).toBe(200);
+      return (await res.json()).settings;
+    };
+
+    it('is false for the switch off, and for a null column, as the reminder scan counts only true', async () => {
+      for (const value of [false, null]) {
+        respondWith({ user_settings: { data: { ...SETTINGS_ROW, habit_reminders_enabled: value }, error: null } });
+        expect((await remindersEnabled()).remindersEnabled, String(value)).toBe(false);
+      }
+    });
+
+    it('is null on a database without migration 032, from the one retry, with appIcon unread too', async () => {
+      respond = (q) => {
+        if (q.table === 'user_extensions') return { data: [], error: null };
+        if (q.table !== 'user_settings') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
+        const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
+        return columns.includes('habit_reminders_enabled')
+          ? { data: null, error: { code: '42703', message: 'column user_settings.habit_reminders_enabled does not exist' } }
+          : { data: { timezone: 'Europe/Paris', show_completed_tasks: true, week_start_day: 'sunday', time_format: '12h' }, error: null };
+      };
+      const settings = await remindersEnabled();
+      expect(settings.remindersEnabled).toBeNull();
+      expect(settings.appIcon).toBeNull();
+      expect(queries.filter((q) => q.table === 'user_settings')).toHaveLength(2);
     });
   });
 

@@ -226,8 +226,9 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// (`plants`, `bags`, `reading`, `book`, `meds`) and `omitting` drops some. No
 /// stored timezone unless one is given, so the pinned day stays put. `writes`
 /// is the current server's list unless a test plays an older server (nil);
-/// `itemTypes` names the user's own types, and `streaksEnabled` the Streaks
-/// switch, each left out (an older server) unless given.
+/// `itemTypes` names the user's own types, `streaksEnabled` the Streaks
+/// switch, and `remindersEnabled` the raw JSON for Habit reminders ("true",
+/// "false" or "null"), each left out (an older server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -246,7 +247,7 @@ enum PlannerJSON {
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
-                            "addSubtask", "resetStreak"]
+                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder"]
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -291,7 +292,8 @@ enum PlannerJSON {
 
     static func payload(userId: UUID = testUserID, fetchedAt: String = "fetch-1", groceriesDone: Bool = false,
                         timezone: String? = nil, writes: [String]? = PlannerJSON.allWrites,
-                        itemTypes: [ItemTypeLabel]? = nil, streaksEnabled: Bool? = nil, omitting: Set<UUID> = [],
+                        itemTypes: [ItemTypeLabel]? = nil, streaksEnabled: Bool? = nil,
+                        remindersEnabled: String? = nil, omitting: Set<UUID> = [],
                         extra: [String] = []) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
@@ -316,7 +318,8 @@ enum PlannerJSON {
         let items: [String] = kept + extra
         var json = "{\"v\":1,\"userId\":\"\(lowerID(userId))\",\"fetchedAt\":\"\(fetchedAt)\","
         let streaks: String = streaksEnabled.map { ",\"streaksEnabled\":\($0)" } ?? ""
-        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true\(streaks)},"
+        let reminders: String = remindersEnabled.map { ",\"remindersEnabled\":\($0)" } ?? ""
+        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true\(streaks)\(reminders)},"
         if let writes {
             let quoted: [String] = writes.map { "\"\($0)\"" }
             json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
@@ -738,7 +741,8 @@ final class DragFlag {
     /// took is undone, and nothing it didn't take is left. A slot, part 1's
     /// unit, would have put back only the failed write's fields. Reset streak
     /// and a tick both move the streak, so a reset is paired with a tick
-    /// either way round, and with a title and a skip, on a habit.
+    /// either way round, and with a title and a skip, on a habit. A failed
+    /// times edit is paired with a tick, which it changes (`counted`).
     @Test func aRevertKeepsEveryLandedWrite() async throws {
         typealias Act = @MainActor (SamplePlanner) -> Void
         typealias Step = (SampleItem) -> SampleItem
@@ -755,6 +759,12 @@ final class DragFlag {
         let title: Act = { $0.edit(id, .title("Water the ferns")) }
         let retitle: Act = { $0.edit(id, .title("Water the ficus")) }
         let notes: Act = { $0.edit(id, .notes("Twice a week in winter")) }
+        let high: Act = { $0.edit(id, .priority("high")) }
+        let low: Act = { $0.edit(id, .priority("low")) }
+        let unprioritize: Act = { $0.edit(id, .priority(nil)) }
+        let cue: Act = { $0.edit(id, .reminder(time: "08:00", anchor: .set("I fill the can"))) }
+        let retime: Act = { $0.edit(id, .reminder(time: "07:30", anchor: nil)) }
+        let unremind: Act = { $0.edit(id, .reminder(time: nil, anchor: nil)) }
         // What the server made of it, as DsulCore's steps play it.
         let ticked: Step = { applying(TickIntent(done: true), to: $0, on: today) }
         let unticked: Step = { applying(TickIntent(done: false), to: $0, on: today) }
@@ -770,6 +780,12 @@ final class DragFlag {
         let titled: Step = { editing($0, .title("Water the ferns")) }
         let retitled: Step = { editing($0, .title("Water the ficus")) }
         let noted: Step = { editing($0, .notes("Twice a week in winter")) }
+        let prioritized: Step = { editing($0, .priority("high")) }
+        let lowered: Step = { editing($0, .priority("low")) }
+        let unprioritized: Step = { editing($0, .priority(nil)) }
+        let cued: Step = { editing($0, .reminder(time: "08:00", anchor: .set("I fill the can"))) }
+        let retimed: Step = { editing($0, .reminder(time: "07:30", anchor: nil)) }
+        let unreminded: Step = { editing($0, .reminder(time: nil, anchor: nil)) }
         // The failed write, the landed one, and the server's end state.
         let pairs: [Pair] = [
             ("tick, then title", tick, title, titled),
@@ -785,6 +801,18 @@ final class DragFlag {
             ("pause, then title", pause, title, titled),
             ("title, then pause", title, pause, paused),
             ("title, then title", title, retitle, retitled),
+            ("priority, then title", high, title, titled),
+            ("title, then priority", title, high, prioritized),
+            ("priority, then priority", high, low, lowered),
+            // Plants has no priority, so the landed write is one the route
+            // answers 200 with no write; both were still sent, since the
+            // phone showed high when the second was made.
+            ("priority, then back", high, unprioritize, unprioritized),
+            // The words never landed, so the time alone keeps none.
+            ("cue words, then a time alone", cue, retime, retimed),
+            ("a time alone, then cue words", retime, cue, cued),
+            ("cue words, then No reminder", cue, unremind, unreminded),
+            ("reminder, then tick", cue, tick, ticked),
         ]
 
         // Meds, a habit on a 41-day streak, not yet done today.
@@ -793,19 +821,33 @@ final class DragFlag {
         let medsSkip: Act = { $0.skip(meds, on: friday) }
         let medsTitle: Act = { $0.edit(meds, .title("Take the meds")) }
         let reset: Act = { $0.resetStreak(meds) }
+        let thrice: Act = { $0.edit(meds, .timesPerDay(3)) }
+        let twice: Act = { $0.edit(meds, .timesPerDay(2)) }
         let medsTitled: Step = { editing($0, .title("Take the meds")) }
         let zeroed: Step = { resettingStreak($0) }
-        let resets: [Pair] = [
+        let thriced: Step = { editing($0, .timesPerDay(3)) }
+        let twiced: Step = { editing($0, .timesPerDay(2)) }
+        // The tick as sent while the failed edit still showed 3 a day: a
+        // count of 1, not done (lib/app-api.ts `complete` never reads
+        // times_per_day, and the replay plays the intent as sent).
+        let counted: Step = { applying(TickIntent(done: false, count: 1), to: $0, on: today) }
+        let onMeds: [Pair] = [
             ("tick, then reset", medsTick, reset, zeroed),
             ("reset, then tick", reset, medsTick, ticked),
             ("reset, then title", reset, medsTitle, medsTitled),
             ("title, then reset", medsTitle, reset, zeroed),
             ("skip, then reset", medsSkip, reset, zeroed),
             ("reset, then skip", reset, medsSkip, skipped),
+            // The one pair where the failed write changed what the landed
+            // one sent: Meds pending, streak 41, a tally of 1 today.
+            ("times, then tick", thrice, medsTick, counted),
+            ("tick, then times", medsTick, thrice, thriced),
+            ("times, then times", thrice, twice, twiced),
+            ("times, then reset", thrice, reset, zeroed),
         ]
         // Each pair on a fresh planner, its item added to the payload.
         let tables: [(UUID, String, [Pair])] = [(id, PlannerJSON.plantsJSON, pairs),
-                                                (meds, PlannerJSON.medsJSON, resets)]
+                                                (meds, PlannerJSON.medsJSON, onMeds)]
         for (subject, row, table) in tables {
             for (name, failed, landedAfter, step) in table {
                 let server = FakeServer()
@@ -844,6 +886,9 @@ final class DragFlag {
             .pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC"),
             .edit(id: id, .title("Big shop")),
             .edit(id: id, .notes(nil)),
+            .edit(id: id, .priority("high")),
+            .edit(id: id, .timesPerDay(3)),
+            .edit(id: id, .reminder(time: "08:00", anchor: .set("I pour my coffee"))),
             .resetStreak(id: id),
         ]
         for write in writes {

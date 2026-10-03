@@ -3,14 +3,16 @@ import SwiftUI
 /// A habit's streak in the sheet: the flame and the stored count (0 included),
 /// then this week's seven days (`ItemSheetModel.weekDots`), first day first,
 /// each a `StreakDotView`, and a chevron. From 2b it is a button's label: the
-/// page wraps it in its slot (`chipSlot()`) and a `Button` that opens the
+/// page wraps it in its hit frame (`chipHit()`) and a `Button` that opens the
 /// streak popover (`StreakPopover`), so the chevron says it opens something,
-/// as an editable chip's will. To VoiceOver it stays one element, "Streak 41;
-/// this week: 3 done"; the button adds its trait and its hint.
+/// as an editable chip's does (`ChipView`). To VoiceOver it stays one element,
+/// "Streak 41; this week: 3 done"; the button adds its trait and its hint.
 ///
 /// Nothing in it is drawn in the accent: a done day reads by its fill, and
-/// the count is the label colour, set here rather than left to the button,
-/// whose tint is the 1.5:1 lime.
+/// the count is the label colour, set here on the whole chip rather than left
+/// to the button, whose tint is the 1.5:1 lime, so the chevron's gray is
+/// measured against the label colour too, as an editable chip's is. The
+/// flame keeps its own colours.
 struct StreakChip: View {
     let streak: Int
     let dots: [StreakDot]
@@ -27,7 +29,6 @@ struct StreakChip: View {
                     .foregroundStyle(lit ? Color.orange : Color.secondary)
                 Text("\(streak)")
                     .monospacedDigit()
-                    .foregroundStyle(Color.primary)
             }
             HStack(spacing: 3) {
                 ForEach(0..<dots.count, id: \.self) { index in
@@ -40,6 +41,7 @@ struct StreakChip: View {
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
         }
+        .foregroundStyle(Color.primary)
         .font(.subheadline)
         .chipBackground()
         .accessibilityElement(children: .ignore)

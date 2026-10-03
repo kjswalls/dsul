@@ -2,8 +2,8 @@ import Foundation
 import Testing
 import DsulCore
 
-// ItemWriteBody.swift: the wire JSON of the item sheet's edits, its Delete,
-// Add a subtask and Reset streak.
+// ItemWriteBody.swift: the wire JSON of the item sheet's edits (the fields and
+// the chips), its Delete, Add a subtask and Reset streak.
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -34,8 +34,9 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         }
     }
 
-    /// Clearing the notes sends `"notes":null`. A missing key is refused:
-    /// the route's field is nullable, not optional.
+    /// Clearing the notes sends `"notes":null`, clearing the priority
+    /// `"priority":null`, and turning the reminder off `"time":null`. A
+    /// missing key is refused: each of those fields is nullable, not optional.
     @Test func aClearSendsNull() throws {
         let cleared = try json(ItemWriteBody.edit(ItemEdit.notes(nil)))
         #expect(cleared == JSONValue.object(["action": .string("notes"), "notes": .null]))
@@ -43,6 +44,10 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(set == JSONValue.object([
             "action": .string("notes"), "notes": .string("Ask about the wire fee.\nHave the card ready."),
         ]))
+        let unprioritized = try json(ItemWriteBody.edit(ItemEdit.priority(nil)))
+        #expect(unprioritized == JSONValue.object(["action": .string("priority"), "priority": .null]))
+        let off = try json(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: nil)))
+        #expect(off == JSONValue.object(["action": .string("reminder"), "time": .null]))
     }
 
     /// Every action is `.strict()` on the server: a body carries its own keys
@@ -59,6 +64,30 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         ]))
         let reset = try json(ItemWriteBody.resetStreak)
         #expect(reset == JSONValue.object(["action": .string("resetStreak")]))
+
+        let high = try json(ItemWriteBody.edit(ItemEdit.priority("high")))
+        #expect(high == JSONValue.object(["action": .string("priority"), "priority": .string("high")]))
+        let none = try json(ItemWriteBody.edit(ItemEdit.priority(nil)))
+        #expect(none == JSONValue.object(["action": .string("priority"), "priority": .null]))
+        let thrice = try json(ItemWriteBody.edit(ItemEdit.timesPerDay(3)))
+        #expect(thrice == JSONValue.object(["action": .string("timesPerDay"), "timesPerDay": .number(3)]))
+        // A time alone: no anchor key, so the stored words are kept.
+        let retime = try json(ItemWriteBody.edit(ItemEdit.reminder(time: "08:00", anchor: nil)))
+        #expect(retime == JSONValue.object(["action": .string("reminder"), "time": .string("08:00")]))
+        let cue = try json(ItemWriteBody.edit(ItemEdit.reminder(time: "08:00", anchor: .set("I pour my coffee"))))
+        #expect(cue == JSONValue.object([
+            "action": .string("reminder"), "anchor": .string("I pour my coffee"), "time": .string("08:00"),
+        ]))
+        let uncue = try json(ItemWriteBody.edit(ItemEdit.reminder(time: "08:00", anchor: .clear)))
+        #expect(uncue == JSONValue.object(["action": .string("reminder"), "anchor": .null, "time": .string("08:00")]))
+        let off = try json(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: nil)))
+        #expect(off == JSONValue.object(["action": .string("reminder"), "time": .null]))
+        // Words beside a null time are a body the route refuses; they are
+        // never sent, since off clears them anyway.
+        let offWithWords = try json(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: .set("x"))))
+        #expect(offWithWords == JSONValue.object(["action": .string("reminder"), "time": .null]))
+        let offClearing = try json(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: .clear)))
+        #expect(offClearing == JSONValue.object(["action": .string("reminder"), "time": .null]))
     }
 
     /// APIClient encodes with sorted keys; this is the request it sends.
@@ -75,6 +104,22 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
             == #"{"action":"addSubtask","id":"22222222-2222-4222-8222-22222222222a","title":"Eggs"}"#)
         let reset = try encoder.encode(ItemWriteBody.resetStreak)
         #expect(String(decoding: reset, as: UTF8.self) == #"{"action":"resetStreak"}"#)
+
+        let bodies: [(ItemEdit, String)] = [
+            (.priority("high"), #"{"action":"priority","priority":"high"}"#),
+            (.priority(nil), #"{"action":"priority","priority":null}"#),
+            (.timesPerDay(3), #"{"action":"timesPerDay","timesPerDay":3}"#),
+            (.reminder(time: "08:00", anchor: nil), #"{"action":"reminder","time":"08:00"}"#),
+            (.reminder(time: "08:00", anchor: .set("I pour my coffee")),
+             #"{"action":"reminder","anchor":"I pour my coffee","time":"08:00"}"#),
+            (.reminder(time: "08:00", anchor: .clear), #"{"action":"reminder","anchor":null,"time":"08:00"}"#),
+            (.reminder(time: nil, anchor: nil), #"{"action":"reminder","time":null}"#),
+            (.reminder(time: nil, anchor: .set("x")), #"{"action":"reminder","time":null}"#),
+        ]
+        for (edit, wire) in bodies {
+            let bytes = try encoder.encode(ItemWriteBody.edit(edit))
+            #expect(String(decoding: bytes, as: UTF8.self) == wire, "\(edit)")
+        }
     }
 
     /// The action is the name `writes` lists, so the app can ask `canWrite`
@@ -87,5 +132,36 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(ItemWriteBody.resetStreak.action == "resetStreak")
         #expect(ItemEdit.title("A").action == "title")
         #expect(ItemEdit.notes("B").action == "notes")
+        #expect(ItemWriteBody.edit(ItemEdit.priority("low")).action == "priority")
+        #expect(ItemWriteBody.edit(ItemEdit.timesPerDay(2)).action == "timesPerDay")
+        #expect(ItemWriteBody.edit(ItemEdit.reminder(time: nil, anchor: nil)).action == "reminder")
+        #expect(ItemEdit.priority(nil).action == "priority")
+        #expect(ItemEdit.timesPerDay(5).action == "timesPerDay")
+        #expect(ItemEdit.reminder(time: "08:00", anchor: .clear).action == "reminder")
+    }
+
+    /// A count is a JSON number. `JSONValue` tries `Bool` before `Double`, and
+    /// a decoder that read 1 as true would make the fixture's count of 1 a
+    /// body the phone never builds; this pins that neither Linux's decoder
+    /// nor Darwin's does.
+    @Test func aCountIsANumber() throws {
+        let one = try JSONDecoder().decode(JSONValue.self, from: Data(#"{"timesPerDay":1}"#.utf8))
+        #expect(one == JSONValue.object(["timesPerDay": .number(1)]))
+        let zero = try JSONDecoder().decode(JSONValue.self, from: Data("0".utf8))
+        #expect(zero == JSONValue.number(0))
+        let yes = try JSONDecoder().decode(JSONValue.self, from: Data("true".utf8))
+        #expect(yes == JSONValue.bool(true))
+
+        let counts = try loadEditWrites().cases.compactMap { c -> JSONValue? in
+            guard case .object(let fields) = c.edit, fields["action"] == .string("timesPerDay") else { return nil }
+            return fields["timesPerDay"]
+        }
+        #expect(counts.contains(.number(1)), "the fixture's count of 1")
+        for count in counts {
+            if case .number = count { continue }
+            Issue.record("a count that isn't a number: \(count)")
+        }
+        #expect(phoneBody(.object(["action": .string("timesPerDay"), "timesPerDay": .number(1)]))
+            == .edit(.timesPerDay(1)))
     }
 }
