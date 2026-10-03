@@ -6,7 +6,7 @@ import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { toggleRail } from '@/lib/open-chat';
-import { usePanelOverlays, useRailMode } from '@/lib/rail-store';
+import { holdRailHeader, usePanelOverlays, useRailMode } from '@/lib/rail-store';
 import { useViewStore } from '@/lib/view-store';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
@@ -95,7 +95,10 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
  * to be drawn (rail-store `restoreFocus`): squeezed by the closing column, it
  * can measure no room and stay hidden until the column has gone. A click
  * focuses it first: Safari leaves a clicked button unfocused, and there would
- * be nothing to note.
+ * be nothing to note. A pointer's click (one with a click count; a key's has
+ * none) also holds Ask's header against the pointer for a moment (rail-store
+ * `holdRailHeader`): the header row opens where this was, and a double-click's
+ * second click would otherwise land on its History, "+" or ✕.
  *
  * WHEN it shows: something answers (the AI gate's `canChat`, asked, never
  * re-derived; unknown is no), on the desktop, outside Zen, and only while the
@@ -158,6 +161,7 @@ export function AskOpener({ className, rowOffset }: { className?: string; rowOff
         data-ask-opener=""
         onClick={(e) => {
           if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
+          if (e.detail > 0) holdRailHeader();
           toggleRail();
         }}
         aria-label="Open Ask"

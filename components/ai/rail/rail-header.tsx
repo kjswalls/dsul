@@ -1,12 +1,12 @@
 'use client';
 
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, useRef, type ReactNode, type SyntheticEvent } from 'react';
 import { ChevronLeft, Sparkles, X } from 'lucide-react';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
 import { deriveTitle } from '@/lib/conversation-types';
-import { backLabel, type AskView } from '@/lib/rail-store';
+import { backLabel, railHeaderHeld, type AskView } from '@/lib/rail-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { useLayoutDef } from '@/lib/look-store';
@@ -104,6 +104,12 @@ export function conversationHeaderAction(
  *  - `actions` sit before ✕: History and "+" in Ask's views.
  *  - `data-sub-input`: the item panel's Enter-to-submit covers its whole
  *    aside, and this row is inside it.
+ *  - For a moment after the Ask button summons Ask by the pointer (rail-store
+ *    `holdRailHeader`), it swallows the pointer: the row opens where that
+ *    button was, and a double-click's second click would land on History,
+ *    "+" or ✕. A swallowed press moves no focus (the box the summon focused
+ *    keeps it) and takes its click with it, even one that lands after the
+ *    hold. A key's click has no click count and is never swallowed.
  */
 export function RailHeader({
   back,
@@ -128,11 +134,31 @@ export function RailHeader({
   const isMac = useMemo(() => isApplePlatform(), []);
   const streaming = useConversationsStore((s) => Object.values(s.threads).some((t) => t.streaming));
   const titled = !!heading || !!title;
+  // The press the hold swallowed: its click goes with it.
+  const swallowing = useRef(false);
+  const swallow = (e: SyntheticEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+  };
 
   return (
+    // Capture phase, so nothing in the row (a Radix trigger opens on the
+    // press) hears what the hold swallows.
     <div
       data-sub-input
       data-rail-header=""
+      onPointerDownCapture={(e) => {
+        swallowing.current = railHeaderHeld();
+        if (swallowing.current) swallow(e);
+      }}
+      onMouseDownCapture={(e) => {
+        if (swallowing.current || railHeaderHeld()) swallow(e);
+      }}
+      onClickCapture={(e) => {
+        const held = e.detail > 0 && (swallowing.current || railHeaderHeld());
+        swallowing.current = false;
+        if (held) swallow(e);
+      }}
       className={cn('relative isolate shrink-0 px-5 pb-2', canvasHeaderPad(slots))}
     >
       {home && RELAY.beacon && (

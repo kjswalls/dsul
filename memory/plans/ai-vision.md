@@ -860,17 +860,19 @@ conversation is saved to the account.
 - The item stays in ui-store's `edit-item` slot; only the Ask stack is new state. With no AI
   the right column is exactly the old item panel, Done included.
 - **Ask starts closed.** It opens from the Ask button (`components/ai/rail/ask-opener.tsx`,
-  the last thing on the canvas's header row, shown only while the right column is empty),
-  Ctrl+J (⌘J: the frozen `toggle_right_sidebar` id re-defaulted) and `?` in the dock (or
-  "Ask AI" in ⌘K). Every one of those writes sidebar-store's persisted `askOpen`, and Ctrl+J
-  or the rail's ✕ clear it, so Ask stays as the user left it across reloads; the tour's
-  summon is the one open that persists nothing. Someone who has never chosen has
-  `askOpen: null`, read (`askOpenOf`) as `ASK_OPEN_DEFAULT` (`false`, Kirby's call on
-  2026-10-02, over the design's "rests open"). The default is applied when read and never
-  stored, so flipping that one constant makes Ask start open instead for every browser whose
-  user has not chosen, including ones that have already run the build. At or below 1180px
-  (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows only when summoned in this
-  session, and parks on click-away or Escape.
+  the last thing on the canvas's header row, shown only while the right column is empty; a
+  pointer's click on it holds Ask's header against the pointer for 500ms, rail-store
+  `holdRailHeader`, since that header opens where the button was and a double-click's second
+  click would land on History, "+" or ✕), Ctrl+J (⌘J: the frozen `toggle_right_sidebar` id
+  re-defaulted) and `?` in the dock (or "Ask AI" in ⌘K). Every one of those writes
+  sidebar-store's persisted `askOpen`, and Ctrl+J or the rail's ✕ clear it, so Ask stays as
+  the user left it across reloads; the tour's summon is the one open that persists nothing.
+  Someone who has never chosen has `askOpen: null`, read (`askOpenOf`) as `ASK_OPEN_DEFAULT`
+  (`false`, Kirby's call on 2026-10-02, over the design's "rests open"). The default is
+  applied when read and never stored, so flipping that one constant makes Ask start open
+  instead for every browser whose user has not chosen, including ones that have already run
+  the build. At or below 1180px (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows
+  only when summoned in this session, and parks on click-away or Escape.
 - **The braindump narrows while the right column is docked**, for Ask and an item alike:
   `renderedSidebarWidth` takes the column's 432px reserve off the braindump's ceiling so the
   canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes the narrowed width back, so the

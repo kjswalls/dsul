@@ -9,7 +9,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
  *    on the desktop, outside Zen, and while the right column is not shown
  *    (Ask closed, no item open). Hidden, it stays mounted for the hand-back.
  *  - A click is Ctrl+J from closed: Ask summoned, its box asked for, and
- *    `askOpen` written.
+ *    `askOpen` written. A pointer's click also holds Ask's header against the
+ *    pointer for a moment; a key's does not.
  *  - Its words and title name the live binding through chordLabel.
  *  - It gives way to the rest of the header row: whole, the spark alone, or
  *    nothing, by the room the row leaves it.
@@ -21,7 +22,7 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}), 
 
 import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { ASK_OPEN_DEFAULT, useSidebarStore } from '@/lib/sidebar-store';
-import { useRailStore } from '@/lib/rail-store';
+import { RAIL_HEADER_HOLD_MS, railHeaderHeld, useRailStore } from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
@@ -172,6 +173,34 @@ describe('a click', () => {
     expect(document.activeElement).toBe(opener());
     // And it has done its job: Ask shows, and it hides.
     expect(pill()).toHaveAttribute('hidden');
+  });
+
+  // Ask's header row opens where the button was, so a double-click's second
+  // click would land on History, "+" or ✕ (rail-header.tsx swallows it).
+  it("by the pointer holds Ask's header against the pointer for a moment; by a key, not at all", () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      renderRow();
+      // Enter or Space: a button's click with no click count. Nothing is held.
+      fireEvent.click(screen.getByRole('button', { name: 'Open Ask' }));
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(railHeaderHeld()).toBe(false);
+      act(() => useRailStore.getState().closeRail());
+
+      // A pointer's click carries its count.
+      fireEvent.click(screen.getByRole('button', { name: 'Open Ask' }), { detail: 1 });
+      expect(useRailStore.getState().summoned).toBe(true);
+      expect(railHeaderHeld()).toBe(true);
+      now += RAIL_HEADER_HOLD_MS - 1;
+      expect(railHeaderHeld()).toBe(true);
+      now += 1;
+      expect(railHeaderHeld()).toBe(false);
+      expect(RAIL_HEADER_HOLD_MS).toBeGreaterThanOrEqual(400);
+      expect(RAIL_HEADER_HOLD_MS).toBeLessThanOrEqual(500);
+    } finally {
+      clock.mockRestore();
+    }
   });
 });
 

@@ -84,7 +84,14 @@ import { RailHeader } from '@/components/ai/rail/rail-header';
 import { ChatComposer } from '@/components/ai/chat-composer';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import type { CommandContext } from '@/lib/commands';
-import { PANEL_OVERLAY_QUERY, RAIL_RESERVE_PX, useRailStore, type AskView } from '@/lib/rail-store';
+import {
+  PANEL_OVERLAY_QUERY,
+  RAIL_HEADER_HOLD_MS,
+  RAIL_RESERVE_PX,
+  holdRailHeader,
+  useRailStore,
+  type AskView,
+} from '@/lib/rail-store';
 import { openEditFor, useUIStore } from '@/lib/ui-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -1387,6 +1394,25 @@ describe('the Ask button', () => {
     act(() => opener().focus());
     fireEvent.click(opener());
   };
+  /**
+   * A mouse's press and click on `el`, carrying its click count (2: a
+   * double-click's second). The press focuses what it lands on, as a browser's
+   * does, unless something prevented its default.
+   */
+  const mouseClick = (el: HTMLElement, count = 1) => {
+    if (fireEvent.pointerDown(el, { button: 0 }) && fireEvent.mouseDown(el, { button: 0, detail: count })) {
+      act(() => el.focus());
+    }
+    fireEvent.mouseUp(el, { button: 0, detail: count });
+    fireEvent.click(el, { button: 0, detail: count });
+  };
+  /** Date.now, with `skew.ms` added: the hold is read off it. */
+  const skew = { ms: 0 };
+  const clock = () => {
+    skew.ms = 0;
+    const realNow = Date.now.bind(Date);
+    return vi.spyOn(Date, 'now').mockImplementation(() => realNow() + skew.ms);
+  };
 
   it("ends the canvas's header row, on the date's line: the far end in a day, past WeekScale in a week", () => {
     renderShell();
@@ -1414,6 +1440,73 @@ describe('the Ask button', () => {
     expect(pill()).toHaveAttribute('hidden');
     // Kept mounted, so the hand-back has somewhere to land.
     expect(opener().isConnected).toBe(true);
+  });
+
+  // Ask's header row opens where the button was (railHeaderRowOffset), so
+  // History, "+" and ✕ open under the pointer that clicked it.
+  it("does nothing with a double-click's second click on Ask's header, and keeps the box focused", async () => {
+    const now = clock();
+    try {
+      renderShell();
+      mouseClick(opener());
+      await timers();
+      expect(document.activeElement).toBe(askBox());
+      const header = within(askView()!.querySelector('[data-rail-header]') as HTMLElement);
+      // The second click, on each thing in the row it can land on.
+      mouseClick(header.getByTestId('ask-history'), 2);
+      mouseClick(header.getByTestId('ask-new-chat'), 2);
+      mouseClick(header.getByTestId('rail-close'), 2);
+      mouseClick(header.getByRole('heading', { name: 'Ask' }), 2);
+      // A quick second click is its own click, just as soon.
+      mouseClick(header.getByTestId('rail-close'), 1);
+      await timers();
+      expect(useSidebarStore.getState().askOpen).toBe(true);
+      expect(useRailStore.getState().stacks.desktop).toEqual([]);
+      expect(header.getByRole('heading', { name: 'Ask' })).toBeInTheDocument();
+      // No press moved focus: the box the summon asked for keeps it.
+      expect(document.activeElement).toBe(askBox());
+    } finally {
+      now.mockRestore();
+    }
+  });
+
+  it('holds the header against the pointer only for a moment, and never against the keyboard', async () => {
+    const now = clock();
+    try {
+      renderShell();
+      mouseClick(opener());
+      await timers();
+      // Inside the hold, Enter or Space on a header control (a click with no
+      // click count) does what it always does.
+      act(() => within(askView() as HTMLElement).getByTestId('ask-history').focus());
+      fireEvent.click(within(askView() as HTMLElement).getByTestId('ask-history'));
+      await timers();
+      expect(useRailStore.getState().stacks.desktop.at(-1)?.kind).toBe('history');
+      fireEvent.click(within(askView() as HTMLElement).getByTestId('rail-back'));
+      await timers();
+      expect(useRailStore.getState().stacks.desktop).toEqual([]);
+
+      // Past it, the pointer works the header as ever.
+      skew.ms = RAIL_HEADER_HOLD_MS;
+      mouseClick(within(askView() as HTMLElement).getByTestId('ask-history'));
+      await timers();
+      expect(useRailStore.getState().stacks.desktop.at(-1)?.kind).toBe('history');
+      mouseClick(within(askView() as HTMLElement).getByTestId('rail-close'));
+      await timers();
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      // Closing by the pointer hands focus back to the button as by a key.
+      expect(document.activeElement).toBe(opener());
+
+      // A key's summon holds nothing (Ask comes back as it was left: History).
+      fireEvent.click(opener());
+      await timers();
+      expect(useRailStore.getState().stacks.desktop.at(-1)?.kind).toBe('history');
+      mouseClick(within(askView() as HTMLElement).getByTestId('rail-back'));
+      await timers();
+      expect(useRailStore.getState().stacks.desktop).toEqual([]);
+    } finally {
+      now.mockRestore();
+    }
   });
 
   it('takes focus back when Ask closes by ✕ or by Ctrl+J from inside it', async () => {
@@ -1805,6 +1898,72 @@ describe('<RailHeader/>', () => {
     expect(screen.getByTestId('rail-back')).toHaveClass('shrink-0', 'max-w-[45%]');
     expect(screen.getByTestId('rail-back')).not.toHaveClass('min-w-0');
     expect(screen.getByRole('heading')).toHaveClass('min-w-0', 'flex-1');
+  });
+
+  // Held (rail-store holdRailHeader: the Ask button summoned Ask by the
+  // pointer, and this row opened where it was).
+  it("swallows the pointer's press and click while held, never a key's, and lets go after", () => {
+    let now = 1_000_000;
+    const clock = vi.spyOn(Date, 'now').mockImplementation(() => now);
+    try {
+      const onBack = vi.fn();
+      const onClose = vi.fn();
+      const onPress = vi.fn();
+      const onAction = vi.fn();
+      render(
+        <RailHeader
+          back={{ label: 'History', onBack }}
+          title="Trip plans"
+          actions={
+            <button type="button" onPointerDown={onPress} onClick={onAction}>
+              Act
+            </button>
+          }
+          onClose={onClose}
+        />
+      );
+      const back = screen.getByTestId('rail-back');
+      const close = screen.getByTestId('rail-close');
+      const action = screen.getByRole('button', { name: 'Act' });
+      holdRailHeader();
+
+      // A press reaches nothing in the row (a Radix trigger opens on it) and
+      // moves no focus: its default is prevented.
+      expect(fireEvent.pointerDown(action, { button: 0 })).toBe(false);
+      expect(fireEvent.mouseDown(close, { button: 0, detail: 2 })).toBe(false);
+      expect(onPress).not.toHaveBeenCalled();
+      // A click with a count (the pointer's) does nothing.
+      fireEvent.click(close, { detail: 2 });
+      fireEvent.click(back, { detail: 1 });
+      fireEvent.click(action, { detail: 1 });
+      expect(onClose).not.toHaveBeenCalled();
+      expect(onBack).not.toHaveBeenCalled();
+      expect(onAction).not.toHaveBeenCalled();
+
+      // A key's click (Enter, Space) has no count, and is never held.
+      fireEvent.click(close);
+      expect(onClose).toHaveBeenCalledTimes(1);
+
+      // A press the hold swallowed takes its click with it, even one that
+      // lands after the hold.
+      fireEvent.pointerDown(action, { button: 0 });
+      now += RAIL_HEADER_HOLD_MS;
+      fireEvent.click(action, { detail: 1 });
+      expect(onAction).not.toHaveBeenCalled();
+
+      // After it, the row is as ever.
+      expect(fireEvent.pointerDown(action, { button: 0 })).toBe(true);
+      expect(onPress).toHaveBeenCalledTimes(1);
+      fireEvent.click(action, { detail: 1 });
+      expect(onAction).toHaveBeenCalledTimes(1);
+      expect(fireEvent.mouseDown(close, { button: 0, detail: 1 })).toBe(true);
+      fireEvent.click(close, { detail: 1 });
+      fireEvent.click(back, { detail: 1 });
+      expect(onClose).toHaveBeenCalledTimes(2);
+      expect(onBack).toHaveBeenCalledTimes(1);
+    } finally {
+      clock.mockRestore();
+    }
   });
 
   it('with no heading (the item view), lets the label take the row', () => {

@@ -452,6 +452,7 @@ export const useRailStore = create<RailState>()((set, get) => {
     // mounted.
     reset: () => {
       focusBeforeSummon = null;
+      railHeaderHeldUntil = 0;
       set({ stacks: EMPTY_STACKS, summoned: false, pendingFocus: null, pendingReveal: null, drafts: {}, lastNav: null });
     },
   };
@@ -557,6 +558,40 @@ function restoreFocus(record: HTMLElement | null): void {
     el.focus({ preventScroll: true });
   };
   setTimeout(attempt, 0);
+}
+
+// ── The pointer across a summon ──────────────────────────────────────────────
+//
+// The Ask button sits on the date's row, which is where Ask's header row lands
+// when it opens (railHeaderRowOffset), so History, "+" and ✕ open right under
+// the pointer that clicked it. A double-click's second click, or a quick
+// second click from someone who thought the first one missed, would land on
+// one of them: ✕ closing Ask again, History or "+" pushed over the box the
+// summon just focused. So a summon by the pointer holds Ask's header against
+// the pointer for a moment (holdRailHeader, from ask-opener.tsx), and the
+// header (components/ai/rail/rail-header.tsx) swallows a press and its click
+// while it holds, without moving focus. The keyboard is never held: a key's
+// click has no click count, and nothing else a key does there goes through a
+// pointer event. Module state, not store state: nothing renders from it.
+
+/**
+ * How long the header ignores the pointer after a pointer summon: a
+ * double-click's second click comes within the system's double-click time,
+ * 500ms by default on Windows. Long enough for that, and short of a
+ * deliberate aim at a control that has only just appeared.
+ */
+export const RAIL_HEADER_HOLD_MS = 500;
+
+let railHeaderHeldUntil = 0;
+
+/** A summon by the pointer: Ask's header ignores the pointer for RAIL_HEADER_HOLD_MS. */
+export function holdRailHeader(): void {
+  railHeaderHeldUntil = Date.now() + RAIL_HEADER_HOLD_MS;
+}
+
+/** True while the header still ignores the pointer. */
+export function railHeaderHeld(): boolean {
+  return Date.now() < railHeaderHeldUntil;
 }
 
 // ── Reading the rule ─────────────────────────────────────────────────────────
