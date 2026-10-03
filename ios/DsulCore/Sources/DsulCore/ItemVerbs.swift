@@ -1,26 +1,27 @@
 import Foundation
 
 // Port of lib/item-verbs.ts, for the verbs the phone's item sheet offers:
-// tick, skip, unskip, pause, resume, nextDay and reschedule. For each, its gate
-// (`verbEligible`), its label (`verbLabel`) and its detail (`verbDetail`), and
-// `eligibleVerbs` in the web's declaration order; with the shared predicates
-// (`isDoneOn`, `isSkippedOn`, `isCancelled`), the day's state (`drawnState`,
-// `occurrenceOn`) and lib/reminders/due.ts `occursOn`, which `occurrenceOn`
-// asks first. Keep in step: a change there without the same change here is
-// drift, and the sheet offers a verb the web's menus refuse. Checked against
-// the web by ItemVerbsFixtureTests (tests/fixtures/day/verbs.json) and
-// OccursFixtureTests (occurs.json).
+// tick, skip, unskip, pause, resume, nextDay, reschedule and delete. For each,
+// its gate (`verbEligible`), its label (`verbLabel`) and its detail
+// (`verbDetail`), and `eligibleVerbs` in the web's declaration order; with the
+// shared predicates (`isDoneOn`, `isSkippedOn`, `isCancelled`), the day's state
+// (`drawnState`, `occurrenceOn`) and lib/reminders/due.ts `occursOn`, which
+// `occurrenceOn` asks first. Keep in step: a change there without the same
+// change here is drift, and the sheet offers a verb the web's menus refuse.
+// Checked against the web by ItemVerbsFixtureTests
+// (tests/fixtures/day/verbs.json) and OccursFixtureTests (occurs.json).
 //
 // The day a verb acts on is always passed in (`VerbContext.dateStr`), never
 // looked up, as on the web; pause and resume read wall-clock today
 // (`todayStr`) instead, because pausing is dateless. Gates are pure: the app
 // re-reads the item and asks again with a fresh context before it writes.
 //
-// Not ported: `complete`, `braindump`, `resetStreak`, `leaveProjectBlock` and
-// `delete` (the sheet doesn't offer them yet), `milestoneIds` (the payload has
-// no goals), and every `run`: the app does the optimistic step
-// (VerbWrites.swift) and sends the write. Days stay yyyy-MM-dd strings,
-// compared as strings, as on the web.
+// Not ported: `complete`, `braindump`, `resetStreak` and `leaveProjectBlock`
+// (the sheet doesn't offer them yet), `milestoneIds` (the payload has no
+// goals), and every `run`: the app does the optimistic step (VerbWrites.swift,
+// ItemEdit.swift) and sends the write. Delete's `run` is a confirm whose words
+// are the registry's (`ItemCaps.deleteDescription`) and the app's. Days stay
+// yyyy-MM-dd strings, compared as strings, as on the web.
 
 /// lib/container-schedule.ts `OccurrenceState`, plus 'absent' (the item does
 /// not fall on the day): what a caller knows about an item on one day.
@@ -55,9 +56,11 @@ public struct VerbContext: Sendable, Hashable {
 }
 
 /// The ids of lib/item-verbs.ts `VerbId` the sheet offers, in `ITEM_VERBS`
-/// declaration order, which is the order `eligibleVerbs` answers in.
+/// declaration order, which is the order `eligibleVerbs` answers in. Delete is
+/// declared last there, so it stays last here: a verb ported later goes in at
+/// its own place, ahead of it.
 public enum VerbID: String, Sendable, Hashable, CaseIterable {
-    case tick, skip, unskip, pause, resume, nextDay, reschedule
+    case tick, skip, unskip, pause, resume, nextDay, reschedule, delete
 }
 
 // MARK: - Shared predicates
@@ -182,7 +185,9 @@ public func nextDayOf(_ item: Item, _ ctx: VerbContext) -> String {
 /// - pause: `isPausable` and not paused today; resume: paused today;
 /// - nextDay: task-like, dated, and `canMoveToNextDay` off its day;
 /// - reschedule: `canReschedule` with the date left open, so an undated item
-///   may, and so may a recurring task (its picked day becomes the series start).
+///   may, and so may a recurring task (its picked day becomes the series start);
+/// - delete: always. Anything may be deleted, something finished, cancelled,
+///   paused or not due included.
 public func verbEligible(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Bool {
     switch verb {
     case .tick:
@@ -205,6 +210,8 @@ public func verbEligible(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Bo
             && canMoveToNextDay(item, kind: kindOf(item), dateStr: rowDateOf(item, ctx))
     case .reschedule:
         return isTaskLike(item) && canReschedule(item, kind: kindOf(item), dateStr: rowDateOf(item, ctx))
+    case .delete:
+        return true
     }
 }
 
@@ -213,7 +220,8 @@ public func verbEligible(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Bo
 /// - tick: a one-off "Mark done" / "Mark not done"; a recurring item "Undo
 ///   today" when done, "Count one (1/3)" for a counted habit, else "Done today";
 /// - nextDay: "Move to tomorrow", or "Move to next day" when it lands later;
-/// - reschedule: "Reschedule" for a dated task-like item, else "Schedule".
+/// - reschedule: "Reschedule" for a dated task-like item, else "Schedule";
+/// - delete: "Delete", whatever the type (the confirm names it).
 public func verbLabel(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> String {
     switch verb {
     case .tick:
@@ -238,6 +246,8 @@ public func verbLabel(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Strin
         return nextDayLabel(nextDayOf(item, ctx), today: ctx.todayStr)
     case .reschedule:
         return isTaskLike(item) && present(item.startDate) != nil ? "Reschedule" : "Schedule"
+    case .delete:
+        return "Delete"
     }
 }
 
@@ -247,7 +257,7 @@ public func verbDetail(_ verb: VerbID, _ item: Item, _ ctx: VerbContext) -> Stri
     switch verb {
     case .nextDay:
         return formatTargetDay(nextDayOf(item, ctx))
-    case .tick, .skip, .unskip, .pause, .resume, .reschedule:
+    case .tick, .skip, .unskip, .pause, .resume, .reschedule, .delete:
         return nil
     }
 }

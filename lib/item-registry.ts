@@ -207,7 +207,12 @@ export interface ItemTypeConfig {
     newContainerLabel: string
     /** Lucide icon name seeding the inline container creator (via makeIconToken). */
     newContainerIcon: string
-    /** Body copy for the delete-confirm dialog. */
+    /**
+     * Body copy for the delete-confirm dialog, on every surface (the iPhone's
+     * too, through tests/fixtures/day/caps.json). A delete goes to the Trash,
+     * restorable on the web for 30 days, so the words say that and never
+     * "cannot be undone"; and they must hold on a phone, which has no Trash.
+     */
     deleteDescription: (title: string) => string
   }
   ai: {
@@ -271,7 +276,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
       newContainerLabel: CONTAINER_KINDS.project.newLabel!,
       newContainerIcon: 'Briefcase',
       deleteDescription: (title) =>
-        `This will permanently delete "${title}". This action cannot be undone.`,
+        `Moves "${title}" to Trash for 30 days, then deletes it for good.`,
     },
     ai: {
       renderContextSection: (items, { todayStr }) => {
@@ -417,7 +422,7 @@ export const ITEM_TYPES: Record<KnownItemType, ItemTypeConfig> = {
       newContainerLabel: CONTAINER_KINDS.project.newLabel!,
       newContainerIcon: 'Star',
       deleteDescription: (title) =>
-        `This will permanently delete "${title}" and all its history. This action cannot be undone.`,
+        `Moves "${title}" and its history to Trash for 30 days, then deletes them for good.`,
     },
     ai: {
       renderContextSection: (items, { todayStr }) => {
@@ -543,7 +548,7 @@ export function buildCustomTypeConfig(
       newContainerLabel: CONTAINER_KINDS.project.newLabel!,
       newContainerIcon: 'Star',
       deleteDescription: (title) =>
-        `This will permanently delete "${title}". This action cannot be undone.`,
+        `Moves "${title}" to Trash for 30 days, then deletes it for good.`,
     },
     ai: {
       renderContextSection: (items, _ctx) => {

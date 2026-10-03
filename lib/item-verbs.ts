@@ -332,10 +332,18 @@ const leaveProjectBlock: ItemVerb = {
 };
 
 /**
+ * The delete prompt's title, "Delete task?", in the type's own noun. Exported
+ * so the iPhone's confirm is pinned to it (tests/fixtures/day/caps.json).
+ */
+export function deleteConfirmTitle(label: string): string {
+  return `Delete ${label.toLowerCase()}?`;
+}
+
+/**
  * Confirmed, not immediate. Every other verb is a single undo away; this one
- * destroys a habit's whole history with it, so it goes through the same prompt
- * the item dialog uses, with that type's copy. Always eligible — you can
- * delete anything, including something already finished.
+ * takes a habit's whole history to the Trash with it, so it goes through the
+ * same prompt the item dialog uses, with that type's copy. Always eligible —
+ * you can delete anything, including something already finished.
  */
 const del: ItemVerb = {
   id: 'delete',
@@ -344,7 +352,7 @@ const del: ItemVerb = {
   run: (item) => {
     const config = getItemTypeConfig(itemTypeName(item));
     useUIStore.getState().confirm({
-      title: `Delete ${config.label.toLowerCase()}?`,
+      title: deleteConfirmTitle(config.label),
       description: config.form.deleteDescription(item.title),
       confirmLabel: 'Delete',
       destructive: true,

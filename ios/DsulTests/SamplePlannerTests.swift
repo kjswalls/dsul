@@ -230,7 +230,7 @@ import Testing
         let today = planner.today
 
         let journal = first(planner, "Journal")
-        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause])
+        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause, .delete])
         planner.skip(journal.id, on: today)
         #expect(planner.item(journal.id)?.skippedDates == ["2026-10-01"])
         #expect(planner.item(journal.id)?.status == "skipped")
@@ -252,6 +252,42 @@ import Testing
         planner.resume(plan.id)
         #expect(planner.item(plan.id)?.pausedUntil == "2026-10-01")
         #expect(planner.dayItems.contains { $0.id == plan.id })
+    }
+
+    /// The sample's title, notes and Delete take their steps and send
+    /// nothing, as its verbs do. Delete takes the roadmap's two subtasks with
+    /// it and closes its sheet; a habit goes alone.
+    @Test func theSampleTakesEveryEditAndDeleteWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.canWrite("title"))
+        #expect(planner.canWrite("notes"))
+        #expect(planner.canWrite("delete"))
+
+        let roadmap = first(planner, "Draft Q4 roadmap")
+        #expect(planner.caps(for: roadmap).label == "Task")
+        #expect(planner.typeLabel(for: roadmap) == "Task")
+        planner.edit(roadmap.id, .title("  Draft the Q4 roadmap "))
+        #expect(planner.item(roadmap.id)?.title == "Draft the Q4 roadmap")
+        planner.edit(roadmap.id, .notes(nil))
+        #expect(planner.item(roadmap.id)?.notes == nil)
+        planner.edit(roadmap.id, .notes("Bets first, then numbers"))
+        #expect(planner.item(roadmap.id)?.notes == "Bets first, then numbers")
+
+        let children = planner.subtasks(of: roadmap.id).map(\.id)
+        #expect(children.count == 2)
+        planner.open(roadmap.id, day: .selected)
+        planner.deleteItem(roadmap.id)
+        #expect(planner.item(roadmap.id) == nil)
+        #expect(children.allSatisfy { planner.item($0) == nil })
+        #expect(planner.activeSheet == nil)
+        #expect(!planner.dayItems.contains { $0.id == roadmap.id })
+
+        let journal = first(planner, "Journal")
+        let count = planner.items.count
+        planner.deleteItem(journal.id)
+        #expect(planner.item(journal.id) == nil)
+        #expect(planner.items.count == count - 1)
     }
 
     @Test func nextWeekStartsOnTheUsersWeekStart() {
@@ -281,7 +317,7 @@ import Testing
         let ids = Set(subtasks.map(\.id))
         #expect(!planner.dayItems.contains { ids.contains($0.id) })
         #expect(!planner.braindump.contains { ids.contains($0.id) })
-        #expect(subtasks.allSatisfy { planner.offeredVerbs(for: $0, day: .selected) == [.tick] })
+        #expect(subtasks.allSatisfy { planner.offeredVerbs(for: $0, day: .selected) == [.tick, .delete] })
     }
 
     // MARK: Completion

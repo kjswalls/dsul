@@ -63,16 +63,32 @@ private func context(_ c: VerbsCase) throws -> VerbContext {
 }
 
 @Suite struct ItemVerbsFixtureTests {
+    /// Delete is the exception: always eligible, so the fixture has no
+    /// refusal of it to show (day-fixtures.test.ts exempts it the same way).
     @Test func hasCasesForEveryVerbBothWays() throws {
         let cases = try loadFixture().cases
         #expect(!cases.isEmpty)
-        for verb in VerbID.allCases {
+        for verb in VerbID.allCases where verb != .delete {
             let answers = cases.compactMap { $0.verbs[verb.rawValue]?.eligible }
             #expect(answers.contains(true), "\(verb.rawValue) is eligible somewhere")
             #expect(answers.contains(false), "\(verb.rawValue) is refused somewhere")
         }
+        let deletes = cases.compactMap { $0.verbs[VerbID.delete.rawValue]?.eligible }
+        #expect(deletes.count == cases.count, "delete answers in every case")
+        #expect(deletes.allSatisfy { $0 }, "delete is always eligible")
         #expect(cases.contains { $0.occurrence == nil })
         #expect(cases.contains { $0.occurrence == "absent" })
+    }
+
+    /// `ITEM_VERBS` declares delete last, so every eligible list ends with it,
+    /// the web's and the port's.
+    @Test func deleteIsAlwaysEligibleAndLast() throws {
+        #expect(VerbID.allCases.last == .delete)
+        for c in try loadFixture().cases {
+            let ctx = try context(c)
+            #expect(c.eligible.last == VerbID.delete.rawValue, "\(c.name): the web's")
+            #expect(eligibleVerbs(c.item, ctx).last == .delete, "\(c.name): the port's")
+        }
     }
 
     /// The fixture answers for exactly the sheet's verbs.
@@ -149,6 +165,22 @@ private func context(_ c: VerbsCase) throws -> VerbContext {
         #expect(!isCancelled(Item(id: id, type: "habit", title: "H", status: "cancelled")))
         #expect(isTaskLike(Item(id: id, type: "custom", customType: "errand", title: "E")))
         #expect(!isTaskLike(Item(id: id, type: "habit", title: "H")))
+    }
+
+    /// Delete asks nothing of the item: a cancelled task, a day a habit
+    /// doesn't fall on and a paused item may all be deleted.
+    @Test func deleteTakesAnything() {
+        let ctx = VerbContext(dateStr: "2026-10-03", todayStr: "2026-10-02", timeZone: "UTC", occurrence: .absent)
+        let items = [
+            Item(id: id, title: "T", status: "cancelled"),
+            Item(id: id, type: "habit", title: "H", repeatFrequency: "weekdays"),
+            Item(id: id, title: "P", pausedAt: "2026-09-30T14:03:22.123456+00:00"),
+        ]
+        for item in items {
+            #expect(verbEligible(VerbID.delete, item, ctx), "\(item.title)")
+            #expect(verbLabel(.delete, item, ctx) == "Delete", "\(item.title)")
+            #expect(verbDetail(.delete, item, ctx) == nil, "\(item.title)")
+        }
     }
 
     @Test func aDayContextComesFromThePlannersDays() {

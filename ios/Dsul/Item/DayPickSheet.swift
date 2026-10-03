@@ -12,6 +12,12 @@ import SwiftUI
 /// Its earliest day can move while it is up (Pause until's, at midnight):
 /// a day picked before then is brought up to it, so the button never names a
 /// day the pause would refuse.
+///
+/// The calendar draws today's number in the tint, and the picked day as a
+/// disc of the tint under a white number, so it tints itself the system blue
+/// (`calendarTint`): in the sheet's lime the picked day was a faded 1.5:1
+/// disc, and in the label colour today looked like every other day and, in
+/// dark mode, a picked today was white on white.
 struct DayPickSheet: View {
     /// The title, the confirm button's verb before the day ("Move to",
     /// "Pause until"), and the note under the calendar, if any.
@@ -85,12 +91,19 @@ struct DayPickSheet: View {
         .presentationDetents([.large])
     }
 
+    /// Not lime, not the label colour, and dark enough under a white number
+    /// in both modes (about 4:1 light, 3.6:1 dark): the system's own blue,
+    /// which the calendar uses untinted.
+    private static var calendarTint: Color { Color(.systemBlue) }
+
     @ViewBuilder
     private var calendar: some View {
         if let earliest {
             DatePicker("Day", selection: $picked, in: earliest.localDate()..., displayedComponents: .date)
+                .tint(Self.calendarTint)
         } else {
             DatePicker("Day", selection: $picked, displayedComponents: .date)
+                .tint(Self.calendarTint)
         }
     }
 }

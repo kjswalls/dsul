@@ -131,7 +131,8 @@ export function ScheduleSheet() {
     close();
     confirm({
       title: `Delete ${isTask ? 'Task' : 'Habit'}?`,
-      description: `This will permanently delete "${title}".`,
+      // The type's own words, as every other delete prompt: to the Trash, not gone.
+      description: getItemTypeConfig(typeName ?? row.itemType).form.deleteDescription(title),
       confirmLabel: 'Delete',
       destructive: true,
       onConfirm: () => (isTask ? deleteTask(id) : deleteHabit(id)),
