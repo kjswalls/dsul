@@ -64,7 +64,8 @@ const NO_ENTER = 'data-[state=open]:!animate-none';
 
 /** `className` styles the desktop DialogContent; mobile is a bottom sheet with
  *  its own scroll + safe-area. Extra props (onKeyDown, etc.) pass to both.
- *  `overlayClassName` is desktop-only — the drawer keeps the shared scrim.
+ *  `overlayClassName` is desktop-only — the drawer keeps the shared scrim (only
+ *  `instant` reaches it).
  *  `instant` skips the enter animation on both, for a surface that is taking
  *  over from one already on screen (the "new" dialog's type switch). */
 function ResponsiveModalContent({
