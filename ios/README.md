@@ -334,10 +334,13 @@ match memory/plans/ios-app.md.
       field, which reads "New subtask". Type a subtask and press Return:
       VoiceOver says "Added …". Press Return on the empty field: VoiceOver is
       back on "Add a subtask".
+    - Type "Milk" in the field without pressing Return, then close the sheet.
+      Milk is added, and VoiceOver says "Added Milk" after the sheet has gone.
 11. **The largest text size.** The title and the notes still edit, and
     Delete's confirm shows all its words. The streak chip opens a sheet, not a
-    popover, at half height with a grabber; its week and Reset streak fit, and
-    a swipe down closes it.
+    popover, at half height with a grabber. The flame and the count sit above
+    the week's seven days, the week and Reset streak fit, and a swipe down
+    closes it.
 12. **Lime, in light and dark mode.**
     - The caret, the selection, the nav bar's Done and the confirm's Cancel
       aren't lime.
