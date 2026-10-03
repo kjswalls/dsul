@@ -194,7 +194,7 @@ describe('the extension list and the extension pane agree', () => {
     renderShell('extensions/beeminder');
     expect(
       document.querySelector('[data-setting-row="extensions.beeminder"]')!.textContent
-    ).toContain('Unavailable — needs Settle the day, in Rituals');
+    ).toContain('Unavailable: needs Settle the day, in Rituals');
   });
 
   it('reads On once the master switch is on — and re-renders on its own', async () => {

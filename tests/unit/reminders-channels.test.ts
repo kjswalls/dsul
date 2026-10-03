@@ -176,7 +176,7 @@ describe('spokenLine', () => {
 
 describe('smsLine', () => {
   it('is one line', () => {
-    expect(smsLine(cue())).toBe('Vitamins — you pour your coffee');
+    expect(smsLine(cue())).toBe('Vitamins: you pour your coffee');
     expect(smsLine(cue())).not.toContain('\n');
   });
 

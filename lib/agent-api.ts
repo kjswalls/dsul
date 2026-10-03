@@ -385,7 +385,7 @@ async function pausePatchForItem(
   if (!isPausableRow(row)) {
     return {
       error:
-        'this item cannot be paused — subtasks surface only inside their parent ' +
+        'this item cannot be paused. Subtasks surface only inside their parent ' +
         'and follow its state',
     }
   }

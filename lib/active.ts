@@ -149,8 +149,8 @@ export function resolvePauseWrite(
     if (!pausedNow) {
       return {
         reason:
-          'pausedUntil was sent without paused: true, but this is not currently paused — ' +
-          'a resume date on its own would change nothing',
+          'pausedUntil was sent without paused: true, but this is not currently paused. ' +
+          'A resume date on its own would change nothing.',
       };
     }
     return { patch: { pausedUntil: until } };
@@ -625,7 +625,7 @@ function deadPathExplanation(
  * (overlap-blocks decision 1): this states where the work went, and that is all.
  */
 export function suppressionLabel(reason: SuppressionReason, opts: { long?: boolean } = {}): string {
-  const back = reason.until ? ` — back ${formatDay(reason.until)}` : '';
+  const back = reason.until ? ` until ${formatDay(reason.until)}` : '';
   switch (reason.kind) {
     case 'paused':
       return reason.until ? `Paused until ${formatDay(reason.until)}` : 'Paused';

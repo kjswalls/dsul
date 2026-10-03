@@ -117,7 +117,7 @@ export async function POST(req: NextRequest) {
         .upsert({ user_id: user.id, openclaw_gateway_url: url }, { onConflict: 'user_id' })
       if (isMissingSchema(error)) {
         return NextResponse.json(
-          { error: 'Needs migration 040 — run pnpm db:push.', unavailable: true },
+          { error: 'Needs migration 040. Run pnpm db:push.', unavailable: true },
           { status: 503 }
         )
       }
@@ -131,7 +131,7 @@ export async function POST(req: NextRequest) {
         .upsert({ user_id: user.id, openclaw_gateway_token: token }, { onConflict: 'user_id' })
       if (isMissingSchema(error)) {
         return NextResponse.json(
-          { error: 'Needs migration 040 — run pnpm db:push.', unavailable: true },
+          { error: 'Needs migration 040. Run pnpm db:push.', unavailable: true },
           { status: 503 }
         )
       }

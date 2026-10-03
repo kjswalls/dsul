@@ -49,7 +49,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
     label: 'Relay',
     kind: 'multi',
     description:
-      'The light logo colours: the dark field’s relay hues a shade deeper, in its mix — mostly lime, with orange, honey, teal, indigo and moss.',
+      'The light logo colours: the dark field’s relay hues a shade deeper, in the same mix of mostly lime with orange, honey, teal, indigo and moss.',
     // Same order and weights as the dark field (readPalette: primary ×3,
     // accent-8, afternoon, accent-6, accent-2, accent-3, accent-1), and the
     // same values the light app mark is drawn in — keep the two together.
@@ -69,7 +69,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
     label: 'Quiet',
     kind: 'multi',
     description:
-      'Gray texture with the relay colours as sparks — about half the tiles stay gray. For fields on the gray dock.',
+      'Gray texture with the relay colours as sparks. About half the tiles stay gray. For fields on the gray dock.',
     colors: [
       'oklch(0.42 0.012 272)',
       'oklch(0.5 0.012 272)',
@@ -85,7 +85,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   gray: {
     label: 'Gray',
     kind: 'mono',
-    description: 'Shades of cool gray — tonal contrast, no color. The calm default.',
+    description: 'Shades of cool gray. Tonal contrast, no color. The calm default.',
     colors: [
       'oklch(0.42 0.012 272)',
       'oklch(0.5 0.012 272)',
@@ -101,7 +101,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   ink: {
     label: 'Ink',
     kind: 'mono',
-    description: 'Shades of the cool ink (indigo, hue ~272) — echoes dsul’s text color.',
+    description: 'Shades of the cool ink (indigo, hue ~272), echoing dsul’s text color.',
     colors: [
       'oklch(0.62 0.09 272)',
       'oklch(0.56 0.11 272)',
@@ -114,7 +114,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   slate: {
     label: 'Slate',
     kind: 'mono',
-    description: 'Shades of teal-slate (hue ~208) — cool, sits a step apart from the text ink.',
+    description: 'Shades of teal-slate (hue ~208). Cool, a step apart from the text ink.',
     colors: [
       'oklch(0.64 0.07 208)',
       'oklch(0.58 0.08 206)',
@@ -127,7 +127,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   lime: {
     label: 'Lime',
     kind: 'mono',
-    description: 'Shades of the brand lime (hue ~127) — the warm/green cousin of Gray.',
+    description: 'Shades of the brand lime (hue ~127). The warm, green cousin of Gray.',
     colors: [
       'oklch(0.6 0.15 128)',
       'oklch(0.68 0.16 127)',
@@ -191,7 +191,7 @@ export const RELAY_LIGHT_PALETTES: Record<RelayLightPaletteKey, RelayLightPalett
   confetti: {
     label: 'Confetti',
     kind: 'multi',
-    description: 'The original full-spectrum 9-hue spread — lively but scattered on gray.',
+    description: 'The original full-spectrum 9-hue spread. Lively, but scattered on gray.',
     colors: [
       'oklch(0.7 0.19 128)',
       'oklch(0.7 0.19 128)',

@@ -86,7 +86,7 @@ export function OverviewSection({
       <div className="px-7 pt-6 pb-1">
         <h3 className="text-foreground text-base font-semibold">Your structure</h3>
         <p className="text-muted-foreground mt-1 max-w-[52ch] text-xs">
-          Containers switch work on and off. Labels name it. All of it is optional — items live
+          Containers switch work on and off. Labels name it. All of it is optional. Items live
           happily without any of it.
         </p>
       </div>

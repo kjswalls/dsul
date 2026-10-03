@@ -607,7 +607,7 @@ export function UnscheduledTray({ items, testId = 'schedule-unscheduled' }: { it
   return (
     <div className="flex flex-col gap-1.5" data-testid={testId}>
       <ScheduleHeading label={`Unscheduled · ${items.length}`}>
-        <span className="text-muted-foreground text-[11px]">No date yet — in the braindump</span>
+        <span className="text-muted-foreground text-[11px]">No date yet, still in the braindump</span>
       </ScheduleHeading>
       <div className="flex flex-wrap gap-1">
         {items.slice(0, 12).map((i) => (
@@ -862,7 +862,7 @@ export function SeasonHeatmap({
     `${formatShort(range.from)} to ${formatShort(addDaysStr(range.from, range.days - 1))}: ` +
     `${doneTotal} done so far` +
     (heaviest && heaviest.occurrences.length ? `, busiest ahead ${formatShort(heaviest.date)}` : '');
-  const rangeNotes = `${!range.bounded ? ' No run set — showing sixteen weeks.' : ''}${range.capped ? ' Long run — showing the first 400 days.' : ''}`;
+  const rangeNotes = `${!range.bounded ? ' No run set. Showing sixteen weeks.' : ''}${range.capped ? ' A long run. Showing the first 400 days.' : ''}`;
 
   if (hideEmptyGrid && !schedule.days.some((d) => d.occurrences.length > 0)) {
     return (
@@ -908,7 +908,7 @@ export function SeasonHeatmap({
       <p className="text-muted-foreground min-h-4 text-[11px]" data-testid={`${testId}-info`}>
         {hovered ? (
           <>
-            <span className="font-num">{formatShort(hovered.date)}</span> —{' '}
+            <span className="font-num">{formatShort(hovered.date)}</span>:{' '}
             {hovered.occurrences.length === 0
               ? 'nothing'
               : hovered.occurrences.map((o) => titleOf(o.itemId)).join(', ')}
@@ -920,10 +920,10 @@ export function SeasonHeatmap({
           </>
         ) : memberIds.length > 0 ? (
           <>
-            Nothing ahead in this range{doneTotal ? ` — ${doneTotal} done before today` : ''}.{rangeNotes}
+            Nothing ahead in this range{doneTotal ? `. ${doneTotal} done before today` : ''}.{rangeNotes}
           </>
         ) : (
-          'Nothing lands on it yet — link routines or items to see its calendar.'
+          'Nothing lands on it yet. Link routines or items to see its calendar.'
         )}
       </p>
       <UnscheduledTray items={schedule.unscheduled} />
@@ -996,8 +996,8 @@ function useGoalSchedule(goal: GoalRoles & { startsOn?: string; targetOn?: strin
 }
 
 function rangeNote(range: { capped: boolean; open: boolean }) {
-  if (range.capped) return 'A long window — showing 400 days around today.';
-  if (range.open) return 'No target yet — showing twelve weeks from the start.';
+  if (range.capped) return 'A long window. Showing 400 days around today.';
+  if (range.open) return 'No target yet. Showing twelve weeks from the start.';
   return null;
 }
 
@@ -1040,7 +1040,7 @@ export function GoalTimeline({
     return (
       <div className="flex flex-col gap-2" data-testid={testId}>
         <p className="text-muted-foreground text-[11px]">
-          Nothing dated in the window yet — link milestones, check-ins or supporting work to see it here.
+          Nothing dated in the window yet. Link milestones, check-ins or supporting work to see it here.
         </p>
         <UnscheduledTray items={schedule.unscheduled} />
       </div>
@@ -1164,7 +1164,7 @@ export function GoalBars({
       <p className="text-muted-foreground min-h-4 text-[11px]">
         {h ? (
           <>
-            Week of <span className="font-num">{formatShort(h.start)}</span> — {h.done} done
+            Week of <span className="font-num">{formatShort(h.start)}</span>: {h.done} done
             {h.due ? `, ${h.due} to come` : ''}
             {h.once.length ? ` · ${h.once.length} one-off` : ''}
           </>

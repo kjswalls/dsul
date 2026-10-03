@@ -21,7 +21,7 @@ export const STAKE_SETTINGS: ChannelSettingsSpec[] = [
         // The rename caveat is stated where someone can act on it, because the
         // failure is silent: the datapoint simply stops being posted.
         description:
-          'Matched on the habit’s title, so update this if you rename one. Only completions are posted — a miss is the missing datapoint, which is what makes the goal derail. Each one goes up the moment you tick the box; un-ticking withdraws it again.',
+          'Matched on the habit’s title, so update this if you rename one. Only completions are posted. A miss is the missing datapoint, which is what makes the goal derail. Each one goes up the moment you tick the box; un-ticking withdraws it again.',
         keywords: ['mapping', 'slug', 'which goal', 'link'],
       },
     ],
@@ -37,7 +37,7 @@ export const STAKE_SETTINGS: ChannelSettingsSpec[] = [
         key: 'amount',
         label: 'Per miss',
         placeholder: '10',
-        description: 'What one missed habit costs. dsul records it — it cannot take payment.',
+        description: 'What one missed habit costs. dsul records it but cannot take payment.',
         keywords: ['cost', 'price', 'how much', 'amount'],
       },
       { key: 'currency', label: 'Currency', placeholder: 'USD', keywords: ['gbp', 'eur', 'usd', 'money'] },
@@ -67,7 +67,7 @@ export const STAKE_SETTINGS: ChannelSettingsSpec[] = [
         key: 'webhookUrl',
         label: 'Webhook',
         placeholder: 'https://hooks.slack.com/…',
-        description: 'A Slack or Discord webhook — usually a channel you share with them.',
+        description: 'A Slack or Discord webhook, usually for a channel you share with them.',
         keywords: ['slack', 'discord', 'url', 'channel'],
       },
       {

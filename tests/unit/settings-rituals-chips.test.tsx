@@ -390,7 +390,7 @@ describe('a chip that cannot be used yet', () => {
     expect(input.disabled).toBe(true);
     const desc = document.getElementById(input.getAttribute('aria-describedby')!)!;
     expect(desc.textContent).toContain('When it rings.');
-    expect(desc.textContent).toContain('Unavailable — needs a database update');
+    expect(desc.textContent).toContain('Unavailable: needs a database update');
   });
 });
 

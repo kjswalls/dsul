@@ -255,7 +255,7 @@ describe('size caps', () => {
 describe('describing a step', () => {
   it('names the parent, so a breakdown line says what it is a step of', () => {
     expect(describeOperation(step(), ctx)).toBe(
-      'Draft the outline — under Write the quarterly report'
+      'Draft the outline (under Write the quarterly report)'
     );
   });
 

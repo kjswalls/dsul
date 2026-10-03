@@ -107,7 +107,7 @@ export function NewItemWhenChip({
     <PropertyChip
       label={label}
       value={label}
-      ariaLabel={`When: ${label} — ${title}`}
+      ariaLabel={`When: ${label}, ${title}`}
       testId={testId}
       alwaysChevron
       align="end"

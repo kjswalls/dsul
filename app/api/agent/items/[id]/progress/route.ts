@@ -101,7 +101,7 @@ export async function POST(
         return NextResponse.json(
           {
             error:
-              'That item has changed since you last read it — someone else has taken it or ' +
+              'That item has changed since you last read it: someone else has taken it, or ' +
               'the user has stepped in. Re-read it with dsul_my_work before reporting.',
             currentStatusAt: owner.ai_status_at ?? null,
           },

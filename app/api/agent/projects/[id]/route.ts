@@ -72,7 +72,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           error:
-            'That name is already taken by another project — possibly one in the trash, which keeps its name for 30 days.',
+            'That name is already taken by another project. It may be one in the trash, which keeps its name for 30 days.',
         },
         { status: 409 }
       )

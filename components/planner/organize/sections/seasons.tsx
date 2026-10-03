@@ -154,7 +154,7 @@ export function SeasonsSection({
           <SeasonDetail season={selected} onBack={() => onSelect(null)} />
         ) : (
           <SectionWelcome section="seasons">
-            A season is a stretch of life — a summer, a term — that switches whole routines on
+            A season is a stretch of life, like a summer or a term, that switches whole routines on
             and off.
           </SectionWelcome>
         )}
@@ -257,7 +257,7 @@ function SeasonDetail({ season, onBack }: { season: Season; onBack: () => void }
       title: `This will hide ${hides} ${hides === 1 ? 'item' : 'items'} for now`,
       description:
         `“${routine.name}” looks after itself today. Putting it in ${season.name} hands that ` +
-        `over — and ${season.name} is off, so its ${hides} ${hides === 1 ? 'item' : 'items'} ` +
+        `over. ${season.name} is off, so its ${hides} ${hides === 1 ? 'item' : 'items'} ` +
         `${returns ? `come back on ${returns}` : 'stay hidden until you switch it on'}. ` +
         `Nothing is deleted, and taking it back out restores them.`,
       confirmLabel: 'Add it anyway',
@@ -489,7 +489,7 @@ function deleteConsequence(
     `“${season.name}” is removed` +
     (held ? `, but the ${held} it holds stay exactly as they are` : '') +
     (!live && (itemCount > 0 || routineCount > 0)
-      ? ' — and anything it was hiding comes back into view'
+      ? '. Anything it was hiding comes back into view'
       : '') +
     '.'
   );
@@ -498,7 +498,7 @@ function deleteConsequence(
 /** The four ways a season can be, in the season's own words. Shared with /season/[id]. */
 export function SeasonStateNote({ season, live }: { season: Season; live: boolean }) {
   if (season.state === 'active') {
-    return <>On until you say otherwise — dates are ignored while it is set this way.</>;
+    return <>On until you say otherwise. Dates are ignored while it is set this way.</>;
   }
   if (season.state === 'paused') {
     return <>Off. Everything it holds is hidden, and streaks and history stay exactly as they are.</>;
@@ -511,7 +511,7 @@ export function SeasonStateNote({ season, live }: { season: Season; live: boolea
   const span = from && to ? `${from} to ${to}` : from ? `from ${from}` : `until ${to}`;
   return (
     <>
-      Runs {span}, inclusive. {live ? 'On now.' : 'Off right now — nothing it holds is showing.'}
+      Runs {span}, inclusive. {live ? 'On now.' : 'Off right now. Nothing it holds is showing.'}
     </>
   );
 }

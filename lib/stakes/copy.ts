@@ -54,7 +54,7 @@ export function pledgeSummary(
   return {
     title: `${money} owed for ${outcome.dateStr}`,
     body: charity
-      ? `${nameList(titles)} — payable to ${charity}.`
+      ? `${nameList(titles)}, payable to ${charity}.`
       : `${nameList(titles)}.`,
   }
 }
@@ -73,8 +73,8 @@ export function partnerDigest(outcome: DayOutcome, who: string | null): string {
   const open = outcome.misses.map((i) => i.title)
   const subject = who ? `${who}'s` : 'dsul'
   const lines = [`${subject} ${outcome.dateStr}: ${done.length}/${done.length + open.length} done.`]
-  if (done.length > 0) lines.push(`Done — ${nameList(done)}.`)
-  if (open.length > 0) lines.push(`Not done — ${nameList(open)}.`)
+  if (done.length > 0) lines.push(`Done: ${nameList(done)}.`)
+  if (open.length > 0) lines.push(`Not done: ${nameList(open)}.`)
   if (open.length === 0 && done.length > 0) lines.push('Clean sweep.')
   return lines.join(' ')
 }

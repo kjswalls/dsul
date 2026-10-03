@@ -60,7 +60,7 @@ export async function POST(
     const question = typeof body.question === 'string' ? body.question.trim() : ''
     if (!question) {
       return NextResponse.json(
-        { error: 'question is required — it is what the user reads' },
+        { error: 'question is required (it is what the user reads)' },
         { status: 400 }
       )
     }
@@ -133,7 +133,7 @@ export async function POST(
     )
     if (!recorded) {
       return NextResponse.json(
-        { error: 'Could not record the question — nothing was changed' },
+        { error: 'Could not record the question. Nothing was changed.' },
         { status: 500 }
       )
     }

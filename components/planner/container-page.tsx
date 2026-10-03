@@ -126,7 +126,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
       <Shell>
         <h1 className="text-foreground text-lg font-semibold">Organize is switched off</h1>
         <p className="text-muted-foreground text-sm" data-testid="container-page-extension-off">
-          Your routines and seasons are still here — switch the extension back on and this page
+          Your routines and seasons are still here. Switch the extension back on and this page
           picks up where it left off. Nothing was deleted.
         </p>
         <div className="flex gap-2">
@@ -449,7 +449,7 @@ export function ContainerPage({ kind, id }: { kind: PageKind; id: string | undef
                     ))}
                 </ul>
               ) : (
-                <p className="text-muted-foreground text-sm">No season — it answers for itself.</p>
+                <p className="text-muted-foreground text-sm">No season. It answers for itself.</p>
               )}
             </Section>
           )}

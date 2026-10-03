@@ -29,14 +29,14 @@ const COPY: Record<
     addLabel: 'Create goal',
     icon: makeIconToken('Target'),
     hint:
-      'A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in — and it never hides anything.',
+      'A goal is the reason a stretch of work exists. It holds the habits and tasks that serve it, the checkpoints along the way, and a recurring check-in. It never hides anything.',
   },
   routine: {
     eyebrow: 'NEW ROUTINE',
     placeholder: 'Name your routine…',
     addLabel: 'Create routine',
     icon: makeIconToken('Repeat'),
-    hint: 'A routine is a set of things you do regularly, in order — a morning, a workout week. Pause it and they all step off your day together.',
+    hint: 'A routine is a set of things you do regularly, in order, like a morning or a workout week. Pause it and they all step off your day together.',
   },
   season: {
     eyebrow: 'NEW SEASON',
@@ -44,7 +44,7 @@ const COPY: Record<
     addLabel: 'Create season',
     icon: makeIconToken('CalendarRange'),
     hint:
-      'A season is a stretch of life — a summer, a term, a training block — that switches whole routines on and off. Without dates it starts always-on, hiding nothing.',
+      'A season is a stretch of life (a summer, a term, a training block) that switches whole routines on and off. Without dates it starts always-on, hiding nothing.',
   },
 };
 

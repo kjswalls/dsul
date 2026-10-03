@@ -192,13 +192,13 @@ function useDismissWithFocus() {
  */
 function BarCopy({ summary }: { summary: OverdueSummary }) {
   const n = summary.count;
-  if (n === 0) return <>All clear — nothing waiting</>;
+  if (n === 0) return <>All clear, nothing waiting</>;
 
   const beforeNoon = new Date().getHours() < 12;
 
   return (
     <>
-      {beforeNoon && 'Good morning — '}
+      {beforeNoon && 'Good morning. '}
       <span className="font-semibold">{n === 1 ? '1 item' : `${n} items`} waiting</span>
     </>
   );

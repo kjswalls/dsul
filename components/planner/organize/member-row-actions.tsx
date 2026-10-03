@@ -174,7 +174,7 @@ export function useVerbs(
   // day nobody was shown.
   const sameDay = (run: () => void) => () => {
     if (now().dateStr !== todayStr) {
-      toast("It's a new day — close and reopen this list to see today's.");
+      toast("It's a new day. Close and reopen this list to see today's.");
       return;
     }
     run();

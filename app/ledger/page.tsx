@@ -101,7 +101,7 @@ export default function LedgerPage() {
         <h1 className="text-foreground text-2xl font-semibold tracking-tight">Ledger</h1>
         <p className="text-muted-foreground max-w-prose text-sm leading-relaxed">
           What your settled days came to. Every row here was written by the nightly
-          settlement — <span className="text-foreground">dsul keeps the record and cannot take
+          settlement. <span className="text-foreground">dsul keeps the record and cannot take
           payment</span>, so squaring up happens wherever you agreed it would.
         </p>
       </header>
@@ -124,7 +124,7 @@ export default function LedgerPage() {
         <>
           {error && (
             <p className="text-muted-foreground text-sm" data-testid="ledger-error">
-              Could not read the ledger — {error}
+              Could not read the ledger: {error}
             </p>
           )}
 

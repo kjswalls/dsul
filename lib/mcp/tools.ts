@@ -304,23 +304,23 @@ export const MCP_TOOLS: McpTool[] = [
       "'blocked' means it is waiting on an answer from the user. " +
       'The loop is: take a queued item, mark it working so a second run does not double it, ' +
       'do the work, then report with dsul_report_progress. An item already sitting at ' +
-      "'blocked' may have been answered — read dsul_item_activity before assuming it is " +
+      "'blocked' may have been answered, so read dsul_item_activity before assuming it is " +
       'still stuck. ' +
       "An item at 'working' belongs to a run that is probably still going: LEAVE IT ALONE. " +
       'Its aiStatusAt is when that status was last written, not a heartbeat, so an ' +
       'old stamp on a long job is normal and proves nothing. ' +
       `Only if the stamp is more than ${QUIET_HOURS} hours older than this response's fetchedAt AND the ` +
       'item is assigned to you may you treat that run as gone. Even then, take it by calling ' +
-      "dsul_report_progress with 'working' FIRST and continuing only if that call succeeds " +
-      '— it refuses when someone else has touched the item, which is what stops two of you ' +
+      "dsul_report_progress with 'working' FIRST and continuing only if that call succeeds. " +
+      'It refuses when someone else has touched the item, which is what stops two of you ' +
       'working the same task and overwriting each other. ' +
       'Never touch an item assigned to someone else. ' +
-      'If nothing comes back, there is nothing to do — stop, do not go looking ' +
+      'If nothing comes back, there is nothing to do. Stop, and do not go looking ' +
       'for work in the rest of the planner.',
     inputSchema: obj({
       includeFinished: {
         type: 'boolean',
-        description: 'Also return done and failed items. Off by default — you want your queue, not your history.',
+        description: 'Also return done and failed items. Off by default, since you usually want your queue rather than your history.',
       },
     }),
     plan: (args) => ({
@@ -332,7 +332,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_item_activity',
     description:
-      'The history of one item: status changes, edits, and — the reason you are here — any ' +
+      'The history of one item: status changes, edits, and (the reason you are here) any ' +
       "answer the user has written back to you. After you mark something 'blocked' with a " +
       'question, this is where their reply appears, as an `agent_reply` entry. Check it when ' +
       'you pick up an item that is already in flight, so you continue rather than start over.',
@@ -347,12 +347,12 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_ask_user',
     description:
       'Ask the user a question you are stuck on, offering answers they can tap. ' +
-      'Use this INSTEAD of dsul_report_progress when the answer is a choice — which ' +
+      'Use this INSTEAD of dsul_report_progress when the answer is a choice: which ' +
       'person, which of two files, is that date still fine. It blocks the item and posts ' +
       'the question in one call, so there is no half-done state. ' +
       'Prefer it: most questions that stop delegated work are choices, and a tap gets you ' +
       'an answer far sooner than a box someone has to compose a sentence into. ' +
-      'Offer options ONLY when they are genuinely exhaustive — a question whose real answer ' +
+      'Offer options ONLY when they are genuinely exhaustive. A question whose real answer ' +
       'is not on the list is worse than no options at all. Omit them for anything open-ended ' +
       '(the user always keeps a free-text box either way). ' +
       'The answer comes back through dsul_item_activity as an `agent_reply` entry, and the ' +
@@ -396,17 +396,17 @@ export const MCP_TOOLS: McpTool[] = [
     description:
       'Say where you have got to on an item assigned to you. Call it when you START ' +
       "(status 'working'), when you FINISH (status 'done', with the outcome in result), and " +
-      "when you are STUCK (status 'blocked', with the question you need answered in result — " +
+      "when you are STUCK (status 'blocked', with the question you need answered in result; " +
       'the user sees that text and it is the only way to ask them something). ' +
       'The result text is shown to a human on the item, so write it for them: what you did, ' +
       'what you found, what you need. Not a log line. ' +
-      'ALSO call it periodically on anything long — at least every ' +
+      'ALSO call it periodically on anything long, at least every ' +
       `${QUIET_HOURS} hour(s), status 'working', with a line about where you are. ` +
       'That is the only thing that tells the user you are alive: the item shows how long it ' +
       'has been since your last report, and silence past that point is what makes them think ' +
       'the run died and start it again. ' +
       'Pass lastSeenAt with the aiStatusAt you last read for the item. The call is REFUSED ' +
-      'if it no longer matches — meaning the user or another run changed the item while you ' +
+      'if it no longer matches. That means the user or another run changed the item while you ' +
       'were working, and your report would have overwritten theirs. Re-read it with ' +
       'dsul_my_work and decide again rather than retrying blindly.',
     inputSchema: obj(
@@ -453,7 +453,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_get_context',
     description:
       "Read the user's whole planner: today's tasks, habits and streaks, projects, " +
-      'routines, seasons and goals, plus their timezone. Call this before any write — ' +
+      'routines, seasons and goals, plus their timezone. Call this before any write: ' +
       'ids come from here, and answering from memory is how a stale plan gets acted on. ' +
       'Note tasks[] and habits[] omit work that is paused or out of season; items[] does not.',
     inputSchema: obj({}),
@@ -488,7 +488,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_update_task',
     description:
       'Change an existing task. Send only the fields you are changing. To complete one, ' +
-      "set status to 'completed' — but for a RECURRING task use completedDates instead, " +
+      "set status to 'completed'. For a RECURRING task use completedDates instead, " +
       'because status would end the whole series rather than today.',
     inputSchema: obj(
       {
@@ -532,7 +532,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_create_habit',
     description:
       'Create a recurring habit. A habit belongs to a group (by NAME) and repeats by ' +
-      "definition — there is no 'none' frequency. Use custom with repeatDays for " +
+      "definition, so there is no 'none' frequency. Use custom with repeatDays for " +
       'specific weekdays (0 = Sunday).',
     inputSchema: obj(
       {
@@ -564,7 +564,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_update_habit',
     description:
       'Change an existing habit. To mark one done for a day, add that date to ' +
-      'completedDates — habits are never completed by status. completedDates and ' +
+      'completedDates. Habits are never completed by status. completedDates and ' +
       'skippedDates are whole-set replacements, so send the full list.',
     inputSchema: obj(
       {
@@ -608,7 +608,7 @@ export const MCP_TOOLS: McpTool[] = [
     name: 'dsul_pause',
     description:
       'Put something down for a while, or pick it back up. Pausing HIDES the item ' +
-      'without ending it and without touching its history — the right verb when a user ' +
+      'without ending it and without touching its history. It is the right verb when a user ' +
       'is away or has set something aside, and much better than deleting. `until` is the ' +
       'date it becomes live again (exclusive), so pass tomorrow for "just today".',
     inputSchema: obj(
@@ -644,8 +644,8 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_create_collection',
     description:
-      'Create a routine (things done regularly, together and in order — a morning, a ' +
-      'workout week — which pause as one), a season (a stretch of life, optionally dated, ' +
+      'Create a routine (things done regularly, together and in order, such as a morning or a ' +
+      'workout week, which pause as one), a season (a stretch of life, optionally dated, ' +
       'holding items and routines that show only while it is on), or a goal (something ' +
       'being worked towards, whose members can be milestones or check-ins). Membership ' +
       'arrays are whole sets, not additions; a routine\'s itemIds are in the order they are done.',
@@ -656,7 +656,7 @@ export const MCP_TOOLS: McpTool[] = [
         icon: str('An icon token like "icon:Sparkles".'),
         color: str('A colour token.'),
         itemIds: { type: 'array', items: { type: 'string' }, description: 'Routines and seasons only.' },
-        usualTime: str('Routines only: when it usually happens, 24-hour HH:mm. A label — members keep their own times.'),
+        usualTime: str('Routines only: when it usually happens, 24-hour HH:mm. It is only a label; members keep their own times.'),
         routineIds: { type: 'array', items: { type: 'string' }, description: 'Seasons only.' },
         state: { type: 'string', description: 'Seasons: auto|active|paused. Goals: active|achieved|abandoned.' },
         startsOn: DATE,
@@ -695,7 +695,7 @@ export const MCP_TOOLS: McpTool[] = [
         memberIds: { type: 'array', items: { type: 'string' } },
         milestoneIds: { type: 'array', items: { type: 'string' } },
         checkinIds: { type: 'array', items: { type: 'string' } },
-        paused: { type: 'boolean', description: 'Routines only — seasons use state.' },
+        paused: { type: 'boolean', description: 'Routines only. Seasons use state.' },
         pausedUntil: DATE,
       },
       ['kind', 'id']
@@ -705,7 +705,7 @@ export const MCP_TOOLS: McpTool[] = [
   {
     name: 'dsul_delete_collection',
     description:
-      'Delete a routine, season or goal. Its member items are NOT deleted — they simply ' +
+      'Delete a routine, season or goal. Its member items are NOT deleted. They ' +
       'stop belonging to it.',
     inputSchema: obj(
       {
