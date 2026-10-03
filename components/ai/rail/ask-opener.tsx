@@ -44,6 +44,15 @@ export const ASK_OPENER_CLOSE_WAIT_MS = RAIL_HANDBACK_WAIT_MS - 2 * FRAME_MS;
 const px = (v: string) => parseFloat(v) || 0;
 
 /**
+ * The font the button draws in, as far as its width goes. The look sets it
+ * (`--font-ui`: Geist in Studio, Nunito in Sorbet, JetBrains Mono in
+ * Terminal), so it changes with a look or a light/dark flip under one header
+ * face, and so do the widths read in it.
+ */
+const fontOf = (own: CSSStyleDeclaration) =>
+  [own.fontFamily, own.fontSize, own.fontWeight, own.fontStyle, own.letterSpacing].join(' ');
+
+/**
  * The button's natural width, without its margins: from its left edge to its
  * last child's far edge, plus its end padding and border. Not its scrollWidth
  * alone: the button's overflow is visible (the key's rim light and the focus
@@ -108,10 +117,15 @@ function closingColumnPx(rail: Element | null): number {
  * is drawn whole (naturalWidth and keyFormWidth, squeezed or not), and
  * `keyPx` whenever it is drawn as the key form too, so a layout's own face and
  * a rebinding's longer chord are what is measured, not a guess; the key alone
- * is 32px. A change of face (`face`: the header slot and the chord) forgets
- * both, since another face's or chord's widths say nothing about this one's:
- * the ladder then reads 0 for them, so the button is drawn whole (or not at
- * all, with no room), read and placed before the next paint.
+ * is 32px. A change of face (`face`: the header slot and the chord) or of
+ * the font the button draws in (fontOf: the look's) forgets both, since
+ * another face's, chord's or font's widths say nothing about this one's: the
+ * ladder then reads 0 for them, so the button is drawn whole (or not at all,
+ * with no room), read and placed before the next paint. Only the widths of
+ * the form drawn and those wider than it are read again, so a narrower
+ * form's remembered widths would outlive a font they were not read in, the
+ * key form stuck without its chord after a flip to a narrower font (Classic
+ * at 1290 from Terminal by night to Paper by day).
  *
  * It cannot flap at a rung. The room does not depend on the form chosen (the
  * siblings keep their widths whatever the slot does), room exactly at a rung
@@ -140,7 +154,8 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
   const [fit, setFit] = useState<Fit>('full');
   const fullPx = useRef(0);
   const keyPx = useRef(0);
-  const measuredFace = useRef(face);
+  /** The face and font `fullPx` and `keyPx` were read in. */
+  const measuredIn = useRef('');
   /** When the button began waiting for a closing column's room, if it is. */
   const waitingSince = useRef<number | null>(null);
   useLayoutEffect(() => {
@@ -151,11 +166,6 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       // Hidden (Ask or an item shows): the next close starts its own wait.
       waitingSince.current = null;
       return;
-    }
-    if (measuredFace.current !== face) {
-      measuredFace.current = face;
-      fullPx.current = 0;
-      keyPx.current = 0;
     }
     const rail = document.querySelector('[data-rail]');
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -175,6 +185,12 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       // needs them.
       const own = getComputedStyle(el);
       const margins = px(own.marginLeft) + px(own.marginRight);
+      const reading = `${face} ${fontOf(own)}`;
+      if (measuredIn.current !== reading) {
+        measuredIn.current = reading;
+        fullPx.current = 0;
+        keyPx.current = 0;
+      }
       const drawn = slot.dataset.fit;
       if (drawn === 'full') {
         fullPx.current = naturalWidth(el, own) + margins;

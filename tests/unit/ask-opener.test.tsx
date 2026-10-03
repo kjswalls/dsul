@@ -784,6 +784,53 @@ describe('room on the header row', () => {
     expect(pill()).toHaveAttribute('data-fit', 'full');
   });
 
+  // The look sets the font (`--font-ui`), so one header face draws in many:
+  // Terminal's JetBrains Mono by night and Paper's Inter by day, under the
+  // same capsule. A width is read again only while its form or a wider one is
+  // drawn, so a width remembered from the other font stuck: the key form
+  // without its chord, or the key alone, with room for more.
+  it('forgets the widths it read in another font, under the same face', () => {
+    renderRow();
+    const button = opener() as HTMLElement;
+    /** The key's far edge and the whole button's width, in each font. */
+    const drawn = { mono: { keyRight: 80, whole: 130 }, inter: { keyRight: 72, whole: 106 } };
+    const font = () => (getComputedStyle(button).fontFamily.includes('Mono') ? drawn.mono : drawn.inter);
+    /** Lay the row out to leave the button `room` px, the button drawing in its font as it is now. */
+    const draw = (room: number) => {
+      layOut(374 + 12 + room, 374);
+      Object.defineProperty(button, 'scrollWidth', {
+        configurable: true,
+        get: () => {
+          if (button.querySelector('[data-ask-opener-chord]')) return font().whole;
+          return key()?.textContent === 'Ask' ? font().keyRight + 8 : 32;
+        },
+      });
+      (key() as HTMLElement).getBoundingClientRect = () => ({ left: 8, right: font().keyRight, width: 64 }) as DOMRect;
+      resized();
+      return pill()?.dataset.fit;
+    };
+
+    // In the monospace the whole key is 130px: 120px of room holds the key form.
+    button.style.fontFamily = '"JetBrains Mono", monospace';
+    expect(draw(120)).toBe('key');
+    // The look flips to Inter, and the whole key is 106px: it fits, and shows.
+    button.style.fontFamily = 'Inter, sans-serif';
+    expect(draw(120)).toBe('full');
+    expect(opener()?.querySelector('[data-ask-opener-chord]')).toHaveTextContent('Ctrl+J');
+
+    // The key form is 88px in the monospace: 84px of room holds the key alone.
+    button.style.fontFamily = '"JetBrains Mono", monospace';
+    expect(draw(84)).toBe('icon');
+    // In Inter it is 80px, and 84px holds it.
+    button.style.fontFamily = 'Inter, sans-serif';
+    expect(draw(84)).toBe('key');
+    // Back: read again in the monospace, and each form as it was.
+    button.style.fontFamily = '"JetBrains Mono", monospace';
+    expect(draw(84)).toBe('icon');
+    expect(draw(120)).toBe('key');
+    expect(draw(130)).toBe('full');
+  });
+
   it('gives way to the row and never the other way: it shrinks first, and to nothing', () => {
     renderRow();
     expect(pill()).toHaveClass('min-w-0', 'shrink-[1000]');
