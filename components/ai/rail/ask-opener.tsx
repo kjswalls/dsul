@@ -234,6 +234,12 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  *  - 'icon': the 32px key alone, the same light caught on its left arc. Its
  *    focus ring sits on the key, whose rim takes the focus colour. Drawn on
  *    the page it keeps the whole key's 14px inset off the row's end.
+ *    There is no step between the two: where the chord does not fit, "Ask"
+ *    goes with it. The design study kept "Ask" there and dropped only the
+ *    chord (an ~82px key), so at 1280px Week x Schedule in Classic (its
+ *    capsule 392px, against Week x Buckets' 384px, which still fits whole)
+ *    shows the key alone where the study showed "Ask". Whether to add that
+ *    step (room for the whole key less the chord and its gap) is open.
  *
  * `titlebar-hole`: in Writer the row starts at the window's top, inside the
  * desktop app's 43px drag band, which would swallow its clicks.
