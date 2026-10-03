@@ -1498,12 +1498,16 @@ describe('the Ask button', () => {
     fireEvent.mouseUp(el, { button: 0, detail: count });
     fireEvent.click(el, { button: 0, detail: count });
   };
-  /** Date.now, with `skew.ms` added: the hold is read off it. */
+  /**
+   * Date.now stopped where the test starts, moved only by `skew.ms`: the hold
+   * is read off it, so a slow run never walks a press "inside the hold" out
+   * of it.
+   */
   const skew = { ms: 0 };
   const clock = () => {
     skew.ms = 0;
-    const realNow = Date.now.bind(Date);
-    return vi.spyOn(Date, 'now').mockImplementation(() => realNow() + skew.ms);
+    const base = Date.now();
+    return vi.spyOn(Date, 'now').mockImplementation(() => base + skew.ms);
   };
 
   it("ends the canvas's header row, on the date's line: the far end in a day, past WeekScale in a week", () => {

@@ -300,6 +300,9 @@ test.describe('Ask in the right rail', () => {
       await reloadApp(page);
       await answered;
       await expect(page.locator('[data-layout]')).toHaveAttribute('data-layout', style);
+      // The gate's response landing is not the store having taken it: the
+      // button mounts once Ask answers, so Ctrl+J waits for it.
+      await expect(page.locator('[data-ask-opener]')).toBeAttached();
 
       // 1280: docked, in the middle row, with the flat column's 1px seam.
       await page.keyboard.press('ControlOrMeta+j');

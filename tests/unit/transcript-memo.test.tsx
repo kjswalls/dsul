@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { cleanup, render } from '@testing-library/react';
 
 /**
@@ -49,6 +49,10 @@ const THREAD: ChatMessage[] = [
   msg('a3', 'assistant', 'Thi', { status: 'streaming', sync: 'pending' }),
 ];
 
+// The parse counter is module-wide: each test counts from zero, whatever ran first.
+beforeEach(() => {
+  calls.n = 0;
+});
 afterEach(() => cleanup());
 
 describe('a streamed delta', () => {

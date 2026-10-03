@@ -178,6 +178,9 @@ beforeEach(() => {
   configureConversations({ api: fakeApi().api, transport: transport.transport });
   clearChatState();
   unseed = seedAI(CONNECTED_MODEL);
+  // clearChatState keeps the saving latch (a session fact); two tests here
+  // latch it off, so each test starts from the unknown it boots with.
+  useConversationsStore.setState({ saving: 'unknown' });
   useMobileNavStore.setState({ activeTab: 'chat' });
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useProposalStore.getState().dismiss();
