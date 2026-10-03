@@ -8,7 +8,7 @@ import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { SettingRow } from './setting-row';
 import { SettingChip } from './setting-chip';
-import { LookPreview } from './look-preview';
+import { LookPicker } from './look-picker';
 import {
   ALL_PANES,
   PANES,
@@ -18,6 +18,7 @@ import {
   extensionSlugFromPane,
   displayValue,
   CONNECT_PANEL_RECORD_IDS,
+  LOOK_PICKER_RECORD_IDS,
   type PaneId,
   type SettingCtx,
   type SettingRecord,
@@ -499,14 +500,18 @@ export function SettingsShell({
   const paneOwn = paneRows(pane, { isMobile });
   const advanced = paneOwn.advanced;
   // The AI pane's key and model records are drawn by ModelConnectionPanel,
-  // which carries their `data-setting-alias` anchors. paneRows stays pure (the
-  // search index and the no-empty-rooms test read it); only this flat list
-  // leaves them out. Search still draws them through rowFor, each with a
-  // "Set up" that opens the panel (setUpAction).
+  // which carries their `data-setting-alias` anchors, and the Look pane's mode,
+  // themes, tint and layout by LookPicker, which carries a `data-setting-row`
+  // anchor for each. paneRows stays pure (the search index and the
+  // no-empty-rooms test read it); only this flat list leaves them out. Search
+  // still draws them through rowFor (the AI pair with a "Set up" that opens
+  // the panel, setUpAction; the Look ones as the ordinary rows they are).
   const rows =
     pane === 'beacon'
       ? paneOwn.rows.filter((r) => !CONNECT_PANEL_RECORD_IDS.has(r.id))
-      : paneOwn.rows;
+      : pane === 'look'
+        ? paneOwn.rows.filter((r) => !LOOK_PICKER_RECORD_IDS.has(r.id))
+        : paneOwn.rows;
   const wide = pane === 'extensions';
   // Only the store itself runs past 600px; search results and an extension's
   // own rows keep the column every other pane has.
@@ -786,8 +791,6 @@ export function SettingsShell({
             </>
           ) : (
             <>
-              {pane === 'look' && <LookPreview />}
-
               <Eyebrow icon={activePane.icon}>{activePane.name}</Eyebrow>
               {/* An extension pane's blurb IS its catalog description, and the
                   toggle directly below carries that same sentence as its own
@@ -810,6 +813,11 @@ export function SettingsShell({
                   connecting is a form with states, not a row. Two records
                   (CONNECT_PANEL_RECORD_IDS) are drawn by it instead of below. */}
               {pane === 'beacon' && <ModelConnectionPanel isMobile={isMobile} highlightId={highlight} />}
+
+              {/* The Look pane opens with its pictures: the looks, a preview per
+                  mode with its themes under it, and the layouts. Six records
+                  (LOOK_PICKER_RECORD_IDS) are drawn there instead of below. */}
+              {pane === 'look' && <LookPicker ctx={ctx} isMobile={isMobile} highlightId={highlight} />}
 
               {pane === 'extensions' && (
                 <>

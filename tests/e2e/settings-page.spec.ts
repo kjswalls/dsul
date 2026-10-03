@@ -149,11 +149,21 @@ test.describe('Settings page', () => {
     await page.getByRole('button', { name: /^Advanced/ }).click();
     await expect(row(page, 'look.sidebarHover')).toBeAttached();
 
-    await page.mouse.wheel(0, 600);
+    // The Look pane opens with its previews, so the Advanced rows sit well
+    // below the fold: wheel until the last one shows.
     await expect
-      .poll(async () => page.evaluate(() => window.scrollY), { timeout: 5_000 })
-      .toBeGreaterThan(0);
-    await expect(row(page, 'look.sidebarHover')).toBeInViewport();
+      .poll(
+        async () => {
+          await page.mouse.wheel(0, 600);
+          return row(page, 'look.sidebarHover').evaluate((el) => {
+            const r = el.getBoundingClientRect();
+            return r.top >= 0 && r.bottom <= window.innerHeight;
+          });
+        },
+        { timeout: 10_000 }
+      )
+      .toBe(true);
+    expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
   });
 
   test('changing the theme applies in place — no navigation, no reload', async ({ page }) => {
@@ -172,11 +182,11 @@ test.describe('Settings page', () => {
       (window as unknown as { __alive: boolean }).__alive = true;
     });
 
-    // By testId, not .first(): when a row is off-default the reset button is
-    // the first button in it, which is the correct visual order and the wrong
-    // thing to click.
-    await page.getByTestId('setting-look.theme').click();
-    await page.locator('[data-value="dark"]').click();
+    // Settings → Look draws Mode as two previews: tapping the dark one keeps
+    // dsul dark. Playwright's browser reports a light device, so this changes
+    // what shows.
+    await page.getByTestId('look-pin-dark').click();
+    await expect(page.getByTestId('look-pin-dark')).toHaveAttribute('aria-pressed', 'true');
 
     await expect
       .poll(async () => page.evaluate(() => document.documentElement.className), {
@@ -189,6 +199,8 @@ test.describe('Settings page', () => {
       true
     );
     expect(navigations, 'theme change must not navigate').toBe(0);
+    // Let the debounced save land before afterEach puts Mode back.
+    await page.waitForTimeout(1_200);
   });
 
   test('the breadcrumb returns to the planner', async ({ page }) => {
