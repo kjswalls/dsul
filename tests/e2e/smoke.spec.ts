@@ -18,6 +18,14 @@ import {
   omnibar,
   omnibarPanel,
 } from './helpers/app';
+import {
+  cleanupConversations,
+  gateAnswered,
+  rail,
+  stubChatReply,
+  stubConnectedModel,
+  turnSaved,
+} from './helpers/ai';
 
 /**
  * Redesign safety net: the core daily loop must survive every phase of the
@@ -159,11 +167,14 @@ test.describe('Smoke: core daily loop', () => {
       await expect(omnibarPanel(page).getByTestId('omnibar-add-row')).toContainText(title);
       await expect(omnibarPanel(page).getByText(/Ask (AI|OpenClaw)/)).toHaveCount(0);
 
-      // ⌘Enter is consumed and does nothing: no chat opens, and it does NOT fall
-      // through to the dock's Enter, which would file the text as a task.
+      // ⌘Enter is consumed and does nothing: Ask does not open, and it does NOT
+      // fall through to the dock's Enter, which would file the text as a task.
+      // With no AI there is no Ask at all: no Ask home in the right column, no
+      // Ask button on the header row, and no box to type into.
       await bar.press('ControlOrMeta+Enter');
       await expect(bar).toHaveValue(title);
-      await expect(page.getByRole('button', { name: 'Toggle AI assistant' })).toHaveCount(0);
+      await expect(page.locator('[data-rail] [data-ask-home]')).toHaveCount(0);
+      await expect(page.getByRole('button', { name: 'Open Ask' })).toHaveCount(0);
       await expect(page.getByPlaceholder('Ask anything…')).toHaveCount(0);
 
       // Nothing was filed. Held for a beat first: a fall-through write is a
@@ -184,62 +195,44 @@ test.describe('Smoke: core daily loop', () => {
     }
   });
 
-  test('with a model connected, ⌘Enter opens chat and the reply renders', async ({ page }) => {
+  test('with a model connected, ⌘Enter opens Ask and the reply renders', async ({ page }) => {
     // Never a real provider: the gate's answer and the chat stream are both
-    // stubbed in the browser. Installed BEFORE the navigation that reads them —
-    // the gate is read once, at sign-in.
-    await page.route('**/api/ai/connection', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'application/json',
-        headers: { 'Cache-Control': 'no-store' },
-        body: JSON.stringify({
-          available: true,
-          model: {
-            provider: 'openai',
-            model: 'gpt-4o-mini',
-            baseUrl: null,
-            authMethod: 'key',
-            status: 'ok',
-            problem: null,
-            checkedAt: '2026-10-01T00:00:00.000Z',
-          },
-          openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
-        }),
-      })
-    );
-    await page.route('**/api/chat', (route) =>
-      route.fulfill({
-        status: 200,
-        contentType: 'text/event-stream',
-        headers: { 'Cache-Control': 'no-store' },
-        body: 'data: {"content":"hi"}\n\ndata: [DONE]\n\n',
-      })
-    );
+    // stubbed in the browser (helpers/ai.ts). Installed BEFORE the navigation
+    // that reads them — the gate is read once, at sign-in.
+    await stubConnectedModel(page);
+    await stubChatReply(page, 'hi');
     // Waited on across the reload: while the gate is still unknown the omnibar
     // consumes ⌘Enter and does nothing, so a press that beats the stub's answer
     // would be swallowed.
-    const answered = page.waitForResponse(
-      (r) => r.url().includes('/api/ai/connection') && r.request().method() === 'GET'
-    );
+    const answered = gateAnswered(page);
     await reloadApp(page);
     await answered;
 
-    // Chat has no persistent bar: it is summoned from the omnibar (⌘Enter = Ask AI).
-    const bar = omnibar(page);
-    await bar.click();
-    await bar.fill('plan my day');
-    // The Ask row is the gate's answer reaching the omnibar, not just the
-    // response arriving: ⌘Enter is only pressed once it is there. `first()`
-    // because a matching `/chat` command row may sit beside it, gated the same.
-    await expect(omnibarPanel(page).getByText(/Ask AI/).first()).toBeVisible();
-    await bar.press('ControlOrMeta+Enter');
+    // The question is a sweepable title: a finished turn is SAVED, through
+    // the real conversations routes, so it is a row that outlives the test.
+    const token = testTitle('smoke-ask');
+    const question = `${token} plan my day`;
+    try {
+      // Ask is summoned from the omnibar (⌘Enter = Ask AI) into the right rail.
+      const bar = omnibar(page);
+      await bar.click();
+      await bar.fill(question);
+      // The Ask row is the gate's answer reaching the omnibar, not just the
+      // response arriving: ⌘Enter is only pressed once it is there. `first()`
+      // because a matching `/chat` command row may sit beside it, gated the same.
+      await expect(omnibarPanel(page).getByText(/Ask AI/).first()).toBeVisible();
+      const saved = turnSaved(page);
+      await bar.press('ControlOrMeta+Enter');
 
-    const chat = page
-      .locator('section')
-      .filter({ has: page.getByRole('button', { name: 'Toggle AI assistant' }) });
-    await expect(chat).toBeVisible({ timeout: 5_000 });
-    await expect(chat.getByText('hi', { exact: true })).toBeVisible({ timeout: 5_000 });
+      const ask = rail(page);
+      await expect(ask.locator('[data-ask-conversation]')).toBeVisible({ timeout: 5_000 });
+      await expect(
+        ask.locator('[data-message-role="assistant"]').getByText('hi', { exact: true })
+      ).toBeVisible({ timeout: 5_000 });
+      expect((await saved).ok()).toBe(true);
+    } finally {
+      await cleanupConversations(page, token);
+    }
   });
 
   test('scheduled task appears in its bucket', async ({ page }) => {

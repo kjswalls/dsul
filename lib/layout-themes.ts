@@ -336,3 +336,24 @@ export function layoutAttributes(def: LayoutDef): Record<string, string> {
   }
   return attrs;
 }
+
+/**
+ * The top padding of the canvas header row, and of the rail's header beside
+ * it: 31px lines the date capsule up with the left column's braindump header;
+ * with the braindump elsewhere there is nothing to meet. Shared, so both rows
+ * start at the same y; railHeaderRowOffset then puts the rail's controls on
+ * the date's line.
+ */
+export function canvasHeaderPad(slots: Pick<LayoutSlots, 'sidebar'>): string {
+  return slots.sidebar === 'left' ? 'pt-[31px]' : 'pt-4';
+}
+
+/**
+ * Where the rail header's 32px row starts under that shared padding, so its
+ * centre is the date's: the capsule's date row sits under the capsule's own
+ * p-2 (components/canvas/header-capsule.tsx), and the masthead and plain
+ * headers zero that padding (app/globals.css), putting the date at the top.
+ */
+export function railHeaderRowOffset(slots: Pick<LayoutSlots, 'header'>): string {
+  return slots.header === 'capsule' ? 'mt-2' : 'mt-0';
+}

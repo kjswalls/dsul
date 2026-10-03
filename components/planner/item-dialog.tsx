@@ -76,6 +76,8 @@ import {
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { RailHeader } from '@/components/ai/rail/rail-header';
+import { BoundComposer } from '@/components/ai/bound-composer';
 import {
   ChipOption,
   ChipSectionLabel,
@@ -86,8 +88,9 @@ import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/ex
 import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, milestoneItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
-import { useUIStore, openBulkAdd, openNewContainer } from '@/lib/ui-store';
+import { useUIStore, openBulkAdd, openNewContainer, registerItemPanelFlush } from '@/lib/ui-store';
 import { subscribeClickAway } from '@/lib/click-away';
+import type { ComposerBinding } from '@/lib/rail-store';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
 import type {
@@ -302,6 +305,24 @@ interface ItemDialogProps {
    * leaves it false because its panel is a fixed overlay that must stay framed.
    */
   flat?: boolean;
+  /**
+   * Docked-panel only, and only while something answers: the item is in the
+   * right rail, over Ask. The rail's header is pinned above the item ("‹ Ask
+   * … ✕", the back label naming the Ask view beneath), the body scrolls under
+   * it, and Done goes: Back and ✕ are the exits, each flushing first. Back
+   * calls `onBack` once the item has closed (the shell summons Ask, so "‹ Ask"
+   * leads to Ask at every width); ✕ calls `onCloseRail` (the rail closes too).
+   * Absent, the panel is exactly the one there is with no AI, Done included.
+   */
+  railChrome?: { backLabel: string; onBack?: () => void; onCloseRail: () => void };
+  /**
+   * Where the item's conversation shows (components/ai/item-conversation.tsx):
+   * 'pinned' in the desktop rail, its box pinned at the panel's foot;
+   * 'transcript' for a host whose box lives elsewhere; 'inline', its own box
+   * in its own section (the modal, the phone's drawer, Zen); 'none'. Every
+   * shape is nothing while nothing answers.
+   */
+  conversation?: 'pinned' | 'transcript' | 'inline' | 'none';
 }
 
 /** Local form state. 'none' / '' are UI sentinels, translated to `undefined`
@@ -552,6 +573,30 @@ function draftFromItem(item: Item): ItemDraft {
 const CLOSE_ANIMATION_GRACE_MS = 600;
 
 /**
+ * The docked panel's body. In the rail (`railChrome`) it is the scroll box
+ * between the rail's header and the pinned box; otherwise `display: contents`,
+ * so the aside lays out and scrolls its children exactly as it always has.
+ *
+ * ALWAYS RENDERED for the panel, whichever it is: the gate can flip with an
+ * item open (a row clicked before the status read answers, or the item's own
+ * box marking the model failing), and only this div's class may change then.
+ * Re-parenting the body would remount it, taking the caret out of the title or
+ * the notes and closing any open picker. The other presentations get no
+ * wrapper at all.
+ */
+function PanelBody({ panel, rail, children }: { panel: boolean; rail: boolean; children: ReactNode }) {
+  if (!panel) return <>{children}</>;
+  return (
+    <div
+      data-rail-body={rail ? '' : undefined}
+      className={rail ? 'min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-4' : 'contents'}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Thin permanent shell around the real surface.
  *
  * Both shell instances of this dialog (app-shell's modal, desktop-shell's
@@ -569,6 +614,17 @@ const CLOSE_ANIMATION_GRACE_MS = 600;
  *  · A queued panel autosave flushes on unmount — the body's own
  *    `return () => flush.current()` cleanup already runs when it unmounts.
  */
+/**
+ * The last focus token (ui-store's itemPanelFocusToken) a docked panel acted
+ * on. Module state, not a ref: the panel's body mounts fresh per open, so a
+ * bump that lands in the very commit that opens it (rail-store's Back onto the
+ * item a "?" was asked over) must still read as new there, and every later
+ * open must not read an old bump as new. Comparing against 0, as this once
+ * did, refocused the panel on every open after the first ⌘\, taking focus
+ * off the row that was clicked.
+ */
+let panelFocusTokenHandled = 0;
+
 export function ItemDialog(props: ItemDialogProps) {
   const { state } = props;
   const [present, setPresent] = useState(!!state);
@@ -619,6 +675,8 @@ function ItemDialogInner({
   withDetailSections = true,
   presentation = 'modal',
   flat = false,
+  railChrome,
+  conversation = 'inline',
   isMobile,
   instant,
   readDraftStash,
@@ -2728,10 +2786,12 @@ function ItemDialogInner({
 
   // ⌘\ (workspace.focusItemPanel) is the keyboard's way in. Token-bumped from
   // the ui-store, the same pattern the omnibar uses, so the command doesn't
-  // need a handle on this component.
+  // need a handle on this component. Each bump is acted on once
+  // (panelFocusTokenHandled has why).
   const itemPanelFocusToken = useUIStore((s) => s.itemPanelFocusToken);
   useEffect(() => {
-    if (!isPanel || !open || itemPanelFocusToken === 0) return;
+    if (!isPanel || !open || itemPanelFocusToken === panelFocusTokenHandled) return;
+    panelFocusTokenHandled = itemPanelFocusToken;
     document.querySelector<HTMLElement>('[data-testid="item-dialog"]')?.focus();
   }, [isPanel, open, itemPanelFocusToken]);
 
@@ -2758,6 +2818,18 @@ function ItemDialogInner({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [presentation, open, onOpenChange]);
+
+  // A close from OUTSIDE the panel (Ctrl+J, `?` in the command bar, "Pick
+  // things back up") goes through ui-store's closeItemPanel(), which runs this
+  // first: what is queued is saved now, synchronously, rather than left to
+  // the unmount grace. Registered only while the docked panel is open.
+  useEffect(() => {
+    if (presentation !== 'panel' || !open) return;
+    return registerItemPanelFlush(() => {
+      flush.current();
+      setSaving(false);
+    });
+  }, [presentation, open]);
 
   // A click on empty desktop space closes the panel (lib/click-away.ts decides
   // what "empty" is). Same exit as Escape — flush first, so a queued autosave
@@ -3242,6 +3314,13 @@ function ItemDialogInner({
     />
   ) : null;
 
+  // The item's one conversation, as the pinned box sends into it (rail only).
+  const editItemId = editItem?.id;
+  const itemBinding = useMemo<ComposerBinding | null>(
+    () => (editItemId ? { kind: 'item', itemId: editItemId } : null),
+    [editItemId]
+  );
+
   return (
     <>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
@@ -3251,6 +3330,7 @@ function ItemDialogInner({
           open={open}
           flat={isPanel && flat}
           panelLabel={`${activeConfig.label} details`}
+          rail={!!railChrome && presentation === 'panel'}
           instant={instant}
           data-testid="item-dialog"
           data-mode={mode}
@@ -3304,6 +3384,28 @@ function ItemDialogInner({
             }
           }}
         >
+          {/* With AI, the rail's header row: "‹ <the Ask view beneath>" and ✕,
+              each flushing and closing the item first. Outside the body, so
+              it stays put while the item scrolls under it. */}
+          {railChrome && presentation === 'panel' && (
+            <RailHeader
+              back={{
+                label: railChrome.backLabel,
+                onBack: () => {
+                  flushNow();
+                  onOpenChange(false);
+                  railChrome.onBack?.();
+                },
+              }}
+              onClose={() => {
+                flushNow();
+                onOpenChange(false);
+                railChrome.onCloseRail();
+              }}
+              closeTestId="item-dialog-close"
+            />
+          )}
+          <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a
               real title and description in the a11y tree. The panel doesn't —
               it labels itself, and DialogTitle outside a Dialog would throw. */}
@@ -3348,7 +3450,8 @@ function ItemDialogInner({
                 >
                   {mode === 'add' ? typeControl : typeSwitch}
                   {headerActions}
-                  {autosaves && !inline && doneButton}
+                  {/* Under the rail's header, Back and ✕ are the exits. */}
+                  {autosaves && !inline && !railChrome && doneButton}
                 </div>
                 {/* Zone 1 — the title. Priority and the mode label are not here:
                     priority rides the chip field below with every other
@@ -3448,7 +3551,7 @@ function ItemDialogInner({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} withThread withActivity={!autosaves} />
+                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} />
               )}
 
               {/* An autosaving surface has no moment of commitment, so its
@@ -3482,6 +3585,13 @@ function ItemDialogInner({
                   </Button>
                 </div>
               )}
+            </div>
+          )}
+          </PanelBody>
+          {/* The item's conversation box, pinned under the scrolling body. */}
+          {railChrome && presentation === 'panel' && conversation === 'pinned' && itemBinding && (
+            <div className="shrink-0 px-3 pt-2 pb-3">
+              <BoundComposer binding={itemBinding} />
             </div>
           )}
         </SurfaceContent>

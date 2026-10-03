@@ -1095,7 +1095,9 @@ export function DisplayMenu({
         )}
       >
         <SlidersHorizontal className="size-4" />
-        Display
+        {/* The canvas header drops it to the screen reader on a narrow canvas
+            (app/globals.css, "The header on a narrow canvas"). */}
+        <span data-narrow-sr="">Display</span>
         <ChevronDown className="size-3.5 text-muted-foreground" />
         {dot}
       </button>

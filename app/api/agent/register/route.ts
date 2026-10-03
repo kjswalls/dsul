@@ -8,7 +8,7 @@ import { assertSafeOutboundUrl } from '@/lib/openclaw-gateway'
  *
  * Called on OpenClaw plugin startup. Registers the plugin's webhook URL so
  * dsul pushes change events when data mutates. Also accepts optional chatUrl
- * (plugin endpoint URL, e.g. …/plugins/dsul/chat) for sidebar chat.
+ * (plugin endpoint URL, e.g. …/plugins/dsul/chat) for plugin chat in Ask.
  *
  * Auth: Bearer <openclaw_api_key>  — userId resolved from the key automatically.
  *

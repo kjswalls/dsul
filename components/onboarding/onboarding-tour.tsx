@@ -7,7 +7,8 @@ import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { isApplePlatform } from '@/lib/commands/keys';
+import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { setOnboardingComplete } from '@/lib/user-profile';
 import { toast } from 'sonner';
 import confetti from 'canvas-confetti';
@@ -221,17 +222,24 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   /**
    * Whether anything can answer in chat. The tour never walks someone to a
    * chat surface that is not there: without it, sub-step C is the dock and
-   * step 4 says AI is optional. The flow and its dots are the same either way,
-   * and so is the spotlight target.
+   * step 4 says AI is optional. The flow and its dots are the same either way;
+   * the spotlight is Ask's column (`right-sidebar`, which exists only while
+   * something answers) with AI, and the capture dock (`dock`) without.
    */
   const { canChat } = useAICapabilities();
+  // Keys as the user has them bound, never typed: Ask's (Ctrl+J by default)
+  // for step 4's copy, the launcher's (Ctrl+K) for the no-AI dock card.
+  const askKeys = useShortcutKeys('toggle_right_sidebar');
+  const launcherBinding = useShortcutKeys('system_search');
   // Spotlight selector based on current step/sub-step
   const spotlightSelector = (() => {
     if (step === 3) {
       if (!isMobile) {
         if (desktopSubStep === 'A') return '[data-tour="left-sidebar"]';
         if (desktopSubStep === 'B') return '[data-tour="timeline"]';
-        if (desktopSubStep === 'C') return '[data-tour="right-sidebar"]';
+        if (desktopSubStep === 'C') {
+          return canChat ? '[data-tour="right-sidebar"]' : '[data-tour="dock"]';
+        }
       } else {
         // Every mobile step spotlights the DOCK'S MODE CARD, not a per-surface
         // target. The three-tab bar these steps used to point at is gone; its
@@ -246,7 +254,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
     if (step === 4) {
       if (isMobile) return '[data-tour="mode-card"]';
-      return '[data-tour="right-sidebar"]';
+      return canChat ? '[data-tour="right-sidebar"]' : '[data-tour="dock"]';
     }
     return null;
   })();
@@ -305,10 +313,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
   }, [step]);
 
-  // Auto-expand/collapse chat sidebar based on desktop sub-step C. Expanding
-  // only when chat exists: otherwise C is about the dock, and an armed
-  // `chatExpanded` would spring the panel open later, unasked, the moment a
-  // model is connected.
+  // Show Ask for desktop sub-step C, and put it back after. Only when chat
+  // exists: otherwise C is about the dock. The shell wires these to a summon
+  // that never persists and a park (app-shell.tsx), so the tour never writes
+  // the user's `askOpen`, and nothing is left armed to spring open later.
   useEffect(() => {
     if (step === 3 && !isMobile) {
       if (desktopSubStep === 'C' && canChat) {
@@ -330,9 +338,10 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     }
   }, [step, isMobile, mobileSubStep]);
 
-  // Switch to chat tab when reaching step 4 on mobile, when there is one. With
-  // nothing to answer the phone has no chat tab (lib/mobile-nav-store.ts), and
-  // the step stays on Today, pointing at the mode card it already lit.
+  // Switch to the Ask tab (id 'chat') when reaching step 4 on mobile, when
+  // there is one. With nothing to answer the phone has no Ask tab
+  // (lib/mobile-nav-store.ts), and the step stays on Today, pointing at the
+  // mode card it already lit.
   useEffect(() => {
     if (step === 4 && isMobile && canChat) {
       onSetActiveTabRef.current?.('chat');
@@ -449,21 +458,26 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
   // Keys as this platform prints them, so a Ctrl user never reads a ⌘. Safe in
   // render: the tour only mounts on the client, after the completion check.
   const isMac = isApplePlatform();
-  const launcherKeys = isMac ? '⌘K' : 'Ctrl+K';
-  const askKeys = isMac ? '⌘↵' : 'Ctrl↵';
+  const launcherKeys = chordLabel(launcherBinding, isMac);
 
   /**
    * Step 4's card. Without anything to answer it says AI is optional and where
    * to connect one, never that something is missing. With it, how to ask. On
-   * the phone the step has just switched to the chat tab, where the dock's bar
-   * IS the chat field and there is no ⌘↵ to press.
+   * the desktop Ask is up for the tour (sub-step C summoned it) and closes when
+   * the tour ends, since it starts closed (sidebar-store ASK_OPEN_DEFAULT), so
+   * the card names every way back to it: the Ask button, the chord as bound
+   * (chordLabel, so a rebinding reads right), and `?` in the dock. The button
+   * hides while Ask shows, so this card, which shows beside Ask, says when it
+   * is there and where: once Ask is closed, at the end of the date row. On the
+   * phone the step has just switched to the Ask tab, where the dock's bar IS
+   * the box and there is no chord to press.
    */
   const aiCard = canChat
     ? {
         title: 'Your AI is ready',
         body: isMobile
           ? 'Type in the bar below to ask about your day.'
-          : `Type ? in the dock, or press ${askKeys}, to ask about your day.`,
+          : `When Ask is closed, open it with the Ask button at the end of the date row or ${chordLabel(askKeys, isMac)}, or type ? in the dock, to ask about your day.`,
       }
     : {
         title: 'Bring your own AI (optional)',
@@ -588,7 +602,7 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
           // cutout is sealed while the tour is up (blockTarget below), so an
           // instruction to tap now would be an instruction that does nothing.
           description: canChat
-            ? 'The mode button in the dock is how you move between Braindump, Today and AI.'
+            ? 'The mode button in the dock is how you move between Braindump, Today and Ask.'
             : 'The mode button in the dock is how you move between Braindump and Today.',
         },
         B: {
@@ -644,18 +658,19 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
         description: 'Drag tasks here to plan your day.',
         position: 'left-1/2 -translate-x-1/2 top-24',
       },
-      C: {
-        ...(canChat
-          ? {
-              title: 'Your AI chat',
-              description: 'Ask anything here. It knows your tasks, habits and projects.',
-            }
-          : {
-              title: 'Your dock',
-              description: `Add, search and run commands from here. ${launcherKeys} works anywhere.`,
-            }),
-        position: 'right-[340px] top-1/2 -translate-y-1/2',
-      },
+      // With AI, Ask in the right rail (summoned for this step, then put
+      // back), and the card beside its 420px column; without, the dock.
+      C: canChat
+        ? {
+            title: 'Ask',
+            description: 'Ask anything here, or open an item to talk about it. It knows your tasks, habits and projects.',
+            position: 'right-[452px] top-1/2 -translate-y-1/2',
+          }
+        : {
+            title: 'Your dock',
+            description: `Add, search and run commands from here. ${launcherKeys} works anywhere.`,
+            position: 'right-[340px] top-1/2 -translate-y-1/2',
+          },
     };
 
     const current = subStepContent[desktopSubStep];
@@ -701,9 +716,9 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
     );
   }
 
-  // ─── Step 4: AI Chat (coach mark) ───────────────────────────────────────────
+  // ─── Step 4: Ask (coach mark) ───────────────────────────────────────────────
   if (step === 4) {
-    // Mobile: tooltip card above the dock (on the chat tab, via the effect, when
+    // Mobile: tooltip card above the dock (on the Ask tab, via the effect, when
     // there is one)
     if (isMobile) {
       return (
@@ -745,14 +760,16 @@ export function OnboardingTour({ userId, onComplete, onOpenSettings, onExpandCha
       );
     }
 
-    // Desktop: non-fullscreen coach mark card to the left of chat sidebar
+    // Desktop: non-fullscreen coach mark card to the left of Ask (or the dock)
     return (
       <div className="fixed inset-0 z-[100] pointer-events-none">
         <SpotlightOverlay rect={spotlightRect} />
         <div
           className={cn(
             'absolute pointer-events-auto animate-in fade-in zoom-in-95 duration-300',
-            !cardAnchor('left') && 'right-[340px] top-1/2 -translate-y-1/2'
+            // Beside Ask's 420px column (or the dock) until the spotlight is measured.
+            !cardAnchor('left') && (canChat ? 'right-[452px]' : 'right-[340px]'),
+            !cardAnchor('left') && 'top-1/2 -translate-y-1/2'
           )}
           style={cardAnchor('left')}
         >

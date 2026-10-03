@@ -54,7 +54,7 @@ export interface CommandContext {
     set: (theme: 'light' | 'dark' | 'system') => void;
   };
   /**
-   * Opens the chat: expands the sidebar dock on desktop, the tab on mobile.
+   * Opens Ask: summons it in the right rail on desktop, the tab on mobile.
    * Gated (lib/open-chat.ts): a no-op while nothing can answer, so a command
    * can never open a surface the AI gate has hidden.
    */

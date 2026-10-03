@@ -20,7 +20,10 @@ export const RELAY = {
    * field either way; only its placement and its trigger differ.
    */
   omnibar: true,
-  /** In the Beacon chat panel; wakes up while a response is streaming. */
+  /**
+   * Behind RailHeader at Ask home; wakes while any reply streams. (`beacon`
+   * is the flag's permanent key, from before the AI lost its name.)
+   */
   beacon: true,
   /** In the "you are here" current time-of-day bucket header; slow heartbeat. */
   currentBucket: false,

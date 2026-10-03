@@ -12,7 +12,7 @@ function sleep(ms: number): Promise<void> {
 
 /**
  * Ask for the gateway's public URL (issue #146). Without it the plugin runs in
- * pull-only mode — no webhook push, no sidebar chat — and the old wizard never
+ * pull-only mode — no webhook push, no chat from Ask in dsul — and the old wizard never
  * mentioned it, so users had to discover the key by reading a startup warning.
  *
  * Returns undefined when skipped, or when there's no TTY to prompt on (the
@@ -22,7 +22,7 @@ async function promptPublicUrl(): Promise<string | undefined> {
   if (!process.stdin.isTTY) return undefined
 
   console.log('\n  Gateway public URL — lets dsul push changes to the plugin and')
-  console.log('  powers the dsul sidebar chat. Example:')
+  console.log('  powers chat from Ask in dsul. Example:')
   console.log('    https://midgar-1b4eaa3.turkey-rockhopper.ts.net')
   console.log('  Leave blank for pull-only mode (no webhooks, no chat).\n')
 
@@ -119,7 +119,7 @@ export async function runSetup(): Promise<void> {
       const publicUrl = await promptPublicUrl()
       await writePluginConfig(poll.dsulUrl ?? DSUL_URL, poll.apiKey, publicUrl)
       if (!publicUrl) {
-        console.log('\n  Pull-only mode — webhook push and sidebar chat are off.')
+        console.log('\n  Pull-only mode — webhook push and chat from Ask are off.')
         console.log('  Add publicUrl to the dsul-context config in openclaw.json to enable them.')
       }
       console.log('\nConfig saved. Restart the gateway: openclaw gateway restart\n')

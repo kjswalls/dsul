@@ -34,7 +34,7 @@ setup again.
 It then asks for your gateway's **public URL** (e.g.
 `https://midgar-1b4eaa3.turkey-rockhopper.ts.net`). Leave it blank for pull-only
 mode: your agent can still read your tasks, but dsul can't push changes to it
-and the dsul sidebar chat stays off. You can add `publicUrl` to `openclaw.json`
+and chatting with it from Ask in dsul stays off. You can add `publicUrl` to `openclaw.json`
 later — re-running setup preserves keys you've set by hand.
 
 Then restart the gateway:
@@ -105,9 +105,9 @@ Config lives in `openclaw.json` under `plugins.entries.dsul-context.config.dsul-
 |-----|----------|-------------|
 | `dsulUrl` | ✅ | Base URL of your dsul deployment (written by setup) |
 | `apiKey` | ✅ | Your personal dsul API key (written by setup) |
-| `publicUrl` | Optional | Your gateway's public URL. Required for webhook push and the dsul sidebar chat; omit for pull-only mode |
+| `publicUrl` | Optional | Your gateway's public URL. Required for webhook push and chat from Ask in dsul; omit for pull-only mode |
 | `webhookSecret` | Optional | HMAC secret for verifying change event payloads. **Without it the webhook endpoint accepts unsigned requests** — set it if your gateway is reachable from the internet |
-| `agentId` | Optional | OpenClaw agent that backs the dsul sidebar chat (default: `main`) |
+| `agentId` | Optional | OpenClaw agent that answers in dsul's Ask (default: `main`) |
 | `cacheTtlMs` | Optional | Max cache age before re-fetch (default: `300000` = 5 min) |
 
 ## Requirements

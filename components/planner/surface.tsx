@@ -95,6 +95,7 @@ export function SurfaceRoot({
 export function SurfaceContent({
   panel,
   inline = false,
+  rail = false,
   open,
   flat,
   panelLabel,
@@ -107,6 +108,13 @@ export function SurfaceContent({
   panel: boolean;
   /** Laid into a page's flow (/item/[id]): no width, no card, no scroll box. */
   inline?: boolean;
+  /**
+   * Docked in the right rail with its chrome (ItemDialog's `railChrome`): the
+   * aside stops scrolling and padding itself, and lays out three rows instead,
+   * the rail's header, a body that scrolls, and the pinned box. Only while
+   * something answers; without it the panel is exactly today's.
+   */
+  rail?: boolean;
   open: boolean;
   /** Docked on the backdrop (shell column) vs floating as an overlay card
    *  (the /item page). Flat drops the card chrome; floating keeps it. */
@@ -143,6 +151,8 @@ export function SurfaceContent({
         className={
           inline
             ? 'flex w-full min-w-0 flex-col outline-none'
+            : rail
+            ? 'flex h-full w-[420px] flex-col overflow-hidden bg-transparent outline-none'
             : flat
             ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
             : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'

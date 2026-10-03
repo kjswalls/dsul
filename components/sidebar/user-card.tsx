@@ -113,8 +113,16 @@ export function UserCard() {
               </AvatarFallback>
             </Avatar>
             <span className="truncate text-sm font-medium text-foreground">{firstName}</span>
+            {/* flex-shrink-0: the badge is overflow-hidden (it clips the relay
+                field to its pill), which zeroes its automatic minimum, so on a
+                narrow column it shrank and cut its own flame and count. The
+                name truncates instead. The braindump is narrow at rest beside
+                a docked right rail (328 at a 1280 window, 280 below ~1232). */}
             {streaksOn && bestStreak > 0 && (
-              <span className="relative isolate flex items-center gap-0.5 overflow-hidden rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text">
+              <span
+                data-testid="user-streak"
+                className="relative isolate flex flex-shrink-0 items-center gap-0.5 overflow-hidden rounded-full bg-warning/15 px-1.5 py-0.5 text-2xs font-medium text-warning-text"
+              >
                 {RELAY.streak && (
                   <RelayField
                     className="absolute inset-0 -z-10"
@@ -166,11 +174,14 @@ export function UserCard() {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      {/* History: session label + undo/redo (Figma 84:765 — ~24px gap between) */}
-      <div className="ml-auto flex items-center gap-5">
+      {/* History: session label + undo/redo (Figma 84:765 — ~24px gap between).
+          min-w-0 shrink, on it and on the label: on a narrow column the label
+          truncates ("Sessio…") rather than the group holding its full width
+          and pushing the identity button's chevron out over it. */}
+      <div data-testid="user-history" className="ml-auto flex min-w-0 shrink items-center gap-5">
         <Popover>
           <PopoverTrigger asChild>
-            <button className="max-w-[110px] truncate border-b border-dashed border-muted-foreground/40 pb-px font-mono text-xs text-muted-foreground transition-colors hover:text-foreground">
+            <button className="min-w-0 max-w-[110px] shrink truncate border-b border-dashed border-muted-foreground/40 pb-px font-mono text-xs text-muted-foreground transition-colors hover:text-foreground">
               {displayActions[0]?.label ?? 'Session start'}
             </button>
           </PopoverTrigger>

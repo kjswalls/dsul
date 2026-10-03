@@ -24,6 +24,7 @@ import {
   APIUserAbortError as OpenAIUserAbortError,
 } from 'openai';
 import type { ChatErrorCode, ModelProviderId } from '@/lib/ai-types';
+import { MODEL_ERROR_COPY } from '@/lib/chat-errors';
 
 export type ProviderErrorKind =
   | 'auth'
@@ -48,21 +49,14 @@ export type ProviderErrorKind =
  * verbatim, a surface with no key, model or address field. The Settings panel
  * never shows these; it maps the routes' codes to its own copy. So every line
  * names a next step, and one that needs a field says it is in Settings.
+ *
+ * The chat kinds are lib/chat-errors.ts's `MODEL_ERROR_COPY`, the one copy: a
+ * saved reply stores only its code, and the transcript reads its words there.
+ * `model_required` is Settings-only and `aborted` is never shown, so those two
+ * stay here.
  */
 export const USER_MESSAGES: Record<ProviderErrorKind, string> = {
-  auth: 'Your AI key stopped working. Reconnect it in Settings.',
-  forbidden: "Your provider refused this request. Check your account's access to this model.",
-  quota: 'Your provider account is out of credit or over its limit. Check your plan with your provider.',
-  rate_limit: 'Your provider is limiting requests right now. Try again in a minute.',
-  bad_model: "That model isn't available to your key. Pick another in Settings.",
-  bad_request: "Your provider couldn't process this request. Try a shorter message, or pick another model in Settings.",
-  upstream: 'Your provider is having trouble right now. Try again in a moment.',
-  timeout: 'Your provider took too long to answer. Try again.',
-  network: "Couldn't reach your provider. Try again, or check the connection in Settings.",
-  blocked_url: "Your provider's address isn't allowed. Change the base URL in Settings to a public https address.",
-  empty:
-    "The model ran out of room before it answered. Try a shorter message, or pick a model that doesn't reason first.",
-  refused: 'The model declined to answer that. Try rephrasing it.',
+  ...MODEL_ERROR_COPY,
   model_required: "This server doesn't list its models. Enter the model name to use.",
   aborted: '',
 };

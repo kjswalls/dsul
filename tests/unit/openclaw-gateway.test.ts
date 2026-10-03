@@ -18,14 +18,13 @@ vi.mock('@/lib/supabase-service', () => ({
 
 import {
   assertAllowedGatewayUrl,
-  chatSessionKey,
+  conversationSessionKey,
   deltaFromChunk,
   extractJsonObject,
   gatewayCompletion,
   GatewayConfigReadError,
   gatewayTurnMessages,
   getGatewayConfig,
-  itemSessionKey,
   proposeSessionKey,
   translateGatewayStream,
 } from '@/lib/openclaw-gateway';
@@ -127,34 +126,40 @@ describe('translateGatewayStream', () => {
 });
 
 describe('session keys', () => {
+  const C1 = '2f1d7c1e-8a4b-4c1e-9f0a-3b2c1d0e9f8a';
+  const C2 = '9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+
   it('namespaces every key under dsul: — subagent:, cron: and acp: are reserved', () => {
-    expect(chatSessionKey('u1')).toBe('dsul:u:u1:chat');
-    expect(itemSessionKey('u1', 'abc-123')).toBe('dsul:u:u1:item:abc-123');
+    expect(conversationSessionKey('u1', C1)).toBe(`dsul:u:u1:chat:${C1}`);
   });
 
   it('keeps proposals off the conversation key', () => {
     // A proposal turn is a system prompt demanding JSON. Splicing that into the
-    // user's own thread would leave the next thing they said being answered by
-    // a model that had just been told to reply in JSON only.
+    // user's own conversation would leave the next thing they said being
+    // answered by a model that had just been told to reply in JSON only.
     expect(proposeSessionKey('u1')).toBe('dsul:u:u1:propose');
-    expect(proposeSessionKey('u1')).not.toBe(chatSessionKey('u1'));
+    expect(proposeSessionKey('u1')).not.toBe(conversationSessionKey('u1', C1));
   });
 
-  it('is stable across calls, which is what makes a thread durable', () => {
-    expect(itemSessionKey('u1', 'x')).toBe(itemSessionKey('u1', 'x'));
+  it('is stable across calls, which is what makes a conversation durable', () => {
+    expect(conversationSessionKey('u1', C1)).toBe(conversationSessionKey('u1', C1));
   });
 
-  it('separates users, so one browser can never address another thread', () => {
-    expect(chatSessionKey('u1')).not.toBe(chatSessionKey('u2'));
+  it('gives every conversation its own session, so a new chat is new on OpenClaw', () => {
+    expect(conversationSessionKey('u1', C1)).not.toBe(conversationSessionKey('u1', C2));
+  });
+
+  it('separates users, so one browser can never address another user’s session', () => {
+    expect(conversationSessionKey('u1', C1)).not.toBe(conversationSessionKey('u2', C1));
   });
 
   it('cannot be pushed into a reserved namespace by hostile input', () => {
     // Keys are built from a fixed literal, so even an id that looks like a
     // reserved prefix stays under dsul:. This is why nothing accepts a
-    // caller-supplied session key.
+    // caller-supplied session key (and the route also refuses a non-UUID id).
     for (const hostile of ['subagent:evil', 'cron:evil', 'acp:evil', '../../cron:evil']) {
-      expect(chatSessionKey(hostile).startsWith('dsul:')).toBe(true);
-      expect(itemSessionKey('u1', hostile).startsWith('dsul:')).toBe(true);
+      expect(conversationSessionKey(hostile, C1).startsWith('dsul:')).toBe(true);
+      expect(conversationSessionKey('u1', hostile).startsWith('dsul:')).toBe(true);
       expect(proposeSessionKey(hostile).startsWith('dsul:')).toBe(true);
     }
   });

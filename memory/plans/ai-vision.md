@@ -10,7 +10,23 @@ not the product's name. The AI has no name now: the user-facing noun is "AI", Op
 its own name, and `beacon` survives only in ids, file names and stored values (see resolved
 decision 6, superseded).
 
-**Status (2026-10-01): step 1, "Honest setup", BUILT (not yet merged).** dsul ships no AI of
+**Status (2026-10-02): step 2a, "Move and save", BUILT.** Chat lives in the right rail as
+**Ask**: a home (greeting, today's load, what needs you, AI activity), with items, History
+and conversations pushed over it and "‹" to go back. Ask starts closed: the Ask button on
+the canvas's header row, Ctrl+J (⌘J on a Mac) or `?` in the dock opens it, and it then stays
+as the user leaves it across reloads. Starting closed is one constant, `ASK_OPEN_DEFAULT` in
+`lib/sidebar-store.ts` (Kirby's call, 2026-10-02); flipping it makes Ask start open for
+everyone who has not chosen, since only a choice is ever stored. While
+Ask or an item is docked in the right column the braindump narrows (every layout but
+Console, whose braindump is the fixed 300px pane), and it goes back to its own width when
+the column closes. On the phone the Ask tab is the same home. Every
+conversation is saved to the account, once per finished turn, in `chat_conversations` /
+`chat_messages` (migration 057), kept until the user deletes it. Next: 2b (control: edit and
+resend, retry, action lines, receipts with Undo, a typed answer on every card) and 2c
+(reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
+Move and save" below has what shipped and the privacy statement.
+
+**Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any
 OpenAI-compatible base URL. The key is sealed server-side (AES-256-GCM under
@@ -18,7 +34,8 @@ OpenAI-compatible base URL. The key is sealed server-side (AES-256-GCM under
 the browser, and works on every device. Every AI surface hides until something that can
 answer is connected and working (`lib/ai-registry.ts` fails closed). Rituals are opt-in for
 new accounts (migration 054). Where this document says "an OpenAI key" or "BYOK", read "a
-connected model". Next steps (right-rail chat, saved history, tool calling) are not built.
+connected model". Right-rail chat and saved history are built in step 2a (above); tool
+calling is not built.
 
 **Status (2026-08-25):** **Phases 1, 2a and 2b SHIPPED.** Phase 1 — the proposal primitive
 and the gateway transport (`da56e9b`, `4df4ca7`, `046adb4`, `01d254a`, `2b7dbd7`).
@@ -59,7 +76,8 @@ bounded, and one-decision-at-a-time. That is the pattern to bet on.
 
 Note the codebase already leans this way: the chat panel is summoned from the omnibar and
 unmounts when collapsed — "there is no persistent chat bar"
-([components/sidebar/chat-panel.tsx](../../components/sidebar/chat-panel.tsx)). Demoting
+([components/sidebar/chat-panel.tsx](../../components/sidebar/chat-panel.tsx), deleted in
+step 2a). Demoting
 chat is finishing a direction the app already started, not a reversal.
 
 ## Three pillars
@@ -166,7 +184,7 @@ browser. A stable session key per thread gives every item thread durable gateway
 memory under the no-TTL default.
 
 *This also closes a live security gap:* today the browser holds a dsul API key and POSTs
-directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts),
+directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts), deleted in step 2a;
 [app/api/agent/chat-url/route.ts](../../app/api/agent/chat-url/route.ts)). After this, the
 browser talks only to dsul.
 
@@ -198,6 +216,16 @@ client will stop connecting.)
 
 1. **The item is the collaboration surface.** Conversation is anchored to an item, a
    ritual, or a one-shot ask. No global persistent transcript is reintroduced.
+
+   *Superseded in part, 2026-10-02 (step 2a, Kirby's "Forever, with delete"):* conversations
+   are now saved to the account and kept until deleted, general ones included, so the second
+   sentence no longer rules out persistence. What still holds is the first sentence, and the
+   schema now enforces it: an item's conversation is the item's, one per item (a partial
+   unique index, migration 057), and it opens with the item in the rail. A general
+   conversation is a thread the user started and can find again in History, not one global
+   transcript, and nothing (no context endpoint, no MCP tool) hands it to an agent. "Global
+   persistent transcript" meant a single never-ending chat that every surface appended to,
+   and that is still not reintroduced.
 2. **Propose-by-default.** Every AI mutation outside a delegated item is a proposal the
    user accepts. Accepting applies through **existing planner-store actions** — never a
    parallel mutation path.
@@ -230,6 +258,13 @@ Folded here from ai-vision-decisions.md, which now carries only what is still op
 2. **Proposals stay ephemeral** until item threads are server-persisted. Then the *thread*
    becomes the durable record and proposals stay transient. A resurrected card that
    proposes moving things to a date that has passed is worse than no card.
+
+   *2026-10-02 (step 2a):* item threads are server-persisted now (057), so the thread is the
+   durable record, as this decision said it would be. Proposals stay transient exactly as
+   decided: a card is never saved and never resurrected. What a conversation keeps of an
+   accepted proposal is four counters (added, steps, moved, changed) behind History's second
+   line: the record that something changed, not the proposal. 2b's receipts with Undo will
+   live in `chat_messages.meta`, not in a proposal table.
 3. **Proposal scope grows in this order: unschedule → subtasks → habits.** Subtasks shipped
    in phase 2e, unschedule in 2h; habits remain out (decision 5 and `containerRequired`).
 
@@ -293,8 +328,9 @@ What actually exists, and should be reused rather than rebuilt:
   work — *"text (not CHECK) so a future action (completion, assignment, agent progress) is
   additive"* — and `eventLabel` already speaks `assignee` and `aiStatus`. `recordCheckin` is
   the precedent for a deliberate, non-trace event writer.
-- **Per-item threads exist** (`itemChatStore(id)`, `ItemThread`), keyed to their own gateway
-  session via `itemSessionKey(userId, itemId)`.
+- **Item conversations exist and are saved** (migration 057; `resolveItemThread` in
+  lib/conversations-store.ts), one per item, each keyed to its own gateway session via
+  `conversationSessionKey(userId, conversationId)` (lib/openclaw-gateway.ts).
 
 Revision 2's *reasoning* was not baseless, and the true part survives as the rule:
 
@@ -382,7 +418,7 @@ ever been wired: `proposal-store.request('ask', …)` existed and nothing called
 `catch-up` button was the sole producer of a card. Beacon could describe a plan and then
 leave the user to go and enact it by hand.
 
-- **`components/ai/chat-conversation.tsx`** — a "Turn this into a plan" affordance under
+- **`components/ai/chat-conversation.tsx`** (deleted in step 2a) — a "Turn this into a plan" affordance under
   the latest assistant reply. It hands over the EXCHANGE, not the raw question: what is
   worth acting on is usually in the reply ("push the two writing ones to Thursday"), and a
   proposer given only the question re-derives the answer and lands somewhere else. Both
@@ -809,9 +845,101 @@ Known gaps, none of them blocking a first run:
 - **Only plain tasks can be delegated**, gated by the `agentAssignable` registry capability.
   Custom types are excluded until the agent API can address them — see the amendment to
   decision 5. Habits are excluded permanently, and for a better reason.
-- **Item threads are still localStorage-only.** The agent cannot read the conversation on an
-  item, only its activity trail. item-surface-growth deferred server persistence on purpose
-  — "the first stored chat data deserves its own review" — and that is still the right call.
+- **Item threads are saved to the account (step 2a, migration 057), and the agent still
+  cannot read them.** This is deliberate. Conversations are kept out of `/api/agent/context`
+  and MCP: the context's projections are a frozen contract, transcripts are the most
+  sensitive thing dsul holds, and an agent reading your chats is a product decision of its
+  own. The "own review" this gap asked for was step 2a's design review.
+
+**Step 2a — "Move and save". BUILT** (2026-10-02; the AI vision's step 2a, not Phase 2a
+above). The chat leaves the left dock and becomes the right rail's Ask, and every
+conversation is saved to the account.
+
+*What shipped.*
+- The right rail and the stack: Ask home (greeting, today's load, Needs you, With AI
+  activity, two chips and the box), with an item, History and a conversation each pushed
+  over it, and "‹" back down. One stack per surface with a level rule (history <
+  conversation < item), in `lib/rail-store.ts`; `railMode()` is the one visibility rule.
+- The item stays in ui-store's `edit-item` slot; only the Ask stack is new state. With no AI
+  the right column is exactly the old item panel, Done included.
+- **Ask starts closed.** It opens from the Ask button (`components/ai/rail/ask-opener.tsx`,
+  the last thing on the canvas's header row, shown only while the right column is empty; a
+  pointer's click on it holds Ask's header, and the button's own spot, against the pointer
+  for 500ms, rail-store `holdRailHeader`, since that header opens where the button was and in
+  Console the braindump slides under it as the column eases in, so a double-click's second
+  click would land on History, "+", ✕ or the braindump), Ctrl+J (⌘J: the frozen `toggle_right_sidebar` id
+  re-defaulted) and `?` in the dock (or "Ask AI" in ⌘K). Every one of those writes
+  sidebar-store's persisted `askOpen`, and Ctrl+J or the rail's ✕ clear it, so Ask stays as
+  the user left it across reloads; the tour's summon is the one open that persists nothing.
+  Someone who has never chosen has `askOpen: null`, read (`askOpenOf`) as `ASK_OPEN_DEFAULT`
+  (`false`, Kirby's call on 2026-10-02, over the design's "rests open"). The default is
+  applied when read and never stored, so flipping that one constant makes Ask start open
+  instead for every browser whose user has not chosen, including ones that have already run
+  the build. Below 1180px (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows
+  only when summoned in this session, and parks on click-away or Escape.
+- **The braindump narrows while the right column is docked**, for Ask and an item alike
+  (every layout but Console, whose braindump is the fixed 300px pane): `renderedSidebarWidth` takes the column's 432px reserve off the braindump's ceiling so the
+  canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes the narrowed width back, so the
+  braindump returns to the user's own width when the column closes.
+- Saved conversations, written by the client once per finished turn through
+  `/api/ai/conversations/**` (session cookie, RLS, SECURITY INVOKER RPCs, no service role).
+- `/api/chat` stays stateless.
+- One gateway session per conversation (`dsul:u:<uid>:chat:<id>`); the plugin path uses
+  `dsul-chat-<id>`.
+- `chooseChatTarget()` no longer deletes anything.
+- On the phone the Ask tab is the same home, on its own stack: an item opened from it pushes
+  over Ask (ui-store's `setEditItemInterceptor`, installed by rail-store's `hostPhoneAsk()`
+  while the tab is mounted), while Today and Braindump keep the drawer. Arriving on the tab
+  puts the caret in the dock's box only at a conversation or an item; an explicit open asks
+  for it at any view, except catch-up ("Pick things back up"), which lands on a card to tap
+  and asks for none, so no keyboard comes up over it (`revealChat(…, { boxOnPhone: false })`).
+- End to end: `tests/e2e/rail.spec.ts` (desktop, Notepad's three styles included) and
+  `tests/e2e/ask-mobile.spec.ts` (`@mobile`) run against the local stack only, with the gate
+  and `/api/chat` stubbed in the browser (`tests/e2e/helpers/ai.ts`) and the conversations
+  routes real; every conversation a spec saves carries a `testTitle` and is swept.
+
+*Privacy: what is stored, and what is not.*
+- *Stored, verbatim, until you delete it:*
+  - what you type in Ask and in an item's conversation (up to 8,000 characters a message,
+    the same cut the model is sent);
+  - what the AI answered, including a partial answer you stopped (up to 40,000
+    characters);
+  - which answerer answered, and the model's id when it was your model (none for
+    OpenClaw);
+  - whether OpenClaw ever answered in a conversation;
+  - when each message was sent, and when a conversation was started and last used;
+  - a conversation's title, star, renamed flag, message count and four change counters;
+  - the id of the item a conversation is about;
+  - an item's conversation is titled with the item's title at the time, and deleting the
+    item (even its 30-day purge) deletes neither the conversation nor that title; only
+    Delete on the conversation does.
+- *Not stored:*
+  - the planner context sent with each message;
+  - your custom instructions;
+  - proposal cards;
+  - error text (only a short error code);
+  - your model key (which never leaves the server's sealed store, as before).
+- *Who can read it:*
+  - you, on any device you sign in on;
+  - the database's operators.
+
+  It is protected by row-level security and TLS, and is **not end-to-end encrypted**.
+- *Delete* removes a conversation and its messages from the database at once. Database
+  backups age it out on the provider's backup schedule.
+- *OpenClaw* keeps its own session memory, and dsul cannot delete that. Continuing a
+  conversation with OpenClaw sends its last few turns to OpenClaw (at most 12, as context),
+  so a conversation another answerer started becomes part of that memory too. A message
+  sent to OpenClaw stays in that session even when no reply was kept (one stopped before
+  it began), and so does the excerpt of a conversation a plan is asked from while an
+  OpenClaw gateway makes the plans. The delete confirm's "OpenClaw may keep its own copy"
+  counts both when they happened in this browser; across devices it knows only of a saved
+  OpenClaw reply (`openclaw_seen`, which a turn with no reply never sets).
+- *Disconnecting* a model or OpenClaw deletes no conversation (the model's disconnect
+  confirm says so; OpenClaw has no disconnect step in dsul, and clearing the Gateway URL or
+  unpairing the plugin deletes none). *Changing who answers* deletes nothing either.
+- *History, and deleting from it,* is reachable only while a model or OpenClaw can answer.
+  To delete conversations after disconnecting, reconnect first.
+- *Device-local, as before:* who answers in chat and your custom instructions.
 
 **Phase 3 — seams, not speculation.** Explicitly *not* building hosted-tier
 infrastructure: it would sit on an unvalidated Phase 1. Phase 3 is this document, the

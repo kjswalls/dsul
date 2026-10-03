@@ -210,7 +210,15 @@ export function WeekScale({ className }: { className?: string }) {
             // hairline borders, and a 6px track with a 16px knob read as a form
             // field parked on the canvas.
             '[&_[data-slot=slider-track]]:h-1',
-            '[&_[data-slot=slider-thumb]]:size-3.5 [&_[data-slot=slider-thumb]]:shadow-[var(--shadow-elev-sm)]'
+            '[&_[data-slot=slider-thumb]]:size-3.5 [&_[data-slot=slider-thumb]]:shadow-[var(--shadow-elev-sm)]',
+            // Disabled (one rung, or not measured yet): no fade on the root.
+            // The shadcn slider dims itself to half, and its thumb's ring is
+            // the lime accent, which never fades through a parent's opacity
+            // (CLAUDE.md). The ring goes muted instead, at full strength; the
+            // range is empty at index 0, and the step arrows beside it fade
+            // on their own, in muted-foreground. Beside a docked right rail a
+            // 1280 window has one rung in Week x Buckets, so this is at rest.
+            'data-[disabled]:opacity-100 [&_[data-slot=slider-thumb]]:data-[disabled]:border-muted-foreground/40'
           )}
         />
         {/* A sibling of the Slider, not a child of its Track — the Track is
