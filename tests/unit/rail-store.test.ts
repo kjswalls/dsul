@@ -385,6 +385,20 @@ describe('summon, park, closeRail', () => {
     expect(railModeNow()).toBe('ask');
   });
 
+  it("summon({focus}) over History, which has no box, asks for History's search; with home, for the box", () => {
+    rail().push('desktop', history);
+    rail().summon({ focus: true });
+    expect(rail().pendingFocus).toEqual({ target: 'history-search' });
+    rail().summon({ focus: true, home: true });
+    expect(rail().pendingFocus).toEqual({ target: 'composer' });
+    rail().push('desktop', history);
+    rail().focusDesktopField();
+    expect(rail().pendingFocus).toEqual({ target: 'history-search' });
+    rail().push('desktop', conv('c1'));
+    rail().focusDesktopField();
+    expect(rail().pendingFocus).toEqual({ target: 'composer' });
+  });
+
   it('summon({focus}) asks for the box; summon({home}) pops the desktop stack', () => {
     rail().push('desktop', history);
     rail().push('phone', history);

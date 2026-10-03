@@ -96,6 +96,21 @@ export function RightRail({
   const conversationHeader = useConversationHeader(top);
   const asideRef = useRef<HTMLElement>(null);
   const viewKey = viewKeyOf(top);
+  // History has no box: a composer request naming none, pending while it
+  // shows, would wait for the next composer to mount anywhere (an item's, a
+  // conversation's) and take the caret there unasked. rail-store asks for
+  // History's search field instead (desktopFieldRequest); this drops any
+  // other such request, as the backstop.
+  const strayBoxRequest = useRailStore(
+    (s) =>
+      visible &&
+      s.stacks.desktop.at(-1)?.kind === 'history' &&
+      s.pendingFocus?.target === 'composer' &&
+      !s.pendingFocus.binding
+  );
+  useEffect(() => {
+    if (strayBoxRequest) useRailStore.getState().consumeFocus('composer');
+  }, [strayBoxRequest]);
 
   // The first AI surface on screen warms the conversation list (History's
   // first page); it never blocks, and never rejects.

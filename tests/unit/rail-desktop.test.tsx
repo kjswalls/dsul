@@ -623,6 +623,98 @@ describe('Ctrl+J', () => {
   });
 });
 
+/*
+ * History has no box. Closing Ask keeps its stack, so a summon can bring
+ * History back; a box request then had nothing to take it and waited for the
+ * next composer to mount anywhere (an item's, a conversation's).
+ */
+describe('a focus summon onto History', () => {
+  const search = () => (askView() as HTMLElement).querySelector('[data-testid="history-search"]') as HTMLInputElement;
+  const historyRow = (id: string) =>
+    (askView() as HTMLElement).querySelector<HTMLElement>(`[data-testid="history-row"][data-ask-focus="conv:${id}"]`) as HTMLElement;
+  /** Ctrl+\ at the window (focus_item_panel). */
+  function pressCtrlBackslash() {
+    act(() => {
+      (document.activeElement ?? window).dispatchEvent(
+        new KeyboardEvent('keydown', { key: '\\', ctrlKey: true, bubbles: true, cancelable: true })
+      );
+    });
+    window.dispatchEvent(new KeyboardEvent('keyup', { key: '\\', bubbles: true }));
+  }
+
+  it("Ctrl+J focuses History's search, and leaves no request for a row clicked later", async () => {
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    push({ kind: 'history' });
+    row('a').focus();
+    expect(pressCtrlJ()).toBe(true);
+    await timers();
+    expect(document.activeElement).toBe(search());
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+
+    openFromRow('b');
+    await timers();
+    expect(itemBox()).not.toBeNull();
+    expect(document.activeElement).not.toBe(itemBox());
+  });
+
+  it("the Ask button does the same: focus in History's search, not lost to <body>", async () => {
+    useSidebarStore.setState({ askOpen: false });
+    renderShell();
+    push({ kind: 'history' });
+    const opener = document.querySelector<HTMLButtonElement>('[data-ask-opener]') as HTMLButtonElement;
+    act(() => opener.focus());
+    fireEvent.click(opener);
+    await timers();
+    expect(document.activeElement).toBe(search());
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+  });
+
+  it("a general conversation's History row after it is not a request to type", async () => {
+    useSidebarStore.setState({ askOpen: false });
+    listConversations(summary({ id: 'c1', title: 'Trip' }));
+    renderShell();
+    push({ kind: 'history' });
+    row('a').focus();
+    pressCtrlJ();
+    await timers();
+    act(() => historyRow('c1').focus());
+    fireEvent.click(historyRow('c1'));
+    await timers();
+    expect(useRailStore.getState().stacks.desktop.at(-1)).toMatchObject({ kind: 'conversation', id: 'c1' });
+    expect(document.activeElement).not.toBe(askBox());
+    expect((askView() as HTMLElement).contains(document.activeElement)).toBe(true);
+  });
+
+  it('Ctrl+\\ over a History already showing focuses its search', async () => {
+    renderShell();
+    push({ kind: 'history' });
+    await timers();
+    row('a').focus();
+    pressCtrlBackslash();
+    await timers();
+    expect(document.activeElement).toBe(search());
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+  });
+
+  it('drops any other box request while History shows, so no later composer takes it', async () => {
+    renderShell();
+    push({ kind: 'history' });
+    await timers();
+    // A request naming its box is not this one's to drop.
+    act(() => useRailStore.getState().focusComposer({ kind: 'conversation', id: 'c1' }));
+    await timers();
+    expect(useRailStore.getState().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'conversation', id: 'c1' } });
+
+    act(() => useRailStore.getState().focusComposer());
+    await timers();
+    expect(useRailStore.getState().pendingFocus).toBeNull();
+    openFromRow('b');
+    await timers();
+    expect(document.activeElement).not.toBe(itemBox());
+  });
+});
+
 /* ── the box's height ────────────────────────────────────────────────── */
 
 describe('the box, measured once it can be', () => {

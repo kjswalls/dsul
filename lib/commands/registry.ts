@@ -991,7 +991,7 @@ export const STATIC_COMMANDS: Command[] = [
     run: () => {
       const ui = useUIStore.getState();
       if (ui.activeDialog?.type === 'edit-item') ui.focusItemPanel();
-      else if (railModeNow() === 'ask') useRailStore.getState().focusComposer();
+      else if (railModeNow() === 'ask') useRailStore.getState().focusDesktopField();
     },
   },
   {

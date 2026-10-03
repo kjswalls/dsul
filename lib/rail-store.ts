@@ -206,6 +206,12 @@ interface RailState {
   requestFocus(req: FocusRequest): void;
   focusComposer(binding?: ComposerBinding): void;
   /**
+   * The desktop rail's own text field, asked for by an explicit focus
+   * (Ctrl+\ over Ask): its box, or History's search field while History is
+   * on top, since History has no box (desktopFieldRequest).
+   */
+  focusDesktopField(): void;
+  /**
    * True exactly once, for the field the pending request names: a composer
    * matches a request with no binding, or one naming its own. Clears it.
    */
@@ -213,7 +219,8 @@ interface RailState {
   setDraft(key: string, text: string): void;
   /**
    * Open Ask: `askOpen` (persisted) and `summoned`. `focus` asks for the box
-   * (an explicit open from the keyboard or a command), `home` pops the desktop
+   * (an explicit open from the keyboard or a command; History's search field
+   * when History is what comes back, desktopFieldRequest), `home` pops the desktop
    * stack first, and `persist: false` (the tour) sets only `summoned`, so a
    * choice the user did not make is never written. Remembers where focus was,
    * so closing the rail can hand it back.
@@ -240,6 +247,19 @@ interface RailState {
 }
 
 const EMPTY_STACKS: Record<AskSurface, AskView[]> = { desktop: [], phone: [] };
+
+/**
+ * What an explicit focus of the desktop rail asks for: its box, or with
+ * History on top (closing Ask keeps the stack, so a summon can bring History
+ * back) History's search field. Never a binding-less composer request there:
+ * History has no box to take it, RightRail's own focus steps aside for any
+ * pending request, and the request would wait for the next composer to mount
+ * anywhere (an item's pinned one on a later row click, a conversation opened
+ * from a History row) and put the caret in it unasked.
+ */
+function desktopFieldRequest(stacks: Record<AskSurface, AskView[]>): FocusRequest {
+  return stacks.desktop.at(-1)?.kind === 'history' ? { target: 'history-search' } : { target: 'composer' };
+}
 
 function conversationIds(stacks: Record<AskSurface, AskView[]>): Set<string> {
   const ids = new Set<string>();
@@ -380,6 +400,8 @@ export const useRailStore = create<RailState>()((set, get) => {
 
     focusComposer: (binding) => set({ pendingFocus: binding ? { target: 'composer', binding } : { target: 'composer' } }),
 
+    focusDesktopField: () => set({ pendingFocus: desktopFieldRequest(get().stacks) }),
+
     consumeFocus: (target, binding) => {
       const req = get().pendingFocus;
       if (!req || req.target !== target) return false;
@@ -403,7 +425,7 @@ export const useRailStore = create<RailState>()((set, get) => {
       if (railModeNow() !== 'ask') rememberFocus();
       if (o.persist !== false) useSidebarStore.getState().setAskOpen(true);
       if (o.home) get().popToHome('desktop');
-      set(o.focus ? { summoned: true, pendingFocus: { target: 'composer' } } : { summoned: true });
+      set(o.focus ? { summoned: true, pendingFocus: desktopFieldRequest(get().stacks) } : { summoned: true });
     },
 
     park: () => {

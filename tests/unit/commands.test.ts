@@ -825,6 +825,13 @@ describe('the right rail', () => {
       expect(useUIStore.getState().itemPanelFocusToken).toBe(before);
     });
 
+    it("Ask showing History, which has no box: into History's search", () => {
+      useSidebarStore.setState({ askOpen: true });
+      useRailStore.getState().push('desktop', { kind: 'history' });
+      focus().run(ctx);
+      expect(useRailStore.getState().pendingFocus).toEqual({ target: 'history-search' });
+    });
+
     it('neither: nothing', () => {
       const before = useUIStore.getState().itemPanelFocusToken;
       focus().run(ctx);
