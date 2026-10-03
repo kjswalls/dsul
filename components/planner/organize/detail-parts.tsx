@@ -1028,7 +1028,7 @@ export function BufferedInput({
         }
       }}
       className={cn(
-        'border-border bg-background text-foreground focus-visible:outline-ring h-[26px] rounded-[5px] border px-2 text-sm focus-visible:outline-1 focus-visible:outline-solid',
+        'field bg-background text-foreground h-[26px] border px-2 text-sm outline-none',
         className
       )}
     />

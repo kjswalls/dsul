@@ -191,7 +191,7 @@ export function ItemConversation({
         </div>
       )}
       <ReplyStatus messages={messages} />
-      <div className="border-input flex items-center gap-1.5 rounded-md border px-2 py-1">
+      <div className="field flex items-center gap-1.5 border px-2 py-1">
         <input
           ref={inputRef}
           value={draft}
