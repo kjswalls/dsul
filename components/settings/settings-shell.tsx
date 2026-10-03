@@ -658,9 +658,8 @@ export function SettingsShell({
               spellCheck={false}
               data-testid="settings-search"
               className={cn(
-                'bg-secondary text-foreground placeholder:text-muted-foreground h-9 w-full rounded-md',
-                'border-input border pr-20 pl-9 text-sm',
-                'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+                'field bg-secondary text-foreground placeholder:text-muted-foreground h-9 w-full',
+                'border pr-20 pl-9 text-sm outline-none'
               )}
             />
             <button

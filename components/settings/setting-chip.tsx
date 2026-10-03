@@ -269,9 +269,8 @@ function PickerChip({
                       if (e.target.value) choose(e.target.value);
                     }}
                     className={cn(
-                      'border-input bg-background text-foreground h-8 w-[104px] rounded-md border px-2',
-                      'font-num text-xs',
-                      'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+                      'field bg-background text-foreground h-8 w-[104px] border px-2',
+                      'font-num text-xs outline-none'
                     )}
                   />
                 </div>

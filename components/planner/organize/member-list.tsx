@@ -735,7 +735,7 @@ export function MemberPicker({
               }
             }
           }}
-          className="h-8 flex-1 border-0 bg-transparent px-1 shadow-none"
+          className="h-8 flex-1 border-0 bg-transparent px-1 shadow-none dark:bg-transparent"
           data-testid={`${testPrefix}-member-search`}
         />
         {/* The popover says how many more a narrower query finds in the field

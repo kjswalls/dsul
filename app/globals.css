@@ -1627,6 +1627,56 @@ body {
   }
 }
 
+/* Text fields. One look for every bordered field (Input, Textarea, a Select
+   trigger, the settings search): a hairline at rest that firms toward ink on
+   focus, with a faint ink halo and the accent only in the caret. The lime
+   ring this replaces (a lime border plus a 3px lime halo at 50%) crowded the
+   controls around it, and focus is a state, not an action, so it does not
+   take the accent's colour. Corners are half the theme's radius, so a field
+   reads as a field and not a pill, and they follow the theme (8px on
+   Classic, 4px on Studio, 2px on Terminal).
+
+   In the components layer on purpose: a call site's own utilities (border-0,
+   shadow-none, rounded-*, bg-transparent) are in the utilities layer and win,
+   which is how borderless fields opt out. A borderless field never gets the
+   halo, because a glow around nothing is just the old ring again. The values
+   are computed on the field itself, so a locally dark island and a theme
+   preview both get their own. */
+@layer components {
+  .field {
+    border-radius: calc(var(--radius) * 0.5);
+    border-color: var(--input);
+    caret-color: var(--success-text);
+    transition:
+      border-color 120ms var(--ease-out-soft),
+      box-shadow 160ms var(--ease-out-soft),
+      background-color 120ms var(--ease-out-soft);
+  }
+  .field:hover:not(:disabled, :focus-visible, :has(:focus-visible), [aria-invalid='true']) {
+    border-color: color-mix(in oklab, var(--input), var(--foreground) 14%);
+  }
+  .field:is(:focus-visible, :has(:focus-visible)) {
+    outline: none;
+    border-color: color-mix(in oklab, var(--input), var(--foreground) 55%);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--foreground) 7%, transparent);
+  }
+  .field[aria-invalid='true'] {
+    border-color: var(--destructive);
+  }
+  .field[aria-invalid='true']:is(:focus-visible, :has(:focus-visible)) {
+    border-color: var(--destructive);
+    box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 16%, transparent);
+  }
+  .field:is(.border-0, .border-none):is(:focus-visible, :has(:focus-visible)) {
+    box-shadow: none;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .field {
+    transition: none;
+  }
+}
+
 /* Timeline day navigation slide animations */
 /* Day/week navigation. Deliberately transform-ONLY: these animate the container
    that wraps every bucket, and the current-bucket signal inside it is a lime
