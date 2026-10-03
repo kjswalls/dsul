@@ -1,7 +1,7 @@
 'use client';
 
 import { Fragment, useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
-import { ChevronDown, ChevronUp, Search, Trash2 } from 'lucide-react';
+import { ChevronDown, ChevronUp, Search, Trash2, X } from 'lucide-react';
 import Link from 'next/link';
 import { Input } from '@/components/ui/input';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -231,6 +231,7 @@ export function ItemMemberList({
   removable,
   openItems = false,
   picker = 'well',
+  removeIcon = 'trash',
   onChange,
 }: {
   /** The section heading — "Items", "Milestones". */
@@ -315,6 +316,12 @@ export function ItemMemberList({
    * Kirby 2026-10-03), so a form never grows a list inside itself.
    */
   picker?: 'well' | 'popover';
+  /**
+   * The remove button's glyph. A bin in the panes, where leaving is a write; an
+   * × in a create form, where nothing exists yet and the row is only unlinked —
+   * and where the NEW rows beside it already wear one.
+   */
+  removeIcon?: 'trash' | 'x';
   onChange: (ids: string[]) => void;
 }) {
   const [adding, setAdding] = useState(false);
@@ -503,7 +510,7 @@ export function ItemMemberList({
                       label={`Remove ${item.title} from ${ownerName}`}
                       testId={`${testPrefix}-member-remove`}
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      {removeIcon === 'x' ? <X className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
                     </RailButton>}
                     {row?.menu?.(item)}
                   </ControlRail>
@@ -583,7 +590,9 @@ export function PickerPopover({
                 (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="combobox"]')?.focus();
               }
         }
-        className="bg-modal w-[min(320px,calc(100vw-2rem))] rounded-lg p-1.5"
+        // bg-popover, not the dialog's bg-modal: in dark mode the two were one
+        // surface with a hairline between them.
+        className="w-[min(320px,calc(100vw-2rem))] rounded-lg p-1.5 shadow-lg"
       >
         {children}
       </PopoverContent>
@@ -844,6 +853,7 @@ export function RoutineMemberList({
   emptyHint,
   picker = 'well',
   openOnMount = false,
+  removeIcon = 'trash',
 }: {
   season: { id: string; name: string };
   live: boolean;
@@ -859,6 +869,8 @@ export function RoutineMemberList({
   picker?: 'well' | 'popover';
   /** Open the picker at once — the create form's "Routines" adder, which has no add row to focus. */
   openOnMount?: boolean;
+  /** See ItemMemberList's `removeIcon`. */
+  removeIcon?: 'trash' | 'x';
 }) {
   const liveIds = useLiveItemIds();
   const [adding, setAdding] = useState(openOnMount);
@@ -933,7 +945,7 @@ export function RoutineMemberList({
                     }}
                     data-testid={`${testPrefix}-routine-candidate`}
                     data-routine-id={routine.id}
-                    className="hover:bg-accent focus-visible:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm outline-none"
+                    className="hover:bg-accent focus:bg-accent flex h-8 items-center gap-2 rounded-[5px] px-[7px] text-left text-sm outline-none"
                   >
                     <CategoryIcon glyph={routine.icon} name={routine.name} className="h-3.5 w-3.5" />
                     <span className="truncate">{routine.name}</span>
@@ -975,7 +987,7 @@ export function RoutineMemberList({
                     label={`Remove ${routine.name} from ${season.name}`}
                     testId={`${testPrefix}-routine-remove`}
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    {removeIcon === 'x' ? <X className="h-3.5 w-3.5" /> : <Trash2 className="h-3.5 w-3.5" />}
                   </RailButton>
                 </ControlRail>
               </div>

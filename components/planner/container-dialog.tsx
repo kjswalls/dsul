@@ -76,7 +76,8 @@ const CLOSE_ANIMATION_GRACE_MS = 600;
 const DEFAULT_ICON: Record<NewContainerKind, string | undefined> = {
   goal: makeIconToken('Target'),
   routine: makeIconToken('Repeat'),
-  season: makeIconToken('CalendarRange'),
+  // CalendarRange is not in the icon library, so it fell back to a name hash.
+  season: makeIconToken('CalendarDays'),
   // None: create.project's rule — resolveCategoryIcon derives one from the name
   // ("Gym" → dumbbell), where a fixed token would give every project the same
   // wrong icon.
@@ -420,7 +421,11 @@ function ContainerForm({
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-3 border-t pt-3">
+      {/* Pinned to the dialog's foot on desktop: a goal with every section in
+          use outgrows the 80vh cap, and the buttons scrolled away with it. The
+          -mb-6/pb-6 pair carries the dialog's bottom padding inside the pinned
+          bar so nothing scrolls under it. */}
+      <div className="bg-modal flex items-center justify-between gap-3 border-t pt-3 sm:sticky sm:bottom-0 sm:z-10 sm:-mb-6 sm:pb-6">
         <EnterHint verb="add" />
         <div className="flex items-center gap-1 max-sm:w-full">
           {canOpen && (

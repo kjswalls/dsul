@@ -474,7 +474,7 @@ const SECTION_ADDER: Record<DraftKind, Partial<Record<SectionKey, Adder>>> = {
     member: { label: 'Supporting work', Icon: Plus, hint: 'Habits and tasks that serve it' },
   },
   routine: {
-    items: { label: 'Habits', Icon: ListChecks, hint: 'Habits that run and pause together' },
+    items: { label: 'Items', Icon: ListChecks, hint: 'Habits that run and pause together' },
     seasons: { label: 'Seasons', Icon: CalendarRange, hint: 'Seasons that switch it on and off' },
   },
   season: {
@@ -725,29 +725,6 @@ export function ContainerDraftFields({
         testId={kind === 'goal' ? `${p}-why` : `${p}-note-field`}
       />
 
-      {kind === 'goal' && goalHasMembers && (
-        <GoalSchedule
-          goal={{ ...preview, targetOn: draft.endsOn }}
-          overrides={overrides}
-          testId={`${p}-schedule`}
-        />
-      )}
-      {kind === 'season' && calendarIds.length > 0 && (
-        <section className="flex flex-col gap-2" data-testid={`${p}-calendar`}>
-          <ScheduleHeading label="Calendar" />
-          <SeasonHeatmap
-            season={{ state: draft.seasonState, startsOn: draft.startsOn, endsOn: draft.endsOn }}
-            memberIds={calendarIds}
-            overrides={overrides}
-            testId={`${p}-calendar-heatmap`}
-            // A season that is off today keeps its (blank) calendar drawn —
-            // that is the preview of what off does. A live one with nothing
-            // dated is just its tray.
-            hideEmptyGrid={live}
-          />
-        </section>
-      )}
-
       {SECTIONS[kind].some(shown) && (
         <div className="flex flex-col gap-4">
           {kind === 'goal' && shown('milestone') && (
@@ -761,6 +738,7 @@ export function ContainerDraftFields({
               testPrefix={`${p}-milestones`}
               orderable
               picker="popover"
+              removeIcon="x"
               pickerHint="One-time items only. A repeating item never finishes."
               eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a milestone is a one-shot item."
@@ -778,6 +756,7 @@ export function ContainerDraftFields({
               hiddenIds={NOTHING_HIDDEN}
               testPrefix={`${p}-checkins`}
               picker="popover"
+              removeIcon="x"
               pickerHint="Repeating items only — a check-in comes round again."
               eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
               emptyPoolLabel="Nothing eligible yet — a check-in is a repeating item."
@@ -795,6 +774,7 @@ export function ContainerDraftFields({
               hiddenIds={NOTHING_HIDDEN}
               testPrefix={`${p}-supporting`}
               picker="popover"
+              removeIcon="x"
               eligible={(i) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id)}
               onChange={(memberIds) => onChange({ memberIds })}
               footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add supporting work…" autoFocus={focusKey === 'member'} />}
@@ -816,6 +796,7 @@ export function ContainerDraftFields({
               }
               testPrefix={p}
               picker="popover"
+              removeIcon="x"
               // Its adder has no add row to focus, so it opens the list it asked for.
               openOnMount={focusKey === 'routines'}
             />
@@ -832,6 +813,7 @@ export function ContainerDraftFields({
               // routine_items keeps an order; season_items does not.
               orderable={kind === 'routine'}
               picker="popover"
+              removeIcon="x"
               lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
               row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true }}
               onChange={(itemIds) => onChange({ itemIds })}
@@ -854,6 +836,31 @@ export function ContainerDraftFields({
             <SeasonPicker draft={draft} onChange={onChange} todayStr={todayStr} testPrefix={p} />
           )}
         </div>
+      )}
+
+      {/* Under the sections, not above them: a chart appearing with the first
+          row would otherwise push the add row being typed into down the form. */}
+      {kind === 'goal' && goalHasMembers && (
+        <GoalSchedule
+          goal={{ ...preview, targetOn: draft.endsOn }}
+          overrides={overrides}
+          testId={`${p}-schedule`}
+        />
+      )}
+      {kind === 'season' && calendarIds.length > 0 && (
+        <section className="flex flex-col gap-2" data-testid={`${p}-calendar`}>
+          <ScheduleHeading label="Calendar" />
+          <SeasonHeatmap
+            season={{ state: draft.seasonState, startsOn: draft.startsOn, endsOn: draft.endsOn }}
+            memberIds={calendarIds}
+            overrides={overrides}
+            testId={`${p}-calendar-heatmap`}
+            // A season that is off today keeps its (blank) calendar drawn —
+            // that is the preview of what off does. A live one with nothing
+            // dated is just its tray.
+            hideEmptyGrid={live}
+          />
+        </section>
       )}
 
       {/* THE QUIET ROW (Kirby, 2026-10-03, direction 1). A section exists only
@@ -883,6 +890,10 @@ export function ContainerDraftFields({
             );
           })}
           <span className="flex-1" />
+          {/* A goal's Link reaches every role from here; a routine's or a
+              season's links only into Items, so once Items shows, its own pill
+              is the one way in and this one would be the same verb twice. */}
+          {(kind === 'goal' || !shown('items') || linkOpen) && (
           <LinkAnything
             kind={kind}
             draft={draft}
@@ -891,6 +902,7 @@ export function ContainerDraftFields({
             open={linkOpen}
             onOpenChange={setLinkOpen}
           />
+          )}
         </div>
       )}
     </div>
@@ -933,7 +945,9 @@ function NewItemRows({
       {rows.map((n) => (
         // The member rows' own geometry (px 7, gap 9, a 76px rail slot), so the
         // week dots sit in the same columns as the linked rows' above them.
-        <div key={n.key} className="flex h-[30px] items-center gap-[9px] px-[7px]" data-testid={`${testPrefix}-row`}>
+        // -mx-2 undoes the section foot's px-2 (which centres the add row's
+        // plus), so these rows start where the linked rows do.
+        <div key={n.key} className="-mx-2 flex h-[30px] items-center gap-[9px] px-[7px]" data-testid={`${testPrefix}-row`}>
           <span className="text-muted-foreground w-[18px] shrink-0 text-center text-[9px] font-semibold tracking-wide uppercase">New</span>
           <span className="font-content text-content text-foreground min-w-0 flex-1 truncate" title={n.title}>{n.title}</span>
           <NewItemWhenChip
@@ -946,8 +960,8 @@ function NewItemRows({
             onChange={(patch) => patchRow(n.key, patch)}
           />
           {trailing?.({ id: n.key, title: n.title } as Item)}
-          {/* 76px lines up with the week dots, which only show from sm up. */}
-          <span className="flex w-auto shrink-0 justify-end sm:w-[76px]">
+          {/* The linked rows' control rail is 76px at every width, so this is too. */}
+          <span className="flex w-[76px] shrink-0 justify-end">
             <button
               type="button"
               aria-label={`Don't create ${n.title}`}
@@ -1051,7 +1065,7 @@ function LinkAnything({
           )}
         >
           <Link2 className="size-3.5" aria-hidden />
-          Link existing
+          Link<span className="max-sm:hidden"> existing</span>
         </button>
       }
     >
@@ -1083,9 +1097,14 @@ function LinkAnything({
         pickerHint={hint}
         emptyPoolLabel={emptyPool}
         variant="popover"
-        onPick={(id) =>
-          onChange(kind === 'goal' ? { [goalRole.key]: [...ids, id] } : { itemIds: [...ids, id] })
-        }
+        // Closes on a pick, unlike a section's picker: the section it linked
+        // into appears under it with its own Link pill for the next one, and an
+        // open popover would flip above its trigger as the form grew, over the
+        // very section that just appeared.
+        onPick={(id) => {
+          onChange(kind === 'goal' ? { [goalRole.key]: [...ids, id] } : { itemIds: [...ids, id] });
+          onOpenChange(false);
+        }}
       />
     </PickerPopover>
   );
