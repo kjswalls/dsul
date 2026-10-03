@@ -18,8 +18,8 @@ import { act, cleanup, fireEvent, render, screen, within } from '@testing-librar
  *  - Closed, the column draws nothing, in every layout.
  *  - With no AI, the item is today's panel, Done included, and Ctrl+J is inert.
  *
- * Pieces of the C2 test table that need views C2 does not ship (History rows,
- * Needs you, a conversation's delete confirm) are asserted with those views.
+ * Pieces of the rail's behaviour that need other views (History rows, Needs
+ * you, a conversation's delete confirm) are asserted in those views' tests.
  */
 
 const counters = vi.hoisted(() => ({ sidebar: 0, view: 0 }));
@@ -482,7 +482,7 @@ describe('giving the planner back', () => {
     renderShell();
     const home = askView() as HTMLElement;
     const box = home.querySelector('[data-ask-composer] textarea') as HTMLTextAreaElement | null;
-    // History has no box in C2; Back first, to Ask home's.
+    // History has no box; Back first, to Ask home's.
     expect(box).toBeNull();
     act(() => useRailStore.getState().back('desktop'));
 

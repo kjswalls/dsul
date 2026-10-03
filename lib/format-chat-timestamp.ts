@@ -3,7 +3,7 @@
  * transcript, a History row's (for today's conversations) and an activity
  * row's on Ask home. "8:02", or "08:02" under the 24-hour setting, in the
  * user's zone (the planner's `userTimezone`; the browser's while that is not
- * hydrated). No am/pm: the rail is narrow, and the design reads "8:02"
+ * hydrated). No am/pm: the rail is narrow, and it reads "8:02"
  * wherever a conversation's time shows, so two rows of the same column never
  * disagree about the same minute ("8:02 AM" above "8:04").
  */

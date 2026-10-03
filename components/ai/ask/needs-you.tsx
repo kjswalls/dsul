@@ -12,8 +12,8 @@ import type { AgentItem } from '@/lib/ask-home';
 export const NEEDS_YOU_SHOWN = 3;
 
 /**
- * Ask home's section headings ("NEEDS YOU · 1", "WITH AI ACTIVITY", D8's
- * sketch), in History's group-heading type so Ask's lists read as one system.
+ * Ask home's section headings ("NEEDS YOU · 1", "WITH AI ACTIVITY"), in
+ * History's group-heading type so Ask's lists read as one system.
  * No inset of their own: each sits on its section's left edge.
  */
 export const ASK_SECTION_HEADING = 'text-2xs font-medium tracking-wide text-muted-foreground uppercase';
@@ -21,7 +21,7 @@ export const ASK_SECTION_HEADING = 'text-2xs font-medium tracking-wide text-mute
 /**
  * Ask home's "Needs you": every item an agent is waiting on the user for
  * (lib/ask-home.ts `needsYou`, longest-waiting first), as cards to answer in
- * place, under "NEEDS YOU · N" (D8's sketch). Three show, then "Show 2 more"
+ * place, under "NEEDS YOU · N". Three show, then "Show 2 more"
  * opens the rest where they are.
  *
  * Answering is the same act as the item's own AgentReply, through the same two

@@ -122,8 +122,9 @@ interface KeyboardShortcutsStore {
 const OLD_RIGHT_SIDEBAR_KEYS = ['meta', ']'];
 
 /**
- * v3 → v4: Ctrl+J became toggle_right_sidebar's default (Ask, PR-2). On main
- * it was free, so a user may already have recorded it for another command;
+ * v3 → v4: Ctrl+J became toggle_right_sidebar's default when Ask moved to the
+ * right rail (AI step 2a). Before v4 it was unbound, so a user may already
+ * have recorded it for another command;
  * the dispatcher takes the FIRST matching binding, and toggle_right_sidebar
  * comes before most commands, so that binding would silently stop working
  * (with no AI the key is consumed and does nothing). Their chord keeps its

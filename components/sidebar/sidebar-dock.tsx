@@ -66,9 +66,10 @@ export function SidebarDock({ placement = 'sidebar' }: { placement?: 'sidebar' |
   // and while Ask is not on screen (closed with Ctrl+J, or hidden at an
   // overlay width) the card would otherwise vanish mid-review. Latched, it
   // stays where it is until it is done (accepted, dismissed) or its home
-  // shows, which then carries it. With Ask resting open (the default) its
-  // home shows the moment the gate opens, so the card moves there at once;
-  // the lines the user dropped go with it, because they live in the proposal
+  // shows, which then carries it. With Ask open (the user's choice; it
+  // starts closed, ASK_OPEN_DEFAULT) its home shows the moment the gate
+  // opens and the card moves there at once; otherwise it stays latched here
+  // until it is done or Ask home shows. The lines the user dropped go with it, because they live in the proposal
   // store (`selection`), not in the card that remounts.
   const hostCard = useChatHostCard();
   // The catch-up card, or a conversation's plan when that is what the gate

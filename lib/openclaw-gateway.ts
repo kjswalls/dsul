@@ -356,8 +356,8 @@ export async function streamGatewayChat({
   })
 
   if (!res.ok || !res.body) {
-    // Status only. The upstream body can carry configuration detail, and this
-    // message is rendered straight into the chat panel.
+    // Status only. The upstream body can carry configuration detail, and a
+    // message from here must be safe to show in Ask's transcript.
     throw new Error(`Gateway responded ${res.status}`)
   }
 

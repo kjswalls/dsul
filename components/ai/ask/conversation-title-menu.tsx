@@ -27,7 +27,7 @@ import { useUIStore } from '@/lib/ui-store';
 
 export const CONVERSATION_COPY = Object.freeze({
   renameFailed: "Couldn't rename that conversation.",
-  /** D9's one string, for Star and Unstar alike. */
+  /** One string, for Star and Unstar alike. */
   starFailed: "Couldn't star that conversation.",
   deleteFailed: "Couldn't delete that conversation.",
   deleteTitle: 'Delete this conversation?',

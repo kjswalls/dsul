@@ -169,7 +169,7 @@ export function historyDay(lastMessageAt: string, now: number, tz: string | null
 
 /**
  * A History row's time, in the user's zone:
- *   today      "8:02", or "08:02" under the 24-hour setting (mock 5: a
+ *   today      "8:02", or "08:02" under the 24-hour setting (a
  *              row's time is a glance, so no am/pm); the one chat clock,
  *              lib/format-chat-timestamp.ts clockTime
  *   yesterday  "Tue"

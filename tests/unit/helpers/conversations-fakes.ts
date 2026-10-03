@@ -2,9 +2,10 @@
  * Fakes for lib/conversations-store.ts: a recording ConversationsApi and a
  * scripted ChatTransport, injected with `configureConversations`.
  *
- * The API fake answers like PR-1's routes by default: a turn's save upserts a
- * summary whose `messageCount` grows by what was inserted, so a test only
- * scripts the answers it is about (`api.answer.appendTurn = …`).
+ * The API fake answers like the /api/ai/conversations routes (migration 057)
+ * by default: a turn's save upserts a summary whose `messageCount` grows by
+ * what was inserted, so a test only scripts the answers it is about
+ * (`api.answer.appendTurn = …`).
  */
 import { vi } from 'vitest';
 import type { ApiCallResult, ConversationsApi } from '@/lib/conversations-api';

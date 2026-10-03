@@ -11,10 +11,10 @@ import { cn } from '@/lib/utils';
  * "Morning, Kirby." The greeting, in the serif, by the user's clock and the
  * first word of their display name (lib/ask-home.ts `greeting`).
  *
- *  - home      Ask home, 15px with a period (the Direction B mock). Its ✦ is
+ *  - home      Ask home, 15px with a period. Its ✦ is
  *              the header's, one line above, so it carries none of its own.
  *  - new-chat  a new chat's empty state, 24px, no period, under the ✦ on a line
- *              of its own, centred (mock 6; components/ai/ask/new-chat-empty.tsx).
+ *              of its own, centred (components/ai/ask/new-chat-empty.tsx).
  *
  * The clock is the grid's now-marker clock, aligned to the minute, so it turns
  * from morning to afternoon at noon on its own. `data-ask-greeting` lets a

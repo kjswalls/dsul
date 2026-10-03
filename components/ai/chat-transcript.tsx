@@ -23,7 +23,7 @@ import type { Answerer } from '@/lib/conversation-types';
  * below, `ChatTranscript`) and an item's own conversation (the list alone,
  * `TranscriptMessages`, inside the item's body, which is its scroller).
  *
- * Claude's shape (the approved Full Chat page, mock 2):
+ * Claude's shape (the approved Full Chat page):
  *  - YOURS: right-aligned, a soft bubble, no avatar.
  *  - REPLIES: full width, plain markdown, no bubble, no avatar, no card.
  *  - UNDER A FINISHED REPLY: Copy and its time, on hover and on focus within

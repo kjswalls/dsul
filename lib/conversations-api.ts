@@ -12,7 +12,7 @@ import type {
 } from './conversation-types';
 
 /**
- * The browser's client for /api/ai/conversations/** (PR-1's routes), and
+ * The browser's client for /api/ai/conversations/** (migration 057), and
  * nothing else: no state, no retries, no latch. lib/conversations-store.ts owns
  * all of that, and takes this as an injectable dependency, so a test swaps in a
  * fake and the transport test's `calls.map(c => c.url)` stays `['/api/chat']`.

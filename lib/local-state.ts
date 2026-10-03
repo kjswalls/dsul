@@ -15,9 +15,9 @@ import { useViewStore } from './view-store';
  * "Whose state is in this browser, and drop it when the answer changes."
  *
  * ── THE PROBLEM ─────────────────────────────────────────────────────────────
- * Ten separate things persist to localStorage under BROWSER-GLOBAL keys —
+ * Nine separate things persist to localStorage under BROWSER-GLOBAL keys —
  * `dsul-ai-settings`, `dsul-view`, `planner-storage` and the rest (and, until
- * conversations moved to the account, `dsul-chat-history`). None of them
+ * conversations moved to the account, a tenth: `dsul-chat-history`). None of them
  * carries an account. On a shared browser they hold whoever signed in last, so
  * the next person to sign in inherits them: their canvas filters name someone
  * else's projects, the palette's "Recent" group lists someone else's commands,

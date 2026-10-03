@@ -53,7 +53,7 @@ export function useBackLabel(view: AskView | null, beneath: AskView | undefined)
  *   saved    its title is the ⌄ menu (Rename, Star, Delete), then "+"
  *   unsaved  its title plainly, then "+": a first turn on its way, or a
  *            conversation found deleted, has no row to rename or delete
- *   new      "New chat", then History (mocks 3 and 6): the draft has nothing
+ *   new      "New chat", then History: the draft has nothing
  *            to keep, and History replaces it (the level rule). Over History
  *            itself it offers none: "‹ History" is already the way there
  */

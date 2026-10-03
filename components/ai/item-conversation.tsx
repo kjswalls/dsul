@@ -67,7 +67,7 @@ function railBodyOf(el: HTMLElement | null): HTMLElement | null {
  * answer in is a field that sends nowhere.
  *
  * Every shape shows Ask's own messages (components/ai/chat-transcript.tsx:
- * your bubble, plain replies, Copy, the status lines; D9's one transcript),
+ * your bubble, plain replies, Copy, the status lines; one transcript everywhere),
  * and once the conversation is saved its heading has a ⌄: Star, and Delete
  * conversation… (no Rename: its title is the item's). Deleted here or
  * elsewhere, the item stays, and its next send starts a fresh conversation;

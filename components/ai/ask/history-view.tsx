@@ -16,7 +16,7 @@ import type { Item } from '@/lib/planner-types';
 
 /**
  * History: every saved conversation, on every device, until it is deleted
- * (the Full Chat page, mock 5). One push over Ask home; "‹ Ask" goes back.
+ * (the Full Chat page). One push over Ask home; "‹ Ask" goes back.
  *
  *  - SEARCH at the top. From two characters, 250ms after the last keystroke,
  *    it asks the server (titles and every message), and the results replace
@@ -38,7 +38,7 @@ import type { Item } from '@/lib/planner-types';
  *    "Nothing matches…"); the skeletons themselves are hidden from it.
  *
  * No per-row menu: Rename, Star and Delete are the conversation's own (its
- * title's ⌄), as mock 5 has it.
+ * title's ⌄), as the Full Chat page has it.
  */
 
 /** A search under this many characters (code points) is no search. */

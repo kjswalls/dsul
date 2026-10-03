@@ -112,7 +112,7 @@ electron/
     - the browser client exchanges `?code=` on ANY page load while a verifier exists (@supabase/ssr 0.9.0 createBrowserClient.js:38-40; auth-js 2.99.3 GoTrueClient.ts:2302-2308).
 
     So only main's own `loadURL` may carry a code; it emits no `will-navigate`. `/connect?code=` is not affected in practice: the pairing link arrives from outside the app (app/api/agent/connect/init/route.ts:80), and the shell has no address bar.
-  - **What the guard catches.** Beacon chat links (ReactMarkdown with no `a` override, components/ai/chat-conversation.tsx:312-314) and the app's one `target=_blank` link (app/docs/openclaw/page.tsx:133-136). Whether it catches files and links dropped onto the window is **[unverified]**.
+  - **What the guard catches.** Beacon chat links (ReactMarkdown in components/ai/chat-transcript.tsx:226, whose `a` override renders a plain anchor with no target) and the app's one `target=_blank` link (app/docs/openclaw/page.tsx:133-136). Whether it catches files and links dropped onto the window is **[unverified]**.
   - **`setWindowOpenHandler` always returns `deny`.**
     - A non-app URL goes to `openExternal`.
     - A same-origin URL (⌘/Ctrl-click or middle-click) does nothing in v1. "Open as page" then leaves the console open where it is, which is the safe failure: its close runs only on a real navigation (components/planner/organize/detail-parts.tsx:410-427).
@@ -447,7 +447,7 @@ Use electron-builder 26.15.x: not the 27 alpha, and not Forge, which has no NSIS
 
 ## Updates
 
-- **v1: an update notice.** The site updates itself through Vercel, but the bundled Chromium updates only through a new installer, and it renders remote content: Beacon markdown with remote images and links (chat-conversation.tsx:312-314).
+- **v1: an update notice.** The site updates itself through Vercel, but the bundled Chromium updates only through a new installer, and it renders remote content: Beacon markdown with links (components/ai/chat-transcript.tsx:226; since step 2a a reply's images render as links, never fetched).
   - On launch and every 24h, fetch `api.github.com/repos/kjswalls/dsul/releases/latest`. If it's newer, a tray item opens the release page.
   - A launch at login usually beats the network, so the launch's check fails and the next one would be a day away (v0.1.2). When an app URL commits after the offline page, `did-navigate` checks again (at most one extra request per offline episode, and a failed or unchanged answer leaves the tray alone). It reads the offline count before `stopOfflineRetry` clears it.
   - Rebuild whenever Electron ships a security release for 44, and move to a newer major before 44 leaves support **[unverified: Electron's support window]**.

@@ -150,7 +150,7 @@ export function useAskHomeShown(surface: AskSurface): boolean {
 /**
  * Whether the card a catch-up host would carry (useChatCardSurface) is already
  * on screen in its own home, so the host yields and the card never renders
- * twice. The catch-up card's home is Ask home (D12's rule); a conversation's
+ * twice. The catch-up card's home is Ask home; a conversation's
  * plan's home is that conversation's view, on top of the shown rail or the
  * phone's Ask tab. False whenever nothing can answer, which is what keeps
  * EITHER card in the dock when the gate closes under it. The docks use it as
@@ -353,7 +353,7 @@ export function openConversation(id: string, isMobile: boolean, o: { returnFocus
 
 /**
  * The conversation a binding sends into, and the view to push for it:
- *   home          a new draft, pushed (with `returnTo`: "?" over an item, D10)
+ *   home          a new draft, pushed (with `returnTo` for "?" over an item)
  *   draft         that draft, already on screen
  *   conversation  that conversation
  *   item          the item's one conversation (resolveItemThread), no push

@@ -13,8 +13,8 @@
         "properties": {
           "dsulUrl":        { "type": "string", "description": "Base URL of your dsul deployment (e.g. https://dsul.yourdomain.com)" },
           "apiKey":         { "type": "string", "description": "Your personal dsul API key. `openclaw dsul-context setup` fills it in after you authorize at dsul's /connect page." },
-          "publicUrl":      { "type": "string", "description": "Your gateway's public URL (e.g. https://your-machine.ts.net) — registers …/plugins/dsul/chat with dsul for sidebar chat" },
-          "agentId":        { "type": "string", "description": "OpenClaw agent id for dsul sidebar chat (default: main)" },
+          "publicUrl":      { "type": "string", "description": "Your gateway's public URL (e.g. https://your-machine.ts.net) — registers …/plugins/dsul/chat with dsul for chat from Ask" },
+          "agentId":        { "type": "string", "description": "OpenClaw agent id that answers in dsul's Ask (default: main)" },
           "id":             { "type": "string", "description": "Optional alias for agent id if agentId is not set" },
           "webhookSecret":  { "type": "string", "description": "Optional HMAC secret for verifying change event payloads" },
           "cacheTtlMs":     { "type": "number", "description": "Max cache age before forcing a re-fetch (default: 300000ms = 5 min)" }

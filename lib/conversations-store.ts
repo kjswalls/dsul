@@ -46,7 +46,7 @@ import { useProposalStore } from './proposal-store';
  * OpenClaw plugin path never reaches dsul's server; /api/chat stays stateless.
  * Message ids are minted here, so a retried or keepalive save lands once.
  *
- * Three rules hold the writes honest:
+ * Four rules hold the writes honest:
  *   - Every queued save and change tally is stamped with the generation and
  *     the account it was queued under. `reset()` (sign-out, an account switch)
  *     bumps the generation and empties the queue, and a stamp that no longer
@@ -588,8 +588,8 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
    * A conversation deleted elsewhere (404 on a save or an open). Its waiting
    * turns would land nowhere, or bring it back with `create`: "Not saved", now.
    *
-   * The thread keeps the name it was shown under (D9: the view keeps what is
-   * in memory). The summary goes, and for a conversation opened from History
+   * The thread keeps the name it was shown under (the view keeps what is in
+   * memory). The summary goes, and for a conversation opened from History
    * it was the only place the title lived, so the header would fall back to
    * "New chat", or to the first message under a rename. Kept as `draftTitle`,
    * which is safe on a gone thread: nothing saves one (fire and the pagehide

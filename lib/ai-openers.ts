@@ -72,10 +72,10 @@ export interface OpenerContext {
 /** `selectOverdue` requires the set; only this module's callers may omit it. */
 const EMPTY_IDS: ReadonlySet<string> = new Set()
 
-/** Ask home: two, under everything else it shows (the approved mock 1). */
+/** Ask home: two, under everything else it shows. */
 export const HOME_OPENERS = 2
 
-/** A new chat's empty state: three, then "Help me start…" as a fourth (mock 6). */
+/** A new chat's empty state: three, then "Help me start…" as a fourth. */
 export const NEW_CHAT_OPENERS = 3
 
 /**

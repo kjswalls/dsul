@@ -867,8 +867,8 @@ export const STATIC_COMMANDS: Command[] = [
     // typed a moment ago must already be in it.
     //
     // On the phone it asks for no box: the card is Apply and Not now, things
-    // to tap, and the box's keyboard would come up over it (D11's reason for
-    // Ask home asking for none on arrival). The omnibar the command was typed
+    // to tap, and the box's keyboard would come up over it (the reason Ask
+    // home asks for none on arrival). The omnibar the command was typed
     // into unmounts with Today's dock, so the keyboard goes down.
     run: (ctx) => {
       if (getAICapabilities().canChat) closeItemPanel();

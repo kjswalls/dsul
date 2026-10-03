@@ -33,7 +33,7 @@ const SETTINGS_HREF = '/settings/beacon';
  * The failing line's words. "AI paused" only when it is true: a failing model
  * is not the same as no AI when OpenClaw is set up, because the gate then
  * answers with OpenClaw (lib/ai-registry.ts falls back to it when the model is
- * the choice and unusable). The chat panel and the omnibar then name OpenClaw
+ * the choice and unusable). Ask and the omnibar then name OpenClaw
  * and keep working, so the line names the model's provider instead of claiming
  * the whole AI stopped. 'custom' has no brand to name ("Other" is the picker's
  * word for it, not a name).
