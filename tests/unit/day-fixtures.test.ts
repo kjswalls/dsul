@@ -34,12 +34,15 @@ import {
   type ItemTypeConfig,
 } from '@/lib/item-registry';
 import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { reminderNeedsDate } from '@/lib/bulk-edit';
 import { cadenceLabel } from '@/lib/cadence';
 import { membershipSummary } from '@/lib/item-bands';
 import { occursOn } from '@/lib/reminders/due';
 import { formatCueTime, type TimeFormat } from '@/lib/reminders/copy';
 import { isCompletedOnDate } from '@/lib/recurrence';
 import { projectItems } from '@/lib/planner-store';
+import { useExtensionsStore } from '@/lib/extensions-store';
+import { EXT_STREAKS } from '@/lib/extension-registry';
 import type { OccurrenceState } from '@/lib/container-schedule';
 import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/planner-types';
 
@@ -798,9 +801,19 @@ function buildToggle(): { cases: ToggleCase[] } {
 /**
  * The verbs the phone's item sheet offers, in ITEM_VERBS (declaration) order.
  * `delete` is always eligible, so it alone is exempt from the both-answers
- * check below.
+ * check below. `resetStreak` is offered from the streak chip, not the bar.
  */
-const SHEET_VERBS = ['tick', 'skip', 'unskip', 'pause', 'resume', 'nextDay', 'reschedule', 'delete'] as const;
+const SHEET_VERBS = [
+  'tick',
+  'skip',
+  'unskip',
+  'pause',
+  'resume',
+  'nextDay',
+  'reschedule',
+  'resetStreak',
+  'delete',
+] as const;
 const ALWAYS_ELIGIBLE: ReadonlySet<SheetVerb> = new Set(['delete']);
 type SheetVerb = (typeof SHEET_VERBS)[number];
 
@@ -813,6 +826,11 @@ type VerbsCase = {
   timeZone: string;
   /** What the caller knows about `dateStr`; null is unknown (the palette's case). */
   occurrence: OccurrenceState | 'absent' | null;
+  /**
+   * The Streaks extension (lib/extension-gates.ts streaksEnabled), which
+   * Reset streak asks. The phone reads it from the payload's settings.
+   */
+  streaksEnabled: boolean;
   verbs: Record<Exclude<SheetVerb, 'nextDay'>, VerbAnswer> & {
     nextDay: VerbAnswer & { detail: string; target: string };
   };
@@ -823,7 +841,8 @@ type VerbsCase = {
 /**
  * Each case's occurrence is what the sheet would pass: `occurrenceOn` unless
  * the case names one ('unknown' for none at all), so the gates are checked
- * against every state a caller can hand them.
+ * against every state a caller can hand them. Streaks is on unless the case
+ * turns it off, through the extensions store the web's gate reads.
  */
 function buildVerbs(): { cases: VerbsCase[] } {
   const T = '2026-10-02'; // a Friday
@@ -840,8 +859,10 @@ function buildVerbs(): { cases: VerbsCase[] } {
       todayStr?: string;
       timeZone?: string;
       occurrence?: OccurrenceState | 'absent' | 'unknown';
+      streaksEnabled?: boolean;
     } = {}
   ): VerbsCase => {
+    const streaksEnabled = opts.streaksEnabled ?? true;
     const dateStr = opts.dateStr ?? T;
     const todayStr = opts.todayStr ?? T;
     const timeZone = opts.timeZone ?? NY;
@@ -859,27 +880,34 @@ function buildVerbs(): { cases: VerbsCase[] } {
       eligible: ITEM_VERBS[id].eligible(item, ctx),
       label: ITEM_VERBS[id].label(item, ctx),
     });
-    return {
-      name,
-      item,
-      dateStr,
-      todayStr,
-      timeZone,
-      occurrence: occurrence ?? null,
-      verbs: {
-        tick: answer('tick'),
-        skip: answer('skip'),
-        unskip: answer('unskip'),
-        pause: answer('pause'),
-        resume: answer('resume'),
-        nextDay: { ...answer('nextDay'), detail: ITEM_VERBS.nextDay.detail!(item, ctx)!, target: nextDayOf(item, ctx) },
-        reschedule: answer('reschedule'),
-        delete: answer('delete'),
-      },
-      eligible: eligibleVerbs(item, ctx)
-        .map((v) => v.id)
-        .filter((id): id is SheetVerb => sheet.has(id)),
-    };
+    useExtensionsStore.setState({ enabled: { [EXT_STREAKS]: streaksEnabled } });
+    try {
+      return {
+        name,
+        item,
+        dateStr,
+        todayStr,
+        timeZone,
+        occurrence: occurrence ?? null,
+        streaksEnabled,
+        verbs: {
+          tick: answer('tick'),
+          skip: answer('skip'),
+          unskip: answer('unskip'),
+          pause: answer('pause'),
+          resume: answer('resume'),
+          nextDay: { ...answer('nextDay'), detail: ITEM_VERBS.nextDay.detail!(item, ctx)!, target: nextDayOf(item, ctx) },
+          reschedule: answer('reschedule'),
+          resetStreak: answer('resetStreak'),
+          delete: answer('delete'),
+        },
+        eligible: eligibleVerbs(item, ctx)
+          .map((v) => v.id)
+          .filter((id): id is SheetVerb => sheet.has(id)),
+      };
+    } finally {
+      useExtensionsStore.setState({ enabled: {} });
+    }
   };
   const stretch = (over: Record<string, unknown> = {}) => habit(601, 'stretch', over);
   const counted = (over: Record<string, unknown> = {}) => habit(602, 'water x3', { timesPerDay: 3, ...over });
@@ -899,6 +927,8 @@ function buildVerbs(): { cases: VerbsCase[] } {
       // Habits.
       make('habit, due today', stretch()),
       make('habit, done today', stretch({ completedDates: [T], streak: 3 })),
+      make('habit with a streak, due today', stretch({ streak: 5 })),
+      make('habit with a streak, Streaks off', stretch({ streak: 5 }), { streaksEnabled: false }),
       make('habit, skipped today', stretch({ skippedDates: [T], status: 'skipped' })),
       make('habit, skipped and completed today', stretch({ skippedDates: [T], completedDates: [T] })),
       make('counted habit, nothing counted', counted()),
@@ -1260,6 +1290,8 @@ type ItemCapsCase = {
   isPausable: boolean;
   isRemindable: boolean;
   isCollectible: boolean;
+  /** lib/bulk-edit.ts reminderNeedsDate: a cue that would never fire for want of a day. */
+  reminderNeedsDate: boolean;
 };
 type CapsFixture = { types: TypeCaps[]; items: ItemCapsCase[]; hydrated: HydratedCaps[] };
 
@@ -1342,6 +1374,7 @@ function buildCaps(): CapsFixture {
     isPausable: isPausable(item),
     isRemindable: isRemindable(item),
     isCollectible: isCollectible(item),
+    reminderNeedsDate: reminderNeedsDate(item),
   }));
   return { types, items, hydrated };
 }
@@ -1475,8 +1508,15 @@ describe('day fixtures shared with DsulCore', () => {
       const answers = new Set(verbs.map((c) => c.verbs[id].eligible));
       expect(answers, id).toEqual(ALWAYS_ELIGIBLE.has(id) ? new Set([true]) : both);
     }
-    // Delete is offered on every item, and last, after every verb in the bar.
-    for (const c of verbs) expect(c.eligible.at(-1), c.name).toBe('delete');
+    // Delete is offered on every item, and last, after every verb in the bar;
+    // Reset streak, where it is offered, comes just before it.
+    for (const c of verbs) {
+      expect(c.eligible.at(-1), c.name).toBe('delete');
+      if (c.eligible.includes('resetStreak')) expect(c.eligible.at(-2), c.name).toBe('resetStreak');
+    }
+    // Reset streak is refused with Streaks off on a streak it would otherwise reset.
+    expect(verbs.some((c) => !c.streaksEnabled && !c.verbs.resetStreak.eligible && (c.item as HabitItem).streak > 0)).toBe(true);
+    expect(new Set(verbs.map((c) => c.verbs.resetStreak.label))).toEqual(new Set(['Reset streak']));
     expect(new Set(verbs.map((c) => c.occurrence))).toEqual(new Set(['done', 'skipped', 'due', 'open', 'absent', null]));
     const tickLabels = new Set(verbs.map((c) => c.verbs.tick.label));
     for (const label of ['Mark done', 'Mark not done', 'Done today', 'Undo today', 'Count one (1/3)']) {
@@ -1497,7 +1537,7 @@ describe('day fixtures shared with DsulCore', () => {
     expect(new Set(occurs.map((c) => c.occurrence))).toEqual(new Set(['done', 'skipped', 'due', 'open', 'absent', null]));
 
     const caps = generated.caps as CapsFixture;
-    for (const key of ['isSkippable', 'isPausable', 'isRemindable', 'isCollectible'] as const) {
+    for (const key of ['isSkippable', 'isPausable', 'isRemindable', 'isCollectible', 'reminderNeedsDate'] as const) {
       expect(new Set(caps.items.map((c) => c[key])), key).toEqual(both);
     }
     // The task and habit messages differ, and a hydrated label reaches every

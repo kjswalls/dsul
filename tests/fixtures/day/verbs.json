@@ -17,6 +17,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -47,6 +48,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -79,6 +84,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "done",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -110,6 +116,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": true,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -117,6 +127,138 @@
       },
       "eligible": [
         "tick",
+        "pause",
+        "resetStreak",
+        "delete"
+      ]
+    },
+    {
+      "name": "habit with a streak, due today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 5,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "streaksEnabled": true,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": true,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
+        "pause",
+        "resetStreak",
+        "delete"
+      ]
+    },
+    {
+      "name": "habit with a streak, Streaks off",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000259",
+        "title": "stretch",
+        "streak": 5,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occurrence": "due",
+      "streaksEnabled": false,
+      "verbs": {
+        "tick": {
+          "eligible": true,
+          "label": "Done today"
+        },
+        "skip": {
+          "eligible": true,
+          "label": "Skip today"
+        },
+        "unskip": {
+          "eligible": false,
+          "label": "Unskip today"
+        },
+        "pause": {
+          "eligible": true,
+          "label": "Pause"
+        },
+        "resume": {
+          "eligible": false,
+          "label": "Resume"
+        },
+        "nextDay": {
+          "eligible": false,
+          "label": "Move to tomorrow",
+          "detail": "Sat, Oct 3",
+          "target": "2026-10-03"
+        },
+        "reschedule": {
+          "eligible": false,
+          "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
+        }
+      },
+      "eligible": [
+        "tick",
+        "skip",
         "pause",
         "delete"
       ]
@@ -140,6 +282,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "skipped",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -170,6 +313,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -203,6 +350,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "done",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -234,6 +382,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -263,6 +415,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -293,6 +446,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -326,6 +483,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -356,6 +514,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -391,6 +553,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "done",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -422,6 +585,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -450,6 +617,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "absent",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -481,6 +649,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -508,6 +680,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "open",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -538,6 +711,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -569,6 +746,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "done",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -600,6 +778,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -628,6 +810,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -659,6 +842,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -688,6 +875,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -718,6 +906,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -749,6 +941,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -779,6 +972,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -811,6 +1008,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -841,6 +1039,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -873,6 +1075,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -903,6 +1106,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -934,6 +1141,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -964,6 +1172,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -995,6 +1207,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "UTC",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1026,6 +1239,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1055,6 +1272,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1085,6 +1303,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1116,6 +1338,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1147,6 +1370,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1174,6 +1401,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1205,6 +1433,10 @@
           "eligible": false,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1233,6 +1465,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1263,6 +1496,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1297,6 +1534,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "done",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1327,6 +1565,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1360,6 +1602,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "skipped",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1390,6 +1633,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1420,6 +1667,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "open",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1451,6 +1699,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1480,6 +1732,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "absent",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1510,6 +1763,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1543,6 +1800,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "absent",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1574,6 +1832,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1601,6 +1863,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "absent",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1632,6 +1895,10 @@
           "eligible": true,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1660,6 +1927,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1690,6 +1958,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1720,6 +1992,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1750,6 +2023,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -1782,6 +2059,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1813,6 +2091,10 @@
           "eligible": false,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1841,6 +2123,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1872,6 +2155,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1901,6 +2188,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -1932,6 +2220,10 @@
           "eligible": false,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -1959,6 +2251,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -1989,6 +2282,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2016,6 +2313,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2046,6 +2344,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2076,6 +2378,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2107,6 +2410,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2136,6 +2443,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2167,6 +2475,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2194,6 +2506,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2225,6 +2538,10 @@
           "eligible": true,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2254,6 +2571,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2284,6 +2602,10 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2313,6 +2635,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2343,6 +2666,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2374,6 +2701,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2404,6 +2732,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2434,6 +2766,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "absent",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2464,6 +2797,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2495,6 +2832,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2526,6 +2864,10 @@
           "eligible": true,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2555,6 +2897,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2586,6 +2929,10 @@
           "eligible": false,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2613,6 +2960,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2643,6 +2991,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2674,6 +3026,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2705,6 +3058,10 @@
           "eligible": false,
           "label": "Reschedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2731,6 +3088,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": null,
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2762,6 +3120,10 @@
           "eligible": true,
           "label": "Schedule"
         },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
+        },
         "delete": {
           "eligible": true,
           "label": "Delete"
@@ -2792,6 +3154,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "due",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2822,6 +3185,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2857,6 +3224,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "done",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": true,
@@ -2887,6 +3255,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2921,6 +3293,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "skipped",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -2951,6 +3324,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,
@@ -2982,6 +3359,7 @@
       "todayStr": "2026-10-02",
       "timeZone": "America/New_York",
       "occurrence": "absent",
+      "streaksEnabled": true,
       "verbs": {
         "tick": {
           "eligible": false,
@@ -3012,6 +3390,10 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "resetStreak": {
+          "eligible": false,
+          "label": "Reset streak"
         },
         "delete": {
           "eligible": true,

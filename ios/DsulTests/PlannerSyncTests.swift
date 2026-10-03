@@ -223,11 +223,12 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// GET /api/app/planner bodies (lib/app-api.ts), on Thursday 2026-10-01:
 /// a one-off task on the day, a habit counted three times a day (once so
 /// far), a habit skipped today, and a braindump thought; `extra` adds rows
-/// (`plants`, `bags`, `reading`, `book`) and `omitting` drops some. No stored
-/// timezone unless one is given, so the pinned day stays put. `writes` is the
-/// current server's list unless a test plays an older server (nil);
-/// `itemTypes` names the user's own types, left out (an older server) unless
-/// given.
+/// (`plants`, `bags`, `reading`, `book`, `meds`) and `omitting` drops some. No
+/// stored timezone unless one is given, so the pinned day stays put. `writes`
+/// is the current server's list unless a test plays an older server (nil);
+/// `itemTypes` names the user's own types, `streaksEnabled` the Streaks
+/// switch, and `remindersEnabled` the raw JSON for Habit reminders ("true",
+/// "false" or "null"), each left out (an older server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -241,10 +242,12 @@ enum PlannerJSON {
     static let bags = UUID(uuidString: "0d000000-0000-4000-8000-000000000006")!
     static let reading = UUID(uuidString: "0d000000-0000-4000-8000-000000000007")!
     static let book = UUID(uuidString: "0d000000-0000-4000-8000-000000000009")!
+    static let meds = UUID(uuidString: "0d000000-0000-4000-8000-00000000000b")!
 
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
-    static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete"]
+    static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
+                            "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder"]
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -271,6 +274,14 @@ enum PlannerJSON {
             + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
     }
 
+    /// A daily habit on a 41-day streak, done the two days before today and
+    /// not yet today.
+    static var medsJSON: String {
+        return "{\"id\":\"\(lowerID(meds))\",\"type\":\"habit\",\"title\":\"Meds\",\"status\":\"pending\","
+            + "\"timeBucket\":\"morning\",\"repeatFrequency\":\"daily\",\"streak\":41,"
+            + "\"completedDates\":[\"2026-09-29\",\"2026-09-30\"],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
     /// A daily habit paused since September 20, with no end.
     static var readingJSON: String {
         return "{\"id\":\"\(lowerID(reading))\",\"type\":\"habit\",\"title\":\"Read\",\"status\":\"pending\","
@@ -281,7 +292,8 @@ enum PlannerJSON {
 
     static func payload(userId: UUID = testUserID, fetchedAt: String = "fetch-1", groceriesDone: Bool = false,
                         timezone: String? = nil, writes: [String]? = PlannerJSON.allWrites,
-                        itemTypes: [ItemTypeLabel]? = nil, omitting: Set<UUID> = [],
+                        itemTypes: [ItemTypeLabel]? = nil, streaksEnabled: Bool? = nil,
+                        remindersEnabled: String? = nil, omitting: Set<UUID> = [],
                         extra: [String] = []) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
@@ -305,7 +317,9 @@ enum PlannerJSON {
         let kept: [String] = rows.filter { !omitting.contains($0.0) }.map { $0.1 }
         let items: [String] = kept + extra
         var json = "{\"v\":1,\"userId\":\"\(lowerID(userId))\",\"fetchedAt\":\"\(fetchedAt)\","
-        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true},"
+        let streaks: String = streaksEnabled.map { ",\"streaksEnabled\":\($0)" } ?? ""
+        let reminders: String = remindersEnabled.map { ",\"remindersEnabled\":\($0)" } ?? ""
+        json += "\"settings\":{\"timezone\":\(zone),\"showCompletedTasks\":true\(streaks)\(reminders)},"
         if let writes {
             let quoted: [String] = writes.map { "\"\($0)\"" }
             json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
@@ -725,10 +739,14 @@ final class DragFlag {
     /// item, the revert is the item from before both with the landed write's
     /// step alone played on it: whatever fields each sets, nothing the server
     /// took is undone, and nothing it didn't take is left. A slot, part 1's
-    /// unit, would have put back only the failed write's fields.
+    /// unit, would have put back only the failed write's fields. Reset streak
+    /// and a tick both move the streak, so a reset is paired with a tick
+    /// either way round, and with a title and a skip, on a habit. A failed
+    /// times edit is paired with a tick, which it changes (`counted`).
     @Test func aRevertKeepsEveryLandedWrite() async throws {
         typealias Act = @MainActor (SamplePlanner) -> Void
         typealias Step = (SampleItem) -> SampleItem
+        typealias Pair = (String, Act, Act, Step)
         let id = PlannerJSON.plants
         let today = try #require(DayString(PlannerJSON.today))
         let friday = today.adding(days: 1)
@@ -741,6 +759,12 @@ final class DragFlag {
         let title: Act = { $0.edit(id, .title("Water the ferns")) }
         let retitle: Act = { $0.edit(id, .title("Water the ficus")) }
         let notes: Act = { $0.edit(id, .notes("Twice a week in winter")) }
+        let high: Act = { $0.edit(id, .priority("high")) }
+        let low: Act = { $0.edit(id, .priority("low")) }
+        let unprioritize: Act = { $0.edit(id, .priority(nil)) }
+        let cue: Act = { $0.edit(id, .reminder(time: "08:00", anchor: .set("I fill the can"))) }
+        let retime: Act = { $0.edit(id, .reminder(time: "07:30", anchor: nil)) }
+        let unremind: Act = { $0.edit(id, .reminder(time: nil, anchor: nil)) }
         // What the server made of it, as DsulCore's steps play it.
         let ticked: Step = { applying(TickIntent(done: true), to: $0, on: today) }
         let unticked: Step = { applying(TickIntent(done: false), to: $0, on: today) }
@@ -756,8 +780,14 @@ final class DragFlag {
         let titled: Step = { editing($0, .title("Water the ferns")) }
         let retitled: Step = { editing($0, .title("Water the ficus")) }
         let noted: Step = { editing($0, .notes("Twice a week in winter")) }
+        let prioritized: Step = { editing($0, .priority("high")) }
+        let lowered: Step = { editing($0, .priority("low")) }
+        let unprioritized: Step = { editing($0, .priority(nil)) }
+        let cued: Step = { editing($0, .reminder(time: "08:00", anchor: .set("I fill the can"))) }
+        let retimed: Step = { editing($0, .reminder(time: "07:30", anchor: nil)) }
+        let unreminded: Step = { editing($0, .reminder(time: nil, anchor: nil)) }
         // The failed write, the landed one, and the server's end state.
-        let pairs: [(String, Act, Act, Step)] = [
+        let pairs: [Pair] = [
             ("tick, then title", tick, title, titled),
             ("title, then tick", title, tick, ticked),
             ("tick, then untick", tick, tick, unticked),
@@ -771,30 +801,79 @@ final class DragFlag {
             ("pause, then title", pause, title, titled),
             ("title, then pause", title, pause, paused),
             ("title, then title", title, retitle, retitled),
+            ("priority, then title", high, title, titled),
+            ("title, then priority", title, high, prioritized),
+            ("priority, then priority", high, low, lowered),
+            // Plants has no priority, so the landed write is one the route
+            // answers 200 with no write; both were still sent, since the
+            // phone showed high when the second was made.
+            ("priority, then back", high, unprioritize, unprioritized),
+            // The words never landed, so the time alone keeps none.
+            ("cue words, then a time alone", cue, retime, retimed),
+            ("a time alone, then cue words", retime, cue, cued),
+            ("cue words, then No reminder", cue, unremind, unreminded),
+            ("reminder, then tick", cue, tick, ticked),
         ]
-        for (name, failed, landedAfter, step) in pairs {
-            let server = FakeServer()
-            await server.on(plannerRoute, .status(200, PlannerJSON.payload(timezone: "America/New_York",
-                                                                           extra: [PlannerJSON.plantsJSON])),
-                            .offline)
-            await server.on(itemRoute(id), .offline, .status(200, ok))
-            let planner = await loaded(server)
-            let before = try #require(planner.item(id))
 
-            failed(planner)        // never reaches the server
-            landedAfter(planner)   // lands
-            await drain(planner)
+        // Meds, a habit on a 41-day streak, not yet done today.
+        let meds = PlannerJSON.meds
+        let medsTick: Act = { $0.toggle(meds, on: today) }
+        let medsSkip: Act = { $0.skip(meds, on: friday) }
+        let medsTitle: Act = { $0.edit(meds, .title("Take the meds")) }
+        let reset: Act = { $0.resetStreak(meds) }
+        let thrice: Act = { $0.edit(meds, .timesPerDay(3)) }
+        let twice: Act = { $0.edit(meds, .timesPerDay(2)) }
+        let medsTitled: Step = { editing($0, .title("Take the meds")) }
+        let zeroed: Step = { resettingStreak($0) }
+        let thriced: Step = { editing($0, .timesPerDay(3)) }
+        let twiced: Step = { editing($0, .timesPerDay(2)) }
+        // The tick as sent while the failed edit still showed 3 a day: a
+        // count of 1, not done (lib/app-api.ts `complete` never reads
+        // times_per_day, and the replay plays the intent as sent).
+        let counted: Step = { applying(TickIntent(done: false, count: 1), to: $0, on: today) }
+        let onMeds: [Pair] = [
+            ("tick, then reset", medsTick, reset, zeroed),
+            ("reset, then tick", reset, medsTick, ticked),
+            ("reset, then title", reset, medsTitle, medsTitled),
+            ("title, then reset", medsTitle, reset, zeroed),
+            ("skip, then reset", medsSkip, reset, zeroed),
+            ("reset, then skip", reset, medsSkip, skipped),
+            // The one pair where the failed write changed what the landed
+            // one sent: Meds pending, streak 41, a tally of 1 today.
+            ("times, then tick", thrice, medsTick, counted),
+            ("tick, then times", medsTick, thrice, thriced),
+            ("times, then times", thrice, twice, twiced),
+            ("times, then reset", thrice, reset, zeroed),
+        ]
+        // Each pair on a fresh planner, its item added to the payload.
+        let tables: [(UUID, String, [Pair])] = [(id, PlannerJSON.plantsJSON, pairs),
+                                                (meds, PlannerJSON.medsJSON, onMeds)]
+        for (subject, row, table) in tables {
+            for (name, failed, landedAfter, step) in table {
+                let server = FakeServer()
+                await server.on(plannerRoute, .status(200, PlannerJSON.payload(timezone: "America/New_York",
+                                                                               extra: [row])),
+                                .offline)
+                await server.on(itemRoute(subject), .offline, .status(200, ok))
+                let planner = await loaded(server)
+                let before = try #require(planner.item(subject))
 
-            #expect(planner.item(id) == step(before), "\(name)")
-            let posts = await server.count(itemRoute(id))
-            #expect(posts == 2, "\(name)")
+                failed(planner)        // never reaches the server
+                landedAfter(planner)   // lands
+                await drain(planner)
+
+                #expect(planner.item(subject) == step(before), "\(name)")
+                let posts = await server.count(itemRoute(subject))
+                #expect(posts == 2, "\(name)")
+            }
         }
     }
 
-    /// Every part 1 write and each edit names its own item and nothing else;
-    /// a delete names its item and every subtask it took out with it, a
-    /// habit's only itself. None proves a row yet: from 2b a new subtask
-    /// proves its parent.
+    /// Every part 1 write, each edit and Reset streak names its own item and
+    /// nothing else; a delete names its item and every subtask it took out
+    /// with it, a habit's only itself. A new subtask names the subtask, not
+    /// the parent whose route it goes to, and is the one write that proves a
+    /// row: its parent, which the route answers 404 for when it isn't there.
     @Test func eachWriteNamesWhatItTouches() {
         let id = PlannerJSON.groceries
         let own: Set<PlannerSync.Subject> = [.item(id)]
@@ -807,12 +886,23 @@ final class DragFlag {
             .pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC"),
             .edit(id: id, .title("Big shop")),
             .edit(id: id, .notes(nil)),
+            .edit(id: id, .priority("high")),
+            .edit(id: id, .timesPerDay(3)),
+            .edit(id: id, .reminder(time: "08:00", anchor: .set("I pour my coffee"))),
+            .resetStreak(id: id),
         ]
         for write in writes {
             #expect(write.itemId == id)
             #expect(write.subjects == own)
             #expect(write.proves.isEmpty)
         }
+
+        let child = UUID(uuidString: "0d000000-0000-4000-8000-00000000000c")!
+        let add = PlannerSync.Write.addSubtask(id: child, parent: id, title: "Eggs")
+        let made: Set<PlannerSync.Subject> = [.item(child)]
+        #expect(add.itemId == child)
+        #expect(add.subjects == made)
+        #expect(add.proves == own)
 
         let groceries = SampleItem(id: id, title: "Groceries", status: "pending")
         let bags = SampleItem(id: PlannerJSON.bags, title: "Bring the bags", status: "pending",
@@ -836,8 +926,58 @@ final class DragFlag {
     // MARK: The rebase's worked cases (design §3.5)
 
     // Case 1 is aFailedCarryIsUndoneThoughATickThatLandedCameAfterIt, above.
-    // Cases 2, 3, 4, 7 and 10 need a repeat edit, Reset streak or Add a
-    // subtask, and come with those writes.
+    // Case 2 needs a repeat edit, and comes with it (2e).
+
+    /// Case 3: a tick today failed, then Reset streak and a tick on another
+    /// day both landed. The server reset 41 to 0 and counted the tick from
+    /// there; the replay starts from before the failed tick and plays the
+    /// same two, so the streak is 1, and only today's tick is undone.
+    @Test func aFailedTickThenALandedResetAndATickOnAnotherDayCountsFromZero() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.medsJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.meds), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        let september28 = try #require(DayString("2026-09-28"))
+
+        planner.toggle(PlannerJSON.meds, on: planner.today)   // 42, never reaches the server
+        planner.resetStreak(PlannerJSON.meds)                 // 0, lands
+        planner.toggle(PlannerJSON.meds, on: september28)     // 1, lands
+        #expect(planner.item(PlannerJSON.meds)?.streak == 1)
+        await drain(planner)
+
+        let meds = try #require(planner.item(PlannerJSON.meds))
+        #expect(meds.streak == 1)
+        #expect(isDoneOn(meds, on: "2026-09-28"))
+        #expect(!isDoneOn(meds, on: PlannerJSON.today))
+        #expect(isDoneOn(meds, on: "2026-09-29"))
+        #expect(isDoneOn(meds, on: "2026-09-30"))
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.meds))
+        #expect(posts == 3)
+    }
+
+    /// Case 4: Reset streak failed, then a tick today landed. The server
+    /// counted the tick on the streak it kept, so the replay gives 42, not
+    /// the 1 the phone showed.
+    @Test func aFailedResetThenALandedTickIsTheOldStreakPlusOne() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.medsJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.meds), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.resetStreak(PlannerJSON.meds)                 // 0, never reaches the server
+        planner.toggle(PlannerJSON.meds, on: planner.today)   // 1, lands
+        #expect(planner.item(PlannerJSON.meds)?.streak == 1)
+        await drain(planner)
+
+        let meds = try #require(planner.item(PlannerJSON.meds))
+        #expect(meds.streak == 42)
+        #expect(isDoneOn(meds, on: PlannerJSON.today))
+        #expect(meds.completedDates.contains("2026-09-30"))
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.meds))
+        #expect(posts == 2)
+    }
 
     /// Case 5: an edit and then a delete, both failed. The item comes back
     /// from before the edit, with its old title, where the delete took it
@@ -883,6 +1023,34 @@ final class DragFlag {
         #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
     }
 
+    /// Case 7: a new subtask, then a delete of its parent, both failed. The
+    /// parent and its old subtask come back where they stood. The new one,
+    /// which the server never made, stays gone, though the delete took it out
+    /// too and recorded where it stood: its earliest failure is its own.
+    @Test func aFailedNewSubtaskUnderAFailedDeleteStaysGoneAndTheParentComesBack() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        let planner = await loaded(server)
+        let order = planner.items.map(\.id)
+        let groceries = planner.item(PlannerJSON.groceries)
+
+        let eggs = try #require(planner.addSubtask(PlannerJSON.groceries, title: "Eggs"))   // never reaches the server
+        planner.deleteItem(PlannerJSON.groceries)                                          // nor does this
+        #expect(planner.item(eggs) == nil)
+        await drain(planner)
+
+        #expect(planner.items.map(\.id) == order)
+        #expect(planner.item(PlannerJSON.groceries) == groceries)
+        #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags])
+        #expect(planner.item(eggs) == nil)
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+        let eggPosts = await server.count(itemRoute(eggs))
+        #expect(eggPosts == 0)
+    }
+
     /// Case 8: a capture whose answer was lost, then edits on it that landed.
     /// They prove the row, so the item is rebuilt from the capture with the
     /// edits played on it.
@@ -924,6 +1092,32 @@ final class DragFlag {
         #expect(planner.item(PlannerJSON.bags) == nil)
         #expect(planner.item(PlannerJSON.groceries) == nil)
         #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+    }
+
+    /// Case 10: a capture whose answer was lost, then a new subtask under it
+    /// that landed. The route answers 404 for a parent that isn't there, so
+    /// the subtask proves the capture committed: both stay, and nothing on
+    /// screen moves.
+    @Test func aLostCaptureIsProvedByANewSubtaskUnderIt() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(captureRoute, .offline)
+        let planner = await loaded(server)
+
+        planner.capture("Pack for Lisbon")   // never answered
+        let lisbon = try #require(planner.items.last)
+        #expect(lisbon.title == "Pack for Lisbon")
+        // The client reads only the status, and the subtask's id isn't made yet.
+        await server.on(itemRoute(lisbon.id), .status(201, ok))
+        let passport = try #require(planner.addSubtask(lisbon.id, title: "Passport"))   // lands
+        await drain(planner)
+
+        #expect(planner.item(lisbon.id) == lisbon)
+        #expect(planner.item(passport)?.parentItemId == lowerID(lisbon.id))
+        #expect(planner.subtasks(of: lisbon.id).map(\.id) == [passport])
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+        let posts = await server.count(itemRoute(lisbon.id))
+        #expect(posts == 1)
     }
 
     /// Case 11: a delete answered 404 with the route's own `not_found` landed,
@@ -1053,6 +1247,132 @@ final class DragFlag {
             #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags, list])
             #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
         }
+    }
+
+    // MARK: A new subtask
+
+    /// A queued write counts what it proves as well as what it names: a new
+    /// subtask still out holds back the revert of its parent's failed
+    /// capture, so a fetch that fails meanwhile (a pull to refresh) leaves
+    /// the captured item where it is, and the subtask landing then proves it.
+    /// Counted by what it names alone, that refresh takes the item away.
+    @Test func aQueuedNewSubtaskHoldsItsParentsFailedCaptureBack() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(captureRoute, .offline)
+        let planner = await loaded(server)
+
+        planner.capture("Pack for Lisbon")   // never answered
+        let lisbon = try #require(planner.items.last)
+        await server.on(itemRoute(lisbon.id), .status(201, ok))
+        await server.close(itemRoute(lisbon.id))
+        let passport = try #require(planner.addSubtask(lisbon.id, title: "Passport"))   // held, then lands
+        // The subtask is out only once the capture has failed.
+        let addOut = await waitUntil { await server.count(itemRoute(lisbon.id)) == 1 }
+        #expect(addOut)
+
+        await planner.refresh()   // fails with the subtask still out
+        #expect(planner.item(lisbon.id) == lisbon)
+        #expect(planner.item(passport) != nil)
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+
+        await server.open(itemRoute(lisbon.id))
+        await drain(planner)
+
+        #expect(planner.item(lisbon.id) == lisbon)
+        #expect(planner.item(passport)?.parentItemId == lowerID(lisbon.id))
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+    }
+
+    /// A failed new subtask waits while a delete that names it, or cascades
+    /// onto it, is still queued. Its parent's delete took it out too, so had
+    /// it been reverted then, its own failure would be gone, and the delete's
+    /// failure, whose record of it is a subtask that stood there, would bring
+    /// back one the server never made.
+    @Test func aFailedNewSubtaskWaitsForItsParentsQueuedDelete() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        let planner = await loaded(server)
+        let order = planner.items.map(\.id)
+        await server.gate(itemRoute(PlannerJSON.groceries))
+
+        let eggs = try #require(planner.addSubtask(PlannerJSON.groceries, title: "Eggs"))   // never reaches the server
+        planner.deleteItem(PlannerJSON.groceries)                                          // held, then fails
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        // The delete is out only once the subtask has failed.
+        let deleteOut = await waitUntil { await server.count(itemRoute(PlannerJSON.groceries)) == 2 }
+        #expect(deleteOut)
+
+        await planner.refresh()   // fails with the delete still out
+        #expect(planner.item(eggs) == nil)
+        #expect(planner.item(PlannerJSON.groceries) == nil)
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await drain(planner)
+
+        #expect(planner.items.map(\.id) == order)
+        #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags])
+        #expect(planner.item(eggs) == nil)
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// A landed delete whose `removed` names a new subtask that failed proves
+    /// it, then plays it to nil: the parent and the subtask are both gone, as
+    /// on the server, and nothing on screen moved.
+    @Test func aFailedNewSubtaskUnderALandedParentDeleteStaysGone() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        let eggs = try #require(planner.addSubtask(PlannerJSON.groceries, title: "Eggs"))   // never reaches the server
+        planner.deleteItem(PlannerJSON.groceries)                                          // lands
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.groceries) == nil)
+        #expect(planner.item(eggs) == nil)
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+    }
+
+    /// The route's 409 `parent_gone`: the parent was deleted elsewhere between
+    /// its reads, and the subtask went to the Trash with it. The phone takes
+    /// it back, here through the rebase, since the refetch fails too.
+    @Test func aNewSubtaskRefusedAsParentGoneIsTakenBack() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(409, "{\"error\":\"parent_gone\"}"))
+        let planner = await loaded(server)
+
+        let eggs = try #require(planner.addSubtask(PlannerJSON.groceries, title: "Eggs"))
+        #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [eggs])
+        await drain(planner)
+
+        #expect(planner.item(eggs) == nil)
+        #expect(planner.subtasks(of: PlannerJSON.groceries).isEmpty)
+        #expect(planner.banner?.isError == true)
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// A 404 to a new subtask is its parent's (gone, or never committed), and
+    /// the subtask was never made. So unlike a delete's 404, which landed, it
+    /// failed, and is taken back.
+    @Test func aNewSubtaskUnderAMissingParentIsTakenBack() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(404, "{\"error\":\"not_found\"}"))
+        let planner = await loaded(server)
+
+        let eggs = try #require(planner.addSubtask(PlannerJSON.groceries, title: "Eggs"))
+        await drain(planner)
+
+        #expect(planner.item(eggs) == nil)
+        #expect(planner.subtasks(of: PlannerJSON.groceries).isEmpty)
+        #expect(planner.banner?.isError == true)
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
     }
 
     // MARK: Background time

@@ -11,6 +11,13 @@ import Testing
 /// time ranges. From part 2: Delete's words, with a custom type's own label
 /// and the subtasks that go with it, and the typed fields' rules (what a
 /// keystroke may put in the title or the notes, and what leaving one sends).
+/// From 2b: what the subtask field adds as it is typed in or pasted into, one
+/// Return adding one subtask whichever way iOS reports it, the streak
+/// popover's words, Reset never entering the bar or ⋯, and a row with Streaks
+/// off. From 2c: which chips edit and how, what "+ Add property" offers and
+/// says, where VoiceOver goes after a change, the menus' words, and the Remind
+/// sheet's rules (the wheel's clock, what it opens on, what Done sends) and
+/// words.
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -169,6 +176,20 @@ import Testing
         #expect(SheetVerb.delete.slotID == "delete")
     }
 
+    /// Reset streak is offered to a habit with a streak, and lives in the
+    /// streak chip's popover alone: the bar and ⋯ are what they would be
+    /// without it, done today or not.
+    @Test func resetStreakNeverEntersTheBarOrMore() throws {
+        let planner = makePlanner()
+        for title in ["Meds", "Journal"] {   // done today with 41; not yet, with 3
+            let habit = try named(planner, title)
+            let (ctx, offered, verbs) = sheet(planner, habit)
+            #expect(offered.contains(.resetStreak))
+            #expect(verbs == ItemSheetModel.verbs(habit, ctx, offered: offered.filter { $0 != .resetStreak }))
+            #expect(verbLabel(.resetStreak, habit, ctx) == "Reset streak")
+        }
+    }
+
     // MARK: ⋯ and Delete
 
     /// Delete is offered on everything, so ⋯ always shows, Delete last: a
@@ -313,8 +334,8 @@ import Testing
         #expect(ItemSheetModel.rescheduleWords(roadmap, roadmapCtx)
                 == DayPickWords(title: "Reschedule", confirmVerb: "Move to", note: nil))
         #expect(ItemSheetModel.pauseUntilWords.note
-                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile — "
-                + "your streak and history stay exactly as they are.")
+                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile. "
+                + "Your streak and history stay exactly as they are.")
     }
 
     /// A Pause until picker confirmed after midnight: a day that is now today,
@@ -508,6 +529,154 @@ import Testing
         #expect(ItemSheetModel.tooLongToEdit(String(repeating: "t", count: 10_001), kind: .title) == true)
     }
 
+    // MARK: Adding a subtask
+
+    /// A typed Return adds the whole line, wherever the caret was, and the
+    /// field empties for the next one; an autocorrection that arrives with
+    /// the Return is kept.
+    @Test func aTypedReturnAddsTheLine() {
+        let added = SubtaskStep(titles: ["Eggs"], draft: "", end: false, capped: false, lastReturn: .fromText)
+        #expect(ItemSheetModel.subtaskEntry(previous: "Eggs", next: "Eggs\n", lastReturn: .none) == added)
+        #expect(ItemSheetModel.subtaskEntry(previous: "  Eggs ", next: "  Eggs \n", lastReturn: .none) == added)
+
+        let inside = ItemSheetModel.subtaskEntry(previous: "Eggs and milk", next: "Eggs\n and milk", lastReturn: .none)
+        #expect(inside == SubtaskStep(titles: ["Eggs and milk"], draft: "", end: false, capped: false,
+                                      lastReturn: .fromText))
+
+        let corrected = ItemSheetModel.subtaskEntry(previous: "Call teh", next: "Call the\n", lastReturn: .none)
+        #expect(corrected.titles == ["Call the"])
+        #expect(corrected.lastReturn == .fromText)
+    }
+
+    /// Return on an empty field, or one of spaces, ends entry and adds
+    /// nothing.
+    @Test func aReturnOnAnEmptyFieldEndsEntry() {
+        let ended = SubtaskStep(titles: [], draft: "", end: true, capped: false, lastReturn: .none)
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "\n", lastReturn: .none) == ended)
+        #expect(ItemSheetModel.subtaskEntry(previous: "  ", next: "  \n", lastReturn: .none) == ended)
+        #expect(ItemSheetModel.subtaskSubmit(draft: "", lastReturn: .none) == ended)
+        #expect(ItemSheetModel.subtaskSubmit(draft: " \n ", lastReturn: .none) == ended)
+        // A second Return that only `.onSubmit` reports, on the field the
+        // first one emptied.
+        #expect(ItemSheetModel.subtaskSubmit(draft: "", lastReturn: .fromSubmit("Eggs")) == ended)
+    }
+
+    /// The field's own write of the draft a Return answered puts nothing in,
+    /// so it keeps which report acted: the `.onSubmit` still to come finds
+    /// the Return taken. A deletion is the same.
+    @Test func theFieldsOwnWriteKeepsWhichReportActed() {
+        #expect(ItemSheetModel.subtaskEntry(previous: "Eggs\n", next: "", lastReturn: .fromText)
+                == SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .fromText))
+        #expect(ItemSheetModel.subtaskEntry(previous: "Milk", next: "Mil", lastReturn: .none)
+                == SubtaskStep(titles: [], draft: "Mil", end: false, capped: false, lastReturn: .none))
+    }
+
+    /// One Return, one subtask, whichever way iOS reports it: the line break
+    /// first and `.onSubmit` after, `.onSubmit` first and a late line break
+    /// after (on the emptied field, or on the line it took), or `.onSubmit`
+    /// alone. Each keeps entry going and leaves the next Return new.
+    @Test func oneReturnAddsOnceWhicheverWayItIsReported() {
+        // The line break first.
+        let typed = ItemSheetModel.subtaskEntry(previous: "Eggs", next: "Eggs\n", lastReturn: .none)
+        #expect(typed.titles == ["Eggs"])
+        let ownWrite = ItemSheetModel.subtaskEntry(previous: "Eggs\n", next: "", lastReturn: typed.lastReturn)
+        let thenSubmit = ItemSheetModel.subtaskSubmit(draft: ownWrite.draft, lastReturn: ownWrite.lastReturn)
+        #expect(thenSubmit == SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .none))
+
+        // `.onSubmit` first.
+        let submitted = ItemSheetModel.subtaskSubmit(draft: "Eggs", lastReturn: .none)
+        #expect(submitted == SubtaskStep(titles: ["Eggs"], draft: "", end: false, capped: false,
+                                         lastReturn: .fromSubmit("Eggs")))
+        let letGo = SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .none)
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "\n", lastReturn: submitted.lastReturn) == letGo)
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "Eggs\n", lastReturn: submitted.lastReturn)
+                == letGo)
+
+        // `.onSubmit` alone: a later line pasted with a break is its own.
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "Milk\n", lastReturn: submitted.lastReturn)
+                == SubtaskStep(titles: ["Milk"], draft: "", end: false, capped: false, lastReturn: .fromText))
+        // Typing after `.onSubmit` makes the next Return new.
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "M", lastReturn: submitted.lastReturn)
+                == SubtaskStep(titles: [], draft: "M", end: false, capped: false, lastReturn: .none))
+    }
+
+    /// A pasted list adds one subtask per line, markers gone, and leaves what
+    /// was typed in the field, where the web's clears it. "\r\n" is one
+    /// break.
+    @Test func aPastedListAddsALineEachAndKeepsWhatWasTyped() {
+        let list = ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy - Eggs\n- Milk\n- Bread", lastReturn: .none)
+        #expect(list == SubtaskStep(titles: ["Eggs", "Milk", "Bread"], draft: "Buy ", end: false, capped: false,
+                                    lastReturn: .none))
+
+        let windows = ItemSheetModel.subtaskEntry(previous: "", next: "a\r\nb", lastReturn: .none)
+        #expect(windows.titles == ["a", "b"])
+        #expect(windows.draft == "")
+
+        // A paste after `.onSubmit` is a paste.
+        #expect(ItemSheetModel.subtaskEntry(previous: "", next: "1. Eggs\n2. Milk",
+                                            lastReturn: .fromSubmit("Eggs")).titles == ["Eggs", "Milk"])
+    }
+
+    /// Past 500 lines, the first 500 and `capped`, for the banner; each line
+    /// cut to 500 UTF-16 units, never splitting an emoji.
+    @Test func aPasteIsCappedByLineAndByLength() {
+        let lines = (1...501).map { "Item \($0)" }.joined(separator: "\n")
+        let capped = ItemSheetModel.subtaskEntry(previous: "", next: lines, lastReturn: .none)
+        #expect(capped.titles.count == 500)
+        #expect(capped.titles.first == "Item 1")
+        #expect(capped.titles.last == "Item 500")
+        #expect(capped.capped)
+
+        let long = String(repeating: "x", count: 600)
+        let emoji = String(repeating: "y", count: 499) + "\u{1F600}"
+        let cut = ItemSheetModel.subtaskEntry(previous: "", next: long + "\n" + emoji + "\nb", lastReturn: .none)
+        #expect(cut.titles == [String(repeating: "x", count: 500), String(repeating: "y", count: 499), "b"])
+        #expect(!cut.capped)
+    }
+
+    /// One line pasted with no break is typed text. One pasted with a break
+    /// at its end is added at once, as a typed Return would be (the web's
+    /// input keeps it): the line it lands on is the subtask.
+    @Test func aOneLinePasteIsTextUnlessItEndsInABreak() {
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy Eggs", lastReturn: .none)
+                == SubtaskStep(titles: [], draft: "Buy Eggs", end: false, capped: false, lastReturn: .none))
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy Eggs\n", lastReturn: .none)
+                == SubtaskStep(titles: ["Buy Eggs"], draft: "", end: false, capped: false, lastReturn: .fromText))
+    }
+
+    /// A paste that isn't a list (one line that survives, with a break inside
+    /// it) is text with its breaks as spaces; typing stops at 500 UTF-16
+    /// units, cut from what was put in.
+    @Test func aBreakInsideAPasteIsASpaceAndTypingStopsAtTheCap() {
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy \nEggs", lastReturn: .none).draft
+                == "Buy  Eggs")
+        #expect(ItemSheetModel.subtaskEntry(previous: "Buy ", next: "Buy Eggs\n\n", lastReturn: .none)
+                == SubtaskStep(titles: [], draft: "Buy Eggs  ", end: false, capped: false, lastReturn: .none))
+
+        let full = String(repeating: "a", count: 499)
+        #expect(EditLimits.newTitle == 500)
+        #expect(ItemSheetModel.subtaskEntry(previous: full, next: full + "bc", lastReturn: .none).draft == full + "b")
+        #expect(ItemSheetModel.subtaskEntry(previous: full, next: full + "\u{1F600}", lastReturn: .none).draft == full)
+    }
+
+    /// The subtask field is never an edit of anything stored, and never too
+    /// long to type in.
+    @Test func theSubtaskFieldIsNeverAnEdit() {
+        #expect(ItemSheetModel.commit(draft: "Eggs", seed: "", stored: nil, kind: .subtask) == nil)
+        #expect(ItemSheetModel.commit(draft: "Eggs", seed: "", stored: "Groceries", kind: .subtask) == nil)
+        #expect(ItemSheetModel.tooLongToEdit(String(repeating: "s", count: 20_000), kind: .subtask) == false)
+    }
+
+    /// The row, the field and what VoiceOver hears once subtasks are added.
+    @Test func theSubtaskWords() {
+        #expect(ItemSheetModel.subtaskRowTitle == "Add a subtask")
+        #expect(ItemSheetModel.subtaskFieldLabel == "New subtask")
+        #expect(ItemSheetModel.subtaskPlaceholder == "Add subtask\u{2026}")
+        #expect(ItemSheetModel.subtaskAddedAnnouncement([]) == nil)
+        #expect(ItemSheetModel.subtaskAddedAnnouncement(["Eggs"]) == "Added Eggs")
+        #expect(ItemSheetModel.subtaskAddedAnnouncement(["Eggs", "Milk", "Bread"]) == "Added 3 subtasks")
+    }
+
     // MARK: The header and the chips
 
     @Test func theEyebrowNamesTheTypeAndTheFirstRoutine() throws {
@@ -596,6 +765,410 @@ import Testing
         #expect(ItemSheetModel.streakSpoken(streak: 3, dots: dots) == "Streak 3; this week: 3 done, 1 skipped")
     }
 
+    /// The chip's hint says what a tap shows; the popover's run is the web's
+    /// flame tooltip; Reset's confirm is in sentence case with the web's
+    /// message; and the popover is a sheet at the accessibility sizes.
+    @Test func theStreakPopoversWords() {
+        #expect(ItemSheetModel.streakHint(resetOffered: false) == "Shows this week")
+        #expect(ItemSheetModel.streakHint(resetOffered: true) == "Shows this week, and Reset streak")
+        #expect(ItemSheetModel.streakRun(0) == "No streak yet")
+        #expect(ItemSheetModel.streakRun(1) == "1 day in a row")
+        #expect(ItemSheetModel.streakRun(41) == "41 days in a row")
+        #expect(ItemSheetModel.resetConfirmTitle == "Reset streak?")
+        #expect(ItemSheetModel.resetConfirmMessage
+                == "This will reset your streak counter to 0 days. Your completion history stays, so "
+                + "days you already checked off remain checked.")
+        #expect(ItemSheetModel.streakPopoverStyle(accessibilitySize: false) == .popover)
+        #expect(ItemSheetModel.streakPopoverStyle(accessibilitySize: true) == .sheet)
+    }
+
+    // MARK: The chips as controls
+
+    /// The real per-item gate, DsulCore's, with no planner: `chipEditor` and
+    /// `unsetProperties` hold no type gate of their own, so a stub that took
+    /// every action would give a habit a priority menu.
+    private func gate(_ item: SampleItem) -> (String) -> Bool {
+        return { editAllowed(action: $0, on: item, caps: caps(item.typeName)) }
+    }
+
+    /// The chips as the page draws them, on the 12-hour clock.
+    private func shown(_ planner: SamplePlanner, _ item: SampleItem) -> [SheetChip] {
+        return ItemSheetModel.chips(item, today: planner.today, timeFormat: .twelveHour,
+                                    routineNames: planner.routineNames(for: item.id),
+                                    seasonNames: planner.seasonNames(for: item.id))
+    }
+
+    /// Priority and times per day are menus, the reminder its sheet, each
+    /// only where the type takes it: no priority on a habit, no count on a
+    /// task, no reminder on a subtask, whose page still takes a priority
+    /// (Q7 a). Every other chip stays read-only, and with nothing taken (an
+    /// older server) every chip is.
+    @Test func aChipEditsOnlyWhereTheTypeTakesIt() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")   // a task
+        let meds = try named(planner, "Meds")                  // a habit
+        let pull = try named(planner, "Pull the September numbers")   // a subtask
+        let takesNothing: (String) -> Bool = { _ in false }
+
+        #expect(ItemSheetModel.chipEditor(.priority, roadmap, canEdit: gate(roadmap)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.priority, meds, canEdit: gate(meds)) == nil)
+        #expect(ItemSheetModel.chipEditor(.priority, pull, canEdit: gate(pull)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.timesPerDay, meds, canEdit: gate(meds)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.timesPerDay, roadmap, canEdit: gate(roadmap)) == nil)
+        #expect(ItemSheetModel.chipEditor(.reminder, roadmap, canEdit: gate(roadmap))
+                == ChipEditor.sheet(.reminder(roadmap.id)))
+        #expect(ItemSheetModel.chipEditor(.reminder, meds, canEdit: gate(meds)) == ChipEditor.sheet(.reminder(meds.id)))
+        #expect(ItemSheetModel.chipEditor(.reminder, pull, canEdit: gate(pull)) == nil)
+
+        let readOnly: [SheetChip.Kind] = [.date, .time, .repeats, .project, .routine, .season]
+        for kind in readOnly {
+            #expect(ItemSheetModel.chipEditor(kind, roadmap, canEdit: gate(roadmap)) == nil)
+            #expect(ItemSheetModel.chipEditor(kind, meds, canEdit: gate(meds)) == nil)
+        }
+        for kind in readOnly + [.priority, .timesPerDay, .reminder] {
+            #expect(ItemSheetModel.chipEditor(kind, roadmap, canEdit: takesNothing) == nil)
+            #expect(ItemSheetModel.chipEditor(kind, meds, canEdit: takesNothing) == nil)
+        }
+    }
+
+    /// Add property holds what is unset and editable, in chip order: a bare
+    /// task has Priority and Remind…, a habit with neither Times per day and
+    /// Remind…, Meds (a reminder already) Times per day alone, and a subtask
+    /// Priority alone. A habit counted once a day has no times chip, so its
+    /// count is offered; one counted three times has the chip. A priority the
+    /// chips can't name has no chip either, so it is offered too.
+    @Test func addPropertyHoldsWhatIsUnsetAndEditable() throws {
+        let planner = makePlanner()
+        let bank = try named(planner, "Call the bank")   // a braindump task: nothing set
+        var journal = try named(planner, "Journal")      // a habit with no count and no reminder
+        let meds = try named(planner, "Meds")
+        let bets = try named(planner, "Write the three bets")   // a subtask
+        var roadmap = try named(planner, "Draft Q4 roadmap")   // high, no reminder
+        let takesNothing: (String) -> Bool = { _ in false }
+
+        #expect(shown(planner, bank).isEmpty)
+        #expect(ItemSheetModel.unsetProperties(bank, shown: shown(planner, bank), canEdit: gate(bank))
+                == [.priority, .reminder])
+        #expect(ItemSheetModel.unsetProperties(journal, shown: shown(planner, journal), canEdit: gate(journal))
+                == [.timesPerDay, .reminder])
+        #expect(ItemSheetModel.unsetProperties(meds, shown: shown(planner, meds), canEdit: gate(meds))
+                == [.timesPerDay])
+        #expect(ItemSheetModel.unsetProperties(bets, shown: shown(planner, bets), canEdit: gate(bets))
+                == [.priority])
+        #expect(ItemSheetModel.unsetProperties(roadmap, shown: shown(planner, roadmap), canEdit: gate(roadmap))
+                == [.reminder])
+
+        journal.timesPerDay = 1
+        #expect(ItemSheetModel.unsetProperties(journal, shown: shown(planner, journal), canEdit: gate(journal))
+                == [.timesPerDay, .reminder])
+        journal.timesPerDay = 3
+        #expect(ItemSheetModel.unsetProperties(journal, shown: shown(planner, journal), canEdit: gate(journal))
+                == [.reminder])
+
+        roadmap.priority = "urgent"
+        #expect(ItemSheetModel.unsetProperties(roadmap, shown: shown(planner, roadmap), canEdit: gate(roadmap))
+                == [.priority, .reminder])
+
+        for item in [bank, journal, meds, bets, roadmap] {
+            #expect(ItemSheetModel.unsetProperties(item, shown: shown(planner, item), canEdit: takesNothing)
+                    .isEmpty)
+        }
+    }
+
+    /// After a change, VoiceOver goes to the property's chip while the page
+    /// draws one, else to Add property, where the emptied property went.
+    @Test func voiceOverLandsOnTheChipOrOnAddProperty() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")   // a priority chip
+        let bank = try named(planner, "Call the bank")         // no chips
+        let meds = try named(planner, "Meds")                  // a reminder chip
+        var journal = try named(planner, "Journal")            // no times chip, no reminder
+
+        #expect(ItemSheetModel.voiceOverTarget(after: .priority, shown: shown(planner, roadmap))
+                == ChipFocus.chip(.priority))
+        #expect(ItemSheetModel.voiceOverTarget(after: .priority, shown: shown(planner, bank)) == ChipFocus.seed)
+        #expect(ItemSheetModel.voiceOverTarget(after: .reminder, shown: shown(planner, meds))
+                == ChipFocus.chip(.reminder))
+        #expect(ItemSheetModel.voiceOverTarget(after: .reminder, shown: shown(planner, journal)) == ChipFocus.seed)
+        #expect(ItemSheetModel.voiceOverTarget(after: .timesPerDay, shown: shown(planner, journal)) == ChipFocus.seed)
+        journal.timesPerDay = 3
+        #expect(ItemSheetModel.voiceOverTarget(after: .timesPerDay, shown: shown(planner, journal))
+                == ChipFocus.chip(.timesPerDay))
+    }
+
+    /// The seed reads "Add property" alone on its row and is a bare plus
+    /// beside chips, and is "Add property" to VoiceOver either way; its
+    /// entries are the web's, Remind… with an ellipsis since it opens a sheet,
+    /// and each wears its chip's own symbol. The entries 2d to 2f will add
+    /// already read as design §3.7 words them: Time… opens a sheet, and
+    /// Repeat is the web seed's own label.
+    @Test func theSeedsWords() throws {
+        #expect(ItemSheetModel.seedLabel(rowHasOthers: false) == "Add property")
+        #expect(ItemSheetModel.seedLabel(rowHasOthers: true) == nil)
+        #expect(ItemSheetModel.seedSpoken == "Add property")
+        #expect(ItemSheetModel.seedEntry(.priority) == "Priority")
+        #expect(ItemSheetModel.seedEntry(.timesPerDay) == "Times per day")
+        #expect(ItemSheetModel.seedEntry(.reminder) == "Remind\u{2026}")
+        #expect(ItemSheetModel.seedEntry(.date) == "Date")
+        #expect(ItemSheetModel.seedEntry(.time) == "Time\u{2026}")
+        #expect(ItemSheetModel.seedEntry(.repeats) == "Repeat")
+
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let meds = try named(planner, "Meds")
+        var journal = try named(planner, "Journal")
+        journal.timesPerDay = 3
+        let drawn = shown(planner, roadmap) + shown(planner, journal) + shown(planner, meds)
+        let symbols = drawn.reduce(into: [SheetChip.Kind: String]()) { $0[$1.kind] = $1.systemImage }
+        for kind: SheetChip.Kind in [.priority, .timesPerDay, .reminder] {
+            #expect(symbols[kind] == ItemSheetModel.seedSymbol(kind))
+        }
+    }
+
+    /// The menus: None, Low, Medium and High, the web's; "1× a day" to "5× a
+    /// day", and a stored count above 5 on a row of its own; VoiceOver hears
+    /// "3 times a day" in the menu as on the chip; and each editable chip's
+    /// hint.
+    @Test func theMenusWords() throws {
+        let raws: [String?] = [nil, "low", "medium", "high"]
+        #expect(ItemSheetModel.priorityChoices.map(\.word) == ["None", "Low", "Medium", "High"])
+        #expect(ItemSheetModel.priorityChoices.map(\.raw) == raws)
+
+        #expect(EditLimits.timesPerDayMax == 5)
+        #expect(ItemSheetModel.timesChoices(stored: nil) == [1, 2, 3, 4, 5])
+        #expect(ItemSheetModel.timesChoices(stored: 3) == [1, 2, 3, 4, 5])
+        #expect(ItemSheetModel.timesChoices(stored: 7) == [1, 2, 3, 4, 5, 7])
+        #expect(ItemSheetModel.timesWord(3) == "3\u{00D7} a day")
+        #expect(ItemSheetModel.timesSpoken(1) == "1 time a day")
+        #expect(ItemSheetModel.timesSpoken(3) == "3 times a day")
+
+        let planner = makePlanner()
+        var journal = try named(planner, "Journal")
+        journal.timesPerDay = 3
+        let drawn = shown(planner, journal).first(where: { $0.kind == .timesPerDay })
+        let times = try #require(drawn)
+        #expect(times.text == "3\u{00D7}")
+        #expect(times.spoken == "3 times a day")
+
+        #expect(ItemSheetModel.chipHint(.priority) == "Changes the priority")
+        #expect(ItemSheetModel.chipHint(.timesPerDay) == "Changes how many times a day")
+        #expect(ItemSheetModel.chipHint(.reminder) == "Changes the reminder")
+        #expect(ItemSheetModel.chipHint(.date) == nil)
+        #expect(ItemSheetModel.chipHint(.project) == nil)
+    }
+
+    // MARK: The Remind sheet
+
+    /// The wheel reads and writes a time of day in GMT, so a stored time
+    /// comes back as it went in whatever the phone's zone, and the day under
+    /// it never matters. Only a 24-hour "HH:mm", the server's rule, is a time.
+    @Test func theWheelsClockRoundTrips() throws {
+        #expect(ItemSheetModel.reminderCalendar.timeZone.secondsFromGMT() == 0)
+        for hhmm in ["00:00", "08:05", "23:59"] {
+            let date = try #require(ItemSheetModel.reminderDate(hhmm))
+            #expect(ItemSheetModel.reminderClock(date) == hhmm)
+        }
+        #expect(ItemSheetModel.reminderDate("08:00") == Date(timeIntervalSince1970: 8 * 3_600))
+        #expect(ItemSheetModel.reminderDate("24:00") == nil)
+        #expect(ItemSheetModel.reminderDate("8:00") == nil)
+        #expect(ItemSheetModel.reminderDate("") == nil)
+        #expect(ItemSheetModel.reminderDate("08:60") == nil)
+
+        let anotherDay = Date(timeIntervalSince1970: 400 * 86_400 + 8 * 3_600 + 5 * 60)
+        #expect(ItemSheetModel.reminderClock(anotherDay) == "08:05")
+    }
+
+    /// The sheet opens on the stored time; a new reminder on the item's own
+    /// start time, else 9:00. No stored time ("" included) is no reminder.
+    @Test func theSheetOpensOnATime() throws {
+        let planner = makePlanner()
+        var meds = try named(planner, "Meds")                  // 08:00, "I pour my coffee"
+        var dentist = try named(planner, "Call the dentist")   // at 15:00, reminded at 14:45
+        let journal = try named(planner, "Journal")            // no time, no reminder
+
+        #expect(ItemSheetModel.reminderSeedTime(meds) == "08:00")
+        #expect(ItemSheetModel.reminderOpeningTime(meds) == "08:00")
+        #expect(ItemSheetModel.reminderOpeningTime(dentist) == "14:45")
+        #expect(ItemSheetModel.reminderStartTime(dentist) == "15:00")
+        #expect(ItemSheetModel.reminderStartTime(journal) == "09:00")
+        #expect(ItemSheetModel.reminderOpeningTime(journal) == "09:00")
+
+        dentist.reminderTime = nil
+        #expect(ItemSheetModel.reminderSeedTime(dentist) == nil)
+        #expect(ItemSheetModel.reminderOpeningTime(dentist) == "15:00")
+        dentist.startTime = "25:00"
+        #expect(ItemSheetModel.reminderStartTime(dentist) == "09:00")
+
+        meds.reminderTime = ""
+        #expect(ItemSheetModel.reminderSeedTime(meds) == nil)
+        meds.reminderTime = nil
+        #expect(ItemSheetModel.reminderSeedTime(meds) == nil)
+    }
+
+    /// Right after is one line: a pasted line break is a space, typing stops
+    /// at 500, and stored words longer than that keep their length, never
+    /// grow. Words past what one request carries are shown, not edited.
+    @Test func rightAfterIsOneLineWithinItsCap() {
+        #expect(ItemSheetModel.anchorEntry(previous: "I pour", next: "I pour my\ncoffee", limit: 500)
+                == "I pour my coffee")
+        let full = String(repeating: "a", count: 499)
+        #expect(ItemSheetModel.anchorEntry(previous: full, next: full + "bc", limit: 500) == full + "b")
+
+        let stored = String(repeating: "w", count: 700)
+        let limit = growthLimit(cap: EditLimits.anchor, stored: stored)
+        #expect(limit == 700)
+        #expect(ItemSheetModel.anchorEntry(previous: stored, next: stored + "x", limit: limit) == stored)
+        let shorter = String(repeating: "w", count: 650)
+        #expect(ItemSheetModel.anchorEntry(previous: stored, next: shorter, limit: limit) == shorter)
+
+        #expect(ItemSheetModel.anchorTooLong(nil) == false)
+        #expect(ItemSheetModel.anchorTooLong(String(repeating: "w", count: 10_000)) == false)
+        #expect(ItemSheetModel.anchorTooLong(String(repeating: "w", count: 10_001)) == true)
+    }
+
+    /// What Done sends: nothing unmoved; a new time alone, which keeps the
+    /// stored words; typed words cleaned, or cleared when erased; nothing for
+    /// words that clean back to what is stored; off when the time goes; and
+    /// typed words clamped to the stored words' cap.
+    @Test func doneSendsOnlyWhatMoved() throws {
+        let planner = makePlanner()
+        let meds = try named(planner, "Meds")   // 08:00, "I pour my coffee"
+        let words = "I pour my coffee"
+        func commit(_ time: String?, _ anchor: String, on stored: SampleItem) -> ItemEdit? {
+            return ItemSheetModel.reminderCommit(timeDraft: time, timeSeed: "08:00", anchorDraft: anchor,
+                                                 anchorSeed: words, stored: stored)
+        }
+
+        #expect(commit("08:00", words, on: meds) == nil)
+        #expect(commit("07:30", words, on: meds) == ItemEdit.reminder(time: "07:30", anchor: nil))
+        #expect(commit("08:00", "  I boil the kettle ", on: meds)
+                == ItemEdit.reminder(time: "08:00", anchor: .set("I boil the kettle")))
+        #expect(commit("08:00", "", on: meds) == ItemEdit.reminder(time: "08:00", anchor: .clear))
+        #expect(commit("08:00", words + " ", on: meds) == nil)
+        #expect(commit(nil, words, on: meds) == ItemEdit.reminder(time: nil, anchor: nil))
+        #expect(commit(nil, "I boil the kettle", on: meds) == ItemEdit.reminder(time: nil, anchor: nil))
+
+        let long = String(repeating: "z", count: 600)
+        #expect(commit("08:00", long, on: meds)
+                == ItemEdit.reminder(time: "08:00", anchor: .set(String(repeating: "z", count: 500))))
+    }
+
+    /// A new reminder (no seed): Done saves the time the wheel opened on,
+    /// untouched; a time added and taken away again, or words typed with no
+    /// time, send nothing on an item with no reminder.
+    @Test func aNewReminderSavesTheWheelsTime() throws {
+        let planner = makePlanner()
+        let journal = try named(planner, "Journal")   // no reminder
+
+        #expect(ItemSheetModel.reminderCommit(timeDraft: "09:00", timeSeed: nil, anchorDraft: "", anchorSeed: "",
+                                              stored: journal)
+                == ItemEdit.reminder(time: "09:00", anchor: nil))
+        #expect(ItemSheetModel.reminderCommit(timeDraft: "09:00", timeSeed: nil, anchorDraft: "I sit down",
+                                              anchorSeed: "", stored: journal)
+                == ItemEdit.reminder(time: "09:00", anchor: .set("I sit down")))
+        #expect(ItemSheetModel.reminderCommit(timeDraft: nil, timeSeed: nil, anchorDraft: "", anchorSeed: "",
+                                              stored: journal) == nil)
+        #expect(ItemSheetModel.reminderCommit(timeDraft: nil, timeSeed: nil, anchorDraft: "I sit down",
+                                              anchorSeed: "", stored: journal) == nil)
+    }
+
+    /// A change made on the web while the sheet was up is never put back:
+    /// words typed with the time untouched send the time stored now, not the
+    /// one the sheet opened with, and nothing once the reminder was turned
+    /// off; a time moved with the words untouched keeps the words stored now.
+    @Test func doneNeverPutsBackAChangeMadeOnTheWeb() throws {
+        let planner = makePlanner()
+        var retimed = try named(planner, "Meds")   // opened at 08:00, "I pour my coffee"
+        retimed.reminderTime = "07:00"
+        #expect(ItemSheetModel.reminderCommit(timeDraft: "08:00", timeSeed: "08:00", anchorDraft: "I take my pills",
+                                              anchorSeed: "I pour my coffee", stored: retimed)
+                == ItemEdit.reminder(time: "07:00", anchor: .set("I take my pills")))
+
+        var cleared = retimed
+        cleared.reminderTime = nil
+        cleared.reminderAnchor = nil
+        #expect(ItemSheetModel.reminderCommit(timeDraft: "08:00", timeSeed: "08:00", anchorDraft: "I take my pills",
+                                              anchorSeed: "I pour my coffee", stored: cleared) == nil)
+
+        var reworded = try named(planner, "Meds")
+        reworded.reminderAnchor = "I brew tea"
+        let edit = try #require(ItemSheetModel.reminderCommit(timeDraft: "07:30", timeSeed: "08:00",
+                                                              anchorDraft: "I pour my coffee",
+                                                              anchorSeed: "I pour my coffee", stored: reworded))
+        #expect(edit == ItemEdit.reminder(time: "07:30", anchor: nil))
+        #expect(editing(reworded, edit).reminderAnchor == "I brew tea")
+    }
+
+    /// The settings lines: signed in alone; Habit reminders off, then no time
+    /// zone, in that order; an unknown switch says nothing.
+    @Test func theSettingsLinesShowWhenAReminderCannotFire() {
+        let off = ItemSheetModel.remindersOffLine
+        let zone = ItemSheetModel.noZoneLine
+        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: false, hasStoredZone: true, live: true) == [off])
+        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: nil, hasStoredZone: true, live: true).isEmpty)
+        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: true, hasStoredZone: true, live: true).isEmpty)
+        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: true, hasStoredZone: false, live: true)
+                == [zone])
+        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: false, hasStoredZone: false, live: true)
+                == [off, zone])
+        #expect(ItemSheetModel.reminderSettingsLines(remindersEnabled: false, hasStoredZone: false, live: false)
+                .isEmpty)
+    }
+
+    /// A dated type with no date gets the needs-a-date note; a dated task and
+    /// a habit don't.
+    @Test func anUndatedTaskSaysItNeedsADate() throws {
+        let planner = makePlanner()
+        let bank = try named(planner, "Call the bank")
+        let dentist = try named(planner, "Call the dentist")
+        let meds = try named(planner, "Meds")
+        #expect(reminderNeedsDate(bank, caps: planner.caps(for: bank)))
+        #expect(!reminderNeedsDate(dentist, caps: planner.caps(for: dentist)))
+        #expect(!reminderNeedsDate(meds, caps: planner.caps(for: meds)))
+    }
+
+    /// Each sheet the item sheet opens over itself has its own id, and two
+    /// items' Remind sheets differ.
+    @Test func eachSheetEditorHasItsOwnID() {
+        let one = SampleData.uuid(1)
+        let two = SampleData.uuid(2)
+        let ids = [SheetEditor.reschedule(one), SheetEditor.pauseUntil(one), SheetEditor.reminder(one)].map(\.id)
+        #expect(Set(ids).count == 3)
+        #expect(SheetEditor.reminder(one).id != SheetEditor.reminder(two).id)
+    }
+
+    /// The Remind sheet's words: the web's where it has them (the three
+    /// shared sentences are EditCopy's), the phone's own otherwise, and no em
+    /// dash in any.
+    @Test func theRemindSheetsWords() {
+        #expect(ItemSheetModel.reminderTitle == "Remind")
+        #expect(ItemSheetModel.reminderTimeHeader == "Nudge me at")
+        #expect(ItemSheetModel.reminderTimeLabel == "Time")
+        #expect(ItemSheetModel.reminderAnchorHeader == "Right after")
+        #expect(ItemSheetModel.noReminder == "No reminder")
+        #expect(ItemSheetModel.reminderAnchorPlaceholder == EditCopy.reminderAnchorPlaceholder)
+        #expect(ItemSheetModel.reminderAnchorPlaceholder == "I pour my coffee")
+        #expect(ItemSheetModel.reminderAnchorHint == EditCopy.reminderAnchorHint)
+        #expect(ItemSheetModel.reminderNeedsDateNote == EditCopy.reminderNeedsDate)
+        #expect(ItemSheetModel.remindersOffLine
+                == "Habit reminders are off in dsul's settings on the web, under Rituals, so this won't fire.")
+        #expect(ItemSheetModel.noZoneLine
+                == "Reminders need your time zone, which dsul picks up when you open it on the web.")
+        #expect(ItemSheetModel.discardTitle == "Discard changes?")
+        #expect(ItemSheetModel.discardAction == "Discard")
+        #expect(ItemSheetModel.keepEditing == "Keep editing")
+
+        let all = [
+            ItemSheetModel.reminderTitle, ItemSheetModel.reminderTimeHeader, ItemSheetModel.reminderTimeLabel,
+            ItemSheetModel.reminderAnchorHeader, ItemSheetModel.reminderAnchorPlaceholder,
+            ItemSheetModel.reminderAnchorHint, ItemSheetModel.reminderNeedsDateNote, ItemSheetModel.noReminder,
+            ItemSheetModel.remindersOffLine, ItemSheetModel.noZoneLine, ItemSheetModel.discardTitle,
+            ItemSheetModel.discardAction, ItemSheetModel.keepEditing, ItemSheetModel.seedSpoken,
+        ]
+        let dashed = all.filter { $0.contains("\u{2014}") }
+        #expect(dashed.isEmpty)
+    }
+
     // MARK: A row to VoiceOver
 
     @Test func aRowsTimeIsSpokenAsItReads() {
@@ -613,5 +1186,18 @@ import Testing
         #expect(PlannerFormat.rowLabel(roadmap, isNow: false) == "Draft Q4 roadmap, 9 to 11 AM")
         #expect(PlannerFormat.rowLabel(roadmap, isNow: true) == "Draft Q4 roadmap, now, 9 to 11 AM")
         #expect(PlannerFormat.rowLabel(meds, isNow: false) == "Meds, streak 41")
+    }
+
+    /// With Streaks off, a habit's row says nothing of its streak, as it
+    /// draws none; a task's row is the same either way.
+    @Test func aRowWithStreaksOffSaysNoStreak() throws {
+        let planner = makePlanner()
+        let roadmap = try named(planner, "Draft Q4 roadmap")
+        let meds = try named(planner, "Meds")
+
+        #expect(PlannerFormat.rowLabel(meds, isNow: false, streaksEnabled: false) == "Meds")
+        #expect(PlannerFormat.rowLabel(meds, isNow: false, streaksEnabled: true) == "Meds, streak 41")
+        #expect(PlannerFormat.rowLabel(roadmap, isNow: true, streaksEnabled: false)
+                == "Draft Q4 roadmap, now, 9 to 11 AM")
     }
 }

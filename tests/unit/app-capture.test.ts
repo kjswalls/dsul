@@ -207,6 +207,20 @@ describe('POST /api/app/items', () => {
     });
   });
 
+  it('500s a count that fails, before anything is inserted', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    const base = respond;
+    respond = (q) =>
+      q.table === 'items' && op(q) === 'select' && (called(q, 'select')[0]?.[1] as { head?: boolean } | undefined)?.head
+        ? { data: null, error: { code: 'XX000', message: 'internal error' }, count: null }
+        : base(q);
+    const res = await capture({ id: ITEM, title: 'Buy stamps' });
+    expect(res.status).toBe(500);
+    expect(await res.json()).toEqual({ error: 'failed' });
+    expect(inserts('items')).toEqual([]);
+    spy.mockRestore();
+  });
+
   it('500s any other insert failure without the database’s words', async () => {
     const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
     insertResult = { data: null, error: { code: '23514', message: 'new row violates check constraint "items_status_check"' } };

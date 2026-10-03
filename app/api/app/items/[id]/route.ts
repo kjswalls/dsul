@@ -10,6 +10,12 @@ import { postItemWrite } from '@/lib/app-api';
  *   { action: 'title', title }                            the title, typed
  *   { action: 'notes', notes }                            the notes, typed; null clears them
  *   { action: 'delete' }                                  Delete, with its subtasks, to the Trash
+ *   { action: 'addSubtask', id, title }                   a new subtask under this item
+ *   { action: 'resetStreak' }                             Reset streak
+ *   { action: 'priority', priority }                      the priority; null for none
+ *   { action: 'timesPerDay', timesPerDay }                a habit's times a day, 1-5
+ *   { action: 'reminder', time, anchor? }                 the reminder; a null time turns it off,
+ *                                                         and the anchor is sent only when it changed
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

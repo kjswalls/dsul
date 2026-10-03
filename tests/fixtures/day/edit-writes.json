@@ -4,7 +4,12 @@
     "title": 500,
     "notes": 50000,
     "outerTitle": 10000,
-    "outerNotes": 200000
+    "outerNotes": 200000,
+    "newTitle": 500,
+    "bulkMax": 500,
+    "anchor": 500,
+    "outerAnchor": 10000,
+    "timesPerDayMax": 5
   },
   "cases": [
     {
@@ -599,6 +604,996 @@
         "00000000-0000-4000-8000-00000000047f"
       ],
       "created": null
+    },
+    {
+      "name": "subtask-under-task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000488",
+        "title": "Pack for Lisbon",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "evening"
+      },
+      "children": [
+        {
+          "type": "task",
+          "id": "00000000-0000-4000-8000-000000000489",
+          "title": "Passport",
+          "status": "pending",
+          "isScheduled": false,
+          "order": 1,
+          "parentItemId": "00000000-0000-4000-8000-000000000488"
+        }
+      ],
+      "edit": {
+        "action": "addSubtask",
+        "id": "00000000-0000-4000-8000-00000000048a",
+        "title": "Adapter plug"
+      },
+      "refusal": null,
+      "removed": [],
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000488",
+        "title": "Pack for Lisbon",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "evening"
+      },
+      "created": {
+        "title": "Adapter plug",
+        "parentItemId": "00000000-0000-4000-8000-000000000488",
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000048a",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 1
+      }
+    },
+    {
+      "name": "subtask-under-custom",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000492",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "addSubtask",
+        "id": "00000000-0000-4000-8000-000000000493",
+        "title": "Stamps"
+      },
+      "refusal": null,
+      "removed": [],
+      "updates": {},
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000492",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "created": {
+        "title": "Stamps",
+        "parentItemId": "00000000-0000-4000-8000-000000000492",
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000493",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 1
+      }
+    },
+    {
+      "name": "subtask-refused-habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000049c",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "addSubtask",
+        "id": "00000000-0000-4000-8000-00000000049d",
+        "title": "Buy floss"
+      },
+      "refusal": "no_subtasks",
+      "removed": [],
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000049c",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "created": null
+    },
+    {
+      "name": "subtask-refused-nested",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004a6",
+        "title": "Passport",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000488"
+      },
+      "children": [],
+      "edit": {
+        "action": "addSubtask",
+        "id": "00000000-0000-4000-8000-0000000004a7",
+        "title": "Renew it"
+      },
+      "refusal": "nested",
+      "removed": [],
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004a6",
+        "title": "Passport",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000488"
+      },
+      "created": null
+    },
+    {
+      "name": "reset-streak",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004b0",
+        "title": "Meds",
+        "streak": 41,
+        "status": "pending",
+        "completedDates": [
+          "2026-09-29",
+          "2026-09-30"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-09-30": 1
+        },
+        "repeatFrequency": "daily",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "resetStreak"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "streak": 0
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004b0",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-09-29",
+          "2026-09-30"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-09-30": 1
+        },
+        "repeatFrequency": "daily",
+        "timeBucket": "morning"
+      }
+    },
+    {
+      "name": "reset-streak-at-zero",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004b1",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "resetStreak"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004b1",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "reset-refused-task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004b2",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "children": [],
+      "edit": {
+        "action": "resetStreak"
+      },
+      "refusal": "no_streak",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004b2",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      }
+    },
+    {
+      "name": "priority-set",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ba",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "high"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": "high"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ba",
+        "title": "Draft Q4 roadmap",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "priority": "high"
+      }
+    },
+    {
+      "name": "priority-clear",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bb",
+        "title": "Reply to Avery",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "priority": "high"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bb",
+        "title": "Reply to Avery",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      }
+    },
+    {
+      "name": "priority-unchanged",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bc",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "priority": "medium"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "medium"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bc",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "priority": "medium"
+      }
+    },
+    {
+      "name": "priority-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bd",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ba"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "low"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": "low"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004bd",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ba",
+        "priority": "low"
+      }
+    },
+    {
+      "name": "priority-custom",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000004be",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "medium"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "priority": "medium"
+      },
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-0000000004be",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "priority": "medium"
+      }
+    },
+    {
+      "name": "priority-refused-habit",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004bf",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "priority",
+        "priority": "high"
+      },
+      "refusal": "no_priority",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004bf",
+        "title": "Stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "times-per-day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c4",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-01": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 5
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "timesPerDay": 5
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c4",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {
+          "2026-10-01": 1
+        },
+        "repeatFrequency": "daily",
+        "timesPerDay": 5
+      }
+    },
+    {
+      "name": "times-back-to-one",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c5",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 3
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 1
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "timesPerDay": 1
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c5",
+        "title": "Water",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "timesPerDay": 1
+      }
+    },
+    {
+      "name": "times-unchanged",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c6",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 1
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004c6",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "times-refused-task",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004c7",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "children": [],
+      "edit": {
+        "action": "timesPerDay",
+        "timesPerDay": 2
+      },
+      "refusal": "no_count",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004c7",
+        "title": "Call the bank",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      }
+    },
+    {
+      "name": "reminder-set",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ce",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "14:45"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "14:45",
+        "reminderAnchor": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004ce",
+        "title": "Call the dentist",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "afternoon",
+        "reminderTime": "14:45"
+      }
+    },
+    {
+      "name": "reminder-anchor",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004cf",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "08:00",
+        "anchor": "  I pour my coffee "
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004cf",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      }
+    },
+    {
+      "name": "reminder-time-only-keeps-anchor",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d0",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "07:30"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "07:30",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d0",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "07:30",
+        "reminderAnchor": "I pour my coffee"
+      }
+    },
+    {
+      "name": "reminder-anchor-cleared",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d1",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "08:00",
+        "anchor": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "08:00",
+        "reminderAnchor": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d1",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      }
+    },
+    {
+      "name": "reminder-unchanged",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d2",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "08:00",
+        "anchor": "I pour my coffee"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d2",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00",
+        "reminderAnchor": "I pour my coffee"
+      }
+    },
+    {
+      "name": "reminder-clear",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d3",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "I brush my teeth"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": null,
+        "reminderAnchor": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d3",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "reminder-anchor-stored-over-cap-kept-length",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d4",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "21:00",
+        "anchor": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "reminderTime": "21:00",
+        "reminderAnchor": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d4",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+      }
+    },
+    {
+      "name": "reminder-anchor-growth-refused",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d5",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "I brush my teeth"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "21:00",
+        "anchor": "ccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d5",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "21:00",
+        "reminderAnchor": "I brush my teeth"
+      }
+    },
+    {
+      "name": "reminder-refused-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d6",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ce"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": "09:00"
+      },
+      "refusal": "not_remindable",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-0000000004d6",
+        "title": "Pull the numbers",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-0000000004ce"
+      }
+    },
+    {
+      "name": "reminder-anchor-without-time",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d7",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      },
+      "children": [],
+      "edit": {
+        "action": "reminder",
+        "time": null,
+        "anchor": "I pour my coffee"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-0000000004d7",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "reminderTime": "08:00"
+      }
     }
   ],
   "trim": [
@@ -663,5 +1658,804 @@
       "expected": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
     }
   ],
-  "copy": {}
+  "bulk": [
+    {
+      "name": "CRLF is one break",
+      "input": "a\r\nb",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "a lone CR is a break",
+      "input": "a\rb",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "blank lines between are dropped",
+      "input": "a\n\n\nb",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "dash",
+      "input": "- a\n- b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "star",
+      "input": "* a\n* b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "plus",
+      "input": "+ a\n+ b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "bullet",
+      "input": "• a\n• b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "en dash",
+      "input": "– a\n– b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "em dash",
+      "input": "— a\n— b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "numbered with a dot",
+      "input": "1. a\n2. b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "numbered with a paren",
+      "input": "12) a\n13) b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "unchecked box",
+      "input": "- [ ] a\n- [ ] b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "checked box",
+      "input": "- [x] a\n- [x] b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "capital X box, starred",
+      "input": "* [X] a\n* [X] b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "a box with no space after it strips the dash alone",
+      "input": "- [ ]task",
+      "isBulk": false,
+      "titles": [
+        "[ ]task"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "four digits are not a list number",
+      "input": "1234. a\n1234) b",
+      "isBulk": true,
+      "titles": [
+        "1234. a",
+        "1234) b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "a dash with no space after it stays",
+      "input": "-a\n-b",
+      "isBulk": true,
+      "titles": [
+        "-a",
+        "-b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "an indented marker",
+      "input": "  - indented\n\t- tabbed",
+      "isBulk": true,
+      "titles": [
+        "indented",
+        "tabbed"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "stripped once, never twice",
+      "input": "- - hello\n* - there",
+      "isBulk": true,
+      "titles": [
+        "- hello",
+        "- there"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "a marker followed by a no-break space",
+      "input": "- a\n- b",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "no-break spaces and byte order marks around a line",
+      "input": " a﻿\n﻿b ",
+      "isBulk": true,
+      "titles": [
+        "a",
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "a line separator inside a line is not a break",
+      "input": "a b\nc",
+      "isBulk": true,
+      "titles": [
+        "a b",
+        "c"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "next line inside a line is not a break",
+      "input": "ab\nc",
+      "isBulk": true,
+      "titles": [
+        "ab",
+        "c"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "an Arabic-Indic digit is not a list number",
+      "input": "١. a\n٢. b",
+      "isBulk": true,
+      "titles": [
+        "١. a",
+        "٢. b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "a marker alone is an empty line",
+      "input": "- \nb",
+      "isBulk": false,
+      "titles": [
+        "b"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "blank lines only",
+      "input": "\n \n\t\n",
+      "isBulk": false,
+      "titles": [],
+      "truncated": false
+    },
+    {
+      "name": "one line with a trailing newline is not a list",
+      "input": "Eggs\n",
+      "isBulk": false,
+      "titles": [
+        "Eggs"
+      ],
+      "truncated": false
+    },
+    {
+      "name": "past the cap",
+      "input": "item 1\nitem 2\nitem 3\nitem 4\nitem 5\nitem 6\nitem 7\nitem 8\nitem 9\nitem 10\nitem 11\nitem 12\nitem 13\nitem 14\nitem 15\nitem 16\nitem 17\nitem 18\nitem 19\nitem 20\nitem 21\nitem 22\nitem 23\nitem 24\nitem 25\nitem 26\nitem 27\nitem 28\nitem 29\nitem 30\nitem 31\nitem 32\nitem 33\nitem 34\nitem 35\nitem 36\nitem 37\nitem 38\nitem 39\nitem 40\nitem 41\nitem 42\nitem 43\nitem 44\nitem 45\nitem 46\nitem 47\nitem 48\nitem 49\nitem 50\nitem 51\nitem 52\nitem 53\nitem 54\nitem 55\nitem 56\nitem 57\nitem 58\nitem 59\nitem 60\nitem 61\nitem 62\nitem 63\nitem 64\nitem 65\nitem 66\nitem 67\nitem 68\nitem 69\nitem 70\nitem 71\nitem 72\nitem 73\nitem 74\nitem 75\nitem 76\nitem 77\nitem 78\nitem 79\nitem 80\nitem 81\nitem 82\nitem 83\nitem 84\nitem 85\nitem 86\nitem 87\nitem 88\nitem 89\nitem 90\nitem 91\nitem 92\nitem 93\nitem 94\nitem 95\nitem 96\nitem 97\nitem 98\nitem 99\nitem 100\nitem 101\nitem 102\nitem 103\nitem 104\nitem 105\nitem 106\nitem 107\nitem 108\nitem 109\nitem 110\nitem 111\nitem 112\nitem 113\nitem 114\nitem 115\nitem 116\nitem 117\nitem 118\nitem 119\nitem 120\nitem 121\nitem 122\nitem 123\nitem 124\nitem 125\nitem 126\nitem 127\nitem 128\nitem 129\nitem 130\nitem 131\nitem 132\nitem 133\nitem 134\nitem 135\nitem 136\nitem 137\nitem 138\nitem 139\nitem 140\nitem 141\nitem 142\nitem 143\nitem 144\nitem 145\nitem 146\nitem 147\nitem 148\nitem 149\nitem 150\nitem 151\nitem 152\nitem 153\nitem 154\nitem 155\nitem 156\nitem 157\nitem 158\nitem 159\nitem 160\nitem 161\nitem 162\nitem 163\nitem 164\nitem 165\nitem 166\nitem 167\nitem 168\nitem 169\nitem 170\nitem 171\nitem 172\nitem 173\nitem 174\nitem 175\nitem 176\nitem 177\nitem 178\nitem 179\nitem 180\nitem 181\nitem 182\nitem 183\nitem 184\nitem 185\nitem 186\nitem 187\nitem 188\nitem 189\nitem 190\nitem 191\nitem 192\nitem 193\nitem 194\nitem 195\nitem 196\nitem 197\nitem 198\nitem 199\nitem 200\nitem 201\nitem 202\nitem 203\nitem 204\nitem 205\nitem 206\nitem 207\nitem 208\nitem 209\nitem 210\nitem 211\nitem 212\nitem 213\nitem 214\nitem 215\nitem 216\nitem 217\nitem 218\nitem 219\nitem 220\nitem 221\nitem 222\nitem 223\nitem 224\nitem 225\nitem 226\nitem 227\nitem 228\nitem 229\nitem 230\nitem 231\nitem 232\nitem 233\nitem 234\nitem 235\nitem 236\nitem 237\nitem 238\nitem 239\nitem 240\nitem 241\nitem 242\nitem 243\nitem 244\nitem 245\nitem 246\nitem 247\nitem 248\nitem 249\nitem 250\nitem 251\nitem 252\nitem 253\nitem 254\nitem 255\nitem 256\nitem 257\nitem 258\nitem 259\nitem 260\nitem 261\nitem 262\nitem 263\nitem 264\nitem 265\nitem 266\nitem 267\nitem 268\nitem 269\nitem 270\nitem 271\nitem 272\nitem 273\nitem 274\nitem 275\nitem 276\nitem 277\nitem 278\nitem 279\nitem 280\nitem 281\nitem 282\nitem 283\nitem 284\nitem 285\nitem 286\nitem 287\nitem 288\nitem 289\nitem 290\nitem 291\nitem 292\nitem 293\nitem 294\nitem 295\nitem 296\nitem 297\nitem 298\nitem 299\nitem 300\nitem 301\nitem 302\nitem 303\nitem 304\nitem 305\nitem 306\nitem 307\nitem 308\nitem 309\nitem 310\nitem 311\nitem 312\nitem 313\nitem 314\nitem 315\nitem 316\nitem 317\nitem 318\nitem 319\nitem 320\nitem 321\nitem 322\nitem 323\nitem 324\nitem 325\nitem 326\nitem 327\nitem 328\nitem 329\nitem 330\nitem 331\nitem 332\nitem 333\nitem 334\nitem 335\nitem 336\nitem 337\nitem 338\nitem 339\nitem 340\nitem 341\nitem 342\nitem 343\nitem 344\nitem 345\nitem 346\nitem 347\nitem 348\nitem 349\nitem 350\nitem 351\nitem 352\nitem 353\nitem 354\nitem 355\nitem 356\nitem 357\nitem 358\nitem 359\nitem 360\nitem 361\nitem 362\nitem 363\nitem 364\nitem 365\nitem 366\nitem 367\nitem 368\nitem 369\nitem 370\nitem 371\nitem 372\nitem 373\nitem 374\nitem 375\nitem 376\nitem 377\nitem 378\nitem 379\nitem 380\nitem 381\nitem 382\nitem 383\nitem 384\nitem 385\nitem 386\nitem 387\nitem 388\nitem 389\nitem 390\nitem 391\nitem 392\nitem 393\nitem 394\nitem 395\nitem 396\nitem 397\nitem 398\nitem 399\nitem 400\nitem 401\nitem 402\nitem 403\nitem 404\nitem 405\nitem 406\nitem 407\nitem 408\nitem 409\nitem 410\nitem 411\nitem 412\nitem 413\nitem 414\nitem 415\nitem 416\nitem 417\nitem 418\nitem 419\nitem 420\nitem 421\nitem 422\nitem 423\nitem 424\nitem 425\nitem 426\nitem 427\nitem 428\nitem 429\nitem 430\nitem 431\nitem 432\nitem 433\nitem 434\nitem 435\nitem 436\nitem 437\nitem 438\nitem 439\nitem 440\nitem 441\nitem 442\nitem 443\nitem 444\nitem 445\nitem 446\nitem 447\nitem 448\nitem 449\nitem 450\nitem 451\nitem 452\nitem 453\nitem 454\nitem 455\nitem 456\nitem 457\nitem 458\nitem 459\nitem 460\nitem 461\nitem 462\nitem 463\nitem 464\nitem 465\nitem 466\nitem 467\nitem 468\nitem 469\nitem 470\nitem 471\nitem 472\nitem 473\nitem 474\nitem 475\nitem 476\nitem 477\nitem 478\nitem 479\nitem 480\nitem 481\nitem 482\nitem 483\nitem 484\nitem 485\nitem 486\nitem 487\nitem 488\nitem 489\nitem 490\nitem 491\nitem 492\nitem 493\nitem 494\nitem 495\nitem 496\nitem 497\nitem 498\nitem 499\nitem 500\nitem 501",
+      "isBulk": true,
+      "titles": [
+        "item 1",
+        "item 2",
+        "item 3",
+        "item 4",
+        "item 5",
+        "item 6",
+        "item 7",
+        "item 8",
+        "item 9",
+        "item 10",
+        "item 11",
+        "item 12",
+        "item 13",
+        "item 14",
+        "item 15",
+        "item 16",
+        "item 17",
+        "item 18",
+        "item 19",
+        "item 20",
+        "item 21",
+        "item 22",
+        "item 23",
+        "item 24",
+        "item 25",
+        "item 26",
+        "item 27",
+        "item 28",
+        "item 29",
+        "item 30",
+        "item 31",
+        "item 32",
+        "item 33",
+        "item 34",
+        "item 35",
+        "item 36",
+        "item 37",
+        "item 38",
+        "item 39",
+        "item 40",
+        "item 41",
+        "item 42",
+        "item 43",
+        "item 44",
+        "item 45",
+        "item 46",
+        "item 47",
+        "item 48",
+        "item 49",
+        "item 50",
+        "item 51",
+        "item 52",
+        "item 53",
+        "item 54",
+        "item 55",
+        "item 56",
+        "item 57",
+        "item 58",
+        "item 59",
+        "item 60",
+        "item 61",
+        "item 62",
+        "item 63",
+        "item 64",
+        "item 65",
+        "item 66",
+        "item 67",
+        "item 68",
+        "item 69",
+        "item 70",
+        "item 71",
+        "item 72",
+        "item 73",
+        "item 74",
+        "item 75",
+        "item 76",
+        "item 77",
+        "item 78",
+        "item 79",
+        "item 80",
+        "item 81",
+        "item 82",
+        "item 83",
+        "item 84",
+        "item 85",
+        "item 86",
+        "item 87",
+        "item 88",
+        "item 89",
+        "item 90",
+        "item 91",
+        "item 92",
+        "item 93",
+        "item 94",
+        "item 95",
+        "item 96",
+        "item 97",
+        "item 98",
+        "item 99",
+        "item 100",
+        "item 101",
+        "item 102",
+        "item 103",
+        "item 104",
+        "item 105",
+        "item 106",
+        "item 107",
+        "item 108",
+        "item 109",
+        "item 110",
+        "item 111",
+        "item 112",
+        "item 113",
+        "item 114",
+        "item 115",
+        "item 116",
+        "item 117",
+        "item 118",
+        "item 119",
+        "item 120",
+        "item 121",
+        "item 122",
+        "item 123",
+        "item 124",
+        "item 125",
+        "item 126",
+        "item 127",
+        "item 128",
+        "item 129",
+        "item 130",
+        "item 131",
+        "item 132",
+        "item 133",
+        "item 134",
+        "item 135",
+        "item 136",
+        "item 137",
+        "item 138",
+        "item 139",
+        "item 140",
+        "item 141",
+        "item 142",
+        "item 143",
+        "item 144",
+        "item 145",
+        "item 146",
+        "item 147",
+        "item 148",
+        "item 149",
+        "item 150",
+        "item 151",
+        "item 152",
+        "item 153",
+        "item 154",
+        "item 155",
+        "item 156",
+        "item 157",
+        "item 158",
+        "item 159",
+        "item 160",
+        "item 161",
+        "item 162",
+        "item 163",
+        "item 164",
+        "item 165",
+        "item 166",
+        "item 167",
+        "item 168",
+        "item 169",
+        "item 170",
+        "item 171",
+        "item 172",
+        "item 173",
+        "item 174",
+        "item 175",
+        "item 176",
+        "item 177",
+        "item 178",
+        "item 179",
+        "item 180",
+        "item 181",
+        "item 182",
+        "item 183",
+        "item 184",
+        "item 185",
+        "item 186",
+        "item 187",
+        "item 188",
+        "item 189",
+        "item 190",
+        "item 191",
+        "item 192",
+        "item 193",
+        "item 194",
+        "item 195",
+        "item 196",
+        "item 197",
+        "item 198",
+        "item 199",
+        "item 200",
+        "item 201",
+        "item 202",
+        "item 203",
+        "item 204",
+        "item 205",
+        "item 206",
+        "item 207",
+        "item 208",
+        "item 209",
+        "item 210",
+        "item 211",
+        "item 212",
+        "item 213",
+        "item 214",
+        "item 215",
+        "item 216",
+        "item 217",
+        "item 218",
+        "item 219",
+        "item 220",
+        "item 221",
+        "item 222",
+        "item 223",
+        "item 224",
+        "item 225",
+        "item 226",
+        "item 227",
+        "item 228",
+        "item 229",
+        "item 230",
+        "item 231",
+        "item 232",
+        "item 233",
+        "item 234",
+        "item 235",
+        "item 236",
+        "item 237",
+        "item 238",
+        "item 239",
+        "item 240",
+        "item 241",
+        "item 242",
+        "item 243",
+        "item 244",
+        "item 245",
+        "item 246",
+        "item 247",
+        "item 248",
+        "item 249",
+        "item 250",
+        "item 251",
+        "item 252",
+        "item 253",
+        "item 254",
+        "item 255",
+        "item 256",
+        "item 257",
+        "item 258",
+        "item 259",
+        "item 260",
+        "item 261",
+        "item 262",
+        "item 263",
+        "item 264",
+        "item 265",
+        "item 266",
+        "item 267",
+        "item 268",
+        "item 269",
+        "item 270",
+        "item 271",
+        "item 272",
+        "item 273",
+        "item 274",
+        "item 275",
+        "item 276",
+        "item 277",
+        "item 278",
+        "item 279",
+        "item 280",
+        "item 281",
+        "item 282",
+        "item 283",
+        "item 284",
+        "item 285",
+        "item 286",
+        "item 287",
+        "item 288",
+        "item 289",
+        "item 290",
+        "item 291",
+        "item 292",
+        "item 293",
+        "item 294",
+        "item 295",
+        "item 296",
+        "item 297",
+        "item 298",
+        "item 299",
+        "item 300",
+        "item 301",
+        "item 302",
+        "item 303",
+        "item 304",
+        "item 305",
+        "item 306",
+        "item 307",
+        "item 308",
+        "item 309",
+        "item 310",
+        "item 311",
+        "item 312",
+        "item 313",
+        "item 314",
+        "item 315",
+        "item 316",
+        "item 317",
+        "item 318",
+        "item 319",
+        "item 320",
+        "item 321",
+        "item 322",
+        "item 323",
+        "item 324",
+        "item 325",
+        "item 326",
+        "item 327",
+        "item 328",
+        "item 329",
+        "item 330",
+        "item 331",
+        "item 332",
+        "item 333",
+        "item 334",
+        "item 335",
+        "item 336",
+        "item 337",
+        "item 338",
+        "item 339",
+        "item 340",
+        "item 341",
+        "item 342",
+        "item 343",
+        "item 344",
+        "item 345",
+        "item 346",
+        "item 347",
+        "item 348",
+        "item 349",
+        "item 350",
+        "item 351",
+        "item 352",
+        "item 353",
+        "item 354",
+        "item 355",
+        "item 356",
+        "item 357",
+        "item 358",
+        "item 359",
+        "item 360",
+        "item 361",
+        "item 362",
+        "item 363",
+        "item 364",
+        "item 365",
+        "item 366",
+        "item 367",
+        "item 368",
+        "item 369",
+        "item 370",
+        "item 371",
+        "item 372",
+        "item 373",
+        "item 374",
+        "item 375",
+        "item 376",
+        "item 377",
+        "item 378",
+        "item 379",
+        "item 380",
+        "item 381",
+        "item 382",
+        "item 383",
+        "item 384",
+        "item 385",
+        "item 386",
+        "item 387",
+        "item 388",
+        "item 389",
+        "item 390",
+        "item 391",
+        "item 392",
+        "item 393",
+        "item 394",
+        "item 395",
+        "item 396",
+        "item 397",
+        "item 398",
+        "item 399",
+        "item 400",
+        "item 401",
+        "item 402",
+        "item 403",
+        "item 404",
+        "item 405",
+        "item 406",
+        "item 407",
+        "item 408",
+        "item 409",
+        "item 410",
+        "item 411",
+        "item 412",
+        "item 413",
+        "item 414",
+        "item 415",
+        "item 416",
+        "item 417",
+        "item 418",
+        "item 419",
+        "item 420",
+        "item 421",
+        "item 422",
+        "item 423",
+        "item 424",
+        "item 425",
+        "item 426",
+        "item 427",
+        "item 428",
+        "item 429",
+        "item 430",
+        "item 431",
+        "item 432",
+        "item 433",
+        "item 434",
+        "item 435",
+        "item 436",
+        "item 437",
+        "item 438",
+        "item 439",
+        "item 440",
+        "item 441",
+        "item 442",
+        "item 443",
+        "item 444",
+        "item 445",
+        "item 446",
+        "item 447",
+        "item 448",
+        "item 449",
+        "item 450",
+        "item 451",
+        "item 452",
+        "item 453",
+        "item 454",
+        "item 455",
+        "item 456",
+        "item 457",
+        "item 458",
+        "item 459",
+        "item 460",
+        "item 461",
+        "item 462",
+        "item 463",
+        "item 464",
+        "item 465",
+        "item 466",
+        "item 467",
+        "item 468",
+        "item 469",
+        "item 470",
+        "item 471",
+        "item 472",
+        "item 473",
+        "item 474",
+        "item 475",
+        "item 476",
+        "item 477",
+        "item 478",
+        "item 479",
+        "item 480",
+        "item 481",
+        "item 482",
+        "item 483",
+        "item 484",
+        "item 485",
+        "item 486",
+        "item 487",
+        "item 488",
+        "item 489",
+        "item 490",
+        "item 491",
+        "item 492",
+        "item 493",
+        "item 494",
+        "item 495",
+        "item 496",
+        "item 497",
+        "item 498",
+        "item 499",
+        "item 500"
+      ],
+      "truncated": true
+    }
+  ],
+  "streakRun": [
+    {
+      "streak": 0,
+      "text": "No streak yet"
+    },
+    {
+      "streak": 1,
+      "text": "1 day in a row"
+    },
+    {
+      "streak": 2,
+      "text": "2 days in a row"
+    },
+    {
+      "streak": 41,
+      "text": "41 days in a row"
+    }
+  ],
+  "copy": {
+    "resetStreakMessage": "This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.",
+    "subtaskPlaceholder": "Add subtask…",
+    "subtaskPasteCapped": "Added the first 500 subtasks. The paste had more.",
+    "reminderAnchorPlaceholder": "I pour my coffee",
+    "reminderAnchorHint": "Optional, and worth it. Something you already do beats a time. The reminder will say what you write here.",
+    "reminderNeedsDate": "Give this a date and it will fire. Without one there is no day for the reminder to land on."
+  }
 }

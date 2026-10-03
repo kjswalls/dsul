@@ -12,7 +12,15 @@ import Foundation
 // rules too: what a keystroke may put in the title or the notes, and what
 // leaving a field sends (DsulCore ItemEdit.swift, lib/item-edit.ts), and
 // Delete's words (lib/item-verbs.ts `deleteConfirmTitle` and the registry's
-// `form.deleteDescription`, both in DsulCore Registry.swift).
+// `form.deleteDescription`, both in DsulCore Registry.swift). From 2b, what
+// the subtask field adds as it is typed in or pasted into (DsulCore
+// BulkLines.swift, lib/bulk-add.ts, as the web's Subtasks section reads a
+// paste), and the streak popover's words, the web's where it has them
+// (DsulCore EditCopy.swift, lib/item-edit.ts `EDIT_COPY`). From 2c, which
+// chips edit and how (`chipEditor`, `unsetProperties`, the "+ Add property"
+// seed of the item panel's clearing field), and the Remind sheet's rules and
+// words, the web's where it has them (item-dialog.tsx's Remind popover,
+// `EDIT_COPY`).
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
@@ -65,9 +73,39 @@ enum RescheduleChoice: Hashable, Sendable {
 }
 
 /// A typed field of the item sheet, and so where a page's focus can be: the
-/// title and the notes.
+/// title, the notes, and the new subtask's field (`SubtaskField`), whose text
+/// is never an edit of anything stored: each line of it becomes a subtask.
 enum SheetField: Hashable, Sendable {
-    case title, notes
+    case title, notes, subtask
+}
+
+/// Which report of the last Return the subtask field has acted on. iOS may
+/// report a Return typed in a vertical field as a line break in the text, as
+/// `.onSubmit`, or as both, in either order. The title can take both, since
+/// its `.onSubmit` only ends the edit; an add can't, so whichever report
+/// comes first adds the subtask and this lets the other go
+/// (`ItemSheetModel.subtaskEntry`, `.subtaskSubmit`).
+enum SubtaskReturn: Hashable, Sendable {
+    case none
+    /// The line break added the subtask; an `.onSubmit` after it does nothing.
+    case fromText
+    /// `.onSubmit` added this title; a line break after it, on a line that
+    /// cleans to this title or to nothing, does nothing.
+    case fromSubmit(String)
+}
+
+/// What the subtask field does after a change or a submit.
+struct SubtaskStep: Hashable, Sendable {
+    /// The subtasks to add, in order.
+    var titles: [String]
+    /// What the field holds now.
+    var draft: String
+    /// Entry ends: focus goes, and the "Add a subtask" row comes back.
+    var end: Bool
+    /// A paste held more lines than one paste adds (`maxBulkItems`).
+    var capped: Bool
+    /// Which report of a Return has acted, for the next change or submit.
+    var lastReturn: SubtaskReturn
 }
 
 /// The sheet's day picker's words: its title, the confirm button's verb
@@ -76,6 +114,49 @@ struct DayPickWords: Hashable, Sendable {
     let title: String
     let confirmVerb: String
     let note: String?
+}
+
+/// The sheets an item's page opens over itself, nested in the item sheet,
+/// never the planner's slot, which holds the item sheet and would close it to
+/// open one: the day pickers (Reschedule, Pause until) and, from 2c, the Remind
+/// sheet. Here, apart from the views, since `chipEditor` names one.
+enum SheetEditor: Identifiable, Hashable, Sendable {
+    /// A new day for the item (Reschedule's Pick a date…).
+    case reschedule(UUID)
+    /// The day the item's pause ends (Pause until…).
+    case pauseUntil(UUID)
+    /// The item's reminder (`ReminderSheet`).
+    case reminder(UUID)
+
+    var id: String {
+        switch self {
+        case .reschedule(let id): return "reschedule-" + id.uuidString
+        case .pauseUntil(let id): return "pause-until-" + id.uuidString
+        case .reminder(let id): return "reminder-" + id.uuidString
+        }
+    }
+}
+
+/// How an editable chip edits: a menu whose pick writes at once, or a sheet
+/// of its own, with Cancel and Done.
+enum ChipEditor: Hashable, Sendable {
+    case menu
+    case sheet(SheetEditor)
+}
+
+/// Where VoiceOver goes once a chip's property has changed: that property's
+/// chip, or Add property when the chip went.
+enum ChipFocus: Hashable, Sendable {
+    case chip(SheetChip.Kind)
+    case seed
+}
+
+/// One row of the priority menu: the value stored (nil for none) and its word.
+struct PriorityChoice: Identifiable, Hashable, Sendable {
+    let raw: String?
+    let word: String
+
+    var id: String { word }
 }
 
 /// One property chip: what it says, its symbol, and what VoiceOver says.
@@ -106,6 +187,11 @@ enum StreakDot: Hashable, Sendable {
     /// Missed, still to come, or a day the habit doesn't fall on: all drawn
     /// alike, as a neutral dot.
     case rest
+}
+
+/// The form the streak chip's popover takes: a popover, or a sheet.
+enum StreakPopoverStyle: Hashable, Sendable {
+    case popover, sheet
 }
 
 enum ItemSheetModel {
@@ -356,12 +442,14 @@ enum ItemSheetModel {
     static let tooLongNote = "Too long to edit on the phone."
 
     /// Is `stored` too long for the phone to send back as `kind`? Then the
-    /// field stays text, with `tooLongNote` under it.
+    /// field stays text, with `tooLongNote` under it. Never for the subtask
+    /// field, which starts empty and sends only new text.
     static func tooLongToEdit(_ stored: String?, kind: SheetField) -> Bool {
         let length = stored?.utf16.count ?? 0
         switch kind {
         case .title: return length > EditLimits.outerTitle
         case .notes: return length > EditLimits.outerNotes
+        case .subtask: return false
         }
     }
 
@@ -415,6 +503,8 @@ enum ItemSheetModel {
     /// to nothing clear them. The caller sends the edit through the planner,
     /// which gates it again, and then takes the draft as its new seed, so the
     /// next trigger (a scene change, then `.onDisappear`) sends nothing more.
+    /// Never an edit for the subtask field: its text is a new item, added
+    /// through the planner's `addSubtask`, never a change to one stored.
     static func commit(draft: String, seed: String, stored: String?, kind: SheetField) -> ItemEdit? {
         guard draft != seed else { return nil }
         switch kind {
@@ -427,6 +517,8 @@ enum ItemSheetModel {
             let notes = cleanNotes(draft, limit: growthLimit(cap: EditLimits.notes, stored: stored))
             guard notes != stored else { return nil }
             return ItemEdit.notes(notes)
+        case .subtask:
+            return nil
         }
     }
 
@@ -456,6 +548,97 @@ enum ItemSheetModel {
         return head + clampUTF16(inserted, room) + tail
     }
 
+    // MARK: Add a subtask
+
+    /// The Subtasks section's last row, after a plus, which swaps in the
+    /// subtask field.
+    static let subtaskRowTitle = "Add a subtask"
+
+    /// The subtask field's name to VoiceOver.
+    static let subtaskFieldLabel = "New subtask"
+
+    /// The subtask field's placeholder: the web's ("Add subtask…",
+    /// `EDIT_COPY.subtaskPlaceholder`).
+    static let subtaskPlaceholder = EditCopy.subtaskPlaceholder
+
+    /// What the subtask field does after a change from `previous` to `next`,
+    /// asked, as `titleEntry` is, only of the text put in (`splice`), and only
+    /// while the field has focus, so the page clearing it is never typing:
+    /// 1. **Nothing put in**: a deletion, or the field's own write of a draft
+    ///    this answered ("Eggs\n" → ""). The text as it is, and `lastReturn`
+    ///    kept: the write that follows a typed Return must not reset it, or
+    ///    the `.onSubmit` after it would read an empty field and end entry.
+    /// 2. **An insertion whose only line break is its last character**: a
+    ///    typed Return (an autocorrection may arrive with it), or one line
+    ///    pasted with a break at its end, which is added at once, as a typed
+    ///    Return would be (the web's one-line input keeps that line). The
+    ///    whole line, the break gone, is the subtask (`cleanTitle` within
+    ///    `EditLimits.newTitle`), and the field empties. A Return `.onSubmit`
+    ///    has already taken, on a line that cleans to its title or to
+    ///    nothing, adds nothing; one on a blank line ends entry.
+    /// 3. **A pasted list** (`isBulkPaste`): one subtask per non-empty line,
+    ///    list markers stripped, at most `maxBulkItems` (`capped` past it,
+    ///    lib/bulk-add.ts `splitBulkLinesWithMeta`), each cut to 500 UTF-16
+    ///    units and trimmed. What was typed before stays in the field, where
+    ///    the web's clears it.
+    /// 4. **Anything else** is typing: a pasted line break becomes a space,
+    ///    and growth past `EditLimits.newTitle` is cut from what was put in.
+    static func subtaskEntry(previous: String, next: String, lastReturn: SubtaskReturn) -> SubtaskStep {
+        let change = splice(previous, next)
+        let inserted = change.inserted
+        if inserted.isEmpty {
+            return SubtaskStep(titles: [], draft: next, end: false, capped: false, lastReturn: lastReturn)
+        }
+        if let last = inserted.last, last.isNewline, !inserted.dropLast().contains(where: \.isNewline) {
+            let line = change.head + String(inserted.dropLast()) + change.tail
+            let cleaned = cleanTitle(line, limit: EditLimits.newTitle)
+            if case .fromSubmit(let taken) = lastReturn, cleaned == nil || cleaned == taken {
+                return SubtaskStep(titles: [], draft: "", end: false, capped: false, lastReturn: .none)
+            }
+            guard let title = cleaned else {
+                return SubtaskStep(titles: [], draft: "", end: true, capped: false, lastReturn: .none)
+            }
+            return SubtaskStep(titles: [title], draft: "", end: false, capped: false, lastReturn: .fromText)
+        }
+        if isBulkPaste(inserted) {
+            let split = splitBulkLinesWithMeta(inserted)
+            let titles = split.titles.compactMap { cleanTitle($0, limit: EditLimits.newTitle) }
+            return SubtaskStep(titles: titles, draft: change.head + change.tail, end: false,
+                               capped: split.truncated, lastReturn: .none)
+        }
+        let typed = String(inserted.map { $0.isNewline ? Character(" ") : $0 })
+        return SubtaskStep(titles: [], draft: fitted(change.head, typed, change.tail, limit: EditLimits.newTitle),
+                           end: false, capped: false, lastReturn: .none)
+    }
+
+    /// What the subtask field does on `.onSubmit`, with `draft` as it stands:
+    /// - the line break already added this Return (`.fromText`): nothing,
+    ///   and the next Return is new;
+    /// - a draft that cleans to a title: that subtask, and the field empties;
+    ///   a line break arriving after this, on that line or a blank one, adds
+    ///   nothing (`subtaskEntry`);
+    /// - a blank draft: entry ends.
+    static func subtaskSubmit(draft: String, lastReturn: SubtaskReturn) -> SubtaskStep {
+        if lastReturn == .fromText {
+            return SubtaskStep(titles: [], draft: draft, end: false, capped: false, lastReturn: .none)
+        }
+        if let title = cleanTitle(draft, limit: EditLimits.newTitle) {
+            return SubtaskStep(titles: [title], draft: "", end: false, capped: false, lastReturn: .fromSubmit(title))
+        }
+        return SubtaskStep(titles: [], draft: "", end: true, capped: false, lastReturn: .none)
+    }
+
+    /// What VoiceOver hears once subtasks are added: "Added Eggs", or "Added
+    /// 3 subtasks" for a paste. The new rows land above the field, away from
+    /// VoiceOver's focus, so this is all that says so. Nil when none was.
+    static func subtaskAddedAnnouncement(_ titles: [String]) -> String? {
+        switch titles.count {
+        case 0: return nil
+        case 1: return "Added " + titles[0]
+        default: return "Added \(titles.count) subtasks"
+        }
+    }
+
     // MARK: The day picker
 
     /// Reschedule's picker is titled with the bar's own word for the verb:
@@ -471,8 +654,8 @@ enum ItemSheetModel {
     /// leaves open; the note is the web's own (item-dialog.tsx's picker).
     static let pauseUntilWords = DayPickWords(
         title: "Pause until", confirmVerb: "Pause until",
-        note: "It comes back on the day you pick, on its own. Nothing is lost meanwhile — "
-            + "your streak and history stay exactly as they are.")
+        note: "It comes back on the day you pick, on its own. Nothing is lost meanwhile. "
+            + "Your streak and history stay exactly as they are.")
 
     /// What the banner says when Pause until's day is no longer after today:
     /// the picker was left open across midnight. A pause has to end after
@@ -526,7 +709,7 @@ enum ItemSheetModel {
         }
         if typeCaps.dailyCounts, let times = item.timesPerDay, times > 1 {
             out.append(SheetChip(kind: .timesPerDay, text: "\(times)\u{00D7}", systemImage: "arrow.2.squarepath",
-                                 spoken: "\(times) times a day"))
+                                 spoken: timesSpoken(times)))
         }
         if item.recurs {
             let cadence = cadenceLabel(item)
@@ -618,6 +801,149 @@ enum ItemSheetModel {
         return "\(many): \(first) and \(names.count - 1) more"
     }
 
+    // MARK: Editable chips
+
+    /// How the chip of `kind` edits `item`, or nil when it is read-only (and
+    /// drawn without a chevron). It edits when `canEdit` takes its action,
+    /// which is the planner's `canEdit`: the server lists the action in
+    /// `writes`, and DsulCore's `editAllowed` takes it for the item (a habit
+    /// has no priority, a task no count, a subtask no reminder). No type gate
+    /// lives here:
+    /// - priority and times per day: a menu, whose pick writes at once;
+    /// - the reminder: the Remind sheet;
+    /// - every other chip: read-only, until 2d-2f.
+    static func chipEditor(_ kind: SheetChip.Kind, _ item: SampleItem,
+                           canEdit: (String) -> Bool) -> ChipEditor? {
+        switch kind {
+        case .priority:
+            return canEdit("priority") ? .menu : nil
+        case .timesPerDay:
+            return canEdit("timesPerDay") ? .menu : nil
+        case .reminder:
+            return canEdit("reminder") ? .sheet(.reminder(item.id)) : nil
+        case .date, .time, .repeats, .project, .routine, .season:
+            return nil
+        }
+    }
+
+    /// What "+ Add property" offers for `item`, in chip order: each of
+    /// priority, times per day and the reminder that `shown` (`chips(…)`'s
+    /// answer) has no chip for, and whose chip would edit (`chipEditor`).
+    /// Unset means no chip, so a habit counted once a day (part 1 shows its
+    /// count only above 1) is offered Times per day, and a stored priority
+    /// the chips can't name is offered Priority. Never drawn as dimmed
+    /// placeholder chips (Q2 a).
+    static func unsetProperties(_ item: SampleItem, shown: [SheetChip],
+                                canEdit: (String) -> Bool) -> [SheetChip.Kind] {
+        let drawn = Set(shown.map(\.kind))
+        var out: [SheetChip.Kind] = []
+        for kind in [SheetChip.Kind.priority, .timesPerDay, .reminder] where !drawn.contains(kind) {
+            if chipEditor(kind, item, canEdit: canEdit) != nil { out.append(kind) }
+        }
+        return out
+    }
+
+    /// Where VoiceOver goes once `kind`'s property has changed (a pick, the
+    /// Remind sheet closing): its chip while the page, as drawn after the
+    /// change (`shown`), has one, else Add property, where the emptied
+    /// property went. Left alone, iOS hands focus back to the menu's or the
+    /// sheet's source, which may have gone.
+    static func voiceOverTarget(after kind: SheetChip.Kind, shown: [SheetChip]) -> ChipFocus {
+        return shown.contains(where: { $0.kind == kind }) ? .chip(kind) : .seed
+    }
+
+    /// An editable chip's hint to VoiceOver, after its words and "button":
+    /// what a tap changes. Nil for a chip that doesn't edit.
+    static func chipHint(_ kind: SheetChip.Kind) -> String? {
+        switch kind {
+        case .priority: return "Changes the priority"
+        case .timesPerDay: return "Changes how many times a day"
+        case .reminder: return "Changes the reminder"
+        case .date, .time, .repeats, .project, .routine, .season: return nil
+        }
+    }
+
+    // MARK: Add property
+
+    /// The words beside the seed's plus: "Add property" while the row has
+    /// nothing else (no chip, no streak chip), as the web's seed reads; nil,
+    /// a bare plus, once it has, since the chips beside it say what it is for
+    /// (item-dialog.tsx's clearing field).
+    static func seedLabel(rowHasOthers: Bool) -> String? {
+        return rowHasOthers ? nil : "Add property"
+    }
+
+    /// What VoiceOver calls the seed, plus or words.
+    static let seedSpoken = "Add property"
+
+    /// A property's entry in the seed: the web seed's label, with an ellipsis
+    /// for one that opens a sheet rather than a submenu ("Remind…"). 2c's seed
+    /// holds the first three alone (`unsetProperties`); the rest carry the
+    /// words design §3.7 gives their PRs (Date, Time…, Repeat, Project,
+    /// Routine, Season).
+    static func seedEntry(_ kind: SheetChip.Kind) -> String {
+        switch kind {
+        case .priority: return "Priority"
+        case .timesPerDay: return "Times per day"
+        case .reminder: return "Remind\u{2026}"
+        case .date: return "Date"
+        case .time: return "Time\u{2026}"
+        case .repeats: return "Repeat"
+        case .project: return "Project"
+        case .routine: return "Routine"
+        case .season: return "Season"
+        }
+    }
+
+    /// A property's symbol in the seed: its chip's own (`chips`), and for a
+    /// project, whose chip wears a colour dot instead, a folder.
+    static func seedSymbol(_ kind: SheetChip.Kind) -> String {
+        switch kind {
+        case .priority: return "flag"
+        case .timesPerDay: return "arrow.2.squarepath"
+        case .reminder: return "bell"
+        case .date: return "calendar"
+        case .time: return "clock"
+        case .repeats: return "repeat"
+        case .project: return "folder"
+        case .routine: return "checklist"
+        case .season: return "leaf"
+        }
+    }
+
+    // MARK: The chips' menus
+
+    /// The priority menu, the web's `PRIORITY_LABELS` in its order: None
+    /// (nil, which clears it), Low, Medium, High. The seed's submenu takes
+    /// the last three, since None is what an unset priority already is.
+    static let priorityChoices: [PriorityChoice] = [
+        PriorityChoice(raw: nil, word: "None"),
+        PriorityChoice(raw: "low", word: "Low"),
+        PriorityChoice(raw: "medium", word: "Medium"),
+        PriorityChoice(raw: "high", word: "High"),
+    ]
+
+    /// The times per day menu: 1 to `EditLimits.timesPerDayMax`, the web
+    /// chip's list, then a stored count above that, so it shows checked
+    /// (picking it changes nothing). The seed's submenu takes 2 and up, since
+    /// a habit with no count already reads as 1.
+    static func timesChoices(stored: Int?) -> [Int] {
+        let choices = Array(1...EditLimits.timesPerDayMax)
+        guard let stored, stored > EditLimits.timesPerDayMax else { return choices }
+        return choices + [stored]
+    }
+
+    /// "3× a day", as the web's times chip lists them.
+    static func timesWord(_ n: Int) -> String {
+        return "\(n)\u{00D7} a day"
+    }
+
+    /// "3 times a day", or "1 time a day": a count as VoiceOver hears it, on
+    /// the chip and in its menu.
+    static func timesSpoken(_ n: Int) -> String {
+        return n == 1 ? "1 time a day" : "\(n) times a day"
+    }
+
     // MARK: Streak
 
     /// The streak chip's seven dots: THIS week (the week holding wall-clock
@@ -643,4 +969,208 @@ enum ItemSheetModel {
         if skipped > 0 { text += ", \(skipped) skipped" }
         return text
     }
+
+    /// The streak chip's hint, now that it is a button: what a tap shows,
+    /// and Reset streak when the popover offers it.
+    static func streakHint(resetOffered: Bool) -> String {
+        return resetOffered ? "Shows this week, and Reset streak" : "Shows this week"
+    }
+
+    /// The popover's line under the week: the web's streak flame tooltip
+    /// (DsulCore `streakRunText`, lib/item-edit.ts): "41 days in a row", or
+    /// "No streak yet".
+    static func streakRun(_ streak: Int) -> String {
+        return streakRunText(streak)
+    }
+
+    /// Reset streak's confirm title, in sentence case as `deleteConfirmTitle`
+    /// is, matching the verb's own label ("Reset streak", which its buttons
+    /// carry); the web's dialog says "Reset Streak?".
+    static let resetConfirmTitle = "Reset streak?"
+
+    /// Reset streak's confirm message: the web's
+    /// (`EDIT_COPY.resetStreakMessage`), which says the days already ticked
+    /// stay ticked.
+    static let resetConfirmMessage = EditCopy.resetStreakMessage
+
+    /// The popover's form: a sheet at the accessibility text sizes, where a
+    /// popover would crop the week and Reset, else a popover. Asked by the
+    /// popover itself, since an adaptation applies only to presented content.
+    static func streakPopoverStyle(accessibilitySize: Bool) -> StreakPopoverStyle {
+        return accessibilitySize ? .sheet : .popover
+    }
+
+    // MARK: The Remind sheet
+
+    /// The wheel's calendar: Gregorian, in GMT. The wheel shows and sets a
+    /// time of day alone, read off a date in this calendar, so "08:00" is 8:00
+    /// on the wheel whatever the phone's zone and the stored time never shifts
+    /// by an offset, as the web's time input has no zone either. The hour
+    /// cycle is the view's (`Locale.Components` isn't promised on Linux).
+    static let reminderCalendar: Calendar = {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "GMT")!
+        return calendar
+    }()
+
+    /// "HH:mm" as the wheel's date: 1970-01-01 at that time in
+    /// `reminderCalendar`. Nil unless it is a 24-hour "HH:mm", the server's
+    /// rule (lib/app-api.ts `TimeStrSchema`), so "8:00" and "24:00" are nil.
+    static func reminderDate(_ hhmm: String) -> Date? {
+        guard let minutes = clockMinutes(hhmm) else { return nil }
+        return Date(timeIntervalSince1970: TimeInterval(minutes * 60))
+    }
+
+    /// The wheel's date as "HH:mm": its hour and minute in `reminderCalendar`,
+    /// whatever day it is on.
+    static func reminderClock(_ date: Date) -> String {
+        let parts = reminderCalendar.dateComponents([.hour, .minute], from: date)
+        return minutesToTime((parts.hour ?? 0) * 60 + (parts.minute ?? 0))
+    }
+
+    /// A 24-hour "HH:mm" as minutes after midnight (`TimeStrSchema`: two
+    /// digits, a colon, two digits, before 24:00); nil for anything else.
+    private static func clockMinutes(_ hhmm: String) -> Int? {
+        let bytes = Array(hhmm.utf8)
+        guard bytes.count == 5, bytes[2] == UInt8(ascii: ":") else { return nil }
+        let digits = [bytes[0], bytes[1], bytes[3], bytes[4]].map { Int($0) - Int(UInt8(ascii: "0")) }
+        guard digits.allSatisfy({ (0...9).contains($0) }) else { return nil }
+        let hour = digits[0] * 10 + digits[1]
+        let minute = digits[2] * 10 + digits[3]
+        guard hour < 24, minute < 60 else { return nil }
+        return hour * 60 + minute
+    }
+
+    /// The stored reminder time, when it is one the wheel can show; nil for
+    /// no reminder ("" included).
+    static func reminderSeedTime(_ item: SampleItem) -> String? {
+        guard let time = item.reminderTime, clockMinutes(time) != nil else { return nil }
+        return time
+    }
+
+    /// Where a new reminder's wheel starts: the item's own start time when it
+    /// has one, else 9:00 am (open question 2).
+    static func reminderStartTime(_ item: SampleItem) -> String {
+        if let start = item.startTime, clockMinutes(start) != nil { return start }
+        return "09:00"
+    }
+
+    /// What the wheel shows as the sheet opens: the stored time, or, for a
+    /// new reminder (Remind… in Add property), where a new one starts. The
+    /// sheet always opens on a time, with no "Add a time" step first: the
+    /// chip exists only for an item with a reminder, and adding a property
+    /// opens its picker straight away (Kirby, open question 1).
+    static func reminderOpeningTime(_ item: SampleItem) -> String {
+        return reminderSeedTime(item) ?? reminderStartTime(item)
+    }
+
+    /// What Right after holds after a change from `previous` to `next`, asked,
+    /// as `titleEntry` is, only of the text put in: a line break in it (a
+    /// paste) becomes a space, as the web's one-line input reads it, and
+    /// growth past `limit` (`growthLimit` of the stored words) is cut from it,
+    /// by whole characters. What was already there is never rewritten.
+    static func anchorEntry(previous: String, next: String, limit: Int) -> String {
+        let change = splice(previous, next)
+        let typed = String(change.inserted.map { $0.isNewline ? Character(" ") : $0 })
+        return fitted(change.head, typed, change.tail, limit: limit)
+    }
+
+    /// Are the stored cue words longer than one request may carry
+    /// (`EditLimits.outerAnchor`)? Then Right after is text, with
+    /// `tooLongNote` under it, and the words are never sent.
+    static func anchorTooLong(_ stored: String?) -> Bool {
+        return (stored?.utf16.count ?? 0) > EditLimits.outerAnchor
+    }
+
+    /// What Done sends, if anything, or No reminder with `timeDraft` nil:
+    /// 1. nothing while neither the time nor the words moved from their seeds;
+    /// 2. no time: off, both columns cleared, unless `stored` has no reminder
+    ///    to turn off;
+    /// 3. the words only when they moved from their seed (the seed rule: words
+    ///    never typed are never sent, so a time-only change keeps whatever is
+    ///    stored, words typed on the web meanwhile included), cleaned
+    ///    (`cleanAnchor`) within `growthLimit` of the stored words, and
+    ///    `.clear` when they clean to nothing;
+    /// 4. the time the wheel shows when it moved, else the time stored now:
+    ///    the time is always sent, so when only the words changed, sending the
+    ///    time the sheet opened with would put back a time changed on the web
+    ///    while the sheet was up. When none is stored now (the web turned the
+    ///    reminder off meanwhile), the edit is off, which step 5 drops;
+    /// 5. nothing when the edit leaves `stored` as it is (DsulCore `editing`).
+    /// `timeSeed` is the stored time as the sheet opened (`reminderSeedTime`),
+    /// nil for a new reminder, so Done there saves the time the wheel shows,
+    /// touched or not. `stored` is the item read when Done is tapped, so a
+    /// fetch that landed while the sheet was up is what a change is measured
+    /// against.
+    static func reminderCommit(timeDraft: String?, timeSeed: String?, anchorDraft: String, anchorSeed: String,
+                               stored: SampleItem) -> ItemEdit? {
+        if timeDraft == timeSeed && anchorDraft == anchorSeed { return nil }
+        guard let drafted = timeDraft else {
+            return (stored.reminderTime ?? "").isEmpty ? nil : ItemEdit.reminder(time: nil, anchor: nil)
+        }
+        let anchor: ColumnWrite?
+        if anchorDraft == anchorSeed {
+            anchor = nil
+        } else {
+            let limit = growthLimit(cap: EditLimits.anchor, stored: stored.reminderAnchor)
+            anchor = cleanAnchor(anchorDraft, limit: limit).map { ColumnWrite.set($0) } ?? ColumnWrite.clear
+        }
+        let time = drafted != timeSeed ? drafted : reminderSeedTime(stored)
+        let edit = ItemEdit.reminder(time: time, anchor: time == nil ? nil : anchor)
+        return editing(stored, edit) == stored ? nil : edit
+    }
+
+    /// The lines under the Remind sheet's fields saying a reminder can't fire,
+    /// in this order: Habit reminders off on the web (`remindersEnabled`
+    /// false; unknown, from an older server or a database behind on its
+    /// migrations, says nothing), and no stored time zone (the reminder scan
+    /// skips an account without one). Signed in only: the sample has neither,
+    /// and its reminders were never going to fire (design Q9 a).
+    static func reminderSettingsLines(remindersEnabled: Bool?, hasStoredZone: Bool, live: Bool) -> [String] {
+        guard live else { return [] }
+        var lines: [String] = []
+        if remindersEnabled == false { lines.append(remindersOffLine) }
+        if !hasStoredZone { lines.append(noZoneLine) }
+        return lines
+    }
+
+    /// The Remind sheet's title, the web's ("Remind", item-dialog.tsx).
+    static let reminderTitle = "Remind"
+
+    /// The time's section, the web's ("Nudge me at").
+    static let reminderTimeHeader = "Nudge me at"
+
+    /// The wheel's name to VoiceOver; the wheel draws no label.
+    static let reminderTimeLabel = "Time"
+
+    /// The cue words' section, the web's ("Right after").
+    static let reminderAnchorHeader = "Right after"
+
+    /// Right after's placeholder, the web's (`EDIT_COPY`).
+    static let reminderAnchorPlaceholder = EditCopy.reminderAnchorPlaceholder
+
+    /// Under Right after: what the words are for, the web's (`EDIT_COPY`).
+    static let reminderAnchorHint = EditCopy.reminderAnchorHint
+
+    /// Under the time, for a dated type with no date (DsulCore
+    /// `reminderNeedsDate`), the web's (`EDIT_COPY`).
+    static let reminderNeedsDateNote = EditCopy.reminderNeedsDate
+
+    /// Turns the reminder off, the web's ("No reminder").
+    static let noReminder = "No reminder"
+
+    /// Habit reminders are off. The switch lives on the web alone (Settings,
+    /// Rituals, Habit reminders), so the line says where; the phone can't
+    /// turn it on.
+    static let remindersOffLine =
+        "Habit reminders are off in dsul's settings on the web, under Rituals, so this won't fire."
+
+    /// No stored time zone. The phone reads `user_settings.timezone` and
+    /// never writes it; the web does, when it is opened.
+    static let noZoneLine = "Reminders need your time zone, which dsul picks up when you open it on the web."
+
+    /// Cancel on a changed sheet asks this, with Discard and Keep editing.
+    static let discardTitle = "Discard changes?"
+    static let discardAction = "Discard"
+    static let keepEditing = "Keep editing"
 }

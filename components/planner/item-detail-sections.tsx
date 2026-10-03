@@ -19,7 +19,8 @@ import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { agentStatusView } from '@/lib/agent-status';
 import { BandLabel } from '@/components/planner/item-bands';
-import { isBulkPaste, MAX_BULK_ITEMS, splitBulkLinesWithMeta } from '@/lib/bulk-add';
+import { isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
+import { EDIT_COPY } from '@/lib/item-edit';
 import { toast } from 'sonner';
 import type { Item, TaskItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -153,7 +154,7 @@ function SubtasksSection({ item }: { item: Item }) {
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
-          placeholder="Add subtask…"
+          placeholder={EDIT_COPY.subtaskPlaceholder}
           data-sub-input
           data-testid="subtask-add-input"
           className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-sm outline-none"
@@ -178,7 +179,7 @@ function SubtasksSection({ item }: { item: Item }) {
             // The parser's contract: a capped tail is surfaced, never silent.
             // This surface has no dialog to say it in, so the toast does.
             if (truncated) {
-              toast(`Added the first ${MAX_BULK_ITEMS} subtasks. The paste had more.`);
+              toast(EDIT_COPY.subtaskPasteCapped);
             }
             setTitle('');
           }}

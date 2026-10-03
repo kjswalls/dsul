@@ -85,6 +85,25 @@ describe('theme palettes — CSS contract', () => {
   });
 });
 
+describe('theme palettes — Settings preview twins', () => {
+  it('every palette block also matches a preview root tinted with it', () => {
+    for (const p of THEME_PALETTES) {
+      if (p.value === 'default') continue;
+      expect(globalsCss, `${p.value} light twin`).toContain(
+        `[data-theme-preview][data-preview-tint='${p.value}']:not(.dark),\n:root[data-theme='${p.value}']:not(.dark) {`
+      );
+      expect(globalsCss, `${p.value} dark twin`).toContain(
+        `[data-theme-preview][data-preview-tint='${p.value}'].dark,\n:root[data-theme='${p.value}'].dark {`
+      );
+    }
+  });
+
+  it('every palette has a dot colour for the Tint picker', () => {
+    for (const p of THEME_PALETTES) expect(p.swatch, p.value).toMatch(/^#[0-9a-f]{6}$/);
+    expect(new Set(THEME_PALETTES.map((p) => p.swatch)).size).toBe(THEME_PALETTES.length);
+  });
+});
+
 describe('theme palettes — pre-hydration script contract', () => {
   it('the layout inline script reads the exported storage key', () => {
     expect(PALETTE_STORAGE_KEY).toBe('dsul-palette');

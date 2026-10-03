@@ -208,7 +208,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "task with repeat none",
@@ -224,7 +225,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": true
     },
     {
       "name": "recurring task",
@@ -241,7 +243,8 @@
       "isSkippable": true,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "subtask",
@@ -257,7 +260,8 @@
       "isSkippable": false,
       "isPausable": false,
       "isRemindable": false,
-      "isCollectible": false
+      "isCollectible": false,
+      "reminderNeedsDate": true
     },
     {
       "name": "recurring subtask",
@@ -274,7 +278,8 @@
       "isSkippable": true,
       "isPausable": false,
       "isRemindable": false,
-      "isCollectible": false
+      "isCollectible": false,
+      "reminderNeedsDate": true
     },
     {
       "name": "habit",
@@ -292,7 +297,8 @@
       "isSkippable": true,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "habit with repeat none",
@@ -310,7 +316,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "habit with no repeat frequency",
@@ -327,7 +334,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "custom one-off",
@@ -343,7 +351,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": true
     },
     {
       "name": "custom recurring",
@@ -360,7 +369,8 @@
       "isSkippable": true,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": true
     },
     {
       "name": "custom subtask",
@@ -377,7 +387,8 @@
       "isSkippable": false,
       "isPausable": false,
       "isRemindable": false,
-      "isCollectible": false
+      "isCollectible": false,
+      "reminderNeedsDate": true
     }
   ],
   "hydrated": [

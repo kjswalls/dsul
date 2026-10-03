@@ -342,23 +342,40 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
     public var weekStartDay: WeekStartDay
     /// 12h or 24h clock. 12h, the web's default, when missing or unknown.
     public var timeFormat: TimeFormat
+    /// The Streaks extension (lib/extension-registry.ts `EXT_STREAKS`, read
+    /// through `resolveEnabled`): off hides the sheet's streak chip and the
+    /// flame on Today's rows, and Reset streak is never offered. True, the
+    /// extension's default, when missing (a server older than the field) or
+    /// not a bool.
+    public var streaksEnabled: Bool
+    /// Habit reminders (the web's Settings, Rituals; `habit_reminders_enabled`,
+    /// migration 032), the switch that lets any reminder through: false when
+    /// off or never set, as the reminder scan reads it. Nil is unknown: a
+    /// server that couldn't read the column sends null, and one older than the
+    /// field sends nothing, as does a value that isn't a bool. Unknown shows no
+    /// line in the Remind sheet, so the phone never says "off" on a guess.
+    public var remindersEnabled: Bool?
 
     public init(
         timezone: String? = nil,
         showCompletedTasks: Bool = true,
         appIcon: AppIcon? = nil,
         weekStartDay: WeekStartDay = .sunday,
-        timeFormat: TimeFormat = .twelveHour
+        timeFormat: TimeFormat = .twelveHour,
+        streaksEnabled: Bool = true,
+        remindersEnabled: Bool? = nil
     ) {
         self.timezone = timezone
         self.showCompletedTasks = showCompletedTasks
         self.appIcon = appIcon
         self.weekStartDay = weekStartDay
         self.timeFormat = timeFormat
+        self.streaksEnabled = streaksEnabled
+        self.remindersEnabled = remindersEnabled
     }
 
     enum CodingKeys: String, CodingKey {
-        case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat
+        case timezone, showCompletedTasks, appIcon, weekStartDay, timeFormat, streaksEnabled, remindersEnabled
     }
 
     public init(from decoder: Decoder) throws {
@@ -368,6 +385,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         self.appIcon = AppIcon(stored: c.lenientString(.appIcon))
         self.weekStartDay = c.lenientString(.weekStartDay).flatMap { WeekStartDay(rawValue: $0) } ?? .sunday
         self.timeFormat = c.lenientString(.timeFormat).flatMap { TimeFormat(rawValue: $0) } ?? .twelveHour
+        self.streaksEnabled = c.lenientBool(.streaksEnabled) ?? true
+        self.remindersEnabled = c.lenientBool(.remindersEnabled)
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -377,6 +396,8 @@ public struct PlannerSettings: Codable, Sendable, Hashable {
         try c.encodeIfPresent(appIcon?.rawValue, forKey: .appIcon)
         try c.encode(weekStartDay.rawValue, forKey: .weekStartDay)
         try c.encode(timeFormat.rawValue, forKey: .timeFormat)
+        try c.encode(streaksEnabled, forKey: .streaksEnabled)
+        try c.encodeIfPresent(remindersEnabled, forKey: .remindersEnabled)
     }
 }
 

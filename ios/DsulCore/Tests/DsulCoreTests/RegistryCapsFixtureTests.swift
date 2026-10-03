@@ -63,6 +63,8 @@ private struct ItemCase: Decodable, Sendable {
     let isPausable: Bool
     let isRemindable: Bool
     let isCollectible: Bool
+    /// lib/bulk-edit.ts `reminderNeedsDate`.
+    let reminderNeedsDate: Bool
 }
 
 private struct Fixture: Decodable, Sendable {
@@ -157,7 +159,23 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(isPausable(c.item) == c.isPausable, "\(c.name): isPausable")
             #expect(isRemindable(c.item) == c.isRemindable, "\(c.name): isRemindable")
             #expect(isCollectible(c.item) == c.isCollectible, "\(c.name): isCollectible")
+            let itemCaps = caps(c.item.typeName)
+            #expect(isRemindable(c.item, caps: itemCaps) == c.isRemindable, "\(c.name): isRemindable(caps:)")
+            #expect(reminderNeedsDate(c.item, caps: itemCaps) == c.reminderNeedsDate, "\(c.name): reminderNeedsDate")
         }
+    }
+
+    /// A reminder needs a day only on a dated type with none; an empty
+    /// date is none, as JavaScript's truthiness reads it. A habit never
+    /// needs one.
+    @Test func aReminderNeedsADateOnlyOnADatedTypeWithout() {
+        let id = UUID(uuidString: "00000000-0000-4000-8000-000000000001")!
+        #expect(reminderNeedsDate(Item(id: id, title: "Call the bank"), caps: .task))
+        #expect(reminderNeedsDate(Item(id: id, title: "Call the bank", startDate: ""), caps: .task))
+        #expect(!reminderNeedsDate(Item(id: id, title: "Call the bank", startDate: "2026-10-01"), caps: .task))
+        #expect(reminderNeedsDate(Item(id: id, type: "custom", customType: "errand", title: "Stamps"),
+                                  caps: caps("errand")))
+        #expect(!reminderNeedsDate(Item(id: id, type: "habit", title: "Meds"), caps: .habit))
     }
 
     /// A custom label capitalises the first letter and nothing else, where

@@ -6,13 +6,21 @@ import Foundation
 //   capability gate (`editAllowed`), its growth-only caps (`EditLimits`,
 //   `growthLimit`, `withinGrowthLimit`'s arithmetic), and `editPatch` applied
 //   to the item (`editing`), with `cleanNotes` and `String.prototype.trim`
-//   (`jsTrim`) underneath;
+//   (`jsTrim`) underneath. From 2c that covers the chips' three edits too:
+//   a priority (`no_priority` without the field), a habit's times a day
+//   (`no_count` without daily counts, and none reads as 1), and a reminder
+//   (`not_remindable` on a subtask), whose two columns are written together
+//   by `reminderPatch`, the dialog's own rule;
 // - lib/planner-store.ts `deleteTask` / `deleteHabit` (`deleting`): the item
 //   and, for anything but a habit, its live subtasks, which is also the child
 //   pass lib/app-api.ts `del` makes on the server, in the same order;
+// - lib/planner-store.ts `addTask({title, parentItemId})`, as the Subtasks
+//   section calls it (`subtaskItem`), which is also the row lib/app-api.ts
+//   `addSubtask` inserts; and `resetHabitStreak` (`resettingStreak`), which
+//   lib/item-edit.ts `resetStreakPatch` writes on the server;
 // - the phone's own cleaning before it sends (`cleanTitle`, `cleanNotes`,
-//   `clampUTF16`), which keeps a body inside what the server takes, so a field
-//   never sends a request the route refuses.
+//   `cleanAnchor`, `clampUTF16`), which keeps a body inside what the server
+//   takes, so a field never sends a request the route refuses.
 // Keep in step: a change there without the same change here is drift, and the
 // phone shows a state the server never wrote until the next fetch replaces it.
 // Checked against the web by EditWritesFixtureTests
@@ -21,9 +29,10 @@ import Foundation
 //
 // Text is measured in UTF-16 units, JavaScript's `length`, which is what every
 // cap on the server counts. What the phone SENDS is the intent (POST
-// /api/app/items/:id `title`, `notes`, `delete`, built by ItemWriteBody.swift),
-// never these items. `Place` and `reinserting` are the phone's alone: they put
-// a deleted item back where it was when its delete fails.
+// /api/app/items/:id `title`, `notes`, `delete`, `addSubtask`, `resetStreak`,
+// `priority`, `timesPerDay`, `reminder`, built by ItemWriteBody.swift), never
+// these items. `Place` and `reinserting` are the phone's alone: they put a
+// deleted item back where it was when its delete fails.
 
 /// One typed edit, as the phone sends it (lib/item-edit.ts `ItemEdit`). Each
 /// is its own server action, so a server that doesn't list one in `writes`
@@ -33,27 +42,49 @@ public enum ItemEdit: Sendable, Hashable {
     case title(String)
     /// The new notes, already cleaned (`cleanNotes`); nil clears them.
     case notes(String?)
+    /// "low", "medium" or "high"; nil clears it.
+    case priority(String?)
+    /// A habit's times a day, 1...`EditLimits.timesPerDayMax`.
+    case timesPerDay(Int)
+    /// The reminder. `time` is "HH:mm", or nil to turn the reminder off,
+    /// which clears both columns whatever `anchor` says. `anchor` is the cue
+    /// words: nil keeps the stored ones and is left off the wire (the seed
+    /// rule: words never typed are never sent); `.set` sends the cleaned
+    /// words (`cleanAnchor`); `.clear` sends null.
+    case reminder(time: String?, anchor: ColumnWrite?)
 
     /// The server's `action` name, which is also what `writes` lists.
     public var action: String {
         switch self {
         case .title: "title"
         case .notes: "notes"
+        case .priority: "priority"
+        case .timesPerDay: "timesPerDay"
+        case .reminder: "reminder"
         }
     }
 }
 
-/// lib/item-edit.ts `EDIT_LIMITS` and `OUTER_LIMITS`, in UTF-16 units, which
+/// lib/item-edit.ts `EDIT_LIMITS`, `OUTER_LIMITS` and `NEW_TITLE_LIMIT`, the
+/// text caps in UTF-16 units, and `TIMES_PER_DAY_MAX`, a count, which
 /// edit-writes.json's `limits` pins. The first are growth-only caps: nothing
 /// else in dsul caps these fields, so stored text may already be longer, and
 /// it may stay as long but never grow (`growthLimit`). The outer ones are what
 /// one request may carry at all; a stored value past them is too long to edit
-/// on the phone.
+/// on the phone. `newTitle` is the plain cap on a title that has nothing
+/// stored to grow from: a new subtask, and a capture. `timesPerDayMax` is the
+/// most a habit's times a day may be set to, the last of the web chip's
+/// "1× a day" to "5× a day".
 public enum EditLimits {
     public static let title = 500
     public static let notes = 50_000
+    /// A reminder's cue words ("I pour my coffee").
+    public static let anchor = 500
     public static let outerTitle = 10_000
     public static let outerNotes = 200_000
+    public static let outerAnchor = 10_000
+    public static let newTitle = 500
+    public static let timesPerDayMax = 5
 }
 
 /// The longest a field may grow to: `cap`, or what is stored when that is
@@ -64,9 +95,10 @@ public func growthLimit(cap: Int, stored: String?) -> Int {
 }
 
 /// What `String.prototype.trim` strips: ECMAScript's WhiteSpace and
-/// LineTerminator. Not Foundation's `.whitespacesAndNewlines`, which keeps
+/// LineTerminator, which is also a JavaScript regex's `\s` (BulkLines.swift
+/// reads it there). Not Foundation's `.whitespacesAndNewlines`, which keeps
 /// U+FEFF and strips U+0085.
-private func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
+func isJSWhitespace(_ scalar: Unicode.Scalar) -> Bool {
     switch scalar.value {
     case 0x0009...0x000D, 0x0020, 0x00A0, 0x1680, 0x2000...0x200A,
          0x2028, 0x2029, 0x202F, 0x205F, 0x3000, 0xFEFF:
@@ -105,6 +137,15 @@ public func clampUTF16(_ s: String, _ max: Int) -> String {
     return String(s[..<end])
 }
 
+/// One line of text as the phone sends it: every newline a space, trimmed,
+/// cut to `limit` and trimmed again, so a cut can't leave a trailing space for
+/// the server to strip. Nil when nothing is left.
+private func cleanLine(_ raw: String, limit: Int) -> String? {
+    let oneLine = String(raw.map { $0.isNewline ? Character(" ") : $0 })
+    let line = jsTrim(clampUTF16(jsTrim(oneLine), limit))
+    return line.isEmpty ? nil : line
+}
+
 /// A typed or pasted title as the phone sends it: every newline a space (the
 /// web's title is one line), trimmed, cut to `limit` and trimmed again, so a
 /// cut can't leave a trailing space for the server to strip. Nil when nothing
@@ -112,9 +153,18 @@ public func clampUTF16(_ s: String, _ max: Int) -> String {
 /// `growthLimit(cap: EditLimits.title, stored:)` of the stored title, which
 /// is what the route measures against.
 public func cleanTitle(_ raw: String, limit: Int) -> String? {
-    let oneLine = String(raw.map { $0.isNewline ? Character(" ") : $0 })
-    let title = jsTrim(clampUTF16(jsTrim(oneLine), limit))
-    return title.isEmpty ? nil : title
+    return cleanLine(raw, limit: limit)
+}
+
+/// A reminder's cue words as the phone sends them: the title's rule, since
+/// the web's Right after field is one line too (an `<input>`): every newline
+/// a space, trimmed, cut to `limit` and trimmed again. Nil when nothing is
+/// left, which the Remind sheet sends as `.clear` (the dialog's
+/// `reminderPatch` writes blank words as none). Pass
+/// `growthLimit(cap: EditLimits.anchor, stored:)` of the stored words, which
+/// is what the route measures against.
+public func cleanAnchor(_ raw: String, limit: Int) -> String? {
+    return cleanLine(raw, limit: limit)
 }
 
 /// Notes as the phone sends them: lib/item-edit.ts `cleanNotes` (trimmed, and
@@ -127,17 +177,40 @@ public func cleanNotes(_ raw: String, limit: Int) -> String? {
     return notes.isEmpty ? nil : notes
 }
 
-/// lib/item-edit.ts `editRefusal`'s type gate: may `item`'s type take `edit`
-/// at all? A title is every type's, a subtask's included; notes are a type's
-/// only when its schema has them (`caps.hasNotes`, the server's `no_notes`).
+/// lib/item-edit.ts `editRefusal`'s type gate, by the edit's action name: may
+/// `item`'s type take that edit at all? Keyed by name so a chip can ask before
+/// it has a value to send.
+/// - `title`: every type's, a subtask's included.
+/// - `notes`: a type's only when its schema has them (`caps.hasNotes`, the
+///   server's `no_notes`).
+/// - `priority`: `caps.hasPriority` (`no_priority`), so never a habit's, and a
+///   subtask's too.
+/// - `timesPerDay`: `caps.dailyCounts` (`no_count`), so a habit's alone.
+/// - `reminder`: `isRemindable(_:caps:)` (`not_remindable`), so never a
+///   subtask's.
+/// - any other name: false. Delete, Add a subtask and Reset streak have gates
+///   of their own, and an action the phone doesn't know is never sent.
 /// The growth caps are the field's to keep (`growthLimit`), not this gate's.
-public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool {
-    switch edit {
-    case .title:
+public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
+    switch action {
+    case "title":
         return true
-    case .notes:
+    case "notes":
         return caps.hasNotes
+    case "priority":
+        return caps.hasPriority
+    case "timesPerDay":
+        return caps.dailyCounts
+    case "reminder":
+        return isRemindable(item, caps: caps)
+    default:
+        return false
     }
+}
+
+/// `editAllowed(action:on:caps:)` for `edit`'s own action.
+public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool {
+    return editAllowed(action: edit.action, on: item, caps: caps)
 }
 
 /// The item after `edit`: lib/item-edit.ts `editPatch` applied, which is what
@@ -147,6 +220,14 @@ public func editAllowed(_ edit: ItemEdit, on item: Item, caps: ItemCaps) -> Bool
 /// - title: trimmed (the route's schema trims). One that trims to nothing is
 ///   refused there, so the item is unchanged.
 /// - notes: `cleanNotes`, so blank or nil clears them.
+/// - priority: set, or cleared by nil.
+/// - timesPerDay: set, except that a habit with none stored already reads as
+///   1 (the dialog seeds it so), so 1 there changes nothing.
+/// - reminder: `reminderPatch`. No time clears the time and the words
+///   together, whatever `anchor` says. A time sets it, and the words are
+///   `anchor`'s when it has one, else the stored ones, trimmed either way,
+///   and none when blank: a time sent alone keeps the words, as the dialog's
+///   draft holds them and writes both.
 /// No cap is applied: the server refuses growth rather than cutting it, and
 /// the field never sends it.
 public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
@@ -159,7 +240,53 @@ public func editing(_ item: Item, _ edit: ItemEdit) -> Item {
     case .notes(let raw):
         let notes = jsTrim(raw ?? "")
         next.notes = notes.isEmpty ? nil : notes
+    case .priority(let priority):
+        next.priority = priority
+    case .timesPerDay(let count):
+        guard (item.timesPerDay ?? 1) != count else { return item }
+        next.timesPerDay = count
+    case .reminder(let time, let anchor):
+        if let time {
+            let words = jsTrim(anchor.map { $0.value ?? "" } ?? item.reminderAnchor ?? "")
+            next.reminderTime = time
+            next.reminderAnchor = words.isEmpty ? nil : words
+        } else {
+            next.reminderTime = nil
+            next.reminderAnchor = nil
+        }
     }
+    return next
+}
+
+// MARK: - Add a subtask, Reset streak
+
+/// lib/planner-store.ts `addTask({ title, parentItemId })`, as the Subtasks
+/// section calls it (components/planner/item-detail-sections.tsx `addSubtask`),
+/// which is also the row lib/app-api.ts `addSubtask` inserts: a `task` whatever
+/// the parent's type (a custom parent's subtask included), pending, unscheduled
+/// (no bucket, so `isScheduled` is false), at `order`, naming its parent by the
+/// lowercase id Postgres stores. Nothing else is set, and nothing is inherited
+/// from the parent: no date, no project, no priority. `title` is already
+/// cleaned (`cleanTitle` with `EditLimits.newTitle`). `order` is the web's
+/// `get().tasks.length`, the count of task-like items that aren't subtasks
+/// (`project(items).tasks.count`); the server counts the same rows
+/// (`nextTaskOrder`).
+public func subtaskItem(id: UUID, title: String, parent: UUID, order: Int) -> Item {
+    return Item(
+        id: id, type: "task", title: title, status: "pending",
+        parentItemId: parent.uuidString.lowercased(), order: order, isScheduled: false
+    )
+}
+
+/// lib/planner-store.ts `resetHabitStreak`: the streak counter to 0 and nothing
+/// else. `completedDates` and `dailyCounts` are completion history and survive
+/// it, as the confirm's words promise. A streak already 0 (or never stored) is
+/// 0 after, which is what the server writes: lib/item-edit.ts
+/// `resetStreakPatch` answers `{}` there, and the item is unchanged.
+public func resettingStreak(_ item: Item) -> Item {
+    guard (item.streak ?? 0) != 0 else { return item }
+    var next = item
+    next.streak = 0
     return next
 }
 

@@ -4,8 +4,9 @@
  * A colour theme (lib/theme-looks.ts) changes how dsul LOOKS; a layout changes
  * where its pieces SIT: it can move one, hide one, or add one. It is a single
  * pick that stays put in light and dark — a per-mode layout would rearrange the
- * screen at sunset for anyone on System — and it only suggests the colour
- * theme it was designed with (`pairsWith`), it never sets it.
+ * screen at sunset for anyone on System — and picking it never touches the
+ * colour themes. The ones it was designed with (`pairsWith`) are set only by
+ * its Look (lib/looks.ts), a separate tap on Settings → Look.
  *
  * A layout is config, not code paths, the same way an item type is a registry
  * entry (lib/item-registry.ts). The screen is cut into named SLOTS, and each
@@ -18,11 +19,13 @@
  * Two kinds of slot:
  *   - STRUCTURAL ones (sidebar, capture, canvas, tabs) change what mounts where,
  *     so the desktop shell reads them and lays out accordingly.
- *   - STYLED ones (header, buckets, rows, relay, type, skin) are stamped on the desktop shell's
- *     root as `data-layout-<slot>` (layoutAttributes) and drawn by rules in
+ *   - STYLED ones (STYLED_SLOTS: header, buckets, rows, relay, type, skin,
+ *     measure, edge) are stamped on the desktop shell's root as
+ *     `data-layout-<slot>` (layoutAttributes) and drawn by rules in
  *     app/globals.css. Stamped on the SHELL, not on <html>: that is what keeps
  *     every layout desktop-only for free — the mobile shell is another tree
- *     and never sees the attributes.
+ *     and never sees the attributes. It is also what lets the Look pane's
+ *     previews draw any layout: they stamp the same attributes on a miniature.
  *
  * What no layout may touch: adding, ticking, the item panel, ⌘K, navigation
  * and drag targets. No slot exists for them, so there is nothing to hide them
@@ -149,7 +152,11 @@ export interface LayoutDef {
   family: LayoutTheme;
   /** The style's name under Style. Every member of a family with styles has one. */
   styleLabel?: string;
-  /** The colour themes it was designed with. Offered on pick, never imposed. */
+  /**
+   * The colour themes it was designed with, per mode; a mode it leaves out
+   * keeps the user's own pick. Its Look (lib/looks.ts) sets them and the theme
+   * swatches mark them "for <Layout>"; picking the layout alone never does.
+   */
   pairsWith: { light?: LightLook; dark?: DarkLook };
   slots: LayoutSlots;
   ornaments: readonly LayoutOrnament[];
@@ -196,7 +203,7 @@ export const LAYOUTS: LayoutDef[] = [
     label: 'Classic',
     description: 'Braindump on the left, the day on a plate. The shipped layout.',
     family: 'classic',
-    pairsWith: {},
+    pairsWith: { light: 'paper', dark: 'night' },
     slots: CLASSIC_SLOTS,
     ornaments: [],
   },

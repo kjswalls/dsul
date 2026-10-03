@@ -6,9 +6,11 @@ import Foundation
 // capabilities the item sheet's verbs, chips and fields read (label, skippable,
 // pausable, dated, remindable, collectible, subtasks, the counters, priority,
 // notes), with the item-level questions built on them (`isSkippable`,
-// `isPausable`, `isRemindable`, `isCollectible`), and the words the sheet
-// borrows from the type's `form` (the title placeholder and Delete's
-// confirm), with Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
+// `isPausable`, `isRemindable`, `isCollectible`, lib/item-edit.ts
+// `subtaskRefusal` as `canAddSubtask`, and lib/bulk-edit.ts
+// `reminderNeedsDate`), and the words the sheet borrows from
+// the type's `form` (the title placeholder and Delete's confirm), with
+// Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
 // Keep in step with `ITEM_TYPES` and `buildCustomTypeConfig` there.
 // Checked against the web by RegistryCapsFixtureTests
 // (tests/fixtures/day/caps.json).
@@ -295,10 +297,36 @@ public func isPausable(_ item: Item) -> Bool {
     return caps(item.typeName).pausable
 }
 
+/// May a subtask be added under `item`? lib/item-edit.ts `subtaskRefusal`,
+/// the server's gate: the type grows subtasks (`caps.subtasks`, else 400
+/// `no_subtasks`) AND `item` isn't a subtask itself (else 409 `nested`), since
+/// one level is all the web's panel renders and lib/db.ts refuses a
+/// grandchild. `caps` is the item's own (`caps(_:labels:)`), so a custom type
+/// answers as its template does. The app adds `canWrite("addSubtask")`.
+public func canAddSubtask(under item: Item, caps: ItemCaps) -> Bool {
+    return caps.subtasks && !isSubtask(item)
+}
+
 /// lib/item-registry.ts `isRemindable`: the capability AND not a subtask.
 public func isRemindable(_ item: Item) -> Bool {
-    if isSubtask(item) { return false }
-    return caps(item.typeName).remindable
+    return isRemindable(item, caps: caps(item.typeName))
+}
+
+/// `isRemindable` with the item's caps passed in (`caps(_:labels:)`), as the
+/// planner's other gates take them; a custom type answers as its template
+/// does. lib/item-edit.ts `editRefusal` asks the same of the row
+/// (`not_remindable`).
+public func isRemindable(_ item: Item, caps: ItemCaps) -> Bool {
+    return caps.remindable && !isSubtask(item)
+}
+
+/// lib/bulk-edit.ts `reminderNeedsDate`, which is the item dialog's too
+/// (components/planner/item-dialog.tsx): would a reminder set on `item` never
+/// fire for want of a day? A date-anchored type with no `startDate` occurs on
+/// none. Empty reads as none, as JavaScript's truthiness has it. A habit is
+/// never date-anchored, so it never needs one. `caps` is the item's own.
+public func reminderNeedsDate(_ item: Item, caps: ItemCaps) -> Bool {
+    return caps.dateAnchored && (item.startDate ?? "").isEmpty
 }
 
 /// lib/item-registry.ts `isCollectible`: the capability AND not a subtask.

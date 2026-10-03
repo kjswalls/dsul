@@ -6,7 +6,9 @@ import path from 'path';
  * The item sheet's edits, shared with the iPhone.
  *
  * verb-writes-fixtures.test.ts pins what the sheet's verbs write; this pins its
- * edits (lib/item-edit.ts) and its Delete. Each case drives the web's REAL
+ * edits (lib/item-edit.ts: the title, the notes, and the priority, times per
+ * day and reminder chips), its Delete, Add a subtask and Reset streak. Each
+ * case drives the web's REAL
  * gesture for the same change over the real planner store, with the db layer
  * mocked and the clock pinned (Thursday 1 October), and records to
  * tests/fixtures/day/edit-writes.json:
@@ -18,14 +20,26 @@ import path from 'path';
  *  - `after`, the item as the store leaves it (null once deleted), which
  *    DsulCore's `editing` must reproduce;
  *  - `removed`, the ids the store deleted, in the order it deleted them, which
- *    DsulCore's `deleting` and the route's child pass must match.
+ *    DsulCore's `deleting` and the route's child pass must match;
+ *  - `created`, the row the store created (null for anything but a new
+ *    subtask), which DsulCore's `subtaskItem` and the route's insert must
+ *    match.
  *
- * The gestures: a typed field is the item panel's (components/planner/
- * item-dialog.tsx): seeded from the item, the keys that differ from the seed
- * marked changed, then taskUpdatesFromDraft / habitUpdatesFromDraft and the
- * store action they name. Delete is lib/item-verbs.ts's: deleteTask, or
- * deleteHabit. A refused case comes from `refusal` alone, since the store has
- * no such refusal: the dialog never caps a field.
+ * The gestures: a typed field or a chip is the item panel's (components/
+ * planner/item-dialog.tsx): the draft seeded from the item (draftFromItem), the
+ * field or chip's change applied, the keys that differ from the seed marked
+ * changed, then taskUpdatesFromDraft / habitUpdatesFromDraft and the store
+ * action they name. Delete is lib/item-verbs.ts's: deleteTask, or
+ * deleteHabit. Add a subtask is the panel's subtask field
+ * (components/planner/item-detail-sections.tsx SubtasksSection.addSubtask):
+ * addTask with the trimmed title and the parent. Reset streak is the verb the
+ * phone offers (lib/item-verbs.ts resetStreak), run only when it is eligible,
+ * so at 0 it writes nothing. A refused case comes from `refusal` alone, since
+ * the store has no such refusal: the dialog never caps a field, and never
+ * offers a subtask under a habit or a subtask, a reset on a task, a priority on
+ * a habit, a count on a task or a reminder on a subtask. One case,
+ * `reminder-anchor-without-time`, has a body the route's schema refuses: cue
+ * words with no time, which the phone never builds.
  *
  * In `updates`, a key present with null is a column cleared (the store wrote
  * undefined, which lib/db.ts sends as SQL NULL).
@@ -33,6 +47,15 @@ import path from 'path';
  * `trim` pins String.prototype.trim, which the schema's `.trim()` and
  * `cleanNotes` use, for DsulCore's `jsTrim`: Foundation's whitespace set is a
  * different one.
+ *
+ * `limits` holds lib/item-edit.ts's caps, the cue words' and the times a day's
+ * among them.
+ *
+ * `bulk` pins lib/bulk-add.ts's `isBulkPaste` and `splitBulkLinesWithMeta`,
+ * which DsulCore's BulkLines.swift ports for a paste into the new-subtask
+ * field: what a line break is, which list markers come off, and JS's `\s`.
+ * `streakRun` pins `streakRunText`, and `copy` the sentences both sides say
+ * (`EDIT_COPY`).
  *
  * Regenerate with:
  *
@@ -43,7 +66,8 @@ import path from 'path';
 
 type DbCall =
   | { fn: 'updateItem'; id: string; type: string; updates: Record<string, unknown> }
-  | { fn: 'deleteItem'; id: string; type: string };
+  | { fn: 'deleteItem'; id: string; type: string }
+  | { fn: 'createItem'; item: Item };
 
 // The mock factory runs while the imports below are still resolving, before
 // any module-level const exists, so the log it writes to is hoisted with it.
@@ -59,7 +83,11 @@ vi.mock('@/lib/db', async (importOriginal) => {
     fetchItems: vi.fn(async () => []),
     fetchProjects: vi.fn(async () => []),
     fetchItemTypes: vi.fn(async () => []),
-    createItem: vi.fn(async () => {}),
+    // A JSON copy, as the fixture holds it: asJson isn't defined yet when the
+    // hoisted factory runs.
+    createItem: vi.fn(async (_userId: string, item: Item) => {
+      log.calls.push({ fn: 'createItem', item: JSON.parse(JSON.stringify(item)) });
+    }),
     updateItem: vi.fn(async (id: string, type: string, updates: Record<string, unknown>) => {
       log.calls.push({ fn: 'updateItem', id, type, updates: written(updates) });
     }),
@@ -98,9 +126,31 @@ vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}) }
 
 import { usePlannerStore } from '@/lib/planner-store';
 import * as db from '@/lib/db';
-import { habitUpdatesFromDraft, taskUpdatesFromDraft, type ItemDraft } from '@/components/planner/item-dialog';
+import {
+  DRAFT_KEYS,
+  draftFromItem,
+  habitUpdatesFromDraft,
+  taskUpdatesFromDraft,
+  type ItemDraft,
+} from '@/components/planner/item-dialog';
 import { ItemWriteSchema } from '@/lib/app-api';
-import { EDIT_LIMITS, OUTER_LIMITS, editPatch, editRefusal, editShapeFromRow, type ItemEdit } from '@/lib/item-edit';
+import {
+  EDIT_COPY,
+  EDIT_LIMITS,
+  NEW_TITLE_LIMIT,
+  OUTER_LIMITS,
+  TIMES_PER_DAY_MAX,
+  editPatch,
+  editRefusal,
+  editShapeFromRow,
+  resetStreakPatch,
+  resetStreakRefusal,
+  streakRunText,
+  subtaskRefusal,
+  type ItemEdit,
+} from '@/lib/item-edit';
+import { MAX_BULK_ITEMS, isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
+import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import type { Item } from '@/lib/planner-types';
 
@@ -144,14 +194,28 @@ const habit = (n: number, title: string, over: Record<string, unknown> = {}): It
  * The row the route reads for an edit (lib/app-api.ts WRITE_ROW_COLUMNS' keys
  * plus EDIT_COLUMNS), as far as lib/item-edit.ts looks at it.
  */
-const shapeOf = (item: Item) =>
-  editShapeFromRow({
+const shapeOf = (item: Item) => {
+  const i = item as {
+    parentItemId?: string;
+    streak?: number;
+    priority?: string;
+    timesPerDay?: number;
+    reminderTime?: string;
+    reminderAnchor?: string;
+  };
+  return editShapeFromRow({
     id: item.id,
     type: itemTypeName(item),
-    parent_item_id: (item as { parentItemId?: string }).parentItemId ?? null,
+    parent_item_id: i.parentItemId ?? null,
     title: item.title,
     notes: item.notes ?? null,
+    streak: i.streak ?? null,
+    priority: i.priority ?? null,
+    times_per_day: i.timesPerDay ?? null,
+    reminder_time: i.reminderTime ?? null,
+    reminder_anchor: i.reminderAnchor ?? null,
   });
+};
 
 // ── Running one case ─────────────────────────────────────────────────────────
 
@@ -181,15 +245,15 @@ async function run(items: Item[], act: () => void): Promise<{ after: Item | null
 }
 
 /**
- * The panel's typed field: the draft seeded as draftFromItem seeds it, the
- * one field changed, and the save scheduleSave → commitEdit makes of it. A
- * value equal to the seed marks nothing changed, so nothing is written, and a
- * blank title is a state passed through, never saved.
+ * The item panel's edit: the draft seeded as the panel seeds it (draftFromItem), `change`
+ * applied as the chip or field applies it, the changed DRAFT_KEYS found as scheduleSave finds
+ * them, and the mapper's payload sent to the store action it names. A draft equal to its seed
+ * marks nothing changed, so nothing is written; a blank title is never saved.
  */
-function typeInto(item: Item, key: 'title' | 'notes', value: string): void {
-  const prev = { title: item.title, notes: item.notes || '' } as ItemDraft;
-  const next = { ...prev, [key]: value } as ItemDraft;
-  const changed = (['title', 'notes'] as const).filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]));
+function editInDialog(item: Item, change: Partial<ItemDraft>): void {
+  const prev = draftFromItem(item);
+  const next: ItemDraft = { ...prev, ...change };
+  const changed = DRAFT_KEYS.filter((k) => JSON.stringify(prev[k]) !== JSON.stringify(next[k]));
   if (changed.length === 0 || !next.title.trim()) return;
   if (item.type === 'habit') {
     const updates = habitUpdatesFromDraft(next, changed);
@@ -204,6 +268,30 @@ function typeInto(item: Item, key: 'title' | 'notes', value: string): void {
 function deleteIt(item: Item): void {
   if (item.type === 'habit') store().deleteHabit(item.id);
   else store().deleteTask(item.id);
+}
+
+/**
+ * The panel's change for one edit: the field typed, or the chip's pick. No
+ * reminder clears the time and the words together; the time input and Right
+ * after each set their own key, so words left alone stay as seeded.
+ */
+function panelChange(edit: ItemEdit): Partial<ItemDraft> {
+  switch (edit.action) {
+    case 'title':
+      return { title: edit.title };
+    case 'notes':
+      return { notes: edit.notes ?? '' };
+    case 'priority':
+      return { priority: edit.priority ?? 'none' };
+    case 'timesPerDay':
+      return { timesPerDay: String(edit.timesPerDay) };
+    case 'reminder':
+      if (edit.time === null) return { reminderTime: '', reminderAnchor: '' };
+      return {
+        reminderTime: edit.time,
+        ...(edit.anchor !== undefined ? { reminderAnchor: edit.anchor ?? '' } : {}),
+      };
+  }
 }
 
 /** Every updateItem payload of the gesture, merged, in the order sent. */
@@ -226,22 +314,38 @@ type EditCase = {
   created: Item | null;
 };
 type TrimCase = { name: string; input: string; expected: string };
-/** lib/item-edit.ts's caps, which DsulCore's `EditLimits` must equal. */
-type EditLimits = { title: number; notes: number; outerTitle: number; outerNotes: number };
+/** A paste into the new-subtask field, as lib/bulk-add.ts reads it. */
+type BulkCase = { name: string; input: string; isBulk: boolean; titles: string[]; truncated: boolean };
+type StreakRunCase = { streak: number; text: string };
+/**
+ * lib/item-edit.ts's caps, which DsulCore's `EditLimits` must equal, and
+ * lib/bulk-add.ts's, which its `maxBulkItems` must.
+ */
+type EditLimits = {
+  title: number;
+  notes: number;
+  outerTitle: number;
+  outerNotes: number;
+  newTitle: number;
+  bulkMax: number;
+  anchor: number;
+  outerAnchor: number;
+  timesPerDayMax: number;
+};
 type EditWrites = {
   today: string;
   limits: EditLimits;
   cases: EditCase[];
   trim: TrimCase[];
+  bulk: BulkCase[];
+  streakRun: StreakRunCase[];
   copy: Record<string, string>;
 };
 
 async function editCase(name: string, item: Item, edit: ItemEdit, refusal: string | null = null): Promise<EditCase> {
   const base = { name, item, children: [], edit, refusal, removed: [], created: null };
   if (refusal) return { ...base, updates: null, after: item };
-  const { after, calls } = await run([item], () =>
-    edit.action === 'title' ? typeInto(item, 'title', edit.title) : typeInto(item, 'notes', edit.notes ?? '')
-  );
+  const { after, calls } = await run([item], () => editInDialog(item, panelChange(edit)));
   if (calls.some((c) => c.fn !== 'updateItem')) throw new Error(`${name}: an edit wrote more than the item`);
   return { ...base, updates: merged(calls), after };
 }
@@ -257,9 +361,97 @@ async function deleteCase(name: string, item: Item, children: Item[] = []): Prom
     refusal: null,
     updates: {},
     after,
-    removed: calls.map((c) => c.id),
+    removed: calls.flatMap((c) => (c.fn === 'deleteItem' ? [c.id] : [])),
     created: null,
   };
+}
+
+/**
+ * The panel's subtask field: SubtasksSection.addSubtask, addTask({title,
+ * parentItemId}) with the title already trimmed, the new row's id pinned to
+ * `uid(n)` (the store mints it with crypto.randomUUID) so the fixture can name
+ * it. One row created, and nothing else written.
+ */
+async function subtaskCase(
+  name: string,
+  item: Item,
+  children: Item[],
+  title: string,
+  n: number,
+  refusal: string | null = null,
+): Promise<EditCase> {
+  const base = { name, item, children, edit: { action: 'addSubtask', id: uid(n), title }, refusal, removed: [] };
+  if (refusal) return { ...base, updates: null, after: item, created: null };
+  const { after, calls } = await run([item, ...children], () => {
+    const minted = vi.spyOn(crypto, 'randomUUID').mockReturnValueOnce(uid(n) as ReturnType<typeof crypto.randomUUID>);
+    try {
+      store().addTask({ title, parentItemId: item.id });
+    } finally {
+      minted.mockRestore();
+    }
+  });
+  const [call] = calls;
+  if (calls.length !== 1 || call.fn !== 'createItem') throw new Error(`${name}: an add wrote more than one new row`);
+  return { ...base, updates: {}, after, created: call.item };
+}
+
+/** Today, as the sheet passes it to a verb. */
+const VERB_CTX: VerbContext = {
+  dateStr: TODAY,
+  date: new Date(NOW),
+  todayStr: TODAY,
+  tz: NY,
+  milestoneIds: new Set(),
+};
+
+/** lib/item-verbs.ts's Reset streak, as the phone offers it: only when eligible. */
+async function resetCase(name: string, item: Item, refusal: string | null = null): Promise<EditCase> {
+  const base = { name, item, children: [], edit: { action: 'resetStreak' }, refusal, removed: [], created: null };
+  if (refusal) return { ...base, updates: null, after: item };
+  const { after, calls } = await run([item], () => {
+    const live = store().items.find((i) => i.id === item.id)!;
+    if (ITEM_VERBS.resetStreak.eligible(live, VERB_CTX)) ITEM_VERBS.resetStreak.run(live, VERB_CTX);
+  });
+  if (calls.some((c) => c.fn !== 'updateItem')) throw new Error(`${name}: a reset wrote more than the item`);
+  return { ...base, updates: merged(calls), after };
+}
+
+/**
+ * One case per rule of lib/bulk-add.ts a port could get wrong. Escapes, not
+ * literal characters, wherever the character is the point.
+ */
+function bulkCases(): BulkCase[] {
+  const inputs: [string, string][] = [
+    ['CRLF is one break', 'a\r\nb'],
+    ['a lone CR is a break', 'a\rb'],
+    ['blank lines between are dropped', 'a\n\n\nb'],
+    ['dash', '- a\n- b'],
+    ['star', '* a\n* b'],
+    ['plus', '+ a\n+ b'],
+    ['bullet', '\u2022 a\n\u2022 b'],
+    ['en dash', '\u2013 a\n\u2013 b'],
+    ['em dash', '\u2014 a\n\u2014 b'],
+    ['numbered with a dot', '1. a\n2. b'],
+    ['numbered with a paren', '12) a\n13) b'],
+    ['unchecked box', '- [ ] a\n- [ ] b'],
+    ['checked box', '- [x] a\n- [x] b'],
+    ['capital X box, starred', '* [X] a\n* [X] b'],
+    ['a box with no space after it strips the dash alone', '- [ ]task'],
+    ['four digits are not a list number', '1234. a\n1234) b'],
+    ['a dash with no space after it stays', '-a\n-b'],
+    ['an indented marker', '  - indented\n\t- tabbed'],
+    ['stripped once, never twice', '- - hello\n* - there'],
+    ['a marker followed by a no-break space', '-\u00a0a\n-\u00a0b'],
+    ['no-break spaces and byte order marks around a line', '\u00a0a\ufeff\n\ufeffb\u00a0'],
+    ['a line separator inside a line is not a break', 'a\u2028b\nc'],
+    ['next line inside a line is not a break', 'a\u0085b\nc'],
+    ['an Arabic-Indic digit is not a list number', '\u0661. a\n\u0662. b'],
+    ['a marker alone is an empty line', '- \nb'],
+    ['blank lines only', '\n \n\t\n'],
+    ['one line with a trailing newline is not a list', 'Eggs\n'],
+    ['past the cap', Array.from({ length: MAX_BULK_ITEMS + 1 }, (_, i) => `item ${i + 1}`).join('\n')],
+  ];
+  return inputs.map(([name, input]) => ({ name, input, isBulk: isBulkPaste(input), ...splitBulkLinesWithMeta(input) }));
 }
 
 // ── The cases ────────────────────────────────────────────────────────────────
@@ -310,6 +502,109 @@ async function build(): Promise<EditWrites> {
     ])
   );
 
+  const lisbon = task(1160, 'Pack for Lisbon', { startDate: TODAY, timeBucket: 'evening' });
+  cases.push(
+    // The parent is the only task, and its subtask doesn't count: order 1.
+    await subtaskCase(
+      'subtask-under-task',
+      lisbon,
+      [task(1161, 'Passport', { parentItemId: lisbon.id, isScheduled: false, order: 1 })],
+      'Adapter plug',
+      1162,
+    ),
+    // A task even under a custom item.
+    await subtaskCase('subtask-under-custom', custom(1170, 'errand', 'Post office', { startDate: TODAY }), [], 'Stamps', 1171),
+    await subtaskCase('subtask-refused-habit', habit(1180, 'Floss'), [], 'Buy floss', 1181, 'no_subtasks'),
+    await subtaskCase(
+      'subtask-refused-nested',
+      task(1190, 'Passport', { parentItemId: lisbon.id, isScheduled: false }),
+      [],
+      'Renew it',
+      1191,
+      'nested',
+    ),
+    await resetCase(
+      'reset-streak',
+      habit(1200, 'Meds', {
+        streak: 41,
+        completedDates: ['2026-09-29', '2026-09-30'],
+        dailyCounts: { '2026-09-30': 1 },
+        timeBucket: 'morning',
+      }),
+    ),
+    await resetCase('reset-streak-at-zero', habit(1201, 'Floss', { streak: 0 })),
+    await resetCase('reset-refused-task', task(1202, 'Call the bank'), 'no_streak')
+  );
+
+  // The chips (2c): the priority, times per day and reminder chips' picks.
+  const roadmap = task(1210, 'Draft Q4 roadmap', { startDate: TODAY, timeBucket: 'morning' });
+  const dentist = task(1230, 'Call the dentist', { startDate: TODAY, timeBucket: 'afternoon' });
+  const meds = (n: number) => habit(n, 'Meds', { reminderTime: '08:00', reminderAnchor: 'I pour my coffee' });
+  for (const args of [
+    ['priority-set', roadmap, { action: 'priority', priority: 'high' }],
+    ['priority-clear', task(1211, 'Reply to Avery', { priority: 'high' }), { action: 'priority', priority: null }],
+    ['priority-unchanged', task(1212, 'Call the dentist', { priority: 'medium' }), { action: 'priority', priority: 'medium' }],
+    // A subtask's page offers a priority (Q7 a).
+    [
+      'priority-subtask',
+      task(1213, 'Pull the numbers', { parentItemId: uid(1210), isScheduled: false }),
+      { action: 'priority', priority: 'low' },
+    ],
+    ['priority-custom', custom(1214, 'errand', 'Post office', { startDate: TODAY }), { action: 'priority', priority: 'medium' }],
+    ['priority-refused-habit', habit(1215, 'Stretch'), { action: 'priority', priority: 'high' }, 'no_priority'],
+    [
+      'times-per-day',
+      habit(1220, 'Water', { timesPerDay: 3, dailyCounts: { [TODAY]: 1 } }),
+      { action: 'timesPerDay', timesPerDay: 5 },
+    ],
+    // Back to once a day is written as 1, never cleared.
+    ['times-back-to-one', habit(1221, 'Water', { timesPerDay: 3 }), { action: 'timesPerDay', timesPerDay: 1 }],
+    // None stored reads as once a day.
+    ['times-unchanged', habit(1222, 'Floss'), { action: 'timesPerDay', timesPerDay: 1 }],
+    ['times-refused-task', task(1223, 'Call the bank'), { action: 'timesPerDay', timesPerDay: 2 }, 'no_count'],
+    ['reminder-set', dentist, { action: 'reminder', time: '14:45' }],
+    [
+      'reminder-anchor',
+      habit(1231, 'Meds', { reminderTime: '08:00' }),
+      { action: 'reminder', time: '08:00', anchor: '  I pour my coffee ' },
+    ],
+    ['reminder-time-only-keeps-anchor', meds(1232), { action: 'reminder', time: '07:30' }],
+    ['reminder-anchor-cleared', meds(1233), { action: 'reminder', time: '08:00', anchor: null }],
+    ['reminder-unchanged', meds(1234), { action: 'reminder', time: '08:00', anchor: 'I pour my coffee' }],
+    [
+      'reminder-clear',
+      habit(1235, 'Floss', { reminderTime: '21:00', reminderAnchor: 'I brush my teeth' }),
+      { action: 'reminder', time: null },
+    ],
+    // Stored words over the cap may be edited at their own length; they may not grow.
+    [
+      'reminder-anchor-stored-over-cap-kept-length',
+      habit(1236, 'Floss', { reminderTime: '21:00', reminderAnchor: 'a'.repeat(700) }),
+      { action: 'reminder', time: '21:00', anchor: 'b'.repeat(650) },
+    ],
+    [
+      'reminder-anchor-growth-refused',
+      habit(1237, 'Floss', { reminderTime: '21:00', reminderAnchor: 'I brush my teeth' }),
+      { action: 'reminder', time: '21:00', anchor: 'c'.repeat(EDIT_LIMITS.anchor + 1) },
+      'invalid',
+    ],
+    [
+      'reminder-refused-subtask',
+      task(1238, 'Pull the numbers', { parentItemId: uid(1230), isScheduled: false }),
+      { action: 'reminder', time: '09:00' },
+      'not_remindable',
+    ],
+    // The schema's refusal, not the row's: words with no time.
+    [
+      'reminder-anchor-without-time',
+      habit(1239, 'Meds', { reminderTime: '08:00' }),
+      { action: 'reminder', time: null, anchor: 'I pour my coffee' },
+      'invalid',
+    ],
+  ] as [string, Item, ItemEdit, string?][]) {
+    cases.push(await editCase(...args));
+  }
+
   const trim = (
     [
       ['spaces', '  hi  '],
@@ -332,8 +627,14 @@ async function build(): Promise<EditWrites> {
     notes: EDIT_LIMITS.notes,
     outerTitle: OUTER_LIMITS.title,
     outerNotes: OUTER_LIMITS.notes,
+    newTitle: NEW_TITLE_LIMIT,
+    bulkMax: MAX_BULK_ITEMS,
+    anchor: EDIT_LIMITS.anchor,
+    outerAnchor: OUTER_LIMITS.anchor,
+    timesPerDayMax: TIMES_PER_DAY_MAX,
   };
-  return { today: TODAY, limits, cases, trim, copy: {} };
+  const streakRun = [0, 1, 2, 41].map((streak) => ({ streak, text: streakRunText(streak) }));
+  return { today: TODAY, limits, cases, trim, bulk: bulkCases(), streakRun, copy: { ...EDIT_COPY } };
 }
 
 // ── Writing and checking ─────────────────────────────────────────────────────
@@ -362,7 +663,7 @@ describe('edit writes shared with DsulCore', () => {
   });
 
   it('edit-writes.json has cases with unique names', () => {
-    for (const list of [generated.cases, generated.trim]) {
+    for (const list of [generated.cases, generated.trim, generated.bulk]) {
       expect(list.length).toBeGreaterThan(0);
       const names = list.map((c) => c.name);
       expect(new Set(names).size).toBe(names.length);
@@ -375,18 +676,28 @@ describe('edit writes shared with DsulCore', () => {
     expect(JSON.parse(readFileSync(FILE, 'utf8'))).toEqual(JSON.parse(serialize(generated)));
   });
 
-  it('every body is one the route parses', () => {
+  it('every body is one the route parses, but the one the schema refuses', () => {
+    const refused: string[] = [];
     for (const c of generated.cases) {
       const parsed = ItemWriteSchema.safeParse(c.edit);
-      expect(parsed.success, c.name).toBe(true);
+      if (!parsed.success) {
+        // Refused before the row is read, so its refusal is the schema's.
+        expect(c.refusal, c.name).toBe('invalid');
+        refused.push(c.name);
+        continue;
+      }
       // Nothing the schema would add or strip: the fixture is the wire.
       expect(asJson(parsed.data), c.name).toEqual(c.edit);
     }
+    expect(refused).toEqual(['reminder-anchor-without-time']);
   });
 
   it('lib/item-edit.ts refuses, and writes, what the web gesture did', () => {
+    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder'];
     for (const c of generated.cases) {
-      if (c.edit.action === 'delete') continue;
+      if (!fields.includes(String(c.edit.action))) continue;
+      // A body the schema refuses never reaches the row (the check above).
+      if (!ItemWriteSchema.safeParse(c.edit).success) continue;
       const edit = ItemWriteSchema.parse(c.edit) as ItemEdit;
       const shape = shapeOf(c.item);
       const config = getItemTypeConfig(itemTypeName(c.item));
@@ -403,6 +714,26 @@ describe('edit writes shared with DsulCore', () => {
     }
   });
 
+  it('a reminder writes both columns, and a time alone keeps the words', () => {
+    const reminders = generated.cases.filter(
+      (c) => c.edit.action === 'reminder' && c.refusal === null && Object.keys(c.updates!).length > 0,
+    );
+    expect(reminders.length).toBeGreaterThan(0);
+    for (const c of reminders) {
+      expect(Object.keys(c.updates!).sort(), c.name).toEqual(['reminderAnchor', 'reminderTime']);
+    }
+    const timeAlone = reminders.filter((c) => c.edit.time !== null && !('anchor' in c.edit));
+    expect(timeAlone.map((c) => c.name).sort()).toEqual(['reminder-set', 'reminder-time-only-keeps-anchor']);
+    for (const c of timeAlone) {
+      expect(c.updates!.reminderAnchor, c.name).toEqual(
+        (c.item as { reminderAnchor?: string }).reminderAnchor?.trim() || null,
+      );
+    }
+    const unchanged = generated.cases.find((c) => c.name === 'reminder-unchanged')!;
+    expect(unchanged.refusal).toBeNull();
+    expect(unchanged.updates).toEqual({});
+  });
+
   it('a delete takes the item and, unless it is a habit, its subtasks, in the store’s order', () => {
     for (const c of generated.cases) {
       if (c.edit.action !== 'delete') continue;
@@ -414,14 +745,67 @@ describe('edit writes shared with DsulCore', () => {
     }
   });
 
+  it('a new subtask is the store’s task under the item, and is refused where the route refuses it', () => {
+    for (const c of generated.cases) {
+      if (c.edit.action !== 'addSubtask') continue;
+      const config = getItemTypeConfig(itemTypeName(c.item));
+      expect(subtaskRefusal(shapeOf(c.item), config)?.code ?? null, c.name).toBe(c.refusal);
+      // The parent is never written: the add is a new row.
+      expect(c.after, c.name).toEqual(asJson(c.item));
+      if (c.refusal) {
+        expect(c.updates, c.name).toBeNull();
+        expect(c.created, c.name).toBeNull();
+        continue;
+      }
+      expect(c.updates, c.name).toEqual({});
+      // The store's `tasks.length`: every task-like row that is not a subtask.
+      const order = [c.item, ...c.children].filter(
+        (i) => i.type !== 'habit' && !(i as { parentItemId?: string }).parentItemId,
+      ).length;
+      expect(c.created, c.name).toEqual({
+        type: 'task',
+        id: c.edit.id,
+        title: c.edit.title,
+        status: 'pending',
+        isScheduled: false,
+        order,
+        parentItemId: c.item.id,
+      });
+    }
+  });
+
+  it('a reset writes the streak alone, and nothing at 0', () => {
+    for (const c of generated.cases) {
+      if (c.edit.action !== 'resetStreak') continue;
+      const config = getItemTypeConfig(itemTypeName(c.item));
+      expect(resetStreakRefusal(config)?.code ?? null, c.name).toBe(c.refusal);
+      if (c.refusal) {
+        expect(c.updates, c.name).toBeNull();
+        expect(c.after, c.name).toEqual(asJson(c.item));
+        continue;
+      }
+      const patch = resetStreakPatch(shapeOf(c.item));
+      expect(asWritten(patch), c.name).toEqual(c.updates);
+      expect(asJson({ ...c.item, ...patch }), c.name).toEqual(c.after);
+      // The completion history stays: days already ticked remain ticked.
+      const kept = (i: Item | null) => ({
+        completedDates: (i as { completedDates?: string[] }).completedDates,
+        dailyCounts: (i as { dailyCounts?: Record<string, number> }).dailyCounts,
+      });
+      expect(kept(c.after), c.name).toEqual(kept(asJson(c.item)));
+    }
+  });
+
   it('the cases reach every answer the route gives', () => {
     const cases = generated.cases;
     const actions = new Set(cases.map((c) => c.edit.action));
-    expect(actions).toEqual(new Set(['title', 'notes', 'delete']));
+    expect(actions).toEqual(
+      new Set(['title', 'notes', 'delete', 'addSubtask', 'resetStreak', 'priority', 'timesPerDay', 'reminder']),
+    );
     // Refused, already so, a write, and a cleared column.
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'title')).toBe(true);
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'notes')).toBe(true);
-    for (const action of ['title', 'notes']) {
+    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder']) {
       const of = cases.filter((c) => c.edit.action === action && !c.refusal);
       expect(of.some((c) => Object.keys(c.updates!).length === 0), action).toBe(true);
       expect(of.some((c) => Object.keys(c.updates!).length > 0), action).toBe(true);
@@ -433,6 +817,43 @@ describe('edit writes shared with DsulCore', () => {
     expect(cases.some((c) => c.removed.length > 2)).toBe(true);
     expect(cases.some((c) => c.edit.action === 'delete' && c.removed.length === 1 && c.children.length === 0)).toBe(true);
     expect(cases.some((c) => c.item.type === 'habit' && c.removed.length === 1 && c.children.length > 0)).toBe(true);
+    // A new subtask under a task and under a custom item, and both refusals.
+    const added = cases.filter((c) => c.edit.action === 'addSubtask');
+    expect(new Set(added.filter((c) => c.created).map((c) => c.item.type))).toEqual(new Set(['task', 'custom']));
+    expect(new Set(added.map((c) => c.refusal))).toEqual(new Set([null, 'no_subtasks', 'nested']));
+    // A reset that writes, one already so, and one refused.
+    const resets = cases.filter((c) => c.edit.action === 'resetStreak');
+    expect(resets.some((c) => c.updates && Object.keys(c.updates).length > 0)).toBe(true);
+    expect(resets.some((c) => c.updates && Object.keys(c.updates).length === 0)).toBe(true);
+    expect(resets.some((c) => c.refusal === 'no_streak')).toBe(true);
+    // The chips' refusals: each capability, and the two cue-word refusals, one
+    // the schema's (no time) and one the growth cap's.
+    expect(cases.some((c) => c.refusal === 'no_priority' && c.edit.action === 'priority')).toBe(true);
+    expect(cases.some((c) => c.refusal === 'no_count' && c.edit.action === 'timesPerDay')).toBe(true);
+    expect(cases.some((c) => c.refusal === 'not_remindable' && c.edit.action === 'reminder')).toBe(true);
+    const refusedReminders = cases.filter((c) => c.refusal === 'invalid' && c.edit.action === 'reminder');
+    expect(refusedReminders.filter((c) => !ItemWriteSchema.safeParse(c.edit).success)).toHaveLength(1);
+    expect(refusedReminders.filter((c) => ItemWriteSchema.safeParse(c.edit).success)).toHaveLength(1);
+    // A priority cleared with null, and a reminder turned off with both columns cleared.
+    expect(cases.some((c) => c.edit.priority === null && c.updates?.priority === null)).toBe(true);
+    expect(
+      cases.some(
+        (c) => c.edit.action === 'reminder' && c.edit.time === null && c.updates?.reminderTime === null && c.updates?.reminderAnchor === null,
+      ),
+    ).toBe(true);
+    // A count already so with none stored: none reads as once a day.
+    const timesUnchanged = cases.find((c) => c.name === 'times-unchanged')!;
+    expect(timesUnchanged.updates).toEqual({});
+    expect(timesUnchanged.item).not.toHaveProperty('timesPerDay');
+  });
+
+  it('bulk reaches a list, a single line and the cap', () => {
+    expect(generated.bulk.some((c) => c.isBulk)).toBe(true);
+    expect(generated.bulk.some((c) => !c.isBulk)).toBe(true);
+    const capped = generated.bulk.filter((c) => c.truncated);
+    expect(capped).toHaveLength(1);
+    expect(capped[0].titles).toHaveLength(MAX_BULK_ITEMS);
+    expect(generated.copy.subtaskPasteCapped).toContain(String(MAX_BULK_ITEMS));
   });
 
   it('trim is JavaScript’s, which differs from Foundation’s on U+0085 and U+FEFF', () => {

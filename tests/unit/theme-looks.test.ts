@@ -119,6 +119,47 @@ describe('theme looks — CSS contract', () => {
   });
 });
 
+describe('theme looks — Settings preview twins', () => {
+  // Settings → Look draws themes that are not the live one (the other mode, a
+  // swatch). Tokens resolve on <html>, so each block also has to match the
+  // preview root (components/settings/look-mini.tsx), at the same weight, in
+  // the same selector list so the values cannot drift apart.
+  const TWIN = {
+    light: (slug: string) =>
+      `[data-theme-preview][data-preview-light='${slug}']:not(.dark),\n${BLOCKS.light(slug)}`,
+    dark: (slug: string) =>
+      `[data-theme-preview][data-preview-dark='${slug}'].dark,\n${BLOCKS.dark(slug)}`,
+  };
+
+  it('every theme block lists its preview twin first', () => {
+    for (const l of LIGHT_LOOKS.filter((l) => l.value !== DEFAULT_LIGHT_LOOK)) {
+      expect(globalsCss, l.value).toContain(TWIN.light(l.value));
+    }
+    for (const l of DARK_LOOKS.filter((l) => l.value !== DEFAULT_DARK_LOOK)) {
+      expect(globalsCss, l.value).toContain(TWIN.dark(l.value));
+    }
+  });
+
+  it('every preview twin names a slug the catalog lists, in its own mode', () => {
+    const light = new Set<string>(LIGHT_LOOKS.map((l) => l.value));
+    const dark = new Set<string>(DARK_LOOKS.map((l) => l.value));
+    for (const m of globalsCss.matchAll(/data-preview-light='([a-z0-9-]+)'\]([^ ,{]*)/g)) {
+      expect(light.has(m[1]), m[1]).toBe(true);
+      expect(m[2]).toBe(':not(.dark)');
+    }
+    for (const m of globalsCss.matchAll(/data-preview-dark='([a-z0-9-]+)'\]([^ ,{]*)/g)) {
+      expect(dark.has(m[1]), m[1]).toBe(true);
+      expect(m[2]).toBe('.dark');
+    }
+  });
+
+  it('the base token blocks match the preview root as well as <html>', () => {
+    // Without these the root would inherit the live theme's finished colours.
+    expect(globalsCss.match(/\[data-theme-preview\],\n:root \{/g)?.length).toBeGreaterThanOrEqual(2);
+    expect(globalsCss).toContain('[data-theme-preview],\nbody {');
+  });
+});
+
 describe('theme looks — pre-hydration script contract', () => {
   it('the layout inline script reads both storage keys and stamps both attributes', () => {
     for (const mode of ['light', 'dark'] as const) {
