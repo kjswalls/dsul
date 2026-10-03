@@ -424,8 +424,10 @@ function ContainerForm({
       {/* Pinned to the dialog's foot on desktop: a goal with every section in
           use outgrows the 80vh cap, and the buttons scrolled away with it. The
           -mb-6/pb-6 pair carries the dialog's bottom padding inside the pinned
-          bar so nothing scrolls under it. */}
-      <div className="bg-modal flex items-center justify-between gap-3 border-t pt-3 sm:sticky sm:bottom-0 sm:z-10 sm:-mb-6 sm:pb-6">
+          bar so nothing scrolls under it, and -bottom-6 because a sticky box
+          measures from inside the scroller's padding: at bottom-0 it rode 24px
+          high, over the last row of the form. */}
+      <div className="bg-modal flex items-center justify-between gap-3 border-t pt-3 sm:sticky sm:-bottom-6 sm:z-10 sm:-mb-6 sm:pb-6">
         <EnterHint verb="add" />
         <div className="flex items-center gap-1 max-sm:w-full">
           {canOpen && (

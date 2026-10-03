@@ -942,6 +942,9 @@ function NewItemRows({
     onChange({ newItems: draft.newItems.map((x) => (x.key === key ? { ...x, ...patch } : x)) });
   return (
     <div className="flex flex-col">
+      {/* With week dots, the linked list above reserves a scrollbar gutter so
+          its dots meet the header's; these rows reserve the same one. */}
+      <div className={cn('flex flex-col', trailing && 'overflow-y-hidden [scrollbar-gutter:stable]')}>
       {rows.map((n) => (
         // The member rows' own geometry (px 7, gap 9, a 76px rail slot), so the
         // week dots sit in the same columns as the linked rows' above them.
@@ -974,6 +977,7 @@ function NewItemRows({
           </span>
         </div>
       ))}
+      </div>
       <InlineAddRow
         placeholder={placeholder}
         testIdPrefix={testPrefix}
@@ -1065,7 +1069,10 @@ function LinkAnything({
           )}
         >
           <Link2 className="size-3.5" aria-hidden />
-          Link<span className="max-sm:hidden"> existing</span>
+          {/* One flex item, so the trigger's gap never opens inside the label. */}
+          <span>
+            Link<span className="max-sm:hidden"> existing</span>
+          </span>
         </button>
       }
     >
