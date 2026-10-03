@@ -151,6 +151,43 @@ describe('the surface a request is stamped with', () => {
   });
 });
 
+describe('the account clear (sign-out, an account switch)', () => {
+  it("drops a conversation's card and the excerpt it was asked with", async () => {
+    proposeAnswers(PLAN);
+    await proposals().request('ask', 'I asked: my biopsy came back positive. You answered: move the writing.', undefined, {
+      conversationId: CONV,
+    });
+    expect(proposals().status).toBe('ready');
+
+    clearChatState();
+    expect(proposals().status).toBe('idle');
+    expect(proposals().lastRequest).toBeNull();
+    expect(proposals().proposal).toBeNull();
+  });
+
+  it('drops a plan still on its way for the last account when it lands', async () => {
+    let answer: (v: unknown) => void = () => {};
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(
+        () =>
+          new Promise((resolve) => {
+            answer = resolve;
+          })
+      )
+    );
+    const asking = proposals().request('ask', 'I asked: something private.', undefined, { conversationId: CONV });
+    expect(proposals().status).toBe('loading');
+
+    clearChatState();
+    answer({ ok: true, status: 200, json: async () => ({ proposal: { summary: 'Late', rationale: 'r', operations: PLAN } }) });
+    await asking;
+    expect(proposals().status).toBe('idle');
+    expect(proposals().lastRequest).toBeNull();
+    expect(proposals().proposal).toBeNull();
+  });
+});
+
 describe("a plan asked of OpenClaw from a conversation", () => {
   it("records that OpenClaw was handed that conversation's excerpt; a model's plan does not", async () => {
     proposeAnswers(PLAN);

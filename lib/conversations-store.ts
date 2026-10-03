@@ -29,6 +29,7 @@ import {
 } from './chat-transport';
 import { addChanges, hasChanges } from './conversation-summary';
 import { useRailStore } from './rail-store';
+import { useProposalStore } from './proposal-store';
 
 /**
  * conversations-store.ts — saved AI conversations, as this browser holds them.
@@ -1712,17 +1713,24 @@ function retryQueued(): void {
 
 /**
  * Drop every conversation this browser holds, in memory, and the views and
- * drafts over them; abort every stream; forget the plugin transport; sweep the
- * pre-2a transcript keys. Two callers: the sign-out clear (RAW_CLEARERS in
- * lib/local-state.ts) and any account switch it covers. Nothing on the server
- * is touched: nothing in the app deletes a saved conversation except the
- * user's own Delete.
+ * drafts over them; abort every stream; drop the proposal card and the request
+ * behind it; forget the plugin transport; sweep the pre-2a transcript keys.
+ * Two callers: the sign-out clear (RAW_CLEARERS in lib/local-state.ts) and any
+ * account switch it covers. Nothing on the server is touched: nothing in the
+ * app deletes a saved conversation except the user's own Delete.
+ *
+ * The card goes here, not by the rail's rule (a `conv:` card goes once its
+ * conversation is in neither stack): reset() empties the stacks without that
+ * rule, and a card's `lastRequest.prompt` is a verbatim excerpt of the
+ * conversation, both sides. dismiss() claims a new generation, so a plan
+ * still on its way for the last account lands nowhere.
  */
 export function clearChatState(): void {
   for (const c of controllers.values()) c.abort();
   controllers.clear();
   useConversationsStore.getState().reset();
   useRailStore.getState().reset();
+  useProposalStore.getState().dismiss();
   resetPluginTransport();
   sweepLegacyTranscripts();
 }
