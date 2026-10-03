@@ -511,3 +511,52 @@ describe('applyProposal — moving something back to the Braindump', () => {
     ).toBe('2026-08-06');
   });
 });
+
+describe('onAccepted: what the plan actually took', () => {
+  /**
+   * proposal-store counts an accepted card on the conversation that asked
+   * (History's second line), and it must count what was APPLIED, after the
+   * re-validation, not what the card offered.
+   */
+  it('hears the operations that survived re-validation, before the one set()', () => {
+    const heard: ProposalOperation[][] = [];
+    let itemsWhenHeard = -1;
+    const applied = store().applyProposal(
+      proposalOf(
+        { kind: 'update', itemId: 'task-1', startDate: '2026-08-06' },
+        { kind: 'update', itemId: 'gone-1', startDate: '2026-08-06' },
+        { kind: 'create', itemType: 'task', title: 'Book dentist' }
+      ),
+      (accepted) => {
+        heard.push(accepted);
+        itemsWhenHeard = store().items.length;
+      }
+    );
+    expect(applied).toBe(2);
+    expect(heard).toHaveLength(1);
+    expect(heard[0].map((op) => (op.kind === 'update' ? op.itemId : op.title))).toEqual(['task-1', 'Book dentist']);
+    // Called before the write: the planner still held the three fixtures.
+    expect(itemsWhenHeard).toBe(3);
+    expect(store().items).toHaveLength(4);
+  });
+
+  it('a tally that throws never costs the plan', () => {
+    const applied = store().applyProposal(
+      proposalOf({ kind: 'update', itemId: 'task-1', startDate: '2026-08-06' }),
+      () => {
+        throw new Error('tally failed');
+      }
+    );
+    expect(applied).toBe(1);
+    expect(store().items.find((i) => i.id === 'task-1')).toMatchObject({ startDate: '2026-08-06' });
+    // Still one undo for the whole plan.
+    store().undo();
+    expect(store().items.find((i) => i.id === 'task-1')).toMatchObject({ startDate: '2026-07-20' });
+  });
+
+  it('is not called when nothing is taken', () => {
+    const onAccepted = vi.fn();
+    expect(store().applyProposal(proposalOf({ kind: 'update', itemId: 'gone-1', startDate: '2026-08-06' }), onAccepted)).toBe(0);
+    expect(onAccepted).not.toHaveBeenCalled();
+  });
+});

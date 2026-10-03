@@ -15,6 +15,7 @@
    (design/redesign/darkModeColorReference.png) with the lime accent retained.
    ═══════════════════════════════════════════════════════════════════════════ */
 
+[data-theme-preview],
 :root {
   /* ── 1. Raw ramps (do not use in components) ─────────────────────────── */
   /* Values sampled from the Figma file (6ZFClj80tMQOCYUhzyuWFL) */
@@ -407,6 +408,7 @@
    color-mix and re-tune automatically. */
 
 /* Slate — cool blue-gray ground; the teal-slate of the relay field's cousin. */
+[data-theme-preview][data-preview-tint='slate']:not(.dark),
 :root[data-theme='slate']:not(.dark) {
   --paper-0: oklch(0.977 0.004 235);
   --paper-1: oklch(0.982 0.004 235);
@@ -423,6 +425,7 @@
   --scrim: oklch(0.24 0.02 250 / 12%);
   --sidebar-border: oklch(0.91 0.008 235);
 }
+[data-theme-preview][data-preview-tint='slate'].dark,
 :root[data-theme='slate'].dark {
   --paper-0: oklch(0.168 0.014 240);
   --paper-1: oklch(0.174 0.013 240);
@@ -435,6 +438,7 @@
 }
 
 /* Dune — warm sand ground; the paper leans into its own hue instead of near-neutral. */
+[data-theme-preview][data-preview-tint='dune']:not(.dark),
 :root[data-theme='dune']:not(.dark) {
   --paper-0: oklch(0.973 0.007 85);
   --paper-1: oklch(0.979 0.006 85);
@@ -451,6 +455,7 @@
   --scrim: oklch(0.3 0.03 70 / 12%);
   --sidebar-border: oklch(0.905 0.012 85);
 }
+[data-theme-preview][data-preview-tint='dune'].dark,
 :root[data-theme='dune'].dark {
   --paper-0: oklch(0.172 0.007 65);
   --paper-1: oklch(0.178 0.007 65);
@@ -463,6 +468,7 @@
 }
 
 /* Iris — faint violet ground; the coolest pairing the lime accent tolerates. */
+[data-theme-preview][data-preview-tint='iris']:not(.dark),
 :root[data-theme='iris']:not(.dark) {
   --paper-0: oklch(0.977 0.005 305);
   --paper-1: oklch(0.982 0.005 305);
@@ -479,6 +485,7 @@
   --scrim: oklch(0.26 0.025 295 / 12%);
   --sidebar-border: oklch(0.91 0.008 305);
 }
+[data-theme-preview][data-preview-tint='iris'].dark,
 :root[data-theme='iris'].dark {
   --paper-0: oklch(0.168 0.012 300);
   --paper-1: oklch(0.174 0.012 300);
@@ -670,6 +677,7 @@
    Light values are crisp neutral-black drops (≈ the original hardcoded pill/
    canvas shadows): the defined contrast reads better on the near-white paper
    than a softer, warmer shadow. */
+[data-theme-preview],
 :root {
   --shadow-elev-sm: 0 4px 4px oklch(0 0 0 / 14%), 0 1px 2px oklch(0 0 0 / 8%);
   --shadow-elev-md: 0 4px 10px oklch(0 0 0 / 14%), 0 2px 4px oklch(0 0 0 / 8%);
@@ -1133,6 +1141,7 @@
    up the light list. Unset means the shipped colours. */
 
 /* Studio — crisp white, black ink, hairlines instead of soft shadows, cobalt. */
+[data-theme-preview][data-preview-light='studio']:not(.dark),
 :root[data-look-light='studio']:not(.dark) {
   --paper-0: oklch(0.975 0 0);
   --paper-1: oklch(0.98 0 0);
@@ -1165,11 +1174,13 @@
   --relay-light-quiet: oklch(0.42 0 0), oklch(0.5 0 0), oklch(0.58 0 0), oklch(0.46 0 0), oklch(0.54 0 0),
     oklch(0.55 0.2 262), oklch(0.55 0.2 262), oklch(0.65 0.13 225), oklch(0.48 0.18 270);
 }
+[data-theme-preview][data-preview-light='studio']:not(.dark),
 :root[data-look-light='studio']:not(.dark) body {
   --font-ui: var(--font-geist), 'Geist', system-ui, sans-serif;
 }
 
 /* Sorbet — pastel peach, big round corners, pillowy warm shadows, pink. */
+[data-theme-preview][data-preview-light='sorbet']:not(.dark),
 :root[data-look-light='sorbet']:not(.dark) {
   --paper-0: oklch(0.965 0.018 50);
   --paper-1: oklch(0.972 0.016 50);
@@ -1204,11 +1215,13 @@
   --relay-light-quiet: oklch(0.8 0.04 40), oklch(0.74 0.05 35), oklch(0.84 0.03 45), oklch(0.78 0.04 30),
     oklch(0.72 0.15 0), oklch(0.72 0.15 0), oklch(0.78 0.12 50), oklch(0.72 0.1 170), oklch(0.7 0.11 300);
 }
+[data-theme-preview][data-preview-light='sorbet']:not(.dark),
 :root[data-look-light='sorbet']:not(.dark) body {
   --font-ui: var(--font-nunito), 'Nunito', system-ui, sans-serif;
 }
 
 /* Terminal — true black, monospace everything, square corners, amber. */
+[data-theme-preview][data-preview-dark='terminal'].dark,
 :root[data-look-dark='terminal'].dark {
   --paper-0: oklch(0 0 0);
   --paper-1: oklch(0.04 0 0);
@@ -1234,17 +1247,20 @@
   --relay-dark: oklch(0.8 0.15 70), oklch(0.8 0.15 70), oklch(0.8 0.15 70), oklch(0.72 0.14 60),
     oklch(0.68 0.15 45), oklch(0.86 0.12 90), oklch(0.62 0.12 55), oklch(0.75 0.13 80), oklch(0.7 0.14 65);
 }
+[data-theme-preview][data-preview-dark='terminal'].dark,
 :root[data-look-dark='terminal'].dark body {
   --font-ui: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
   --font-mono: var(--font-jetbrains-mono), 'JetBrains Mono', ui-monospace, monospace;
 }
 /* @theme inline bakes the system mono stack straight into .font-mono, and the
    preflight gives code/pre their own; point both at the theme's one face. */
+[data-theme-preview][data-preview-dark='terminal'].dark :is(.font-mono, code, pre, kbd, samp),
 :root[data-look-dark='terminal'].dark :is(.font-mono, code, pre, kbd, samp) {
   font-family: var(--font-mono);
 }
 
 /* Dusk — deep indigo-violet ground, soft round corners, apricot. */
+[data-theme-preview][data-preview-dark='dusk'].dark,
 :root[data-look-dark='dusk'].dark {
   --paper-0: oklch(0.17 0.04 285);
   --paper-1: oklch(0.18 0.042 285);
@@ -1279,6 +1295,7 @@
    --font-source-serif) are defined by classNames on <body>, so an inner
    var() chain only resolves at body or below — defined on :root it
    computes to guaranteed-invalid and font-family silently falls back. */
+[data-theme-preview],
 body {
   /* The chrome face. A theme re-points it (see Themes above); item titles
      follow it unless the Typeface setting asks for serif. */
@@ -1303,6 +1320,44 @@ body {
   --font-content-weight: 600;
   --text-content: 12px;
   --text-content--line-height: 17px;
+}
+
+/* ── Theme previews (Settings → Look) ───────────────────────────────────────
+   A preview draws a theme that is not the one showing: Studio while the app is
+   on Paper, or the light side while the app is dark. Every token above
+   resolves on <html>, so stamping a subtree with a theme's attribute alone
+   changes nothing below it. The preview root ([data-theme-preview],
+   components/settings/look-mini.tsx) is therefore made to match what <html>
+   matches: it is listed beside :root on the base blocks (and beside body on
+   the type tokens), carries `dark` for a dark preview, and each palette and
+   theme block above has a twin keyed on data-preview-tint / -light / -dark at
+   the same (0,3,0) weight, so the formulas re-resolve on the root with the
+   previewed values. The twins come FIRST in each selector list, which keeps
+   every `:root[...] {` head the drift tests read exactly as it was.
+
+   What only a theme block declares would still inherit from the live theme,
+   so the root sets it back to the shipped value: the relay colours (unset is
+   "the shipped colours") and the mono face Terminal re-points. --shadow-soft-*
+   and `dark:` utilities follow the live mode whatever this does, so nothing
+   inside a preview uses them. */
+[data-theme-preview] {
+  --relay-light: initial;
+  --relay-light-quiet: initial;
+  --relay-dark: initial;
+  --font-mono: ui-monospace, 'Cascadia Mono', 'Cascadia Code', 'SF Mono', SFMono-Regular, Menlo, Consolas,
+    'Liberation Mono', monospace;
+}
+/* Layered, so a utility on the root still wins. font-family and color inherit
+   as values computed at body, so the root states its own. */
+@layer base {
+  [data-theme-preview] {
+    font-family: var(--font-ui);
+    color: var(--foreground);
+    color-scheme: light;
+  }
+  [data-theme-preview].dark {
+    color-scheme: dark;
+  }
 }
 
 /* Utilities consumed by item titles (task-row, drag ghost, schedule blocks,
@@ -1385,6 +1440,75 @@ body {
   .canvas-container {
     padding-inline: 0.875rem;
     max-width: none;
+  }
+}
+
+/* ── The day on a narrow canvas ───────────────────────────────────────────
+   Beside a docked right rail the day can be as narrow as ~380px (the braindump
+   yields down to its minimum, lib/sidebar-store.ts renderedSidebarWidth), and
+   nothing in it may be cut off there: cards keep both edges, rows truncate
+   rather than spill, and every header control stays on the canvas. <main> is
+   the `canvas` size container (desktop-shell.tsx), so all of this keys off
+   the day's own width, never the window's. Above each threshold the day is
+   exactly what it was; the 1440 window with no rail is wider than all of
+   them in every layout.
+
+   The day views' scroller. Radix's ScrollArea wraps its content in a
+   `display: table; min-width: 100%` box, and a table is never narrower than
+   its content's min-content width: one row that could not shrink widened the
+   whole column past the viewport, where overflow-x clips it, and every card
+   lost its right edge. As a block the content is the viewport's width and its
+   rows shrink and truncate inside it. Day scope only: the week column views
+   scroll sideways on purpose, and their pinned hour gutter is sticky to that
+   wide box. Wherever the content fits, a table that wide IS a block. */
+[data-view-scope='day'] > [data-slot='scroll-area'] > [data-slot='scroll-area-viewport'] > div {
+  display: block !important;
+}
+
+/* The header on a narrow canvas. The capsule's natural width is ~374-387px
+   (380 in the mono and plain layouts), so it fits a canvas of 450px with its
+   32px gutters; below that it compresses. The pill's three labels and Today's
+   word go to the screen reader only (their icons and aria-labels carry the
+   controls), and the date takes its short form ("Wed, Sep 30", the button's
+   data-date-short). The long text stays in the DOM and the button is named by
+   it (its aria-label), so its name and its text do not change with the width;
+   only what is drawn does. Today wraps under the date row rather than past
+   the edge (header-capsule.tsx), and the header row wraps WeekScale and the
+   notices under the capsule (desktop-shell.tsx). */
+@container canvas (width < 450px) {
+  [data-header-capsule] [data-narrow-sr] {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border-width: 0;
+  }
+  [data-header-capsule] [data-date-long] {
+    display: none;
+  }
+  [data-header-capsule] [data-testid='header-date']::after {
+    content: attr(data-date-short);
+  }
+}
+/* The masthead's 28px serif date needs more, but only for a long date. Its
+   nav row (calendar, prev, date, next) is 448px on the longest ones
+   ("Wednesday, September 13"), and the header row adds its px-1 and the
+   canvas container's two 32px gutters: 448 + 8 + 64 = 520. Every date of up
+   to MASTHEAD_WIDE_DATE_CHARS characters fits by 450 (header-capsule.tsx,
+   where `data-date-wide` is set, has the measurements), so only the wide
+   ones shorten here, and "Friday, October 2" (a 330px nav) stays whole on
+   Notebook's 514px day. Today wrapping under the row is the rule above's, at
+   every width. */
+@container canvas (width < 520px) {
+  [data-layout-header='masthead'] [data-header-capsule] [data-date-wide] [data-date-long] {
+    display: none;
+  }
+  [data-layout-header='masthead'] [data-header-capsule] [data-testid='header-date'][data-date-wide]::after {
+    content: attr(data-date-short);
   }
 }
 
@@ -1796,6 +1920,418 @@ body {
   :root[data-theme-changing] *::after {
     transition-duration: 0s !important;
   }
+}
+
+/* ─── Ask's key: the Ask button, lit from the AI's mark ──────────────────────
+   components/ai/rail/ask-opener.tsx draws it and components/ai/ask-mark.tsx is
+   the mark in it (Ask's header carries the same mark). Its geometry is
+   Tailwind on the elements; what is here needs a registered property, a
+   gradient, a state or a layout selector.
+
+     [data-ask-opener]          the plate: the key, and the chord beside it
+     [data-ask-opener]::before  the well that fades in under both
+     [data-ask-key]             the raised key: the mark and "Ask"
+     [data-form='key']          the same plate and key without the chord, when
+                                the row has no room for it
+     [data-form='icon']         the key alone, when the row has no room for more
+
+   The whole key is the same with its chord or without, so a rule for it alone
+   reads :not([data-form='icon']), never [data-form='full'], which the key
+   form would miss (the chord is its own element, and needs no form).
+
+   THE MARK IS THE LIGHT SOURCE. The key's 1px rim is a transparent border
+   painted by a radial gradient centred on the mark's lit part, under a
+   padding-box fill, so the light shows only in the rim. The centre is the
+   mark's slot (18px in from the key's left edge, at mid-height: its 1px
+   border, 9px padding and half the 16px slot) moved by ASK_MARK_LIGHT, which
+   the opener sets as --ask-light-x / --ask-light-y. At rest the accent holds
+   full strength over the cap beside the lit tile (to 19px), hands off to the
+   look's aurora partner (by 26px), and the partner steps down to the hairline
+   through three solid steps (58%, 30% and 12% partner at a quarter, half and
+   three quarters of the run, front-loaded so the tail trails off past "Ask"
+   instead of ending in a dash over the "A"). On hover, keyboard focus and
+   press the light travels round the whole rim: three registered lengths ease
+   to 30/52/84px over 220ms while the well fades in over 150ms.
+
+   THE ACCENT NEVER DIMS (CLAUDE.md). It is the raw token at full strength,
+   mixed with nothing but the partner its gradient hands off to; only the
+   partner steps toward the hairline. Nothing here puts an opacity, a filter, a
+   mask or a blend on anything (tests/unit/ask-key.test.tsx). Lime on the
+   white key is 1.47:1, a hue with no edge, and that is not fixed by fading
+   anything: the bright arc is cut tight, and the partner is the look's
+   LIGHT-mode relay colour, the deeper form the relay field and the light app
+   mark paint on paper, so a pale solid head sits on a darker solid tail. In
+   dark both glow.
+
+   The mark's slot contract (the same tokens wherever it is drawn, so swapping
+   the mark is a change to ask-mark.tsx alone), declared on the key and on the
+   mark, where each one resolves against the skin it sits in:
+     --ask-icon-ink       a glyph that must carry 3:1 alone (deep honey on the
+                          white key, --ai in dark)
+     --ask-icon-lit       honey, for a lit part in the engaged states
+     --ask-icon-accent    the theme accent, the light: full strength, never faded
+     --ask-icon-pair      the look's aurora partner, the glint's tail
+     --ask-icon-pair-ink  the partner deep enough to carry 3:1 on the key: in
+                          light deepened 14% toward the ink ("sonar": light mode
+                          cannot add light to near-white, so it deepens), except
+                          where the accent is already dark (Studio, Retro)
+     --ask-icon-key       the key's fill, to knock a detail out against it */
+@property --ask-key-hold {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 19px;
+}
+@property --ask-key-tail {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 26px;
+}
+@property --ask-key-reach {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 40px;
+}
+/* The key's fill feeds a gradient layer, so it is a registered colour: a plain
+   background-color could not sit under the rim's light, and an unregistered
+   one would not ease. The rim's three colours are registered for the same
+   reason (the theme swap, at the end of this block). */
+@property --ask-key-fill {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: white;
+}
+@property --ask-key-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --ask-key-pair {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --ask-key-rim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+:is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-ink: oklch(0.62 0.135 85);
+  --ask-icon-lit: var(--ai);
+  --ask-icon-accent: var(--lime-solid);
+  --ask-icon-pair: oklch(0.64 0.1 195);
+  --ask-icon-pair-ink: color-mix(in oklch, var(--ask-icon-pair), var(--foreground) 14%);
+  --ask-icon-key: var(--surface-2);
+}
+.dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-ink: var(--ai);
+  --ask-icon-pair: oklch(0.84 0.12 190);
+  --ask-icon-pair-ink: var(--ask-icon-pair);
+}
+/* Each look's partner: light from its light relay colour, dark from its glow
+   (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
+   tints keep Paper's and Night's. */
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.65 0.13 225);
+  --ask-icon-pair-ink: var(--ask-icon-pair);
+}
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.64 0.15 18);
+}
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.86 0.12 90);
+}
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.76 0.12 350);
+}
+/* After the looks, and as specific: Notepad Retro's skin re-points the accent
+   under whichever look is on, so its partner has to win over theirs too. */
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.66 0.11 210);
+  --ask-icon-pair-ink: var(--ask-icon-pair);
+}
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.8 0.1 215);
+}
+
+/* The plate. The rim's colours: the accent, the partner, and the hairline the
+   light steps down to, a solid mix (the colour a 9% foreground hairline
+   paints on the key). Focus, in light, adds a 1px --success-text line inside
+   the ring so the pair reads at 3:1 on paper; in dark the ring alone does. */
+[data-ask-opener] {
+  --ask-key-accent: var(--ask-icon-accent);
+  --ask-key-pair: var(--ask-icon-pair);
+  --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
+  --ask-focus-line: var(--success-text);
+  --ask-focus-rim: var(--success-text);
+  --ask-focus-rim-offset: 0px;
+  --ask-wash: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+.dark [data-ask-opener] {
+  --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 7%);
+  --ask-focus-line: transparent;
+  --ask-focus-rim: var(--ring);
+  --ask-focus-rim-offset: -1px;
+  --ask-wash: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+/* The well: nothing at rest; the header capsule's own material on hover and
+   press, opening a hair as it comes. */
+[data-ask-opener]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: transparent;
+  box-shadow: none;
+  transform: scale(0.96);
+  transition:
+    background-color 150ms var(--ease-out-soft),
+    box-shadow 150ms var(--ease-out-soft),
+    transform 150ms var(--ease-out-soft);
+}
+
+/* The key: the omnibar's raised key, with the light in its rim. Its fill
+   eases (a press, the key alone's hover), and "Ask" (its colour, inherited)
+   eases with it, on the same duration and curve: a mode flip that does not go
+   through the theme swap's window (the OS flipping a 'system' theme, another
+   tab's toggle) would otherwise snap the word to the new mode over the old
+   fill for a frame or two, near-white on white or dark on dark. */
+[data-ask-key] {
+  --ask-key-x: 18px;
+  --ask-key-fill: var(--surface-2);
+  --ask-key-hold: 19px;
+  --ask-key-tail: 26px;
+  --ask-key-reach: 40px;
+  background:
+    linear-gradient(var(--ask-key-fill), var(--ask-key-fill)) padding-box,
+    radial-gradient(
+        circle at calc(var(--ask-key-x) + var(--ask-light-x, 0px)) calc(50% + var(--ask-light-y, 0px)) in oklab,
+        var(--ask-key-accent) 0px,
+        var(--ask-key-accent) var(--ask-key-hold),
+        var(--ask-key-pair) var(--ask-key-tail),
+        color-mix(in oklab, var(--ask-key-pair) 58%, var(--ask-key-rim))
+          calc(var(--ask-key-tail) + (var(--ask-key-reach) - var(--ask-key-tail)) * 0.25),
+        color-mix(in oklab, var(--ask-key-pair) 30%, var(--ask-key-rim))
+          calc(var(--ask-key-tail) + (var(--ask-key-reach) - var(--ask-key-tail)) * 0.5),
+        color-mix(in oklab, var(--ask-key-pair) 12%, var(--ask-key-rim))
+          calc(var(--ask-key-tail) + (var(--ask-key-reach) - var(--ask-key-tail)) * 0.75),
+        var(--ask-key-rim) var(--ask-key-reach)
+      )
+      border-box;
+  box-shadow: var(--shadow-key-rest);
+  transition:
+    --ask-key-hold 220ms var(--ease-out-soft),
+    --ask-key-tail 220ms var(--ease-out-soft),
+    --ask-key-reach 220ms var(--ease-out-soft),
+    --ask-key-fill 150ms var(--ease-out-soft),
+    color 150ms var(--ease-out-soft),
+    box-shadow 150ms var(--ease-out-soft),
+    translate 150ms var(--ease-out-soft);
+}
+
+/* The chord: --ink-1 on the plate at rest (the button's colour), the
+   foreground once the well is under it. */
+[data-ask-opener-chord] {
+  transition: color 150ms var(--ease-out-soft);
+}
+
+/* Engaged. Hover is pointer-only, as Tailwind's hover is (the mark's own
+   engaged state is a group-hover), so a tap never leaves it lit. */
+@media (hover: hover) {
+  [data-ask-opener]:hover::before {
+    background-color: var(--surface-3);
+    box-shadow: var(--shadow-elev-bar);
+    transform: none;
+  }
+  [data-ask-opener]:hover [data-ask-key] {
+    --ask-key-hold: 30px;
+    --ask-key-tail: 52px;
+    --ask-key-reach: 84px;
+  }
+  [data-ask-opener]:hover [data-ask-opener-chord] {
+    color: var(--foreground);
+  }
+}
+[data-ask-opener]:active::before {
+  background-color: var(--surface-3);
+  box-shadow: var(--shadow-elev-bar);
+  transform: none;
+}
+[data-ask-opener]:is(:focus-visible, :active) [data-ask-key] {
+  --ask-key-hold: 30px;
+  --ask-key-tail: 52px;
+  --ask-key-reach: 84px;
+}
+[data-ask-opener]:is(:focus-visible, :active) [data-ask-opener-chord] {
+  color: var(--foreground);
+}
+/* Pressed: the omnibar's key-press pair, a 1px sink, the fill settling toward
+   the well. */
+[data-ask-opener]:active [data-ask-key] {
+  translate: 0 1px;
+  --ask-key-fill: var(--surface-2-pressed);
+  box-shadow: var(--shadow-key-pressed);
+  transition-duration: 220ms, 220ms, 220ms, 60ms, 60ms, 60ms, 60ms;
+}
+/* Focus: the app's 2px full-strength ring round the whole target, key and
+   chord, with the light-theme line inside it. */
+[data-ask-opener]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 0;
+}
+[data-ask-opener]:focus-visible::before {
+  transform: none;
+  box-shadow: inset 0 0 0 1px var(--ask-focus-line);
+}
+
+/* The key alone. No plate and no well: the light catches the key's left arc
+   (centred 2px in, plus the mark's offset) and runs round it when engaged. */
+[data-ask-opener][data-form='icon']::before {
+  content: none;
+}
+[data-ask-opener][data-form='icon'] [data-ask-key] {
+  --ask-key-x: 2px;
+  --ask-key-hold: 13px;
+  --ask-key-tail: 17px;
+  --ask-key-reach: 27px;
+}
+@media (hover: hover) {
+  [data-ask-opener][data-form='icon']:hover [data-ask-key] {
+    --ask-key-hold: 18px;
+    --ask-key-tail: 32px;
+    --ask-key-reach: 48px;
+  }
+  [data-ask-opener][data-form='icon']:hover:not(:active) [data-ask-key] {
+    --ask-key-fill: color-mix(in oklab, var(--surface-2), var(--foreground) 4%);
+  }
+}
+[data-ask-opener][data-form='icon']:is(:focus-visible, :active) [data-ask-key] {
+  --ask-key-hold: 18px;
+  --ask-key-tail: 32px;
+  --ask-key-reach: 48px;
+}
+/* Its focus ring sits on the key, and ring and line read as one: the rim stops
+   being the light and becomes the line (--success-text on the border box, the
+   2px ring just outside it, the plate's own pair); in dark, where there is no
+   line, the rim takes the ring's colour and the outline steps 1px in over it,
+   so the ring stays 2px. */
+[data-ask-opener][data-form='icon']:focus-visible {
+  outline: none;
+}
+[data-ask-opener][data-form='icon']:focus-visible [data-ask-key] {
+  --ask-key-accent: var(--ask-focus-rim);
+  --ask-key-pair: var(--ask-focus-rim);
+  --ask-key-rim: var(--ask-focus-rim);
+  outline: 2px solid var(--ring);
+  outline-offset: var(--ask-focus-rim-offset);
+}
+
+/* The plain and masthead headers (Notebook, Notepad, Writer) take the
+   capsule's material away, so the whole key is drawn on the page: the page's
+   own colour, the light over an --input hairline, a 1px lip under it, and a
+   flat wash under key and chord on hover. The key alone keeps the raised
+   key's fill but takes the page's hairline too, as the design's docked key
+   did. In light only: in dark --input is translucent, and a partner step
+   mixed with it would be, so the hairline is a solid mix there (the page's
+   for the whole key, below; the raised key's 7% for the key alone). */
+:root:not(.dark) :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener] {
+  --ask-key-rim: var(--input);
+}
+.dark :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']) {
+  --ask-key-rim: color-mix(in oklab, var(--canvas), var(--foreground) 9%);
+}
+.dark [data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']) {
+  --ask-key-rim: color-mix(in oklab, var(--nb-page, var(--canvas)), var(--foreground) 9%);
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']) [data-ask-key] {
+  --ask-key-fill: var(--canvas);
+  box-shadow: inset 0 -1px 0 0 var(--input);
+}
+[data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']) [data-ask-key] {
+  --ask-key-fill: var(--nb-page, var(--canvas));
+}
+@media (hover: hover) {
+  :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before {
+    background-color: var(--ask-wash);
+    box-shadow: none;
+  }
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:active::before {
+  background-color: var(--ask-wash);
+  box-shadow: none;
+}
+/* As specific as the wash's and after it, so a keyboard-focused key keeps
+   the light-theme focus line inside its ring while it is hovered or pressed
+   (the lime ring alone is 1.4:1 on paper). */
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:focus-visible::before {
+  box-shadow: inset 0 0 0 1px var(--ask-focus-line);
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']):active [data-ask-key] {
+  --ask-key-fill: var(--canvas);
+  box-shadow: inset 0 0 0 0 var(--input);
+}
+[data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']):active [data-ask-key] {
+  --ask-key-fill: var(--nb-page, var(--canvas));
+}
+
+/* The theme swap (above) grants transitions to the colour properties only,
+   which would leave the key half swapped: its fill and its rim are registered
+   colours feeding gradient layers, not background-color, so they flipped to
+   the new mode on the first frame while the plate around them eased (a dark
+   key, "Ask" still dark, on a white plate). They join the window here, on its
+   duration and curve. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-changing] [data-ask-opener] {
+    transition-property:
+      --ask-key-accent, --ask-key-pair, --ask-key-rim, background-color, border-color, color, fill, stroke,
+      text-decoration-color, box-shadow !important;
+  }
+  :root[data-theme-changing] [data-ask-key] {
+    transition-property:
+      --ask-key-fill, background-color, border-color, color, fill, stroke, text-decoration-color, box-shadow !important;
+  }
+}
+
+/* The mark moves only inside the key. Wherever else it is drawn (Ask's
+   header) it is still: a mode flip outside the theme swap's window swaps it
+   with what is round it, rather than holding a part on the old mode's colour
+   through a hand-off delay. Not !important, so inside the window (whose
+   !important grants colour transitions to everything, delay 0) it eases with
+   the header; the mark's own transitions are Tailwind's, layered, so this
+   unlayered rule beats them. */
+[data-ask-mark]:not([data-ask-key] [data-ask-mark]),
+[data-ask-mark]:not([data-ask-key] [data-ask-mark]) * {
+  transition: none;
+}
+
+/* Reduced motion, the OS's or the in-app animations-off setting: every state
+   swaps at once, the key's and the mark's wherever it is drawn. The global
+   [data-reduce-motion] rule above clamps durations only, and would leave the
+   mark's 60ms hand-off delays. */
+@media (prefers-reduced-motion: reduce) {
+  [data-ask-opener],
+  [data-ask-opener]::before,
+  [data-ask-opener] *,
+  [data-ask-opener] *::before,
+  [data-ask-opener] *::after,
+  [data-ask-mark],
+  [data-ask-mark] * {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+[data-reduce-motion='true'] [data-ask-opener],
+[data-reduce-motion='true'] [data-ask-opener]::before,
+[data-reduce-motion='true'] [data-ask-opener] *,
+[data-reduce-motion='true'] [data-ask-opener] *::before,
+[data-reduce-motion='true'] [data-ask-opener] *::after,
+[data-reduce-motion='true'] [data-ask-mark],
+[data-reduce-motion='true'] [data-ask-mark] * {
+  transition: none !important;
+  animation: none !important;
 }
 
 /* ─── Notices in place ────────────────────────────────────────────────────────
@@ -2410,6 +2946,7 @@ body {
    The paper is its own, not a theme's: a planner's page is cream whatever the
    colour theme does, and it pairs with Paper. --nb-* are inert anywhere a
    [data-book] (desktop-shell's `canvas: 'spread'`) is not rendered. */
+[data-theme-preview],
 :root {
   --nb-desk: oklch(0.83 0.025 65);
   --nb-page: oklch(0.975 0.014 88);
@@ -2452,7 +2989,7 @@ body {
   padding-inline: 20px 14px;
   box-shadow: inset -22px 0 22px -22px var(--nb-spine);
 }
-[data-book] > main::before {
+[data-book] > :is(main, [data-preview-canvas])::before {
   content: '';
   position: absolute;
   inset-block: 0;
@@ -2580,6 +3117,7 @@ body {
    the day tabs and the status bar. The sheet is the theme's canvas and the
    chrome a step darker, so Notepad wears whatever colour theme is on unless
    its style brings its own skin. */
+[data-theme-preview],
 :root {
   --np-chrome: color-mix(in oklab, var(--canvas) 94%, black);
 }
@@ -2767,6 +3305,14 @@ body {
   font-family: var(--font-mono);
 }
 
+/* type, for Ask's greeting: the type rules above redefine --font-ui, never
+   --font-serif, so the one serif line in the rail would stay serif in a layout
+   that is plain text everywhere else (Notepad: your day as plain text). It
+   takes the layout's face instead; every 'ui' layout keeps the serif. */
+[data-layout-type]:not([data-layout-type='ui']) [data-ask-greeting] {
+  font-family: var(--font-ui);
+}
+
 /* buckets: 'focus' — a bucket is a small lowercase label over its rows, no
    card, no glyph. While one of them is the bucket you are in, the others go
    grey by colour, never by opacity (CLAUDE.md: the accent is never faded
@@ -2792,7 +3338,7 @@ body {
 [data-layout-buckets='focus'] [data-testid='bucket-card'][data-current='true'] [data-bucket-label]::after {
   content: ' · now';
 }
-[data-layout-buckets='focus'] main:has([data-testid='bucket-card'][data-current='true'])
+[data-layout-buckets='focus'] :is(main, [data-preview-canvas]):has([data-testid='bucket-card'][data-current='true'])
   [data-testid='bucket-card'][data-current='false'] {
   --foreground: var(--muted-foreground);
   color: var(--muted-foreground);
@@ -2869,8 +3415,12 @@ body {
    every layout: menus and dialogs portal out and keep the colour theme.
    Tokens DERIVED from those (muted, the schedule panes, the drop trays, the
    shadows a theme re-cuts) were also resolved at :root, so the skin restates
-   each formula as well, or it would inherit the theme's finished colours. */
-[data-layout-skin='retro'] {
+   each formula as well, or it would inherit the theme's finished colours.
+   A light Settings preview inside a dark app restates the light block at a
+   weight that beats `.dark [data-layout-skin='retro']`, which would otherwise
+   reach it through <html>. */
+[data-layout-skin='retro'],
+[data-theme-preview]:not(.dark) [data-layout-skin='retro'] {
   --np-chrome: #f3f3f3;
   --canvas: #ffffff;
   --background: #f3f3f3;

@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { WeekBuckets } from '@/components/views/week-buckets';
 import { WeekList } from '@/components/views/week-list';
 import { WeekSchedule } from '@/components/views/week-schedule';
@@ -29,8 +30,11 @@ import { usePlannerPreviewing, usePlannerSettled } from '@/lib/planner-ready';
  * lifted, so nothing here may be keyed on settled or previewing: rows keep
  * their identity (and their scroll) across the swap, which the settle's FLIP
  * depends on.
+ *
+ * memo'd, with no props: DesktopShell re-renders for the right column's
+ * overlay (`covered`), and that must not re-render the day under it.
  */
-export function ViewRouter() {
+export const ViewRouter = memo(function ViewRouter() {
   const activeId = useDragStore((s) => s.activeId);
   const settled = usePlannerSettled();
   const previewing = usePlannerPreviewing();
@@ -81,4 +85,4 @@ export function ViewRouter() {
       {visible ? view : <PlannerSkeleton variant={layout} scope={scope} wide={wide} />}
     </div>
   );
-}
+});

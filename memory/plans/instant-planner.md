@@ -173,6 +173,12 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   `edit-item` is re-resolved to the fresh row (dropped if the row is gone, keeping the
   payload's type stamp); a `new-container` keeps only the `itemIds` that still exist. A
   failure, a crash drop, an account change and leaving `/` all drop it.
+- **The phone's Ask tab.** While it is mounted, `openEditFor` hands an item to rail-store's
+  interceptor, which pushes it over Ask as an autosaving inline ItemDialog instead of
+  opening the drawer. While previewing, `openStampedEdit` (ui-store) skips the
+  interceptor, so the open goes to the slot and is deferred like any other; promotion
+  opens an `edit-item` through `openStampedEdit` too, so a promoted item still lands over
+  Ask.
 - **Commands** ([lib/commands/types.ts](../../lib/commands/types.ts)). While previewing,
   `isAvailable` is false for every command in the `create`, `items`, `rituals` and
   `history` groups, plus `workspace.selectAll` and `goto.overdue`. It is a group rule
@@ -194,6 +200,11 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   This also closes a cold-load hole: "Put back" over an empty store spent the only receipt
   on nothing.
 - **The morning check** stays hidden until loaded.
+- **Ask home's Needs you** stays hidden until loaded. Answering records a reply on the
+  item's trail and then re-queues it through `updateTask`, which the barrier refuses while
+  previewing; `answerAgentQuestion` also returns false then, writing nothing, so a reply
+  can never land without its re-queue. The rest of Ask home (the load line, With AI
+  activity, the chips) only displays or opens, and paints from the preview.
 - **Proposal accept** returns 0 before `claim()`, so the card stays and can be accepted
   after the landing.
 - **The deep-link pages** (`/item/[id]`, `/goal/[id]`, the container pages) look up their

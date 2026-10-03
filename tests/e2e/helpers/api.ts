@@ -487,6 +487,9 @@ export async function resetUserSettings(page: Page | APIRequestContext): Promise
       // upsert, it stayed on for every later run against the same database,
       // and each expand-zone click after that peeked instead of expanding.
       left_sidebar_hover: false,
+      // The settings spec taps the dark preview, which pins Mode. Left out,
+      // every later spec on this database would open in dark.
+      theme: 'system',
     }),
   });
   if (!res.ok) console.warn(`[settings-reset] ${res.status}: ${await res.text()}`);

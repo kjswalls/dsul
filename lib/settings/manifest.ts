@@ -55,6 +55,7 @@ import {
   layoutStyles,
 } from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
+import { lookChanges, type LookPreset } from '@/lib/looks';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -192,7 +193,7 @@ export const PANES: SettingsPane[] = [
     // The rail entry is now an INDEX — the blurb says so, because the pane
     // stopped being the place the switches are and became the place they are
     // listed from.
-    blurb: 'Optional pieces of dsul — on when you want them. Open one to set it up.',
+    blurb: 'Optional pieces of dsul, on when you want them. Open one to set it up.',
   },
   {
     id: 'dsul',
@@ -549,7 +550,7 @@ function channelRecords(): SettingRecord[] {
         control: 'text',
         textVariant: 'secret',
         placeholder: () =>
-          channelSecrets().isSet(spec.slug, field.key) ? 'Saved — type to replace' : 'Not set',
+          channelSecrets().isSet(spec.slug, field.key) ? 'Saved. Type to replace' : 'Not set',
         dependsOn: toggleId,
         keywords: usable(field.label, [
           ...spec.keywords,
@@ -620,9 +621,10 @@ const shortcuts = () => useKeyboardShortcutsStore.getState();
  * Bindings whose command exists only while something can answer, and the
  * sentence their row adds to say so.
  *
- * ⌘] toggles a chat panel that SidebarDock mounts only when the AI gate says
- * it can. The sentence is static and true in every state, so the row never
- * waits on the gate and is never locked by it (see the note in the records).
+ * Ctrl+J opens and closes Ask in the right rail, which exists only while the
+ * AI gate says something can answer. The sentence is static and true in every
+ * state, so the row never waits on the gate and is never locked by it (see the
+ * note in the records).
  */
 const AI_ONLY_BINDINGS: ReadonlyMap<string, string> = new Map([
   ['toggle_right_sidebar', 'Works while a model or OpenClaw is connected.'],
@@ -800,7 +802,19 @@ export const SETTINGS: SettingRecord[] = [
       { value: 'dark', label: 'Dark' },
       { value: 'system', label: 'System' },
     ],
-    keywords: ['theme', 'appearance', 'night', 'colour scheme', 'color scheme', 'contrast'],
+    // The Look pane draws this as two previews you tap and a "Follow device"
+    // switch, so the switch's words have to find it too.
+    keywords: [
+      'theme',
+      'appearance',
+      'night',
+      'colour scheme',
+      'color scheme',
+      'contrast',
+      'follow device',
+      'follow system',
+      'automatic',
+    ],
     read: (ctx) => ctx.theme ?? 'system',
     // The one setter in the app that does NOT persist itself.
     write: (v, ctx) => {
@@ -869,15 +883,15 @@ export const SETTINGS: SettingRecord[] = [
       'text editor',
     ],
     read: () => layoutDef(look().layout).family,
+    // The Look pane's floor plans call pickLayoutFamily alone: the Looks row
+    // and the "for <Layout>" marks sit beside them, so a toast there would say
+    // it a third time. This write is the path a SEARCH hit takes, where
+    // neither is drawn, so it still offers the pairing once.
     write: (v, ctx) => {
-      if (!isLayoutTheme(v)) return;
-      // Picking the family you are already in keeps the style you chose.
-      if (layoutDef(look().layout).family === v) return;
-      look().setLayout(v);
-      if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+      if (!isLayoutTheme(v) || !pickLayoutFamily(v, ctx)) return;
       // Offer the colour theme the layout was designed with — offer, never
-      // impose: every look works with every layout. Dark first, since the only
-      // pairing that exists is dark (Console with Terminal).
+      // impose: every look works with every layout. Dark first, so a layout
+      // paired both ways (Classic) names the night it was made for.
       const { light, dark } = layoutDef(v).pairsWith;
       const offer =
         dark && look().dark !== dark
@@ -989,7 +1003,7 @@ export const SETTINGS: SettingRecord[] = [
     id: 'look.typeface',
     pane: 'look',
     label: 'Typeface',
-    description: 'Item titles only — the chrome follows the theme.',
+    description: 'Item titles only. The chrome follows the theme.',
     control: 'enum',
     options: [
       { value: 'sans', label: 'Sans' },
@@ -1027,7 +1041,7 @@ export const SETTINGS: SettingRecord[] = [
     // Names its scope, because the braindump and the canvas filter popovers
     // each keep their own hideCompleted and all three answer for a different
     // surface. Search returns them together; they are not merged.
-    description: 'Keep finished work on the grid instead of clearing it. Tasks only — habits always stay.',
+    description: 'Keep finished work on the grid instead of clearing it. Tasks only; habits always stay.',
     control: 'switch',
     dbColumn: 'show_completed_tasks',
     keywords: ['done', 'finished', 'checked', 'hide', 'tick', 'complete'],
@@ -1190,7 +1204,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: 'rituals',
     label: 'Habit reminders',
     description:
-      'A nudge at the time you set on each habit. Set the time on the habit itself — this is the switch that lets any of them through.',
+      'A nudge at the time you set on each habit. Set the time on the habit itself. This is the switch that lets any of them through.',
     control: 'switch',
     dbColumn: 'habit_reminders_enabled',
     keywords: ['remind', 'nudge', 'alarm', 'prompt', 'cue', 'notify', 'ping', 'alert'],
@@ -1234,7 +1248,7 @@ export const SETTINGS: SettingRecord[] = [
     // Says what it does and what it does NOT do, because the extensions behind
     // it can cost money and "settle" alone does not warn anyone.
     description:
-      'Once a night, work out what yesterday came to and report it to whatever you have attached — a Beeminder goal, a pledge, a person. Nothing happens until you turn one of those on.',
+      'Once a night, work out what yesterday came to and report it to whatever you have attached: a Beeminder goal, a pledge, a person. Nothing happens until you turn one of those on.',
     control: 'switch',
     dbColumn: 'stakes_enabled',
     keywords: ['stakes', 'settle', 'ledger', 'accountability', 'beeminder', 'pledge', 'consequence', 'money'],
@@ -1247,7 +1261,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: 'rituals',
     label: 'Settle at',
     description:
-      'Settles the day before. Late enough that nothing is still in flight — an end-of-day review can credit yesterday after midnight.',
+      'Settles the day before. Late enough that nothing is still in flight, since an end-of-day review can credit yesterday after midnight.',
     control: 'time',
     dependsOn: 'rituals.stakes',
     dbColumn: 'stakes_settle_time',
@@ -1264,7 +1278,7 @@ export const SETTINGS: SettingRecord[] = [
     // produces it. The pledge tier's whole claim is that "you owe £30" is
     // backed by rows a person can look at, and a record with no reader is a
     // number the app made up.
-    description: 'Every settled day, and what it came to. Read-only — dsul keeps the record, it cannot take payment.',
+    description: 'Every settled day, and what it came to. Read-only. dsul keeps the record; it cannot take payment.',
     control: 'action',
     dependsOn: 'rituals.stakes',
     keywords: ['owe', 'owed', 'debt', 'pledge', 'history', 'record', 'money', 'settled', 'stakes'],
@@ -1286,10 +1300,10 @@ export const SETTINGS: SettingRecord[] = [
       // can take push instead: reminders reach every subscribed device, and the
       // desktop app is not one of them.
       if (getDesktopBridge())
-        return 'not available in the desktop app yet — turn push on from your phone or browser';
+        return 'not available in the desktop app yet, so turn push on from your phone or browser';
       if (!ctx.push.isSupported) return 'not supported in this browser';
       if (ctx.push.permissionState === 'denied')
-        return 'blocked in your browser settings — allow notifications, then reload';
+        return 'blocked in your browser settings; allow notifications, then reload';
       return null;
     },
     // Reflects the real PushSubscription, not a stored boolean.
@@ -1373,11 +1387,11 @@ export const SETTINGS: SettingRecord[] = [
     id: 'beacon.gatewayToken',
     pane: 'beacon',
     label: 'Gateway token',
-    description: 'Full operator access to your gateway — kept server-side and never sent back.',
+    description: 'Full operator access to your gateway. Kept server-side and never sent back.',
     control: 'text',
     // Write-only: there is nothing to read back, by design.
     textVariant: 'secret',
-    placeholder: () => (gateway().hasToken ? 'Saved — type to replace' : 'Not set'),
+    placeholder: () => (gateway().hasToken ? 'Saved. Type to replace' : 'Not set'),
     advanced: true,
     // Not dependsOn: both gateway rows are advanced, so the disclosure already
     // groups them and a second level of hiding is what the redesign removed.
@@ -1530,7 +1544,7 @@ export const SETTINGS: SettingRecord[] = [
     pane: extensionPaneId(EXT_STREAKS),
     label: 'Streaks',
     description:
-      'Flame badges and streak counts across the app. Off hides them everywhere; nothing stops counting — reminders and stakes still read your streak.',
+      'Flame badges and streak counts across the app. Off hides them everywhere; nothing stops counting, and reminders and stakes still read your streak.',
     control: 'switch',
     keywords: ['streak', 'flame', 'fire', 'chain', 'consecutive', 'momentum', 'habits'],
     unavailable: extUnavailable,
@@ -1703,6 +1717,54 @@ export const DESTINATIONS: DestinationRecord[] = [
  * `data-setting-alias` anchors.
  */
 export const CONNECT_PANEL_RECORD_IDS: ReadonlySet<string> = new Set(['beacon.apiKey', 'beacon.model']);
+
+/**
+ * Records the Look pane's picker (components/settings/look-picker.tsx) draws as
+ * previews, swatches, dots and floor plans, so the pane's flat row list leaves
+ * them out (settings-shell). Same contract as CONNECT_PANEL_RECORD_IDS: they
+ * stay in SETTINGS, so search draws each as an ordinary row, and the picker
+ * gives each one `data-setting-row` anchor for `?focus=`.
+ */
+export const LOOK_PICKER_RECORD_IDS: ReadonlySet<string> = new Set([
+  'look.theme',
+  'look.lightTheme',
+  'look.darkTheme',
+  'look.palette',
+  'look.layout',
+  'look.layoutStyle',
+]);
+
+/**
+ * Picks a layout FAMILY. Picking the family you are already in keeps the style
+ * you chose, so re-tapping Notepad never drops Retro. Changes the layout only,
+ * never a colour. True when something changed.
+ */
+export function pickLayoutFamily(v: string | boolean, ctx: SettingCtx): boolean {
+  if (!isLayoutTheme(v)) return false;
+  if (layoutDef(look().layout).family === v) return false;
+  look().setLayout(v);
+  if (ctx.userId) saveSettings(ctx.userId, { layout: v });
+  return true;
+}
+
+/**
+ * Applies a Look (lib/looks.ts): its exact layout, style included, and the
+ * theme for each mode it pairs with, as one settings patch. The mode is left
+ * alone, so following the device keeps following it.
+ */
+export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
+  const { layout, light, dark } = lookChanges(preset);
+  look().setLayout(layout);
+  if (light && look().light !== light) look().setLight(light, { eased: true });
+  if (dark && look().dark !== dark) look().setDark(dark, { eased: true });
+  if (ctx.userId) {
+    saveSettings(ctx.userId, {
+      layout,
+      ...(light && { theme_light: light }),
+      ...(dark && { theme_dark: dark }),
+    });
+  }
+}
 
 /* ---------------------------------------------------------------- lookups */
 

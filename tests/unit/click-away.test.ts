@@ -7,6 +7,7 @@ function build() {
       <div id="empty"><span id="empty-child">hour label</span></div>
       <div data-item-id="a" id="item"><span id="item-title">Task</span></div>
       <aside data-testid="item-dialog"><div id="panel-body"></div></aside>
+      <div data-rail=""><aside data-rail-view=""><div id="rail-body"></div></aside></div>
       <button id="btn"><span id="btn-icon"></span></button>
       <input id="field" />
       <div role="button" id="drag-handle"></div>
@@ -39,8 +40,8 @@ describe('isClickAwayTarget', () => {
     expect(isClickAwayTarget(el('empty-child'))).toBe(true);
   });
 
-  it('is false inside an item, the panel, or a control', () => {
-    for (const id of ['item', 'item-title', 'panel-body', 'btn', 'btn-icon', 'field', 'drag-handle']) {
+  it('is false inside an item, the panel, the rail, or a control', () => {
+    for (const id of ['item', 'item-title', 'panel-body', 'rail-body', 'btn', 'btn-icon', 'field', 'drag-handle']) {
       expect(isClickAwayTarget(el(id)), id).toBe(false);
     }
   });

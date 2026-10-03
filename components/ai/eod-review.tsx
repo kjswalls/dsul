@@ -422,7 +422,7 @@ export function EODReview() {
         {/* Beacon greeting */}
         <div className="mb-5 rounded-xl bg-evening/10 border border-evening/20 px-4 py-3">
           <p className="text-sm text-foreground leading-relaxed">
-            Hey! It&apos;s end of day — let&apos;s take a quick look at how today went 🌙
+            It&apos;s the end of the day. Let&apos;s take a quick look at how today went 🌙
           </p>
         </div>
 
@@ -669,7 +669,7 @@ export function EODReview() {
             skippedHabits.length === 0 && (
               <div className="text-center py-6">
                 <p className="text-sm text-muted-foreground">
-                  Nothing scheduled today — you kept the day open. That&apos;s valid.
+                  Nothing scheduled today. You kept the day open, and that&apos;s fine.
                 </p>
               </div>
             )}

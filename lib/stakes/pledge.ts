@@ -132,7 +132,7 @@ export const pledgeAdapter: StakeAdapter = {
     const witnessUrl = requireString(ctx.config, 'witnessUrl')
     if (witnessUrl) {
       try {
-        const text = `${copy.title} — ${copy.body}`
+        const text = `${copy.title}: ${copy.body}`
         await postToChannel(assertSafeUrl(witnessUrl), {
           // `text` for Slack, `content` for Discord. Sending both means one
           // pasted webhook URL works with either without the user being asked

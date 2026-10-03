@@ -7,10 +7,8 @@ import Link from 'next/link';
 import { ChevronLeft } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import type { ItemDialogState } from '@/components/planner/item-dialog';
-import {
-  ItemDetailSections,
-  ItemThread,
-} from '@/components/planner/item-detail-sections';
+import { ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { ItemConversation } from '@/components/ai/item-conversation';
 import { BandSquare } from '@/components/planner/item-bands';
 import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerSettled } from '@/lib/planner-ready';
@@ -149,7 +147,7 @@ export default function ItemPage() {
         }
       >
         <ItemDetailSections item={item} />
-        {canChat && <ItemThread item={item} className="lg:border-border lg:border-l lg:pl-6" />}
+        {canChat && <ItemConversation item={item} mode="inline" className="lg:border-border lg:border-l lg:pl-6" />}
       </div>
     </main>
   );

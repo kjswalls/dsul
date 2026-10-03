@@ -32,7 +32,6 @@ import {
   initialDraft,
   type ContainerDraft,
 } from '@/components/planner/organize/container-fields';
-import { cn } from '@/lib/utils';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { usePlannerStore } from '@/lib/planner-store';
 import { canBulkCollect, canBulkSetProject } from '@/lib/bulk-edit';
@@ -77,7 +76,8 @@ const CLOSE_ANIMATION_GRACE_MS = 600;
 const DEFAULT_ICON: Record<NewContainerKind, string | undefined> = {
   goal: makeIconToken('Target'),
   routine: makeIconToken('Repeat'),
-  season: makeIconToken('CalendarRange'),
+  // CalendarRange is not in the icon library, so it fell back to a name hash.
+  season: makeIconToken('CalendarDays'),
   // None: create.project's rule — resolveCategoryIcon derives one from the name
   // ("Gym" → dumbbell), where a fixed token would give every project the same
   // wrong icon.
@@ -142,9 +142,10 @@ export function ContainerDialog({
         onEscapeKeyDown={(event) => {
           if (consume()) event.preventDefault();
         }}
-        // An organizer's body carries its member lists, so it is a little wider
-        // than an item's quick capture. A project's is not.
-        className={cn(ADD_MODAL_CLASS, last.kind !== 'project' && 'sm:max-w-[560px]')}
+        // The item dialog's own geometry: the quiet sheet (2026-10-03) opens
+        // as name, chips and a note, so switching task ↔ goal in the type menu
+        // changes the body and never the frame.
+        className={ADD_MODAL_CLASS}
       >
         <SurfaceA11yHeader panel={false}>
           <ResponsiveModalTitle>New {label.toLowerCase()}</ResponsiveModalTitle>
@@ -374,9 +375,9 @@ function ContainerForm({
             placeholder={`Name this ${noun}`}
             value={name}
             onChange={(e) => setName(e.target.value)}
-            // The item dialog's title recipe, set in sans: organizers use the
-            // Linear-style head their panes do (detail-parts TitleRow).
-            className={cn(SERIF_TITLE_CLASS, 'font-sans text-xl font-semibold tracking-[-0.01em] md:text-xl')}
+            // The item dialog's serif title, unchanged, so the one dialog keeps
+            // one voice whichever kind it is making (Kirby, 2026-10-03).
+            className={SERIF_TITLE_CLASS}
           />
         </div>
       </div>
@@ -420,7 +421,13 @@ function ContainerForm({
         </p>
       )}
 
-      <div className="flex items-center justify-between gap-3 border-t pt-3">
+      {/* Pinned to the dialog's foot on desktop: a goal with every section in
+          use outgrows the 80vh cap, and the buttons scrolled away with it. The
+          -mb-6/pb-6 pair carries the dialog's bottom padding inside the pinned
+          bar so nothing scrolls under it, and -bottom-6 because a sticky box
+          measures from inside the scroller's padding: at bottom-0 it rode 24px
+          high, over the last row of the form. */}
+      <div className="bg-modal flex items-center justify-between gap-3 border-t pt-3 sm:sticky sm:-bottom-6 sm:z-10 sm:-mb-6 sm:pb-6">
         <EnterHint verb="add" />
         <div className="flex items-center gap-1 max-sm:w-full">
           {canOpen && (

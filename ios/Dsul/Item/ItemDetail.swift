@@ -13,9 +13,17 @@ import SwiftUI
 ///   where there are none and they may be added;
 /// - the item's own pause ("Paused until Oct 8");
 /// - the chips, in the web panel's order (ItemSheetModel.chips), with the
-///   streak chip first for a type that keeps a streak;
+///   streak chip first for a type that keeps a streak while Streaks is on
+///   (`showsStreak`), a button that opens this week and Reset streak
+///   (`StreakPopover`). From 2c the priority and times per day chips are
+///   menus and the reminder chip opens the Remind sheet, where the server
+///   and the type take the edit, and "+ Add property" ends the row while one
+///   of those is unset (`PropertyMenus`, `ReminderSheet`). From 2d the date
+///   chip is a menu that moves the item (the bar's Reschedule, offered where
+///   that verb is), and the time chip opens the Time sheet (`TimeSheet`);
 /// - the subtasks, each ticked in place, its title opening its own page, and
-///   Delete in its context menu.
+///   Delete in its context menu; then, where one may be added, "Add a
+///   subtask", which swaps in a field (`SubtaskField`).
 ///
 /// The verbs sit in a bar under the scroll (`VerbBar`), the rest of the
 /// pause family (and a series' Reschedule) behind ⋯ in the toolbar, then
@@ -35,7 +43,10 @@ import SwiftUI
 /// scroll, another field), when the page goes (`.onDisappear`: a swipe down,
 /// Close, a pushed page popping) and when the scene goes inactive, keeping
 /// focus there so typing can go on. While a field has focus, the sheet goes
-/// to its large detent, the bar hides, and Done takes ⋯'s place.
+/// to its large detent, the bar hides, and Done takes ⋯'s place. The new
+/// subtask's field is a third, whose text adds subtasks rather than editing
+/// anything: each Return adds one, and leaving it adds what is left, except
+/// when the scene goes inactive, which leaves the text where it is.
 ///
 /// **Delete** always confirms (the phone has no undo), on this page, in
 /// ItemSheetModel's words. While the page leaves, the sheet sliding down or
@@ -48,7 +59,9 @@ struct ItemDetail: View {
     /// has the stack's back button instead.
     let isRoot: Bool
     @Binding var path: [UUID]
-    @Binding var dayPick: DayPick?
+    /// The sheet open over the stack (a day picker, the Remind sheet, the
+    /// Time sheet), the stack's, shared by every page.
+    @Binding var editor: SheetEditor?
     /// The sheet's detent (`ItemSheetStack`'s), raised to large when a field
     /// takes focus, so the keyboard never leaves the field a sliver.
     @Binding var detent: PresentationDetent
@@ -75,6 +88,18 @@ struct ItemDetail: View {
     /// it), and whether it is up.
     @State private var confirm: SheetConfirm? = nil
     @State private var confirming = false
+    /// The streak chip's popover is up.
+    @State private var showingStreak = false
+    /// The subtask field is up in place of the "Add a subtask" row, and what
+    /// it holds.
+    @State private var addingSubtask = false
+    @State private var subtaskDraft = ""
+    /// Where VoiceOver goes as subtask entry starts and ends: to the field,
+    /// then back to the row, rather than staying on a view that has gone.
+    @AccessibilityFocusState private var subtaskVoiceOver: SubtaskEntry?
+    /// Where VoiceOver goes once a chip's property has changed: its chip, or
+    /// Add property when the chip went (`settleVoiceOver`).
+    @AccessibilityFocusState private var chipVoiceOver: ChipFocus?
 
     var body: some View {
         let live = planner.item(id)
@@ -121,6 +146,15 @@ struct ItemDetail: View {
         .onDisappear {
             commitFields(leaving: true)
         }
+        // A chip's sheet closing (the Remind or Time sheet's Done, No
+        // reminder, Cancel, a swipe; Pick a date…'s confirm or Cancel):
+        // VoiceOver goes to that chip, or to Add property when there is none
+        // now (Anytime takes the time chip). Only on the page whose item it
+        // edited (`ItemSheetModel.chipKind`).
+        .onChange(of: editor) { old, new in
+            guard new == nil, let old, let kind = ItemSheetModel.chipKind(closing: old, on: id) else { return }
+            settleVoiceOver(on: kind)
+        }
         .confirmationDialog(confirmTitle, isPresented: $confirming, titleVisibility: .visible,
                             presenting: confirm) { pending in
             Button("Delete", role: .destructive) { confirmed(pending) }
@@ -154,6 +188,13 @@ struct ItemDetail: View {
                 guard let field else { return }
                 let anchor: UnitPoint? = field == .notes ? UnitPoint.bottom : nil
                 withAnimation(.snappy) { proxy.scrollTo(field, anchor: anchor) }
+            }
+            // So does the subtask field as subtasks land above it: focus
+            // stays put across a Return, and each new row pushes the field
+            // toward the keyboard (a pasted list, far below it).
+            .onChange(of: children.count) {
+                guard focus == .subtask else { return }
+                withAnimation(.snappy) { proxy.scrollTo(SheetField.subtask, anchor: .bottom) }
             }
             // Below the navigation bar, so it never covers Close: a write the
             // server refused says so over the sheet the verb was tapped in.
@@ -282,7 +323,7 @@ struct ItemDetail: View {
                     .foregroundStyle(.secondary)
             }
 
-            chipRow(item, caps: typeCaps, routines: routines)
+            chipRow(item, ctx, offered: offered)
 
             if typeCaps.subtasks {
                 subtaskSection(item, children: children)
@@ -355,43 +396,205 @@ struct ItemDetail: View {
         }
     }
 
-    /// The streak chip (a type that keeps a streak) and the property chips.
+    /// The streak chip (a type that keeps a streak, while Streaks is on), the
+    /// property chips, and "+ Add property" while a property is unset and
+    /// editable (`ItemSheetModel.unsetProperties`), each in its slot
+    /// (`chipSlot()`), so the lines sit 12pt apart. A chip whose edit the
+    /// server and the type take is a control (`chipControl`); the rest are
+    /// part 1's read-only chips. A page drawn as it leaves draws its row as it
+    /// was, chevrons and seed included, and takes no taps (`page`).
+    ///
+    /// The flow gives the slots' outer 6pt back to the stack's 14pt spacing,
+    /// so the capsules keep their distance from the notes above and the
+    /// subtasks below. That 6pt never reaches a neighbour's hit area, with one
+    /// exception, which now applies to any editable chip and to Add property:
+    /// right under notes that run past four lines, Show all's 12pt overhang
+    /// reaches into the same gap, and the 4pt they share go to the chip, drawn
+    /// later, whose capsule is the nearer of the two.
     @ViewBuilder
-    private func chipRow(_ item: SampleItem, caps typeCaps: ItemCaps, routines: [String]) -> some View {
-        let chips = ItemSheetModel.chips(item, today: planner.today, timeFormat: planner.settings.timeFormat,
-                                         routineNames: routines, seasonNames: planner.seasonNames(for: item.id))
-        if typeCaps.streakCounter || !chips.isEmpty {
+    private func chipRow(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> some View {
+        let chips = shownChips(item)
+        let showsStreak = planner.showsStreak(for: item)
+        let canEdit: (String) -> Bool = { planner.canEdit($0, item) }
+        let unset = ItemSheetModel.unsetProperties(item, shown: chips, offered: offered, canEdit: canEdit)
+        // The Date menu's days, as drawn now; a pick reads them again
+        // (`setDate`).
+        let dates = ItemSheetModel.dateOptions(today: planner.today, nextWeekStart: planner.nextWeekStart)
+        if showsStreak || !chips.isEmpty || !unset.isEmpty {
             let flow = ChipFlow()
             flow {
-                if typeCaps.streakCounter {
-                    streakChip(item)
+                if showsStreak {
+                    streakChip(item, ctx, offered: offered)
                 }
                 ForEach(chips) { chip in
-                    ChipView(chip: chip,
-                             dot: chip.kind == .project ? ProjectPalette.color(for: chip.text, in: planner.projects) : nil)
+                    chipControl(chip, item, offered: offered, dates: dates, canEdit: canEdit)
+                }
+                if !unset.isEmpty {
+                    AddPropertyMenu(kinds: unset,
+                                    label: ItemSheetModel.seedLabel(rowHasOthers: showsStreak || !chips.isEmpty),
+                                    dates: dates,
+                                    onPriority: { pick(.priority($0), settling: .priority) },
+                                    onDate: { setDate($0) },
+                                    onTime: { editor = .time(item.id) },
+                                    onTimes: { pick(.timesPerDay($0), settling: .timesPerDay) },
+                                    onRemind: { editor = .reminder(item.id) })
+                        .accessibilityFocused($chipVoiceOver, equals: .seed)
                 }
             }
+            .padding(.vertical, -6)
         }
     }
 
+    /// The property chips as the page draws them now (`ItemSheetModel.chips`),
+    /// which the row lays out and VoiceOver's move after a change reads.
+    private func shownChips(_ item: SampleItem) -> [SheetChip] {
+        return ItemSheetModel.chips(item, today: planner.today, timeFormat: planner.settings.timeFormat,
+                                    routineNames: planner.routineNames(for: item.id),
+                                    seasonNames: planner.seasonNames(for: item.id))
+    }
+
+    /// One property chip. Where it edits (`ItemSheetModel.chipEditor`), a
+    /// menu (priority, the date, times per day) or a button that opens its
+    /// sheet (the time, the reminder), labelled on the control itself, as the
+    /// streak chip and the bar's Reschedule menu are, with the button trait
+    /// and a hint, and with VoiceOver's focus bound to it so it can land there
+    /// after a change. Otherwise part 1's read-only chip, in its slot.
+    /// `offered` is the page's `offeredVerbs`, whose Reschedule gates the
+    /// date; `dates` the Date menu's entries.
+    @ViewBuilder
+    private func chipControl(_ chip: SheetChip, _ item: SampleItem, offered: [VerbID], dates: [DateOption],
+                             canEdit: (String) -> Bool) -> some View {
+        switch ItemSheetModel.chipEditor(chip.kind, item, offered: offered, canEdit: canEdit) {
+        case .menu?:
+            if chip.kind == .priority {
+                PriorityChipMenu(chip: chip, item: item,
+                                 onPick: { pick(.priority($0), settling: .priority) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.priority))
+            } else if chip.kind == .date {
+                DateChipMenu(chip: chip, options: dates, onPick: { setDate($0) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.date))
+            } else if chip.kind == .timesPerDay {
+                TimesChipMenu(chip: chip, item: item,
+                              onPick: { pick(.timesPerDay($0), settling: .timesPerDay) })
+                    .accessibilityFocused($chipVoiceOver, equals: .chip(.timesPerDay))
+            } else {
+                readOnlyChip(chip)
+            }
+        case .sheet(let sheet)?:
+            Button {
+                editor = sheet
+            } label: {
+                ChipView(chip: chip, editable: true)
+                    .chipHit()
+            }
+            .buttonStyle(PressScaleStyle())
+            .accessibilityLabel(Text(chip.spoken))
+            .accessibilityHint(Text(ItemSheetModel.chipHint(chip.kind) ?? ""))
+            .accessibilityFocused($chipVoiceOver, equals: .chip(chip.kind))
+        case nil:
+            readOnlyChip(chip)
+        }
+    }
+
+    /// Part 1's chip: no chevron, no trait, no hint; a project's wears its
+    /// colour dot.
+    private func readOnlyChip(_ chip: SheetChip) -> some View {
+        ChipView(chip: chip,
+                 dot: chip.kind == .project ? ProjectPalette.color(for: chip.text, in: planner.projects) : nil)
+            .chipSlot()
+    }
+
     /// The stored streak, lit once wall-clock today is ticked, and this
-    /// week's dots.
-    private func streakChip(_ item: SampleItem) -> some View {
+    /// week's dots, as a button that opens them larger with the run's length
+    /// and, when offered, Reset streak (`StreakPopover`). The capsule sits in
+    /// its hit frame (`chipHit()`), at least 44pt square. It presses by
+    /// scaling, never by fading.
+    private func streakChip(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> some View {
         let streak = item.streak ?? 0
         let dots = ItemSheetModel.weekDots(item, today: planner.today, weekStartDay: planner.settings.weekStartDay)
-        return StreakChip(streak: streak, dots: dots, lit: isDoneOn(item, on: planner.today.description),
-                          spoken: ItemSheetModel.streakSpoken(streak: streak, dots: dots))
+        let lit = isDoneOn(item, on: planner.today.description)
+        let spoken = ItemSheetModel.streakSpoken(streak: streak, dots: dots)
+        let resetOffered = offered.contains(.resetStreak)
+        return Button {
+            showingStreak = true
+        } label: {
+            StreakChip(streak: streak, dots: dots, lit: lit, spoken: spoken)
+                .chipHit()
+        }
+        .buttonStyle(PressScaleStyle())
+        .accessibilityLabel(Text(spoken))
+        .accessibilityHint(Text(ItemSheetModel.streakHint(resetOffered: resetOffered)))
+        .popover(isPresented: $showingStreak) {
+            StreakPopover(streak: streak, dots: dots, lit: lit, spoken: spoken,
+                          resetLabel: resetOffered ? verbLabel(.resetStreak, item, ctx) : nil,
+                          onReset: { resetStreak() })
+        }
+    }
+
+    /// Reset streak, confirmed in the popover: through the planner, which
+    /// asks its gate again, and then the popover closes.
+    private func resetStreak() {
+        withAnimation(.snappy) {
+            planner.resetStreak(id)
+        }
+        showingStreak = false
+    }
+
+    /// A pick in a chip's menu or an Add property submenu: written at once,
+    /// through the planner, which asks its gate again; then VoiceOver goes to
+    /// the property's chip, or to Add property when the pick emptied it.
+    private func pick(_ edit: ItemEdit, settling kind: SheetChip.Kind) {
+        withAnimation(.snappy) {
+            planner.edit(id, edit)
+        }
+        settleVoiceOver(on: kind)
+    }
+
+    /// A pick in the Date menu, the chip's or Add property's Date ▸: Today,
+    /// Tomorrow or Next week moves the item at once, through the planner's
+    /// `move` (the bar's Reschedule, which asks its gate again), on days read
+    /// now, as `reschedule(_:)` reads them; then VoiceOver goes to the date
+    /// chip. Pick a date… opens the sheet's day picker, titled "Date", whose
+    /// closing sends VoiceOver there (`chipKind`).
+    private func setDate(_ choice: DateChoice) {
+        guard let target = ItemSheetModel.dateTarget(choice, today: planner.today,
+                                                     nextWeekStart: planner.nextWeekStart) else {
+            editor = .pickDate(id)
+            return
+        }
+        withAnimation(.snappy) { planner.move(id, to: target.description) }
+        settleVoiceOver(on: .date)
+    }
+
+    /// Sends VoiceOver to `kind`'s chip, or to Add property when the chip went
+    /// (`ItemSheetModel.voiceOverTarget`), once the screen has settled, as
+    /// `announceSettled` waits: by then the menu or the sheet has closed, the
+    /// target is drawn, and iOS has handed focus back to their source, which
+    /// a pick may have taken away (a seed pick that set the last unset
+    /// property; None, 1× a day, No reminder or Anytime taking its chip).
+    /// Never in the same transaction as the edit. A gone item moves nothing.
+    private func settleVoiceOver(on kind: SheetChip.Kind) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            guard let item = planner.item(id) else { return }
+            chipVoiceOver = ItemSheetModel.voiceOverTarget(after: kind, shown: shownChips(item))
+        }
     }
 
     // MARK: Subtasks
 
     /// "SUBTASKS  1 of 2" and the live children, in stored order: the web's
     /// SubtasksSection (item-detail-sections.tsx), which lists the items
-    /// whose parent this is, habits aside. Hidden with none, since adding one
-    /// waits for 2b.
+    /// whose parent this is, habits aside. Then, where one may be added
+    /// (`canAddSubtask`: a type with subtasks that isn't itself a subtask, and
+    /// a server that takes `addSubtask`), "Add a subtask", or its field while
+    /// one is being added. Shown with either; the heading is there whenever
+    /// the section is, so VoiceOver's headings find it on a task with none
+    /// yet, and "N of M" only once there are some, as on the web.
     @ViewBuilder
     private func subtaskSection(_ item: SampleItem, children: [SampleItem]) -> some View {
-        if !children.isEmpty {
+        let canAdd = planner.canAddSubtask(to: item)
+        if !children.isEmpty || canAdd {
             let acting = planner.actingDay(day)
             let doneCount = children.filter { isDoneOn($0, on: acting.description) }.count
             VStack(alignment: .leading, spacing: 0) {
@@ -399,8 +602,10 @@ struct ItemDetail: View {
                     Text("Subtasks")
                         .textCase(.uppercase)
                     Spacer(minLength: 8)
-                    Text("\(doneCount) of \(children.count)")
-                        .monospacedDigit()
+                    if !children.isEmpty {
+                        Text("\(doneCount) of \(children.count)")
+                            .monospacedDigit()
+                    }
                 }
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -411,8 +616,37 @@ struct ItemDetail: View {
                 ForEach(children) { child in
                     subtaskRow(child, acting: acting)
                 }
+
+                if canAdd {
+                    addSubtaskRow
+                }
             }
             .padding(.top, 4)
+        }
+    }
+
+    /// The section's last row: "Add a subtask", which swaps in the field and
+    /// sends VoiceOver to it, or the field itself (`SubtaskField`). The row
+    /// clears the draft first, so a late write from the last entry never
+    /// shows.
+    @ViewBuilder
+    private var addSubtaskRow: some View {
+        if addingSubtask {
+            SubtaskField(draft: $subtaskDraft, focus: $focus,
+                         onAdd: { titles, capped in addSubtasks(titles, capped: capped) })
+                .id(SheetField.subtask)
+                .accessibilityFocused($subtaskVoiceOver, equals: .field)
+                .onAppear { subtaskVoiceOver = .field }
+        } else {
+            Button {
+                subtaskDraft = ""
+                addingSubtask = true
+            } label: {
+                AddSubtaskLabel()
+            }
+            // The label is the row's height, so the fill bleeds no further.
+            .buttonStyle(RowPressStyle(verticalBleed: 0))
+            .accessibilityFocused($subtaskVoiceOver, equals: .row)
         }
     }
 
@@ -506,10 +740,14 @@ struct ItemDetail: View {
     // MARK: Typed fields
 
     /// The title's seed is what the field showed when focus arrived; any
-    /// field taking focus raises the sheet to large; a field losing it sends.
+    /// field taking focus raises the sheet to large; a field losing it sends,
+    /// and the subtask field losing it adds what is left in it and ends
+    /// entry, VoiceOver going back to the row unless focus went to another
+    /// field.
     private func focusMoved(from old: SheetField?, to new: SheetField?) {
         if old == .title && new != .title { commitTitle(leaving: true) }
         if old == .notes && new != .notes { commitNotes(leaving: true) }
+        if old == .subtask && new != .subtask { commitSubtask(toRow: new == nil) }
         if new == .title && old != .title { titleSeed = titleDraft }
         if new != nil { detent = .large }
     }
@@ -524,10 +762,13 @@ struct ItemDetail: View {
     }
 
     /// Both fields, on the page going (`leaving`) or the scene going inactive
-    /// (not leaving: focus, and what is typed, stay).
+    /// (not leaving: focus, and what is typed, stay). The subtask field only
+    /// as the page goes: a half-typed subtask is never added because the app
+    /// was switched away from, and is still there on the way back.
     private func commitFields(leaving: Bool) {
         commitTitle(leaving: leaving)
         commitNotes(leaving: leaving)
+        if leaving { commitSubtask(toRow: false) }
     }
 
     /// Sends the title if it changed (`ItemSheetModel.commit`), through the
@@ -552,6 +793,57 @@ struct ItemDetail: View {
         }
         notesSeed = notesDraft
         if leaving { editingNotes = false }
+    }
+
+    /// Ends subtask entry: what is left in the field, if it cleans to a title,
+    /// is added (as Reminders does; nothing else would keep it), the field
+    /// empties, and the "Add a subtask" row comes back, with VoiceOver on it
+    /// when `toRow`. Nothing while no entry is up: a stray late write from an
+    /// entry already ended is dropped, never added twice.
+    private func commitSubtask(toRow: Bool) {
+        let draft = subtaskDraft
+        subtaskDraft = ""
+        guard addingSubtask else { return }
+        addingSubtask = false
+        if let title = cleanTitle(draft, limit: EditLimits.newTitle) {
+            addSubtasks([title], capped: false, ending: true)
+        }
+        if toRow { subtaskVoiceOver = .row }
+    }
+
+    /// Adds `titles` under this page's item, in order, through the planner,
+    /// which gates and cleans each one again. A paste past `maxBulkItems`
+    /// says so in the banner, aloud too; otherwise VoiceOver hears what was
+    /// added ("Added Eggs"), since the new rows land away from its focus.
+    /// From the field (a Return, a paste), said at once: the page stays, and
+    /// so does VoiceOver. When `ending` entry (another field, Done, a drag
+    /// down, Close, a swipe down, a subtask's page pushed over this one), said
+    /// once the screen has settled, as Delete's is: the page going, or VoiceOver
+    /// moving back to the row, would cut it off, and it is the only sign that
+    /// text never Returned became a subtask.
+    private func addSubtasks(_ titles: [String], capped: Bool, ending: Bool = false) {
+        let added = withAnimation(.snappy) {
+            titles.filter { planner.addSubtask(id, title: $0) != nil }
+        }
+        if capped {
+            planner.show(EditCopy.subtaskPasteCapped, isError: false)
+        } else if let spoken = ItemSheetModel.subtaskAddedAnnouncement(added) {
+            if ending {
+                announceSettled(spoken)
+            } else {
+                AccessibilityNotification.Announcement(AttributedString(spoken)).post()
+            }
+        }
+    }
+
+    /// Says `spoken` to VoiceOver once the screen has settled. Said at once,
+    /// the screen change that follows (a page going, VoiceOver's focus
+    /// moving) would cut it off.
+    private func announceSettled(_ spoken: String) {
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            AccessibilityNotification.Announcement(AttributedString(spoken)).post()
+        }
     }
 
     // MARK: Delete
@@ -579,8 +871,8 @@ struct ItemDetail: View {
     /// Deletes `target` through the planner, which asks its gate again and
     /// closes the sheet when it was the sheet's item; this page's own pops
     /// from the stack when it was a pushed one (`body`'s `onChange`). Then
-    /// VoiceOver hears "Task deleted", once the page has gone: said at once,
-    /// the screen change that follows would cut it off.
+    /// VoiceOver hears "Task deleted", once the page has gone
+    /// (`announceSettled`).
     private func delete(_ target: UUID) {
         guard let item = planner.item(target) else { return }
         let spoken = ItemSheetModel.deletedAnnouncement(typeLabel: planner.caps(for: item).label)
@@ -588,10 +880,7 @@ struct ItemDetail: View {
             planner.deleteItem(target)
         }
         guard planner.item(target) == nil else { return }
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(600))
-            AccessibilityNotification.Announcement(AttributedString(spoken)).post()
-        }
+        announceSettled(spoken)
     }
 
     // MARK: Verbs
@@ -612,7 +901,7 @@ struct ItemDetail: View {
         case .pause:
             withAnimation(.snappy) { planner.pause(id, until: nil) }
         case .pauseUntil:
-            dayPick = .pauseUntil(id)
+            editor = .pauseUntil(id)
         case .resume:
             withAnimation(.snappy) { planner.resume(id) }
         case .nextDay:
@@ -622,7 +911,7 @@ struct ItemDetail: View {
             let target = nextDayOf(item, planner.verbContext(for: item, day: day))
             withAnimation(.snappy) { planner.move(id, to: target) }
         case .reschedule:
-            dayPick = .reschedule(id)
+            editor = .reschedule(id)
         case .delete:
             askDelete(id)
         }
@@ -639,16 +928,16 @@ struct ItemDetail: View {
             let target = planner.nextWeekStart.description
             withAnimation(.snappy) { planner.move(id, to: target) }
         case .pick:
-            dayPick = .reschedule(id)
+            editor = .reschedule(id)
         }
     }
 }
 
 /// What a page asks before it acts, in the words it asks in, worked out when
 /// it asks: a confirm's title isn't handed the value it presents, and the
-/// item may be gone by the time the dialog has closed. One case in 2a; Reset
-/// streak's confirm (2b) belongs to the streak chip's popover instead, since
-/// a view presenting a popover can't also present a dialog.
+/// item may be gone by the time the dialog has closed. One case; Reset
+/// streak's confirm belongs to the streak chip's popover (`StreakPopover`)
+/// instead, since a view presenting a popover can't also present a dialog.
 enum SheetConfirm: Hashable, Sendable {
     /// Delete the item with this id: the page's own, or a subtask from its
     /// row.
@@ -665,4 +954,12 @@ enum SheetConfirm: Hashable, Sendable {
         case .delete(_, _, let message): return message
         }
     }
+}
+
+/// Where VoiceOver goes as subtask entry starts and ends.
+private enum SubtaskEntry: Hashable {
+    /// The new subtask's field, as it appears.
+    case field
+    /// The "Add a subtask" row, as it comes back.
+    case row
 }

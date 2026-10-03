@@ -1,21 +1,22 @@
 'use client';
 
 import { memo, useEffect, useState } from 'react';
-import { useSwipeable } from 'react-swipeable';
+import { useSwipeable, type SwipeEventData } from 'react-swipeable';
 
 import { UserProfileDropdown } from '@/components/planner/user-profile-dropdown';
 import { MobileHeader } from '@/components/mobile/mobile-header';
 import { MobileBottomDock } from '@/components/mobile/mobile-bottom-dock';
 import { MobileViewRouter } from '@/components/mobile/mobile-view-router';
-import { MobileChatPanel } from '@/components/mobile/mobile-chat-panel';
+import { AskTab } from '@/components/mobile/ask-tab';
 import { ScheduleSheet } from '@/components/mobile/schedule-sheet';
 import { Braindump } from '@/components/sidebar/braindump';
 import { PlannerSyncLine } from '@/components/shell/planner-sync-line';
 import { useMobileNavStore, mobileTabOrder, shownMobileTab } from '@/lib/mobile-nav-store';
-import { useRouter } from 'next/navigation';
 import { useUIStore } from '@/lib/ui-store';
 import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useRailStore } from '@/lib/rail-store';
 import { rowSwipeActive, closeAllRowSwipes } from '@/lib/row-swipe';
+import { cn } from '@/lib/utils';
 
 /**
  * The shell's height while a soft keyboard is up.
@@ -56,15 +57,34 @@ function useKeyboardSafeHeight(): number | null {
 }
 
 /**
+ * Whether a swipe began inside something that scrolls sideways (a reply's
+ * code block: chat-transcript.tsx's `[&_pre]:overflow-x-auto`). That drag is
+ * the box's own scroll, and is not also Back or a tab change: swiping a long
+ * line back into view must not pop the conversation it is in. Read off the
+ * box as laid out, so one that fits its content takes the swipe as usual.
+ */
+function startedInSideScroller(e: SwipeEventData | undefined): boolean {
+  let el = e?.event.target instanceof Element ? e.event.target : null;
+  while (el && el !== document.body) {
+    if (el.scrollWidth > el.clientWidth) {
+      const x = getComputedStyle(el).overflowX;
+      if (x === 'auto' || x === 'scroll') return true;
+    }
+    el = el.parentElement;
+  }
+  return false;
+}
+
+/**
  * Mobile layout: the header card (date row, plus the week strip on Today), the
  * active surface, and the bottom dock. The three-tab bar is gone — the dock's
  * mode card shows which surface you are on and opens the switcher sheet
  * (components/mobile/mode-switcher-sheet.tsx) to leave it; a swipe still walks
- * mobileTabOrder, Braindump · Today · Chat, and Chat only while something can
- * answer (lib/ai-registry.ts). Surfaces reuse the desktop
- * primitives (shared Braindump, DayBuckets/DayList via MobileViewRouter,
- * ChatConversation) rather than the old bespoke panels. Rendered under the
- * shell's single DndContext, so items stay draggable.
+ * mobileTabOrder, Braindump · Today · Ask, and Ask only while something can
+ * answer (lib/ai-registry.ts). Surfaces reuse the desktop primitives (shared
+ * Braindump, DayBuckets/DayList via MobileViewRouter, the rail's Ask views via
+ * AskTab) rather than the old bespoke panels. Rendered under the shell's
+ * single DndContext, so items stay draggable.
  *
  * Content sits directly on the paper backdrop. The rounded `bg-canvas` panel it
  * used to float in — the mobile echo of the desktop canvas — is gone; on paper
@@ -77,7 +97,6 @@ function useKeyboardSafeHeight(): number | null {
 export const MobileShell = memo(function MobileShell() {
   const storedTab = useMobileNavStore((s) => s.activeTab);
   const openDialog = useUIStore((s) => s.openDialog);
-  const router = useRouter();
   const shellHeight = useKeyboardSafeHeight();
   const { known, canChat } = useAICapabilities();
 
@@ -100,16 +119,26 @@ export const MobileShell = memo(function MobileShell() {
   useEffect(() => closeAllRowSwipes(), [activeTab]);
 
   const swipeHandlers = useSwipeable({
-    onSwipedLeft: () => {
+    onSwipedLeft: (e?: SwipeEventData) => {
       if (rowSwipeActive.current) return; // a row swipe is in progress, not a tab swipe
+      if (startedInSideScroller(e)) return;
       const order = mobileTabOrder(canChat);
       const idx = order.indexOf(activeTab);
       if (idx < order.length - 1) {
         useMobileNavStore.getState().setActiveTab(order[idx + 1]);
       }
     },
-    onSwipedRight: () => {
-      if (rowSwipeActive.current) return;
+    onSwipedRight: (e?: SwipeEventData) => {
+      if (rowSwipeActive.current || startedInSideScroller(e)) return;
+      // Inside Ask, a swipe right is back before it is a tab change: a
+      // conversation or an item pops to what it was opened from, and only Ask
+      // home walks left to Today — the iOS edge-swipe, and the one gesture the
+      // capsule's ‹ answers on a screen with no hardware back.
+      const rail = useRailStore.getState();
+      if (activeTab === 'chat' && rail.stacks.phone.length > 0) {
+        rail.back('phone');
+        return;
+      }
       const order = mobileTabOrder(canChat);
       const idx = order.indexOf(activeTab);
       if (idx > 0) useMobileNavStore.getState().setActiveTab(order[idx - 1]);
@@ -197,17 +226,17 @@ export const MobileShell = memo(function MobileShell() {
         <PlannerSyncLine className="absolute inset-x-6 top-0 z-[5]" />
 
         {/* Keyed on activeTab → a soft cross-fade on tab change (auto-disabled
-            under [data-reduce-motion]). */}
+            under [data-reduce-motion]). Not into Ask: its home carries the lime
+            accent (a run come back), which never fades through a parent's
+            opacity (CLAUDE.md), and AskTab slides its own views instead. */}
         <div
           key={activeTab}
-          className="flex min-h-0 flex-1 flex-col overflow-hidden animate-in fade-in-0 duration-200"
-        >
-          {activeTab === 'chat' && canChat && (
-            <MobileChatPanel
-              headerAccessory={userMenu}
-              onOpenSettings={() => router.push('/settings/beacon')}
-            />
+          className={cn(
+            'flex min-h-0 flex-1 flex-col overflow-hidden',
+            activeTab !== 'chat' && 'animate-in fade-in-0 duration-200'
           )}
+        >
+          {activeTab === 'chat' && canChat && <AskTab headerAccessory={userMenu} />}
 
           {/* No Scope Rail under it any more — the rail is retired (#229) and
               its two jobs live on the group headers' pause switch and in the

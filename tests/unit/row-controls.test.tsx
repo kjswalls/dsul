@@ -440,3 +440,34 @@ describe('schedule block controls', () => {
     expect(screen.queryByTestId('block-controls')).toBeNull();
   });
 });
+
+/**
+ * The day row's trailing rail keys off the day's own width (<main> is the
+ * `canvas` size container, desktop-shell.tsx), in two steps: the week dots go
+ * below a 640px canvas, the tag's name below 540. jsdom evaluates neither the
+ * breakpoint nor the container query, so the classes are what is pinned;
+ * dropping the `/canvas` half brings back the wraps and the clipped cards
+ * beside a docked right rail (task-row.tsx, the rail's note).
+ */
+describe('day row: the trailing rail on a narrow canvas', () => {
+  it('drops the week dots below a 640px canvas, the first of the rail to go', () => {
+    renderRow('daily');
+    const dots = screen.getByRole('img', { name: 'Repeats every day' });
+    expect(dots).toHaveClass('hidden', 'lg:@min-[640px]/canvas:flex');
+    expect(dots.className).not.toMatch(/@min-\[540px\]/);
+  });
+
+  it("keeps the tag's 96px name down to a 540px canvas, then only its dot", () => {
+    renderRow('in-block');
+    const name = screen.getByText('Work');
+    expect(name).toHaveClass('hidden', 'lg:@min-[540px]/canvas:block');
+    expect(name.parentElement).toHaveClass('w-1.5', 'lg:@min-[540px]/canvas:w-24');
+  });
+
+  it('holds the same 96px slot on a row with no tag, so the column stays straight', () => {
+    renderRow('one-off');
+    const slot = document.querySelector('[data-testid="item-card"] span.lg\\:\\@min-\\[540px\\]\\/canvas\\:w-24');
+    expect(slot).not.toBeNull();
+    expect(slot).toHaveClass('w-1.5', 'flex-shrink-0');
+  });
+});

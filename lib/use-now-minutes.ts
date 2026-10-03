@@ -25,6 +25,21 @@ export function useNowMinutes(timezone?: string): number | null {
   return useSyncExternalStore(subscribeToMinute, getSnapshot, getServerSnapshot);
 }
 
+/**
+ * The same clock as epoch milliseconds, floored to the minute: `now` for a
+ * relative label ("OpenClaw · 12m", "in the last day") or a view that sorts by
+ * DAY (History's Today / Yesterday / Earlier, which needs the instant and not
+ * the time of day), without reading `Date.now()` during render. Null on the
+ * server and through hydration, and it ticks on the same minute boundary, so a
+ * label and the marker turn together. Floored, so every read within a minute
+ * is the same snapshot, as useSyncExternalStore requires.
+ */
+export function useMinuteClock(): number | null {
+  return useSyncExternalStore(subscribeToMinute, minuteNow, getServerSnapshot);
+}
+
+const minuteNow = () => Math.floor(Date.now() / 60_000) * 60_000;
+
 function subscribeToMinute(onChange: () => void) {
   let timer: ReturnType<typeof setTimeout>;
   const tick = () => {

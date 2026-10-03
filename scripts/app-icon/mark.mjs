@@ -32,15 +32,18 @@ const WAVE = grid(
   [['L', 'M', 'H', 'T'], ['M', 'O', 'P', 'L'], ['H', 'P', 'L', 'M'], ['I', 'L', 'M', 'T']],
   (s) => (s === 3 ? 1 : s === 2 || s === 4 ? 0.6 : 0.26),
 );
-// Under ~20px there is room for three dots across, so it is the 3×3 middle of the same crest.
+// Three dots across (under ~20px, and the 32px tab icon) is the 3×3 middle of the same crest.
 const WAVE_SMALL = grid(
   [['M', 'H', 'T'], ['O', 'P', 'L'], ['L', 'I', 'M']],
   (s) => (s === 2 ? 1 : s === 1 || s === 3 ? 0.6 : 0.26),
 );
 
-// [dot, gap] in px for the browser-tab sizes, shared by both looks. Small enough to leave a
-// 4–5px margin inside the tile, so the grid doesn't run to the rounded edge.
-const FAVICON_SPACING = { 16: [2, 1], 32: [4, 2] };
+// [dot, gap] in px for the browser-tab sizes, shared by both looks: a 3×3 grid at both, small
+// enough to leave a 4px margin at 16 and a 7px one at 32, so it doesn't run to the rounded edge.
+// 32 is what a Retina screen shows in a 16pt tab, so it is the one most people see.
+const FAVICON_SPACING = { 16: [2, 1], 32: [4, 3] };
+// Three dots across under ~20px, and at 32 (the tab's roomy grid); four everywhere else.
+const threeAcross = (size) => size <= 20 || size === 32;
 
 const f = (v) => +v.toFixed(2);
 function rr(x, y, s, r, fill, op) {
@@ -67,8 +70,9 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
   if (ground !== 'none' && !mono) {
     defs += `<linearGradient id="${id}g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${GROUND[0]}"/><stop offset="1" stop-color="${GROUND[1]}"/></linearGradient>`;
     bg = `<rect width="${size}" height="${size}"${rx} fill="url(#${id}g)"/>`;
-    // The glow band. A favicon skips it: at 16 or 32px it only muddies the ground.
-    if (!small) {
+    // The glow band. 16px skips it, where it only muddies the ground; at 32 it shows through the
+    // wide gaps of the 3×3 grid as light behind the dots.
+    if (!small || size === 32) {
       const c = size / 2;
       defs +=
         `<radialGradient id="${id}gl"><stop offset="0" stop-color="${GLOW.mid}" stop-opacity="${GLOW.midAlpha}"/>` +
@@ -84,8 +88,8 @@ export function auroraSVG(size, { theme = 'color', ground = 'rounded', span = 0.
     // ground and glow only
   } else if (small) {
     // Pixel-snapped cores, no halo: a one-pixel glow reads as mud. The tab favicons keep a
-    // wide margin round the grid: 16px → 2px dots, 1px gaps; 32px → 4px dots, 2px gaps.
-    const tiles = size <= 20 ? WAVE_SMALL : WAVE;
+    // wide margin round a 3×3 grid: 16px → 2px dots, 1px gaps; 32px → 4px dots, 3px gaps.
+    const tiles = threeAcross(size) ? WAVE_SMALL : WAVE;
     const n = Math.sqrt(tiles.length);
     const [core, g] =
       FAVICON_SPACING[size] ?? [Math.max(1, Math.round(size / 8)), Math.max(1, Math.round((size * 3) / 32))];
@@ -146,7 +150,7 @@ const limeLevel = (n, s) => {
 // gaps in proportion to the canvas, shrunk until the grid fits inside the tile.
 function limeSmallTiles(size, { roomy = 1, mono = false } = {}) {
   if (size < 6) throw new Error(`limeSVG: ${size}px is too small for a 3×3 grid`);
-  const n = size <= 20 ? 3 : 4;
+  const n = threeAcross(size) ? 3 : 4;
   let core;
   let g;
   if (roomy && FAVICON_SPACING[size]) [core, g] = FAVICON_SPACING[size];

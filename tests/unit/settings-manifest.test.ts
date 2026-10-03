@@ -596,7 +596,7 @@ describe('the AI pane', () => {
     }
   });
 
-  it('the ⌘] row says when it works, and never holds its recorder back', () => {
+  it('the Ctrl+J row says when it works, and never holds its recorder back', () => {
     const record = SHORTCUT_RECORDS.find((r) => r.shortcutId === 'toggle_right_sidebar')!;
     expect(record).toBeDefined();
     // Said in the description, which is true in every state and locks nothing.
@@ -604,8 +604,8 @@ describe('the AI pane', () => {
 
     // No binding is ever unavailable or pending: either one disables the row
     // (no recorder, no reset) while its chord still counts as taken in every
-    // other row's conflict check. With nothing connected, that held ⌘] (or the
-    // user's own chord for it) hostage. tests/unit/shortcut-records.test.tsx
+    // other row's conflict check. With nothing connected, that held Ctrl+J (or
+    // the user's own chord for it) hostage. tests/unit/shortcut-records.test.tsx
     // renders it.
     for (const other of SHORTCUT_RECORDS) {
       expect(other.unavailable, other.id).toBeUndefined();
@@ -873,7 +873,7 @@ describe('the push row in the desktop app', () => {
   };
   const record = settingById('rituals.push')!;
   const DESKTOP_COPY =
-    'not available in the desktop app yet — turn push on from your phone or browser';
+    'not available in the desktop app yet, so turn push on from your phone or browser';
 
   afterEach(() => {
     delete window.dsulDesktop;

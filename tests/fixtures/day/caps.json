@@ -19,6 +19,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "What needs to be done?",
       "deleteTitle": "Delete task?",
       "deleteDescriptions": [
@@ -51,6 +52,7 @@
       "dailyCounts": true,
       "hasPriority": false,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "What habit to track?",
       "deleteTitle": "Delete habit?",
       "deleteDescriptions": [
@@ -83,6 +85,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a errand…",
       "deleteTitle": "Delete errand?",
       "deleteDescriptions": [
@@ -115,6 +118,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a side-quest…",
       "deleteTitle": "Delete side-quest?",
       "deleteDescriptions": [
@@ -147,6 +151,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a book_club…",
       "deleteTitle": "Delete book_club?",
       "deleteDescriptions": [
@@ -179,6 +184,7 @@
       "dailyCounts": false,
       "hasPriority": true,
       "hasNotes": true,
+      "hasDuration": true,
       "titlePlaceholder": "Add a x…",
       "deleteTitle": "Delete x?",
       "deleteDescriptions": [
@@ -208,7 +214,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "task with repeat none",
@@ -224,7 +231,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": true
     },
     {
       "name": "recurring task",
@@ -241,7 +249,8 @@
       "isSkippable": true,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "subtask",
@@ -257,7 +266,8 @@
       "isSkippable": false,
       "isPausable": false,
       "isRemindable": false,
-      "isCollectible": false
+      "isCollectible": false,
+      "reminderNeedsDate": true
     },
     {
       "name": "recurring subtask",
@@ -274,7 +284,8 @@
       "isSkippable": true,
       "isPausable": false,
       "isRemindable": false,
-      "isCollectible": false
+      "isCollectible": false,
+      "reminderNeedsDate": true
     },
     {
       "name": "habit",
@@ -292,7 +303,8 @@
       "isSkippable": true,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "habit with repeat none",
@@ -310,7 +322,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "habit with no repeat frequency",
@@ -327,7 +340,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": false
     },
     {
       "name": "custom one-off",
@@ -343,7 +357,8 @@
       "isSkippable": false,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": true
     },
     {
       "name": "custom recurring",
@@ -360,7 +375,8 @@
       "isSkippable": true,
       "isPausable": true,
       "isRemindable": true,
-      "isCollectible": true
+      "isCollectible": true,
+      "reminderNeedsDate": true
     },
     {
       "name": "custom subtask",
@@ -377,7 +393,8 @@
       "isSkippable": false,
       "isPausable": false,
       "isRemindable": false,
-      "isCollectible": false
+      "isCollectible": false,
+      "reminderNeedsDate": true
     }
   ],
   "hydrated": [

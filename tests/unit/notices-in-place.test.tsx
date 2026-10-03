@@ -550,7 +550,7 @@ describe('the end-of-day line', () => {
 describe('the dock', () => {
   beforeEach(() => {
     resetNoticeAnchors();
-    useSidebarStore.setState({ leftSidebarOpen: true, chatExpanded: false });
+    useSidebarStore.setState({ leftSidebarOpen: true, askOpen: false });
     seedSweepReceipt();
     // A failed load, as the store's catch records one: the row keys on the
     // account whose load failed, not on the message.

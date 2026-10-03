@@ -21,29 +21,32 @@ import Foundation
 ///   and the server's answer replaces the guess. If that refetch fails too,
 ///   each subject a failed write touched (`Subject`: an item) is rebased on
 ///   its own. It goes back to what it was before its earliest failed write
-///   (`Before`: the item and its place in the list, or absent for a capture),
-///   every write that landed after that one and names it is played again on
-///   top, in order, through the planner's own steps (`replaying`), and the
-///   result is put back whole: the item replaced, removed, or reinserted where
-///   it stood. So it ends where the server holds it, whatever fields each
-///   write set: a tick that landed is never undone by a carry that failed, a
-///   delete that failed brings the item back with its subtasks, and an edit
-///   that failed under a delete that landed stays gone. It is exact because a
-///   fetch is applied only with no write pending or queued, so between a
-///   write's snapshot and its revert only the phone's own writes changed the
-///   subject, and each of the planner's steps matches the server's write (the
-///   fixtures check it). A subject with a write still queued keeps its
-///   failures, and the landed writes that name it, until that write is in,
-///   and the drain refetches.
+///   (`Before`: the item and its place in the list, or absent for a capture
+///   or a new subtask), every write that landed after that one and names it
+///   is played again on top, in order, through the planner's own steps
+///   (`replaying`), and the result is put back whole: the item replaced,
+///   removed, or reinserted where it stood. So it ends where the server holds
+///   it, whatever fields each write set: a tick that landed is never undone
+///   by a carry that failed, a delete that failed brings the item back with
+///   its subtasks, and an edit that failed under a delete that landed stays
+///   gone. It is exact because a fetch is applied only with no write pending
+///   or queued, so between a write's snapshot and its revert only the phone's
+///   own writes changed the subject, and each of the planner's steps matches
+///   the server's write (the fixtures check it). A subject with a write still
+///   queued that names or proves it keeps its failures, and the landed writes
+///   that name it, until that write is in, and the drain refetches.
 /// - **A landed write doesn't moot a failed one.** Two writes need not set the
 ///   same fields (a carry keeps the time a failed drop set, a skip leaves the
 ///   tally a failed tick set, a resume of an item the server never paused
 ///   writes nothing), so the later one is replayed, never trusted. A pause is
 ///   replayed at its own `sentAt`, the instant it went out, because that is
 ///   when the server resolved it, not when the revert runs.
-/// - **A failed capture** takes its item with it, unless a later write that
-///   names or proves the item landed: the route answers 404 for a missing
-///   row, so any write it took proves the row is there.
+/// - **A failed capture, or a new subtask,** takes its item with it, unless a
+///   later write that names or proves it landed: the route answers 404 for a
+///   missing row, so any write it took proves the row is there, and a new
+///   subtask under a captured item proves its parent. A new subtask answered
+///   404 failed like any refusal: the 404 is its parent's, and it was never
+///   made.
 /// - **Delete cascades on the server, so its replay does too.** A landed
 ///   delete of anything but a habit also removes any subject whose replayed
 ///   state is one of its subtasks, matched as it replays rather than from the
@@ -65,8 +68,9 @@ final class PlannerSync {
     /// What the phone writes, each an intent (lib/app-api.ts): capture, and
     /// the item writes POST /api/app/items/:id takes, named by its `action`
     /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
-    /// Reschedule, Pause/Pause until/Resume, the item sheet's title and notes,
-    /// and Delete).
+    /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
+    /// priority, times a day, reminder and time, Delete, Add a subtask and
+    /// Reset streak).
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -79,41 +83,53 @@ final class PlannerSync {
         /// is no end. `timeZone` is the zone the phone read today in, which the
         /// server uses only when the account stores none.
         case pause(id: UUID, paused: Bool, pausedUntil: String?, timeZone: String?)
-        /// A typed edit, sent as its own action (`title`, `notes`).
+        /// A typed edit, sent as its own action (`title`, `notes`, `priority`,
+        /// `timesPerDay`, `reminder`, `time`).
         case edit(id: UUID, ItemEdit)
         /// Delete. `removed` is what the planner's step took out (DsulCore
         /// `deleting`): the item, then its subtasks, each with its place,
         /// recorded at enqueue. `cascades` is true unless the item is a habit:
         /// the server then deletes every live subtask it finds as well.
         case delete(id: UUID, removed: [PlacedItem], cascades: Bool)
+        /// Add a subtask: `id` is the new subtask, made by the phone, sent to
+        /// its `parent`'s route with `title`, already cleaned.
+        case addSubtask(id: UUID, parent: UUID, title: String)
+        /// Reset streak: the counter to 0, the completion history kept.
+        case resetStreak(id: UUID)
 
+        /// The item the write is about: for a new subtask the subtask, not
+        /// the parent whose route it goes to.
         var itemId: UUID {
             switch self {
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
-                 .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .delete(let id, _, _):
+                 .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .delete(let id, _, _),
+                 .addSubtask(let id, _, _), .resetStreak(let id):
                 return id
             }
         }
 
-        /// What this write changes: its item, and for a delete each subtask
-        /// it took out with it.
+        /// What this write changes: its item (a new subtask's is the
+        /// subtask), and for a delete each subtask it took out with it.
         var subjects: Set<Subject> {
             switch self {
             case .delete(let id, let removed, _):
                 var named = Set(removed.map { Subject.item($0.item.id) })
                 named.insert(.item(id))
                 return named
-            case .complete, .schedule, .capture, .skip, .move, .pause, .edit:
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .addSubtask, .resetStreak:
                 return [.item(itemId)]
             }
         }
 
         /// The rows a 200 to this write proves exist without changing them,
-        /// as a later write proves a capture whose answer was lost. None yet:
-        /// from 2b a new subtask proves its parent.
+        /// as a later write proves a capture whose answer was lost: a new
+        /// subtask proves its parent, since the route answers 404 for a parent
+        /// that isn't there. No other write proves anything it doesn't name.
         var proves: Set<Subject> {
             switch self {
-            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete:
+            case .addSubtask(_, let parent, _):
+                return [.item(parent)]
+            case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak:
                 return []
             }
         }
@@ -135,7 +151,7 @@ final class PlannerSync {
     enum Before: Sendable, Hashable {
         /// It existed: the item, and where it stood in the planner's list.
         case item(Item, Place)
-        /// It didn't yet: a capture, which made `created`.
+        /// It didn't yet: a capture or a new subtask, which made `created`.
         case absent(created: Item)
 
         /// The item it holds, made yet or not.
@@ -272,9 +288,10 @@ final class PlannerSync {
         }
     }
 
-    /// A write that changes one item where it stands (every write but capture
-    /// and delete): `snapshot` is the item before the planner's step, at its
-    /// place in the list now, which the step didn't move.
+    /// A write that changes one item where it stands (every write but
+    /// capture, delete and a new subtask): `snapshot` is the item before the
+    /// planner's step, at its place in the list now, which the step didn't
+    /// move.
     func enqueue(_ write: Write, snapshot: Item) {
         let items = planner?.items ?? []
         let place = Place(of: snapshot.id, in: items) ?? Place(index: items.count, after: items.last?.id)
@@ -357,6 +374,13 @@ final class PlannerSync {
                 // or in the Trash: a capture that never committed, or a delete
                 // from another device. Gone either way, so it landed.
             }
+        case .addSubtask(let id, let parent, let title):
+            // No 404 exception here: the 404 is the parent's, gone or never
+            // committed, and the subtask was never made. So are 409 `nested`,
+            // `conflict` and `parent_gone`; each fails, and takes it back.
+            try await api.addSubtask(parent: parent, id: id, title: title)
+        case .resetStreak(let id):
+            try await api.resetStreak(id: id)
         }
     }
 
@@ -512,8 +536,9 @@ final class PlannerSync {
     /// failed write, with every write that landed after that one and names it
     /// played on it in order (`replaying`), and gone if a landed delete's
     /// cascade takes it. A later failure on the subject adds nothing, since
-    /// the server never took it. A capture whose own answer was lost starts
-    /// from nothing unless a later write that names or proves it landed.
+    /// the server never took it. A capture or a new subtask whose own answer
+    /// was lost starts from nothing unless a later write that names or proves
+    /// it landed.
     ///
     /// A subject with a write still queued that names or proves it, or that a
     /// queued delete may take with its parent, waits: its failures are kept,
@@ -578,7 +603,8 @@ final class PlannerSync {
             state = item
         case .absent(let created):
             // The route answers 404 for a missing row, so a later write it
-            // took on this row proves the capture landed after all.
+            // took on this row, or a new subtask under it, proves the capture
+            // (or the new subtask) landed after all.
             let proven = later.contains { $0.subjects.contains(subject) || $0.proves.contains(subject) }
             state = proven ? created : nil
         }
@@ -663,9 +689,13 @@ final class PlannerSync {
             return pausing(item, patch: patch)
         case .edit(_, let edit):
             return editing(item, edit)
+        case .resetStreak:
+            return resettingStreak(item)
         case .delete:
             return nil
-        case .capture:
+        case .capture, .addSubtask:
+            // It made the item, so there is nothing to play: a rebase already
+            // starts from what it made (`created`).
             return item
         }
     }

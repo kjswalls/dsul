@@ -101,7 +101,7 @@ self.addEventListener('push', (event) => {
 async function reportActionFailure(itemTitle: string | undefined): Promise<void> {
   await self.registration.showNotification("Couldn't save that", {
     body: itemTitle
-      ? `${itemTitle} is still open — tap to mark it in dsul.`
+      ? `${itemTitle} is still open. Tap to mark it in dsul.`
       : 'Tap to mark it in dsul.',
     icon: '/icons/icon-192.png',
     badge: '/icons/icon-192.png',

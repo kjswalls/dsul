@@ -60,7 +60,15 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.appIcon == .lime)
         #expect(p.settings.weekStartDay == .monday)
         #expect(p.settings.timeFormat == .twentyFourHour)
-        #expect(p.writes == ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete"])
+        #expect(p.writes == [
+            "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
+            "priority", "timesPerDay", "reminder", "time",
+        ])
+        // The route's test turns Streaks off, a value no default gives.
+        #expect(p.settings.streaksEnabled == false)
+        // ... and Habit reminders on, a value no default gives either (a
+        // missing row is false, a database behind on its migrations null).
+        #expect(p.settings.remindersEnabled == true)
         #expect(p.droppedItems == 0)
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
@@ -226,6 +234,10 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twelveHour)
         #expect(p.writes == nil)
         #expect(p.itemTypes == nil)
+        // ... and Streaks is on, the extension's default, and whether
+        // Habit reminders are on is unknown.
+        #expect(p.settings.streaksEnabled)
+        #expect(p.settings.remindersEnabled == nil)
     }
 
     @Test func theWeekAndTheClockAreReadLeniently() throws {
@@ -247,6 +259,50 @@ private struct RawItems: Decodable, Sendable {
         let wrong = try settings(#"{"weekStartDay":1,"timeFormat":null}"#)
         #expect(wrong.weekStartDay == .sunday)
         #expect(wrong.timeFormat == .twelveHour)
+    }
+
+    /// The Streaks switch: missing (a server older than the field), null or
+    /// not a bool reads as on, the extension's default; only a real false
+    /// turns it off.
+    @Test func theStreaksSwitchIsReadLeniently() throws {
+        func streaks(_ value: String?) throws -> Bool {
+            let field = value.map { #","streaksEnabled":"# + $0 } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{"timezone":"UTC"\(field)},
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).settings.streaksEnabled
+        }
+        #expect(try streaks(nil))
+        #expect(try streaks("null"))
+        #expect(try streaks(#""yes""#))
+        #expect(try streaks(#""false""#))
+        #expect(try streaks("true"))
+        #expect(try streaks("false") == false)
+        // The inline payload has no key at all.
+        #expect(try decode(payload(items: "")).settings.streaksEnabled)
+    }
+
+    /// The Habit reminders switch: missing (a server older than the field),
+    /// null (a server that couldn't read the column) or not a bool reads as
+    /// unknown, never as off; only a real bool is an answer.
+    @Test func theRemindersSwitchIsReadLeniently() throws {
+        func reminders(_ value: String?) throws -> Bool? {
+            let field = value.map { #","remindersEnabled":"# + $0 } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{"timezone":"UTC"\(field)},
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).settings.remindersEnabled
+        }
+        #expect(try reminders(nil) == nil)
+        #expect(try reminders("null") == nil)
+        #expect(try reminders(#""yes""#) == nil)
+        #expect(try reminders(#""false""#) == nil)
+        #expect(try reminders("true") == true)
+        #expect(try reminders("false") == false)
+        // The inline payload has no key at all.
+        #expect(try decode(payload(items: "")).settings.remindersEnabled == nil)
     }
 
     @Test func theWritesListIsReadLeniently() throws {
@@ -353,9 +409,19 @@ private struct RawItems: Decodable, Sendable {
     @Test func theSettingsRoundTrip() throws {
         let settings = PlannerSettings(
             timezone: "Europe/Paris", showCompletedTasks: false, appIcon: .lime,
-            weekStartDay: .saturday, timeFormat: .twentyFourHour
+            weekStartDay: .saturday, timeFormat: .twentyFourHour, streaksEnabled: false, remindersEnabled: false
         )
         let data = try JSONEncoder().encode(settings)
         #expect(try JSONDecoder().decode(PlannerSettings.self, from: data) == settings)
+        #expect(String(decoding: data, as: UTF8.self).contains(#""remindersEnabled":false"#))
+        // The default round-trips too, and is written, not left to the reader.
+        let defaults = try JSONEncoder().encode(PlannerSettings())
+        let decoded = try JSONDecoder().decode(PlannerSettings.self, from: defaults)
+        #expect(decoded == PlannerSettings())
+        #expect(decoded.streaksEnabled)
+        #expect(String(decoding: defaults, as: UTF8.self).contains(#""streaksEnabled":true"#))
+        // Unknown writes no key, so it reads back unknown, never as off.
+        #expect(decoded.remindersEnabled == nil)
+        #expect(!String(decoding: defaults, as: UTF8.self).contains("remindersEnabled"))
     }
 }

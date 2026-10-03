@@ -125,12 +125,12 @@ export function useCommandShortcuts(ctx: CommandContext, shellHandlers: ShellHan
             // A chrome-level binding (allowInInput) belongs to the app on every
             // surface, so it stays consumed while its command has nothing to
             // do. Several of these chords already mean something to the
-            // browser: ⌘] and ⌘[ are Forward and Back in Chrome, Safari and
-            // Firefox. ⌘] is gated on the AI (workspace.toggleChat). If the key
-            // got through whenever nothing could answer, or before the status
-            // read lands on every page load, the same key would toggle chat one
-            // moment and leave the planner for the next page in history the
-            // next.
+            // browser: ⌘[ is Back in Chrome, Safari and Firefox, and Ctrl+J is
+            // Downloads in Chrome, Edge and Firefox. Ctrl+J (⌘J on a Mac) is
+            // gated on the AI (workspace.toggleChat). If the key got through
+            // whenever nothing could answer, or before the status read lands
+            // on every page load, the same key would open Ask one moment and
+            // the browser's downloads the next.
             //
             // Every other binding is handed back. ⌘= / ⌘- / ⌘0 are the
             // browser's page zoom everywhere except the week views that scale

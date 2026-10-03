@@ -12,6 +12,11 @@ import Foundation
 // which items are on the day at all (the caller passes them in, already
 // filtered), project time blocks, `inProjectBlock`, grouping and the
 // finished-row sink, none of which the sample model has yet.
+//
+// From 2d, the time-to-bucket rules of lib/time-bucket.ts too, which the Time
+// sheet and its edit read: `getBucketForTime` (`bucketForTime`),
+// `autoCorrectBucket` and `BUCKET_START_TIMES` (`bucketStartTime`). Checked
+// against the web by EditWritesFixtureTests (edit-writes.json's `buckets`).
 
 /// packages/types/src/schemas.ts `TimeBucketSchema`: the four buckets an item
 /// can be filed under. `TimeBucket` in ScheduleMath.swift is the narrower
@@ -46,6 +51,85 @@ public enum DayBucket: String, Sendable, Hashable, CaseIterable {
 
 /// lib/day-items.ts `BUCKET_ORDER`, the web's render order.
 public let bucketOrder: [DayBucket] = [.anytime, .morning, .afternoon, .evening]
+
+// MARK: - A time's part of day (lib/time-bucket.ts)
+
+/// JavaScript's `parseInt(s)` with no radix, as far as an hour needs it:
+/// leading whitespace skipped (`isJSWhitespace`, the same set), one sign, a
+/// "0x" prefix read as hex, then the longest run of digits. Nil where
+/// JavaScript answers NaN (no digits at all). A Double, so a long run of
+/// digits grows past every hour rather than overflowing.
+func jsParseInt(_ s: String) -> Double? {
+    var scalars = Substring(s).unicodeScalars.drop(while: isJSWhitespace)
+    var sign: Double = 1
+    if let first = scalars.first, first == "-" || first == "+" {
+        if first == "-" { sign = -1 }
+        scalars = scalars.dropFirst()
+    }
+    var radix: UInt32 = 10
+    if scalars.count >= 2, scalars.first == "0",
+       let x = scalars.dropFirst().first, x == "x" || x == "X" {
+        radix = 16
+        scalars = scalars.dropFirst(2)
+    }
+    var value: Double = 0
+    var read = false
+    for scalar in scalars {
+        let digit: UInt32
+        switch scalar.value {
+        case 0x30...0x39: digit = scalar.value - 0x30
+        case 0x61...0x66 where radix == 16: digit = scalar.value - 0x61 + 10
+        case 0x41...0x46 where radix == 16: digit = scalar.value - 0x41 + 10
+        default: return read ? sign * value : nil
+        }
+        value = value * Double(radix) + Double(digit)
+        read = true
+    }
+    return read ? sign * value : nil
+}
+
+/// lib/time-bucket.ts `getBucketForTime`: the part of day a time files under,
+/// by its hour as `parseInt(time.split(':')[0])` reads it (leading digits, so
+/// "9:30" is 9), against lib/planner-types.ts `TIME_BUCKET_RANGES`: 0 to 11
+/// Morning, 12 to 16 Afternoon, 17 and up Evening, and below 0 Evening too,
+/// as the JS's `hour < 5` arm answers (Morning's range already holds 0 to 4).
+/// No hour at all (NaN: "", "x") is Anytime. Not `DayBucket.owning(minute:)`,
+/// which reads minutes the grid has already kept inside the day.
+public func bucketForTime(_ time: String) -> DayBucket {
+    let head = time.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false).first ?? ""
+    guard let hour = jsParseInt(String(head)) else { return .anytime }
+    if hour >= 0 && hour < 12 { return .morning }
+    if hour >= 12 && hour < 17 { return .afternoon }
+    if hour >= 17 || hour < 5 { return .evening }
+    return .anytime
+}
+
+/// lib/time-bucket.ts `autoCorrectBucket`, on the stored strings: a time
+/// overrules a part of day it doesn't fall in, so a non-empty time under a
+/// non-empty bucket other than "anytime" answers the time's own
+/// (`bucketForTime`); anything else answers `bucket` as it was (Anytime holds
+/// any time, and no time or no bucket corrects nothing). A bucket the enum
+/// doesn't name is corrected too, as JavaScript's truthiness has it.
+public func autoCorrectBucket(_ time: String?, _ bucket: String?) -> String? {
+    guard let time, !time.isEmpty, let bucket, !bucket.isEmpty, bucket != DayBucket.anytime.rawValue else {
+        return bucket
+    }
+    return bucketForTime(time).rawValue
+}
+
+/// lib/time-bucket.ts `BUCKET_START_TIMES`: where each part of day starts as
+/// the web offers it (a project time block's default start, and the Time
+/// sheet's Add a time). Morning "05:00", Afternoon "12:00", Evening "17:00";
+/// nil for Anytime, which has no start. Not `TIME_BUCKET_RANGES`' first hour,
+/// which starts Morning at midnight.
+public func bucketStartTime(_ bucket: DayBucket) -> String? {
+    switch bucket {
+    case .anytime: nil
+    case .morning: "05:00"
+    case .afternoon: "12:00"
+    case .evening: "17:00"
+    }
+}
 
 /// What the bucket rule reads off an item. `startMin` is the web's `startTime`
 /// ("HH:mm") as minutes; the two order the same.

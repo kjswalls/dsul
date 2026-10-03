@@ -230,7 +230,7 @@ import Testing
         let today = planner.today
 
         let journal = first(planner, "Journal")
-        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause, .delete])
+        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause, .resetStreak, .delete])
         planner.skip(journal.id, on: today)
         #expect(planner.item(journal.id)?.skippedDates == ["2026-10-01"])
         #expect(planner.item(journal.id)?.status == "skipped")
@@ -288,6 +288,106 @@ import Testing
         planner.deleteItem(journal.id)
         #expect(planner.item(journal.id) == nil)
         #expect(planner.items.count == count - 1)
+    }
+
+    /// The sample adds a subtask and resets a streak too, sending nothing: a
+    /// subtask under a task that had none (but not under it in turn, nor
+    /// under a habit), and Meds' 41 days to 0 with the days ticked kept.
+    @Test func theSampleAddsASubtaskAndResetsAStreakWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.canWrite("addSubtask"))
+        #expect(planner.canWrite("resetStreak"))
+
+        let dentist = first(planner, "Call the dentist")
+        #expect(planner.subtasks(of: dentist.id).isEmpty)
+        #expect(planner.canAddSubtask(to: dentist))
+        let id = try #require(planner.addSubtask(dentist.id, title: "Ask about the crown"))
+        #expect(planner.subtasks(of: dentist.id).map(\.title) == ["Ask about the crown"])
+        #expect(!planner.dayItems.contains { $0.id == id })
+        let child = try #require(planner.item(id))
+        #expect(!planner.canAddSubtask(to: child))
+        #expect(planner.addSubtask(id, title: "Bring the X-rays") == nil)
+
+        let meds = first(planner, "Meds")
+        #expect(planner.showsStreak(for: meds))
+        #expect(!planner.canAddSubtask(to: meds))
+        #expect(planner.offeredVerbs(for: meds, day: .selected).contains(.resetStreak))
+        planner.resetStreak(meds.id)
+        let reset = try #require(planner.item(meds.id))
+        #expect(reset.streak == 0)
+        #expect(reset.completedDates == meds.completedDates)
+        #expect(planner.isDone(reset))
+        #expect(!planner.offeredVerbs(for: reset, day: .selected).contains(.resetStreak))
+    }
+
+    /// The sample takes every chip edit too, sending nothing: a priority, a
+    /// habit's times a day, and a reminder's time alone, which keeps its cue
+    /// words. It knows no Habit reminders switch and stores no zone, and isn't
+    /// live, so the Remind sheet shows neither settings line over it.
+    @Test func theSampleTakesEveryChipEditWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(!planner.isLive)
+        #expect(planner.settings.remindersEnabled == nil)
+        #expect(!planner.hasStoredZone)
+
+        let dentist = first(planner, "Call the dentist")
+        #expect(dentist.priority == "medium")
+        #expect(planner.canEdit("priority", dentist))
+        planner.edit(dentist.id, .priority("low"))
+        #expect(planner.item(dentist.id)?.priority == "low")
+
+        let meds = first(planner, "Meds")
+        #expect(meds.timesPerDay == nil)
+        #expect(planner.canEdit("timesPerDay", meds))
+        #expect(!planner.canEdit("priority", meds))
+        planner.edit(meds.id, .timesPerDay(3))
+        #expect(planner.item(meds.id)?.timesPerDay == 3)
+
+        #expect(planner.canEdit("reminder", meds))
+        planner.edit(meds.id, .reminder(time: "07:30", anchor: nil))
+        let retimed = try #require(planner.item(meds.id))
+        #expect(retimed.reminderTime == "07:30")
+        #expect(retimed.reminderAnchor == "I pour my coffee")
+    }
+
+    /// The sample takes the date and time chips' writes too, sending
+    /// nothing: Call the bank dated today, which files it on Anytime; Draft
+    /// Q4 roadmap's time moved to 3:00 pm, which files it in Afternoon; and
+    /// Meds' part of day to Evening.
+    @Test func theSampleTakesADateAndATimeWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+
+        let bank = try #require(planner.items.first { $0.title == "Call the bank" })
+        #expect(bank.startDate == nil)
+        #expect(!planner.canEdit("time", bank))
+        planner.move(bank.id, to: planner.today.description)
+        let dated = try #require(planner.item(bank.id))
+        #expect(dated.startDate == "2026-10-01")
+        #expect(dated.timeBucket == "anytime")
+        #expect(!planner.braindump.contains { $0.id == bank.id })
+        #expect(planner.buckets()[.anytime]?.contains { $0.id == bank.id } == true)
+        #expect(planner.canEdit("time", dated))
+
+        let roadmap = first(planner, "Draft Q4 roadmap")
+        #expect(roadmap.timeBucket == "morning")
+        #expect(roadmap.startTime == "09:00")
+        planner.edit(roadmap.id, .time(bucket: nil, startTime: .set("15:00"), duration: nil))
+        let afternoon = try #require(planner.item(roadmap.id))
+        #expect(afternoon.timeBucket == "afternoon")
+        #expect(afternoon.startTime == "15:00")
+        #expect(afternoon.duration == 120)
+        #expect(planner.buckets()[.afternoon]?.contains { $0.id == roadmap.id } == true)
+
+        let meds = first(planner, "Meds")
+        #expect(meds.timeBucket == "morning")
+        planner.edit(meds.id, .time(bucket: .set("evening"), startTime: nil, duration: nil))
+        let evening = try #require(planner.item(meds.id))
+        #expect(evening.timeBucket == "evening")
+        #expect(evening.startTime == nil)
+        #expect(planner.buckets()[.evening]?.contains { $0.id == meds.id } == true)
     }
 
     @Test func nextWeekStartsOnTheUsersWeekStart() {

@@ -596,7 +596,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           aria-label={
             multiTarget > 0
               ? // At target a click clears the day; below it a click counts up.
-                `${completed ? 'Reset' : 'Increment'} — ${habitEffectiveCount} of ${multiTarget} complete`
+                `${completed ? 'Reset' : 'Increment'}, ${habitEffectiveCount} of ${multiTarget} complete`
               : completed
                 ? 'Mark incomplete'
                 : 'Mark complete'
@@ -728,7 +728,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             row's own right edge:
 
               days     59px   weekday dots — empty slot when the item doesn't repeat
-              identity 96px   tag dot + truncating name (6px, dot only, below lg)
+              identity 96px   tag dot + truncating name (6px, dot only, when narrow)
               glyph    36px   priority bars / streak flame + count
               quantity 48px   duration, right-aligned tabular figures, both types
 
@@ -746,9 +746,26 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
             a different x on every row and the column read as debris rather than as
             a column. Reserving costs a void on rows that lack the datum; a straight
             edge down a dense list is worth more than those pixels. It stays cheap
-            because the two new slots only exist at lg and above, where the day view
-            has the room; below that the day dots unmount and the tag collapses to
-            its 6px dot.
+            because the two new slots only exist where the day view has the room,
+            at lg and above AND on a wide enough canvas (<main> is the `canvas`
+            size container, desktop-shell.tsx), in two steps:
+
+              canvas >= 640   the full rail, as at every no-rail 1440 window
+              540 - 639       the day dots unmount; the tag keeps its 96px name
+              below 540       the tag collapses to its 6px dot as well
+
+            The window alone was the wrong proxy: beside a docked right rail a
+            1280 window leaves the day ~480px, and the full rail's 331px left a
+            title 60px to wrap in, or pushed the row past the card's edge. With
+            Ask resting open at 1440-1512 the day is 540-673px, where the full
+            rail still wrapped two or three titles a list at 121-178px; the dots
+            are the first 59px to go, which ends that in every layout but
+            Writer, whose wider face can still wrap one long title at ~250px.
+            At 540 a card's title kept ~117px beside the full rail, and keeps
+            that plus the dots' 59px and their 12px gap now; the narrow rail is
+            114px, so down to a 380px canvas a title keeps ~120.
+            The 640 step also reaches a no-rail window of 1024-1080 (a 580px day
+            in Classic), which now drops the dots and stops wrapping there.
 
             Genuinely occasional metadata (start time, habit progress) is still NOT
             reserved and now sits INBOARD of the day dots. Because the rail is
@@ -963,28 +980,30 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
               {/* DAYS — 59px on every row. Habits and recurring tasks plot their
                   weekdays; one-off tasks render the empty slot, which is what
                   holds the tag column to a straight edge in a mixed list. Hidden
-                  below lg, where the rail can't afford it. */}
+                  below lg or on a canvas under 640px, the first of the rail to
+                  go (see the rail's note above). */}
               <DayDots
                 frequency={item.repeatFrequency}
                 repeatDays={item.repeatDays}
                 highlightDay={rowDate.getDay()}
-                className="hidden lg:flex"
+                className="hidden lg:@min-[640px]/canvas:flex"
               />
 
-              {/* IDENTITY — 96px at lg (dot + truncating name), 6px below it where
-                  only the dot survives as a presence indicator, name on hover. */}
+              {/* IDENTITY — 96px at lg on a 540px canvas (dot + truncating name),
+                  6px otherwise, where only the dot survives as a presence
+                  indicator, name on hover. */}
               {tagName ? (
                 <TagDot
                   name={tagName}
                   color={tagColor}
-                  // 'Project' or 'Group' from the registry — below lg the name is
+                  // 'Project' or 'Group' from the registry — narrow, the name is
                   // hidden and this is the column's only reading.
                   label={typeConfig.form.containerLabel}
-                  className="w-1.5 lg:w-24"
-                  nameClassName="hidden lg:block"
+                  className="w-1.5 lg:@min-[540px]/canvas:w-24"
+                  nameClassName="hidden lg:@min-[540px]/canvas:block"
                 />
               ) : (
-                <span aria-hidden className="w-1.5 flex-shrink-0 lg:w-24" />
+                <span aria-hidden className="w-1.5 flex-shrink-0 lg:@min-[540px]/canvas:w-24" />
               )}
 
               {/* GLYPH — 36px, reserved on every row of both types. Priority bars

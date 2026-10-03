@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState, type ComponentType } from 'react';
 import {
   ChoiceChip,
   ColorChip,
@@ -9,7 +9,7 @@ import {
 } from '@/components/primitives/organizer-chips';
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
 import { InlineAddRow } from '@/components/primitives/organizer-chips';
-import { X } from 'lucide-react';
+import { CalendarRange, Flag, Link2, ListChecks, Plus, Repeat, Workflow, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CategoryIcon } from '@/lib/category-icons';
 import { isCheckinEligible, isCollectible, isMilestoneEligible } from '@/lib/item-registry';
@@ -25,7 +25,13 @@ import {
 import { NewItemWhenChip } from './new-item-when';
 import { formatShort, parseDay } from '@/lib/collections';
 import { DayChip, NotesField } from './detail-parts';
-import { ItemMemberList, MEMBER_ROW_TRAILING_PAD, RoutineMemberList } from './member-list';
+import {
+  ItemMemberList,
+  MEMBER_ROW_TRAILING_PAD,
+  MemberPicker,
+  PickerPopover,
+  RoutineMemberList,
+} from './member-list';
 import {
   GoalSchedule,
   ScheduleHeading,
@@ -361,7 +367,7 @@ function seasonStateCopy(d: ContainerDraft, todayStr: string): string | null {
   // written — so say so, rather than store something the form no longer shows.
   const waiting = d.startsOn || d.endsOn ? ' Its dates are kept, unused, for if you put it back on them.' : '';
   if (d.seasonState === 'active') return `On until you switch it off.${waiting}`;
-  if (d.seasonState === 'paused') return `Off from the start — everything it holds is on hold.${waiting}`;
+  if (d.seasonState === 'paused') return `Off from the start. Everything it holds is on hold.${waiting}`;
   return seasonRunsCopy(d.startsOn, d.endsOn, todayStr);
 }
 
@@ -442,6 +448,40 @@ export function heldElsewhere(
     .filter((k) => k !== own)
     .some((k) => roles[k].includes(id));
 }
+
+/* ── the quiet sheet's sections ───────────────────────────────────────── */
+
+type SectionKey = 'milestone' | 'checkin' | 'member' | 'items' | 'routines' | 'seasons';
+
+/** Each kind's sections, in the order they stack once shown. */
+const SECTIONS: Record<DraftKind, readonly SectionKey[]> = {
+  goal: ['milestone', 'checkin', 'member'],
+  routine: ['items', 'seasons'],
+  season: ['routines', 'items'],
+};
+
+type Adder = { label: string; Icon: ComponentType<{ className?: string }>; hint: string };
+
+/**
+ * The verbs on the quiet row. The hint that used to sit on each empty
+ * section's heading rides the verb's tooltip instead, so a first-time user
+ * hovering "Check-in" still learns what one is.
+ */
+const SECTION_ADDER: Record<DraftKind, Partial<Record<SectionKey, Adder>>> = {
+  goal: {
+    milestone: { label: 'Milestone', Icon: Flag, hint: 'Checkpoints on the way' },
+    checkin: { label: 'Check-in', Icon: Repeat, hint: 'A regular look back' },
+    member: { label: 'Supporting work', Icon: Plus, hint: 'Habits and tasks that serve it' },
+  },
+  routine: {
+    items: { label: 'Items', Icon: ListChecks, hint: 'Habits that run and pause together' },
+    seasons: { label: 'Seasons', Icon: CalendarRange, hint: 'Seasons that switch it on and off' },
+  },
+  season: {
+    routines: { label: 'Routines', Icon: Workflow, hint: 'Switch on and off with it' },
+    items: { label: 'Items', Icon: ListChecks, hint: 'What only matters for now' },
+  },
+};
 
 export function ContainerDraftFields({
   kind,
@@ -534,6 +574,42 @@ export function ContainerDraftFields({
 
   const hasNew = (role: NewItemRole) => draft.newItems.some((n) => n.role === role);
 
+  // Sections the user asked for on the quiet row, kept even once emptied again
+  // (removing the last milestone shouldn't take the add row out from under the
+  // pointer). `focusKey` is the one just asked for: its add row mounts focused.
+  const [opened, setOpened] = useState<ReadonlySet<SectionKey>>(() => new Set());
+  const [focusKey, setFocusKey] = useState<SectionKey | null>(null);
+  // The row's Link popover holds the row open: linking into the last hidden
+  // section would otherwise unmount the row, and the popover with it, mid-pick.
+  const [linkOpen, setLinkOpen] = useState(false);
+  const hasContent = (key: SectionKey): boolean => {
+    switch (key) {
+      case 'milestone':
+        return draft.milestoneIds.length > 0 || hasNew('milestone');
+      case 'checkin':
+        return draft.checkinIds.length > 0 || hasNew('checkin');
+      case 'member':
+        return draft.memberIds.length > 0 || hasNew('member');
+      case 'items':
+        return draft.itemIds.length > 0 || hasNew('items');
+      case 'routines':
+        return draft.routineIds.length > 0;
+      case 'seasons':
+        return draft.seasonIds.length > 0;
+    }
+  };
+  // Sticky: a section that has held anything stays, so removing its last row
+  // never takes the add row, the Link pill and the focused button with it.
+  // Adjusted during render, so the frame without it never paints.
+  const grown = SECTIONS[kind].filter((key) => !opened.has(key) && hasContent(key));
+  if (grown.length > 0) setOpened((o) => new Set([...o, ...grown]));
+  // Nothing to hold, nothing to offer: no Seasons verb with no seasons, no
+  // Routines verb with no routines.
+  const available = (key: SectionKey) =>
+    !(key === 'seasons' && seasons.length === 0) && !(key === 'routines' && routines.length === 0);
+  const shown = (key: SectionKey): boolean => available(key) && (opened.has(key) || hasContent(key));
+  const adders = SECTIONS[kind].filter((key) => available(key) && !shown(key));
+
   const notes: { key: string; text: string }[] = [];
   if (kind === 'season') {
     const copy = seasonStateCopy(draft, todayStr);
@@ -543,8 +619,8 @@ export function ContainerDraftFields({
     notes.push({
       key: 'state',
       text: draft.pausedUntil
-        ? `Paused from the start — its items come back on ${formatShort(draft.pausedUntil)}.`
-        : 'Paused from the start — its items stay hidden until you resume it.',
+        ? `Paused from the start. Its items come back on ${formatShort(draft.pausedUntil)}.`
+        : 'Paused from the start. Its items stay hidden until you resume it.',
     });
   }
   if (consequence.hides > 0) {
@@ -649,6 +725,121 @@ export function ContainerDraftFields({
         testId={kind === 'goal' ? `${p}-why` : `${p}-note-field`}
       />
 
+      {SECTIONS[kind].some(shown) && (
+        <div className="flex flex-col gap-4">
+          {kind === 'goal' && shown('milestone') && (
+            <ItemMemberList
+              label="Milestones"
+              ownerId={DRAFT_ID}
+              ownerName={ownerName}
+              memberIds={draft.milestoneIds}
+              members={pick(draft.milestoneIds)}
+              hiddenIds={NOTHING_HIDDEN}
+              testPrefix={`${p}-milestones`}
+              orderable
+              picker="popover"
+              removeIcon="x"
+              pickerHint="One-time items only. A repeating item never finishes."
+              eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
+              emptyPoolLabel="Nothing eligible yet. A milestone is a one-shot item."
+              onChange={(milestoneIds) => onChange({ milestoneIds })}
+              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="milestone" onChange={onChange} testPrefix={`${p}-create-milestone`} placeholder="Add a milestone…" autoFocus={focusKey === 'milestone'} />}
+            />
+          )}
+          {kind === 'goal' && shown('checkin') && (
+            <ItemMemberList
+              label="Check-ins"
+              ownerId={DRAFT_ID}
+              ownerName={ownerName}
+              memberIds={draft.checkinIds}
+              members={pick(draft.checkinIds)}
+              hiddenIds={NOTHING_HIDDEN}
+              testPrefix={`${p}-checkins`}
+              picker="popover"
+              removeIcon="x"
+              pickerHint="Repeating items only. A check-in comes round again."
+              eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
+              emptyPoolLabel="Nothing eligible yet. A check-in is a repeating item."
+              onChange={(checkinIds) => onChange({ checkinIds })}
+              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="checkin" onChange={onChange} testPrefix={`${p}-create-checkin`} placeholder="Add a weekly check-in…" autoFocus={focusKey === 'checkin'} />}
+            />
+          )}
+          {kind === 'goal' && shown('member') && (
+            <ItemMemberList
+              label="Supporting work"
+              ownerId={DRAFT_ID}
+              ownerName={ownerName}
+              memberIds={draft.memberIds}
+              members={pick(draft.memberIds)}
+              hiddenIds={NOTHING_HIDDEN}
+              testPrefix={`${p}-supporting`}
+              picker="popover"
+              removeIcon="x"
+              eligible={(i) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id)}
+              onChange={(memberIds) => onChange({ memberIds })}
+              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add supporting work…" autoFocus={focusKey === 'member'} />}
+            />
+          )}
+          {kind === 'season' && shown('routines') && (
+            <RoutineMemberList
+              season={{ id: DRAFT_ID, name: ownerName }}
+              live={live}
+              members={draft.routineIds
+                .map((id) => routines.find((r) => r.id === id))
+                .filter((r): r is Routine => !!r)}
+              candidates={routines.filter((r) => !draft.routineIds.includes(r.id))}
+              // No confirm here: the consequence line above says what attaching
+              // does before anything is written, which is the confirm's job.
+              onRequestAttach={(routine) => onChange({ routineIds: [...draft.routineIds, routine.id] })}
+              onRemove={(routineId) =>
+                onChange({ routineIds: draft.routineIds.filter((id) => id !== routineId) })
+              }
+              testPrefix={p}
+              picker="popover"
+              removeIcon="x"
+              // Its adder has no add row to focus, so it opens the list it asked for.
+              openOnMount={focusKey === 'routines'}
+            />
+          )}
+          {(kind === 'routine' || kind === 'season') && shown('items') && (
+            <ItemMemberList
+              label="Items"
+              ownerId={DRAFT_ID}
+              ownerName={ownerName}
+              memberIds={draft.itemIds}
+              members={pick(draft.itemIds)}
+              hiddenIds={NOTHING_HIDDEN}
+              testPrefix={`${p}-items`}
+              // routine_items keeps an order; season_items does not.
+              orderable={kind === 'routine'}
+              picker="popover"
+              removeIcon="x"
+              lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
+              row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true }}
+              onChange={(itemIds) => onChange({ itemIds })}
+              footer={
+                <NewItemRows
+                  kind={kind}
+                  todayStr={todayStr}
+                  trailing={week.trailing}
+                  draft={draft}
+                  role="items"
+                  onChange={onChange}
+                  testPrefix={`${p}-create-item`}
+                  placeholder={kind === 'routine' ? 'Add a habit…' : 'Add an item…'}
+                  autoFocus={focusKey === 'items'}
+                />
+              }
+            />
+          )}
+          {kind === 'routine' && shown('seasons') && (
+            <SeasonPicker draft={draft} onChange={onChange} todayStr={todayStr} testPrefix={p} />
+          )}
+        </div>
+      )}
+
+      {/* Under the sections, not above them: a chart appearing with the first
+          row would otherwise push the add row being typed into down the form. */}
       {kind === 'goal' && goalHasMembers && (
         <GoalSchedule
           goal={{ ...preview, targetOn: draft.endsOn }}
@@ -672,112 +863,48 @@ export function ContainerDraftFields({
         </section>
       )}
 
-      <div className="flex flex-col gap-4">
-        {kind === 'goal' && (
-          <>
-            <ItemMemberList
-              label="Milestones"
-              ownerId={DRAFT_ID}
-              ownerName={ownerName}
-              memberIds={draft.milestoneIds}
-              members={pick(draft.milestoneIds)}
-              hiddenIds={NOTHING_HIDDEN}
-              testPrefix={`${p}-milestones`}
-              orderable
-              pickerHint="One-time items only. A repeating item never finishes."
-              emptyHint={hasNew('milestone') ? undefined : "Checkpoints on the way"}
-              eligible={(i) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)}
-              emptyPoolLabel="Nothing eligible yet — a milestone is a one-shot item."
-              onChange={(milestoneIds) => onChange({ milestoneIds })}
-              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="milestone" onChange={onChange} testPrefix={`${p}-create-milestone`} placeholder="Add a new milestone…" />}
-            />
-            <ItemMemberList
-              label="Check-ins"
-              ownerId={DRAFT_ID}
-              ownerName={ownerName}
-              memberIds={draft.checkinIds}
-              members={pick(draft.checkinIds)}
-              hiddenIds={NOTHING_HIDDEN}
-              testPrefix={`${p}-checkins`}
-              pickerHint="Repeating items only — a check-in comes round again."
-              emptyHint={hasNew('checkin') ? undefined : "A regular look back"}
-              eligible={(i) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)}
-              emptyPoolLabel="Nothing eligible yet — a check-in is a repeating item."
-              onChange={(checkinIds) => onChange({ checkinIds })}
-              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="checkin" onChange={onChange} testPrefix={`${p}-create-checkin`} placeholder="Add a new weekly check-in…" />}
-            />
-            <ItemMemberList
-              label="Supporting work"
-              ownerId={DRAFT_ID}
-              ownerName={ownerName}
-              memberIds={draft.memberIds}
-              members={pick(draft.memberIds)}
-              hiddenIds={NOTHING_HIDDEN}
-              testPrefix={`${p}-supporting`}
-              emptyHint={hasNew('member') ? undefined : "Habits and tasks that serve it"}
-              eligible={(i) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id)}
-              onChange={(memberIds) => onChange({ memberIds })}
-              footer={<NewItemRows kind={kind} todayStr={todayStr} draft={draft} role="member" onChange={onChange} testPrefix={`${p}-create-member`} placeholder="Add new supporting work…" />}
-            />
-          </>
-        )}
-        {kind === 'season' && (
-          <RoutineMemberList
-            season={{ id: DRAFT_ID, name: ownerName }}
-            live={live}
-            members={draft.routineIds
-              .map((id) => routines.find((r) => r.id === id))
-              .filter((r): r is Routine => !!r)}
-            candidates={routines.filter((r) => !draft.routineIds.includes(r.id))}
-            // No confirm here: the consequence line above says what attaching
-            // does before anything is written, which is the confirm's job.
-            onRequestAttach={(routine) => onChange({ routineIds: [...draft.routineIds, routine.id] })}
-            onRemove={(routineId) =>
-              onChange({ routineIds: draft.routineIds.filter((id) => id !== routineId) })
-            }
+      {/* THE QUIET ROW (Kirby, 2026-10-03, direction 1). A section exists only
+          once it has something in it or was asked for here, so a new organizer
+          opens as name, chips and a note — not a stack of empty headings. Each
+          verb leaves this row when its section appears, whose own add row and
+          Link pill take over, so nothing is offered twice. */}
+      {(adders.length > 0 || linkOpen) && (
+        <div className="-mx-1 flex flex-wrap items-center gap-x-0.5 gap-y-1" data-testid={`${p}-adders`}>
+          {adders.map((key) => {
+            const { label, Icon, hint } = SECTION_ADDER[kind][key]!;
+            return (
+              <button
+                key={key}
+                type="button"
+                title={hint}
+                data-testid={`${p}-adder-${key}`}
+                onClick={() => {
+                  setOpened((o) => new Set(o).add(key));
+                  setFocusKey(key);
+                }}
+                className="text-muted-foreground hover:text-foreground hover-wash focus-visible:ring-ring inline-flex h-7 items-center gap-1.5 rounded-[5px] px-1.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none"
+              >
+                <Icon className="size-3.5" aria-hidden />
+                {label}
+              </button>
+            );
+          })}
+          <span className="flex-1" />
+          {/* A goal's Link reaches every role from here; a routine's or a
+              season's links only into Items, so once Items shows, its own pill
+              is the one way in and this one would be the same verb twice. */}
+          {(kind === 'goal' || !shown('items') || linkOpen) && (
+          <LinkAnything
+            kind={kind}
+            draft={draft}
+            onChange={onChange}
             testPrefix={p}
-            emptyHint="Switch on and off with it"
+            open={linkOpen}
+            onOpenChange={setLinkOpen}
           />
-        )}
-        {(kind === 'routine' || kind === 'season') && (
-          <ItemMemberList
-            label="Items"
-            ownerId={DRAFT_ID}
-            ownerName={ownerName}
-            memberIds={draft.itemIds}
-            members={pick(draft.itemIds)}
-            hiddenIds={NOTHING_HIDDEN}
-            testPrefix={`${p}-items`}
-            // routine_items keeps an order; season_items does not.
-            orderable={kind === 'routine'}
-            lead={preview.itemIds.length > 0 ? week.header(MEMBER_ROW_TRAILING_PAD) : undefined}
-            row={{ leading: week.leading, trailing: week.trailing, metaInTooltip: true }}
-            emptyHint={
-              hasNew('items')
-                ? undefined
-                : kind === 'routine'
-                  ? 'Habits that run and pause together'
-                  : 'What only matters for now'
-            }
-            onChange={(itemIds) => onChange({ itemIds })}
-            footer={
-              <NewItemRows
-                kind={kind}
-                todayStr={todayStr}
-                trailing={week.trailing}
-                draft={draft}
-                role="items"
-                onChange={onChange}
-                testPrefix={`${p}-create-item`}
-                placeholder={kind === 'routine' ? 'Add a new habit…' : 'Add a new item…'}
-              />
-            }
-          />
-        )}
-        {kind === 'routine' && seasons.length > 0 && (
-          <SeasonPicker draft={draft} onChange={onChange} todayStr={todayStr} testPrefix={p} />
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -796,10 +923,13 @@ function NewItemRows({
   placeholder,
   todayStr,
   trailing,
+  autoFocus,
 }: {
   kind: DraftKind;
   draft: ContainerDraft;
   role: NewItemRole;
+  /** The section was just asked for on the quiet row: type straight into it. */
+  autoFocus?: boolean;
   onChange: (patch: Partial<ContainerDraft>) => void;
   testPrefix: string;
   placeholder: string;
@@ -812,10 +942,15 @@ function NewItemRows({
     onChange({ newItems: draft.newItems.map((x) => (x.key === key ? { ...x, ...patch } : x)) });
   return (
     <div className="flex flex-col">
+      {/* With week dots, the linked list above reserves a scrollbar gutter so
+          its dots meet the header's; these rows reserve the same one. */}
+      <div className={cn('flex flex-col', trailing && 'overflow-y-hidden [scrollbar-gutter:stable]')}>
       {rows.map((n) => (
         // The member rows' own geometry (px 7, gap 9, a 76px rail slot), so the
         // week dots sit in the same columns as the linked rows' above them.
-        <div key={n.key} className="flex h-[30px] items-center gap-[9px] px-[7px]" data-testid={`${testPrefix}-row`}>
+        // -mx-2 undoes the section foot's px-2 (which centres the add row's
+        // plus), so these rows start where the linked rows do.
+        <div key={n.key} className="-mx-2 flex h-[30px] items-center gap-[9px] px-[7px]" data-testid={`${testPrefix}-row`}>
           <span className="text-muted-foreground w-[18px] shrink-0 text-center text-[9px] font-semibold tracking-wide uppercase">New</span>
           <span className="font-content text-content text-foreground min-w-0 flex-1 truncate" title={n.title}>{n.title}</span>
           <NewItemWhenChip
@@ -828,8 +963,8 @@ function NewItemRows({
             onChange={(patch) => patchRow(n.key, patch)}
           />
           {trailing?.({ id: n.key, title: n.title } as Item)}
-          {/* 76px lines up with the week dots, which only show from sm up. */}
-          <span className="flex w-auto shrink-0 justify-end sm:w-[76px]">
+          {/* The linked rows' control rail is 76px at every width, so this is too. */}
+          <span className="flex w-[76px] shrink-0 justify-end">
             <button
               type="button"
               aria-label={`Don't create ${n.title}`}
@@ -842,9 +977,11 @@ function NewItemRows({
           </span>
         </div>
       ))}
+      </div>
       <InlineAddRow
         placeholder={placeholder}
         testIdPrefix={testPrefix}
+        autoFocus={autoFocus}
         onAdd={(title) =>
           onChange({
             newItems: [
@@ -861,6 +998,122 @@ function NewItemRows({
         }
       />
     </div>
+  );
+}
+
+/**
+ * The quiet row's Link: one popover for linking an existing item into any of
+ * the kind's item sections, so linking never needs its section opened first.
+ * A goal picks the role on a switch at the top (Supporting work by default —
+ * the widest pool); a routine or season links into its items. Linking makes
+ * the section appear, carrying the row with it.
+ */
+const GOAL_LINK_ROLES = [
+  { value: 'member', label: 'Supporting work', key: 'memberIds' },
+  { value: 'milestone', label: 'Milestone', key: 'milestoneIds' },
+  { value: 'checkin', label: 'Check-in', key: 'checkinIds' },
+] as const;
+
+function LinkAnything({
+  kind,
+  draft,
+  onChange,
+  testPrefix,
+  open,
+  onOpenChange,
+}: {
+  kind: DraftKind;
+  draft: ContainerDraft;
+  onChange: (patch: Partial<ContainerDraft>) => void;
+  testPrefix: string;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
+  const [role, setRole] = useState<(typeof GOAL_LINK_ROLES)[number]['value']>('member');
+  const goalRole = GOAL_LINK_ROLES.find((r) => r.value === role)!;
+  const ids = kind === 'goal' ? draft[goalRole.key] : draft.itemIds;
+  const eligible =
+    kind !== 'goal'
+      ? isCollectible
+      : role === 'milestone'
+        ? (i: Item) => isMilestoneEligible(i) && !heldElsewhere(draft, 'milestoneIds', i.id)
+        : role === 'checkin'
+          ? (i: Item) => isCheckinEligible(i) && !heldElsewhere(draft, 'checkinIds', i.id)
+          : (i: Item) => isCollectible(i) && !heldElsewhere(draft, 'memberIds', i.id);
+  const hint =
+    kind === 'goal' && role === 'milestone'
+      ? 'One-time items only. A repeating item never finishes.'
+      : kind === 'goal' && role === 'checkin'
+        ? 'Repeating items only. A check-in comes round again.'
+        : undefined;
+  const emptyPool =
+    kind === 'goal' && role === 'milestone'
+      ? 'Nothing eligible yet. A milestone is a one-shot item.'
+      : kind === 'goal' && role === 'checkin'
+        ? 'Nothing eligible yet. A check-in is a repeating item.'
+        : undefined;
+
+  return (
+    <PickerPopover
+      open={open}
+      onOpenChange={onOpenChange}
+      testId={`${testPrefix}-link-popover`}
+      trigger={
+        <button
+          type="button"
+          aria-expanded={open}
+          data-testid={`${testPrefix}-link`}
+          className={cn(
+            'text-muted-foreground hover:text-foreground hover-wash focus-visible:ring-ring inline-flex h-7 items-center gap-1.5 rounded-[5px] px-1.5 text-xs font-medium transition-colors focus-visible:ring-2 focus-visible:outline-none',
+            open && 'bg-accent text-foreground'
+          )}
+        >
+          <Link2 className="size-3.5" aria-hidden />
+          {/* One flex item, so the trigger's gap never opens inside the label. */}
+          <span>
+            Link<span className="max-sm:hidden"> existing</span>
+          </span>
+        </button>
+      }
+    >
+      {kind === 'goal' && (
+        <div role="group" aria-label="Link as" className="mb-1 flex gap-0.5 border-b px-0.5 pb-1.5">
+          {GOAL_LINK_ROLES.map((r) => (
+            <button
+              key={r.value}
+              type="button"
+              aria-pressed={role === r.value}
+              data-testid={`${testPrefix}-link-role-${r.value}`}
+              onClick={() => setRole(r.value)}
+              className={cn(
+                'h-6 rounded-[4px] px-2 text-xs font-medium transition-colors focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none',
+                role === r.value ? 'bg-accent text-foreground' : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
+      )}
+      <MemberPicker
+        // A new role is a new pool: the query and cursor start over.
+        key={role}
+        testPrefix={`${testPrefix}-link`}
+        memberIds={ids}
+        eligible={eligible}
+        pickerHint={hint}
+        emptyPoolLabel={emptyPool}
+        variant="popover"
+        // Closes on a pick, unlike a section's picker: the section it linked
+        // into appears under it with its own Link pill for the next one, and an
+        // open popover would flip above its trigger as the form grew, over the
+        // very section that just appeared.
+        onPick={(id) => {
+          onChange(kind === 'goal' ? { [goalRole.key]: [...ids, id] } : { itemIds: [...ids, id] });
+          onOpenChange(false);
+        }}
+      />
+    </PickerPopover>
   );
 }
 

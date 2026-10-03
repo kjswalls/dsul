@@ -25,32 +25,43 @@ export interface ThemePaletteDef {
    * The default pair mirrors the static values in app/layout.tsx viewport.
    */
   themeColor: { light: string; dark: string };
+  /**
+   * The Tint picker's dot (Settings → Look). A palette re-tints the ground by
+   * a few thousandths of chroma, which is the point of it and invisible at dot
+   * size, so the dot shows the hue the palette leans toward instead. A label,
+   * not a token: nothing in the app is painted with it.
+   */
+  swatch: string;
 }
 
 export const THEME_PALETTES: ThemePaletteDef[] = [
   {
     value: 'default',
     label: 'dsul',
-    description: 'Warm paper and cool ink — the shipped look.',
+    description: 'Warm paper and cool ink. The shipped look.',
     themeColor: { light: '#fbfaf9', dark: '#0e1014' },
+    swatch: '#c9c8c0',
   },
   {
     value: 'slate',
     label: 'Slate',
     description: 'A cool blue-gray ground.',
     themeColor: { light: '#f3f5f8', dark: '#0f1420' },
+    swatch: '#8fa3b8',
   },
   {
     value: 'dune',
     label: 'Dune',
     description: 'Warm sand; the paper leans into its own hue.',
     themeColor: { light: '#f8f4eb', dark: '#161210' },
+    swatch: '#c8a774',
   },
   {
     value: 'iris',
     label: 'Iris',
     description: 'A faint violet ground.',
     themeColor: { light: '#f7f3f9', dark: '#151021' },
+    swatch: '#9c8fd0',
   },
 ];
 

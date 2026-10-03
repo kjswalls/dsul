@@ -87,6 +87,9 @@ const GATED_DURING_PREVIEW: Record<string, boolean> = {
   'rituals.chat': true,
   'rituals.catchUp': true,
   'rituals.planDay': true,
+  // Ask's two doors (#382) ride their group, as rituals.chat does.
+  'ask.newChat': true,
+  'ask.history': true,
   'rituals.eod': true,
   'workspace.toggleChat': false,
   'workspace.toggleSidebar': false,

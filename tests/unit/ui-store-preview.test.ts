@@ -6,6 +6,7 @@ import {
   isDataDialog,
   isDataDialogArmed,
   openEditFor,
+  setEditItemInterceptor,
   useUIStore,
   type ActiveDialog,
   type ConfirmRequest,
@@ -135,6 +136,19 @@ describe('openDialog while previewing', () => {
     openEditFor(task('t-kept', 'Cached title') as unknown as Task, 'task');
     expect(ui().activeDialog).toBeNull();
     expect(ui().deferredDialog?.type).toBe('edit-item');
+  });
+
+  it("never hands an item to the phone Ask tab's interceptor: the slot defers it", () => {
+    // rail-store installs it while the tab is mounted; its item view autosaves.
+    const interceptor = vi.fn(() => true);
+    setEditItemInterceptor(interceptor);
+    try {
+      openEditFor(task('t-kept', 'Cached title') as unknown as Task, 'task');
+      expect(interceptor).not.toHaveBeenCalled();
+      expect(ui().deferredDialog?.type).toBe('edit-item');
+    } finally {
+      setEditItemInterceptor(null);
+    }
   });
 
   it('opens the launcher, the shortcuts sheet and the bug report as usual, deferral untouched', () => {
@@ -298,6 +312,23 @@ describe('useDeferredDialogPromotion', () => {
     // A fresh object, not the cached snapshot nor the store's row itself.
     expect(opened.item).not.toBe(payload.item);
     expect(opened.item).not.toBe(usePlannerStore.getState().items.find((i) => i.id === 't-kept'));
+  });
+
+  it("promotes an edit-item the way openEditFor sends one, through the phone Ask tab's interceptor", () => {
+    mount();
+    openEditFor(task('t-kept', 'Cached title') as unknown as Task, 'task');
+    const interceptor = vi.fn<(item: Item) => boolean>(() => true);
+    setEditItemInterceptor(interceptor);
+    try {
+      landFresh();
+      expect(interceptor).toHaveBeenCalledTimes(1);
+      expect(interceptor.mock.calls[0][0]).toMatchObject({ id: 't-kept', title: 'Fresh title' });
+      // Taken over Ask: the slot stays as it was.
+      expect(ui().activeDialog).toBeNull();
+      expect(ui().deferredDialog).toBeNull();
+    } finally {
+      setEditItemInterceptor(null);
+    }
   });
 
   it('drops an edit-item whose row is gone from the fresh data', () => {

@@ -29,3 +29,12 @@ export const autoCorrectBucket = (
   bucket: TimeBucket | undefined,
 ): TimeBucket | undefined =>
   time && bucket && bucket !== 'anytime' ? getBucketForTime(time) : bucket;
+
+/**
+ * Where each part of day starts as the web offers it: a project time block's
+ * default start (components/planner/organize/project-time-block.tsx), and the
+ * phone's Add a time. Not TIME_BUCKET_RANGES' first hour, which starts Morning
+ * at midnight. tests/fixtures/day/edit-writes.json (`buckets.starts`) pins
+ * them for DsulCore's bucketStartTime.
+ */
+export const BUCKET_START_TIMES = { morning: '05:00', afternoon: '12:00', evening: '17:00' } as const;

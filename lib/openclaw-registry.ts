@@ -263,7 +263,7 @@ export async function deregisterPlugin(
     cache.delete(userId)
     // The row may exist and be unreachable from here. Saying "removed" would
     // be a lie about the only thing on this surface that has to be true.
-    return { ok: false, reason: 'Could not reach the registration store — nothing was revoked.' }
+    return { ok: false, reason: 'Could not reach the registration store, so nothing was revoked.' }
   }
 
   try {
@@ -279,7 +279,7 @@ export async function deregisterPlugin(
     if (error) {
       if (missingTable(error)) {
         tableUnavailableUntil = Date.now() + TABLE_RETRY_MS
-        return { ok: false, reason: 'Could not reach the registration store — nothing was revoked.' }
+        return { ok: false, reason: 'Could not reach the registration store, so nothing was revoked.' }
       }
       console.warn('[openclaw-registry] deregister failed', error.message)
       return { ok: false, reason: error.message }

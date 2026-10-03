@@ -3,7 +3,7 @@
 import { useEffect } from 'react';
 import { usePlannerStore } from '@/lib/planner-store';
 import { selectPlannerLoaded } from '@/lib/planner-ready';
-import { useUIStore, type ActiveDialog } from '@/lib/ui-store';
+import { openStampedEdit, useUIStore, type ActiveDialog } from '@/lib/ui-store';
 import type { Item } from '@/lib/planner-types';
 
 /**
@@ -46,7 +46,10 @@ export function useDeferredDialogPromotion(): void {
         const { activeDialog, confirmRequest, openDialog } = useUIStore.getState();
         if (activeDialog || confirmRequest) return;
         const fresh = resolveOnFresh(deferred, s.items);
-        if (fresh) openDialog(fresh);
+        // An item goes the way openEditFor sends one, so the phone's Ask tab
+        // (rail-store's interceptor) still takes it over the drawer.
+        if (fresh?.type === 'edit-item') openStampedEdit(fresh.item);
+        else if (fresh) openDialog(fresh);
       } catch {
         // Losing a deferred dialog is the safe failure.
       }

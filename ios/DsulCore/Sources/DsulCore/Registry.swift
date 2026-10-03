@@ -5,10 +5,12 @@ import Foundation
 // column is NULL, the block length a timed item gets when it has none, and the
 // capabilities the item sheet's verbs, chips and fields read (label, skippable,
 // pausable, dated, remindable, collectible, subtasks, the counters, priority,
-// notes), with the item-level questions built on them (`isSkippable`,
-// `isPausable`, `isRemindable`, `isCollectible`), and the words the sheet
-// borrows from the type's `form` (the title placeholder and Delete's
-// confirm), with Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
+// notes, duration), with the item-level questions built on them (`isSkippable`,
+// `isPausable`, `isRemindable`, `isCollectible`, lib/item-edit.ts
+// `subtaskRefusal` as `canAddSubtask`, and lib/bulk-edit.ts
+// `reminderNeedsDate`), and the words the sheet borrows from
+// the type's `form` (the title placeholder and Delete's confirm), with
+// Delete's title from lib/item-verbs.ts `deleteConfirmTitle`.
 // Keep in step with `ITEM_TYPES` and `buildCustomTypeConfig` there.
 // Checked against the web by RegistryCapsFixtureTests
 // (tests/fixtures/day/caps.json).
@@ -66,6 +68,10 @@ public struct ItemCaps: Sendable, Hashable {
     /// `fields.includes('notes')`: every shipped type today, so the server's
     /// `no_notes` is the answer a future type gets.
     public var hasNotes: Bool
+    /// `fields.includes('duration')`: the type keeps a length, which the Time
+    /// sheet edits. Every shipped type today, so the server's `no_duration` is
+    /// the answer a future type gets.
+    public var hasDuration: Bool
     /// `form.titlePlaceholder`: the empty title field's prompt ("What needs to
     /// be done?"; "Add a side quest…" for a custom type).
     public var titlePlaceholder: String
@@ -91,6 +97,7 @@ public struct ItemCaps: Sendable, Hashable {
         dailyCounts: Bool,
         hasPriority: Bool,
         hasNotes: Bool = true,
+        hasDuration: Bool = true,
         titlePlaceholder: String = "",
         deleteNamesHistory: Bool = false
     ) {
@@ -111,6 +118,7 @@ public struct ItemCaps: Sendable, Hashable {
         self.dailyCounts = dailyCounts
         self.hasPriority = hasPriority
         self.hasNotes = hasNotes
+        self.hasDuration = hasDuration
         self.titlePlaceholder = titlePlaceholder
         self.deleteNamesHistory = deleteNamesHistory
     }
@@ -120,7 +128,8 @@ public struct ItemCaps: Sendable, Hashable {
         label: "Task", doneStatus: "completed", skipStatus: nil, defaultFrequency: "none", defaultBlockMinutes: 30,
         dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false, dailyCounts: false,
-        hasPriority: true, hasNotes: true, titlePlaceholder: "What needs to be done?", deleteNamesHistory: false
+        hasPriority: true, hasNotes: true, hasDuration: true, titlePlaceholder: "What needs to be done?",
+        deleteNamesHistory: false
     )
 
     /// `ITEM_TYPES.habit`.
@@ -128,7 +137,8 @@ public struct ItemCaps: Sendable, Hashable {
         label: "Habit", doneStatus: "done", skipStatus: "skipped", defaultFrequency: "daily", defaultBlockMinutes: 30,
         dateAnchored: false, dateAddressable: false, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: false, subtasks: false, streakCounter: true, dailyCounts: true,
-        hasPriority: false, hasNotes: true, titlePlaceholder: "What habit to track?", deleteNamesHistory: true
+        hasPriority: false, hasNotes: true, hasDuration: true, titlePlaceholder: "What habit to track?",
+        deleteNamesHistory: true
     )
 
     /// `buildCustomTypeConfig({ name, label })`: task-shaped in every respect
@@ -147,7 +157,7 @@ public struct ItemCaps: Sendable, Hashable {
             label: noun, doneStatus: "completed", skipStatus: nil, defaultFrequency: "none",
             defaultBlockMinutes: 30, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true,
             remindable: true, collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false,
-            dailyCounts: false, hasPriority: true, hasNotes: true,
+            dailyCounts: false, hasPriority: true, hasNotes: true, hasDuration: true,
             titlePlaceholder: "Add a \(jsLowercased(noun))\u{2026}", deleteNamesHistory: false
         )
     }
@@ -281,8 +291,8 @@ public func isSkippable(_ item: Item) -> Bool {
 }
 
 /// A non-empty `parentItemId`: JavaScript's truthiness, which the subtask rule
-/// below tests.
-private func isSubtask(_ item: Item) -> Bool {
+/// below tests, and ItemEdit.swift's gate for the Time chip (`not_for_subtask`).
+func isSubtask(_ item: Item) -> Bool {
     guard let parent = item.parentItemId else { return false }
     return !parent.isEmpty
 }
@@ -295,10 +305,36 @@ public func isPausable(_ item: Item) -> Bool {
     return caps(item.typeName).pausable
 }
 
+/// May a subtask be added under `item`? lib/item-edit.ts `subtaskRefusal`,
+/// the server's gate: the type grows subtasks (`caps.subtasks`, else 400
+/// `no_subtasks`) AND `item` isn't a subtask itself (else 409 `nested`), since
+/// one level is all the web's panel renders and lib/db.ts refuses a
+/// grandchild. `caps` is the item's own (`caps(_:labels:)`), so a custom type
+/// answers as its template does. The app adds `canWrite("addSubtask")`.
+public func canAddSubtask(under item: Item, caps: ItemCaps) -> Bool {
+    return caps.subtasks && !isSubtask(item)
+}
+
 /// lib/item-registry.ts `isRemindable`: the capability AND not a subtask.
 public func isRemindable(_ item: Item) -> Bool {
-    if isSubtask(item) { return false }
-    return caps(item.typeName).remindable
+    return isRemindable(item, caps: caps(item.typeName))
+}
+
+/// `isRemindable` with the item's caps passed in (`caps(_:labels:)`), as the
+/// planner's other gates take them; a custom type answers as its template
+/// does. lib/item-edit.ts `editRefusal` asks the same of the row
+/// (`not_remindable`).
+public func isRemindable(_ item: Item, caps: ItemCaps) -> Bool {
+    return caps.remindable && !isSubtask(item)
+}
+
+/// lib/bulk-edit.ts `reminderNeedsDate`, which is the item dialog's too
+/// (components/planner/item-dialog.tsx): would a reminder set on `item` never
+/// fire for want of a day? A date-anchored type with no `startDate` occurs on
+/// none. Empty reads as none, as JavaScript's truthiness has it. A habit is
+/// never date-anchored, so it never needs one. `caps` is the item's own.
+public func reminderNeedsDate(_ item: Item, caps: ItemCaps) -> Bool {
+    return caps.dateAnchored && (item.startDate ?? "").isEmpty
 }
 
 /// lib/item-registry.ts `isCollectible`: the capability AND not a subtask.

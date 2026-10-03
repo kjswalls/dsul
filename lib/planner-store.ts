@@ -27,10 +27,13 @@ import type {
   Goal,
   GoalRole,
   Proposal,
+  ProposalOperation,
 } from './planner-types';
 import { PRIORITY_LABELS } from './planner-types';
 // The time → bucket rules live in a plain module so a route can share them.
 import { autoCorrectBucket } from './time-bucket';
+// The schedule actions' patches live in lib/item-edit.ts, so the iPhone's routes write the same ones.
+import { scheduleHabitPatch, scheduleTaskPatch, UNSCHEDULE_TASK_PATCH } from './item-edit';
 import { validateProposalOperations } from './proposal';
 import {
   addDaysToDateStr,
@@ -81,6 +84,7 @@ import {
   adoptContainerMembers,
   type TrashEntry,
   type PlannerData,
+  type AgentStateRow,
 } from './db';
 import { celebrateCompletion } from './completion-confetti';
 // Already reached through completion-confetti, so this adds no cycle.
@@ -373,8 +377,10 @@ interface PlannerStore {
    * Apply an accepted AI proposal. Operations are re-validated against the type
    * registry here (never trust the model), then applied in ONE set() so the
    * whole plan is a single Cmd+Z. Returns the number of operations applied.
+   * `onAccepted` hears the operations that survived re-validation, before the
+   * set (proposal-store counts them on the conversation that asked).
    */
-  applyProposal: (proposal: Proposal) => number;
+  applyProposal: (proposal: Proposal, onAccepted?: (accepted: ProposalOperation[]) => void) => number;
 
   // Multi-select bulk actions (any kind). Each does exactly ONE set() so the
   // whole gesture is a single undo, then fans out one DB write per item with
@@ -1353,7 +1359,7 @@ const undoFailedCreate = (
   // only place the name can be hiding, so the sentence can be specific.
   toast.error(
     isUniqueViolation(error)
-      ? `Couldn't create “${name}” — a deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
+      ? `Couldn't create “${name}”. A deleted ${noun} still has that name. Restore or empty it from Organize → Trash.`
       : `Couldn't create “${name}”. Nothing was saved.`
   );
 };
@@ -1404,7 +1410,7 @@ const undoFailedContainerCreate = (
   // now loose in the braindump. Saying "nothing was saved" would be false.
   toast.error(
     keptItems > 0
-      ? `Couldn't save the ${kind} “${name}”. Its ${keptItems} new ${keptItems === 1 ? 'item was' : 'items were'} kept — ${keptItems === 1 ? "it's" : "they're"} in your braindump.`
+      ? `Couldn't save the ${kind} “${name}”. Its ${keptItems} new ${keptItems === 1 ? 'item was' : 'items were'} kept in your braindump.`
       : `Couldn't save the ${kind} “${name}”. Nothing was saved.`
   );
 };
@@ -1770,8 +1776,8 @@ export const usePlannerStore = create<PlannerStore>()(
           goals: next,
           receipt:
             demoted.length === 1
-              ? `No longer a ${noun} of your ${goal.name} goal — ${why}.`
-              : `No longer a ${noun} of ${demoted.length} goals — ${why}.`,
+              ? `No longer a ${noun} of your ${goal.name} goal: ${why}.`
+              : `No longer a ${noun} of ${demoted.length} goals: ${why}.`,
         };
       };
 
@@ -1859,7 +1865,7 @@ export const usePlannerStore = create<PlannerStore>()(
               : `Every milestone on ${goal.name} is done`,
             {
               description: far
-                ? `Its target is ${formatGoalDay(goal.targetOn!)}. Worth a look — or call it achieved.`
+                ? `Its target is ${formatGoalDay(goal.targetOn!)}. Worth a look, or call it achieved.`
                 : 'Ready to call it achieved?',
               action: {
                 label: 'Mark achieved',
@@ -3217,17 +3223,7 @@ export const usePlannerStore = create<PlannerStore>()(
           `Schedule task: ${task?.title || 'Unknown'}`,
           landingReceipt(get(), [id], date ?? startDateOf(task))
         );
-        const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
-
-        const updates: Partial<Task> = {
-          isScheduled: true,
-          timeBucket: finalBucket,
-          startTime: time,
-          inProjectBlock: false,
-          previousStartTime: undefined,
-          previousStartDate: undefined,
-          ...(date ? { startDate: date } : {}),
-        };
+        const updates: Partial<Task> = { ...scheduleTaskPatch(bucket, time), ...(date ? { startDate: date } : {}) };
 
         updateItemAction(id, 'task', updates);
       },
@@ -3254,7 +3250,7 @@ export const usePlannerStore = create<PlannerStore>()(
         const task = findTaskLike(id);
         if (!task) return; // habit ids no-op here by contract (sidebar drop)
         setNextActionLabel(`Unschedule task: ${task.title}`);
-        updateItemAction(id, 'task', { isScheduled: false, timeBucket: undefined, startTime: undefined, startDate: undefined });
+        updateItemAction(id, 'task', { ...UNSCHEDULE_TASK_PATCH });
       },
 
       /**
@@ -3350,7 +3346,7 @@ export const usePlannerStore = create<PlannerStore>()(
         );
       },
 
-      applyProposal: (proposal) => {
+      applyProposal: (proposal, onAccepted) => {
         const state = get();
         // Re-validate at the boundary rather than trusting whatever produced
         // the proposal: the card may have been rendered minutes ago, and the
@@ -3365,6 +3361,12 @@ export const usePlannerStore = create<PlannerStore>()(
           milestoneIds: milestoneItemIds(state.goals),
         });
         if (accepted.length === 0) return 0;
+        // A tally is bookkeeping about the plan, never a reason to lose it.
+        try {
+          onAccepted?.(accepted);
+        } catch {
+          /* the plan applies regardless */
+        }
 
         // Armed before the set(), like every other labelled action — the label
         // is consumed by the NEXT history save.
@@ -3553,14 +3555,9 @@ export const usePlannerStore = create<PlannerStore>()(
               : `Unschedule task: ${targets.length} items`),
         );
 
-        // Field-for-field identical to unscheduleTask so the single and batched
-        // verbs can never drift apart.
-        const updates: Partial<Task> = {
-          isScheduled: false,
-          timeBucket: undefined,
-          startTime: undefined,
-          startDate: undefined,
-        };
+        // One patch, UNSCHEDULE_TASK_PATCH, for the single and batched verbs, so
+        // they can never drift apart.
+        const updates: Partial<Task> = { ...UNSCHEDULE_TASK_PATCH };
 
         // One set() => one history entry => one undo (see moveTasksToDate).
         //
@@ -4423,8 +4420,7 @@ export const usePlannerStore = create<PlannerStore>()(
       scheduleHabit: (id, bucket, time) => {
         const habit = findItem(id, 'habit');
         setNextActionLabel(`Schedule habit: ${habit?.title || 'Unknown'}`);
-        const finalBucket = autoCorrectBucket(time, bucket) ?? bucket;
-        updateItemAction(id, 'habit', { timeBucket: finalBucket, startTime: time });
+        updateItemAction(id, 'habit', scheduleHabitPatch(bucket, time));
       },
 
       assignHabitToBucket: (id, bucket) => {
@@ -5470,6 +5466,93 @@ usePlannerStore.subscribe((state) => {
 
   prevStateJson = currentStateJson;
 });
+
+/* ── agent state from the server ──────────────────────────────────────── */
+
+type AgentFields = Pick<TaskItem, 'assignee' | 'aiStatus' | 'aiResult' | 'aiStatusAt'>;
+
+const agentFieldsOf = (item: Item): AgentFields => {
+  const i = item as AgentFields;
+  return { assignee: i.assignee, aiStatus: i.aiStatus, aiResult: i.aiResult, aiStatusAt: i.aiStatusAt };
+};
+
+const sameAgentFields = (a: AgentFields, b: AgentFields) =>
+  (a.assignee ?? null) === (b.assignee ?? null) &&
+  (a.aiStatus ?? null) === (b.aiStatus ?? null) &&
+  (a.aiResult ?? null) === (b.aiResult ?? null) &&
+  (a.aiStatusAt ?? null) === (b.aiStatusAt ?? null);
+
+/**
+ * Fold the agent columns read back from the server (lib/db.ts
+ * `fetchAgentStates`, on Ask home's throttled refetch) into the store. An agent
+ * writes these from outside the browser, and nothing else refetches them for
+ * the rest of the session, so without this Ask home's "Needs you" and "With AI
+ * activity" would only ever show what was true at load.
+ *
+ * NEWER WINS, by `aiStatusAt`. A row applies only when its stamp is later than
+ * the item's. That is the right test because the one client write to these
+ * columns (an answer's flip to `queued`, or delegating) stamps `aiStatusAt`
+ * itself (updateTask), so an answer a moment ago is never overwritten by the
+ * row it superseded. A row with no stamp has no order to win by.
+ *
+ * ONE set(), NO UNDO ENTRY, NO WRITE-BACK. This is the server's news, not a
+ * user action: nothing here writes to the database, and the history
+ * subscriber is held off. Holding it off is not enough on its own, because
+ * applyHistoryState writes the restored snapshot's difference back: an undo of
+ * an unrelated edit would restore the item's pre-merge agent state and write
+ * it to the row, quietly reverting the agent's work. So the baseline follows
+ * the merge, and every snapshot that still holds an item's pre-merge agent
+ * state is rewritten to the merged one, as if the server's value had been
+ * there all along. A snapshot holding a different state (from before the
+ * user's own delegation or answer) is left alone, so undoing that still undoes
+ * it. Suppressed the save-and-restore way (see undoFailedCreate), and skipped
+ * while a load is in flight, which brings fresh rows of its own.
+ *
+ * Returns how many items changed.
+ */
+export function mergeAgentStates(rows: readonly AgentStateRow[]): number {
+  const state = usePlannerStore.getState();
+  if (state.isLoading || rows.length === 0) return 0;
+
+  const byId = new Map(state.items.map((item) => [item.id, item]));
+  const changes = new Map<string, { before: AgentFields; after: AgentFields }>();
+  for (const row of rows) {
+    const item = byId.get(row.id);
+    if (!item || item.type === 'habit') continue;
+    const rowAt = row.aiStatusAt ? Date.parse(row.aiStatusAt) : NaN;
+    if (!Number.isFinite(rowAt)) continue;
+    const before = agentFieldsOf(item);
+    const itemAt = before.aiStatusAt ? Date.parse(before.aiStatusAt) : NaN;
+    if (Number.isFinite(itemAt) && rowAt <= itemAt) continue;
+    const after: AgentFields = {
+      assignee: row.assignee ?? undefined,
+      aiStatus: row.aiStatus ?? undefined,
+      aiResult: row.aiResult ?? undefined,
+      aiStatusAt: row.aiStatusAt ?? undefined,
+    };
+    if (!sameAgentFields(before, after)) changes.set(row.id, { before, after });
+  }
+  if (changes.size === 0) return 0;
+
+  /** Items whose agent fields still read `before` take `after`; everything else is untouched. */
+  const fold = (items: Item[]): Item[] =>
+    items.map((item) => {
+      const change = changes.get(item.id);
+      if (!change || item.type === 'habit' || !sameAgentFields(agentFieldsOf(item), change.before)) return item;
+      return { ...item, ...change.after } as Item;
+    });
+
+  const wasSuppressed = isUpdatingUndoRedo;
+  isUpdatingUndoRedo = true;
+  try {
+    usePlannerStore.setState((s) => projectItems(fold(s.items)));
+    historyStack = historyStack.map((snapshot) => ({ ...snapshot, items: fold(snapshot.items) }));
+    updatePrevStateBaseline(historySlice(usePlannerStore.getState()));
+  } finally {
+    isUpdatingUndoRedo = wasSuppressed;
+  }
+  return changes.size;
+}
 
 /* ── batches ───────────────────────────────────────────────────────────── */
 

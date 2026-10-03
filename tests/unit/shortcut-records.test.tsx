@@ -416,8 +416,8 @@ describe('the same component in two shells', () => {
 describe('recording a chord', () => {
   it('stores what was pressed, in the canonical encoded order', () => {
     renderPanel('overlay');
-    record(recorder('new_task'), 'j', { metaKey: true });
-    expect(useKeyboardShortcutsStore.getState().overrides['new_task']).toEqual(['mod', 'j']);
+    record(recorder('new_task'), 'u', { metaKey: true });
+    expect(useKeyboardShortcutsStore.getState().overrides['new_task']).toEqual(['mod', 'u']);
   });
 
   it('stores a chord the DISPATCHER still matches', () => {
@@ -428,10 +428,10 @@ describe('recording a chord', () => {
     // them. A rebinding nothing dispatches is invisible from the settings
     // surface, so it is checked here rather than assumed.
     renderPanel('overlay');
-    record(recorder('new_task'), 'j', { metaKey: true });
+    record(recorder('new_task'), 'u', { metaKey: true });
     const stored = useKeyboardShortcutsStore.getState().overrides['new_task'];
     const pressed = pressedKeys(
-      { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'j' } as KeyboardEvent,
+      { metaKey: true, ctrlKey: false, altKey: false, shiftKey: false, key: 'u' } as KeyboardEvent,
       false
     );
     expect(matchesBinding(pressed, stored)).toBe(true);
@@ -442,10 +442,10 @@ describe('recording a chord', () => {
     // so before orderKeys the row read "J + ⌘".
     renderPanel('overlay');
     const button = recorder('new_task');
-    record(button, 'j', { metaKey: true });
+    record(button, 'u', { metaKey: true });
     const caps = recorder('new_task').textContent ?? '';
     expect(caps.indexOf('⌘') === -1 ? caps.indexOf('Ctrl') : caps.indexOf('⌘')).toBe(0);
-    expect(caps).toContain('J');
+    expect(caps).toContain('U');
   });
 
   it('refuses a chord another binding already answers to, and names it', () => {
@@ -487,15 +487,15 @@ describe('recording a chord', () => {
     expect(reachedWindow).toBe(false);
   });
 
-  it('keeps the ⌘] row editable with nothing to answer, so its chord can always be moved', () => {
-    // ⌘] toggles a chat panel that exists only while something can answer.
-    // Locking its row then (the old `unavailable`) took the recorder AND the
-    // reset away, while every other row's conflict check still counted the
-    // chord as taken: the user's own chord was held hostage until
-    // "Reset to defaults", which put ⌘] straight back on the locked row.
+  it('keeps the Ctrl+J row editable with nothing to answer, so its chord can always be moved', () => {
+    // Ctrl+J opens and closes Ask, which exists only while something can
+    // answer. Locking its row then (the old `unavailable`) took the recorder
+    // AND the reset away, while every other row's conflict check still counted
+    // the chord as taken: the user's own chord was held hostage until
+    // "Reset to defaults", which put Ctrl+J straight back on the locked row.
     const cleanupAI = seedAI(NOTHING_CONNECTED);
     try {
-      useKeyboardShortcutsStore.getState().updateShortcut('toggle_right_sidebar', ['mod', 'j']);
+      useKeyboardShortcutsStore.getState().updateShortcut('toggle_right_sidebar', ['mod', 'u']);
       renderPanel('pane');
       const row = document.querySelector('[data-setting-row="keys.toggle_right_sidebar"]') as HTMLElement;
       expect(row.textContent).toContain('Works while a model or OpenClaw is connected.');
@@ -504,15 +504,15 @@ describe('recording a chord', () => {
       // Off its default, so it offers its own reset.
       expect(within(row).getByRole('button', { name: /is changed from its default/ })).toBeTruthy();
 
-      // While it holds ⌘J, ⌘J is refused elsewhere…
-      record(recorder('new_task'), 'j', { metaKey: true });
+      // While it holds ⌘U, ⌘U is refused elsewhere…
+      record(recorder('new_task'), 'u', { metaKey: true });
       expect(useKeyboardShortcutsStore.getState().overrides).not.toHaveProperty('new_task');
       // …and moving it off frees the chord.
       record(recorder('toggle_right_sidebar'), 'u', { metaKey: true, altKey: true });
       const moved = useKeyboardShortcutsStore.getState().overrides['toggle_right_sidebar'];
       expect(matchesBinding(normalizeBinding(['mod', 'alt', 'u']), moved)).toBe(true);
-      record(recorder('new_task'), 'j', { metaKey: true });
-      expect(useKeyboardShortcutsStore.getState().overrides['new_task']).toEqual(['mod', 'j']);
+      record(recorder('new_task'), 'u', { metaKey: true });
+      expect(useKeyboardShortcutsStore.getState().overrides['new_task']).toEqual(['mod', 'u']);
     } finally {
       cleanupAI();
     }
@@ -543,7 +543,11 @@ describe('why a chord is refused', () => {
   });
 
   it('accepts a free chord', () => {
-    expect(rejectionFor(['mod', 'j'], 'new_task', DEFAULT_SHORTCUTS)).toBeNull();
+    expect(rejectionFor(['mod', 'u'], 'new_task', DEFAULT_SHORTCUTS)).toBeNull();
+  });
+
+  it('refuses the default Ctrl+J, which opens and closes Ask', () => {
+    expect(rejectionFor(['mod', 'j'], 'new_task', DEFAULT_SHORTCUTS)).toBe('Open or close Ask');
   });
 
   it('compares normalized, so ⌃K and ⌘K are the same claim', () => {

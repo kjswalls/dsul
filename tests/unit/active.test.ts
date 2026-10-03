@@ -708,13 +708,13 @@ describe('suppressionLabel — one definition for three surfaces', () => {
     expect(suppressionLabel({ kind: 'routine', routine: r })).toBe('Hidden with Morning');
     expect(
       suppressionLabel({ kind: 'routine', routine: r, until: '2026-09-01' }, { long: true })
-    ).toBe('Hidden with your Morning routine — back Sep 1');
+    ).toBe('Hidden with your Morning routine until Sep 1');
 
     const p = season({ name: 'Summer' });
     expect(suppressionLabel({ kind: 'season', season: p })).toBe('Hidden with Summer');
     expect(
       suppressionLabel({ kind: 'season', season: p, until: '2026-09-01' }, { long: true })
-    ).toBe('Hidden with your Summer season — back Sep 1');
+    ).toBe('Hidden with your Summer season until Sep 1');
   });
 
   // Formatted from the string, never through `new Date('2026-09-01')` — that

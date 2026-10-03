@@ -100,7 +100,7 @@ describe('an extension row while its store is still fetching', () => {
     renderRecord(toggle());
 
     expect(screen.queryByText('Still loading…')).toBeNull();
-    expect(screen.getByText(/Unavailable —/)).toBeInTheDocument();
+    expect(screen.getByText(/Unavailable:/)).toBeInTheDocument();
   });
 
   it('covers every extension row, generated ones included', () => {

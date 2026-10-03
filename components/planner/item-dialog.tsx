@@ -76,6 +76,8 @@ import {
 import { IconPicker } from '@/components/primitives/icon-picker';
 import { AddIconButton } from '@/components/primitives/add-icon-button';
 import { ClearingFooter, ItemDetailSections } from '@/components/planner/item-detail-sections';
+import { RailHeader } from '@/components/ai/rail/rail-header';
+import { BoundComposer } from '@/components/ai/bound-composer';
 import {
   ChipOption,
   ChipSectionLabel,
@@ -86,10 +88,20 @@ import { useGoalsEnabled, useOrganizeEnabled, useStreaksEnabled } from '@/lib/ex
 import { accentColorForName } from '@/lib/accent-colors';
 import { goalItemIds, milestoneItemIds, nextMilestone } from '@/lib/goals';
 import { formatShort } from '@/lib/collections';
-import { useUIStore, openBulkAdd, openNewContainer } from '@/lib/ui-store';
+import { useUIStore, openBulkAdd, openNewContainer, registerItemPanelFlush } from '@/lib/ui-store';
 import { subscribeClickAway } from '@/lib/click-away';
+import type { ComposerBinding } from '@/lib/rail-store';
 import { useOpenConsole } from '@/lib/console-door';
 import { isBulkPaste } from '@/lib/bulk-add';
+import {
+  DURATION_LABELS,
+  DURATION_ORDER,
+  durationLabel,
+  EDIT_COPY,
+  planTimeEdit,
+  reminderPatch,
+  TIMES_PER_DAY_MAX,
+} from '@/lib/item-edit';
 import type {
   HabitItem,
   Item,
@@ -167,16 +179,6 @@ const BUCKET_LABELS: Record<TimeBucket, string> = {
   morning: 'Morning',
   afternoon: 'Afternoon',
   evening: 'Evening',
-};
-
-const DURATION_ORDER = ['15', '30', '45', '60', '90', '120'];
-const DURATION_LABELS: Record<string, string> = {
-  '15': '15 min',
-  '30': '30 min',
-  '45': '45 min',
-  '60': '1 hour',
-  '90': '1.5 hours',
-  '120': '2 hours',
 };
 
 const DATE_SHORTCUTS = [
@@ -302,6 +304,24 @@ interface ItemDialogProps {
    * leaves it false because its panel is a fixed overlay that must stay framed.
    */
   flat?: boolean;
+  /**
+   * Docked-panel only, and only while something answers: the item is in the
+   * right rail, over Ask. The rail's header is pinned above the item ("‹ Ask
+   * … ✕", the back label naming the Ask view beneath), the body scrolls under
+   * it, and Done goes: Back and ✕ are the exits, each flushing first. Back
+   * calls `onBack` once the item has closed (the shell summons Ask, so "‹ Ask"
+   * leads to Ask at every width); ✕ calls `onCloseRail` (the rail closes too).
+   * Absent, the panel is exactly the one there is with no AI, Done included.
+   */
+  railChrome?: { backLabel: string; onBack?: () => void; onCloseRail: () => void };
+  /**
+   * Where the item's conversation shows (components/ai/item-conversation.tsx):
+   * 'pinned' in the desktop rail, its box pinned at the panel's foot;
+   * 'transcript' for a host whose box lives elsewhere; 'inline', its own box
+   * in its own section (the modal, the phone's drawer, Zen); 'none'. Every
+   * shape is nothing while nothing answers.
+   */
+  conversation?: 'pinned' | 'transcript' | 'inline' | 'none';
 }
 
 /** Local form state. 'none' / '' are UI sentinels, translated to `undefined`
@@ -410,8 +430,7 @@ export function taskUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Par
   // rule the three repeat fields follow. '' means "no reminder": the DB column
   // is null-means-off, and undefined is what the allowlist turns into null.
   if (wants('reminderTime', 'reminderAnchor')) {
-    updates.reminderTime = d.reminderTime || undefined;
-    updates.reminderAnchor = d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined;
+    Object.assign(updates, reminderPatch(d.reminderTime, d.reminderAnchor));
   }
   return updates;
 }
@@ -435,10 +454,73 @@ export function habitUpdatesFromDraft(d: ItemDraft, keys: readonly string[]): Pa
   // rule the three repeat fields follow. '' means "no reminder": the DB column
   // is null-means-off, and undefined is what the allowlist turns into null.
   if (wants('reminderTime', 'reminderAnchor')) {
-    updates.reminderTime = d.reminderTime || undefined;
-    updates.reminderAnchor = d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined;
+    Object.assign(updates, reminderPatch(d.reminderTime, d.reminderAnchor));
   }
   return updates;
+}
+
+/**
+ * The edit write, as a pure function of (item, draft, touched fields).
+ *
+ * Pure in `item` because the panel autosaves: a queued save has to be
+ * flushable for the item the panel already moved OFF of, which a closure over
+ * `editItem` could no longer name.
+ *
+ * Scoped by `keys` because the panel is NON-MODAL, which makes the draft a
+ * claim about the fields you touched rather than about the whole item. The
+ * canvas behind the panel is live — you can drag the very block you have open
+ * — so writing the full property set back would silently revert that drag (and
+ * an undo, and an agent's write) on the next keystroke's save. The modal has
+ * no such window and still passes DRAFT_KEYS for a byte-identical full save.
+ *
+ * Scheduling compares against the LIVE item, not the seeded snapshot: after
+ * the first autosave the snapshot's isScheduled/startTime are stale, and a
+ * stale comparison re-runs scheduleTask — which unconditionally clears
+ * inProjectBlock and the previous-slot fields — on every subsequent save.
+ *
+ * Module scope, reading the store inside each call (never once at load: a test
+ * that swaps an action with usePlannerStore.setState must still see its swap).
+ * Exported for tests/unit/edit-writes-fixtures.test.ts and
+ * tests/unit/item-time-edit.test.ts, which drive the panel's own save. The
+ * second pass is lib/item-edit.ts planTimeEdit, which the iPhone's route turns
+ * into one patch (timeEditPatch).
+ */
+export function commitEdit(item: Item, d: ItemDraft, keys: readonly string[]): void {
+  if (!d.title.trim()) return;
+  // The live items, read before the first pass, and the actions the store holds now.
+  const store = usePlannerStore.getState();
+
+  // Habit first; task and custom items share the task-shaped save path
+  // (the store's task actions operate on any task-like item).
+  if (item.type !== 'habit') {
+    const found = store.items.find((i) => i.id === item.id);
+    const live = found && found.type !== 'habit' ? found : item;
+
+    const updates = taskUpdatesFromDraft(d, keys);
+    if (Object.keys(updates).length > 0) store.updateTask(item.id, updates);
+
+    // Scheduling is a second pass through scheduleTask/unscheduleTask — they
+    // own isScheduled and the project-block/previous-slot clears — and only
+    // runs when something schedule-shaped actually moved (planTimeEdit).
+    const plan = planTimeEdit(live, d, keys);
+    if (plan.kind === 'scheduleTask') store.scheduleTask(item.id, plan.bucket, plan.time);
+    else if (plan.kind === 'setTime') store.updateTask(item.id, { startTime: plan.time });
+    else if (plan.kind === 'unscheduleTask') store.unscheduleTask(item.id);
+  } else {
+    const found = store.items.find((i) => i.id === item.id);
+    const live = found && found.type === 'habit' ? found : item;
+
+    const updates = habitUpdatesFromDraft(d, keys);
+    if (Object.keys(updates).length > 0) store.updateHabit(item.id, updates);
+
+    // Same second pass, with the same equality guard (scheduleHabit writes
+    // unconditionally).
+    const plan = planTimeEdit(live, d, keys);
+    if (plan.kind === 'scheduleHabit') store.scheduleHabit(item.id, plan.bucket, plan.time);
+    else if (plan.kind === 'clearHabitTime') {
+      store.updateHabit(item.id, { timeBucket: undefined, startTime: undefined });
+    }
+  }
 }
 
 interface AddSeed {
@@ -492,7 +574,13 @@ function buildAddDrafts(seed: AddSeed): Record<string, ItemDraft> {
   return Object.fromEntries(ALL_ITEM_TYPES.map((t) => [t, makeAddDraft(t, seed)]));
 }
 
-function draftFromItem(item: Item): ItemDraft {
+/**
+ * The draft an edit starts from, seeded from the stored item.
+ *
+ * Exported for tests/unit/edit-writes-fixtures.test.ts, which seeds the
+ * panel's draft as the panel does.
+ */
+export function draftFromItem(item: Item): ItemDraft {
   const config = getItemTypeConfig(itemTypeName(item));
   // Parse date string as local date, not UTC
   // "2026-03-22" should be March 22 local time, not UTC midnight which shows as March 21
@@ -552,6 +640,30 @@ function draftFromItem(item: Item): ItemDraft {
 const CLOSE_ANIMATION_GRACE_MS = 600;
 
 /**
+ * The docked panel's body. In the rail (`railChrome`) it is the scroll box
+ * between the rail's header and the pinned box; otherwise `display: contents`,
+ * so the aside lays out and scrolls its children exactly as it always has.
+ *
+ * ALWAYS RENDERED for the panel, whichever it is: the gate can flip with an
+ * item open (a row clicked before the status read answers, or the item's own
+ * box marking the model failing), and only this div's class may change then.
+ * Re-parenting the body would remount it, taking the caret out of the title or
+ * the notes and closing any open picker. The other presentations get no
+ * wrapper at all.
+ */
+function PanelBody({ panel, rail, children }: { panel: boolean; rail: boolean; children: ReactNode }) {
+  if (!panel) return <>{children}</>;
+  return (
+    <div
+      data-rail-body={rail ? '' : undefined}
+      className={rail ? 'min-h-0 flex-1 overflow-y-auto px-5 pt-2 pb-4' : 'contents'}
+    >
+      {children}
+    </div>
+  );
+}
+
+/**
  * Thin permanent shell around the real surface.
  *
  * Both shell instances of this dialog (app-shell's modal, desktop-shell's
@@ -569,6 +681,17 @@ const CLOSE_ANIMATION_GRACE_MS = 600;
  *  · A queued panel autosave flushes on unmount — the body's own
  *    `return () => flush.current()` cleanup already runs when it unmounts.
  */
+/**
+ * The last focus token (ui-store's itemPanelFocusToken) a docked panel acted
+ * on. Module state, not a ref: the panel's body mounts fresh per open, so a
+ * bump that lands in the very commit that opens it (rail-store's Back onto the
+ * item a "?" was asked over) must still read as new there, and every later
+ * open must not read an old bump as new. Comparing against 0, as this once
+ * did, refocused the panel on every open after the first ⌘\, taking focus
+ * off the row that was clicked.
+ */
+let panelFocusTokenHandled = 0;
+
 export function ItemDialog(props: ItemDialogProps) {
   const { state } = props;
   const [present, setPresent] = useState(!!state);
@@ -619,6 +742,8 @@ function ItemDialogInner({
   withDetailSections = true,
   presentation = 'modal',
   flat = false,
+  railChrome,
+  conversation = 'inline',
   isMobile,
   instant,
   readDraftStash,
@@ -635,17 +760,13 @@ function ItemDialogInner({
     addItem,
     addTask,
     addHabit,
-    updateTask,
-    updateHabit,
     deleteTask,
     deleteHabit,
     changeItemType,
     moveTaskToDate,
     setItemSkipped,
     toggleHabitStatus,
-    scheduleTask,
     unscheduleTask,
-    scheduleHabit,
     resetHabitStreak,
     projects,
     getProjectColor,
@@ -1049,8 +1170,7 @@ function ItemDialogInner({
         repeatFrequency: d.repeatFrequency !== 'none' ? d.repeatFrequency : undefined,
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
-        reminderTime: d.reminderTime || undefined,
-        reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
+        ...reminderPatch(d.reminderTime, d.reminderAnchor),
       // One gesture, one history entry: the item row and its join rows land in
       // the same set(), so ⌘Z reverses the whole add rather than half of it.
       }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
@@ -1066,89 +1186,12 @@ function ItemDialogInner({
         repeatDays: d.repeatFrequency === 'custom' ? d.repeatDays : undefined,
         repeatMonthDay: d.repeatFrequency === 'monthly' ? d.repeatMonthDay : undefined,
         timesPerDay: parseInt(d.timesPerDay) || 1,
-        reminderTime: d.reminderTime || undefined,
-        reminderAnchor: d.reminderTime ? d.reminderAnchor.trim() || undefined : undefined,
+        ...reminderPatch(d.reminderTime, d.reminderAnchor),
       }, { routineIds: d.routineIds, seasonIds: d.seasonIds, goalIds: d.goalIds });
     }
 
     resetAddDrafts();
     onOpenChange(false);
-  };
-
-  /**
-   * The edit write, as a pure function of (item, draft, touched fields).
-   *
-   * Pure in `item` because the panel autosaves: a queued save has to be
-   * flushable for the item the panel already moved OFF of, which a closure over
-   * `editItem` could no longer name.
-   *
-   * Scoped by `keys` because the panel is NON-MODAL, which makes the draft a
-   * claim about the fields you touched rather than about the whole item. The
-   * canvas behind the panel is live — you can drag the very block you have open
-   * — so writing the full property set back would silently revert that drag (and
-   * an undo, and an agent's write) on the next keystroke's save. The modal has
-   * no such window and still passes DRAFT_KEYS for a byte-identical full save.
-   *
-   * Scheduling compares against the LIVE item, not the seeded snapshot: after
-   * the first autosave the snapshot's isScheduled/startTime are stale, and a
-   * stale comparison re-runs scheduleTask — which unconditionally clears
-   * inProjectBlock and the previous-slot fields — on every subsequent save.
-   */
-  const commitEdit = (item: Item, d: ItemDraft, keys: readonly string[]) => {
-    if (!d.title.trim()) return;
-    const wants = (...fields: string[]) => fields.some((f) => keys.includes(f));
-    const startTime = d.startTime || undefined;
-
-    // Habit first; task and custom items share the task-shaped save path
-    // (the store's task actions operate on any task-like item).
-    if (item.type !== 'habit') {
-      const found = usePlannerStore.getState().items.find((i) => i.id === item.id);
-      const live = found && found.type !== 'habit' ? found : item;
-
-      const updates = taskUpdatesFromDraft(d, keys);
-      if (Object.keys(updates).length > 0) updateTask(item.id, updates);
-
-      // Scheduling is a second pass through scheduleTask/unscheduleTask — they
-      // own isScheduled and the project-block/previous-slot clears — and only
-      // runs when something schedule-shaped actually moved.
-      if (wants('startDate', 'timeBucket', 'startTime')) {
-        const effectiveTimeBucket = d.startDate
-          ? d.timeBucket === 'none'
-            ? 'anytime'
-            : d.timeBucket
-          : undefined;
-        if (d.startDate && effectiveTimeBucket) {
-          if (effectiveTimeBucket !== live.timeBucket || !live.isScheduled) {
-            scheduleTask(item.id, effectiveTimeBucket, startTime);
-            // `''` is the draft's sentinel for "no specific time"; the store says
-            // `undefined`. Comparing them raw made this branch fire on every
-            // save for every bucket-only task.
-          } else if (startTime !== live.startTime) {
-            updateTask(item.id, { startTime });
-          }
-        } else if (!d.startDate && live.isScheduled) {
-          unscheduleTask(item.id);
-        }
-      }
-    } else {
-      const found = usePlannerStore.getState().items.find((i) => i.id === item.id);
-      const live = found && found.type === 'habit' ? found : item;
-
-      const updates = habitUpdatesFromDraft(d, keys);
-      if (Object.keys(updates).length > 0) updateHabit(item.id, updates);
-
-      // Same second pass, and the same reason for the equality guard the task
-      // branch has always had: scheduleHabit writes unconditionally.
-      if (wants('timeBucket', 'startTime')) {
-        if (d.timeBucket !== 'none') {
-          if (d.timeBucket !== live.timeBucket || startTime !== live.startTime) {
-            scheduleHabit(item.id, d.timeBucket, startTime);
-          }
-        } else if (live.timeBucket !== undefined) {
-          updateHabit(item.id, { timeBucket: undefined, startTime: undefined });
-        }
-      }
-    }
   };
 
   const handleEditSave = () => {
@@ -1541,7 +1584,7 @@ function ItemDialogInner({
       effectiveBucket !== 'none' && effectiveBucket !== 'anytime' && d.startTime
         ? d.startTime
         : null,
-      hasDuration ? DURATION_LABELS[d.duration] ?? `${d.duration} min` : null,
+      hasDuration ? durationLabel(d.duration) : null,
     ].filter(Boolean);
 
     const repeatValue = () => {
@@ -1661,7 +1704,7 @@ function ItemDialogInner({
                   data-testid="item-dialog-container-required"
                 >
                   {config.labelPlural} always belong to a{' '}
-                  {config.form.containerLabel.toLowerCase()} — pick another to move it.
+                  {config.form.containerLabel.toLowerCase()}. Pick another to move it.
                 </p>
               )}
             </div>
@@ -2217,7 +2260,7 @@ function ItemDialogInner({
         contentClassName="w-40"
       >
         {(close) =>
-          ['1', '2', '3', '4', '5'].map((n) => (
+          Array.from({ length: TIMES_PER_DAY_MAX }, (_, i) => String(i + 1)).map((n) => (
             <ChipOption
               key={n}
               selected={d.timesPerDay === n}
@@ -2382,8 +2425,7 @@ function ItemDialogInner({
 
             {d.reminderTime && reminderNeedsDate && (
               <p className="text-muted-foreground px-2 pb-2 text-[10px]">
-                Give this a date and it will fire. Without one there is no day
-                for the reminder to land on.
+                {EDIT_COPY.reminderNeedsDate}
               </p>
             )}
 
@@ -2394,7 +2436,7 @@ function ItemDialogInner({
                   <Input
                     value={d.reminderAnchor}
                     onChange={(e) => patch({ reminderAnchor: e.target.value })}
-                    placeholder="I pour my coffee"
+                    placeholder={EDIT_COPY.reminderAnchorPlaceholder}
                     className="h-9 text-sm"
                     data-sub-input
                   />
@@ -2404,8 +2446,7 @@ function ItemDialogInner({
                       notification actually says — so the hint has to appear
                       where the sentence is being written, not in a doc. */}
                   <p className="text-muted-foreground mt-1.5 text-[10px]">
-                    Optional, and worth it. Something you already do beats a
-                    time — it&apos;s what the reminder will say.
+                    {EDIT_COPY.reminderAnchorHint}
                   </p>
                 </div>
                 <ChipOption
@@ -2726,10 +2767,12 @@ function ItemDialogInner({
 
   // ⌘\ (workspace.focusItemPanel) is the keyboard's way in. Token-bumped from
   // the ui-store, the same pattern the omnibar uses, so the command doesn't
-  // need a handle on this component.
+  // need a handle on this component. Each bump is acted on once
+  // (panelFocusTokenHandled has why).
   const itemPanelFocusToken = useUIStore((s) => s.itemPanelFocusToken);
   useEffect(() => {
-    if (!isPanel || !open || itemPanelFocusToken === 0) return;
+    if (!isPanel || !open || itemPanelFocusToken === panelFocusTokenHandled) return;
+    panelFocusTokenHandled = itemPanelFocusToken;
     document.querySelector<HTMLElement>('[data-testid="item-dialog"]')?.focus();
   }, [isPanel, open, itemPanelFocusToken]);
 
@@ -2756,6 +2799,18 @@ function ItemDialogInner({
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, [presentation, open, onOpenChange]);
+
+  // A close from OUTSIDE the panel (Ctrl+J, `?` in the command bar, "Pick
+  // things back up") goes through ui-store's closeItemPanel(), which runs this
+  // first: what is queued is saved now, synchronously, rather than left to
+  // the unmount grace. Registered only while the docked panel is open.
+  useEffect(() => {
+    if (presentation !== 'panel' || !open) return;
+    return registerItemPanelFlush(() => {
+      flush.current();
+      setSaving(false);
+    });
+  }, [presentation, open]);
 
   // A click on empty desktop space closes the panel (lib/click-away.ts decides
   // what "empty" is). Same exit as Escape — flush first, so a queued autosave
@@ -3240,6 +3295,13 @@ function ItemDialogInner({
     />
   ) : null;
 
+  // The item's one conversation, as the pinned box sends into it (rail only).
+  const editItemId = editItem?.id;
+  const itemBinding = useMemo<ComposerBinding | null>(
+    () => (editItemId ? { kind: 'item', itemId: editItemId } : null),
+    [editItemId]
+  );
+
   return (
     <>
       <SurfaceRoot panel={isPanel} open={open} onOpenChange={onOpenChange} isMobile={isMobile}>
@@ -3249,6 +3311,7 @@ function ItemDialogInner({
           open={open}
           flat={isPanel && flat}
           panelLabel={`${activeConfig.label} details`}
+          rail={!!railChrome && presentation === 'panel'}
           instant={instant}
           data-testid="item-dialog"
           data-mode={mode}
@@ -3302,6 +3365,28 @@ function ItemDialogInner({
             }
           }}
         >
+          {/* With AI, the rail's header row: "‹ <the Ask view beneath>" and ✕,
+              each flushing and closing the item first. Outside the body, so
+              it stays put while the item scrolls under it. */}
+          {railChrome && presentation === 'panel' && (
+            <RailHeader
+              back={{
+                label: railChrome.backLabel,
+                onBack: () => {
+                  flushNow();
+                  onOpenChange(false);
+                  railChrome.onBack?.();
+                },
+              }}
+              onClose={() => {
+                flushNow();
+                onOpenChange(false);
+                railChrome.onCloseRail();
+              }}
+              closeTestId="item-dialog-close"
+            />
+          )}
+          <PanelBody panel={presentation === 'panel'} rail={!!railChrome}>
           {/* The visible heading is the title field itself; Radix still needs a
               real title and description in the a11y tree. The panel doesn't —
               it labels itself, and DialogTitle outside a Dialog would throw. */}
@@ -3346,7 +3431,8 @@ function ItemDialogInner({
                 >
                   {mode === 'add' ? typeControl : typeSwitch}
                   {headerActions}
-                  {autosaves && !inline && doneButton}
+                  {/* Under the rail's header, Back and ✕ are the exits. */}
+                  {autosaves && !inline && !railChrome && doneButton}
                 </div>
                 {/* Zone 1 — the title. Priority and the mode label are not here:
                     priority rides the chip field below with every other
@@ -3446,7 +3532,7 @@ function ItemDialogInner({
                   growth plan. Live data (subtasks/agent state read the store),
                   while the property draft above stays snapshot-based. */}
               {withDetailSections && mode === 'edit' && editItem && (
-                <ItemDetailSections item={editItem} withThread withActivity={!autosaves} />
+                <ItemDetailSections item={editItem} conversation={conversation} withActivity={!autosaves} />
               )}
 
               {/* An autosaving surface has no moment of commitment, so its
@@ -3482,6 +3568,13 @@ function ItemDialogInner({
               )}
             </div>
           )}
+          </PanelBody>
+          {/* The item's conversation box, pinned under the scrolling body. */}
+          {railChrome && presentation === 'panel' && conversation === 'pinned' && itemBinding && (
+            <div className="shrink-0 px-3 pt-2 pb-3">
+              <BoundComposer binding={itemBinding} />
+            </div>
+          )}
         </SurfaceContent>
       </SurfaceRoot>
 
@@ -3490,9 +3583,7 @@ function ItemDialogInner({
           <AlertDialogContent data-testid="reset-streak-confirm">
             <AlertDialogHeader>
               <AlertDialogTitle>Reset Streak?</AlertDialogTitle>
-              <AlertDialogDescription>
-                This will reset your streak counter to 0 days. Your completion history stays — days you already checked off remain checked.
-              </AlertDialogDescription>
+              <AlertDialogDescription>{EDIT_COPY.resetStreakMessage}</AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
               <AlertDialogCancel>Cancel</AlertDialogCancel>
@@ -3518,7 +3609,7 @@ function ItemDialogInner({
               <AlertDialogTitle>Pause until…</AlertDialogTitle>
               <AlertDialogDescription>
                 It comes back on the day you pick, on its own. Nothing is lost
-                meanwhile — your streak and history stay exactly as they are.
+                meanwhile. Your streak and history stay exactly as they are.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <div className="flex justify-center">

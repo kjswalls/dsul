@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,11 +26,20 @@ import { useUIStore } from '@/lib/ui-store';
  * keyboard session — Tab resumed from the top of the document. It affected every
  * confirm in the app, and reading a delete prompt and deciding NOT to is the
  * ordinary case.
+ *
+ * THE LAST REQUEST OUTLIVES ITS ANSWER. `resolveConfirm` clears the request
+ * before the dialog's 200ms exit animation runs, so the closing dialog read
+ * "Confirm" over a blank title, and the close below had nothing to ask where
+ * focus should go. The request on screen is kept (state, derived during
+ * render) until the close has run.
  */
 export function ConfirmDialog() {
   const confirmRequest = useUIStore((s) => s.confirmRequest);
   const resolveConfirm = useUIStore((s) => s.resolveConfirm);
   const returnTo = useRef<HTMLElement | null>(null);
+  const [last, setLast] = useState(confirmRequest);
+  if (confirmRequest && confirmRequest !== last) setLast(confirmRequest);
+  const shown = confirmRequest ?? last;
 
   return (
     <AlertDialog open={!!confirmRequest} onOpenChange={(open) => !open && resolveConfirm(false)}>
@@ -48,9 +57,12 @@ export function ConfirmDialog() {
         }}
         onCloseAutoFocus={(event) => {
           const target = returnTo.current;
+          const closed = last;
           // Released either way, so a confirmed delete cannot pin the detail
-          // pane's removed subtree in memory behind this ref.
+          // pane's removed subtree in memory behind this ref (nor the closed
+          // request's callbacks behind `last`).
           returnTo.current = null;
+          setLast(null);
           // `isConnected` costs one property read and is skipped rather than
           // "guarded against": confirming a delete unmounts the control that
           // opened it, and both branches then land focus in the same place —
@@ -58,14 +70,24 @@ export function ConfirmDialog() {
           // so is Radix's own `trigger?.focus()` on a dialog with no trigger.
           // Verified by measuring `document.activeElement` both ways. It is here
           // to keep this handler's contract readable, not for an effect.
-          if (!target?.isConnected) return;
+          //
+          // Gone, the request's own `fallbackFocus` answers instead: it runs
+          // here, after the exit animation, the first moment focus is really
+          // lost (until then it sits on this dialog's button, still connected).
+          if (!target?.isConnected) {
+            const fallback = closed?.fallbackFocus;
+            if (!fallback) return;
+            event.preventDefault();
+            fallback();
+            return;
+          }
           event.preventDefault();
           target.focus();
         }}
       >
         <AlertDialogHeader>
-          <AlertDialogTitle>{confirmRequest?.title}</AlertDialogTitle>
-          <AlertDialogDescription>{confirmRequest?.description}</AlertDialogDescription>
+          <AlertDialogTitle>{shown?.title}</AlertDialogTitle>
+          <AlertDialogDescription>{shown?.description}</AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel data-testid="confirm-dialog-cancel">Cancel</AlertDialogCancel>
@@ -73,15 +95,13 @@ export function ConfirmDialog() {
             // The confirm LABEL is caller-supplied ('Delete', 'Reset Streak',
             // 'Confirm'), and 'Delete' collides with three other buttons in the
             // app. This id says which dialog, not which verb.
-            data-testid={confirmRequest?.testId ?? 'confirm-dialog-confirm'}
+            data-testid={shown?.testId ?? 'confirm-dialog-confirm'}
             className={
-              confirmRequest?.destructive
-                ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90'
-                : undefined
+              shown?.destructive ? 'bg-destructive text-destructive-foreground hover:bg-destructive/90' : undefined
             }
             onClick={() => resolveConfirm(true)}
           >
-            {confirmRequest?.confirmLabel ?? 'Confirm'}
+            {shown?.confirmLabel ?? 'Confirm'}
           </AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>

@@ -38,7 +38,7 @@ export function isAppIcon(value: unknown): value is AppIcon {
 }
 
 /** Cache-buster on the icon URLs (app/layout.tsx, public/manifest.json); bump it with the artwork. */
-export const ICON_REV = '3';
+export const ICON_REV = '4';
 
 /**
  * Where an icon href lives for a look. The lime set mirrors the Aurora file

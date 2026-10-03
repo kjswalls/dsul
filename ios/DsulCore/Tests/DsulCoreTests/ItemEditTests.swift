@@ -3,9 +3,11 @@ import Testing
 import DsulCore
 
 // ItemEdit.swift on hand-written text and lists: the cleaners at their limits,
-// JavaScript's trim, the growth caps, and where a failed delete puts things
-// back. The web's own answers for the same functions are in
-// EditWritesFixtureTests.
+// JavaScript's trim, the growth caps, the type gate and the chips' edits (the
+// time chip's with the time-to-bucket rules under it, from DayBuckets.swift,
+// and the lengths' words, from EditCopy.swift), a new subtask and a streak
+// reset, and where a failed delete puts things back. The web's own answers for
+// the same functions are in EditWritesFixtureTests; these restate them.
 
 /// 00000000-0000-4000-8000-000000000012 for 12.
 private func uuid(_ n: Int) -> UUID {
@@ -63,6 +65,23 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         let limit = growthLimit(cap: EditLimits.title, stored: stored)
         #expect(cleanTitle(stored, limit: limit) == stored)
         #expect(cleanTitle(stored + "y", limit: limit) == stored)
+    }
+
+    /// The cue words are one line, as the web's `<input>` is: the title's
+    /// rule, newlines to spaces, clamp then trim, an emoji going whole.
+    @Test func cueWordsAreOneLine() {
+        #expect(cleanAnchor("I pour\nmy coffee", limit: 500) == "I pour my coffee")
+        #expect(cleanAnchor("  I pour my coffee \r\n", limit: 500) == "I pour my coffee")
+        #expect(cleanAnchor("", limit: 500) == nil)
+        #expect(cleanAnchor(" \n\t\u{A0}", limit: 500) == nil)
+        #expect(cleanAnchor(a499 + " tail", limit: 500) == a499)
+        #expect(cleanAnchor(a499 + "😀", limit: 500) == a499)
+        let fits = String(repeating: "a", count: 498) + "😀"
+        #expect(cleanAnchor(fits, limit: 500) == fits)
+        // Stored words over the cap may keep their length (`growthLimit`).
+        let stored = String(repeating: "w", count: 700)
+        let limit = growthLimit(cap: EditLimits.anchor, stored: stored)
+        #expect(cleanAnchor(stored + "x", limit: limit) == stored)
     }
 
     @Test func notesKeepTheirLines() {
@@ -123,6 +142,11 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(growthLimit(cap: 500, stored: String(repeating: "😀", count: 300)) == 600)
         #expect(EditLimits.title == 500 && EditLimits.notes == 50_000)
         #expect(EditLimits.outerTitle == 10_000 && EditLimits.outerNotes == 200_000)
+        // New text has nothing stored to grow from: the plain cap.
+        #expect(EditLimits.newTitle == 500)
+        #expect(EditLimits.anchor == 500 && EditLimits.outerAnchor == 10_000)
+        #expect(EditLimits.timesPerDayMax == 5)
+        #expect(EditLimits.durationMax == 1440)
     }
 }
 
@@ -159,6 +183,291 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         #expect(!editAllowed(ItemEdit.notes("x"), on: item, caps: noNotes))
         // A title is every type's.
         #expect(editAllowed(ItemEdit.title("x"), on: item, caps: noNotes))
+    }
+}
+
+/// lib/item-edit.ts `editRefusal`'s type gate, asked by action name.
+@Suite struct EditAllowedTests {
+    private let roadmap = task(1, "Draft Q4 roadmap")
+    private let numbers = task(2, "Pull the numbers", parent: 1)
+    private let meds = Item(id: uuid(3), type: "habit", title: "Meds", repeatFrequency: "daily")
+    private let errand = Item(id: uuid(4), type: "custom", customType: "errand", title: "Post office")
+
+    private func allowed(_ action: String, _ item: Item) -> Bool {
+        return editAllowed(action: action, on: item, caps: caps(item.typeName))
+    }
+
+    @Test func aTitleIsEveryones() {
+        for item in [roadmap, numbers, meds, errand] {
+            #expect(allowed("title", item), "\(item.title)")
+        }
+    }
+
+    @Test func notesFollowTheSchema() {
+        #expect(allowed("notes", roadmap) && allowed("notes", meds) && allowed("notes", errand))
+        var noNotes = ItemCaps.task
+        noNotes.hasNotes = false
+        #expect(!editAllowed(action: "notes", on: roadmap, caps: noNotes))
+    }
+
+    /// A task's, a custom item's and a subtask's, never a habit's.
+    @Test func aPriorityIsATaskShapedTypes() {
+        #expect(allowed("priority", roadmap))
+        #expect(allowed("priority", errand))
+        #expect(allowed("priority", numbers))
+        #expect(!allowed("priority", meds))
+    }
+
+    @Test func timesADayIsAHabitsAlone() {
+        #expect(allowed("timesPerDay", meds))
+        #expect(!allowed("timesPerDay", roadmap))
+        #expect(!allowed("timesPerDay", errand))
+        #expect(!allowed("timesPerDay", numbers))
+    }
+
+    /// Every remindable type, never a subtask.
+    @Test func aReminderIsNeverASubtasks() {
+        #expect(allowed("reminder", roadmap))
+        #expect(allowed("reminder", meds))
+        #expect(allowed("reminder", errand))
+        #expect(!allowed("reminder", numbers))
+        var quiet = ItemCaps.task
+        quiet.remindable = false
+        #expect(!editAllowed(action: "reminder", on: roadmap, caps: quiet))
+    }
+
+    /// The other writes have gates of their own, and a name the phone
+    /// doesn't know is never an edit.
+    @Test func anyOtherNameIsRefused() {
+        for action in ["nonsense", "", "delete", "addSubtask", "resetStreak", "Priority"] {
+            #expect(!allowed(action, roadmap), "\(action)")
+        }
+    }
+
+    /// A time is any item's once it has a day to be on: a dated task's, a
+    /// dated custom item's and a habit's (never date-anchored), never an
+    /// undated task's (`not_dated`) or a subtask's (`not_for_subtask`).
+    @Test func aTimeNeedsADayAndIsNeverASubtasks() {
+        var dated = roadmap
+        dated.startDate = "2026-10-01"
+        var datedErrand = errand
+        datedErrand.startDate = "2026-10-01"
+        var datedNumbers = numbers
+        datedNumbers.startDate = "2026-10-01"
+        #expect(allowed("time", dated))
+        #expect(allowed("time", datedErrand))
+        #expect(allowed("time", meds))
+        #expect(!allowed("time", roadmap), "undated")
+        #expect(!allowed("time", errand), "undated")
+        #expect(!allowed("time", numbers), "a subtask")
+        #expect(!allowed("time", datedNumbers), "a subtask, dated or not")
+        var blank = roadmap
+        blank.startDate = ""
+        #expect(!allowed("time", blank), "an empty date is none")
+        #expect(!allowed("nonsense", dated))
+    }
+
+    /// The typed form asks the same question by the edit's own action.
+    @Test func theTypedFormIsTheSameGate() {
+        let edits: [ItemEdit] = [
+            .title("x"), .notes(nil), .priority("high"), .timesPerDay(2), .reminder(time: "08:00", anchor: nil),
+            .time(bucket: .set("evening"), startTime: nil, duration: 45),
+        ]
+        for item in [roadmap, numbers, meds, errand] {
+            for edit in edits {
+                #expect(editAllowed(edit, on: item, caps: caps(item.typeName)) == allowed(edit.action, item),
+                        "\(item.title): \(edit.action)")
+            }
+        }
+    }
+}
+
+/// `editing` for the chips: lib/item-edit.ts `editPatch`, and `reminderPatch`
+/// under it.
+@Suite struct ChipEditingTests {
+    private let roadmap = Item(
+        id: uuid(1), title: "Draft Q4 roadmap", startDate: "2026-10-01", timeBucket: "morning", priority: "high"
+    )
+    private let meds = Item(
+        id: uuid(2), type: "habit", title: "Meds", repeatFrequency: "daily", reminderTime: "08:00",
+        reminderAnchor: "I pour my coffee", streak: 41, dailyCounts: ["2026-10-01": 1]
+    )
+
+    @Test func aPriorityIsSetOrCleared() {
+        var low = roadmap
+        low.priority = "low"
+        #expect(editing(roadmap, ItemEdit.priority("low")) == low)
+        var none = roadmap
+        none.priority = nil
+        #expect(editing(roadmap, ItemEdit.priority(nil)) == none)
+        #expect(editing(roadmap, ItemEdit.priority("high")) == roadmap)
+    }
+
+    /// A count is set, and nothing else moves: the day's tally stays.
+    @Test func aCountIsSet() {
+        var thrice = meds
+        thrice.timesPerDay = 3
+        #expect(editing(meds, ItemEdit.timesPerDay(3)) == thrice)
+        #expect(editing(thrice, ItemEdit.timesPerDay(3)) == thrice)
+        var once = thrice
+        once.timesPerDay = 1
+        // Back to 1 is written as 1, never cleared.
+        #expect(editing(thrice, ItemEdit.timesPerDay(1)) == once)
+        #expect(editing(thrice, ItemEdit.timesPerDay(1)).dailyCounts == meds.dailyCounts)
+    }
+
+    /// None stored reads as 1, so 1 there changes nothing (and 1 is not
+    /// written in its place).
+    @Test func noCountIsOne() {
+        #expect(meds.timesPerDay == nil)
+        #expect(editing(meds, ItemEdit.timesPerDay(1)) == meds)
+        #expect(editing(meds, ItemEdit.timesPerDay(2)).timesPerDay == 2)
+    }
+
+    /// A time alone keeps the stored words, trimmed as the dialog writes
+    /// them.
+    @Test func aTimeAloneKeepsTheWords() {
+        let next = editing(meds, ItemEdit.reminder(time: "07:30", anchor: nil))
+        var want = meds
+        want.reminderTime = "07:30"
+        #expect(next == want)
+
+        var spaced = meds
+        spaced.reminderAnchor = "  I pour my coffee\u{A0}"
+        let trimmed = editing(spaced, ItemEdit.reminder(time: "07:30", anchor: nil))
+        #expect(trimmed.reminderTime == "07:30")
+        #expect(trimmed.reminderAnchor == "I pour my coffee")
+
+        // A first reminder has no words to keep.
+        let fresh = editing(roadmap, ItemEdit.reminder(time: "09:00", anchor: nil))
+        #expect(fresh.reminderTime == "09:00" && fresh.reminderAnchor == nil)
+    }
+
+    @Test func newWordsAreTrimmedAndBlankIsNone() {
+        let set = editing(meds, ItemEdit.reminder(time: "08:00", anchor: .set("  I fill the kettle ")))
+        #expect(set.reminderTime == "08:00" && set.reminderAnchor == "I fill the kettle")
+        let cleared = editing(meds, ItemEdit.reminder(time: "08:00", anchor: .clear))
+        #expect(cleared.reminderTime == "08:00" && cleared.reminderAnchor == nil)
+        let blank = editing(meds, ItemEdit.reminder(time: "08:00", anchor: .set("   ")))
+        #expect(blank.reminderTime == "08:00" && blank.reminderAnchor == nil)
+        // The same values are the same item.
+        #expect(editing(meds, ItemEdit.reminder(time: "08:00", anchor: .set("I pour my coffee"))) == meds)
+        #expect(editing(meds, ItemEdit.reminder(time: "08:00", anchor: nil)) == meds)
+    }
+
+    /// No time turns it off: both columns go, whatever the words say, and
+    /// nothing else moves.
+    @Test func noTimeClearsBoth() {
+        var off = meds
+        off.reminderTime = nil
+        off.reminderAnchor = nil
+        #expect(editing(meds, ItemEdit.reminder(time: nil, anchor: nil)) == off)
+        #expect(editing(meds, ItemEdit.reminder(time: nil, anchor: .set("I pour my coffee"))) == off)
+        #expect(editing(meds, ItemEdit.reminder(time: nil, anchor: .clear)) == off)
+        #expect(editing(off, ItemEdit.reminder(time: nil, anchor: nil)) == off)
+    }
+}
+
+@Suite struct SubtaskItemTests {
+    /// Every field the store sets, and nothing else: no date, no bucket, no
+    /// project, no priority, no notes.
+    @Test func itIsAPendingUnscheduledTaskUnderItsParent() {
+        let child = subtaskItem(id: uuid(20), title: "Adapter plug", parent: uuid(3), order: 4)
+        #expect(child == Item(
+            id: uuid(20), type: "task", title: "Adapter plug", status: "pending",
+            parentItemId: "00000000-0000-4000-8000-000000000003", order: 4, isScheduled: false
+        ))
+        #expect(child.customType == nil && child.startDate == nil && child.timeBucket == nil)
+        #expect(child.project == nil && child.priority == nil && child.notes == nil)
+        #expect(child.completedDates.isEmpty && child.skippedDates.isEmpty && child.dailyCounts.isEmpty)
+    }
+
+    /// A custom parent's subtask is a task, as `addTask` makes it, never the
+    /// parent's type, and takes none of the parent's fields: built as the
+    /// planner builds it, from the parent's id and the task count. The
+    /// signature never sees the parent's type, so this holds by construction;
+    /// the store's own answer is `subtask-under-custom` in
+    /// `aNewSubtaskIsTheStoresTask`.
+    @Test func aCustomParentsSubtaskIsATask() {
+        let errand = Item(id: uuid(5), type: "custom", customType: "errand", title: "Post office",
+                          startDate: "2026-10-01", timeBucket: "morning", project: "Home", priority: "high")
+        #expect(canAddSubtask(under: errand, caps: caps(errand.typeName)))
+        let child = subtaskItem(id: uuid(21), title: "Stamps", parent: errand.id, order: project([errand]).tasks.count)
+        #expect(child.type == "task" && child.customType == nil && child.typeName == "task")
+        #expect(!child.isHabit)
+        #expect(child.startDate == nil && child.timeBucket == nil && child.project == nil && child.priority == nil)
+        #expect(child.order == 1)
+        #expect(isDeletedWith(child, parent: errand.id))
+    }
+
+    /// The parent is named by its lowercase id, as Postgres stores it, so the
+    /// cascade and the Subtasks section find the child.
+    @Test func theParentIdIsLowercase() {
+        let parent = UUID(uuidString: "0000000A-0000-4000-8000-00000000000B")!
+        let child = subtaskItem(id: uuid(22), title: "Passport", parent: parent, order: 1)
+        #expect(child.parentItemId == "0000000a-0000-4000-8000-00000000000b")
+        #expect(isDeletedWith(child, parent: parent))
+        #expect(!canAddSubtask(under: child, caps: caps(child.typeName)))
+    }
+
+    /// A new subtask is never one of Today's tasks: the next one's `order`
+    /// counts the same rows.
+    @Test func itIsNotCountedInTheOrder() {
+        let parent = task(1, "Pack for Lisbon")
+        let first = subtaskItem(id: uuid(23), title: "Passport", parent: uuid(1), order: project([parent]).tasks.count)
+        #expect(first.order == 1)
+        #expect(project([parent, first]).tasks.count == 1)
+    }
+}
+
+@Suite struct CanAddSubtaskTests {
+    @Test func aTaskOrACustomItemMayGrowOne() {
+        #expect(canAddSubtask(under: task(1, "Roadmap"), caps: caps("task")))
+        let errand = Item(id: uuid(2), type: "custom", customType: "errand", title: "Post office")
+        #expect(canAddSubtask(under: errand, caps: caps(errand.typeName)))
+    }
+
+    /// A habit grows none (`no_subtasks`), and a subtask none either
+    /// (`nested`), whatever its type's caps say.
+    @Test func aHabitOrASubtaskMayNot() {
+        let habit = Item(id: uuid(1), type: "habit", title: "Floss", repeatFrequency: "daily")
+        #expect(!canAddSubtask(under: habit, caps: caps("habit")))
+        #expect(!canAddSubtask(under: task(2, "Passport", parent: 1), caps: caps("task")))
+    }
+
+    /// An empty `parentItemId` is no parent, as JavaScript's truthiness reads
+    /// it.
+    @Test func anEmptyParentIsNone() {
+        let item = Item(id: uuid(1), title: "Roadmap", parentItemId: "")
+        #expect(canAddSubtask(under: item, caps: caps("task")))
+    }
+}
+
+@Suite struct ResettingStreakTests {
+    private let meds = Item(
+        id: uuid(1), type: "habit", title: "Meds", status: "pending", timeBucket: "morning",
+        repeatFrequency: "daily", streak: 41, currentDayCount: 1,
+        completedDates: ["2026-09-29", "2026-09-30"], skippedDates: ["2026-09-27"], dailyCounts: ["2026-09-30": 1]
+    )
+
+    /// The streak goes to 0 and nothing else moves: the done days, the
+    /// skips and the counts are the habit's history.
+    @Test func onlyTheStreakChanges() {
+        var want = meds
+        want.streak = 0
+        #expect(resettingStreak(meds) == want)
+    }
+
+    /// Nil reads as 0: nothing to reset, so nothing changes, and a missing
+    /// streak isn't written as 0 either, as the server writes nothing there.
+    @Test func zeroOrNoneIsLeftAlone() {
+        var zero = meds
+        zero.streak = 0
+        #expect(resettingStreak(zero) == zero)
+        var none = meds
+        none.streak = nil
+        #expect(resettingStreak(none) == none)
+        #expect(resettingStreak(none).streak == nil)
     }
 }
 
@@ -259,5 +568,361 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         let out = reinserting([old], into: [task(1, "A"), task(2, "New title")])
         #expect(out.map(\.id) == [uuid(1), uuid(2)])
         #expect(out[1].title == "Old title")
+    }
+}
+
+/// The Time chip's body rules, which `editAllowed` judges with no row: the
+/// route's schema (`invalid`) and `editRefusal`'s `no_duration`.
+@Suite struct TimeEditAllowedTests {
+    private let roadmap = Item(
+        id: uuid(1), title: "Draft Q4 roadmap", startDate: "2026-10-01", startTime: "09:00", timeBucket: "morning",
+        duration: 120, isScheduled: true
+    )
+    private let meds = Item(id: uuid(2), type: "habit", title: "Meds", timeBucket: "morning", duration: 15)
+
+    private func allowed(_ edit: ItemEdit, _ item: Item, caps: ItemCaps? = nil) -> Bool {
+        return editAllowed(edit, on: item, caps: caps ?? DsulCore.caps(item.typeName))
+    }
+
+    @Test func eachKeyAloneIsTaken() {
+        #expect(allowed(.time(bucket: .set("evening"), startTime: nil, duration: nil), roadmap))
+        #expect(allowed(.time(bucket: nil, startTime: .set("10:30"), duration: nil), roadmap))
+        #expect(allowed(.time(bucket: nil, startTime: .clear, duration: nil), roadmap))
+        #expect(allowed(.time(bucket: nil, startTime: nil, duration: 45), roadmap))
+        #expect(allowed(.time(bucket: .set("anytime"), startTime: .clear, duration: nil), roadmap))
+        #expect(allowed(.time(bucket: .set("morning"), startTime: .set("07:00"), duration: 60), roadmap))
+        // A habit's none, both keys null: the server takes it, though the
+        // sheet never offers it.
+        #expect(allowed(.time(bucket: .clear, startTime: .clear, duration: nil), meds))
+    }
+
+    @Test func anEmptyEditIsRefused() {
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: nil), roadmap))
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: nil), meds))
+    }
+
+    /// Anytime and none hold no time: the schema refuses a time sent beside
+    /// either, whatever is stored.
+    @Test func aTimeBesideAnytimeOrNoneIsRefused() {
+        #expect(!allowed(.time(bucket: .set("anytime"), startTime: .set("09:00"), duration: nil), roadmap))
+        #expect(!allowed(.time(bucket: .clear, startTime: .set("09:00"), duration: nil), meds))
+        #expect(!allowed(.time(bucket: .clear, startTime: .set("09:00"), duration: nil), roadmap))
+    }
+
+    /// A length is 1 minute to a day, and only on a type that keeps one.
+    @Test func aLengthIsInRangeAndTheTypes() {
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: 0), roadmap))
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: -15), roadmap))
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: 1441), roadmap))
+        #expect(allowed(.time(bucket: nil, startTime: nil, duration: 1), roadmap))
+        #expect(allowed(.time(bucket: nil, startTime: nil, duration: 1440), roadmap))
+        let noLength = ItemCaps(
+            label: "Note", doneStatus: "completed", skipStatus: nil, defaultFrequency: "none", defaultBlockMinutes: 30,
+            dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
+            collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false, dailyCounts: false,
+            hasPriority: true, hasDuration: false
+        )
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: 45), roadmap, caps: noLength), "no_duration")
+        // Without a length sent, the type's lack of one doesn't matter.
+        #expect(allowed(.time(bucket: .set("evening"), startTime: nil, duration: nil), roadmap, caps: noLength))
+        #expect(ItemCaps.task.hasDuration && ItemCaps.habit.hasDuration && ItemCaps.custom.hasDuration)
+    }
+
+    /// The type gate still comes first: a body the schema takes is refused on
+    /// an undated task and on a subtask.
+    @Test func theTypeGateComesFirst() {
+        var undated = roadmap
+        undated.startDate = nil
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: 45), undated))
+        var numbers = roadmap
+        numbers.parentItemId = uuid(9).uuidString.lowercased()
+        #expect(!allowed(.time(bucket: nil, startTime: nil, duration: 45), numbers))
+    }
+}
+
+/// `editing(.time)`: lib/item-edit.ts `timeEditPatch`, the dialog's
+/// `commitEdit` over the keys sent, on hand-built items.
+@Suite struct TimeEditingTests {
+    /// A timed task: Morning at 9:00, two hours, scheduled.
+    private let roadmap = Item(
+        id: uuid(1), title: "Draft Q4 roadmap", startDate: "2026-10-01", startTime: "09:00", timeBucket: "morning",
+        duration: 120, isScheduled: true
+    )
+    /// The same in a project block.
+    private var block: Item {
+        var item = roadmap
+        item.startTime = nil
+        item.inProjectBlock = true
+        return item
+    }
+    private let meds = Item(id: uuid(2), type: "habit", title: "Meds", timeBucket: "morning", duration: 15)
+
+    private func time(_ bucket: ColumnWrite? = nil, _ startTime: ColumnWrite? = nil,
+                      _ duration: Int? = nil) -> ItemEdit {
+        return .time(bucket: bucket, startTime: startTime, duration: duration)
+    }
+
+    /// A new time in its own part of day is the time alone.
+    @Test func aTimeInItsOwnPartOfDayIsTheTimeAlone() {
+        var want = roadmap
+        want.startTime = "10:30"
+        #expect(editing(roadmap, time(nil, .set("10:30"))) == want)
+    }
+
+    /// A time past its part of day files where it falls (pass 1's
+    /// auto-correct), and nothing else moves.
+    @Test func aTimeAcrossPartsOfDayFilesWhereItFalls() {
+        var want = roadmap
+        want.startTime = "15:00"
+        want.timeBucket = "afternoon"
+        #expect(editing(roadmap, time(nil, .set("15:00"))) == want)
+    }
+
+    /// A new part of day is the store's `scheduleTask`: scheduled, the time
+    /// kept and filed, and out of any project block.
+    @Test func aPartOfDaySchedulesAndReleasesABlock() {
+        var released = block
+        released.timeBucket = "afternoon"
+        released.inProjectBlock = false
+        #expect(editing(block, time(.set("afternoon"))) == released)
+
+        var moved = roadmap
+        moved.timeBucket = "evening"
+        moved.startTime = "19:00"
+        moved.inProjectBlock = false
+        #expect(editing(roadmap, time(.set("evening"), .set("19:00"))) == moved)
+    }
+
+    /// On a task, a part of day the time overrules still writes: the time
+    /// files it back in Morning, and `scheduleTask` sets `inProjectBlock`
+    /// false where nothing was stored, so the item is not the same.
+    @Test func aPartOfDayUnderATimeStillWritesOnATask() {
+        let next = editing(roadmap, time(.set("evening")))
+        #expect(next.timeBucket == "morning" && next.startTime == "09:00")
+        #expect(next.inProjectBlock == false && roadmap.inProjectBlock == nil)
+        #expect(next != roadmap)
+    }
+
+    /// A new time alone keeps a project block, in its part of day or across.
+    @Test func aNewTimeKeepsAProjectBlock() {
+        var within = block
+        within.startTime = "09:30"
+        #expect(editing(block, time(nil, .set("09:30"))) == within)
+        var across = block
+        across.startTime = "15:00"
+        across.timeBucket = "afternoon"
+        #expect(editing(block, time(nil, .set("15:00"))) == across)
+    }
+
+    /// Anytime drops the time, and schedules.
+    @Test func anytimeDropsTheTime() {
+        var want = roadmap
+        want.timeBucket = "anytime"
+        want.startTime = nil
+        want.inProjectBlock = false
+        #expect(editing(roadmap, time(.set("anytime"), .clear)) == want)
+    }
+
+    /// No specific time in its own part of day: the time alone, cleared.
+    @Test func noSpecificTimeClearsTheTime() {
+        var want = roadmap
+        want.startTime = nil
+        #expect(editing(roadmap, time(nil, .clear)) == want)
+    }
+
+    /// `isScheduled` nil reads as not scheduled, so a time schedules it.
+    @Test func noIsScheduledReadsAsNot() {
+        var unknown = roadmap
+        unknown.startTime = nil
+        unknown.isScheduled = nil
+        var want = unknown
+        want.startTime = "10:00"
+        want.isScheduled = true
+        want.inProjectBlock = false
+        #expect(editing(unknown, time(nil, .set("10:00"))) == want)
+        var unscheduled = unknown
+        unscheduled.isScheduled = false
+        #expect(editing(unscheduled, time(nil, .set("10:00"))) == want)
+    }
+
+    /// A stored "" time is compared raw, as `!==` compares it: Anytime's
+    /// "none" picked over a stored Anytime marks the bucket changed, and the
+    /// time (none) differs from "", so it is written as none.
+    @Test func aStoredEmptyTimeIsComparedRaw() {
+        var blankTime = roadmap
+        blankTime.timeBucket = "anytime"
+        blankTime.startTime = ""
+        var want = blankTime
+        want.startTime = nil
+        #expect(editing(blankTime, time(.clear)) == want)
+        // Its seed is "" too, so clearing the time alone changes nothing.
+        #expect(editing(blankTime, time(nil, .clear)) == blankTime)
+    }
+
+    /// A length alone is the length: never a schedule, never a day.
+    @Test func aLengthAloneNeverSchedules() {
+        var groceries = roadmap
+        groceries.timeBucket = "anytime"
+        groceries.startTime = nil
+        groceries.duration = nil
+        groceries.isScheduled = false
+        var want = groceries
+        want.duration = 45
+        #expect(editing(groceries, time(nil, nil, 45)) == want)
+        var longer = roadmap
+        longer.duration = 90
+        #expect(editing(roadmap, time(nil, nil, 90)) == longer)
+        #expect(editing(meds, time(nil, nil, 30)).duration == 30)
+    }
+
+    /// What equals the seed changes nothing: the stored values sent back, and
+    /// the type's default length where none is stored.
+    @Test func anEditEqualToTheSeedChangesNothing() {
+        #expect(editing(roadmap, time(.set("morning"), .set("09:00"), 120)) == roadmap)
+        var unlengthed = roadmap
+        unlengthed.duration = nil
+        #expect(editing(unlengthed, time(nil, nil, 30)) == unlengthed)
+        var unfiled = meds
+        unfiled.timeBucket = nil
+        #expect(editing(unfiled, time(.clear, .clear)) == unfiled)
+    }
+
+    /// An undated, scheduled task is unscheduled, as `commitEdit` would; the
+    /// gate refuses it first (`not_dated`), so this only keeps the port whole.
+    @Test func anUndatedScheduledTaskIsUnscheduled() {
+        var undated = roadmap
+        undated.startDate = nil
+        var want = undated
+        want.isScheduled = false
+        want.timeBucket = nil
+        want.startTime = nil
+        #expect(editing(undated, time(nil, .set("10:00"))) == want)
+        var braindump = undated
+        braindump.isScheduled = false
+        braindump.timeBucket = nil
+        braindump.startTime = nil
+        var timed = braindump
+        timed.startTime = "10:00"
+        #expect(editing(braindump, time(nil, .set("10:00"))) == timed)
+    }
+
+    /// A habit's part of day, with the store's `scheduleHabit`.
+    @Test func aHabitsPartOfDayIsSet() {
+        var evening = meds
+        evening.timeBucket = "evening"
+        #expect(editing(meds, time(.set("evening"))) == evening)
+        // A time with it files where the time falls.
+        var late = meds
+        late.timeBucket = "evening"
+        late.startTime = "21:00"
+        #expect(editing(meds, time(.set("morning"), .set("21:00"))) == late)
+    }
+
+    /// Under a time, a habit's part of day the time overrules is no change:
+    /// `scheduleHabit` files it back where it was, and a habit has no block
+    /// to release.
+    @Test func aHabitsTimeOverrulesItsPartOfDay() {
+        var timed = meds
+        timed.startTime = "09:00"
+        #expect(editing(timed, time(.set("evening"))) == timed)
+    }
+
+    @Test func aHabitsTimeOrPartOfDayIsCleared() {
+        var timed = meds
+        timed.startTime = "08:00"
+        var untimed = timed
+        untimed.startTime = nil
+        #expect(editing(timed, time(nil, .clear)) == untimed)
+        var unfiled = timed
+        unfiled.timeBucket = nil
+        unfiled.startTime = nil
+        #expect(editing(timed, time(.clear, .clear)) == unfiled)
+    }
+
+    /// A custom item takes the task's path, and no time edit moves the day.
+    @Test func aCustomItemIsTaskShaped() {
+        let errand = Item(
+            id: uuid(3), type: "custom", customType: "errand", title: "Post office", startDate: "2026-10-01",
+            timeBucket: "afternoon", isScheduled: true
+        )
+        var want = errand
+        want.timeBucket = "evening"
+        want.inProjectBlock = false
+        #expect(editing(errand, time(.set("evening"))) == want)
+        let edits = [time(.set("evening")), time(nil, .set("15:00")), time(nil, nil, 45), time(.set("anytime"), .clear)]
+        for edit in edits {
+            #expect(editing(errand, edit).startDate == "2026-10-01")
+            #expect(editing(roadmap, edit).startDate == "2026-10-01")
+        }
+    }
+}
+
+/// DayBuckets.swift's lib/time-bucket.ts rules, by hand. The fixture's
+/// `buckets` (`theBucketRulesAreTheWebs`) is what pins them to the web.
+@Suite struct TimeBucketRuleTests {
+    @Test func aTimeFilesByItsHour() {
+        #expect(bucketForTime("00:00") == .morning)
+        #expect(bucketForTime("04:59") == .morning)
+        #expect(bucketForTime("11:59") == .morning)
+        #expect(bucketForTime("12:00") == .afternoon)
+        #expect(bucketForTime("16:59") == .afternoon)
+        #expect(bucketForTime("17:00") == .evening)
+        #expect(bucketForTime("23:59") == .evening)
+    }
+
+    /// `parseInt`'s reading of the hour: leading digits, whitespace and a
+    /// sign skipped, hex after "0x", and no digits at all NaN.
+    @Test func theHourIsReadAsParseIntReadsIt() {
+        #expect(bucketForTime("9:30") == .morning)
+        #expect(bucketForTime("24:00") == .evening)
+        #expect(bucketForTime("x") == .anytime)
+        #expect(bucketForTime("") == .anytime)
+        #expect(bucketForTime(":30") == .anytime)
+        #expect(bucketForTime(" 9:00") == .morning)
+        #expect(bucketForTime("12pm") == .afternoon)
+        #expect(bucketForTime("-1:00") == .evening)
+        #expect(bucketForTime("0x0f:00") == .afternoon)
+        #expect(bucketForTime("99999999999999999999999:00") == .evening)
+    }
+
+    @Test func aTimeOverrulesAPartOfDay() {
+        #expect(autoCorrectBucket("15:00", "morning") == "afternoon")
+        #expect(autoCorrectBucket("09:00", "evening") == "morning")
+        #expect(autoCorrectBucket("09:00", "morning") == "morning")
+        #expect(autoCorrectBucket("x", "morning") == "anytime")
+        // Anytime holds any time; no time or no bucket corrects nothing.
+        #expect(autoCorrectBucket("09:00", "anytime") == "anytime")
+        #expect(autoCorrectBucket(nil, "morning") == "morning")
+        #expect(autoCorrectBucket("", "morning") == "morning")
+        #expect(autoCorrectBucket("21:00", nil) == nil)
+        #expect(autoCorrectBucket("21:00", "") == "")
+    }
+
+    @Test func eachPartOfDayStartsWhereTheWebsDoes() {
+        #expect(bucketStartTime(.morning) == "05:00")
+        #expect(bucketStartTime(.afternoon) == "12:00")
+        #expect(bucketStartTime(.evening) == "17:00")
+        #expect(bucketStartTime(.anytime) == nil)
+        // Each start files in its own part of day.
+        for bucket in [DayBucket.morning, .afternoon, .evening] {
+            #expect(bucketStartTime(bucket).map(bucketForTime) == bucket, "\(bucket)")
+        }
+    }
+}
+
+/// EditCopy.swift's lengths, by hand. The fixture's `durations`
+/// (`theLengthsAreTheWebs`) is what pins them to the web.
+@Suite struct DurationLabelTests {
+    @Test func eachPresetHasItsWords() {
+        #expect(EditCopy.durationPresets == [15, 30, 45, 60, 90, 120])
+        #expect(EditCopy.durationPresets.map(EditCopy.durationLabel)
+            == ["15 min", "30 min", "45 min", "1 hour", "1.5 hours", "2 hours"])
+    }
+
+    @Test func anyOtherLengthIsMinutes() {
+        #expect(EditCopy.durationLabel(50) == "50 min")
+        #expect(EditCopy.durationLabel(75) == "75 min")
+        #expect(EditCopy.durationLabel(180) == "180 min")
+        #expect(EditCopy.durationLabel(1) == "1 min")
     }
 }

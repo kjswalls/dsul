@@ -359,8 +359,8 @@ function PausedSection({
   );
 }
 
-const ORGANIZE_OFF = 'Organize is off — switch it on in Settings → Extensions';
-const ORGANIZE_OFF_SHORT = 'Off — switch it on in Settings → Extensions';
+const ORGANIZE_OFF = 'Organize is off. Switch it on in Settings → Extensions';
+const ORGANIZE_OFF_SHORT = 'Off. Switch it on in Settings → Extensions';
 
 /**
  * The header controls' tooltip: the rail tooltip's shape (muted eyebrow over

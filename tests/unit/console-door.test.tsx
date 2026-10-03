@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import { execFileSync } from 'node:child_process';
-import { readFileSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
@@ -242,7 +242,9 @@ describe('nothing arms an organize slot behind the helper\'s back', () => {
       encoding: 'utf8',
     })
       .split('\n')
-      .filter((f) => /\.tsx?$/.test(f));
+      // A file deleted in the working tree but not yet committed is still in
+      // the index; it ships nothing, so there is nothing to read.
+      .filter((f) => /\.tsx?$/.test(f) && existsSync(path.join(root, f)));
 
     /* Matched on the CALL, not on a key order or a quote style: `type` and
        `section` can be written either way round, the repo has no formatter to

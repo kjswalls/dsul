@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server'
 import { isSameOrigin, NO_STORE, readJson, requireSessionUser } from '@/app/api/ai/_shared/guard'
 import type { ChatErrorCode } from '@/lib/ai-types'
+import { ROUTE_ERROR_COPY } from '@/lib/chat-errors'
+import { UUID_RE } from '@/lib/conversation-types'
 import {
   clipText,
   composeChatSystem,
@@ -9,10 +11,9 @@ import {
   sanitizeChatMessages,
 } from '@/lib/ai-limits'
 import {
-  chatSessionKey,
+  conversationSessionKey,
   GatewayConfigReadError,
   getGatewayConfig,
-  itemSessionKey,
   streamGatewayChat,
   type GatewayConfig,
 } from '@/lib/openclaw-gateway'
@@ -39,8 +40,15 @@ import { anySignal, deltasToSse } from '@/lib/ai-server/stream'
  * connection, never from the body.
  *
  * Every failure before a stream exists answers JSON `{error, code}` with our
- * own copy. A provider's text, a database error and the key never reach the
- * response or the logs.
+ * own copy (lib/chat-errors.ts, the one copy the transcript also renders). A
+ * provider's text, a database error and the key never reach the response or
+ * the logs.
+ *
+ * Stateless: a turn names its saved conversation (`conversationId`) only so
+ * the gateway path can key one OpenClaw session per conversation. Nothing here
+ * reads or writes a conversation; the browser saves each finished turn itself
+ * (/api/ai/conversations/[id]/turns), because the plugin path never reaches
+ * this server.
  */
 
 export const runtime = 'nodejs'
@@ -55,9 +63,6 @@ const CHAT_TIMEOUT_MS = 50_000
 
 /** 40 turns of 8k characters plus 60k of context, in UTF-8, with room to spare. */
 const MAX_BODY_BYTES = 2_000_000
-
-const NOT_CONNECTED_MODEL = 'Connect a model in Settings to chat.'
-const NOT_CONNECTED_GATEWAY = 'Connect your OpenClaw gateway in Settings to chat.'
 
 function jsonChatError(
   status: number,
@@ -74,36 +79,39 @@ interface ChatBody {
   messages?: unknown
   context?: unknown
   target?: unknown
-  provider?: unknown
   customInstructions?: unknown
   typeNouns?: unknown
-  threadItemId?: unknown
+  conversationId?: unknown
 }
 
 export async function POST(req: Request): Promise<Response> {
   const user = await requireSessionUser()
-  if (!user) return jsonChatError(401, 'Your session ended. Sign in again.', 'unauthorized')
-  if (!isSameOrigin(req)) return jsonChatError(403, "That request wasn't allowed.", 'forbidden')
+  if (!user) return jsonChatError(401, ROUTE_ERROR_COPY.unauthorized, 'unauthorized')
+  if (!isSameOrigin(req)) return jsonChatError(403, ROUTE_ERROR_COPY.forbidden, 'forbidden')
 
   const read = await readJson<ChatBody>(req, MAX_BODY_BYTES)
   if (!read.ok) {
     return read.error === 'too_large'
-      ? jsonChatError(413, 'That message is too long to send.', 'too_large')
-      : jsonChatError(read.status, "That request couldn't be read.", 'invalid')
+      ? jsonChatError(413, ROUTE_ERROR_COPY.too_large, 'too_large')
+      : jsonChatError(read.status, ROUTE_ERROR_COPY.invalid, 'invalid')
   }
   const body: ChatBody = read.body && typeof read.body === 'object' ? read.body : {}
 
-  // `provider`, `apiKey`, `model` and `systemPrompt` are never read. `provider`
-  // is consulted only to place an older tab (deploy skew) that sends no target.
-  const target =
-    body.target === 'model' || body.target === 'openclaw'
-      ? body.target
-      : body.provider === 'openclaw'
-        ? 'openclaw'
-        : 'model'
+  // `provider`, `apiKey`, `model` and `systemPrompt` are never read. A body
+  // with no target is the model path.
+  const target = body.target === 'openclaw' ? 'openclaw' : 'model'
+
+  // Which saved conversation this turn belongs to: a UUID when present, on
+  // either path. Only the gateway path uses it, and there it is required.
+  const rawConversationId = body.conversationId
+  const conversationId =
+    typeof rawConversationId === 'string' && UUID_RE.test(rawConversationId) ? rawConversationId : null
+  if (rawConversationId !== undefined && rawConversationId !== null && !conversationId) {
+    return jsonChatError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
+  }
 
   const messages = sanitizeChatMessages(body.messages)
-  if (messages.length === 0) return jsonChatError(400, "That request couldn't be read.", 'invalid')
+  if (messages.length === 0) return jsonChatError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
   const context = clipText(body.context, MAX_CHAT_CONTEXT_CHARS)
   const system = composeChatSystem({
     typeNouns: body.typeNouns,
@@ -116,6 +124,9 @@ export async function POST(req: Request): Promise<Response> {
   // operator access and stays server-side. No output cap: it is the user's own
   // agent.
   if (target === 'openclaw') {
+    // Before the config read: a gateway turn with no conversation has no
+    // session to be said in.
+    if (!conversationId) return jsonChatError(400, ROUTE_ERROR_COPY.invalid, 'invalid')
     let config: GatewayConfig | null
     try {
       config = await getGatewayConfig(user.id)
@@ -123,25 +134,23 @@ export async function POST(req: Request): Promise<Response> {
       console.warn('[ai] chat gateway config', err instanceof GatewayConfigReadError ? 'unreadable' : 'failed')
       return jsonChatError(503, USER_MESSAGES.upstream, 'server')
     }
-    if (!config) return jsonChatError(409, NOT_CONNECTED_GATEWAY, 'not_connected')
+    if (!config) return jsonChatError(409, ROUTE_ERROR_COPY.notConnectedGateway, 'not_connected')
 
     try {
       const stream = await streamGatewayChat({
         config,
-        // Derived from the authenticated user, never taken from the body. The
-        // client names which THREAD it is (an item id, or nothing for the global
-        // conversation); the key itself is built here, so a browser cannot
-        // address another user's thread or a reserved gateway namespace.
-        sessionKey:
-          typeof body.threadItemId === 'string' && body.threadItemId
-            ? itemSessionKey(user.id, body.threadItemId)
-            : chatSessionKey(user.id),
+        // Built here from the authenticated user and the UUID checked above,
+        // never taken from the body. The client names which CONVERSATION it
+        // is; it cannot name another user's session or a reserved gateway
+        // namespace. No ownership read: the uid prefix already scopes the key,
+        // and a conversation's row does not exist before its first turn ends.
+        sessionKey: conversationSessionKey(user.id, conversationId),
         messages: [{ role: 'system', content: system.join('\n\n') }, ...messages],
         signal: anySignal([req.signal, AbortSignal.timeout(CHAT_TIMEOUT_MS)]),
       })
       return new Response(stream, { headers: STREAM_HEADERS })
     } catch {
-      return jsonChatError(502, "Couldn't reach your OpenClaw gateway.", 'upstream')
+      return jsonChatError(502, ROUTE_ERROR_COPY.gatewayUnreachable, 'upstream')
     }
   }
 
@@ -157,11 +166,11 @@ export async function POST(req: Request): Promise<Response> {
   if (!conn.ok) {
     switch (conn.reason) {
       case 'unavailable':
-        return jsonChatError(503, NOT_CONNECTED_MODEL, 'not_connected', { available: false })
+        return jsonChatError(503, ROUTE_ERROR_COPY.notConnectedModel, 'not_connected', { available: false })
       case 'blocked_url':
         return jsonChatError(400, USER_MESSAGES.blocked_url, 'blocked_url')
       default:
-        return jsonChatError(409, NOT_CONNECTED_MODEL, 'not_connected')
+        return jsonChatError(409, ROUTE_ERROR_COPY.notConnectedModel, 'not_connected')
     }
   }
 

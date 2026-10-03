@@ -66,7 +66,7 @@ export async function PATCH(
       return NextResponse.json(
         {
           error:
-            'That name is already taken by another habit group — possibly one in the trash, which keeps its name for 30 days.',
+            'That name is already taken by another habit group. It may be one in the trash, which keeps its name for 30 days.',
         },
         { status: 409 }
       )

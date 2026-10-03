@@ -12,9 +12,11 @@ import SwiftUI
 ///   where medium leaves too little room for the content above the bar, and
 ///   goes large whenever a field on any page takes focus (`ItemDetail`).
 /// - Its verbs act on the day it was opened with (`SheetDay`), read when one
-///   is tapped. Pause until and Reschedule's Pick a date open a day picker
-///   sheet of its own (`DayPick`), never the planner's slot, which would close
-///   this one to open it.
+///   is tapped. Pause until, Reschedule's Pick a date and the date chip's
+///   Pick a date… open a day picker sheet of its own, the reminder chip and
+///   Remind… the Remind sheet, and the time chip and Time… the Time sheet
+///   (`SheetEditor`), never the planner's slot, which would close this one to
+///   open it.
 /// - It stays open after a verb, as the web's item panel does. When its item
 ///   is gone (deleted, or a fetch without it), the planner clears the slot
 ///   and it closes, still showing the item as it slides away.
@@ -29,20 +31,6 @@ struct ItemSheet: View {
     }
 }
 
-/// What the sheet's own day picker is choosing for: a new day for the item,
-/// or the day its pause ends.
-enum DayPick: Identifiable, Hashable, Sendable {
-    case reschedule(UUID)
-    case pauseUntil(UUID)
-
-    var id: String {
-        switch self {
-        case .reschedule(let id): return "reschedule-" + id.uuidString
-        case .pauseUntil(let id): return "pause-until-" + id.uuidString
-        }
-    }
-}
-
 /// The sheet itself, once the starting detent is known (the environment
 /// can't be read in an initializer, and a detent set after the sheet appears
 /// would visibly jump).
@@ -53,7 +41,9 @@ private struct ItemSheetStack: View {
     @Environment(SamplePlanner.self) private var planner
     @State private var path: [UUID] = []
     @State private var detent: PresentationDetent
-    @State private var dayPick: DayPick? = nil
+    /// The sheet open over this one (ItemSheetModel's `SheetEditor`), shared
+    /// by every page of the stack.
+    @State private var editor: SheetEditor? = nil
 
     init(id: UUID, day: SheetDay, startsLarge: Bool) {
         self.id = id
@@ -63,9 +53,9 @@ private struct ItemSheetStack: View {
 
     var body: some View {
         NavigationStack(path: $path) {
-            ItemDetail(id: id, day: day, isRoot: true, path: $path, dayPick: $dayPick, detent: $detent)
+            ItemDetail(id: id, day: day, isRoot: true, path: $path, editor: $editor, detent: $detent)
                 .navigationDestination(for: UUID.self) { child in
-                    ItemDetail(id: child, day: day, isRoot: false, path: $path, dayPick: $dayPick,
+                    ItemDetail(id: child, day: day, isRoot: false, path: $path, editor: $editor,
                                detent: $detent)
                 }
         }
@@ -75,25 +65,40 @@ private struct ItemSheetStack: View {
         // and the bar draws its slots in it (VerbBar). A text field above
         // all: its caret and its selection highlight are the tint, and a lime
         // caret is about 1.5:1 on white, so TitleField and NotesEditor tint
-        // themselves too. DayPickSheet's calendar tints itself the system
-        // blue, since it draws a white number on the tint.
-        .sheet(item: $dayPick) { pick in
-            dayPicker(pick)
+        // themselves too. The sheet's own sheets tint themselves: the day
+        // pickers' calendar (the date chip's Pick a date… included) the
+        // system blue, since it draws a white number on the tint, and
+        // ReminderSheet and TimeSheet the label colour, since nothing in them
+        // is lime.
+        .sheet(item: $editor) { editor in
+            editorSheet(editor)
         }
         .presentationDetents([.medium, .large], selection: $detent)
         .presentationDragIndicator(.visible)
     }
 
+    /// The sheet's own sheets: the day pickers, the Remind sheet and the Time
+    /// sheet.
+    ///
     /// Reschedule starts on the item's own day (or the day the sheet acts
     /// on, when it has none) and may pick any day, as the web's does; it is
-    /// titled with the bar's word, Schedule for an undated item. Pause until
+    /// titled with the bar's word, Schedule for an undated item. The date
+    /// chip's Pick a date… is the same picker and the same write (`move`),
+    /// titled "Date", its button the bar's verb ("Schedule for" an undated
+    /// item, else "Move to"). Pause until
     /// starts, at the earliest, tomorrow: a pause has to end after today. A
     /// picker left open across midnight may confirm a day that is now today,
     /// so today is read again when it confirms, and a day no longer after it
     /// writes nothing and says so in the banner.
+    ///
+    /// The Remind and Time sheets are handed the item as it is now, and keep
+    /// what they opened on (`ReminderSheet`, `TimeSheet`): this runs again
+    /// whenever the planner's items change, and a sheet whose item went would
+    /// otherwise go blank under the user, so there is no `if let`. The
+    /// planner closes the item sheet, and these with it, when the item goes.
     @ViewBuilder
-    private func dayPicker(_ pick: DayPick) -> some View {
-        switch pick {
+    private func editorSheet(_ editor: SheetEditor) -> some View {
+        switch editor {
         case .reschedule(let itemID):
             DayPickSheet(words: rescheduleWords(itemID),
                          initial: planner.item(itemID)?.day ?? planner.actingDay(day), earliest: nil) { picked in
@@ -109,6 +114,16 @@ private struct ItemSheetStack: View {
                 }
                 withAnimation(.snappy) { planner.pause(itemID, until: picked.description) }
             }
+        case .reminder(let itemID):
+            ReminderSheet(id: itemID, opening: planner.item(itemID))
+        case .pickDate(let itemID):
+            DayPickSheet(words: dateWords(itemID),
+                         initial: planner.item(itemID)?.day ?? planner.actingDay(day), earliest: nil) { picked in
+                withAnimation(.snappy) { planner.move(itemID, to: picked.description) }
+            }
+        case .time(let itemID):
+            TimeSheet(id: itemID, opening: planner.item(itemID),
+                      caps: planner.item(itemID).map { planner.caps(for: $0) })
         }
     }
 
@@ -119,5 +134,14 @@ private struct ItemSheetStack: View {
             return DayPickWords(title: "Reschedule", confirmVerb: "Move to", note: nil)
         }
         return ItemSheetModel.rescheduleWords(item, planner.verbContext(for: item, day: day))
+    }
+
+    /// The date chip's Pick a date… words for `itemID` on the sheet's day; a
+    /// dated item's when it is gone, which then moves nothing.
+    private func dateWords(_ itemID: UUID) -> DayPickWords {
+        guard let item = planner.item(itemID) else {
+            return DayPickWords(title: ItemSheetModel.dateTitle, confirmVerb: "Move to", note: nil)
+        }
+        return ItemSheetModel.dateWords(item, planner.verbContext(for: item, day: day))
     }
 }

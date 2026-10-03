@@ -3,7 +3,10 @@ import SwiftUI
 
 /// One item row, shared by List and Buckets: a tick circle, the title (struck
 /// through when done), a habit's streak and the time on the right. A skipped
-/// occurrence is a strip instead, with no box to tick.
+/// occurrence is a strip instead, with no box to tick. With Streaks off
+/// (`streaksEnabled`, the payload's `settings.streaksEnabled`) a habit's row
+/// has no flame and no count, and VoiceOver hears no "streak N", as the web's
+/// row hides them (components/primitives/task-row.tsx, `streaksOn`).
 ///
 /// Two buttons side by side: the circle ticks, the rest of the row opens the
 /// item's sheet. The circle's hit area is 44pt square though it draws at 22, so
@@ -17,6 +20,8 @@ struct ItemRow: View {
     var skipped: Bool = false
     /// "Now ·" in front of the time while the block is running.
     var isNow: Bool = false
+    /// The Streaks extension is on: a habit shows its flame and count.
+    var streaksEnabled: Bool = true
     var onToggle: () -> Void
     var onOpen: () -> Void
 
@@ -93,7 +98,7 @@ struct ItemRow: View {
                             .font(.footnote.monospacedDigit().weight(isNow ? .semibold : .regular))
                             .foregroundStyle(isNow ? Color.accentColor : Color.secondary)
                     }
-                    if item.isHabit {
+                    if item.isHabit && streaksEnabled {
                         StreakLabel(streak: item.streak ?? 0, lit: done)
                     }
                 }
@@ -107,7 +112,7 @@ struct ItemRow: View {
             .buttonStyle(RowPressStyle())
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(PlannerFormat.rowLabel(item, isNow: isNow)))
+        .accessibilityLabel(Text(PlannerFormat.rowLabel(item, isNow: isNow, streaksEnabled: streaksEnabled)))
         .accessibilityValue(Text(done ? "Done" : ""))
         .accessibilityAddTraits(.isButton)
         .accessibilityHint("Opens details")
@@ -217,14 +222,15 @@ extension PlannerFormat {
     }
 
     /// The row as one VoiceOver label: "Draft Q4 roadmap, 9 to 11 AM", with
-    /// "now" while the block runs and a habit's "streak 41". Done is the
-    /// element's value, not part of this.
-    static func rowLabel(_ item: SampleItem, isNow: Bool) -> String {
+    /// "now" while the block runs and a habit's "streak 41", unless Streaks
+    /// is off (`streaksEnabled`), which hides the streak the row draws too.
+    /// Done is the element's value, not part of this.
+    static func rowLabel(_ item: SampleItem, isNow: Bool, streaksEnabled: Bool = true) -> String {
         var parts = [item.title]
         if let time = spokenRowTime(startMin: item.startMin, durationMin: item.durationMin) {
             parts.append(isNow ? "now, \(time)" : time)
         }
-        if item.isHabit {
+        if item.isHabit && streaksEnabled {
             parts.append("streak \(item.streak ?? 0)")
         }
         return parts.joined(separator: ", ")

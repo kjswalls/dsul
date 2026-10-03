@@ -32,8 +32,8 @@ import { cn } from '@/lib/utils';
  *
  * WHY THE CALLER OWNS POSITIONING. On the desktop this row is taken OUT of flow
  * (`absolute bottom-full`) and overlays the braindump instead of displacing it.
- * That is not tidiness — it is measured. With the chat panel expanded in a short
- * window, the sidebar column is already over-constrained, and a 26px row that
+ * That is not tidiness — it is measured. In a short window the sidebar column
+ * has no slack, and a 26px row that
  * appears and vanishes on a 5s timer the instant after the user acts is the
  * "moves under your cursor" complaint being caused by the fix for it. Out of
  * flow, it costs the column nothing at any viewport height. The phone keeps it in
@@ -63,7 +63,7 @@ export function UndoStrip({ className }: { className?: string }) {
         >
           {entry.label}
           {entry.receipt && (
-            <span className="text-muted-foreground"> — {entry.receipt}</span>
+            <span className="text-muted-foreground"> · {entry.receipt}</span>
           )}
         </TypewriterText>
       </div>

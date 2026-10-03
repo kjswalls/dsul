@@ -620,8 +620,12 @@ export function BucketCard({
             >
               {/* Shut buckets render no children at all — see the drop note in
                   the component doc for why the droppables going with them is the
-                  point rather than a side effect. */}
-              {!collapsed && children}
+                  point rather than a side effect. A specimen (collapsible
+                  false, the settings Look previews) ignores the stored flag and
+                  keeps its rows whatever was shut on the grid. Not `isShut`:
+                  that also opens an EMPTY collapsed bucket, which would hand a
+                  drag its droppables back. */}
+              {!(collapsed && collapsible) && children}
             </div>
           </div>
         )}

@@ -12,7 +12,7 @@ import {
   DrawerTrigger,
 } from '@/components/ui/drawer';
 import { useAICapabilities } from '@/lib/ai-connection-store';
-import { chatAssistantName } from '@/lib/chat-utils';
+import { phoneArrivalFocuses, useRailStore } from '@/lib/rail-store';
 import {
   mobileTabOrder,
   shownMobileTab,
@@ -72,7 +72,7 @@ const GLYPH_STROKE = 2.25;
 export function ModeSwitcherSheet() {
   const storedTab = useMobileNavStore((s) => s.activeTab);
   const setActiveTab = useMobileNavStore((s) => s.setActiveTab);
-  const { canChat, target } = useAICapabilities();
+  const { canChat } = useAICapabilities();
   // What the shell is SHOWING: a chat tab that can no longer answer renders as
   // Today (components/shell/mobile-shell.tsx), and the card has to say so too.
   const activeTab = shownMobileTab(storedTab, canChat);
@@ -84,12 +84,14 @@ export function ModeSwitcherSheet() {
    */
   const [pendingTab, setPendingTab] = useState<MobileTab | null>(null);
 
-  // The chat surface is named after whoever is answering. It is only listed
-  // while something can (mobileTabOrder), so the name is never a promise.
+  // The chat surface is Ask, whoever answers: the model label under its box
+  // says who (components/mobile/mobile-bottom-dock.tsx). It is only listed
+  // while something can answer (mobileTabOrder), so the name is never a
+  // promise.
   const labels: Record<MobileTab, string> = {
     braindump: 'Braindump',
     today: 'Today',
-    chat: chatAssistantName(target),
+    chat: 'Ask',
   };
   const ActiveGlyph = GLYPHS[activeTab];
 
@@ -117,8 +119,8 @@ export function ModeSwitcherSheet() {
           data-tour="mode-card"
           data-testid="mobile-mode-card"
           // The surface as a machine-readable value, so a test can assert where
-          // it landed without reading a label that is user-configurable on one
-          // of the three (the chat tab is named after whoever answers).
+          // it landed without reading a label (the chat tab's id stays `chat`,
+          // stored and keyed by tests, while its name is Ask).
           data-surface={activeTab}
           // The glyph is the entire visible name of this control, so the
           // accessible name has to carry both halves of what it says: which
@@ -132,15 +134,20 @@ export function ModeSwitcherSheet() {
 
       <DrawerContent
         data-testid="mode-switcher-sheet"
-        // The chat composer focuses itself on arrival (see the focus signal in
-        // mobile-bottom-dock.tsx), and that lands at ~100ms while this drawer is
-        // still playing its 500ms slide-out. Radix keeps the content mounted for
-        // the whole animation and then restores focus to the trigger, so the
-        // caret appeared in the composer and was yanked back to the mode card
-        // half a second later — and only with motion ON, since a reduced-motion
-        // unmount beats the composer to it. Stand down for that one destination.
+        // The Ask tab's box takes focus on arrival when a conversation or an
+        // item is on top (the arrival request in mobile-bottom-dock.tsx), and
+        // that lands while this drawer is still playing its 500ms slide-out.
+        // Radix keeps the content mounted for the whole animation and then
+        // restores focus to the trigger, so the caret appeared in the composer
+        // and was yanked back to the mode card half a second later — and only
+        // with motion ON, since a reduced-motion unmount beats the composer to
+        // it. Stand down for exactly that arrival, by the same rule: at Ask
+        // home or History nothing takes focus, and the mode card should get it
+        // back rather than leave it on <body>.
         onCloseAutoFocus={(event) => {
-          if (pendingTab === 'chat') event.preventDefault();
+          if (pendingTab === 'chat' && phoneArrivalFocuses(useRailStore.getState().stacks.phone)) {
+            event.preventDefault();
+          }
         }}
       >
         <DrawerHeader className="pb-2">

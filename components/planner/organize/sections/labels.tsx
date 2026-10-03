@@ -223,7 +223,7 @@ function ProjectDetail({
       ? 'Nothing is filed under it, so nothing moves.'
       : `Its ${n} ${n === 1 ? 'item stays' : 'items stay'} exactly as ${
           n === 1 ? 'it is' : 'they are'
-        } — ${n === 1 ? 'it just stops' : 'they just stop'} being filed under ${project.name}.`) +
+        }. ${n === 1 ? 'It just stops' : 'They just stop'} being filed under ${project.name}.`) +
     (requireds > 0 && destination
       ? ` The ${requireds === 1 ? 'habit moves' : `${requireds} habits move`} to “${destination}”.`
       : '') +
@@ -342,7 +342,7 @@ function ProjectDetail({
             !(i as { project?: string }).project
           }
           pickerHint="Items not yet in a project."
-          emptyPoolLabel="Everything is already filed somewhere — move items from their own project."
+          emptyPoolLabel="Everything is already filed somewhere. Move items from their own project."
           // Membership is the item's own `project` field, so linking and
           // removing are re-files — setItemsProject, which also brings a task
           // out of the old block it was parked in.
@@ -498,7 +498,7 @@ function TypeDetail({ type, onBack }: { type: ItemTypeDef; onBack: () => void })
       : n === 1
         ? `Your one existing ${type.label.toLowerCase()} is kept and keeps working with a generic label.`
         : `Your ${n} existing ${plural} are kept and keep working with a generic label.`) +
-    ' This one isn’t undoable — custom types sit outside the undo history.';
+    ' This one isn’t undoable, because custom types sit outside the undo history.';
 
   return (
     <div className="flex flex-col" data-testid="type-detail" data-type-id={type.id}>
@@ -724,9 +724,9 @@ function slugProblem(label: string, existing: ItemTypeDef[]): string | null {
   if (!slug) return 'Use some letters or numbers.';
   if (!/^[a-z]/.test(slug)) return 'Start with a letter.';
   if (!/^[a-z][a-z0-9_-]{0,31}$/.test(slug)) {
-    return slug.length > 32 ? 'A bit shorter — 32 characters at most.' : 'Letters, numbers and dashes.';
+    return slug.length > 32 ? 'Keep it to 32 characters or fewer.' : 'Letters, numbers and dashes.';
   }
-  if (BUILTIN_ITEM_TYPE_NAMES.includes(slug)) return `“${slug}” is a built-in name — pick another.`;
+  if (BUILTIN_ITEM_TYPE_NAMES.includes(slug)) return `“${slug}” is a built-in name. Pick another.`;
   // The duplicate check runs before the organizer one: types made before the
   // organizer nouns were reserved keep those names, and to their owner "you
   // already have one" is the truer sentence.
@@ -740,7 +740,7 @@ function slugProblem(label: string, existing: ItemTypeDef[]): string | null {
   // started listing organizers beside item types (2026-09-25): a type called
   // "goal" would sit one row above the Goal organizer and mean something else.
   if (ORGANIZER_TYPE_NAMES.includes(slug)) {
-    return `“${slug}” is an organizer, not a type — make one from the “new” dialog, or pick another name.`;
+    return `“${slug}” is an organizer, not a type. Make one from the “new” dialog, or pick another name.`;
   }
   return null;
 }

@@ -159,10 +159,11 @@ public func isPausedOn<P: Pausable>(_ x: P, on day: DayString, timeZone: String)
     return true
 }
 
-/// One pause column in a write: set to a value, or cleared to NULL. A column
-/// the write leaves alone has no `ColumnWrite` at all (nil), which keeps the
-/// web's three states apart: a key absent, a key sent as null (`undefined` in a
-/// patch, which lib/db.ts writes as NULL), and a key with a value.
+/// One nullable text column in a write (a pause column, a reminder's cue
+/// words): set to a value, or cleared to NULL. A column the write leaves alone
+/// has no `ColumnWrite` at all (nil), which keeps the web's three states apart:
+/// a key absent, a key sent as null (`undefined` in a patch, which lib/db.ts
+/// writes as NULL), and a key with a value.
 public enum ColumnWrite: Sendable, Hashable {
     case set(String)
     case clear
@@ -246,8 +247,8 @@ public func resolvePauseWrite<P: Pausable>(
     if pausedUntil != nil {
         if !pausedNow {
             return .refused(
-                "pausedUntil was sent without paused: true, but this is not currently paused — "
-                    + "a resume date on its own would change nothing"
+                "pausedUntil was sent without paused: true, but this is not currently paused. "
+                    + "A resume date on its own would change nothing."
             )
         }
         return .patch(PauseWindowPatch(pausedUntil: untilWrite))

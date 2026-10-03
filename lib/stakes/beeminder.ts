@@ -161,7 +161,7 @@ export async function postDatapoint(
     body: new URLSearchParams({
       auth_token: creds.authToken,
       value: '1',
-      comment: `dsul — ${entry.subjectTitle} on ${entry.dateStr}`,
+      comment: `dsul: ${entry.subjectTitle} on ${entry.dateStr}`,
       requestid: requestIdFor(entry.dateStr, entry.subject),
       daystamp: entry.dateStr.replace(/-/g, ''),
     }).toString(),

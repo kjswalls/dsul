@@ -38,7 +38,7 @@ export const NUDGES: NudgeDef[] = [
     // The whole reason this nudge exists is the guilt a broken chain can carry,
     // so it names the escape hatch and, in the same breath, promises the counter
     // keeps running — turning streaks off is a display choice, not a reset.
-    body: "Flames and streak counts show across the app. If they feel more like pressure than motivation, you can turn them off in Settings — your streaks keep counting either way.",
+    body: "Flames and streak counts show across the app. If they feel more like pressure than motivation, you can turn them off in Settings. Your streaks keep counting either way.",
     icon: Flame,
     ctaLabel: 'Streak settings',
     settingsFocusId: 'extensions.streaks',

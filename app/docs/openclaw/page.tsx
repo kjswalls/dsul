@@ -4,7 +4,7 @@ import { ArrowLeft, ExternalLink } from 'lucide-react';
 import { CopyableCommand } from '@/components/docs/copyable-command';
 
 export const metadata: Metadata = {
-  title: 'Connect OpenClaw — dsul',
+  title: 'Connect OpenClaw | dsul',
   description:
     'How to connect your own OpenClaw instance to dsul so your agent knows what is on your plate.',
 };
@@ -55,7 +55,7 @@ export default function OpenClawDocsPage() {
           </h1>
           <p className="text-sm leading-relaxed text-muted-foreground">
             If you run your own OpenClaw gateway, the dsul plugin lets your agent see
-            your tasks and habits from any channel — no copy-pasting your list into chat.
+            your tasks and habits from any channel, with no copy-pasting your list into chat.
             Five minutes, mostly waiting.
           </p>
         </header>
@@ -70,7 +70,7 @@ export default function OpenClawDocsPage() {
             <CopyableCommand command="openclaw dsul-context setup" />
             <p>
               It prints a device code and a link to this app. Nothing to copy into
-              dsul by hand — leave the terminal running and open the link.
+              dsul by hand. Leave the terminal running and open the link.
             </p>
           </Step>
 
@@ -85,8 +85,8 @@ export default function OpenClawDocsPage() {
             </p>
             <p>
               Your terminal picks it up within a few seconds and confirms how many tasks
-              and habits it can see. The code is good for 15 minutes and works once —
-              if it lapses, just run the setup command again. That happens to everyone.
+              and habits it can see. The code is good for 15 minutes and works once.
+              If it lapses, run the setup command again. That happens to everyone.
             </p>
           </Step>
 
@@ -97,14 +97,15 @@ export default function OpenClawDocsPage() {
                 https://your-gateway.ts.net
               </code>
               . With it, dsul pushes changes to the plugin the moment they happen, and
-              the chat sidebar in dsul can talk to your agent.
+              Ask in dsul can talk to your agent.
             </p>
             <p>
               Leaving it blank is a perfectly fine choice. That is pull-only mode: the
               plugin still refreshes your context on its own, there is just no push and no
-              sidebar chat. Settings will show{' '}
-              <span className="text-foreground">Connected · pull-only</span> — still
-              connected, still working. You can add{' '}
+              plugin chat in Ask (a Gateway URL in Settings → AI still gives you one).
+              Settings will show{' '}
+              <span className="text-foreground">Connected · pull-only</span>. It is
+              still connected and working. You can add{' '}
               <code className="font-mono text-xs text-foreground">publicUrl</code>{' '}
               to the <code className="font-mono text-xs text-foreground">dsul-context</code>{' '}
               config in <code className="font-mono text-xs text-foreground">openclaw.json</code>{' '}
@@ -136,7 +137,7 @@ export default function OpenClawDocsPage() {
           rel="noopener noreferrer"
           className="inline-flex items-center gap-1.5 text-sm text-primary hover:underline"
         >
-          Full plugin docs — config keys, webhooks, what gets injected
+          Full plugin docs (config keys, webhooks, what gets injected)
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
       </div>

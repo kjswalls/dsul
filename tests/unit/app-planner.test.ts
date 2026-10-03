@@ -23,7 +23,10 @@ import path from 'path';
  * container is only in the frozen `group` column, a custom type, a subtask.
  * And what the item sheet shows: notes with a line break, priorities, a
  * reminder with an anchor and one without, and the custom type's own label
- * (item_types), which the sheet words that item by.
+ * (item_types), which the sheet words that item by. The user has turned
+ * Streaks off (user_extensions), the one value of `streaksEnabled` the
+ * default can't produce, and Habit reminders on, the one value of
+ * `remindersEnabled` no default can (a missing row is false, a retry null).
  */
 
 const FIXTURE = path.resolve(__dirname, '../fixtures/app/planner-response.json');
@@ -421,13 +424,26 @@ const SETTINGS_ROW = {
   week_start_day: 'monday',
   time_format: '24h',
   app_icon: 'lime',
+  habit_reminders_enabled: true,
   openclaw_api_key: `dsul_${'ab'.repeat(32)}`,
   openclaw_webhook_url: 'https://hooks.example.com',
 };
 
+/**
+ * Answers each table from `tables`, and anything else as an error. The one
+ * quiet default is user_extensions, which every load reads: no rows, the
+ * manifest's defaults. A test that wants that read to fail names it.
+ */
 function respondWith(tables: Record<string, Result>) {
-  respond = (q) => tables[q.table] ?? { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
+  respond = (q) =>
+    tables[q.table] ??
+    (q.table === 'user_extensions'
+      ? { data: [], error: null }
+      : { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } });
 }
+
+/** The user turned Streaks off on the web (Settings → Extensions). */
+const STREAKS_OFF: Result = { data: [{ slug: 'streaks', enabled: false }], error: null };
 
 const serialize = (value: unknown) => JSON.stringify(value, null, 2) + '\n';
 
@@ -459,7 +475,7 @@ function setUp() {
   vi.stubEnv('NEXT_PUBLIC_SUPABASE_ANON_KEY', 'anon-key');
   queries = [];
   rpc = vi.fn(async () => ({ data: BUNDLE, error: null }));
-  respondWith({ user_settings: { data: SETTINGS_ROW, error: null } });
+  respondWith({ user_settings: { data: SETTINGS_ROW, error: null }, user_extensions: STREAKS_OFF });
   h.createClient.mockImplementation(() => ({
     auth: { getUser: vi.fn(async () => ({ data: { user: { id: USER } }, error: null })) },
     from,
@@ -507,10 +523,27 @@ describe('the payload fixture shared with DsulCore', () => {
       weekStartDay: 'monday',
       timeFormat: '24h',
       appIcon: 'lime',
+      streaksEnabled: false,
+      remindersEnabled: true,
     });
     // The intents the item route takes. Additive: an older server sends no
     // list, which the phone reads as ['complete', 'schedule'].
-    expect(generated.writes).toEqual(['complete', 'schedule', 'skip', 'move', 'pause', 'title', 'notes', 'delete']);
+    expect(generated.writes).toEqual([
+      'complete',
+      'schedule',
+      'skip',
+      'move',
+      'pause',
+      'title',
+      'notes',
+      'delete',
+      'addSubtask',
+      'resetStreak',
+      'priority',
+      'timesPerDay',
+      'reminder',
+      'time',
+    ]);
     // The custom type's names, and nothing else of its row.
     expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
   });
@@ -591,11 +624,18 @@ describe('GET /api/app/planner', () => {
     expect(settings).toHaveLength(1);
     expect(settings[0].calls).toContainEqual([
       'select',
-      ['timezone, show_completed_tasks, week_start_day, time_format, app_icon'],
+      ['timezone, show_completed_tasks, week_start_day, time_format, app_icon, habit_reminders_enabled'],
     ]);
     expect(settings[0].calls).toContainEqual(['eq', ['user_id', USER]]);
+    // The Streaks switch, by its two columns, as the user.
+    const extensions = queries.filter((q) => q.table === 'user_extensions');
+    expect(extensions).toHaveLength(1);
+    expect(extensions[0].calls).toEqual([
+      ['select', ['slug, enabled']],
+      ['eq', ['user_id', USER]],
+    ]);
     // Nothing else is read: no per-table burst on top of the RPC.
-    expect(queries.map((q) => q.table)).toEqual(['user_settings']);
+    expect(queries.map((q) => q.table)).toEqual(['user_settings', 'user_extensions']);
   });
 
   it('falls back to the web’s defaults when there is no settings row', async () => {
@@ -607,6 +647,10 @@ describe('GET /api/app/planner', () => {
       weekStartDay: 'sunday',
       timeFormat: '12h',
       appIcon: null,
+      // No extension rows either: the manifest's default.
+      streaksEnabled: true,
+      // The column's default, and what the reminder scan reads a missing row as.
+      remindersEnabled: false,
     });
   });
 
@@ -623,6 +667,7 @@ describe('GET /api/app/planner', () => {
 
   it('reads the settings again without app_icon on a database without migration 056', async () => {
     respond = (q) => {
+      if (q.table === 'user_extensions') return { data: [], error: null };
       if (q.table !== 'user_settings') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
       const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
       return columns.includes('app_icon')
@@ -640,10 +685,13 @@ describe('GET /api/app/planner', () => {
       weekStartDay: 'monday',
       timeFormat: '24h',
       appIcon: null,
+      streaksEnabled: true,
+      // Unread, so unknown: the phone says nothing rather than "off".
+      remindersEnabled: null,
     });
     const selects = queries.filter((q) => q.table === 'user_settings').map((q) => q.calls.find(([m]) => m === 'select')?.[1][0]);
     expect(selects).toEqual([
-      'timezone, show_completed_tasks, week_start_day, time_format, app_icon',
+      'timezone, show_completed_tasks, week_start_day, time_format, app_icon, habit_reminders_enabled',
       'timezone, show_completed_tasks, week_start_day, time_format',
     ]);
   });
@@ -655,6 +703,93 @@ describe('GET /api/app/planner', () => {
     expect((await (await get()).json()).settings.appIcon).toBe('aurora');
     respondWith({ user_settings: { data: { ...SETTINGS_ROW, app_icon: 'aurora' }, error: null } });
     expect((await (await get()).json()).settings.appIcon).toBe('aurora');
+  });
+
+  describe('streaksEnabled', () => {
+    const settings = { data: SETTINGS_ROW, error: null };
+    const streaksEnabled = async () => {
+      const res = await get();
+      expect(res.status).toBe(200);
+      return (await res.json()).settings.streaksEnabled;
+    };
+
+    it('is on with no extension rows, the manifest’s default', async () => {
+      respondWith({ user_settings: settings, user_extensions: { data: [], error: null } });
+      expect(await streaksEnabled()).toBe(true);
+    });
+
+    it('is off for a streaks row turned off, and on for one turned on', async () => {
+      respondWith({ user_settings: settings, user_extensions: STREAKS_OFF });
+      expect(await streaksEnabled()).toBe(false);
+      respondWith({
+        user_settings: settings,
+        user_extensions: {
+          data: [
+            { slug: 'streaks', enabled: true },
+            { slug: 'goals', enabled: false },
+          ],
+          error: null,
+        },
+      });
+      expect(await streaksEnabled()).toBe(true);
+    });
+
+    it('is on, the default, without the user_extensions table (migration 026)', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+      respondWith({
+        user_settings: settings,
+        user_extensions: { data: null, error: { code: '42P01', message: 'relation "user_extensions" does not exist' } },
+      });
+      expect(await streaksEnabled()).toBe(true);
+      expect(warn).toHaveBeenCalled();
+      warn.mockRestore();
+    });
+
+    it('is on, the default, when the read fails, and the payload still answers', async () => {
+      // A flame shown by mistake costs less than a planner that won't load.
+      const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+      respondWith({
+        user_settings: settings,
+        user_extensions: { data: null, error: { code: 'XX000', message: 'internal error' } },
+      });
+      const res = await get();
+      expect(res.status).toBe(200);
+      const body = await res.json();
+      expect(body.settings.streaksEnabled).toBe(true);
+      expect(body.items).toHaveLength(ITEM_ROWS.length);
+      expect(error).toHaveBeenCalled();
+      error.mockRestore();
+    });
+  });
+
+  describe('remindersEnabled', () => {
+    const remindersEnabled = async () => {
+      const res = await get();
+      expect(res.status).toBe(200);
+      return (await res.json()).settings;
+    };
+
+    it('is false for the switch off, and for a null column, as the reminder scan counts only true', async () => {
+      for (const value of [false, null]) {
+        respondWith({ user_settings: { data: { ...SETTINGS_ROW, habit_reminders_enabled: value }, error: null } });
+        expect((await remindersEnabled()).remindersEnabled, String(value)).toBe(false);
+      }
+    });
+
+    it('is null on a database without migration 032, from the one retry, with appIcon unread too', async () => {
+      respond = (q) => {
+        if (q.table === 'user_extensions') return { data: [], error: null };
+        if (q.table !== 'user_settings') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
+        const columns = String(q.calls.find(([m]) => m === 'select')?.[1][0]);
+        return columns.includes('habit_reminders_enabled')
+          ? { data: null, error: { code: '42703', message: 'column user_settings.habit_reminders_enabled does not exist' } }
+          : { data: { timezone: 'Europe/Paris', show_completed_tasks: true, week_start_day: 'sunday', time_format: '12h' }, error: null };
+      };
+      const settings = await remindersEnabled();
+      expect(settings.remindersEnabled).toBeNull();
+      expect(settings.appIcon).toBeNull();
+      expect(queries.filter((q) => q.table === 'user_settings')).toHaveLength(2);
+    });
   });
 
   it('401s a JWT PostgREST rejects, so the phone refreshes', async () => {
@@ -689,6 +824,7 @@ describe('GET /api/app/planner', () => {
   // tests after this one run on it.
   const PER_TABLE: Record<string, Result> = {
     user_settings: { data: SETTINGS_ROW, error: null },
+    user_extensions: STREAKS_OFF,
     items_windowed: { data: ITEM_ROWS, error: null },
     projects: { data: PROJECT_ROWS, error: null },
     item_types: { data: ITEM_TYPE_ROWS, error: null },

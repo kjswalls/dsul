@@ -385,19 +385,19 @@ describe('describeOperation', () => {
   it('describes a reschedule in terms of where it lands', () => {
     expect(
       describeOperation({ kind: 'update', itemId: 'task-1', startDate: '2026-08-06' }, ctx),
-    ).toBe('Email Dana — move to Thu Aug 6');
+    ).toBe('Email Dana: move to Thu Aug 6');
   });
 
   it("uses each type's own done-word", () => {
     expect(describeOperation({ kind: 'update', itemId: 'task-1', status: 'completed' }, ctx)).toBe(
-      'Email Dana — mark done',
+      'Email Dana: mark done',
     );
     expect(describeOperation({ kind: 'update', itemId: 'habit-1', status: 'done' }, ctx)).toBe(
-      'Stretch — mark done',
+      'Stretch: mark done',
     );
     // Not the done-status: named explicitly rather than mislabelled "done".
     expect(describeOperation({ kind: 'update', itemId: 'task-1', status: 'cancelled' }, ctx)).toBe(
-      'Email Dana — mark cancelled',
+      'Email Dana: mark cancelled',
     );
   });
 
@@ -408,7 +408,7 @@ describe('describeOperation', () => {
   it('leaves an unparseable date alone rather than rendering Invalid Date', () => {
     expect(
       describeOperation({ kind: 'update', itemId: 'task-1', startDate: 'someday' }, ctx),
-    ).toBe('Email Dana — move to someday');
+    ).toBe('Email Dana: move to someday');
   });
 });
 

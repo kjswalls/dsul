@@ -29,12 +29,38 @@ import { BEACON_SYSTEM_PROMPT } from '@/lib/beacon-system-prompt';
 
 const h = vi.hoisted(() => ({
   user: { id: 'user-1' } as { id: string } | null,
+  /** Every table and RPC either Supabase client was asked for, by name. */
+  dbCalls: [] as string[],
 }));
+
+/** A client that records what it is asked for and answers nothing. */
+const recordingDb = vi.hoisted(() => () => {
+  const chain: Record<string, unknown> = {};
+  for (const m of ['select', 'insert', 'update', 'upsert', 'delete', 'eq', 'is', 'order', 'limit', 'maybeSingle', 'single']) {
+    chain[m] = () => chain;
+  }
+  chain.then = (ok: (v: unknown) => unknown) => Promise.resolve({ data: null, error: null }).then(ok);
+  return {
+    from: (table: string) => {
+      h.dbCalls.push(`from:${table}`);
+      return chain;
+    },
+    rpc: (fn: string) => {
+      h.dbCalls.push(`rpc:${fn}`);
+      return Promise.resolve({ data: null, error: null });
+    },
+  };
+});
 
 vi.mock('@/lib/supabase-server', () => ({
   createClient: vi.fn(async () => ({
+    ...recordingDb(),
     auth: { getUser: vi.fn(async () => ({ data: { user: h.user }, error: h.user ? null : { message: 'no' } })) },
   })),
+}));
+
+vi.mock('@/lib/supabase-service', () => ({
+  createServiceClient: vi.fn(() => recordingDb()),
 }));
 
 vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
@@ -139,6 +165,8 @@ const ROW = {
 };
 const CREDS = { provider: 'openai' as const, apiKey: 'sk-conn', baseUrl: 'https://api.openai.com/v1' };
 const GATEWAY = { baseUrl: 'https://gw.example.ts.net', token: 'tok', agentId: null };
+/** A saved conversation's id: what the gateway path keys its session on. */
+const CONV = '2f1d7c1e-8a4b-4c1e-9f0a-3b2c1d0e9f8a';
 
 function post(body: unknown, init: { headers?: Record<string, string>; signal?: AbortSignal } = {}) {
   return POST(
@@ -172,6 +200,7 @@ const hi = { messages: [{ role: 'user', content: 'plan my day' }] };
 
 beforeEach(() => {
   h.user = { id: 'user-1' };
+  h.dbCalls = [];
   vi.mocked(openModelConnection).mockReset();
   vi.mocked(openModelConnection).mockResolvedValue({ ok: true, row: ROW, creds: CREDS, model: 'gpt-4o-mini' });
   vi.mocked(setConnectionStatus).mockClear();
@@ -400,6 +429,16 @@ describe('POST /api/chat → the connected model', () => {
     expect(warn).toHaveBeenCalledWith('[ai] db', 'read', 'failed', 'PGRST301');
   });
 
+  it('stays stateless: no chat_* table or RPC is read or written, whatever conversationId says', async () => {
+    adapter.openStream.mockImplementation(async () => deltas('Hel', 'lo'));
+    const res = await post({ ...hi, target: 'model', conversationId: CONV });
+    expect(await frames(res)).toEqual([{ content: 'Hel' }, { content: 'lo' }, '[DONE]']);
+    // It does read the model connection (stood in here); never a conversation.
+    expect(openModelConnection).toHaveBeenCalledWith('user-1');
+    expect(h.dbCalls.filter((c) => /chat_/.test(c))).toEqual([]);
+    expect(gateway.getGatewayConfig).not.toHaveBeenCalled();
+  });
+
   it('never reads a key from the environment', async () => {
     const before = process.env.OPENAI_API_KEY;
     process.env.OPENAI_API_KEY = 'sk-env-SENTINEL';
@@ -420,23 +459,19 @@ describe('POST /api/chat → the connected model', () => {
 // ── the target ───────────────────────────────────────────────────────────────
 
 describe('which answerer', () => {
-  it('derives openclaw from an older tab’s provider when no target is sent', async () => {
-    await (await post({ ...hi, provider: 'openclaw' })).text();
-    expect(gateway.streamGatewayChat).toHaveBeenCalledTimes(1);
-    expect(openModelConnection).not.toHaveBeenCalled();
-  });
-
-  it('derives model from any other provider, or none', async () => {
+  it('a body with no target is the model path, whatever its provider says', async () => {
+    // The older-tab fallback (provider:'openclaw' with no target → gateway) is gone.
+    await (await post({ ...hi, provider: 'openclaw', conversationId: CONV })).text();
     await (await post({ ...hi, provider: 'openai' })).text();
     await (await post(hi)).text();
-    expect(openModelConnection).toHaveBeenCalledTimes(2);
+    expect(openModelConnection).toHaveBeenCalledTimes(3);
     expect(gateway.streamGatewayChat).not.toHaveBeenCalled();
   });
 
   it('an explicit target wins over provider', async () => {
     await (await post({ ...hi, target: 'model', provider: 'openclaw' })).text();
     expect(openModelConnection).toHaveBeenCalledTimes(1);
-    await (await post({ ...hi, target: 'openclaw', provider: 'openai' })).text();
+    await (await post({ ...hi, target: 'openclaw', provider: 'openai', conversationId: CONV })).text();
     expect(gateway.streamGatewayChat).toHaveBeenCalledTimes(1);
   });
 });
@@ -449,6 +484,7 @@ describe('POST /api/chat → the OpenClaw gateway', () => {
     const res = await post(
       {
         target: 'openclaw',
+        conversationId: CONV,
         customInstructions: 'Call me Kirby.',
         systemPrompt: 'REPLACED',
         context: 'c'.repeat(MAX_CHAT_CONTEXT_CHARS * 2),
@@ -464,7 +500,8 @@ describe('POST /api/chat → the OpenClaw gateway', () => {
 
     const call = vi.mocked(gateway.streamGatewayChat).mock.calls[0][0];
     expect(call.config).toBe(GATEWAY);
-    expect(call.sessionKey).toBe(gateway.chatSessionKey('user-1'));
+    expect(call.sessionKey).toBe(gateway.conversationSessionKey('user-1', CONV));
+    expect(call.sessionKey).toBe(`dsul:u:user-1:chat:${CONV}`);
     const [system, ...turns] = call.messages;
     expect(system.role).toBe('system');
     expect(system.content.startsWith(BEACON_SYSTEM_PROMPT)).toBe(true);
@@ -480,16 +517,47 @@ describe('POST /api/chat → the OpenClaw gateway', () => {
     expect(call.signal?.aborted).toBe(true);
   });
 
-  it('a thread id picks the item’s own session key, built from the session user', async () => {
-    await (await post({ ...hi, target: 'openclaw', threadItemId: 'item-9' })).text();
-    expect(vi.mocked(gateway.streamGatewayChat).mock.calls[0][0].sessionKey).toBe(
-      gateway.itemSessionKey('user-1', 'item-9')
-    );
+  it('each conversation gets its own session key, built from the session user, never from the body', async () => {
+    const other = '9b8a7c6d-5e4f-4a3b-8c2d-1e0f9a8b7c6d';
+    await (await post({ ...hi, target: 'openclaw', conversationId: CONV, sessionKey: 'subagent:evil' })).text();
+    h.user = { id: 'user-2' };
+    await (await post({ ...hi, target: 'openclaw', conversationId: other, threadItemId: 'item-9' })).text();
+    const keys = vi.mocked(gateway.streamGatewayChat).mock.calls.map((c) => c[0].sessionKey);
+    expect(keys).toEqual([gateway.conversationSessionKey('user-1', CONV), gateway.conversationSessionKey('user-2', other)]);
+    expect(JSON.stringify(keys)).not.toMatch(/subagent|item-9/);
+  });
+
+  it('a gateway turn without a conversationId → 400 invalid, before the gateway config is read', async () => {
+    for (const body of [{ ...hi, target: 'openclaw' }, { ...hi, target: 'openclaw', conversationId: null }]) {
+      const res = await post(body);
+      expect(res.status).toBe(400);
+      expect(res.headers.get('cache-control')).toBe('no-store');
+      expect(await res.json()).toEqual({ error: "That request couldn't be read.", code: 'invalid' });
+    }
+    expect(gateway.getGatewayConfig).not.toHaveBeenCalled();
+    expect(gateway.streamGatewayChat).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ['not a uuid', 'item-9'],
+    ['a session key', 'dsul:u:user-2:chat'],
+    ['a uuid with a suffix', `${CONV}:x`],
+    ['empty', ''],
+    ['a number', 42],
+  ])('a conversationId that is %s → 400 invalid on either path, nothing asked', async (_label, conversationId) => {
+    for (const target of ['openclaw', 'model']) {
+      const res = await post({ ...hi, target, conversationId });
+      expect(res.status).toBe(400);
+      expect((await res.json()).code).toBe('invalid');
+    }
+    expect(gateway.getGatewayConfig).not.toHaveBeenCalled();
+    expect(gateway.streamGatewayChat).not.toHaveBeenCalled();
+    expect(openModelConnection).not.toHaveBeenCalled();
   });
 
   it('no gateway configured answers 409 not_connected', async () => {
     vi.mocked(gateway.getGatewayConfig).mockResolvedValue(null);
-    const res = await post({ ...hi, target: 'openclaw' });
+    const res = await post({ ...hi, target: 'openclaw', conversationId: CONV });
     expect(res.status).toBe(409);
     expect(await res.json()).toEqual({
       error: 'Connect your OpenClaw gateway in Settings to chat.',
@@ -499,7 +567,7 @@ describe('POST /api/chat → the OpenClaw gateway', () => {
 
   it('a failed READ of the gateway settings is 503 server, not "not configured"', async () => {
     vi.mocked(gateway.getGatewayConfig).mockRejectedValue(new gateway.GatewayConfigReadError());
-    const res = await post({ ...hi, target: 'openclaw' });
+    const res = await post({ ...hi, target: 'openclaw', conversationId: CONV });
     expect(res.status).toBe(503);
     const body = await res.json();
     expect(body).toEqual({ error: USER_MESSAGES.upstream, code: 'server' });
@@ -509,7 +577,7 @@ describe('POST /api/chat → the OpenClaw gateway', () => {
 
   it('an unreachable gateway answers 502 upstream in our words', async () => {
     vi.mocked(gateway.streamGatewayChat).mockRejectedValue(new Error('Gateway responded 500 SENTINEL'));
-    const res = await post({ ...hi, target: 'openclaw' });
+    const res = await post({ ...hi, target: 'openclaw', conversationId: CONV });
     expect(res.status).toBe(502);
     const text = await res.text();
     expect(text).not.toContain('SENTINEL');
