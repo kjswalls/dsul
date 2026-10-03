@@ -569,7 +569,7 @@ describe("the key's paint (app/globals.css)", () => {
     for (const r of all) {
       if (r === key || !['--ask-key-accent', '--ask-key-pair', '--ask-key-rim'].some((p) => values(r.body, p).length)) continue;
       for (const s of r.selectors) {
-        if (!s.endsWith('[data-ask-key]') || s.includes("[data-form='full']")) continue;
+        if (!s.endsWith('[data-ask-key]') || s.includes(":not([data-form='icon'])")) continue;
         expect(beats(key, keySel, r, s), `${s} outranks the key alone's focus`).toBe(true);
       }
     }
@@ -596,7 +596,9 @@ describe("the key's paint (app/globals.css)", () => {
 
   // The plain and masthead headers take the capsule's material away, so the
   // whole key is drawn on the page: the page's colour (Notebook's page in the
-  // masthead) and a 1px --input lip, at rest and pressed.
+  // masthead) and a 1px --input lip, at rest and pressed. The whole key is
+  // the same with its chord or without, so these name every form but the key
+  // alone.
   it('draws the whole key on the page in the plain and masthead headers, at rest and pressed', () => {
     const all = rules(stripComments(askBlock()));
     const fill = (r: Rule) => values(r.body, '--ask-key-fill').at(-1);
@@ -606,10 +608,11 @@ describe("the key's paint (app/globals.css)", () => {
       return r!;
     };
     const DRAWN = ":is([data-layout-header='plain'], [data-layout-header='masthead'])";
-    const plainRest = `${DRAWN} [data-ask-opener][data-form='full'] [data-ask-key]`;
-    const mastRest = "[data-layout-header='masthead'] [data-ask-opener][data-form='full'] [data-ask-key]";
-    const plainPressed = `${DRAWN} [data-ask-opener][data-form='full']:active [data-ask-key]`;
-    const mastPressed = "[data-layout-header='masthead'] [data-ask-opener][data-form='full']:active [data-ask-key]";
+    const WHOLE = ":not([data-form='icon'])";
+    const plainRest = `${DRAWN} [data-ask-opener]${WHOLE} [data-ask-key]`;
+    const mastRest = `[data-layout-header='masthead'] [data-ask-opener]${WHOLE} [data-ask-key]`;
+    const plainPressed = `${DRAWN} [data-ask-opener]${WHOLE}:active [data-ask-key]`;
+    const mastPressed = `[data-layout-header='masthead'] [data-ask-opener]${WHOLE}:active [data-ask-key]`;
     expect(fill(find(plainRest))).toBe('var(--canvas)');
     expect(values(find(plainRest).body, 'box-shadow').at(-1)).toBe('inset 0 -1px 0 0 var(--input)');
     expect(fill(find(mastRest))).toBe('var(--nb-page, var(--canvas))');
@@ -622,6 +625,20 @@ describe("the key's paint (app/globals.css)", () => {
     expect(beats(find(mastRest), mastRest, find(plainRest), plainRest)).toBe(true);
     expect(beats(find(plainPressed), plainPressed, raisedPressed, '[data-ask-opener]:active [data-ask-key]')).toBe(true);
     expect(beats(find(mastPressed), mastPressed, find(plainPressed), plainPressed)).toBe(true);
+  });
+
+  // The key without its chord ('key') is the whole key's paint less the
+  // chord, which is its own element: a rule scoped to 'full' would leave it
+  // half dressed (the raised key's fill on Notebook's page, no lip).
+  it('paints the key without its chord as the whole key: no rule names the full form alone', () => {
+    const all = rules(stripComments(askBlock()));
+    const selectors = all.flatMap((r) => r.selectors);
+    for (const s of selectors) expect(s, s).not.toMatch(/\[data-form='(?:full|key)'\]/);
+    // Every form rule is the key alone's, or the whole key's in every form.
+    const forms = selectors.filter((s) => s.includes('data-form'));
+    expect(forms.length).toBeGreaterThan(0);
+    for (const s of forms) expect(s, s).toMatch(/\[data-form='icon'\]/);
+    expect(forms.filter((s) => s.includes(":not([data-form='icon'])")).length).toBeGreaterThanOrEqual(6);
   });
 
   // In light the ring carries a 1px --success-text line inside it, so the pair

@@ -881,12 +881,13 @@ conversation is saved to the account.
   "Capsule Twin" with the Aurora Key's rim light, carrying mark A, "Aurora step"): a raised
   key reading "Ask" with the chord printed beside it, whose rim is lit in the accent from the
   mark's lit tile and steps through the look's aurora partner (CSS in app/globals.css,
-  "Ask's key"; the measured fit shows the key alone when the chord does not fit, and nothing
-  when the key does not either; there is no chord-less "Ask" step between, which the design
-  study had, so Week x Schedule at 1280px in Classic shows the key alone: whether to add it is
-  open). The mark is one component, `components/ai/ask-mark.tsx`, drawn in the key and before
-  "Ask" on Ask home's header, so swapping it is a change to that one file; the other sparkles
-  that mark AI elsewhere are unchanged for now.
+  "Ask's key"; the measured fit steps down full, key, icon, none: where the chord does not
+  fit, the same key reads "Ask" on its plate without it, as the design study's narrow step
+  did (Week x Schedule at 1280px in Classic); where that does not fit either, the 32px key
+  alone; then nothing. Each step is a width read off what the button draws, and the title
+  keeps the chord in every form). The mark is one component, `components/ai/ask-mark.tsx`,
+  drawn in the key and before "Ask" on Ask home's header, so swapping it is a change to that
+  one file; the other sparkles that mark AI elsewhere are unchanged for now.
 - **The braindump narrows while the right column is docked**, for Ask and an item alike
   (every layout but Console, whose braindump is the fixed 300px pane): `renderedSidebarWidth` takes the column's 432px reserve off the braindump's ceiling so the
   canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes the narrowed width back, so the

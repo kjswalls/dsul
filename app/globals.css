@@ -1876,7 +1876,13 @@ body {
      [data-ask-opener]          the plate: the key, and the chord beside it
      [data-ask-opener]::before  the well that fades in under both
      [data-ask-key]             the raised key: the mark and "Ask"
+     [data-form='key']          the same plate and key without the chord, when
+                                the row has no room for it
      [data-form='icon']         the key alone, when the row has no room for more
+
+   The whole key is the same with its chord or without, so a rule for it alone
+   reads :not([data-form='icon']), never [data-form='full'], which the key
+   form would miss (the chord is its own element, and needs no form).
 
    THE MARK IS THE LIGHT SOURCE. The key's 1px rim is a transparent border
    painted by a radial gradient centred on the mark's lit part, under a
@@ -2179,17 +2185,17 @@ body {
 :root:not(.dark) :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener] {
   --ask-key-rim: var(--input);
 }
-.dark :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] {
+.dark :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']) {
   --ask-key-rim: color-mix(in oklab, var(--canvas), var(--foreground) 9%);
 }
-.dark [data-layout-header='masthead'] [data-ask-opener][data-form='full'] {
+.dark [data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']) {
   --ask-key-rim: color-mix(in oklab, var(--nb-page, var(--canvas)), var(--foreground) 9%);
 }
-:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] [data-ask-key] {
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']) [data-ask-key] {
   --ask-key-fill: var(--canvas);
   box-shadow: inset 0 -1px 0 0 var(--input);
 }
-[data-layout-header='masthead'] [data-ask-opener][data-form='full'] [data-ask-key] {
+[data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']) [data-ask-key] {
   --ask-key-fill: var(--nb-page, var(--canvas));
 }
 @media (hover: hover) {
@@ -2208,11 +2214,11 @@ body {
 :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:focus-visible::before {
   box-shadow: inset 0 0 0 1px var(--ask-focus-line);
 }
-:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full']:active [data-ask-key] {
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:not([data-form='icon']):active [data-ask-key] {
   --ask-key-fill: var(--canvas);
   box-shadow: inset 0 0 0 0 var(--input);
 }
-[data-layout-header='masthead'] [data-ask-opener][data-form='full']:active [data-ask-key] {
+[data-layout-header='masthead'] [data-ask-opener]:not([data-form='icon']):active [data-ask-key] {
   --ask-key-fill: var(--nb-page, var(--canvas));
 }
 

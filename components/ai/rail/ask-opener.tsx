@@ -13,8 +13,12 @@ import { railHeaderRowOffset } from '@/lib/layout-themes';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
-/** How much of the button the header row has room for: all of it, the key alone, or none. */
-type Fit = 'full' | 'icon' | 'none';
+/**
+ * How much of the button the header row has room for, widest first: the key
+ * and its chord on the plate ('full'), the key on the plate without the chord
+ * ('key'), the 32px key with the mark alone ('icon'), or nothing ('none').
+ */
+type Fit = 'full' | 'key' | 'icon' | 'none';
 
 /** The key alone: the capsule's square controls' size (h-8 w-8). */
 const ICON_PX = 32;
@@ -35,15 +39,32 @@ const px = (v: string) => parseFloat(v) || 0;
  * ring paint past its box), and a squeezed box with visible overflow reports a
  * scrollWidth that stops at its children's far edge and leaves the end padding
  * out, so a button 8-10px short of its width read as fitting and stayed whole,
- * the well and the ring cutting into the chord. The larger of the two, since a
- * DOM that lays nothing out (a test's) has only the scrollWidth.
+ * the well and the ring cutting into the chord. Nor the larger of the two: a
+ * scrollWidth is whole pixels, so it read the key form up to half a pixel
+ * wider than the whole button had said it was (82 against 81.64), and the
+ * ladder's two reads of one width disagreed. Only a DOM that lays nothing out
+ * (a test's) has the scrollWidth alone.
  */
 function naturalWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
+  const box = el.getBoundingClientRect();
   const last = el.lastElementChild;
-  const drawn = last
-    ? last.getBoundingClientRect().right - el.getBoundingClientRect().left + px(own.paddingRight) + px(own.borderRightWidth)
-    : 0;
-  return Math.max(el.scrollWidth, drawn);
+  if (!last || box.width === 0) return el.scrollWidth;
+  return last.getBoundingClientRect().right - box.left + px(own.paddingRight) + px(own.borderRightWidth);
+}
+
+/**
+ * The 'key' form's natural width, without its margins, read off the whole
+ * button while it is drawn: from its left edge to the key's far edge, plus
+ * the key form's end padding and the border. The key form is the whole
+ * button less the chord and the gap before it, with its well even all round
+ * (8px round the raised key, 4px round the drawn one), so its end padding is
+ * the start padding both forms share. Drawn as the key form, naturalWidth
+ * reads the same width straight, to the subpixel.
+ */
+function keyFormWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
+  const key = el.firstElementChild;
+  if (!key) return 0;
+  return key.getBoundingClientRect().right - el.getBoundingClientRect().left + px(own.paddingLeft) + px(own.borderRightWidth);
 }
 
 /**
@@ -70,11 +91,22 @@ function closingColumnPx(rail: Element | null): number {
  * date up to ~90px wider on a long date, so any width that is safe for those
  * hides the button on every ordinary day.
  *
- * `fullPx` is the button's natural width with its own margins, read whenever
- * it is drawn whole (naturalWidth, squeezed or not), so a layout's own face
- * and a rebinding's longer chord are what is measured, not a guess. A change
- * of face (`face`, the header slot) forgets it, since the other face's width
- * says nothing about this one's.
+ * The ladder is full, then key, then icon, then none, and each rung is a
+ * width with the button's own margins: `fullPx`, the key and its chord, and
+ * `keyPx`, the key without the chord, are its natural widths, read whenever it
+ * is drawn whole (naturalWidth and keyFormWidth, squeezed or not), and
+ * `keyPx` whenever it is drawn as the key form too, so a layout's own face and
+ * a rebinding's longer chord are what is measured, not a guess; the key alone
+ * is 32px. A change of face (`face`: the header slot and the chord) forgets
+ * both, since another face's or chord's widths say nothing about this one's:
+ * the ladder then reads 0 for them, so the button is drawn whole (or not at
+ * all, with no room), read and placed before the next paint.
+ *
+ * It cannot flap at a rung. The room does not depend on the form chosen (the
+ * siblings keep their widths whatever the slot does), room exactly at a rung
+ * takes that rung, and a width is read only while its own form or a wider one
+ * is drawn: a step down never re-reads the width that took it there, and the
+ * narrower forms are not read at all.
  *
  * Closing Ask (or an item) hands the button back while the docked column is
  * still easing shut, so for 300ms the row is narrower than it is about to be.
@@ -82,9 +114,10 @@ function closingColumnPx(rail: Element | null): number {
  * and then whole, its rim light replaying as it switched (Classic at 1440 and
  * 1366). So while the column eases shut a form the row is about to have room
  * for (closingColumnPx: the width the column still takes) is waited for,
- * unseen, rather than a smaller one standing in; one it will not have room for
- * even then gives way at once, as ever. The column is watched too, so each
- * frame of its ease is read. The wait is capped (ASK_OPENER_CLOSE_WAIT_MS):
+ * unseen, rather than a smaller one standing in (the key without its chord
+ * no more than the key alone); one it will not have room for even then gives
+ * way at once, as ever. The column is watched too, so each frame of its ease
+ * is read. The wait is capped (ASK_OPENER_CLOSE_WAIT_MS):
  * the guess can be generous (a braindump the column had narrowed takes some
  * of the room back as it goes), and the focus hand-back waits for the button
  * to be drawn (rail-store `restoreFocus`), so it must not be kept hidden for
@@ -93,6 +126,7 @@ function closingColumnPx(rail: Element | null): number {
 function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean, face: string): Fit {
   const [fit, setFit] = useState<Fit>('full');
   const fullPx = useRef(0);
+  const keyPx = useRef(0);
   const measuredFace = useRef(face);
   /** When the button began waiting for a closing column's room, if it is. */
   const waitingSince = useRef<number | null>(null);
@@ -108,6 +142,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
     if (measuredFace.current !== face) {
       measuredFace.current = face;
       fullPx.current = 0;
+      keyPx.current = 0;
     }
     const rail = document.querySelector('[data-rail]');
     let timer: ReturnType<typeof setTimeout> | undefined;
@@ -123,13 +158,18 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
         if (w > 0) others += w + gap;
       }
       // Its margins (the drawn key's inset off the row's end) are the same in
-      // both forms, so they are read off whichever is drawn, and the key
-      // alone needs them too.
+      // every form, so they are read off whichever is drawn, and every rung
+      // needs them.
       const own = getComputedStyle(el);
       const margins = px(own.marginLeft) + px(own.marginRight);
-      if (slot.dataset.fit === 'full') fullPx.current = naturalWidth(el, own) + margins;
+      const drawn = slot.dataset.fit;
+      if (drawn === 'full') {
+        fullPx.current = naturalWidth(el, own) + margins;
+        keyPx.current = keyFormWidth(el, own) + margins;
+      } else if (drawn === 'key') keyPx.current = naturalWidth(el, own) + margins;
       const room = content - others;
-      const fitIn = (r: number): Fit => (r >= fullPx.current ? 'full' : r >= ICON_PX + margins ? 'icon' : 'none');
+      const fitIn = (r: number): Fit =>
+        r >= fullPx.current ? 'full' : r >= keyPx.current ? 'key' : r >= ICON_PX + margins ? 'icon' : 'none';
       const now = fitIn(room);
       let next = now;
       if (fitIn(room + closingColumnPx(rail)) === now) waitingSince.current = null;
@@ -169,7 +209,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       sizes.disconnect();
       siblings.disconnect();
     };
-    // `fit` re-runs it after a change, so a button drawn whole again is re-read.
+    // `fit` re-runs it after a change, so a form drawn anew is re-read.
   }, [ref, active, fit, face]);
   return fit;
 }
@@ -210,10 +250,11 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  * so when Ask opens its header row is where the key was). In day scope it
  * takes the row's far end (`ml-auto`, passed in); in the week views WeekScale
  * does, and this sits just past it. It gives way to everything else on the
- * row (useHeaderFit): the key alone when key and chord do not fit, nothing
- * when that does not either, so it never overlaps the capsule, a notice or
- * WeekScale, never wraps onto a line of its own and never grows the row the
- * grid's height is measured under.
+ * row (useHeaderFit): the key without its chord when key and chord do not
+ * fit, the key alone when that does not either, nothing when not even the key
+ * does, so it never overlaps the capsule, a notice or WeekScale, never wraps
+ * onto a line of its own and never grows the row the grid's height is
+ * measured under.
  *
  * Out of room it hides rather than docking in the capsule's date row (the
  * design study's docked twin): that row has no room to spare in every
@@ -231,21 +272,21 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
  *    through the look's aurora partner to the hairline; engaged, the light
  *    travels round the whole rim. The plain and masthead headers, which have
  *    no capsule material, draw the key on the page instead.
+ *  - 'key': the same plate, key and light with the chord gone, the well
+ *    even all round the key (8px; 4px drawn on the page), the design study's
+ *    narrow step: "Ask" stays where the chord does not fit (1280px Week x
+ *    Schedule in Classic, its capsule 392px against Week x Buckets' 384px,
+ *    which still fits whole). The chord stays in the title.
  *  - 'icon': the 32px key alone, the same light caught on its left arc. Its
  *    focus ring sits on the key, whose rim takes the focus colour. Drawn on
  *    the page it keeps the whole key's 14px inset off the row's end.
- *    There is no step between the two: where the chord does not fit, "Ask"
- *    goes with it. The design study kept "Ask" there and dropped only the
- *    chord (an ~82px key), so at 1280px Week x Schedule in Classic (its
- *    capsule 392px, against Week x Buckets' 384px, which still fits whole)
- *    shows the key alone where the study showed "Ask". Whether to add that
- *    step (room for the whole key less the chord and its gap) is open.
  *
  * `titlebar-hole`: in Writer the row starts at the window's top, inside the
  * desktop app's 43px drag band, which would swallow its clicks.
  *
  * The chord is the live binding through chordLabel (Ctrl+J; ⌘J on a Mac),
- * on the plate and in the title; never typed by hand.
+ * on the plate and in the title, which keeps it in every form (the key
+ * without it and the key alone still say it on hover); never typed by hand.
  */
 export function AskOpener({ className }: { className?: string }) {
   const { canChat } = useAICapabilities();
@@ -257,11 +298,14 @@ export function AskOpener({ className }: { className?: string }) {
   const { slots } = useLayoutDef();
   const ref = useRef<HTMLButtonElement>(null);
   const hidden = columnShown || zen;
-  const fit = useHeaderFit(ref, canChat && !isMobile && !hidden, slots.header);
+  const chord = chordLabel(keys, isMac);
+  // A rebinding is a change of face too: the chord's width is read afresh.
+  const fit = useHeaderFit(ref, canChat && !isMobile && !hidden, `${slots.header} ${chord}`);
 
   if (!canChat || isMobile) return null;
-  const chord = chordLabel(keys, isMac);
   const full = fit === 'full';
+  // The key on its plate, with its chord or without; else the key alone.
+  const plate = full || fit === 'key';
   // The capsule's header raises the key off its plate; the plain and
   // masthead headers, which take the capsule's material away, draw it on the
   // page (globals.css keys that paint on [data-layout-header]).
@@ -269,7 +313,7 @@ export function AskOpener({ className }: { className?: string }) {
   // The key's top is the rail header row's (railHeaderRowOffset). The whole
   // plate stands proud of it by its own padding: 8px round the raised key,
   // 4px round the drawn one.
-  const offset = !full ? railHeaderRowOffset(slots) : raised ? 'mt-0' : '-mt-1';
+  const offset = !plate ? railHeaderRowOffset(slots) : raised ? 'mt-0' : '-mt-1';
   // Where the rim's light comes from: the mark's lit part, from its slot's centre.
   const light = {
     '--ask-light-x': `${ASK_MARK_LIGHT.x}px`,
@@ -288,7 +332,7 @@ export function AskOpener({ className }: { className?: string }) {
         ref={ref}
         type="button"
         data-ask-opener=""
-        data-form={full ? 'full' : 'icon'}
+        data-form={plate ? fit : 'icon'}
         onClick={(e) => {
           if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
           if (e.detail > 0) holdRailHeader(e.currentTarget);
@@ -299,8 +343,14 @@ export function AskOpener({ className }: { className?: string }) {
         style={light}
         className={cn(
           'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
-          !full ? 'size-8 rounded-[10px]' : raised ? 'h-12 rounded-[10px] py-2 pr-2.5 pl-2' : 'h-10 rounded-[12px] py-1 pr-2 pl-1',
-          // The drawn key keeps its inset off the row's end in both forms
+          // Without the chord the well is even all round the key: its end
+          // padding is the start padding (keyFormWidth counts on it).
+          !plate
+            ? 'size-8 rounded-[10px]'
+            : raised
+              ? cn('h-12 rounded-[10px] py-2 pl-2', full ? 'pr-2.5' : 'pr-2')
+              : cn('h-10 rounded-[12px] py-1 pl-1', full ? 'pr-2' : 'pr-1'),
+          // The drawn key keeps its inset off the row's end in every form
           // (Notebook's ribbon sits just past it), and the fit counts it.
           !raised && 'mr-3.5'
         )}
@@ -309,12 +359,12 @@ export function AskOpener({ className }: { className?: string }) {
           data-ask-key=""
           className={cn(
             'inline-flex h-8 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
-            full ? 'pr-[11px] pl-[9px]' : 'w-8 justify-center',
-            full && !raised ? 'rounded-[8px]' : 'rounded-[10px]'
+            plate ? 'pr-[11px] pl-[9px]' : 'w-8 justify-center',
+            plate && !raised ? 'rounded-[8px]' : 'rounded-[10px]'
           )}
         >
           <AskMark />
-          {full && <span>Ask</span>}
+          {plate && <span>Ask</span>}
         </span>
         {full && (
           <span data-ask-opener-chord="" aria-hidden className="text-[11px] font-normal tracking-[0.01em] tabular-nums">

@@ -13,7 +13,8 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
  *    pointer for a moment; a key's does not.
  *  - Its chord and title name the live binding through chordLabel.
  *  - It gives way to the rest of the header row: the key and its chord, the
- *    key alone, or nothing, by the room the row leaves it.
+ *    key without the chord, the key alone, or nothing, by the room the row
+ *    leaves it, against the widths it read off what it drew.
  *  - It is a raised key carrying the AI's mark (components/ai/ask-mark.tsx),
  *    whose rim is lit from the mark's lit part; its paint is app/globals.css
  *    ("Ask's key"), held by ask-key.test.tsx.
@@ -396,11 +397,44 @@ describe('the chord', () => {
 });
 
 describe('room on the header row', () => {
+  /** The key form's width: the key's far edge, 72px in, and an even 8px well past it. */
+  const KEY_FORM = 80;
+  /** The whole button's width for a chord: 70px and 6px a character (106 with Ctrl+J). */
+  const wholeFor = (chord: string) => 70 + 6 * chord.length;
+
+  let RealRO: typeof ResizeObserver;
+  let observers: (() => void)[] = [];
+  let observed: Element[] = [];
+  beforeEach(() => {
+    RealRO = globalThis.ResizeObserver;
+    observers = [];
+    observed = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe(el: Element) {
+        observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+  });
+  afterEach(() => {
+    globalThis.ResizeObserver = RealRO;
+  });
+
+  /** The row reports a change of size. */
+  const resized = () => act(() => observers.forEach((fire) => fire()));
+
   /**
    * The row as laid out: `content` px inside its 32px gutters, a 12px gap,
-   * the capsule at `capsule` px, and the button's own words at 106px.
+   * the capsule at `capsule` px, and the button drawing what it holds: whole,
+   * wholeFor(chord); the key form, KEY_FORM, with the key's far edge 72px in
+   * past its 8px start padding (so the whole button says the same of it),
+   * unless the key form is to draw some other width (`keyForm`).
    */
-  function layOut(content: number, capsule: number) {
+  function layOut(content: number, capsule: number, keyForm = KEY_FORM) {
     const row = screen.getByTestId('row');
     const cap = screen.getByTestId('capsule');
     row.style.paddingLeft = '32px';
@@ -408,133 +442,266 @@ describe('room on the header row', () => {
     row.style.columnGap = '12px';
     Object.defineProperty(row, 'clientWidth', { configurable: true, get: () => content + 64 });
     cap.getBoundingClientRect = () => ({ width: capsule }) as DOMRect;
-    Object.defineProperty(opener() as HTMLElement, 'scrollWidth', { configurable: true, get: () => 106 });
+    const button = opener() as HTMLElement;
+    button.style.paddingLeft = '8px';
+    Object.defineProperty(button, 'scrollWidth', {
+      configurable: true,
+      get: () => {
+        const chord = button.querySelector('[data-ask-opener-chord]');
+        if (chord) return wholeFor(chord.textContent ?? '');
+        return key()?.textContent === 'Ask' ? keyForm : 32;
+      },
+    });
+    (key() as HTMLElement).getBoundingClientRect = () => ({ left: 8, right: 72, width: 64 }) as DOMRect;
   }
 
-  /** The row reports a change of size. */
-  function resized(observers: (() => void)[]) {
-    act(() => observers.forEach((fire) => fire()));
-  }
+  /** Lay the row out to leave the button `room` px beside a 374px capsule, and read the form. */
+  const at = (room: number, keyForm = KEY_FORM) => {
+    layOut(374 + 12 + room, 374, keyForm);
+    resized();
+    return pill()?.dataset.fit;
+  };
 
-  it('is whole while key and chord fit, the key alone when only that does, and gone when not even that', () => {
-    const RealRO = globalThis.ResizeObserver;
-    const observers: (() => void)[] = [];
-    globalThis.ResizeObserver = class {
-      constructor(cb: ResizeObserverCallback) {
-        observers.push(() => cb([], this as unknown as ResizeObserver));
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
+  it('is whole while key and chord fit, the key while only it fits, the key alone when only that does, and gone when not even that', () => {
+    renderRow();
+    // 374 + 12 + 106 = 492: whole.
+    layOut(500, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'full');
+    expect(opener()).toHaveAttribute('data-form', 'full');
+    expect(opener()).toHaveTextContent('Ask');
+    expect(opener()?.querySelector('[data-ask-opener-chord]')).not.toBeNull();
+
+    // 374 + 12 + 80 = 466 fits, 492 does not: the key and "Ask", no chord.
+    layOut(470, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'key');
+    expect(opener()).toHaveAttribute('data-form', 'key');
+    expect(opener()).toHaveTextContent(/^Ask$/);
+    expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
+
+    // 374 + 12 + 32 = 418 fits, 466 does not: the 32px key alone, still named.
+    layOut(450, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'icon');
+    expect(opener()).toHaveAttribute('data-form', 'icon');
+    expect(opener()).not.toHaveTextContent('Ask');
+    expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
+    expect(opener()).toHaveClass('size-8', 'titlebar-hole');
+    expect(key()).toHaveClass('w-8', 'h-8');
+    // The mark carries it, still decorative: the name and title do the naming.
+    expect(mark()).toHaveAttribute('aria-hidden', 'true');
+    expect(screen.getByRole('button', { name: 'Open Ask' })).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
+    // Its key is on the rail header's own line (Classic's capsule: mt-2), with no plate around it.
+    expect(pill()).toHaveClass('mt-2');
+
+    // Not even the key: nothing, rather than over the capsule or a line of its own.
+    layOut(400, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'none');
+    expect(pill()).toHaveAttribute('hidden');
+
+    // Room again: whole again, at the width it was read at.
+    layOut(600, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'full');
+    expect(pill()).not.toHaveAttribute('hidden');
+  });
+
+  // The ladder's rungs are the two widths it read and the 32px key, each with
+  // the button's own margins (the drawn key's 14px inset): room exactly at a
+  // rung takes it, a pixel short takes the next one down, both ways.
+  it('steps full, key, icon, none at its rungs, its own margins counted in each, and back up the same way', () => {
+    renderRow();
+    for (const margin of [0, 14]) {
+      (opener() as HTMLElement).style.marginRight = `${margin}px`;
+      const fullRung = wholeFor('Ctrl+J') + margin;
+      const keyRung = KEY_FORM + margin;
+      const iconRung = 32 + margin;
+      expect(at(fullRung), `${margin}px`).toBe('full');
+      expect(at(fullRung - 1), `${margin}px`).toBe('key');
+      expect(at(keyRung), `${margin}px`).toBe('key');
+      expect(at(keyRung - 1), `${margin}px`).toBe('icon');
+      expect(at(iconRung), `${margin}px`).toBe('icon');
+      expect(at(iconRung - 1), `${margin}px`).toBe('none');
+      expect(at(iconRung), `${margin}px`).toBe('icon');
+      expect(at(keyRung - 1), `${margin}px`).toBe('icon');
+      expect(at(keyRung), `${margin}px`).toBe('key');
+      expect(at(fullRung - 1), `${margin}px`).toBe('key');
+      expect(at(fullRung), `${margin}px`).toBe('full');
+    }
+    // With the inset, 106px of room is the key without its chord: 14px short.
+    expect(at(106)).toBe('key');
+  });
+
+  it('keeps the chord in the title and the name in the key form: the same raised key on the same plate, the well even round it', () => {
+    renderRow();
+    expect(at(90)).toBe('key');
+    const button = screen.getByRole('button', { name: 'Open Ask' });
+    expect(button).toBe(opener());
+    expect(button).toHaveAttribute('data-form', 'key');
+    expect(button).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
+    expect(button).toHaveAccessibleName('Open Ask');
+    expect(button).toHaveClass('titlebar-hole');
+    // The key holds the mark and "Ask", as whole; only the chord has gone.
+    expect(button).toHaveTextContent(/^Ask$/);
+    expect(button.querySelector('[data-ask-opener-chord]')).toBeNull();
+    expect(key()).toHaveTextContent(/^Ask$/);
+    expect(key()).toContainElement(mark() as unknown as HTMLElement);
+    expect(mark()).toHaveAttribute('aria-hidden', 'true');
+    expect(key()).toHaveClass('h-8', 'pr-[11px]', 'pl-[9px]', 'rounded-[10px]');
+    expect(key()).not.toHaveClass('w-8');
+    // The capsule's plate: 48px, 8px round the key on every side, the key on the date's line.
+    expect(button).toHaveClass('h-12', 'rounded-[10px]', 'py-2', 'pl-2', 'pr-2');
+    expect(button).not.toHaveClass('size-8', 'pr-2.5');
+    expect(pill()).toHaveClass('mt-0');
+    // Drawn on the page: the 40px plate, 4px round the key, and the 14px inset.
+    for (const layout of ['notebook', 'notepad', 'writer'] as const) {
+      act(() => useLookStore.setState({ layout }));
+      expect(opener(), layout).toHaveAttribute('data-form', 'key');
+      expect(opener(), layout).toHaveClass('h-10', 'rounded-[12px]', 'py-1', 'pl-1', 'pr-1', 'mr-3.5');
+      expect(opener(), layout).not.toHaveClass('pr-2');
+      expect(key(), layout).toHaveClass('rounded-[8px]');
+      expect(pill(), layout).toHaveClass('-mt-1');
+      expect(opener(), layout).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
+    }
+  });
+
+  it("titles the key form with the Mac chord on a Mac, and fits the Mac chord's own width", () => {
+    platform.mac = true;
+    renderRow();
+    // ⌘J is narrower than Ctrl+J: 82px whole.
+    expect(at(82)).toBe('full');
+    expect(at(81)).toBe('key');
+    expect(opener()).toHaveAttribute('title', 'Open Ask (⌘J)');
+    expect(opener()).toHaveAccessibleName('Open Ask');
+  });
+
+  // The chord is read off the plate, so a longer binding needs more room to
+  // stay whole, and the key without it is what shows in between.
+  it("moves the full/key rung with a rebinding's longer chord, and back", () => {
+    renderRow();
+    expect(at(110)).toBe('full');
+    act(() => useKeyboardShortcutsStore.setState({ overrides: { toggle_right_sidebar: ['meta', 'shift', 'k'] } }));
+    const long = chordLabel(['meta', 'shift', 'k'], false);
+    expect(long).toBe('Ctrl+Shift+K');
+    // 142px whole now: 110 holds the key, still titled with the binding as it is.
+    expect(pill()).toHaveAttribute('data-fit', 'key');
+    expect(opener()).toHaveAttribute('title', `Open Ask (${long})`);
+    expect(at(wholeFor(long) - 1)).toBe('key');
+    expect(at(wholeFor(long))).toBe('full');
+    expect(opener()?.querySelector('[data-ask-opener-chord]')).toHaveTextContent(long);
+    // The key form's rung has not moved: the chord is not in it.
+    expect(at(KEY_FORM)).toBe('key');
+    expect(at(KEY_FORM - 1)).toBe('icon');
+    // Back to the short chord while the key form shows: read afresh, and whole.
+    expect(at(110)).toBe('key');
+    act(() => useKeyboardShortcutsStore.setState({ overrides: {} }));
+    expect(pill()).toHaveAttribute('data-fit', 'full');
+    expect(opener()).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
+  });
+
+  // Room exactly at a rung takes it, and nothing it then draws re-reads the
+  // width that put it there: no frame of the next form up or down.
+  it('holds its form with the room exactly at a rung, however often the row is re-read, and steps one rung at a time', () => {
+    renderRow();
+    // Every form the slot is given, in order, whether or not a frame would show it.
+    const changes: string[] = [];
+    const slot = pill() as HTMLElement;
+    const setAttribute = slot.setAttribute;
+    slot.setAttribute = function (name: string, value: string) {
+      if (name === 'data-fit') changes.push(value);
+      setAttribute.call(this, name, value);
+    };
+    const settled = () => changes.splice(0);
     try {
-      renderRow();
-      // 374 + 12 + 106 = 492: whole.
-      layOut(500, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'full');
-      expect(opener()).toHaveAttribute('data-form', 'full');
-      expect(opener()).toHaveTextContent('Ask');
-      expect(opener()?.querySelector('[data-ask-opener-chord]')).not.toBeNull();
+      for (const [room, form] of [
+        [106, 'full'],
+        [80, 'key'],
+        [32, 'icon'],
+      ] as const) {
+        expect(at(room)).toBe(form);
+        settled();
+        for (let i = 0; i < 5; i++) resized();
+        expect(settled(), `${form} at ${room}px`).toEqual([]);
+        expect(pill()).toHaveAttribute('data-fit', form);
+      }
+      // A pixel at a time, down then up: each change is one rung, never a frame of another.
+      at(107);
+      settled();
+      expect([at(106), at(105)]).toEqual(['full', 'key']);
+      expect(settled()).toEqual(['key']);
+      expect([at(80), at(79)]).toEqual(['key', 'icon']);
+      expect(settled()).toEqual(['icon']);
+      expect([at(32), at(31)]).toEqual(['icon', 'none']);
+      expect(settled()).toEqual(['none']);
+      expect([at(32), at(80), at(106)]).toEqual(['icon', 'key', 'full']);
+      expect(settled()).toEqual(['icon', 'key', 'full']);
+      // Straight from whole to a room the key form does not fit: the key
+      // alone at once, the key form's width read off the whole button, with
+      // no pass through the key form; and to one it fits, the key form.
+      expect(at(79)).toBe('icon');
+      expect(settled()).toEqual(['icon']);
+      expect(at(106)).toBe('full');
+      expect(at(80)).toBe('key');
+      expect(settled()).toEqual(['full', 'key']);
+      at(106);
+      settled();
 
-      // 374 + 12 + 32 = 418 fits, 492 does not: the 32px key alone, still named.
-      layOut(450, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'icon');
-      expect(opener()).toHaveAttribute('data-form', 'icon');
-      expect(opener()).not.toHaveTextContent('Ask');
-      expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
-      expect(opener()).toHaveClass('size-8', 'titlebar-hole');
-      expect(key()).toHaveClass('w-8', 'h-8');
-      // The mark carries it, still decorative: the name and title do the naming.
-      expect(mark()).toHaveAttribute('aria-hidden', 'true');
-      expect(screen.getByRole('button', { name: 'Open Ask' })).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
-      // Its key is on the rail header's own line (Classic's capsule: mt-2), with no plate around it.
-      expect(pill()).toHaveClass('mt-2');
-
-      // Not even the key: nothing, rather than over the capsule or a line of its own.
-      layOut(400, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'none');
-      expect(pill()).toHaveAttribute('hidden');
-
-      // Room again: whole again, at the width it was read at.
-      layOut(600, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'full');
-      expect(pill()).not.toHaveAttribute('hidden');
+      // Even a key form that draws a pixel wider than the whole button said
+      // settles at once on the key alone, and stays there: the width is read
+      // again only when the key form shows, never by the key alone.
+      expect(at(80, KEY_FORM + 1)).toBe('icon');
+      expect(settled()).toEqual(['key', 'icon']);
+      for (let i = 0; i < 5; i++) resized();
+      expect(settled()).toEqual([]);
+      expect(at(81, KEY_FORM + 1)).toBe('key');
+      for (let i = 0; i < 5; i++) resized();
+      expect(settled()).toEqual(['key']);
     } finally {
-      globalThis.ResizeObserver = RealRO;
+      slot.setAttribute = setAttribute;
     }
   });
 
   it("counts its own margins as room it needs (the drawn key's inset)", () => {
-    const RealRO = globalThis.ResizeObserver;
-    const observers: (() => void)[] = [];
-    globalThis.ResizeObserver = class {
-      constructor(cb: ResizeObserverCallback) {
-        observers.push(() => cb([], this as unknown as ResizeObserver));
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-    try {
-      renderRow();
-      // 374 + 12 + 106 = 492 fits a 500px row...
-      layOut(500, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'full');
-      // ...but not with 14px of its own margin beside it.
-      (opener() as HTMLElement).style.marginRight = '14px';
-      layOut(500, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'icon');
-      // The key alone needs it too: 34px holds the 32px key, not its inset.
-      layOut(420, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'none');
-      layOut(432, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'icon');
-    } finally {
-      globalThis.ResizeObserver = RealRO;
-    }
+    renderRow();
+    // 374 + 12 + 106 = 492 fits a 500px row...
+    layOut(500, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'full');
+    // ...but not with 14px of its own margin beside it: the key without its chord.
+    (opener() as HTMLElement).style.marginRight = '14px';
+    layOut(500, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'key');
+    // The key alone needs it too: 34px holds the 32px key, not its inset.
+    layOut(420, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'none');
+    layOut(432, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'icon');
   });
 
   // Drawn on the page (Notebook, Notepad, Writer), the key keeps D's 14px
   // inset off the row's end alone as well as whole: flush, Notebook's
   // bookmark ribbon sat 4px past it and its focus ring came within 2px.
   it("keeps the drawn key's inset when it is the key alone; the capsule's key has none", () => {
-    const RealRO = globalThis.ResizeObserver;
-    const observers: (() => void)[] = [];
-    globalThis.ResizeObserver = class {
-      constructor(cb: ResizeObserverCallback) {
-        observers.push(() => cb([], this as unknown as ResizeObserver));
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-    try {
-      renderRow();
-      layOut(450, 374);
-      resized(observers);
-      expect(opener()).toHaveAttribute('data-form', 'icon');
-      expect(opener()).not.toHaveClass('mr-3.5');
-      for (const layout of ['notebook', 'notepad', 'writer'] as const) {
-        act(() => useLookStore.setState({ layout }));
-        resized(observers);
-        expect(opener(), layout).toHaveAttribute('data-form', 'icon');
-        expect(opener(), layout).toHaveClass('size-8', 'mr-3.5');
-      }
-      layOut(600, 374);
-      resized(observers);
-      expect(opener()).toHaveAttribute('data-form', 'full');
-      expect(opener()).toHaveClass('mr-3.5');
-    } finally {
-      globalThis.ResizeObserver = RealRO;
+    renderRow();
+    layOut(450, 374);
+    resized();
+    expect(opener()).toHaveAttribute('data-form', 'icon');
+    expect(opener()).not.toHaveClass('mr-3.5');
+    for (const layout of ['notebook', 'notepad', 'writer'] as const) {
+      act(() => useLookStore.setState({ layout }));
+      resized();
+      expect(opener(), layout).toHaveAttribute('data-form', 'icon');
+      expect(opener(), layout).toHaveClass('size-8', 'mr-3.5');
     }
+    layOut(600, 374);
+    resized();
+    expect(opener()).toHaveAttribute('data-form', 'full');
+    expect(opener()).toHaveClass('mr-3.5');
   });
 
   // Its overflow is visible (the rim light and the ring paint past it), and a
@@ -542,67 +709,73 @@ describe('room on the header row', () => {
   // children and leaves its end padding out: read alone, a button 8-10px short
   // of its width stayed whole, the well and the ring cutting into the chord.
   it('reads its natural width off what it draws, squeezed, not off a scrollWidth short by its end padding', () => {
-    const RealRO = globalThis.ResizeObserver;
-    const observers: (() => void)[] = [];
-    globalThis.ResizeObserver = class {
-      constructor(cb: ResizeObserverCallback) {
-        observers.push(() => cb([], this as unknown as ResizeObserver));
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-    try {
-      renderRow();
-      // 374 + 12 + 106 = 492 fits a 500px row: whole.
-      layOut(500, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'full');
+    renderRow();
+    // 374 + 12 + 106 = 492 fits a 500px row: whole.
+    layOut(500, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'full');
 
-      // 7px short (a 485px row, 99px of room): the slot squeezes the button
-      // to 99px. It still draws its chord out to 96px, with 10px of end
-      // padding past that (106 whole), but its scrollWidth says 96, which
-      // would "fit" in 99.
-      layOut(485, 374);
-      const button = opener() as HTMLButtonElement;
-      button.style.paddingRight = '10px';
-      Object.defineProperty(button, 'scrollWidth', { configurable: true, get: () => 96 });
-      button.getBoundingClientRect = () => ({ left: 1000, right: 1099, width: 99 }) as DOMRect;
-      const chord = button.querySelector('[data-ask-opener-chord]') as HTMLElement;
-      expect(button.lastElementChild).toBe(chord);
-      chord.getBoundingClientRect = () => ({ left: 1050, right: 1096, width: 46 }) as DOMRect;
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'icon');
-      expect(opener()).toHaveAttribute('data-form', 'icon');
-    } finally {
-      globalThis.ResizeObserver = RealRO;
-    }
+    // 7px short (a 485px row, 99px of room): the slot squeezes the button
+    // to 99px. It still draws its chord out to 96px, with 10px of end
+    // padding past that (106 whole), but its scrollWidth says 96, which
+    // would "fit" in 99.
+    layOut(485, 374);
+    const button = opener() as HTMLButtonElement;
+    button.style.paddingRight = '10px';
+    Object.defineProperty(button, 'scrollWidth', { configurable: true, get: () => 96 });
+    button.getBoundingClientRect = () => ({ left: 1000, right: 1099, width: 99 }) as DOMRect;
+    (key() as HTMLElement).getBoundingClientRect = () => ({ left: 1008, right: 1072, width: 64 }) as DOMRect;
+    const chord = button.querySelector('[data-ask-opener-chord]') as HTMLElement;
+    expect(button.lastElementChild).toBe(chord);
+    chord.getBoundingClientRect = () => ({ left: 1050, right: 1096, width: 46 }) as DOMRect;
+    resized();
+    // Not whole: the key without its chord (80px, read off the whole button) fits.
+    expect(pill()).toHaveAttribute('data-fit', 'key');
+    expect(opener()).toHaveAttribute('data-form', 'key');
   });
 
-  it("forgets the width it read in another header's face", () => {
-    const RealRO = globalThis.ResizeObserver;
-    const observers: (() => void)[] = [];
-    globalThis.ResizeObserver = class {
-      constructor(cb: ResizeObserverCallback) {
-        observers.push(() => cb([], this as unknown as ResizeObserver));
-      }
-      observe() {}
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
-    try {
-      renderRow();
-      // 106px whole does not fit beside a 374px capsule in 450: the key alone.
-      layOut(450, 374);
-      resized(observers);
-      expect(pill()).toHaveAttribute('data-fit', 'icon');
-      // Writer's face is narrower (say 50px whole): it is read again, and fits.
-      Object.defineProperty(opener() as HTMLElement, 'scrollWidth', { configurable: true, get: () => 50 });
-      act(() => useLookStore.setState({ layout: 'writer' }));
-      expect(pill()).toHaveAttribute('data-fit', 'full');
-    } finally {
-      globalThis.ResizeObserver = RealRO;
-    }
+  // A scrollWidth is whole pixels: taken when it was the larger, it read the
+  // key form 82px where the whole button had said 81.64, so the ladder's two
+  // reads of one width disagreed by the rounding.
+  it('reads what it draws to the subpixel, laid out, not a scrollWidth rounded up', () => {
+    renderRow();
+    const button = opener() as HTMLButtonElement;
+    /**
+     * Laid out (in layout's 1/64px units, as a browser reports them): the
+     * key's far edge 73.640625px in, the chord's 96.375px; the scrollWidth
+     * rounded up.
+     */
+    const drawAt = (room: number, endPad: string, scroll: number) => {
+      layOut(374 + 12 + room, 374);
+      button.style.paddingRight = endPad;
+      Object.defineProperty(button, 'scrollWidth', { configurable: true, get: () => scroll });
+      button.getBoundingClientRect = () => ({ left: 1000, right: 1000 + room, width: room }) as DOMRect;
+      (key() as HTMLElement).getBoundingClientRect = () => ({ left: 1008, right: 1073.640625, width: 65.640625 }) as DOMRect;
+      const chord = button.querySelector('[data-ask-opener-chord]');
+      if (chord) chord.getBoundingClientRect = () => ({ left: 1050, right: 1096.375, width: 46.375 }) as DOMRect;
+      resized();
+      return pill()?.dataset.fit;
+    };
+    // 106.375px whole: that much room holds it, though the scrollWidth says 107.
+    expect(drawAt(106.375, '10px', 107)).toBe('full');
+    // 81.640625px as the key, read off the whole button and then off the key
+    // form alike (its well even, 8px), though the key form's scrollWidth says 82.
+    expect(drawAt(81.640625, '8px', 82)).toBe('key');
+    for (let i = 0; i < 3; i++) resized();
+    expect(pill()).toHaveAttribute('data-fit', 'key');
+  });
+
+  it("forgets the widths it read in another header's face", () => {
+    renderRow();
+    // 106px whole and 80px as the key do not fit beside a 374px capsule in 450: the key alone.
+    layOut(450, 374);
+    resized();
+    expect(pill()).toHaveAttribute('data-fit', 'icon');
+    // Writer's face is narrower (say 50px whole): it is read again, and fits.
+    Object.defineProperty(opener() as HTMLElement, 'scrollWidth', { configurable: true, get: () => 50 });
+    (key() as HTMLElement).getBoundingClientRect = () => ({ left: 4, right: 30, width: 26 }) as DOMRect;
+    act(() => useLookStore.setState({ layout: 'writer' }));
+    expect(pill()).toHaveAttribute('data-fit', 'full');
   });
 
   it('gives way to the row and never the other way: it shrinks first, and to nothing', () => {
@@ -615,19 +788,6 @@ describe('room on the header row', () => {
   // shut, the row narrower than it is about to be: read as it stood, the key
   // alone stood in for a few frames before the whole key came back.
   it('waits, unseen, for a form the row is about to have room for while the column eases shut', () => {
-    const RealRO = globalThis.ResizeObserver;
-    const observers: (() => void)[] = [];
-    const observed: Element[] = [];
-    globalThis.ResizeObserver = class {
-      constructor(cb: ResizeObserverCallback) {
-        observers.push(() => cb([], this as unknown as ResizeObserver));
-      }
-      observe(el: Element) {
-        observed.push(el);
-      }
-      unobserve() {}
-      disconnect() {}
-    } as unknown as typeof ResizeObserver;
     // The docked column, beside the canvas: `width` px still to go.
     const rail = document.createElement('div');
     rail.setAttribute('data-rail', '');
@@ -638,7 +798,7 @@ describe('room on the header row', () => {
     try {
       renderRow();
       layOut(500, 374);
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('data-fit', 'full');
       act(() => useSidebarStore.getState().setAskOpen(true));
       expect(pill()).toHaveAttribute('hidden');
@@ -649,30 +809,34 @@ describe('room on the header row', () => {
       width = 300;
       layOut(450, 374);
       act(() => useRailStore.getState().closeRail());
-      resized(observers);
+      resized();
       expect(observed).toContain(rail);
       expect(pill()).toHaveAttribute('data-fit', 'none');
       expect(pill()).toHaveAttribute('hidden');
-      // The row grows as the column goes, and the whole key comes back as soon as it fits.
+      // The row grows as the column goes. The key without its chord fits at
+      // 94px and does not stand in either; the whole key comes back as soon as
+      // it fits.
       width = 150;
       layOut(480, 374);
-      resized(observers);
+      resized();
+      expect(pill()).toHaveAttribute('data-fit', 'none');
       expect(pill()).toHaveAttribute('hidden');
       width = 60;
       layOut(492, 374);
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('data-fit', 'full');
       expect(pill()).not.toHaveAttribute('hidden');
 
-      // A form it will not have room for even then gives way at once.
-      width = 30;
+      // A form it will not have room for even then gives way at once: 64px
+      // now and 74px once the column has gone hold the key alone, either way.
+      width = 10;
       layOut(450, 374);
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('data-fit', 'icon');
       // And an overlay takes no width from the row: nothing to wait for.
       rail.style.position = 'absolute';
       width = 420;
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('data-fit', 'icon');
       rail.style.position = '';
       width = 0;
@@ -684,16 +848,16 @@ describe('room on the header row', () => {
       act(() => useSidebarStore.getState().setAskOpen(true));
       layOut(500, 374);
       act(() => useRailStore.getState().closeRail());
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('data-fit', 'full');
       act(() => useSidebarStore.getState().setAskOpen(true));
       width = 300;
       layOut(450, 374);
       act(() => useRailStore.getState().closeRail());
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('hidden');
       act(() => vi.advanceTimersByTime(ASK_OPENER_CLOSE_WAIT_MS - 1));
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('hidden');
       expect(ASK_OPENER_CLOSE_WAIT_MS).toBeLessThanOrEqual(200);
       act(() => vi.advanceTimersByTime(1));
@@ -702,12 +866,11 @@ describe('room on the header row', () => {
       // Each close waits afresh.
       act(() => useSidebarStore.getState().setAskOpen(true));
       act(() => useRailStore.getState().closeRail());
-      resized(observers);
+      resized();
       expect(pill()).toHaveAttribute('hidden');
     } finally {
       vi.useRealTimers();
       rail.remove();
-      globalThis.ResizeObserver = RealRO;
     }
   });
 });
