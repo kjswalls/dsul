@@ -141,7 +141,7 @@ interface SidebarState {
    * `null` is "never chosen", and reads as ASK_OPEN_DEFAULT: never read the
    * field directly, read askOpenOf. It is chrome for this browser, like the
    * width: never synced, never cleared. Whether Ask actually SHOWS is
-   * rail-store's `railMode`, which also needs something to answer, and, at or
+   * rail-store's `railMode`, which also needs something to answer, and,
    * below 1180px, an explicit summon this session.
    */
   askOpen: boolean | null

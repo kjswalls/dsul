@@ -1086,7 +1086,7 @@ describe('the column', () => {
   });
 
   it('takes the bulk bar away under an overlaid Ask, and gives it back, selection kept, when Ask parks', () => {
-    // At or below 1180px, centred on the window, the bar sat on the overlay's
+    // Below 1180px, centred on the window, the bar sat on the overlay's
     // card, over Ask's box, with live actions for rows under an inert canvas.
     setNarrow(true);
     render(

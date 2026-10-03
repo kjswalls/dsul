@@ -871,7 +871,7 @@ conversation is saved to the account.
   (`false`, Kirby's call on 2026-10-02, over the design's "rests open"). The default is
   applied when read and never stored, so flipping that one constant makes Ask start open
   instead for every browser whose user has not chosen, including ones that have already run
-  the build. At or below 1180px (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows
+  the build. Below 1180px (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows
   only when summoned in this session, and parks on click-away or Escape.
 - **The braindump narrows while the right column is docked**, for Ask and an item alike:
   `renderedSidebarWidth` takes the column's 432px reserve off the braindump's ceiling so the

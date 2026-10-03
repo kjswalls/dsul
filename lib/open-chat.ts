@@ -37,7 +37,7 @@ function showAskTab(): void {
  * Opens Ask iff something can answer (`getAICapabilities().canChat`).
  *
  * Desktop: leaves Zen, then summons the rail with its box focused: `askOpen`
- * (persisted), `summoned` (so it shows as an overlay at or below 1180px too)
+ * (persisted), `summoned` (so it shows as an overlay below 1180px too)
  * and a focus request the box consumes when it mounts. Because all three
  * outlive a client navigation, the settings buttons that call this and then go
  * to `/` land on Ask with the caret in its box. An item open on top stays on

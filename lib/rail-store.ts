@@ -27,7 +27,7 @@ import type { Item, Task } from './planner-types';
  * `railMode`, over three stores: the item slot (ui-store), whether the user
  * keeps Ask open (sidebar-store's persisted `askOpen`) and whether Ask was
  * summoned this session (`summoned`, here). With nothing to answer the column
- * is only the item host, exactly today's panel. At or below 1180px Ask is an
+ * is only the item host, exactly today's panel. Below 1180px Ask is an
  * overlay, and an overlay never comes up on its own: only an explicit summon
  * shows it there, never a persisted `askOpen` at boot.
  *
@@ -38,8 +38,16 @@ import type { Item, Task } from './planner-types';
  * Client-safe (tests/unit/ai-server-boundary.test.ts).
  */
 
-/** Below this the right column stops compressing the canvas and overlays it (DesktopShell). */
-export const PANEL_OVERLAY_QUERY = '(max-width: 1180px)';
+/**
+ * Below this the right column stops compressing the canvas and overlays it
+ * (DesktopShell). Written as exactly what the column's own classes compile
+ * to: Tailwind's `max-[1180px]:` is `not all and (min-width: 1180px)`, which
+ * excludes 1180 itself. At exactly 1180 the column docks, so every JS reader
+ * (inert <main>, the reserve, Escape's park, an overlay needing a summon)
+ * must say so too; `(max-width: 1180px)` said overlay there. Pinned to the
+ * classes by tests/unit/rail-store.test.ts.
+ */
+export const PANEL_OVERLAY_QUERY = 'not all and (min-width: 1180px)';
 
 /**
  * What the right column holds back from the canvas while it is shown and
@@ -135,7 +143,7 @@ interface RailState {
   stacks: Record<AskSurface, AskView[]>;
   /**
    * An explicit open this session (Ctrl+J, `?`, Ask AI, a settings button,
-   * catch-up, the tour). It is what lets Ask show as an overlay at or below
+   * catch-up, the tour). It is what lets Ask show as an overlay below
    * 1180px. Memory only, so a reload never brings an overlay up.
    */
   summoned: boolean;
@@ -165,7 +173,7 @@ interface RailState {
    */
   reserveInstant: boolean;
   /**
-   * The column shows as an overlay (at or below 1180px): an opaque card over
+   * The column shows as an overlay (below 1180px): an opaque card over
    * a canvas that is inert under it. Published by the column with its
    * reserve, and only by the desktop column, so it is always false on the
    * phone. The bulk bar stands down for it rather than floating over the card
@@ -651,7 +659,7 @@ export function useRailMode(overlays: boolean): RailMode {
  * Whether the column shows as an overlay over the canvas: DesktopShell's one
  * rail read (`covered`, which makes <main> inert). Constant false while the
  * column docks (`overlays` false), so a docked open or close, Ctrl+J at any
- * width above 1180px, never re-renders the shell and the planner it lays out;
+ * width from 1180px up, never re-renders the shell and the planner it lays out;
  * the column is its own memo'd component and re-renders alone.
  */
 export function useRailCovers(overlays: boolean): boolean {

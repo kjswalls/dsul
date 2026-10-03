@@ -224,7 +224,7 @@ describe('wasShowing: a conversation that is not on screen is never silently con
     expect(useSidebarStore.getState().askOpen).toBe(true);
   });
 
-  it('at or below 1180px, Ask kept open but not summoned is not showing', async () => {
+  it('below 1180px, Ask kept open but not summoned is not showing', async () => {
     rail().push('desktop', { kind: 'conversation', id: 'c-old' });
     window.matchMedia = ((query: string) =>
       ({ matches: query === PANEL_OVERLAY_QUERY, addEventListener() {}, removeEventListener() {} }) as never) as never;

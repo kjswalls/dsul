@@ -104,7 +104,7 @@ export const DesktopShell = memo(function DesktopShell() {
   // `inert` can. `covered` is whether it shows as that overlay (an item, or
   // Ask summoned while overlaid; lib/rail-store.ts railMode): one boolean,
   // and constant false while the column docks, so neither a push inside the
-  // rail nor a docked open or close (Ctrl+J above 1180px) re-renders this
+  // rail nor a docked open or close (Ctrl+J from 1180px up) re-renders this
   // shell, its braindump and its day. The column re-renders alone; the one
   // thing out here a docked column changes, Notebook's padding, is CSS
   // (`data-rail-docked`, below).
@@ -350,7 +350,7 @@ export const DesktopShell = memo(function DesktopShell() {
           ? 'gap-3 bg-surface-0 p-3'
           : spread
             ? // pr-14 holds the page tabs. Only a DOCKED rail (an item or Ask)
-              // takes that room; an overlaid one (<=1180px) takes no width, so
+              // takes that room; an overlaid one (<1180px) takes no width, so
               // the book keeps it. Keyed off the column's own
               // `data-rail-docked` rather than a store read, so opening and
               // closing the rail never re-renders this shell; and it holds

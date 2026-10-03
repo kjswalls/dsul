@@ -63,7 +63,7 @@ export function BulkActionBar() {
   // box. Centring on the window would put the full row of actions under the
   // rail at 1280.
   const reservePx = useRailStore((s) => s.reservePx);
-  // The column overlays the canvas (at or below 1180px, an item or a
+  // The column overlays the canvas (below 1180px, an item or a
   // summoned Ask): the canvas under it is inert, and centred on the window the
   // bar sat on the overlay's card, over Ask's box, with live actions for rows
   // nobody could see. It stands down instead, and the selection stays: the

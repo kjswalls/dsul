@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { act, renderHook } from '@testing-library/react';
 
 /**
@@ -303,6 +305,32 @@ describe('railMode, the one visibility rule', () => {
   });
 });
 
+describe('PANEL_OVERLAY_QUERY, the one overlay breakpoint', () => {
+  /*
+   * JS and CSS must agree on which side of the line every width falls: the
+   * column's classes decide where it lays out, and this query decides whether
+   * <main> goes inert, the braindump yields, the bulk bar stands down and
+   * Escape parks. `(max-width: 1180px)` matched AT 1180 while the column's
+   * `max-[1180px]:` did not, so at exactly 1180 the planner sat in plain view
+   * beside a docked column, inert.
+   */
+  it('excludes the breakpoint itself, as Tailwind compiles max-[1180px]:', () => {
+    expect(PANEL_OVERLAY_QUERY).toBe('not all and (min-width: 1180px)');
+  });
+
+  it("is the same breakpoint as every overlay class on the column, and the column's only one", () => {
+    const src = readFileSync(path.resolve(__dirname, '../../components/shell/desktop-shell.tsx'), 'utf8');
+    const px = PANEL_OVERLAY_QUERY.match(/\(min-width: (\d+)px\)/)?.[1];
+    expect(px).toBe('1180');
+    const variants = new Set(src.match(/\bmax-\[\d+px\]:/g) ?? []);
+    expect([...variants]).toEqual([`max-[${px}px]:`]);
+    // The overlay's positioning, card and shadow all ride on it.
+    for (const cls of ['absolute', 'z-30', 'bg-canvas', 'box-content']) {
+      expect(src).toContain(`max-[${px}px]:${cls}`);
+    }
+  });
+});
+
 describe('summon, park, closeRail', () => {
   let unseed: () => void = () => {};
   beforeEach(() => {
@@ -365,7 +393,7 @@ describe('summon, park, closeRail', () => {
     expect(rail().stacks).toEqual({ desktop: [], phone: [history] });
   });
 
-  it('at or below 1180px Ask shows only when summoned there, and a park gives the planner back', () => {
+  it('below 1180px Ask shows only when summoned there, and a park gives the planner back', () => {
     setNarrow(true);
     // Kept open, but not summoned this session: no overlay.
     expect(railModeNow()).toBe('hidden');

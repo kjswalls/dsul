@@ -477,7 +477,7 @@ describe('catch-up when chat is hidden', () => {
   });
 
   it('shares the ticks with the copy of the card Ask holds hidden at an overlay width', () => {
-    // At or below 1180 a persisted askOpen mounts Ask hidden once the gate
+    // Below 1180 a persisted askOpen mounts Ask hidden once the gate
     // opens (never an overlay at boot), and Ask home with it: a second mount
     // of the catch-up card, behind the dock's latched one.
     useSidebarStore.setState({ askOpen: true });

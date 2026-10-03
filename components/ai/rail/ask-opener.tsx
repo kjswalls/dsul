@@ -103,7 +103,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
  * WHEN it shows: something answers (the AI gate's `canChat`, asked, never
  * re-derived; unknown is no), on the desktop, outside Zen, and only while the
  * right column is not shown, i.e. Ask closed and no item open (rail-store
- * `railMode` is 'hidden'). At or below 1180px that includes an Ask kept open
+ * `railMode` is 'hidden'). Below 1180px that includes an Ask kept open
  * but not summoned this session: the column is hidden there, and this summons
  * it as the overlay Ctrl+J would. The phone has the Ask tab instead.
  *
