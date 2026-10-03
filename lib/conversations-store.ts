@@ -155,8 +155,9 @@ export interface ConversationsState {
   setStarred(id: string, starred: boolean): Promise<boolean>;
   /**
    * Optimistic delete: aborts the stream, drops queued saves and tallies,
-   * removes the thread and its summary, sets itemIndex[itemId] = null for an
-   * item conversation, then rail-store's leaveConversation. The DELETE waits
+   * removes the thread, its summary and its search result, sets
+   * itemIndex[itemId] = null for an item conversation, then rail-store's
+   * leaveConversation. The DELETE waits
    * behind any save of it still on the wire. All of it comes back on failure,
    * a turn the abort cut short saved as stopped (the view does not: it was
    * the user's to leave).
@@ -586,6 +587,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
         summaries,
         list: { ...s.list, ids: s.list.ids.filter((x) => x !== id), starredIds: s.list.starredIds.filter((x) => x !== id) },
         itemIndex: itemId ? { ...s.itemIndex, [itemId]: null } : s.itemIndex,
+        search: withoutHit(s.search, id),
       };
     });
   };
@@ -1348,6 +1350,12 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const itemId = thread?.itemId ?? summary?.itemId ?? null;
       const hadIndex = itemId !== null && Object.prototype.hasOwnProperty.call(s.itemIndex, itemId);
       const priorIndex = itemId !== null ? s.itemIndex[itemId] : undefined;
+      // Its search result too: History keeps the results it was opened from
+      // (Back does not search again), so the row, its title and its snippet
+      // would otherwise still be there when the delete lands back on them.
+      const hitAt = s.search.hits.findIndex((h) => h.id === id);
+      const hit = hitAt >= 0 ? s.search.hits[hitAt] : undefined;
+      const hitQ = s.search.q;
 
       removed.add(id);
       set((x) => {
@@ -1360,6 +1368,7 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
           summaries,
           list: { ...x.list, ids: x.list.ids.filter((v) => v !== id), starredIds: x.list.starredIds.filter((v) => v !== id) },
           itemIndex: itemId !== null ? { ...x.itemIndex, [itemId]: null } : x.itemIndex,
+          search: withoutHit(x.search, id),
         };
       });
       useRailStore.getState().leaveConversation(id);
@@ -1412,11 +1421,17 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
             : back.messages.filter((m) => m.id !== cut.replyId);
           back = { ...back, messages };
         }
+        // Its result, where it was, while the same search is still up.
+        const search =
+          hit && x.search.q === hitQ && !x.search.hits.some((h) => h.id === id)
+            ? { ...x.search, hits: [...x.search.hits.slice(0, hitAt), hit, ...x.search.hits.slice(hitAt)] }
+            : x.search;
         return {
           threads: back ? { ...x.threads, [id]: back } : x.threads,
           summaries,
           itemIndex,
           list: summary ? placeInList(x.list, summaries, summary) : x.list,
+          search,
         };
       });
       // Saves the delete stopped, then the cut-off turn: sent again, in order
@@ -1611,6 +1626,11 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
     },
   };
 });
+
+/** The search without a conversation's result: deleted here, or found deleted elsewhere. */
+function withoutHit(search: ConversationSearchState, id: string): ConversationSearchState {
+  return search.hits.some((h) => h.id === id) ? { ...search, hits: search.hits.filter((h) => h.id !== id) } : search;
+}
 
 /** A search hit as a plain summary, for opening it before History has listed it. */
 function stripHit(h: SearchHit): ConversationSummary {

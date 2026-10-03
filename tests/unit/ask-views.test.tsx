@@ -678,6 +678,85 @@ describe('History', () => {
       expect(status).toHaveTextContent(/^$/);
     });
 
+    it('forgets a result deleted from it: Back from the delete lands on results without it', async () => {
+      const SECRET = summary({ id: 'c5', title: 'Biopsy results', messageCount: 2, lastMessageAt: '2026-10-02T08:02:00.000Z' });
+      const OTHER = summary({ id: 'c6', title: 'Biopsy questions', lastMessageAt: '2026-10-02T07:00:00.000Z' });
+      const asHit = (row: ConversationSummary, snippet: string) => ({ ...row, matched: 'message' as const, snippet, itemTitle: null });
+      api.rows.set('c5', SECRET);
+      api.answer.thread = (id) =>
+        id === 'c5'
+          ? {
+              ok: true,
+              value: {
+                conversation: SECRET,
+                messages: stored({ id: 'm1', role: 'user', content: 'My biopsy came back positive, what now?' }),
+                hasEarlier: false,
+              },
+            }
+          : undefined;
+      api.answer.search = () => ({
+        ok: true,
+        value: [asHit(SECRET, 'My biopsy came back positive, what now?'), asHit(OTHER, 'What does a biopsy show?')],
+      });
+      push({ kind: 'history' });
+      renderRail();
+      await settle();
+      fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'biopsy' } });
+      await timers(300);
+      await settle();
+      expect(groups()).toEqual([{ key: 'results', label: 'Results', rows: ['Biopsy results', 'Biopsy questions'] }]);
+
+      const deleteOpen = async () => {
+        openMenu(screen.getByRole('button', { name: /conversation options/i }));
+        fireEvent.click(screen.getByTestId('conversation-delete'));
+        await timers();
+        fireEvent.click(screen.getByTestId('conversation-delete-confirm'));
+        await settle();
+        await timers();
+        await timers(300);
+        await settle();
+      };
+      fireEvent.click(screen.getAllByTestId('history-row')[0]);
+      await settle();
+      await deleteOpen();
+      expect(api.removes).toEqual(['c5']);
+      expect(stack()).toEqual([{ kind: 'history', memo: { q: 'biopsy', scrollTop: 0 } }]);
+      expect(screen.getByTestId('history-search')).toHaveValue('biopsy');
+      // Not asked again, and not shown: neither its title nor its words.
+      expect(api.api.search).toHaveBeenCalledTimes(1);
+      expect(groups()).toEqual([{ key: 'results', label: 'Results', rows: ['Biopsy questions'] }]);
+      expect(view()).not.toHaveTextContent('positive');
+      expect(screen.getByTestId('history-search-status')).toHaveTextContent(/^1 result$/);
+
+      // The last one: nothing matches, said in words.
+      api.rows.set('c6', OTHER);
+      api.answer.thread = (id) => (id === 'c6' ? { ok: true, value: { conversation: OTHER, messages: [], hasEarlier: false } } : undefined);
+      fireEvent.click(screen.getByTestId('history-row'));
+      await settle();
+      await deleteOpen();
+      expect(api.removes).toEqual(['c5', 'c6']);
+      expect(screen.queryByTestId('history-row')).toBeNull();
+      expect(screen.getByTestId('history-no-results')).toHaveTextContent('Nothing matches “biopsy”.');
+      expect(screen.getByTestId('history-search-status')).toHaveTextContent(/^Nothing matches “biopsy”\.$/);
+    });
+
+    it('shows a result as the conversation is now: renamed since the search, by its new title', async () => {
+      const TRIP = summary({ id: 'c7', title: 'Trip plans', lastMessageAt: '2026-10-02T08:02:00.000Z' });
+      api.answer.search = () => ({ ok: true, value: [{ ...TRIP, matched: 'title', snippet: null, itemTitle: null }] });
+      push({ kind: 'history' });
+      renderRail();
+      await settle();
+      fireEvent.change(screen.getByTestId('history-search'), { target: { value: 'trip' } });
+      await timers(300);
+      await settle();
+      expect(groups()).toEqual([{ key: 'results', label: 'Results', rows: ['Trip plans'] }]);
+      api.rows.set('c7', TRIP);
+      await act(async () => {
+        await useConversationsStore.getState().rename('c7', 'Lisbon trip');
+      });
+      expect(groups()).toEqual([{ key: 'results', label: 'Results', rows: ['Lisbon trip'] }]);
+    });
+
     it('clears on Escape first, and goes back on the next', async () => {
       push({ kind: 'history' });
       renderRail();

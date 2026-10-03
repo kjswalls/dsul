@@ -160,12 +160,13 @@ export function HistoryView({ surface = 'desktop' }: { surface?: AskSurface }) {
  */
 function SearchStatus({ query }: { query: string | null }) {
   const search = useConversationsStore((s) => s.search);
+  const hits = useShownHits();
   let words = '';
   if (query !== null) {
     const current = search.q === query;
     if (current && search.status === 'error') words = SEARCH_FAILED;
     else if (current && search.status === 'done') {
-      const n = search.hits.length;
+      const n = hits.length;
       words = n === 0 ? noMatches(query) : n === 1 ? '1 result' : `${n} results`;
     } else words = 'Searching…';
   }
@@ -173,6 +174,24 @@ function SearchStatus({ query }: { query: string | null }) {
     <p role="status" data-testid="history-search-status" className="sr-only">
       {words}
     </p>
+  );
+}
+
+/**
+ * The results still worth showing, each over the conversation as this browser
+ * holds it NOW. A search's answer is a snapshot: a hit for a conversation
+ * deleted since (here, or found deleted elsewhere) has no summary any more and
+ * is not shown, and one renamed or starred since shows as it is now. Every
+ * hit's summary is merged in when the answer lands (runSearch), and only a
+ * delete takes one away. The store drops a deleted one's hit itself; this is
+ * the same rule read where it is drawn.
+ */
+function useShownHits(): { hit: SearchHit; summary: ConversationSummary }[] {
+  const hits = useConversationsStore((s) => s.search.hits);
+  const summaries = useConversationsStore((s) => s.summaries);
+  return useMemo(
+    () => hits.flatMap((hit) => (summaries[hit.id] ? [{ hit, summary: summaries[hit.id] }] : [])),
+    [hits, summaries]
   );
 }
 
@@ -269,6 +288,7 @@ function HistoryGroups({ surface }: { surface: AskSurface }) {
 
 function SearchResults({ query, surface }: { query: string; surface: AskSurface }) {
   const search = useConversationsStore((s) => s.search);
+  const shown = useShownHits();
   const { now, tz, hour24 } = useHistoryClock();
   const current = search.q === query;
 
@@ -279,19 +299,19 @@ function SearchResults({ query, surface }: { query: string; surface: AskSurface 
   if (current && search.status === 'error') {
     headed = false;
     body = <p className="px-2 py-6 text-center text-sm text-muted-foreground">{SEARCH_FAILED}</p>;
-  } else if (current && search.status === 'done' && search.hits.length === 0) {
+  } else if (current && search.status === 'done' && shown.length === 0) {
     headed = false;
     body = (
       <p data-testid="history-no-results" className="px-2 py-6 text-center text-sm text-muted-foreground">
         {noMatches(query)}
       </p>
     );
-  } else if (search.hits.length > 0 && now !== null) {
+  } else if (shown.length > 0 && now !== null) {
     body = (
       <ul className="flex flex-col">
-        {search.hits.map((hit) => (
+        {shown.map(({ hit, summary }) => (
           <li key={hit.id}>
-            <HistoryRow summary={hit} hit={hit} query={query} surface={surface} now={now} tz={tz} hour24={hour24} />
+            <HistoryRow summary={summary} hit={hit} query={query} surface={surface} now={now} tz={tz} hour24={hour24} />
           </li>
         ))}
       </ul>

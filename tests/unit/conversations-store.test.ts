@@ -954,6 +954,40 @@ describe('History', () => {
     expect(syncs(id)).toEqual(['saved', 'saved', 'saved', 'saved']);
   });
 
+  it("takes a deleted conversation's search result with it, and puts it back where it was if the delete fails", async () => {
+    const id = await sendNew('biopsy results');
+    const hit = (cid: string) => ({ ...summary({ id: cid }), matched: 'message' as const, snippet: '…biopsy…', itemTitle: null });
+    api.answer.search = () => ({ ok: true, value: [hit('c0'), hit(id), hit('c2')] });
+    store().runSearch('biopsy');
+    await flush();
+    expect(store().search.hits.map((h) => h.id)).toEqual(['c0', id, 'c2']);
+
+    const answer = deferred<ReturnType<typeof fail>>();
+    api.answer.remove = () => answer.promise;
+    const removing = store().remove(id);
+    // Gone from the results at once, as from the list.
+    expect(store().search.hits.map((h) => h.id)).toEqual(['c0', 'c2']);
+    answer.resolve(fail(500, 'server'));
+    expect(await removing).toBe(false);
+    expect(store().search.hits.map((h) => h.id)).toEqual(['c0', id, 'c2']);
+
+    api.answer.remove = () => undefined;
+    expect(await store().remove(id)).toBe(true);
+    expect(store().search).toMatchObject({ q: 'biopsy', status: 'done' });
+    expect(store().search.hits.map((h) => h.id)).toEqual(['c0', 'c2']);
+  });
+
+  it("drops the search result of a conversation found deleted elsewhere", async () => {
+    useConversationsStore.setState({ summaries: { c1: summary({ id: 'c1', title: 'Trip plans' }) } });
+    api.answer.search = () => ({ ok: true, value: [{ ...summary({ id: 'c1', title: 'Trip plans' }), matched: 'title', snippet: null, itemTitle: null }] });
+    store().runSearch('trip');
+    await flush();
+    expect(store().search.hits.map((h) => h.id)).toEqual(['c1']);
+    await store().openThread('c1');
+    expect(thread('c1').load).toBe('gone');
+    expect(store().search.hits).toEqual([]);
+  });
+
   it('rename and star are optimistic, and undone on failure', async () => {
     const id = await sendNew('one');
     expect(await store().rename(id, 'Dentist plans')).toBe(true);
