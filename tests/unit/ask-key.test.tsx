@@ -9,11 +9,14 @@ import { join } from 'node:path';
  *
  *  - The mark is ONE component (components/ai/ask-mark.tsx), drawn by the Ask
  *    key and by Ask's header, decorative in both; nothing else knows what it
- *    looks like, so swapping it is a change to that file.
+ *    looks like, so swapping it is a change to that file. This file holds it
+ *    to the slot's contract only (the accent solid, the slot's tokens, motion
+ *    only when the key engages it), never to how many parts it has or which
+ *    is lit, so a swap leaves it green.
  *  - The key's paint (app/globals.css, "Ask's key") obeys CLAUDE.md's accent
  *    rule with no exception: no opacity, filter, mask or blend anywhere in it,
  *    and the accent is never mixed into anything (only the partner steps
- *    toward the hairline). The mark paints the accent solid too.
+ *    toward the hairline).
  *  - Its motion is property-scoped, short, pointer-guarded on hover, off under
  *    reduced motion, and its fill and rim join the theme swap's window rather
  *    than flipping on its first frame.
@@ -253,34 +256,136 @@ describe('the mark', () => {
     }
   });
 
-  it('paints the accent solid and moves only inside the key, briefly, and never under reduced motion', () => {
-    const { container } = render(<AskMark />);
-    const tiles = Array.from(container.querySelectorAll('rect'));
-    expect(tiles).toHaveLength(3);
-    const src = read('components/ai/ask-mark.tsx');
-    const classes = tiles.map((t) => t.getAttribute('class') ?? '');
-    for (const c of classes) {
-      // Nothing fades: no opacity, alpha modifier, filter, blend or mask.
-      expect(c).not.toMatch(/opacity|blur|drop-shadow|mix-blend|mask|brightness|saturate/);
-      expect(c).not.toMatch(/transparent|\)\]\/\d/);
-      // Motion: named properties only, short, off under reduced motion.
-      expect(c).not.toMatch(/transition-all|\btransition\b(?!-)/);
-      if (/transition-\[/.test(c)) {
-        expect(c).toMatch(/transition-\[(fill|scale)\]/);
-        expect(c).toContain('motion-reduce:transition-none');
+  /*
+   * The mark's contract, which any mark swapped into ask-mark.tsx keeps and
+   * nothing here says what the mark looks like (how many parts, which one is
+   * lit, how it moves): drawn by the slot's rules, so a swap is a change to
+   * that file alone.
+   */
+  describe("keeps the slot's contract, whatever it draws", () => {
+    /** Every element of the mark, the svg first. */
+    const parts = () => {
+      const { container } = render(<AskMark />);
+      const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
+      expect(svg).not.toBeNull();
+      return [svg, ...Array.from(svg.querySelectorAll('*'))];
+    };
+    /** What paints an element: its classes, its style, and its paint attributes. */
+    const paintOf = (el: Element) =>
+      ['class', 'style', 'fill', 'stroke', 'color', 'stop-color', 'opacity', 'fill-opacity', 'stroke-opacity', 'filter', 'mask']
+        .map((a) => el.getAttribute(a) ?? '')
+        .join(' ');
+    /** The class list as utilities, each with its variants (a colon inside [...] or (...) is the utility's own). */
+    const utilities = (el: Element) =>
+      (el.getAttribute('class') ?? '')
+        .split(/\s+/)
+        .filter(Boolean)
+        .map((raw) => {
+          const parts: string[] = [];
+          let depth = 0;
+          let cur = '';
+          for (const ch of raw) {
+            if (ch === '[' || ch === '(') depth++;
+            if (ch === ']' || ch === ')') depth--;
+            if (ch === ':' && depth === 0) {
+              parts.push(cur);
+              cur = '';
+            } else cur += ch;
+          }
+          parts.push(cur);
+          return { raw, variants: parts.slice(0, -1), utility: parts.at(-1)!.replace(/^!/, '') };
+        });
+    const SLOT = new Set(['--ask-icon-ink', '--ask-icon-lit', '--ask-icon-accent', '--ask-icon-pair', '--ask-icon-pair-ink', '--ask-icon-key']);
+
+    /** Why `el` would fade what it paints (opacity, alpha, filter, mask, blend), or null. */
+    function fades(el: Element): string | null {
+      for (const attr of ['opacity', 'fill-opacity', 'stroke-opacity', 'filter', 'mask']) {
+        if (el.hasAttribute(attr)) return `the ${attr} attribute`;
       }
-      for (const [, ms] of c.matchAll(/(?:duration|delay)-\[(\d+)ms\]/g)) expect(Number(ms)).toBeLessThanOrEqual(300);
-      // Engaged only by the key: every state is a group variant on group/ask-key.
-      for (const cls of c.split(/\s+/)) {
-        if (/(^|:)(hover|focus|focus-visible|active):/.test(cls)) expect(cls).toMatch(/^group-(hover|focus-visible|active)\/ask-key:/);
+      if (/opacity|filter|mask|mix-blend|plus-lighter/.test(el.getAttribute('style') ?? '')) return 'its style';
+      for (const { raw, utility } of utilities(el)) {
+        if (/^-?(?:opacity|fill-opacity|stroke-opacity|blur|drop-shadow|brightness|contrast|saturate|grayscale|invert|sepia|hue-rotate|filter|backdrop|mix-blend|bg-blend|mask)(?:-|$)/.test(utility)) return raw;
+        if (/^\[(?:opacity|fill-opacity|stroke-opacity|filter|backdrop-filter|mask[\w-]*|mix-blend-mode):/.test(utility)) return raw;
+        // An alpha modifier on a colour, or an alpha in the colour itself.
+        if (/^(?:fill|stroke|text|bg|border|outline|ring|shadow|from|via|to|decoration)-.*\/(?:\d+|\[[^\]]*\]|\([^)]*\))$/.test(utility)) return raw;
+        if (/transparent|_\/_|plus-lighter/.test(utility)) return raw;
       }
+      return null;
     }
-    // The foot is the accent itself.
-    expect(classes[0]).toBe('fill-[var(--ask-icon-accent)]');
-    // A mix with the accent in it is a solid blend of two solid tokens.
-    for (const [mix] of src.matchAll(/color-mix\((?:[^()]|\([^()]*\))*\)/g)) {
-      if (ACCENT.test(mix)) expect(mix).toMatch(/^color-mix\(in_oklch,var\(--ask-icon-accent\),var\(--ask-icon-pair-ink\)_\d+%\)$/);
-    }
+
+    it('is decorative and drawn for the 16px slot', () => {
+      const [svg] = parts();
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expect(svg).toHaveAttribute('focusable', 'false');
+      expect(svg).toHaveClass('size-4');
+      expect(svg.hasAttribute('width') || svg.hasAttribute('height')).toBe(false);
+      expect(svg).toHaveAttribute('viewBox');
+    });
+
+    it('paints the accent solid: nothing fades a part that carries it, round it or inside it', () => {
+      const all = parts();
+      const lit = all.filter((el) => ACCENT.test(paintOf(el)));
+      for (const el of lit) {
+        const chain: Element[] = [];
+        for (let a: Element | null = el; a && all.includes(a); a = a.parentElement) chain.push(a);
+        chain.push(...Array.from(el.querySelectorAll('*')));
+        for (const c of chain) expect(fades(c), `${c.tagName} fades the accent with ${fades(c)}`).toBeNull();
+      }
+      // A blend reaches whatever is under it, so none anywhere in the mark.
+      for (const el of all) expect(paintOf(el)).not.toMatch(/mix-blend|bg-blend|plus-lighter/);
+    });
+
+    it("paints in the slot's tokens: a mix with the accent is a solid blend of slot tokens, and no colour is literal", () => {
+      for (const el of parts()) {
+        const paint = paintOf(el);
+        for (const [mix] of paint.matchAll(/color-mix\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/g)) {
+          if (!ACCENT.test(mix)) continue;
+          for (const [, token] of mix.matchAll(/var\((--[\w-]+)/g)) expect(SLOT, `${token} in ${mix}`).toContain(token);
+          expect(mix).not.toMatch(/transparent|_\/_|\s\/\s/);
+        }
+        expect(paint, el.tagName).not.toMatch(/#[0-9a-fA-F]{3,8}\b|\b(?:rgba?|hsla?|hwb|lab|lch|oklab|oklch|color)\(/);
+        for (const { raw, utility } of utilities(el)) {
+          expect(utility, raw).not.toMatch(
+            /^(?:fill|stroke|text|bg|border)-(?:white|black|(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)-\d{2,3})$/
+          );
+        }
+      }
+    });
+
+    it('moves only when the key engages it, by named properties, within 300ms with its delay, and never under reduced motion', () => {
+      for (const el of parts()) {
+        const us = utilities(el);
+        const has = (raw: string) => us.some((u) => u.raw === raw);
+        let duration = 0;
+        let delay = 0;
+        for (const { raw, variants, utility } of us) {
+          // Engaged only by the Ask key: a state is a group variant on group/ask-key.
+          for (const v of variants) {
+            if (/hover|focus|active|peer|target|checked/.test(v)) expect(v, raw).toMatch(/^group-(?:hover|focus-visible|active)\/ask-key$/);
+          }
+          // Named properties, never all (Tailwind's bare `transition` is its catch-all list).
+          if (/^transition(?:-|$)/.test(utility) && utility !== 'transition-none') {
+            expect(utility, raw).not.toMatch(/^transition$|^transition-all$|\ball\b/);
+            expect(has('motion-reduce:transition-none'), `${raw} without motion-reduce:transition-none`).toBe(true);
+          }
+          if (/^\[transition(?:-property)?:/.test(utility)) expect(utility, raw).not.toMatch(/\ball\b/);
+          // Nothing runs at rest: an animation only while engaged, and never under reduced motion.
+          if (/^animate-/.test(utility) && utility !== 'animate-none') {
+            expect(variants.some((v) => /\/ask-key$/.test(v)), `${raw} runs at rest`).toBe(true);
+            expect(has('motion-reduce:animate-none'), `${raw} without motion-reduce:animate-none`).toBe(true);
+          }
+          const ms = /^(duration|delay)-(?:(\d+)|\[(\d+(?:\.\d+)?)(ms|s)\])$/.exec(utility);
+          if (ms) {
+            const value = ms[2] ? Number(ms[2]) : Number(ms[3]) * (ms[4] === 's' ? 1000 : 1);
+            if (ms[1] === 'duration') duration = Math.max(duration, value);
+            else delay = Math.max(delay, value);
+          }
+        }
+        expect(duration + delay, `${el.tagName}: ${duration}ms + ${delay}ms`).toBeLessThanOrEqual(300);
+        expect(el.getAttribute('style') ?? '').not.toMatch(/transition|animation/);
+        expect(el.querySelector('animate, animateTransform, animateMotion, set')).toBeNull();
+      }
+    });
   });
 });
 
