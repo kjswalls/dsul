@@ -53,6 +53,7 @@ import {
   SurfaceA11yHeader,
   SurfaceContent,
   SurfaceRoot,
+  useNewSurfaceHandoff,
 } from '@/components/planner/surface';
 import {
   AlertDialog,
@@ -574,6 +575,8 @@ export function ItemDialog(props: ItemDialogProps) {
   // Render-phase, not an effect: the body must mount in the SAME commit that
   // opens the dialog, or the open gains a frame of empty portal.
   if (state && !present) setPresent(true);
+  const { instant, skipExit } = useNewSurfaceHandoff(!!state);
+  if (skipExit && present) setPresent(false);
 
   // Resolved HERE, where a whole-session mount has let it settle, because the
   // body below mounts fresh per open: useIsMobile starts undefined and settles
@@ -603,6 +606,7 @@ export function ItemDialog(props: ItemDialogProps) {
     <ItemDialogInner
       {...props}
       isMobile={isMobile}
+      instant={instant}
       readDraftStash={readDraftStash}
       writeDraftStash={writeDraftStash}
     />
@@ -616,10 +620,13 @@ function ItemDialogInner({
   presentation = 'modal',
   flat = false,
   isMobile,
+  instant,
   readDraftStash,
   writeDraftStash,
 }: ItemDialogProps & {
   isMobile: boolean;
+  /** Taking over from the organizer dialog: no enter animation. */
+  instant: boolean;
   readDraftStash: () => Record<string, ItemDraft> | null;
   writeDraftStash: (drafts: Record<string, ItemDraft>) => void;
 }) {
@@ -3244,6 +3251,7 @@ function ItemDialogInner({
           open={open}
           flat={isPanel && flat}
           panelLabel={`${activeConfig.label} details`}
+          instant={instant}
           data-testid="item-dialog"
           data-mode={mode}
           data-item-type={activeTypeName}

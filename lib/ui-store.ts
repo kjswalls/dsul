@@ -106,6 +106,14 @@ interface UIStore {
   activeDialog: ActiveDialog | null;
   openDialog: (dialog: ActiveDialog) => void;
   closeDialog: () => void;
+  /**
+   * True while the open dialog arrived by the "new" surface's type menu
+   * swapping `add` ↔ `new-container`. Those are two slots and two Radix
+   * dialogs, so the swap is a close plus an open; this flag lets the outgoing
+   * one unmount at once and the incoming one skip its enter animation, so the
+   * swap reads as the one dialog changing body rather than a re-open.
+   */
+  dialogHandoff: boolean;
 
   /** Shared AlertDialog rendered once in the shell. */
   confirmRequest: ConfirmRequest | null;
@@ -145,10 +153,24 @@ interface UIStore {
   focusItemPanel: () => void;
 }
 
+const NEW_SURFACE_SLOTS: ReadonlySet<ActiveDialog['type']> = new Set(['add', 'new-container']);
+
+/** An item's "new" ↔ an organizer's "new": one surface, two slots. */
+function isNewSurfaceSwap(prev: ActiveDialog | null, next: ActiveDialog): boolean {
+  return (
+    prev !== null &&
+    prev.type !== next.type &&
+    NEW_SURFACE_SLOTS.has(prev.type) &&
+    NEW_SURFACE_SLOTS.has(next.type)
+  );
+}
+
 export const useUIStore = create<UIStore>()((set, get) => ({
   activeDialog: null,
-  openDialog: (dialog) => set({ activeDialog: dialog }),
-  closeDialog: () => set({ activeDialog: null }),
+  openDialog: (dialog) =>
+    set((s) => ({ activeDialog: dialog, dialogHandoff: isNewSurfaceSwap(s.activeDialog, dialog) })),
+  closeDialog: () => set({ activeDialog: null, dialogHandoff: false }),
+  dialogHandoff: false,
 
   confirmRequest: null,
   confirm: (request) => set({ confirmRequest: request }),

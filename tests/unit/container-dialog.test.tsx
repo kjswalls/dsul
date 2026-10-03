@@ -69,7 +69,7 @@ beforeEach(() => {
   seed();
   trashed.projects = [];
   toastMock.mockClear();
-  useUIStore.setState({ activeDialog: null });
+  useUIStore.setState({ activeDialog: null, dialogHandoff: false });
 });
 afterEach(() => {
   cleanup();
@@ -185,6 +185,65 @@ describe('the "new" dialog type menu', () => {
       screen.getAllByTestId('item-dialog-type-option').find((o) => o.getAttribute('data-value') === 'habit')!
     );
     expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'add', tab: 'habit', title: 'Mornings' });
+  });
+});
+
+/* ── the switch is one dialog, not a re-open ───────────────────────────── */
+
+// Mirrors the shell: both dialogs mounted, each fed off the one slot.
+function Shell() {
+  const active = useUIStore((s) => s.activeDialog);
+  const close = (open: boolean) => !open && useUIStore.getState().closeDialog();
+  return (
+    <>
+      <ItemDialog
+        state={active?.type === 'add' ? { mode: 'add', type: active.tab, title: active.title } : null}
+        onOpenChange={close}
+      />
+      <ContainerDialog state={active?.type === 'new-container' ? active : null} onOpenChange={close} />
+    </>
+  );
+}
+
+const NO_ENTER = 'data-[state=open]:!animate-none';
+const enters = (testId: string) => !screen.getByTestId(testId).className.includes(NO_ENTER);
+
+describe('switching between an item and an organizer (Kirby, 2026-10-03: "flashes like a re-open")', () => {
+  it('swaps bodies with no exit under the arrival and no enter animation, both ways', () => {
+    render(<Shell />);
+    act(() => useUIStore.getState().openDialog({ type: 'add', tab: 'task' }));
+    // A fresh open still animates in.
+    expect(enters('item-dialog')).toBe(true);
+
+    act(() => useUIStore.getState().openDialog({ type: 'new-container', kind: 'goal' }));
+    // The item card is gone at once, not zooming out under the goal's.
+    expect(screen.queryByTestId('item-dialog')).toBeNull();
+    expect(enters('container-dialog')).toBe(false);
+
+    act(() => useUIStore.getState().openDialog({ type: 'add', tab: 'habit' }));
+    expect(screen.queryByTestId('container-dialog')).toBeNull();
+    expect(enters('item-dialog')).toBe(false);
+  });
+
+  it('keeps the takeover latched through a switch inside the organizer slot', () => {
+    // goal → season clears the store flag; flipping the class back would
+    // restart the enter animation on a card already on screen.
+    render(<Shell />);
+    act(() => useUIStore.getState().openDialog({ type: 'add', tab: 'task' }));
+    act(() => useUIStore.getState().openDialog({ type: 'new-container', kind: 'goal' }));
+    act(() => useUIStore.getState().openDialog({ type: 'new-container', kind: 'season' }));
+    expect(useUIStore.getState().dialogHandoff).toBe(false);
+    expect(enters('container-dialog')).toBe(false);
+  });
+
+  it('animates a plain open, and a close is never a handoff', () => {
+    render(<Shell />);
+    act(() => useUIStore.getState().openDialog({ type: 'add', tab: 'task' }));
+    act(() => useUIStore.getState().openDialog({ type: 'new-container', kind: 'goal' }));
+    act(() => useUIStore.getState().closeDialog());
+    expect(useUIStore.getState().dialogHandoff).toBe(false);
+    act(() => useUIStore.getState().openDialog({ type: 'new-container', kind: 'goal' }));
+    expect(enters('container-dialog')).toBe(true);
   });
 });
 

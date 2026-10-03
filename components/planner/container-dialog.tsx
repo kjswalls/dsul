@@ -21,6 +21,7 @@ import {
   SurfaceA11yHeader,
   SurfaceContent,
   SurfaceRoot,
+  useNewSurfaceHandoff,
   OrganizerGlyph,
 } from '@/components/planner/surface';
 import { heldByTrash, useTrashedNames } from '@/components/planner/organize/use-trashed-names';
@@ -101,6 +102,8 @@ export function ContainerDialog({
 }) {
   const [present, setPresent] = useState(!!state);
   if (state && !present) setPresent(true);
+  const { instant, skipExit } = useNewSurfaceHandoff(!!state);
+  if (skipExit && present) setPresent(false);
   const isMobile = useIsMobile();
   const openConsole = useOpenConsole();
   // The member pickers, the why and the resume chip each claim Escape before
@@ -133,6 +136,7 @@ export function ContainerDialog({
         open={open}
         flat={false}
         panelLabel={`New ${label.toLowerCase()}`}
+        instant={instant}
         data-testid="container-dialog"
         data-kind={last.kind}
         onEscapeKeyDown={(event) => {
