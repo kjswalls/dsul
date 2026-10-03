@@ -582,9 +582,7 @@ export function ContainerDraftFields({
   // The row's Link popover holds the row open: linking into the last hidden
   // section would otherwise unmount the row, and the popover with it, mid-pick.
   const [linkOpen, setLinkOpen] = useState(false);
-  const shown = (key: SectionKey): boolean => {
-    if (key === 'seasons' && seasons.length === 0) return false;
-    if (opened.has(key)) return true;
+  const hasContent = (key: SectionKey): boolean => {
     switch (key) {
       case 'milestone':
         return draft.milestoneIds.length > 0 || hasNew('milestone');
@@ -600,9 +598,17 @@ export function ContainerDraftFields({
         return draft.seasonIds.length > 0;
     }
   };
-  const adders = SECTIONS[kind].filter(
-    (key) => !shown(key) && !(key === 'seasons' && seasons.length === 0),
-  );
+  // Sticky: a section that has held anything stays, so removing its last row
+  // never takes the add row, the Link pill and the focused button with it.
+  // Adjusted during render, so the frame without it never paints.
+  const grown = SECTIONS[kind].filter((key) => !opened.has(key) && hasContent(key));
+  if (grown.length > 0) setOpened((o) => new Set([...o, ...grown]));
+  // Nothing to hold, nothing to offer: no Seasons verb with no seasons, no
+  // Routines verb with no routines.
+  const available = (key: SectionKey) =>
+    !(key === 'seasons' && seasons.length === 0) && !(key === 'routines' && routines.length === 0);
+  const shown = (key: SectionKey): boolean => available(key) && (opened.has(key) || hasContent(key));
+  const adders = SECTIONS[kind].filter((key) => available(key) && !shown(key));
 
   const notes: { key: string; text: string }[] = [];
   if (kind === 'season') {
@@ -1050,17 +1056,12 @@ function LinkAnything({
       }
     >
       {kind === 'goal' && (
-        <div
-          role="radiogroup"
-          aria-label="Link as"
-          className="flex gap-0.5 border-b px-0.5 pb-1.5 mb-1"
-        >
+        <div role="group" aria-label="Link as" className="mb-1 flex gap-0.5 border-b px-0.5 pb-1.5">
           {GOAL_LINK_ROLES.map((r) => (
             <button
               key={r.value}
               type="button"
-              role="radio"
-              aria-checked={role === r.value}
+              aria-pressed={role === r.value}
               data-testid={`${testPrefix}-link-role-${r.value}`}
               onClick={() => setRole(r.value)}
               className={cn(

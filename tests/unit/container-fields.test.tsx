@@ -294,6 +294,29 @@ describe('the "new" dialog, every field', () => {
     expect(id('goal-dialog-adder-checkin')).toBeTruthy();
   });
 
+  it("puts focus in the popover search, past the dialog's own focus trap", () => {
+    newContainer('goal', 'Run a half');
+    const trigger = id('goal-dialog-link');
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(document.activeElement).toBe(id('goal-dialog-link-member-search'));
+  });
+
+  it('keeps a section once it has held anything, so emptying it never pulls the add row away', () => {
+    newContainer('goal', 'Run a half');
+    link('goal-dialog-supporting', 'Stretch');
+    fireEvent.keyDown(id('goal-dialog-supporting-member-search'), { key: 'Escape' });
+    click('goal-dialog-supporting-member-remove');
+    expect(id('goal-dialog-supporting-members')).toBeTruthy();
+    expect(screen.queryByTestId('goal-dialog-adder-member')).toBeNull();
+  });
+
+  it('offers no Routines verb to a season while there are no routines', () => {
+    newContainer('season', 'Autumn');
+    expect(screen.queryByTestId('season-dialog-adder-routines')).toBeNull();
+    expect(id('season-dialog-adder-items')).toBeTruthy();
+  });
+
   it('links from the row into the role picked on its switch, and shows that section', () => {
     const addGoal = vi.fn(() => 'g-new');
     usePlannerStore.setState({ addGoal });
@@ -447,14 +470,16 @@ describe('new items and seasons at birth', () => {
     // Nothing exists until the goal is created.
     expect(usePlannerStore.getState().items).toEqual([]);
 
-    const before = usePlannerStore.getState().actionLog.length;
+    // The newest entry before, by identity: the log is capped (50), so a
+    // length difference reads 0 once earlier tests have filled it.
+    const before = usePlannerStore.getState().actionLog[0];
     click('goal-dialog-add');
     const s = usePlannerStore.getState();
     const made = s.items.find((i) => i.title === 'Run a 10k')!;
     expect(made).toMatchObject({ type: 'task', status: 'pending' });
     expect(s.goals[0]).toMatchObject({ name: 'Half marathon', milestoneIds: [made.id] });
     // The item and the goal arrive as ONE history entry.
-    expect(s.actionLog.length - before).toBe(1);
+    expect(s.actionLog[1]).toBe(before);
     expect(s.actionLog[0].label).toBe('Add goal: Half marathon'); // newest first
   });
 

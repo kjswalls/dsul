@@ -169,6 +169,7 @@ describe('the create modal previews the DRAFT', () => {
   it('quiets a routine\'s dots the moment it is set Paused', () => {
     seed();
     render(<ContainerDialog state={{ kind: 'routine', title: 'Mornings' }} onOpenChange={() => {}} />);
+    fireEvent.click(id('routine-dialog-adder-items'));
     fireEvent.click(id('routine-dialog-items-member-add'));
     const stretch = screen
       .getAllByTestId('routine-dialog-items-member-candidate')
@@ -186,6 +187,7 @@ describe('the create modal previews the DRAFT', () => {
     seed();
     render(<ContainerDialog state={{ kind: 'season', title: 'Term' }} onOpenChange={() => {}} />);
     expect(screen.queryByTestId('season-dialog-calendar')).toBeNull();
+    fireEvent.click(id('season-dialog-adder-items'));
     fireEvent.click(id('season-dialog-items-member-add'));
     fireEvent.click(
       screen.getAllByTestId('season-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!
@@ -196,6 +198,7 @@ describe('the create modal previews the DRAFT', () => {
   it('draws a NEW routine habit on its chosen days before it exists', () => {
     seed();
     render(<ContainerDialog state={{ kind: 'routine', title: 'Mornings' }} onOpenChange={() => {}} />);
+    fireEvent.click(id('routine-dialog-adder-items'));
     const input = id('routine-dialog-create-item-new-name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Journal' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -217,6 +220,7 @@ describe('the create modal previews the DRAFT', () => {
     seed();
     render(<ContainerDialog state={{ kind: 'goal', title: 'Run a 10k' }} onOpenChange={() => {}} />);
     expect(screen.queryByTestId('goal-dialog-schedule')).toBeNull();
+    fireEvent.click(id('goal-dialog-adder-checkin'));
     const input = id('goal-dialog-create-checkin-new-name') as HTMLInputElement;
     fireEvent.change(input, { target: { value: 'Weekly review' } });
     fireEvent.keyDown(input, { key: 'Enter' });
@@ -246,6 +250,7 @@ describe('a project', () => {
   it('never links a member out of a create form, where leaving drops the draft', () => {
     seed();
     render(<ContainerDialog state={{ kind: 'routine', title: 'Mornings' }} onOpenChange={() => {}} />);
+    fireEvent.click(id('routine-dialog-adder-items'));
     fireEvent.click(id('routine-dialog-items-member-add'));
     fireEvent.click(
       screen.getAllByTestId('routine-dialog-items-member-candidate').find((b) => b.textContent?.includes('Stretch'))!

@@ -570,9 +570,19 @@ export function PickerPopover({
         sideOffset={6}
         collisionPadding={12}
         data-testid={testId}
-        // A search field inside takes focus itself (autoFocus); Radix's own
-        // first-focus would land on the same field, but racing it costs a frame.
-        onOpenAutoFocus={focusFirst ? undefined : (e) => e.preventDefault()}
+        // Focus goes to the search field, from HERE: Radix's own first-focus
+        // would pick the first tabbable (a goal's role switch), and the input's
+        // autoFocus fires while the dialog's focus trap is still the active one,
+        // which pulls focus straight back to the trigger (the content is
+        // portalled out of the dialog's DOM).
+        onOpenAutoFocus={
+          focusFirst
+            ? undefined
+            : (e) => {
+                e.preventDefault();
+                (e.currentTarget as HTMLElement).querySelector<HTMLElement>('[role="combobox"]')?.focus();
+              }
+        }
         className="bg-modal w-[min(320px,calc(100vw-2rem))] rounded-lg p-1.5"
       >
         {children}
@@ -877,6 +887,10 @@ export function RoutineMemberList({
   });
 
   const none = candidates.length === 0;
+  // Nothing left to pick closes the picker rather than leaving it armed: with
+  // `open={adding && !none}` a stale `adding` would spring it open unasked the
+  // moment a routine became available again.
+  if (none && adding) setAdding(false);
 
   const pill = (
     <LinkExistingPill
