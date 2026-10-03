@@ -45,7 +45,7 @@ enum SampleData {
         }
 
         // The day's blocks first: the drag spike's tests read scheduled[0].
-        let blocks = [
+        var blocks = [
             task("Morning pages", 30, at: 7 * 60, "Writing"),
             task("Draft Q4 roadmap", 120, at: 9 * 60, "Work"),
             task("Standup", 15, at: 11 * 60 + 15, "Work"),
@@ -56,12 +56,12 @@ enum SampleData {
             task("Cook dinner", 45, at: 19 * 60, "Home"),
             task("Read", 30, at: 21 * 60 + 30),
         ]
-        let untimed = [
+        var untimed = [
             task("Reply to Avery about pricing", 15, "Work", order: 1),
             task("Review design PR", 30, "Work", order: 2),
             task("Groceries", 45, "Home", order: 3),
         ]
-        let routineHabits = [
+        var routineHabits = [
             habit("Meds", "daily", streak: 41, doneDaysAgo: [0, 1, 2], bucket: .morning),
             habit("Stretch 10 min", "daily", streak: 12, doneDaysAgo: [0, 1], bucket: .morning),
             habit("Journal", "daily", streak: 3, doneDaysAgo: [1, 2, 3], bucket: .morning),
@@ -70,6 +70,19 @@ enum SampleData {
             habit("Plan tomorrow", "weekdays", streak: 6, doneDaysAgo: [1], bucket: .evening),
             habit("Water the plants", "custom", days: [0, 3], streak: 2, doneDaysAgo: [], "Home", bucket: .anytime),
         ]
+
+        // What the item sheet shows beyond the row: notes, a priority, a
+        // reminder. Set on rows the tests already pin, so no title, count or
+        // id moves.
+        blocks[1].notes = "Three bets on one page. Pull the September numbers before writing any of them."
+        blocks[1].priority = "high"
+        blocks[5].priority = "medium"
+        blocks[5].reminderTime = "14:45"
+        untimed[0].priority = "high"
+        untimed[2].notes = "Oat milk, eggs, coffee beans, basil."
+        routineHabits[0].reminderTime = "08:00"
+        routineHabits[0].reminderAnchor = "I pour my coffee"
+        routineHabits[2].notes = "One page: what went well, what didn't, what's next."
 
         let durations = [15, 30, 45, 60, 90]
         let thoughts = [
@@ -89,6 +102,18 @@ enum SampleData {
                  duration: durations[i % durations.count], order: untimed.count + 1 + i, isScheduled: false)
         }
 
+        // The roadmap's subtasks, made last so every id above keeps its
+        // number. Undated and unscheduled, as the web adds them, and kept off
+        // every day and the braindump (DsulCore `project`): they show only in
+        // their parent's sheet.
+        let roadmap = blocks[1].id.uuidString.lowercased()
+        let subtasks = [
+            Item(id: next(), type: "task", title: "Pull the September numbers", status: "completed",
+                 parentItemId: roadmap, order: 0, isScheduled: false),
+            Item(id: next(), type: "task", title: "Write the three bets", status: "pending",
+                 parentItemId: roadmap, order: 1, isScheduled: false),
+        ]
+
         let projects = ["Work", "Home", "Writing", "dsul", "Health"].map { name in
             Project(id: "sample-" + name.lowercased(), name: name)
         }
@@ -96,7 +121,7 @@ enum SampleData {
             Routine(id: "sample-morning-routine", name: "Morning routine", sortOrder: 0,
                     itemIds: routineHabits.map(\.id)),
         ]
-        return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump,
+        return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks,
                         projects: projects, routines: routines)
     }
 }

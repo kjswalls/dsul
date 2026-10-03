@@ -1,3 +1,4 @@
+import DsulCore
 import Foundation
 import Testing
 @testable import Dsul
@@ -5,8 +6,10 @@ import Testing
 @MainActor
 @Suite struct SamplePlannerTests {
     /// A Thursday, so the weekday-only habit shows and the Sun/Wed one doesn't.
+    /// The clock is noon UTC that day, so a pause, or a sheet opened from
+    /// Search, reads the same day.
     private func makePlanner() -> SamplePlanner {
-        SamplePlanner(todayString: "2026-10-01")
+        SamplePlanner(todayString: "2026-10-01", now: { PlannerJSON.noon })
     }
 
     private func first(_ planner: SamplePlanner, _ title: String) -> SampleItem {
@@ -164,6 +167,121 @@ import Testing
         // A dismissal through either host clears the one flag.
         planner.sheetOverBraindump = nil
         #expect(planner.activeSheet == nil)
+    }
+
+    @Test func anItemSheetIsOneSlotLikeTheOthers() {
+        let planner = makePlanner()
+        let roadmap = first(planner, "Draft Q4 roadmap")
+        planner.open(roadmap.id, day: .selected)
+        #expect(planner.activeSheet == .item(roadmap.id, day: .selected))
+        #expect(planner.sheetOverApp?.id == "item-" + roadmap.id.uuidString.lowercased())
+
+        planner.showBraindumpSheet = true
+        #expect(planner.sheetOverApp == nil)
+        #expect(planner.sheetOverBraindump == .item(roadmap.id, day: .selected))
+        planner.sheetOverBraindump = nil
+        #expect(planner.activeSheet == nil)
+
+        planner.open(UUID(), day: .selected)   // no such item
+        #expect(planner.activeSheet == nil)
+    }
+
+    /// Search has no day of its own, so its sheet acts on today, whatever day
+    /// Today is showing.
+    @Test func searchOpensOnTodayWhateverDayIsSelected() {
+        let planner = makePlanner()
+        let journal = first(planner, "Journal")
+        planner.shiftDay(by: 2)
+        planner.open(journal.id, day: .today)
+        #expect(planner.activeSheet == .item(journal.id, day: .today))
+        #expect(planner.actingDay(.today).description == "2026-10-01")
+        #expect(planner.actingDay(.selected).description == "2026-10-03")
+
+        planner.toggle(journal.id, on: planner.actingDay(.today))
+        let now = planner.item(journal.id)
+        #expect(now?.completedDates.contains("2026-10-01") == true)
+        #expect(now?.completedDates.contains("2026-10-03") == false)
+        #expect(now?.streak == 4)
+    }
+
+    /// Opening from Search brings today up to the planner's clock first; a
+    /// row's sheet acts on the day it was drawn on and moves nothing.
+    @Test func openingFromSearchReadsTheClock() {
+        let nextNoon = PlannerJSON.noon.addingTimeInterval(24 * 60 * 60)
+        let planner = SamplePlanner(todayString: "2026-10-01", now: { nextNoon })
+        let journal = first(planner, "Journal")
+
+        planner.open(journal.id, day: .selected)
+        #expect(planner.today.description == "2026-10-01")
+
+        planner.open(journal.id, day: .today)
+        #expect(planner.today.description == "2026-10-02")
+        #expect(planner.actingDay(.today).description == "2026-10-02")
+    }
+
+    /// The sample sends nothing, but every verb still takes its optimistic
+    /// step, as a signed-in one does before the server answers.
+    @Test func theSampleTakesEveryVerbWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(planner.canWrite("skip"))
+        #expect(planner.canWrite("move"))
+        #expect(planner.canWrite("pause"))
+        let today = planner.today
+
+        let journal = first(planner, "Journal")
+        #expect(planner.offeredVerbs(for: journal, day: .selected) == [.tick, .skip, .pause])
+        planner.skip(journal.id, on: today)
+        #expect(planner.item(journal.id)?.skippedDates == ["2026-10-01"])
+        #expect(planner.item(journal.id)?.status == "skipped")
+        planner.unskip(journal.id, on: today)
+        #expect(planner.item(journal.id)?.skippedDates.isEmpty == true)
+
+        let groceries = first(planner, "Groceries")
+        let target = nextDayOf(groceries, planner.verbContext(for: groceries, day: .selected))
+        planner.move(groceries.id, to: target)
+        #expect(planner.item(groceries.id)?.startDate == "2026-10-02")
+        #expect(!planner.dayItems.contains { $0.id == groceries.id })
+
+        let plan = first(planner, "Plan tomorrow")
+        planner.pause(plan.id, until: nil)
+        #expect(planner.item(plan.id)?.pausedAt == "2026-10-01T12:00:00.000Z")
+        #expect(!planner.dayItems.contains { $0.id == plan.id })
+        let paused = try #require(planner.item(plan.id))
+        #expect(planner.offeredVerbs(for: paused, day: .selected).contains(.resume))
+        planner.resume(plan.id)
+        #expect(planner.item(plan.id)?.pausedUntil == "2026-10-01")
+        #expect(planner.dayItems.contains { $0.id == plan.id })
+    }
+
+    @Test func nextWeekStartsOnTheUsersWeekStart() {
+        let planner = makePlanner()
+        // Thursday 2026-10-01; the sample's week starts on Sunday (the default).
+        #expect(planner.nextWeekStart.description == "2026-10-04")
+    }
+
+    // MARK: The sample's details
+
+    @Test func theSampleCarriesWhatTheSheetShows() {
+        let planner = makePlanner()
+        let roadmap = first(planner, "Draft Q4 roadmap")
+        #expect(roadmap.notes?.isEmpty == false)
+        #expect(roadmap.priority == "high")
+        let meds = first(planner, "Meds")
+        #expect(meds.reminderTime == "08:00")
+        #expect(meds.reminderAnchor == "I pour my coffee")
+        #expect(planner.routineNames(for: meds.id) == ["Morning routine"])
+        #expect(planner.seasonNames(for: meds.id).isEmpty)
+
+        let subtasks = planner.subtasks(of: roadmap.id)
+        #expect(subtasks.map(\.title) == ["Pull the September numbers", "Write the three bets"])
+        #expect(subtasks.allSatisfy { $0.isSubtask })
+        #expect(!roadmap.isSubtask)
+        // Only in their parent's sheet: never on a day or in the braindump.
+        let ids = Set(subtasks.map(\.id))
+        #expect(!planner.dayItems.contains { ids.contains($0.id) })
+        #expect(!planner.braindump.contains { ids.contains($0.id) })
+        #expect(subtasks.allSatisfy { planner.offeredVerbs(for: $0, day: .selected) == [.tick] })
     }
 
     // MARK: Completion

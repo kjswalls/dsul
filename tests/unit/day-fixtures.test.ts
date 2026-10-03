@@ -2,19 +2,36 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync, writeFileSync, mkdirSync, existsSync } from 'fs';
 import path from 'path';
 import {
+  formatDay,
   inactiveItemIdsOn,
   isItemActiveOn,
   isOpenLoopOn,
   isPausedOn,
   isSeasonActiveOn,
+  resolvePauseWrite,
+  type Pausable,
 } from '@/lib/active';
 import { deriveDayItems, flattenDayRows, BUCKET_ORDER, type DayItems } from '@/lib/day-items';
 import { deriveTimedEntries } from '@/components/views/day-schedule';
 import { braindumpMembers } from '@/lib/braindump-members';
 import { groupRows } from '@/lib/grouping';
 import { isRowDone, isRowSkipped, toggleRowDone, type ItemToggleActions } from '@/lib/item-toggle';
+import { ITEM_VERBS, eligibleVerbs, nextDayOf, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
+import {
+  getItemTypeConfig,
+  isCollectible,
+  isPausable,
+  isRemindable,
+  isSkippable,
+} from '@/lib/item-registry';
+import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
+import { cadenceLabel } from '@/lib/cadence';
+import { membershipSummary } from '@/lib/item-bands';
+import { occursOn } from '@/lib/reminders/due';
+import { formatCueTime, type TimeFormat } from '@/lib/reminders/copy';
 import { isCompletedOnDate } from '@/lib/recurrence';
 import { projectItems } from '@/lib/planner-store';
+import type { OccurrenceState } from '@/lib/container-schedule';
 import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/planner-types';
 
 /**
@@ -25,12 +42,16 @@ import type { HabitItem, Item, Project, Routine, Season, Task } from '@/lib/plan
  * split (lib/planner-store.ts `projectItems`, imported from the store itself,
  * so a change there moves these fixtures), `deriveDayItems` (lib/day-items.ts),
  * `deriveTimedEntries` (components/views/day-schedule.tsx), braindump
- * membership (lib/braindump-members.ts), routine grouping (lib/grouping.ts)
- * and the tick rules (lib/item-toggle.ts). Every case is built here, run
- * through the real TS, and written with its answer to
- * tests/fixtures/day/*.json. DsulCore's *FixtureTests.swift
+ * membership (lib/braindump-members.ts), routine grouping (lib/grouping.ts),
+ * the tick rules (lib/item-toggle.ts), and what the item sheet asks: the verb
+ * gates and labels (lib/item-verbs.ts), the carry (lib/row-moves.ts), the
+ * occurrence (lib/reminders/due.ts `occursOn`), the pause write
+ * (lib/active.ts `resolvePauseWrite`), the registry capabilities and the chip
+ * copy. Every case is built here, run through the real TS, and written with
+ * its answer to tests/fixtures/day/*.json. DsulCore's *FixtureTests.swift
  * (ios/DsulCore/Tests/DsulCoreTests/) read the same files and assert the Swift
- * port answers identically.
+ * port answers identically. The sheet's optimistic writes, which need the real
+ * store, are in tests/unit/verb-writes-fixtures.test.ts (verb-writes.json).
  *
  * This test fails when a committed file no longer matches what the TS says.
  * Regenerate with:
@@ -763,6 +784,544 @@ function buildToggle(): { cases: ToggleCase[] } {
   return { cases };
 }
 
+// ── verbs.json ───────────────────────────────────────────────────────────────
+
+/** The verbs the phone's item sheet offers, in ITEM_VERBS (declaration) order. */
+const SHEET_VERBS = ['tick', 'skip', 'unskip', 'pause', 'resume', 'nextDay', 'reschedule'] as const;
+type SheetVerb = (typeof SHEET_VERBS)[number];
+
+type VerbAnswer = { eligible: boolean; label: string };
+type VerbsCase = {
+  name: string;
+  item: Item;
+  dateStr: string;
+  todayStr: string;
+  timeZone: string;
+  /** What the caller knows about `dateStr`; null is unknown (the palette's case). */
+  occurrence: OccurrenceState | 'absent' | null;
+  verbs: Record<Exclude<SheetVerb, 'nextDay'>, VerbAnswer> & {
+    nextDay: VerbAnswer & { detail: string; target: string };
+  };
+  /** `eligibleVerbs`, narrowed to SHEET_VERBS and kept in its order. */
+  eligible: SheetVerb[];
+};
+
+/**
+ * Each case's occurrence is what the sheet would pass: `occurrenceOn` unless
+ * the case names one ('unknown' for none at all), so the gates are checked
+ * against every state a caller can hand them.
+ */
+function buildVerbs(): { cases: VerbsCase[] } {
+  const T = '2026-10-02'; // a Friday
+  const SAT = '2026-10-03';
+  const WED = '2026-09-30';
+  const NEXT_THU = '2026-10-08';
+  const PAUSED = '2026-09-20T15:00:00Z';
+  const sheet = new Set<string>(SHEET_VERBS);
+  const make = (
+    name: string,
+    item: Item,
+    opts: {
+      dateStr?: string;
+      todayStr?: string;
+      timeZone?: string;
+      occurrence?: OccurrenceState | 'absent' | 'unknown';
+    } = {}
+  ): VerbsCase => {
+    const dateStr = opts.dateStr ?? T;
+    const todayStr = opts.todayStr ?? T;
+    const timeZone = opts.timeZone ?? NY;
+    const occurrence =
+      opts.occurrence === 'unknown' ? undefined : (opts.occurrence ?? occurrenceOn(item, dateStr, todayStr, timeZone));
+    const ctx: VerbContext = {
+      dateStr,
+      date: new Date(`${dateStr}T12:00:00Z`),
+      todayStr,
+      tz: timeZone,
+      milestoneIds: new Set(),
+      occurrence,
+    };
+    const answer = (id: SheetVerb): VerbAnswer => ({
+      eligible: ITEM_VERBS[id].eligible(item, ctx),
+      label: ITEM_VERBS[id].label(item, ctx),
+    });
+    return {
+      name,
+      item,
+      dateStr,
+      todayStr,
+      timeZone,
+      occurrence: occurrence ?? null,
+      verbs: {
+        tick: answer('tick'),
+        skip: answer('skip'),
+        unskip: answer('unskip'),
+        pause: answer('pause'),
+        resume: answer('resume'),
+        nextDay: { ...answer('nextDay'), detail: ITEM_VERBS.nextDay.detail!(item, ctx)!, target: nextDayOf(item, ctx) },
+        reschedule: answer('reschedule'),
+      },
+      eligible: eligibleVerbs(item, ctx)
+        .map((v) => v.id)
+        .filter((id): id is SheetVerb => sheet.has(id)),
+    };
+  };
+  const stretch = (over: Record<string, unknown> = {}) => habit(601, 'stretch', over);
+  const counted = (over: Record<string, unknown> = {}) => habit(602, 'water x3', { timesPerDay: 3, ...over });
+  const journal = (over: Record<string, unknown>) => habit(604, 'journal', over);
+  const daily = (over: Record<string, unknown> = {}) =>
+    task(610, 'water plants', { repeatFrequency: 'daily', startDate: '2026-09-01', timeBucket: 'morning', ...over });
+  const oneOff = (over: Record<string, unknown> = {}) =>
+    task(620, 'buy milk', { startDate: T, timeBucket: 'morning', ...over });
+  const subtask = (over: Record<string, unknown> = {}) =>
+    task(621, 'oat milk', { startDate: T, timeBucket: 'morning', parentItemId: uid(620), ...over });
+  const errand = (over: Record<string, unknown> = {}) =>
+    custom(630, 'errand', 'post office', { startDate: T, timeBucket: 'afternoon', ...over });
+  const weekdayErrand = (over: Record<string, unknown> = {}) =>
+    errand({ repeatFrequency: 'weekdays', startDate: '2026-09-01', ...over });
+  return {
+    cases: [
+      // Habits.
+      make('habit, due today', stretch()),
+      make('habit, done today', stretch({ completedDates: [T], streak: 3 })),
+      make('habit, skipped today', stretch({ skippedDates: [T], status: 'skipped' })),
+      make('habit, skipped and completed today', stretch({ skippedDates: [T], completedDates: [T] })),
+      make('counted habit, nothing counted', counted()),
+      make('counted habit, 1 of 3', counted({ dailyCounts: { [T]: 1 } })),
+      make('counted habit, done', counted({ dailyCounts: { [T]: 3 }, completedDates: [T] })),
+      make('weekday habit on a Saturday is absent', habit(603, 'standup', { repeatFrequency: 'weekdays' }), {
+        dateStr: SAT,
+      }),
+      make('habit on a past open day', stretch(), { dateStr: WED }),
+      make('habit done on a past day', stretch({ completedDates: [WED] }), { dateStr: WED }),
+      make('habit on a future day is due', stretch(), { dateStr: SAT }),
+      make('habit on a past day, occurrence unknown', stretch(), { dateStr: WED, occurrence: 'unknown' }),
+      make('habit paused, open-ended', journal({ pausedAt: PAUSED })),
+      make('habit paused until next week', journal({ pausedAt: PAUSED, pausedUntil: NEXT_THU })),
+      make('habit whose pause ends today is live', journal({ pausedAt: PAUSED, pausedUntil: T })),
+      // 02:00 UTC on the 3rd is 22:00 on the 2nd in New York.
+      make('habit paused tonight, New York', journal({ pausedAt: '2026-10-03T02:00:00Z' })),
+      make('habit paused tonight, read in UTC', journal({ pausedAt: '2026-10-03T02:00:00Z' }), { timeZone: 'UTC' }),
+      make('habit with repeat none is one-shot', habit(605, 'once', { repeatFrequency: 'none' })),
+      make('habit with repeat none, done', habit(605, 'once', { repeatFrequency: 'none', completedDates: [T] })),
+      make('habit with no repeat frequency is one-shot', habit(605, 'once', { repeatFrequency: undefined })),
+      // Recurring tasks.
+      make('recurring task, due today', daily()),
+      make('recurring task, done today', daily({ completedDates: [T] })),
+      make('recurring task, skipped today', daily({ skippedDates: [T] })),
+      make('recurring task, a past open day', daily(), { dateStr: WED }),
+      make('recurring task, before its start is absent', daily({ startDate: '2026-10-05' })),
+      make('recurring task, off its custom days is absent', daily({ repeatFrequency: 'custom', repeatDays: [1, 3] })),
+      make('recurring task with no start date is absent', daily({ startDate: undefined })),
+      make('recurring task, cancelled', daily({ status: 'cancelled' })),
+      make('recurring task, paused', daily({ pausedAt: PAUSED })),
+      make('recurring task in a project block', daily({ inProjectBlock: true })),
+      // One-offs.
+      make('one-off, today', oneOff()),
+      make('one-off, completed', oneOff({ status: 'completed' })),
+      make('one-off, cancelled', oneOff({ status: 'cancelled' })),
+      make('one-off, overdue', oneOff({ startDate: '2026-09-28' })),
+      make('one-off, drawn on a past day', oneOff({ startDate: '2026-09-29' }), { dateStr: '2026-09-29' }),
+      make('one-off, next week', oneOff({ startDate: NEXT_THU }), { dateStr: NEXT_THU }),
+      make('one-off, undated', oneOff({ startDate: undefined, timeBucket: undefined, isScheduled: false })),
+      make('one-off, in a project block', oneOff({ inProjectBlock: true })),
+      make('one-off, paused', oneOff({ pausedAt: PAUSED })),
+      make('one-off, repeat none', oneOff({ repeatFrequency: 'none' })),
+      make('one-off ignores an absent occurrence', oneOff(), { occurrence: 'absent' }),
+      make('subtask', subtask()),
+      make('subtask, completed', subtask({ status: 'completed' })),
+      // Custom types ride the task rules.
+      make('custom one-off', errand()),
+      make('custom one-off, completed', errand({ status: 'completed' })),
+      make('custom one-off, undated', errand({ startDate: undefined, timeBucket: undefined, isScheduled: false })),
+      make('custom recurring, due', weekdayErrand()),
+      make('custom recurring, done', weekdayErrand({ completedDates: [T] })),
+      make('custom recurring, skipped', weekdayErrand({ skippedDates: [T] })),
+      make('custom recurring on a Saturday is absent', weekdayErrand(), { dateStr: SAT }),
+    ],
+  };
+}
+
+// ── row-moves.json ───────────────────────────────────────────────────────────
+
+type TargetCase = { name: string; rowDateStr: string; todayStr: string; expected: string };
+type CarryLabelCase = { name: string; target: string; todayStr: string; expected: string };
+type DayCopyCase = { name: string; dateStr: string; expected: string };
+type MoveCase = { name: string; item: Item; kind: 'task' | 'habit'; dateStr: string; expected: boolean };
+type RowMovesFixture = {
+  nextDayTarget: TargetCase[];
+  nextDayLabel: CarryLabelCase[];
+  formatTargetDay: DayCopyCase[];
+  canMoveToNextDay: MoveCase[];
+  canReschedule: MoveCase[];
+};
+
+function buildRowMoves(): RowMovesFixture {
+  const T = '2026-10-02';
+  const targets = (
+    [
+      ['a row on today goes to tomorrow', T, T],
+      ['a future row goes to its next day', '2026-10-08', T],
+      ['an overdue row goes to real tomorrow, not its next day', '2026-09-28', T],
+      ['month end', '2026-10-31', '2026-10-31'],
+      ['year end', '2026-12-31', '2026-12-30'],
+      ['into a leap day', '2028-02-28', '2028-02-28'],
+      ['past February in a common year', '2027-02-28', '2027-02-01'],
+      ['across a DST change', '2026-11-01', '2026-11-01'],
+    ] as [string, string, string][]
+  ).map(([name, rowDateStr, todayStr]) => ({
+    name,
+    rowDateStr,
+    todayStr,
+    expected: nextDayTarget(rowDateStr, todayStr),
+  }));
+  const labels = (
+    [
+      ['tomorrow', '2026-10-03', T],
+      ['the day after tomorrow', '2026-10-04', T],
+      ['today itself', T, T],
+      ['tomorrow across a month', '2026-11-01', '2026-10-31'],
+    ] as [string, string, string][]
+  ).map(([name, target, todayStr]) => ({ name, target, todayStr, expected: nextDayLabel(target, todayStr) }));
+  const days = (
+    [
+      ['a Thursday', '2026-10-08'],
+      ['a Saturday', '2026-10-03'],
+      ['new year', '2027-01-01'],
+      ['a leap day', '2028-02-29'],
+      ['US DST starts', '2026-03-08'],
+      ['US DST ends', '2026-11-01'],
+      ['the last day of the year', '2026-12-31'],
+    ] as [string, string][]
+  ).map(([name, dateStr]) => ({ name, dateStr, expected: formatTargetDay(dateStr) }));
+  const oneOff = (over: Record<string, unknown> = {}) => task(701, 'buy milk', { startDate: T, ...over });
+  const errand = (over: Record<string, unknown> = {}) => custom(702, 'errand', 'post office', { startDate: T, ...over });
+  const moveInputs = (
+    [
+      ['one-off pending', oneOff(), 'task'],
+      ['one-off completed', oneOff({ status: 'completed' }), 'task'],
+      ['one-off cancelled', oneOff({ status: 'cancelled' }), 'task'],
+      ['one-off in a project block', oneOff({ inProjectBlock: true }), 'task'],
+      ['one-off undated', oneOff({ startDate: undefined }), 'task'],
+      ['repeat none is a one-off', oneOff({ repeatFrequency: 'none' }), 'task'],
+      ['recurring task', oneOff({ repeatFrequency: 'daily' }), 'task'],
+      ['recurring task done that day', oneOff({ repeatFrequency: 'daily', completedDates: [T] }), 'task'],
+      ['subtask is not refused here', oneOff({ parentItemId: uid(799) }), 'task'],
+      ['paused one-off is not refused here', oneOff({ pausedAt: '2026-09-20T15:00:00Z' }), 'task'],
+      ['custom one-off', errand(), 'task'],
+      ['custom one-off completed', errand({ status: 'completed' }), 'task'],
+      ['custom recurring', errand({ repeatFrequency: 'weekdays' }), 'task'],
+      [
+        'custom item shaped as the server builds it',
+        errand({ repeatFrequency: 'none', inProjectBlock: false, completedDates: [] }),
+        'task',
+      ],
+      ['habit', habit(703, 'stretch'), 'habit'],
+      ['a task asked about as a habit', oneOff(), 'habit'],
+    ] as [string, Item, 'task' | 'habit'][]
+  );
+  // The same rows asked both gates: Reschedule's differs from the carry's only
+  // in taking a recurring task (its picked day becomes the series start).
+  const moves = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canMoveToNextDay(item, kind, T) }));
+  const reschedules = moveInputs.map(([name, item, kind]) => ({ name, item, kind, dateStr: T, expected: canReschedule(item, kind, T) }));
+  return {
+    nextDayTarget: targets,
+    nextDayLabel: labels,
+    formatTargetDay: days,
+    canMoveToNextDay: moves,
+    canReschedule: reschedules,
+  };
+}
+
+// ── cadence.json ─────────────────────────────────────────────────────────────
+
+type CadenceCase = { name: string; item: Item; expected: string };
+
+/**
+ * Recurring items only. A one-off's label is `formatShort`, which formats in
+ * the runtime's locale, so no fixed answer exists for it to pin.
+ */
+function buildCadence(): { cases: CadenceCase[] } {
+  const cases = (
+    [
+      ['daily habit', habit(751, 'stretch')],
+      ['weekdays', task(752, 'standup', { repeatFrequency: 'weekdays', startDate: '2026-09-01' })],
+      ['weekends', habit(753, 'long run', { repeatFrequency: 'weekends' })],
+      ['monthly on a day', task(754, 'rent', { repeatFrequency: 'monthly', repeatMonthDay: 12, startDate: '2026-09-12' })],
+      ['monthly with no day', habit(755, 'review', { repeatFrequency: 'monthly' })],
+      ['custom days are sorted', habit(756, 'gym', { repeatFrequency: 'custom', repeatDays: [5, 1, 3] })],
+      ['custom, one day', habit(757, 'church', { repeatFrequency: 'custom', repeatDays: [0] })],
+      ['custom, all seven days', habit(758, 'meds', { repeatFrequency: 'custom', repeatDays: [6, 5, 4, 3, 2, 1, 0] })],
+      ['custom, no days', habit(759, 'empty', { repeatFrequency: 'custom', repeatDays: [] })],
+      ['custom, days missing', habit(760, 'missing', { repeatFrequency: 'custom' })],
+      ['legacy weekly is its own word', habit(761, 'legacy', { repeatFrequency: 'weekly', repeatDays: [2] })],
+      ['an unknown frequency is its own word', habit(762, 'agent', { repeatFrequency: 'fortnightly' })],
+      [
+        'custom type, custom days',
+        custom(763, 'errand', 'post office', { repeatFrequency: 'custom', repeatDays: [2, 4], startDate: '2026-09-01' }),
+      ],
+    ] as [string, Item][]
+  ).map(([name, item]) => ({ name, item, expected: cadenceLabel(item) }));
+  return { cases };
+}
+
+// ── pause-write.json ─────────────────────────────────────────────────────────
+
+/** A key present with null means "write NULL"; an absent key leaves the column alone. */
+type PausePatchOut = { pausedAt?: string | null; pausedUntil?: string | null };
+type PauseWriteCase = {
+  name: string;
+  current: Pausable;
+  /** `paused` absent = not sent. `pausedUntil` absent = not sent, null = sent as "no end". */
+  req: { paused?: boolean; pausedUntil?: string | null };
+  todayStr: string;
+  nowIso: string;
+  timeZone: string;
+  expected: { patch: PausePatchOut } | { reason: string };
+};
+
+function buildPauseWrite(): { cases: PauseWriteCase[] } {
+  const T = '2026-10-02';
+  const NOW = '2026-10-02T15:00:00.000Z';
+  const PAUSED = '2026-09-20T15:00:00Z';
+  const make = (
+    name: string,
+    current: Pausable,
+    req: PauseWriteCase['req'],
+    timeZone: string = NY
+  ): PauseWriteCase => {
+    const r = resolvePauseWrite(current, req, T, NOW, timeZone);
+    const expected =
+      'reason' in r
+        ? { reason: r.reason }
+        : { patch: Object.fromEntries(Object.entries(r.patch).map(([k, v]) => [k, v ?? null])) as PausePatchOut };
+    return { name, current, req, todayStr: T, nowIso: NOW, timeZone, expected };
+  };
+  const paused = { pausedAt: PAUSED };
+  return {
+    cases: [
+      make('resume a running pause', paused, { paused: false }),
+      make('resume a pause with an end date', { ...paused, pausedUntil: '2026-10-09' }, { paused: false }),
+      make('resume something live writes nothing', {}, { paused: false }),
+      make('resume after the pause already ended writes nothing', { ...paused, pausedUntil: T }, { paused: false }),
+      make('pause something live', {}, { paused: true }),
+      make('pause until a later day', {}, { paused: true, pausedUntil: '2026-10-09' }),
+      make('pause until tomorrow', {}, { paused: true, pausedUntil: '2026-10-03' }),
+      make('pause with a null end', {}, { paused: true, pausedUntil: null }),
+      make('pause until today is refused', {}, { paused: true, pausedUntil: T }),
+      make('pause until a past day is refused', {}, { paused: true, pausedUntil: '2026-09-30' }),
+      make('pause again after an ended pause restamps and clears the end', { pausedAt: '2026-09-01T12:00:00Z', pausedUntil: '2026-09-20' }, { paused: true }),
+      make('pause what is already paused writes nothing', paused, { paused: true }),
+      make('pause what is already paused, with a new end', paused, { paused: true, pausedUntil: '2026-10-09' }),
+      make('pause what is already paused, with a null end', { ...paused, pausedUntil: '2026-10-09' }, { paused: true, pausedUntil: null }),
+      make('an end date alone moves a running pause', paused, { pausedUntil: '2026-10-09' }),
+      make('a null end alone clears the end of a running pause', { ...paused, pausedUntil: '2026-10-09' }, { pausedUntil: null }),
+      make('an end date alone on something live is refused', {}, { pausedUntil: '2026-10-09' }),
+      make('an empty request writes nothing', paused, {}),
+      make('a junk pausedAt reads as live', { pausedAt: 'not a date' }, { paused: true }),
+      // 02:00 UTC on the 3rd: already begun in New York, still tomorrow in UTC.
+      make('a pause begun tonight in New York resumes', { pausedAt: '2026-10-03T02:00:00Z' }, { paused: false }),
+      make('the same pause read in UTC has not begun', { pausedAt: '2026-10-03T02:00:00Z' }, { paused: false }, 'UTC'),
+    ],
+  };
+}
+
+// ── occurs.json ──────────────────────────────────────────────────────────────
+
+type OccursCase = {
+  name: string;
+  item: Item;
+  dateStr: string;
+  todayStr: string;
+  timeZone: string;
+  occursOn: boolean;
+  /** `occurrenceOn`; null for a one-off. */
+  occurrence: OccurrenceState | 'absent' | null;
+};
+
+function buildOccurs(): { cases: OccursCase[] } {
+  const T = '2026-10-02'; // a Friday
+  const make = (name: string, item: Item, dateStr: string = T, timeZone: string = NY): OccursCase => ({
+    name,
+    item,
+    dateStr,
+    todayStr: T,
+    timeZone,
+    occursOn: occursOn(item, dateStr, timeZone),
+    occurrence: occurrenceOn(item, dateStr, T, timeZone) ?? null,
+  });
+  const stretch = (over: Record<string, unknown> = {}) => habit(801, 'stretch', over);
+  const anchored = (over: Record<string, unknown> = {}) =>
+    task(802, 'water plants', { repeatFrequency: 'daily', startDate: '2026-09-01', ...over });
+  return {
+    cases: [
+      make('one-off on its day', task(803, 'buy milk', { startDate: T })),
+      make('one-off on another day', task(803, 'buy milk', { startDate: '2026-10-01' })),
+      make('one-off undated', task(803, 'buy milk')),
+      make('one-off with a timestamp start', task(803, 'buy milk', { startDate: '2026-10-02T00:00:00Z' })),
+      make('repeat none is a one-off', task(803, 'buy milk', { startDate: T, repeatFrequency: 'none' })),
+      make('habit with repeat none occurs nowhere', stretch({ repeatFrequency: 'none' })),
+      make('habit, due today', stretch()),
+      make('habit, done today', stretch({ completedDates: [T] })),
+      make('habit, skipped today', stretch({ skippedDates: [T] })),
+      make('habit, skipped and done reads as done', stretch({ skippedDates: [T], completedDates: [T] })),
+      make('habit, a future day is due', stretch(), '2026-10-05'),
+      make('habit, a past day is open', stretch(), '2026-09-29'),
+      make('habit, a past day skipped', stretch({ skippedDates: ['2026-09-29'] }), '2026-09-29'),
+      make('weekday habit on a Saturday', stretch({ repeatFrequency: 'weekdays' }), '2026-10-03'),
+      make('weekend habit on a Saturday', stretch({ repeatFrequency: 'weekends' }), '2026-10-03'),
+      make('custom-days habit on its day', stretch({ repeatFrequency: 'custom', repeatDays: [5] })),
+      make('custom-days habit off its day', stretch({ repeatFrequency: 'custom', repeatDays: [1, 3] })),
+      make('legacy weekly habit on its day', stretch({ repeatFrequency: 'weekly', repeatDays: [5] })),
+      make('monthly habit on its day', stretch({ repeatFrequency: 'monthly', repeatMonthDay: 2 })),
+      make('monthly 31st clamps to the 30th', stretch({ repeatFrequency: 'monthly', repeatMonthDay: 31 }), '2026-09-30'),
+      make('monthly with no day occurs nowhere', stretch({ repeatFrequency: 'monthly' })),
+      make('an unknown frequency occurs nowhere', stretch({ repeatFrequency: 'fortnightly' })),
+      make('a habit rule reads the day, not the zone', stretch({ repeatFrequency: 'weekdays' }), T, 'Asia/Tokyo'),
+      make('recurring task inside its series', anchored()),
+      make('recurring task before its start', anchored({ startDate: '2026-10-05' })),
+      make('recurring task on its start day, off its rule', anchored({ startDate: T, repeatFrequency: 'custom', repeatDays: [1] })),
+      make('recurring task with no start date', anchored({ startDate: undefined })),
+      make('recurring task done on a past day', anchored({ completedDates: ['2026-09-29'] }), '2026-09-29'),
+      make('custom recurring inside its series', custom(804, 'errand', 'post office', { repeatFrequency: 'weekdays', startDate: '2026-09-01' })),
+      make('custom recurring with no start date', custom(804, 'errand', 'post office', { repeatFrequency: 'weekdays' })),
+    ],
+  };
+}
+
+// ── caps.json ────────────────────────────────────────────────────────────────
+
+type TypeCaps = {
+  /** The registry name: 'task', 'habit' or a custom slug. */
+  name: string;
+  label: string;
+  doneStatus: string;
+  skipStatus: string | null;
+  defaultFrequency: string;
+  defaultBlockMinutes: number;
+  dateAnchored: boolean;
+  dateAddressable: boolean;
+  skippable: boolean;
+  pausable: boolean;
+  remindable: boolean;
+  collectible: boolean;
+  braindumpEligible: boolean;
+  subtasks: boolean;
+  /** `counters.streak`. */
+  streakCounter: boolean;
+  /** `counters.dailyCounts`. */
+  dailyCounts: boolean;
+  /** `fields.includes('priority')`, the item panel's gate on the Priority chip. */
+  hasPriority: boolean;
+};
+type ItemCapsCase = {
+  name: string;
+  item: Item;
+  isSkippable: boolean;
+  isPausable: boolean;
+  isRemindable: boolean;
+  isCollectible: boolean;
+};
+type CapsFixture = { types: TypeCaps[]; items: ItemCapsCase[] };
+
+/**
+ * The registry slice the phone ports. Custom slugs are not hydrated here, so
+ * they answer with the on-the-fly template `getItemTypeConfig` falls back to —
+ * the label is the slug with its first letter capitalised, nothing else
+ * touched ('side-quest' → 'Side-quest').
+ */
+function buildCaps(): CapsFixture {
+  const types = ['task', 'habit', 'errand', 'side-quest', 'book_club', 'x'].map((name): TypeCaps => {
+    const c = getItemTypeConfig(name);
+    return {
+      name,
+      label: c.label,
+      doneStatus: c.doneStatus,
+      skipStatus: c.skipStatus,
+      defaultFrequency: c.defaultFrequency,
+      defaultBlockMinutes: c.schedule.defaultBlockMinutes,
+      dateAnchored: c.dateAnchored,
+      dateAddressable: c.dateAddressable,
+      skippable: c.skippable,
+      pausable: c.pausable,
+      remindable: c.remindable,
+      collectible: c.collectible,
+      braindumpEligible: c.braindumpEligible,
+      subtasks: c.subtasks,
+      streakCounter: c.counters.streak,
+      dailyCounts: c.counters.dailyCounts,
+      hasPriority: c.fields.includes('priority'),
+    };
+  });
+  const items = (
+    [
+      ['one-off task', task(851, 'buy milk', { startDate: '2026-10-02' })],
+      ['task with repeat none', task(851, 'buy milk', { repeatFrequency: 'none' })],
+      ['recurring task', task(852, 'water plants', { repeatFrequency: 'daily', startDate: '2026-09-01' })],
+      ['subtask', task(853, 'oat milk', { parentItemId: uid(851) })],
+      ['recurring subtask', task(854, 'rinse', { repeatFrequency: 'daily', parentItemId: uid(852) })],
+      ['habit', habit(855, 'stretch')],
+      ['habit with repeat none', habit(855, 'stretch', { repeatFrequency: 'none' })],
+      ['habit with no repeat frequency', habit(855, 'stretch', { repeatFrequency: undefined })],
+      ['custom one-off', custom(856, 'errand', 'post office')],
+      ['custom recurring', custom(857, 'errand', 'post office', { repeatFrequency: 'weekdays' })],
+      ['custom subtask', custom(858, 'errand', 'stamps', { parentItemId: uid(856) })],
+    ] as [string, Item][]
+  ).map(([name, item]) => ({
+    name,
+    item,
+    isSkippable: isSkippable(item),
+    isPausable: isPausable(item),
+    isRemindable: isRemindable(item),
+    isCollectible: isCollectible(item),
+  }));
+  return { types, items };
+}
+
+// ── chips.json ───────────────────────────────────────────────────────────────
+
+type SummaryCase = { name: string; names: string[]; expected: string | null };
+type CueTimeCase = { name: string; hhmm: string; timeFormat: TimeFormat; expected: string };
+type ChipsFixture = { membershipSummary: SummaryCase[]; formatCueTime: CueTimeCase[]; formatDay: DayCopyCase[] };
+
+function buildChips(): ChipsFixture {
+  const summaries = (
+    [
+      ['none', []],
+      ['one', ['Wind down']],
+      ['two', ['Wind down', 'Morning']],
+      ['three', ['Wind down', 'Morning', 'Gym']],
+    ] as [string, string[]][]
+  ).map(([name, names]) => ({ name, names, expected: membershipSummary(names) ?? null }));
+  const cueTimes = (
+    [
+      ['midnight', '00:00'],
+      ['half past midnight', '00:30'],
+      ['morning', '07:05'],
+      ['noon', '12:00'],
+      ['afternoon', '13:45'],
+      ['last minute', '23:59'],
+    ] as [string, string][]
+  ).flatMap(([name, hhmm]) =>
+    (['12h', '24h'] as const).map((timeFormat) => ({
+      name: `${name}, ${timeFormat}`,
+      hhmm,
+      timeFormat,
+      expected: formatCueTime(hhmm, timeFormat),
+    }))
+  );
+  const days = (
+    [
+      ['first of a month', '2026-09-01'],
+      ['two-digit day', '2026-10-18'],
+      ['December', '2026-12-31'],
+      ['a timestamp reads as its day', '2026-09-01T00:00:00Z'],
+      ['junk comes back as it was', 'not a date'],
+    ] as [string, string][]
+  ).map(([name, dateStr]) => ({ name, dateStr, expected: formatDay(dateStr) }));
+  return { membershipSummary: summaries, formatCueTime: cueTimes, formatDay: days };
+}
+
 // ── Writing and checking ─────────────────────────────────────────────────────
 
 const FIXTURES: Record<string, () => unknown> = {
@@ -772,6 +1331,13 @@ const FIXTURES: Record<string, () => unknown> = {
   braindump: buildBraindump,
   'routine-groups': buildRoutineGroups,
   toggle: buildToggle,
+  verbs: buildVerbs,
+  'row-moves': buildRowMoves,
+  cadence: buildCadence,
+  'pause-write': buildPauseWrite,
+  occurs: buildOccurs,
+  caps: buildCaps,
+  chips: buildChips,
 };
 
 const serialize = (f: unknown) => JSON.stringify(f, null, 2) + '\n';
@@ -832,5 +1398,45 @@ describe('day fixtures shared with DsulCore', () => {
     for (const c of toggles) {
       if (c.intent && c.intent.count === undefined) expect(c.intent.done, c.name).toBe(!c.isRowDone);
     }
+  });
+
+  it('the item sheet cases exercise both answers of every gate', () => {
+    const both = new Set([true, false]);
+    const verbs = (generated.verbs as { cases: VerbsCase[] }).cases;
+    for (const id of SHEET_VERBS) expect(new Set(verbs.map((c) => c.verbs[id].eligible)), id).toEqual(both);
+    expect(new Set(verbs.map((c) => c.occurrence))).toEqual(new Set(['done', 'skipped', 'due', 'open', 'absent', null]));
+    const tickLabels = new Set(verbs.map((c) => c.verbs.tick.label));
+    for (const label of ['Mark done', 'Mark not done', 'Done today', 'Undo today', 'Count one (1/3)']) {
+      expect(tickLabels, label).toContain(label);
+    }
+    expect(new Set(verbs.map((c) => c.verbs.nextDay.label))).toEqual(new Set(['Move to tomorrow', 'Move to next day']));
+    expect(new Set(verbs.map((c) => c.verbs.reschedule.label))).toEqual(new Set(['Reschedule', 'Schedule']));
+
+    const moves = generated['row-moves'] as RowMovesFixture;
+    expect(new Set(moves.canMoveToNextDay.map((c) => c.expected))).toEqual(both);
+    expect(new Set(moves.canReschedule.map((c) => c.expected))).toEqual(both);
+    // At least one row where the two gates part: a recurring task.
+    expect(moves.canReschedule.some((c, i) => c.expected !== moves.canMoveToNextDay[i].expected)).toBe(true);
+    expect(new Set(moves.nextDayLabel.map((c) => c.expected))).toEqual(new Set(['Move to tomorrow', 'Move to next day']));
+
+    const occurs = (generated.occurs as { cases: OccursCase[] }).cases;
+    expect(new Set(occurs.map((c) => c.occursOn))).toEqual(both);
+    expect(new Set(occurs.map((c) => c.occurrence))).toEqual(new Set(['done', 'skipped', 'due', 'open', 'absent', null]));
+
+    const caps = generated.caps as CapsFixture;
+    for (const key of ['isSkippable', 'isPausable', 'isRemindable', 'isCollectible'] as const) {
+      expect(new Set(caps.items.map((c) => c[key])), key).toEqual(both);
+    }
+
+    const pauses = (generated['pause-write'] as { cases: PauseWriteCase[] }).cases;
+    const patches = pauses.flatMap((c) => ('patch' in c.expected ? [c.expected.patch] : []));
+    expect(pauses.some((c) => 'reason' in c.expected)).toBe(true);
+    expect(patches.some((p) => Object.keys(p).length === 0)).toBe(true);
+    expect(patches.some((p) => 'pausedAt' in p)).toBe(true);
+    // The null that clears a column survives serialization as a present key.
+    expect(patches.some((p) => p.pausedUntil === null)).toBe(true);
+
+    const chips = generated.chips as ChipsFixture;
+    expect(chips.membershipSummary.some((c) => c.expected === null)).toBe(true);
   });
 });

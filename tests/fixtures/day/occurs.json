@@ -1,0 +1,585 @@
+{
+  "cases": [
+    {
+      "name": "one-off on its day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000323",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": null
+    },
+    {
+      "name": "one-off on another day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000323",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": null
+    },
+    {
+      "name": "one-off undated",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000323",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": null
+    },
+    {
+      "name": "one-off with a timestamp start",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000323",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02T00:00:00Z"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": null
+    },
+    {
+      "name": "repeat none is a one-off",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000323",
+        "title": "buy milk",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-02",
+        "repeatFrequency": "none"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": null
+    },
+    {
+      "name": "habit with repeat none occurs nowhere",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "none"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": null
+    },
+    {
+      "name": "habit, due today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "habit, done today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "done"
+    },
+    {
+      "name": "habit, skipped today",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "skipped"
+    },
+    {
+      "name": "habit, skipped and done reads as done",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [
+          "2026-10-02"
+        ],
+        "skippedDates": [
+          "2026-10-02"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "done"
+    },
+    {
+      "name": "habit, a future day is due",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-05",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "habit, a past day is open",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-09-29",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "open"
+    },
+    {
+      "name": "habit, a past day skipped",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [
+          "2026-09-29"
+        ],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-09-29",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "skipped"
+    },
+    {
+      "name": "weekday habit on a Saturday",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekdays"
+      },
+      "dateStr": "2026-10-03",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    },
+    {
+      "name": "weekend habit on a Saturday",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekends"
+      },
+      "dateStr": "2026-10-03",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "custom-days habit on its day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          5
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "custom-days habit off its day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "custom",
+        "repeatDays": [
+          1,
+          3
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    },
+    {
+      "name": "legacy weekly habit on its day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekly",
+        "repeatDays": [
+          5
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "monthly habit on its day",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 2
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "monthly 31st clamps to the 30th",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "monthly",
+        "repeatMonthDay": 31
+      },
+      "dateStr": "2026-09-30",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "open"
+    },
+    {
+      "name": "monthly with no day occurs nowhere",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "monthly"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    },
+    {
+      "name": "an unknown frequency occurs nowhere",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "fortnightly"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    },
+    {
+      "name": "a habit rule reads the day, not the zone",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000321",
+        "title": "stretch",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "weekdays"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "Asia/Tokyo",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "recurring task inside its series",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000322",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "recurring task before its start",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000322",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-10-05"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    },
+    {
+      "name": "recurring task on its start day, off its rule",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000322",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "custom",
+        "startDate": "2026-10-02",
+        "repeatDays": [
+          1
+        ]
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "recurring task with no start date",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000322",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    },
+    {
+      "name": "recurring task done on a past day",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000322",
+        "title": "water plants",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "daily",
+        "startDate": "2026-09-01",
+        "completedDates": [
+          "2026-09-29"
+        ]
+      },
+      "dateStr": "2026-09-29",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "done"
+    },
+    {
+      "name": "custom recurring inside its series",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000324",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "weekdays",
+        "startDate": "2026-09-01"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": true,
+      "occurrence": "due"
+    },
+    {
+      "name": "custom recurring with no start date",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-000000000324",
+        "title": "post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "repeatFrequency": "weekdays"
+      },
+      "dateStr": "2026-10-02",
+      "todayStr": "2026-10-02",
+      "timeZone": "America/New_York",
+      "occursOn": false,
+      "occurrence": "absent"
+    }
+  ]
+}

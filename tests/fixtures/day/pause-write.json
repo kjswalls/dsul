@@ -1,0 +1,345 @@
+{
+  "cases": [
+    {
+      "name": "resume a running pause",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "req": {
+        "paused": false
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": "2026-10-02"
+        }
+      }
+    },
+    {
+      "name": "resume a pause with an end date",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-09"
+      },
+      "req": {
+        "paused": false
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": "2026-10-02"
+        }
+      }
+    },
+    {
+      "name": "resume something live writes nothing",
+      "current": {},
+      "req": {
+        "paused": false
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {}
+      }
+    },
+    {
+      "name": "resume after the pause already ended writes nothing",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-02"
+      },
+      "req": {
+        "paused": false
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {}
+      }
+    },
+    {
+      "name": "pause something live",
+      "current": {},
+      "req": {
+        "paused": true
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": null
+        }
+      }
+    },
+    {
+      "name": "pause until a later day",
+      "current": {},
+      "req": {
+        "paused": true,
+        "pausedUntil": "2026-10-09"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": "2026-10-09"
+        }
+      }
+    },
+    {
+      "name": "pause until tomorrow",
+      "current": {},
+      "req": {
+        "paused": true,
+        "pausedUntil": "2026-10-03"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": "2026-10-03"
+        }
+      }
+    },
+    {
+      "name": "pause with a null end",
+      "current": {},
+      "req": {
+        "paused": true,
+        "pausedUntil": null
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": null
+        }
+      }
+    },
+    {
+      "name": "pause until today is refused",
+      "current": {},
+      "req": {
+        "paused": true,
+        "pausedUntil": "2026-10-02"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "reason": "pausedUntil 2026-10-02 is not after today (2026-10-02), so the pause would end immediately"
+      }
+    },
+    {
+      "name": "pause until a past day is refused",
+      "current": {},
+      "req": {
+        "paused": true,
+        "pausedUntil": "2026-09-30"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "reason": "pausedUntil 2026-09-30 is not after today (2026-10-02), so the pause would end immediately"
+      }
+    },
+    {
+      "name": "pause again after an ended pause restamps and clears the end",
+      "current": {
+        "pausedAt": "2026-09-01T12:00:00Z",
+        "pausedUntil": "2026-09-20"
+      },
+      "req": {
+        "paused": true
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": null
+        }
+      }
+    },
+    {
+      "name": "pause what is already paused writes nothing",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "req": {
+        "paused": true
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {}
+      }
+    },
+    {
+      "name": "pause what is already paused, with a new end",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "req": {
+        "paused": true,
+        "pausedUntil": "2026-10-09"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": "2026-10-09"
+        }
+      }
+    },
+    {
+      "name": "pause what is already paused, with a null end",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-09"
+      },
+      "req": {
+        "paused": true,
+        "pausedUntil": null
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": null
+        }
+      }
+    },
+    {
+      "name": "an end date alone moves a running pause",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "req": {
+        "pausedUntil": "2026-10-09"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": "2026-10-09"
+        }
+      }
+    },
+    {
+      "name": "a null end alone clears the end of a running pause",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z",
+        "pausedUntil": "2026-10-09"
+      },
+      "req": {
+        "pausedUntil": null
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": null
+        }
+      }
+    },
+    {
+      "name": "an end date alone on something live is refused",
+      "current": {},
+      "req": {
+        "pausedUntil": "2026-10-09"
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "reason": "pausedUntil was sent without paused: true, but this is not currently paused — a resume date on its own would change nothing"
+      }
+    },
+    {
+      "name": "an empty request writes nothing",
+      "current": {
+        "pausedAt": "2026-09-20T15:00:00Z"
+      },
+      "req": {},
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {}
+      }
+    },
+    {
+      "name": "a junk pausedAt reads as live",
+      "current": {
+        "pausedAt": "not a date"
+      },
+      "req": {
+        "paused": true
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedAt": "2026-10-02T15:00:00.000Z",
+          "pausedUntil": null
+        }
+      }
+    },
+    {
+      "name": "a pause begun tonight in New York resumes",
+      "current": {
+        "pausedAt": "2026-10-03T02:00:00Z"
+      },
+      "req": {
+        "paused": false
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "America/New_York",
+      "expected": {
+        "patch": {
+          "pausedUntil": "2026-10-02"
+        }
+      }
+    },
+    {
+      "name": "the same pause read in UTC has not begun",
+      "current": {
+        "pausedAt": "2026-10-03T02:00:00Z"
+      },
+      "req": {
+        "paused": false
+      },
+      "todayStr": "2026-10-02",
+      "nowIso": "2026-10-02T15:00:00.000Z",
+      "timeZone": "UTC",
+      "expected": {
+        "patch": {}
+      }
+    }
+  ]
+}

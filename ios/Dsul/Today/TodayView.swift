@@ -16,14 +16,25 @@ struct TodayView: View {
             TimelineView(.everyMinute) { context in
                 content(nowMin: planner.minuteOfDay(context.date))
             }
+            // Not while an item's sheet is up: the sheet draws the banner
+            // itself, and at its medium detent this copy would show too.
             .overlay(alignment: .top) {
-                if let banner = planner.banner {
-                    BannerView(banner: banner) {
-                        planner.dismissBanner(banner.id)
+                if let banner = planner.banner, !planner.isShowingItemSheet {
+                    // As tall as the screen, so the move (which travels the
+                    // view's own height) carries the banner off the top,
+                    // never parking it in the bar's band, which draws no
+                    // background. The spacer draws nothing and takes no taps.
+                    VStack(spacing: 0) {
+                        BannerView(banner: banner) {
+                            planner.dismissBanner(banner.id)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.top, 4)
+                        Spacer(minLength: 0)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 4)
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    // A move alone: an opacity transition would fade the
+                    // lime check through the banner's own opacity.
+                    .transition(.move(edge: .top))
                 }
             }
             .animation(.snappy, value: planner.banner)
@@ -169,8 +180,10 @@ enum AccountFormat {
 }
 
 /// The planner's banner: it goes by itself after a few seconds
-/// (`SamplePlanner.show`), and a tap dismisses it sooner.
-private struct BannerView: View {
+/// (`SamplePlanner.show`, which also has VoiceOver say it), and a tap
+/// dismisses it sooner. Over Today, or over an item's sheet while one is up,
+/// which would otherwise hide a write the server refused.
+struct BannerView: View {
     var banner: PlannerBanner
     var onDismiss: () -> Void
 
@@ -189,7 +202,8 @@ private struct BannerView: View {
             .padding(.vertical, 10)
             .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
-        .buttonStyle(.plain)
+        // Not `.plain`, whose press fades the lime tick.
+        .buttonStyle(PressScaleStyle(scale: 0.97))
         .accessibilityHint("Dismisses the message")
     }
 }

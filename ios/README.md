@@ -1,7 +1,8 @@
 # dsul for iPhone
 
 A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
-and shows your own day from do.dsul.app; a tick, a drop on an hour and a capture are saved to
+and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture
+and the item sheet's Skip, move (Tomorrow, Reschedule) and Pause are saved to
 the server. "Try with sample data" on the sign-in screen opens a made-up day
 instead, which needs no account and whose changes last until the app quits.
 
@@ -12,6 +13,12 @@ right switches them: tap for the next, swipe along it to step, long-press for
 the menu. Tap the title to pick another day. The capture bar above the tab bar
 adds thoughts to the braindump; its count opens the braindump over Schedule.
 
+Tap an item anywhere (a row, a block on the grid, a braindump row, a search
+result) to open its sheet: what it is, read-only for now (its notes, its
+streak, its chips), and its verbs in a bar along the bottom (tick, Skip,
+Tomorrow, Reschedule, Pause, Pause until, Resume, whichever apply). A tap on
+a row's circle still just ticks it.
+
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
     `AppConfig` (the server's address).
@@ -19,10 +26,13 @@ adds thoughts to the braindump; its count opens the braindump over Schedule.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
     changes in order and fetches your day.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
+  - `Item/`: the item sheet. `ItemSheetModel` decides what it says and
+    offers, apart from the views, so the hosted tests pin it.
 - `DsulCore/` is a Swift package with the planner logic ported from the web
   app: which items show on a day, the braindump, routine grouping, what a
-  tick means, and the sign-in requests. It has no UI, so `swift test` runs it
-  on Linux as well as macOS.
+  tick means, the item sheet's verbs (when each is offered, what it writes)
+  and the words its chips say, and the sign-in requests. It has no UI, so
+  `swift test` runs it on Linux as well as macOS.
 - `project.yml` describes the Xcode project. XcodeGen generates
   `Dsul.xcodeproj` from it; the generated project is never committed.
 
@@ -135,6 +145,78 @@ The spike passes if:
 
 If 1 or 2 fails, the next version swaps the system drag for a custom one (see
 memory/plans/ios-app.md).
+
+## Checking the item sheet
+
+The hosted tests pin what the sheet says and what each verb writes, but not
+how it feels. Check on the iPhone, on the sample or signed in once the
+server's `skip`, `move` and `pause` writes are deployed (an older server's
+verbs simply don't show); a check that needs one or the other says so. The
+sample's habits are Meds and Stretch 10 min (daily, already done today),
+Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
+plants (Sundays and Wednesdays), and its tasks are all one-offs.
+
+1. **Opening.** A row on List and on Buckets, a block on Schedule, a braindump
+   row (the item's sheet stacks on the braindump sheet) and a Search result
+   each open the sheet. Swipe it down, or tap Close, and you are back where
+   you were.
+2. **The circle still ticks.** On a row, tap a few points outside the circle,
+   toward the title or above it: it ticks, it doesn't open the sheet. A tap on
+   the title opens it.
+3. **Drag still works.** Long-press a braindump row: it lifts and drags as
+   before; a quick tap opens it instead. Drop a braindump row onto an hour
+   that already has a block: it lands, the block didn't swallow the drop.
+4. **Each verb** (the sample, or signed in), opened from Today on today. On
+   a one-off task (Call the dentist on the sample), in this order: Tomorrow
+   (the row moves to tomorrow, and the slot then says Next day), Reschedule →
+   Today (it comes back), Next week, Pick a date… (the picker names the day on
+   its button; Cancel changes nothing), ⋯ → Pause until… (its picker starts
+   tomorrow and says the item comes back on the day picked; the bar is then
+   Resume alone, so tap it), and Done last, since it takes Tomorrow and
+   Reschedule away until Not done brings them back. On a habit not done
+   today (Journal on the sample; Meds and Stretch are done, so they have no
+   Skip): Skip today turns into Unskip today in the same place (the title's
+   circle goes while the day is skipped), then Unskip today, then the title's
+   circle ticks it (Skip goes while it is done), then Pause turns into
+   Resume. Signed in only, on a repeating task of your own (the sample has
+   none): the bar is Done today, Skip today and Pause, and ⋯ → Reschedule
+   moves the series to start on the day picked.
+   The sheet stays open after each.
+5. **Another day** (the sample, or signed in). Pick tomorrow on Today and open
+   Journal: the bar says Skip, not Skip today, under "For" and that day, and
+   a line under the title names the day too, since its circle ticks it. Pick
+   yesterday and open Journal (done yesterday on the sample): with no Skip,
+   the bar is Pause and Pause until, which act on today, so no "For" sits
+   over it, though the line under the title still names yesterday. Today
+   lists only what falls on its day, so for "Not due" use Search, which acts
+   on today: on the sample, Plan tomorrow when today is a Saturday or Sunday,
+   or Water the plants when it is any day but Sunday or Wednesday. "Not due
+   today" takes the bar's place, the title has no circle, and ⋯ holds Pause
+   and Pause until….
+6. **A refused write** (signed in only: the sample sends nothing, so nothing
+   is refused). Turn on Airplane Mode, with Wi-Fi off too, open a habit not
+   done today and tap Skip today. "Couldn't reach dsul. Checking what was
+   saved…" shows over the sheet, under Close, then "Couldn't reach dsul, so
+   that change was undone." as the slot turns back to Skip today. It shows
+   once (not again over Today behind the sheet at its medium size), and goes
+   by itself after five seconds, or at a tap.
+7. **A counted habit** (signed in only; the sample has none). Open a habit you
+   do more than once a day: its count sits beside the title ("0/3"), and each
+   tap on the title's circle counts one ("1/3") until the day is done.
+8. **VoiceOver.** A row is one element: it reads the title and the time, the
+   hint "Opens details", and the rotor's Actions has Mark done. Each chip reads
+   as its own element ("Time: 9:00 to 11:00 am"), the streak chip as one
+   ("Streak 41; this week: 3 done"), and each bar slot by its full name ("Mark
+   done"; "Move to tomorrow" with its day).
+9. **VoiceOver hears the banner** (signed in only). With VoiceOver on, do
+   check 6: VoiceOver says each banner as it shows (the second can cut the
+   first short), and focus stays on the slot.
+10. **Larger text.** At the largest accessibility size the sheet opens full
+    height, the chips wrap (two lines each), and the bar's words stop growing;
+    a long press on a slot shows it large.
+11. **Lime.** The done tick, in the sheet and on the rows, stays full lime when
+    pressed and in dark mode. The sheet's buttons (Close, ⋯, Show all, the
+    bar's slots) are in the label colour, not lime.
 
 ## Rules
 

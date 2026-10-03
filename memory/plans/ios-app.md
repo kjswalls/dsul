@@ -11,6 +11,9 @@ writes, and three writes (tick, braindump→hour, capture). "Try with sample
 data" on the sign-in screen keeps the PR 2 sample (and the drag spike) one tap
 away. One PR for all three parts, so merging deploys the routes and the app
 together.
+Item detail, part 1 adds the item sheet, opened from every surface: what the
+item is (read-only) and its verbs, with three more writes (skip, move, pause)
+on the same route. Part 2 makes it editable (see Not yet).
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -39,8 +42,9 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   placement in `lib/day-items.ts` and the in-bucket row order in
   `components/views/day-buckets.tsx`; `HabitCompletion.swift` ← the
   optimistic completion step of `toggleHabitStatus` (and the habit branch of
-  `setItemsCompleted`) in `lib/planner-store.ts`, minus clearing the day's
-  skip, which waits for `skippedDates` on iOS.
+  `setItemsCompleted`) in `lib/planner-store.ts`; clearing the day's skip
+  lives with the tick (`ItemToggle.swift`) and the skip's own step
+  (`VerbWrites.swift`).
   PR 3 adds `Item.swift` ← packages/types `ItemSchema` (as `itemFromRow`
   builds it) and the `/api/app/planner` payload (lib/app-api.ts), decoded
   leniently; `Registry.swift` ← the slice of `lib/item-registry.ts` Today
@@ -52,11 +56,24 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   resolution of it; `AuthCore.swift`, the pure half of sign-in (PKCE, the
   GoTrue requests, refresh verdicts, the callback check of
   app/auth/ios/route.ts).
+  Item detail adds `ItemVerbs.swift` ← `lib/item-verbs.ts` (each verb's gate,
+  label and detail, `drawnState`/`occurrenceOn`) and `occursOn` from
+  `lib/reminders/due.ts`; `RowMoves.swift` ← `lib/row-moves.ts` (the carry)
+  with `addDaysToDateStr` from `lib/goals.ts`; `Cadence.swift` ← the chips'
+  words (`lib/cadence.ts`, `membershipSummary` from `lib/item-bands.ts`,
+  `formatCueTime` from `lib/reminders/copy.ts`, `formatDay` from
+  `lib/active.ts`, `weekStartOf` from `lib/container-schedule.ts`);
+  `VerbWrites.swift` ← the store's `setItemSkipped`, `moveTaskToDate` and
+  `setItemPaused` (through `resolvePauseWrite`, the rule `lib/item-pause.ts`
+  applies on the server).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
   `ios/Dsul/Auth`: `AuthStore`, `TokenStore` (Keychain, or memory in tests),
   `SignInView`. `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
+  `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
+  `ChipFlow`, `StreakChip`, `DayPickSheet`) and `ItemSheetModel`, which
+  decides what it says and offers apart from the views.
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
 
@@ -86,10 +103,125 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   Ask; a compact rendering for the `.inline` placement. The drag probe moved
   from Today's toolbar into the avatar menu.
 
+## Item detail, part 1
+- **One sheet, every surface.** `PlannerSheet.item(UUID, day: SheetDay)` in
+  the planner's one slot, raised by `SamplePlanner.open`: over Today from a
+  List or Buckets row, a block on the Schedule grid and a Search result, and
+  stacked on the braindump sheet from a braindump row. Its own
+  `NavigationStack` (a subtask's title pushes the subtask's page), detents
+  medium and large (large from the start at accessibility text sizes), Close
+  and ⋯ in the toolbar, the verbs in a glass capsule in `.safeAreaBar`, and
+  the planner's banner over the content under Close, so a refused write says
+  so over the sheet it came from. Today's copy of the banner steps aside
+  while an item's sheet is up, so at the medium detent it shows once, and
+  `show` has VoiceOver say it (an error at high priority), since it is drawn
+  where focus isn't. The sheet stays open after a verb, as the web's panel
+  does, and closes when a fetch no longer has its item (`apply` and
+  `restore` clear the slot). The slot knows only the first page, so a pushed
+  subtask's page whose item a fetch drops takes itself off the stack.
+- **Which day.** `SheetDay` is kept by name and read when a verb is tapped
+  (`actingDay`): `.selected` from Today's surfaces, so a sheet acts on the day
+  its row was drawn on; `.today` from Search, which has no day (`open` first
+  brings `today` up to the clock). The tick, Skip and Unskip act on it; Pause
+  and Resume read wall-clock today in the planner's zone. Off today the bar
+  drops " today" from its words, and a caption over it names the day ("For
+  Thu, Oct 8") when it holds a verb that acts on that day (the tick, Skip,
+  Unskip); a bar of Pause, Pause until or Resume alone gets none. When the
+  title's circle ticks that day and the bar doesn't hold the tick (a habit,
+  or a bar given way to Resume), a line under the title names the day too
+  (over a habit's Skip or Unskip, the caption and the line both show). On a day a recurring item doesn't fall on (`occurrenceOn` is
+  `absent`) a "Not due" line takes the bar's place. Today lists only what
+  falls on its day, so in practice that is a Search result on one of the
+  item's days off, and the line reads "Not due today"; off today it would
+  name the day ("Not due Sat, Oct 3").
+- **The bar** follows the approved item-conversations table (Round 3), up to
+  three slots:
+
+  | Item | Bar | ⋯ |
+  |---|---|---|
+  | Paused today | Resume | – |
+  | Recurring item on a day it doesn't fall on | – ("Not due today" in its place) | Pause, Pause until…, and for a series, Reschedule |
+  | Habit | Skip / Unskip today, Pause, Pause until (its tick is the title's circle) | – |
+  | One-off task-like | Done, Tomorrow (Next day when it lands later), Reschedule (undated: Schedule, and no Tomorrow) | Pause, Pause until… |
+  | Recurring task-like | Done today, Skip / Unskip today, Pause | Pause until…, Reschedule |
+  | Subtask | Done | – |
+
+  The first two rows come first, whatever the item. ⋯ holds whatever of
+  Pause, Pause until and a series' Reschedule the bar doesn't, so a habit's ⋯
+  is empty, and hidden, except on a day it doesn't fall on. That is the one
+  exception to the design's empty habit ⋯, kept on purpose: with no bar
+  there, ⋯ is the only way to pause it, and the web's `pause` is dateless,
+  never asking whether the day is absent.
+
+  Only what `SamplePlanner.offers` allows shows: the web's gate
+  (`verbEligible`), the server's own where it asks more (no skip or carry for
+  a subtask; `isPausable`), and the server's `writes`. A verb and its opposite
+  share a slot, so VoiceOver's focus stays put. A series takes Reschedule but
+  not Tomorrow (lib/row-moves.ts `canReschedule`, #375): the picked day
+  becomes its start, so it waits behind ⋯. Reschedule is a menu (Today,
+  Next week by Week starts on, Pick a date…); Pick a date and Pause until open
+  `DayPickSheet`, nested in the sheet and never the planner's slot, which
+  writes only on its confirm button ("Move to Thu, Oct 8"). Its title is the
+  bar's own word, so an undated item's picker is Schedule ("Schedule for Thu,
+  Oct 8"). Pause until's starts tomorrow and says under the calendar that
+  the item comes back on the day picked; left open across midnight, its
+  earliest day moves up and the pick with it, and a confirm on a day no
+  longer after today writes nothing and says so in the banner. The mapping
+  lives in `ItemSheetModel`, pinned by ItemSheetTests, and every verb
+  re-reads its item and asks its gate again before it writes.
+- **The chips** are read-only in part 1 and follow the web panel's order, each
+  only when set, each asked of the registry (`caps`), never the type's name:
+  the streak chip first for a type that keeps one (flame, count, this week's
+  seven days by Week starts on); priority | date ("Today", else "Thu, Oct 8"),
+  time ("9:00–11:00 am" in the user's 12h or 24h, else the bucket, never
+  Anytime), times a day (above 1), repeat (`cadenceLabel`), reminder ("After
+  I pour my coffee · 8:00 am") | project (with its colour dot), routines,
+  seasons. The planner payload gained `weekStartDay` and `timeFormat` for
+  them. Only the item's own pause shows ("Paused until Oct 8"). Beside the
+  title, a counted habit's tally on the day ("1/3", the web panel's count),
+  so a tap on the circle that counts one without finishing the day still
+  shows; VoiceOver hears it in the circle's label ("Count one (1/3)").
+- **Opening, and VoiceOver.** A row is two buttons: the circle, hit over 44pt
+  around its 22pt drawing so a near miss still ticks, and the rest, which
+  opens, hit over the row's full 44pt though a line of title is about 22pt.
+  The skipped strip, a braindump row, a subtask's title in the sheet and Show
+  all are hit over 44pt too, without changing their layout. To VoiceOver a
+  row is one element ("Draft Q4 roadmap, 9 to 11 AM", "Done" as its value,
+  the hint "Opens details") whose activation opens, with Mark done as a named
+  action. The skipped strip opens too (the only way to Unskip). A grid block
+  is a button over the drop target; a braindump row opens on a tap gesture,
+  so its long press stays the system drag, and keeps its "Schedule at 9:00"
+  action. Each chip is its own element with a spoken label; the streak chip
+  is one ("Streak 41; this week: 3 done").
+- **Lime.** The sheet sets no tint of its own, because the done tick and
+  "Now" are `Color.accentColor`; its text controls tint themselves in the
+  label colour, and anything lime presses by scaling (`PressScaleStyle`),
+  never `.plain`'s fade. The banner dropped `.plain` for the same reason, and
+  slides in without an opacity transition, which would fade its lime check.
+- **The writes.** `POST /api/app/items/:id` takes `skip` (a date and
+  `skipped`), `move` (a date, which the phone picks: `nextDayOf`, Today, Next
+  week or the picked day) and `pause` (`paused`, an optional exclusive
+  `pausedUntil`, and the device's zone for an account with none stored), each
+  doing what the web's store action does (`setItemSkipped`, `moveTaskToDate`,
+  `setItemPaused` through lib/item-pause.ts) behind the server's copy of its
+  gate. The payload's `writes` lists the intents the server takes; absent (an
+  older server) means `complete` and `schedule`, and the phone hides any verb
+  whose write isn't listed, so an app that ships before the deploy never
+  offers a write it would be refused. In PlannerSync each write has a slot (a
+  day for a habit's or a recurring item's `complete` and for `skip`, the
+  status for a one-off's `complete`, placement for `schedule` and `move`, the
+  pause, a capture), and a revert rebases only the failed write's slot (Data,
+  below).
+- **Unproven on a device:** the checks in ios/README.md, "Checking the item
+  sheet" (a near miss still ticks, a block doesn't swallow a drop, a
+  braindump tap versus long press, each verb, another day and "Not due", a
+  refused write and VoiceOver hearing its banner, a counted habit's tally,
+  VoiceOver, the largest text size, the lime).
+
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
 job decides whether anything iOS changed (`ios/` except Markdown, the
-workflow, and the mirrored TS files); the two real jobs skip otherwise, and a
+workflow, the mirrored TS files and packages/types' `schemas.ts`); the two real jobs skip otherwise, and a
 skipped job reports as passed, so the checks could later be made required
 without stalling web PRs. `DsulCore (Linux)` runs `swift test` in the
 `swift:6.4-bookworm` container. `iOS app (Xcode 27)` runs on the `xcode-27`
@@ -183,11 +315,12 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
-  routines, seasons and three settings, `completedDates` windowed to 400 days),
-  `POST /api/app/items` (capture, under the phone's own lowercase id, so a
-  retry is answered 200 for the same row) and `POST /api/app/items/:id`
-  (`complete` with a date, an end state and a counted habit's tally, or
-  `schedule` with a date and `HH:mm`). Bearer Supabase access token only;
+  routines, seasons, five settings and the `writes` it takes,
+  `completedDates` windowed to 400 days), `POST /api/app/items` (capture,
+  under the phone's own lowercase id, so a retry is answered 200 for the same
+  row) and `POST /api/app/items/:id` (`complete` with a date, an end state and
+  a counted habit's tally, `schedule` with a date and `HH:mm`, or the item
+  sheet's `skip`, `move` and `pause`, above). Bearer Supabase access token only;
   RLS on a user-scoped client is the tenant guard; an Auth outage is 503,
   never 401, and the phone never signs out on a 503.
 - **The day** is the stored timezone, trimmed, else the device's
@@ -205,10 +338,30 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   so a drag whose view is torn down mid-flight (and never delivers `.ended`)
   can't hold fetches back for good. A discarded fetch is made again, never
   dropped: after the drain, or after a pause that doubles (0.5s up to 4s)
-  while ticks keep landing under it. A failed write shows a
-  banner and refetches once the queue drains; if that refetch fails too, the
-  item goes back to its copy from before the write unless a later write for it
-  is queued or has landed. A payload for another user is never shown.
+  while ticks keep landing under it. A failed write shows a banner and
+  refetches once the queue drains, and the server's answer replaces every
+  guess. If that refetch fails too, each failed write's slot (`WriteSlot`) is
+  rebased: the slot goes back to the item before the earliest failed write in
+  it, with every write in it that landed after that one played again on top,
+  in order, through the planner's own steps (`replaying`; a pause is resolved
+  again against the rebased item, at the planner's clock, as the server
+  resolved it against its row). So the slot ends where the server holds it,
+  and every other slot is left as it is: a tick that landed is never undone by
+  a carry that failed. A habit's status and day count are the one overlap,
+  since every day's tick and skip writes them, so a day's rebase takes them
+  from before the item's earliest failed day with every landed day replayed
+  (`dayWideFields`). A fetch that fails while a write on the failed item is
+  still out (a pull to refresh) keeps that item's failures, records what
+  lands, and the drain refetches; they are rebased only if that fails too.
+  The "so that change was undone" banner shows only when a revert moved
+  something; otherwise it is the plain "Couldn't reach dsul". A landed write doesn't
+  moot a failed one in its slot, because two writes there need not set the
+  same fields (a carry keeps the time a failed drop set, a skip leaves the
+  tally a failed tick set, a resume of an item the server never paused writes
+  nothing), so it is replayed, never trusted. A failed capture takes its item
+  with it, unless a later write on the item landed: the route answers 404 for
+  a missing row, so any write it took proves the row is there. A payload for
+  another user is never shown.
 - **The first load shows itself on every layout**: List and Buckets put the
   spinner (or the error and Try again) in the list, and Schedule floats it
   over the grid, since an empty grid alone looks like a free day.
@@ -235,9 +388,10 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
 ## Writes go through the server
 When the app writes, it calls the bearer-auth `/api/app/*` routes (above),
 never Supabase directly and never with a cookie. Writes are intents, never
-arrays: a tick sends a date and an end state, never `completedDates`, because
-the phone holds a 400-day window and an array written back from a window
-deletes what it didn't show.
+arrays: a tick sends a date and an end state, never `completedDates`, and a
+skip a date and `skipped`, never `skippedDates`, because the phone holds a
+400-day window and an array written back from a window deletes what it didn't
+show.
 
 The routes do what the browser UI's writes do, through the same `lib/db.ts`
 functions:
@@ -260,8 +414,10 @@ functions:
 recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
 `deriveDayItems` → completion toggles: all done by PR 3, with
 `deriveTimedEntries`, braindump membership and routine grouping. The habit
-streak stays an opaque stored counter. `lib/item-verbs.ts` needs a store-free
-split before it can be ported (skip/unskip, carry). Shared JSON fixtures:
+streak stays an opaque stored counter. Item detail ports `lib/item-verbs.ts`'s
+gates, labels and details (its `run`s stay the web's; the phone's optimistic
+steps are `VerbWrites.swift`, checked against the real store). Shared JSON
+fixtures:
 Vitest runs the real TS and writes cases and expected results
 (`tests/fixtures/recurrence/`, `tests/fixtures/day/`, and
 `tests/fixtures/app/planner-response.json` for the payload), DsulCore's tests
@@ -293,9 +449,13 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, item detail, sign-in with Apple,
-universal links (the email link uses the custom scheme), skip/unskip, unschedule, resize and moving
-existing blocks from the phone, the overdue tray, sinking completed rows,
+from the bar to the braindump sheet, item detail part 2 (editing the chips,
+title and notes; Add a subtask; Reset streak, which Round 5 moves into the
+streak chip's popover; Delete), the rest of the sheet (a routine's or a
+season's hold, the goal chip once goals are in the payload, the Beeminder
+row, the Streaks switch, the thread and Ask, Focus), sign-in with Apple,
+universal links (the email link uses the custom scheme), unschedule, resize
+and moving existing blocks from the phone, the overdue tray, sinking completed rows,
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
 timezone from the phone, notifications, Focus as a Live Activity, a
 local-stack password grant for development, and the web-side work the app

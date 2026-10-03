@@ -1,3 +1,4 @@
+import Accessibility
 import DsulCore
 import Foundation
 import Observation
@@ -27,10 +28,31 @@ struct ListSection: Identifiable, Hashable, Sendable {
 
 /// The sheets anything in the app can raise, one at a time. The braindump
 /// sheet is not one of them: it stays up over Schedule, and these stack on it.
-enum PlannerSheet: String, Identifiable, Hashable, Sendable {
+enum PlannerSheet: Identifiable, Hashable, Sendable {
     case capture, datePicker
+    /// An item's sheet: what it is, and its verbs on `day`. Opened through
+    /// `SamplePlanner.open`, and closed by `apply` or `restore` when the item
+    /// is gone.
+    case item(UUID, day: SheetDay)
 
-    var id: String { rawValue }
+    var id: String {
+        switch self {
+        case .capture: return "capture"
+        case .datePicker: return "datePicker"
+        case .item(let id, _): return "item-" + id.uuidString.lowercased()
+        }
+    }
+}
+
+/// The day an item sheet's per-day verbs (tick, skip, unskip) act on, kept by
+/// name and read when a verb is tapped (`SamplePlanner.actingDay`), as the
+/// web's verbs are handed "the day it acts on" (lib/item-verbs.ts):
+/// - `selected`: the day Today shows. A row on List, Buckets, Schedule or the
+///   braindump opens with it, so the sheet acts on the day the row was drawn on.
+/// - `today`: the user's day now. Search opens with it: it has no day of its own.
+/// Pause and Resume are dateless and read today either way.
+enum SheetDay: Hashable, Sendable {
+    case selected, today
 }
 
 /// A one-line message over Today: "Signed in as …", or a write or fetch the
@@ -53,9 +75,13 @@ struct PlannerBanner: Identifiable, Equatable, Sendable {
 ///
 /// What shows on a day is DsulCore's port of the web's rules (lib/active.ts,
 /// lib/day-items.ts, day-schedule.tsx, lib/braindump-members.ts,
-/// lib/grouping.ts), and a tick is lib/item-toggle.ts, so the phone and the web
-/// agree on the same data. Every change here is optimistic and immediate; when
-/// signed in, `sync` then sends it to the server (PlannerSync).
+/// lib/grouping.ts), a tick is lib/item-toggle.ts, and the item sheet's verbs
+/// are lib/item-verbs.ts (their gates) and the store actions they run
+/// (DsulCore VerbWrites.swift), so the phone and the web agree on the same
+/// data. Every change here is optimistic and immediate; when signed in, `sync`
+/// then sends it to the server (PlannerSync). A verb re-reads its item and asks
+/// its gate again before it writes, whatever the sheet drew; a refusal changes
+/// nothing and sends nothing.
 @Observable @MainActor
 final class SamplePlanner {
     /// Every item, braindump and subtasks included, as the server sent them
@@ -85,6 +111,12 @@ final class SamplePlanner {
     var banner: PlannerBanner? = nil
     /// The signed-in user; nil for the sample.
     let userId: UUID?
+    /// The clock: what `refreshToday` reads, and a pause's stamp and "today".
+    /// Injected so a test pins the instant; the app's is the device's.
+    let now: () -> Date
+    /// The item writes the server takes (`PlannerPayload.writes`). Nil until
+    /// the first fetch lands, or from a server older than the list.
+    private(set) var writes: [String]? = nil
     /// Sends this planner's writes and fetches its data. Nil for the sample,
     /// whose changes last until the app quits.
     @ObservationIgnored private(set) var sync: PlannerSync? = nil
@@ -102,13 +134,21 @@ final class SamplePlanner {
         set { activeSheet = newValue }
     }
 
-    convenience init(todayString: String) {
-        self.init(today: DayString(todayString))
+    /// Is an item's sheet up? It draws the banner itself, so Today doesn't.
+    var isShowingItemSheet: Bool {
+        if case .item(_, _)? = activeSheet { return true }
+        return false
     }
 
-    /// The sample planner (SampleData), on `today` or the device's day.
-    init(today: DayString? = nil) {
-        let anchor: DayString = today ?? DayString.deviceToday
+    /// A test's sample planner, pinned to `todayString`. Pass a `now` on that
+    /// day too: a pause, and opening a sheet from Search, read the clock.
+    convenience init(todayString: String, now: @escaping () -> Date = { Date() }) {
+        self.init(today: DayString(todayString), now: now)
+    }
+
+    /// The sample planner (SampleData), on `today` or the clock's day.
+    init(today: DayString? = nil, now: @escaping () -> Date = { Date() }) {
+        let anchor: DayString = today ?? DayString(date: now())
         let sample = SampleData.make(today: anchor)
         self.today = anchor
         selectedDay = anchor
@@ -119,14 +159,16 @@ final class SamplePlanner {
         settings = PlannerSettings()
         hasLoaded = true
         userId = nil
+        self.now = now
     }
 
     /// The signed-in user's planner: empty until the first fetch lands. Its
     /// day is the device's until the user's stored timezone arrives with it.
     /// `isDragging` holds fetched data back while a braindump row is in the
     /// air (ScheduleDrag's `DragHold`).
-    init(userId: UUID, api: APIClient, isDragging: @escaping @MainActor () -> Bool, todayString: String? = nil) {
-        let anchor: DayString = todayString.flatMap { DayString($0) } ?? DayString.deviceToday
+    init(userId: UUID, api: APIClient, isDragging: @escaping @MainActor () -> Bool, todayString: String? = nil,
+         now: @escaping () -> Date = { Date() }) {
+        let anchor: DayString = todayString.flatMap { DayString($0) } ?? DayString(date: now())
         self.today = anchor
         selectedDay = anchor
         items = []
@@ -136,6 +178,7 @@ final class SamplePlanner {
         settings = PlannerSettings()
         hasLoaded = false
         self.userId = userId
+        self.now = now
         sync = PlannerSync(planner: self, api: api, userId: userId, isDragging: isDragging)
     }
 
@@ -173,13 +216,15 @@ final class SamplePlanner {
         return id
     }
 
-    /// Moves `today` to the user's day now: in their stored zone when there is
-    /// one, else in `calendar` (the device's). See `refreshToday(to:)`.
-    func refreshToday(now: Date = Date(), calendar: Calendar = .current) {
-        if let zone = Self.storedZone(settings.timezone), let day = toDateStr(now, timeZone: zone) {
+    /// Moves `today` to the user's day at `instant` (the clock's now when nil):
+    /// in their stored zone when there is one, else in `calendar` (the
+    /// device's). See `refreshToday(to:)`.
+    func refreshToday(now instant: Date? = nil, calendar: Calendar = .current) {
+        let at = instant ?? now()
+        if let zone = Self.storedZone(settings.timezone), let day = toDateStr(at, timeZone: zone) {
             refreshToday(to: day)
         } else {
-            refreshToday(to: DayString(date: now, calendar: calendar))
+            refreshToday(to: DayString(date: at, calendar: calendar))
         }
     }
 
@@ -234,26 +279,33 @@ final class SamplePlanner {
 
     // MARK: Writes
 
-    /// Ticks or unticks an item on the selected day, as the web's
-    /// `toggleRowDone` does (DsulCore `tickIntent`, then `applying` for the
-    /// optimistic step): a habit's streak moves by one, a counted habit steps
-    /// its tally, a recurring task flips its date, a one-off its status. A
-    /// skipped occurrence is refused and nothing is sent.
+    /// A row's tick: ticks or unticks an item on the selected day, as the
+    /// web's row checkbox (`toggleRowDone`) does. See `tick(_:on:)`.
     func toggle(_ id: UUID) {
+        tick(id, on: selectedDay)
+    }
+
+    /// The tick on `day`, as lib/item-toggle.ts `toggleRowDone` resolves it
+    /// (DsulCore `tickIntent`, then `applying` for the optimistic step): a
+    /// habit's streak moves by one, a counted habit steps its tally, a
+    /// recurring task flips its date, a one-off its status. A skipped
+    /// occurrence is refused and nothing is sent. Ungated beyond that, as the
+    /// web's row checkbox is; the sheet's `toggle(_:on:)` adds the verb's gate.
+    private func tick(_ id: UUID, on day: DayString) {
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
         let before = items[i]
-        guard let intent = tickIntent(before, on: selectedDay) else { return }
-        items[i] = applying(intent, to: before, on: selectedDay)
-        sync?.enqueue(.complete(id: id, date: selectedDayString, done: intent.done, count: intent.count),
+        guard let intent = tickIntent(before, on: day) else { return }
+        items[i] = applying(intent, to: before, on: day)
+        sync?.enqueue(.complete(id: id, date: day.description, done: intent.done, count: intent.count),
                       snapshot: before)
     }
 
     /// Puts an item on the selected day's grid at `startMin`: a braindump row
     /// dropped on an hour (or VoiceOver's "Schedule at 9:00"), or a block
-    /// moved. The web's hour drop (lib/dnd/handle-drag-end.ts → `scheduleTask`):
-    /// scheduled, the hour's bucket, the time, out of any project block, and
-    /// anchored to the day it was dropped on. Also ends the drag's hold on
-    /// fetched data: the drop has landed.
+    /// moved. The web's hour drop (`placing`, lib/dnd/handle-drag-end.ts →
+    /// `scheduleTask`): scheduled, the hour's bucket, the time, out of any
+    /// project block, and anchored to the day it was dropped on. Also ends the
+    /// drag's hold on fetched data: the drop has landed.
     func schedule(_ id: UUID, startMin: Int) {
         DragHold.shared.releaseNow()
         guard let i = items.firstIndex(where: { $0.id == id }) else { return }
@@ -264,13 +316,7 @@ final class SamplePlanner {
         // the braindump, and a real one almost never is.
         guard !before.isHabit else { return }
         let time = minutesToTime(startMin)
-        var placed = before
-        placed.isScheduled = true
-        placed.timeBucket = DayBucket.owning(minute: startMin).rawValue
-        placed.startTime = time
-        placed.inProjectBlock = false
-        placed.startDate = selectedDayString
-        items[i] = placed
+        items[i] = placing(before, on: selectedDayString, startMin: startMin)
         sync?.enqueue(.schedule(id: id, date: selectedDayString, startTime: time), snapshot: before)
     }
 
@@ -287,6 +333,218 @@ final class SamplePlanner {
         let order = DsulCore.project(items).tasks.count
         items.append(Item(id: id, type: "task", title: trimmed, status: "pending", order: order, isScheduled: false))
         sync?.enqueue(.capture(id: id, title: trimmed), snapshot: nil)
+    }
+
+    // MARK: The item sheet
+
+    /// Raises `id`'s sheet, acting on `day`. From Search (`.today`) the day is
+    /// first brought up to the clock (`refreshToday`), so a sheet opened just
+    /// after midnight acts on the new day. A missing item opens nothing.
+    func open(_ id: UUID, day: SheetDay) {
+        guard item(id) != nil else { return }
+        if day == .today { refreshToday() }
+        activeSheet = .item(id, day: day)
+    }
+
+    /// The day a sheet opened with `day` acts on: the selected day, or today.
+    /// A read, so a view's body may ask it; `today` itself moves only in
+    /// `refreshToday` (RootView's minute check, `open`, a pause or resume).
+    func actingDay(_ day: SheetDay) -> DayString {
+        switch day {
+        case .selected: return selectedDay
+        case .today: return today
+        }
+    }
+
+    /// What the web's verbs are handed for `item` on the sheet's day (see
+    /// `verbContext(for:on:)`).
+    func verbContext(for item: SampleItem, day: SheetDay) -> VerbContext {
+        return verbContext(for: item, on: actingDay(day))
+    }
+
+    /// What the web's verbs are handed for `item` on `day`: the day, today,
+    /// the zone, and the item's state there (DsulCore `occurrenceOn`: absent
+    /// when a recurring item doesn't fall on the day, else done, skipped, due
+    /// from today on, or open before it; nil for a one-off).
+    func verbContext(for item: SampleItem, on day: DayString) -> VerbContext {
+        let zone = timeZoneID
+        let dateStr = day.description
+        let todayStr = today.description
+        return VerbContext(dateStr: dateStr, todayStr: todayStr, timeZone: zone,
+                           occurrence: occurrenceOn(item, on: dateStr, today: todayStr, timeZone: zone))
+    }
+
+    /// The item writes a server older than `PlannerPayload.writes` takes.
+    static let legacyWrites = ["complete", "schedule"]
+
+    /// Does the server take this POST /api/app/items/:id `action`? The list
+    /// the last fetch carried, or `legacyWrites` without one (or before the
+    /// first fetch). The sample takes every action: nothing is sent.
+    func canWrite(_ action: String) -> Bool {
+        guard isLive else { return true }
+        return (writes ?? Self.legacyWrites).contains(action)
+    }
+
+    /// Does the server take the write `verb` sends?
+    func canWrite(_ verb: VerbID) -> Bool {
+        return canWrite(Self.writeAction(verb))
+    }
+
+    /// The `action` the write behind `verb` carries.
+    nonisolated static func writeAction(_ verb: VerbID) -> String {
+        switch verb {
+        case .tick: return "complete"
+        case .skip, .unskip: return "skip"
+        case .pause, .resume: return "pause"
+        case .nextDay, .reschedule: return "move"
+        }
+    }
+
+    /// May the sheet offer `verb` on `item` in `ctx`? Three answers, all yes:
+    /// - the web's gate (DsulCore `verbEligible`, lib/item-verbs.ts);
+    /// - the server's own gate where it asks more (lib/app-api.ts): it never
+    ///   skips or carries a subtask, which has no day of its own, and pauses
+    ///   or resumes only what `isPausable` allows;
+    /// - the server takes the write (`canWrite`).
+    func offers(_ verb: VerbID, _ item: SampleItem, _ ctx: VerbContext) -> Bool {
+        guard canWrite(verb), verbEligible(verb, item, ctx) else { return false }
+        switch verb {
+        case .tick: return true
+        case .skip, .unskip: return isSkippable(item) && !item.isSubtask
+        case .nextDay, .reschedule: return !item.isSubtask
+        case .pause, .resume: return isPausable(item)
+        }
+    }
+
+    /// Every verb the sheet may offer `item` on its day, in the web's
+    /// declaration order (tick, skip, unskip, pause, resume, nextDay,
+    /// reschedule). Which ones the bar shows, and in what slots, is the view's.
+    func offeredVerbs(for item: SampleItem, day: SheetDay) -> [VerbID] {
+        let ctx = verbContext(for: item, day: day)
+        return VerbID.allCases.filter { offers($0, item, ctx) }
+    }
+
+    /// The sheet's tick on `day`: the row's write (`tick(_:on:)`), behind the
+    /// web's `tick` gate, so it never ticks a cancelled item or a day a
+    /// recurring item doesn't fall on. A subtask's circle uses it too (a
+    /// one-off ignores the day).
+    func toggle(_ id: UUID, on day: DayString) {
+        guard let before = item(id), offers(.tick, before, verbContext(for: before, on: day)) else { return }
+        tick(id, on: day)
+    }
+
+    /// Skip today: skips `id`'s occurrence on `day` (the store's
+    /// `setItemSkipped(id, true)`, DsulCore `skipping`): a habit takes the
+    /// 'skipped' status and gives back the day's completion with its streak
+    /// day; a task-like item gains the date in `skippedDates`, loses that day's
+    /// completion, and keeps its status.
+    func skip(_ id: UUID, on day: DayString) {
+        setSkipped(id, on: day, skipped: true)
+    }
+
+    /// Unskip today: the day back to open (a habit to 'pending').
+    func unskip(_ id: UUID, on day: DayString) {
+        setSkipped(id, on: day, skipped: false)
+    }
+
+    private func setSkipped(_ id: UUID, on day: DayString, skipped: Bool) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let before = items[i]
+        guard offers(skipped ? .skip : .unskip, before, verbContext(for: before, on: day)) else { return }
+        let date = day.description
+        let after = skipping(before, on: date, skipped: skipped)
+        guard after != before else { return }
+        items[i] = after
+        sync?.enqueue(.skip(id: id, date: date, skipped: skipped), snapshot: before)
+    }
+
+    /// Tomorrow and Reschedule: carries a task-like item to `dateStr` (the
+    /// store's `moveTaskToDate`, DsulCore `moving`): that start date, its
+    /// bucket kept (Anytime when it had none), its time and length kept. The
+    /// caller picks the day (`nextDayOf` for Tomorrow); the gate is the web's
+    /// `reschedule` one (lib/row-moves.ts `canReschedule`), asked off the
+    /// item's own day or, undated, the target, as the server asks it. A
+    /// recurring task may move: the day becomes its series start. A habit, a
+    /// finished item, one in a project block and a subtask are refused.
+    func move(_ id: UUID, to dateStr: String) {
+        guard let target = DayString(dateStr), let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let before = items[i]
+        guard offers(.reschedule, before, verbContext(for: before, on: target)) else { return }
+        let date = target.description
+        let after = moving(before, to: date)
+        guard after != before else { return }
+        items[i] = after
+        sync?.enqueue(.move(id: id, date: date), snapshot: before)
+    }
+
+    /// Pause, or Pause until `until` (the exclusive resume day, yyyy-MM-dd; nil
+    /// pauses with no end). See `setPaused`.
+    func pause(_ id: UUID, until: String?) {
+        if let until {
+            guard let day = DayString(until) else { return }
+            setPaused(id, paused: true, until: day.description)
+        } else {
+            setPaused(id, paused: true, until: nil)
+        }
+    }
+
+    /// Resume: ends the pause today, keeping when it began.
+    func resume(_ id: UUID) {
+        setPaused(id, paused: false, until: nil)
+    }
+
+    /// The store's `setItemPaused`, as DsulCore `resolvePauseWrite` resolves
+    /// it, the rule the server applies to the same request (lib/item-pause.ts).
+    /// Dateless: today is brought up to the clock first, and today and the
+    /// pause's stamp come off the one instant, as the server reads them, so
+    /// the two can't straddle midnight. A refusal, or a request already
+    /// satisfied (an empty patch), writes nothing.
+    private func setPaused(_ id: UUID, paused: Bool, until: String?) {
+        guard let i = items.firstIndex(where: { $0.id == id }) else { return }
+        let instant = now()
+        refreshToday(now: instant)
+        let before = items[i]
+        guard offers(paused ? .pause : .resume, before, verbContext(for: before, on: today)) else { return }
+        let zone = timeZoneID
+        let result = resolvePauseWrite(current: before, paused: paused, pausedUntil: until.map { ColumnWrite.set($0) },
+                                       todayStr: today.description, nowISO: toISOString(instant), timeZone: zone)
+        guard case .patch(let patch) = result, !patch.isEmpty else { return }
+        items[i] = pausing(before, patch: patch)
+        sync?.enqueue(.pause(id: id, paused: paused, pausedUntil: until, timeZone: zone), snapshot: before)
+    }
+
+    /// `id`'s subtasks, in stored order: the items whose `parentItemId` is
+    /// its id (Postgres writes uuids lowercase). DsulCore `project` keeps them
+    /// off every day and the braindump; they show only in their parent's sheet.
+    func subtasks(of id: UUID) -> [SampleItem] {
+        let parent = id.uuidString.lowercased()
+        return items.filter { $0.parentItemId?.lowercased() == parent }
+    }
+
+    /// The routines holding `id`, by name, in the routines' own order
+    /// (DsulCore `routinesForItem`).
+    func routineNames(for id: UUID) -> [String] {
+        return routinesForItem(id, routines: routines).map(\.name)
+    }
+
+    /// The seasons holding `id` directly, by name (DsulCore `seasonsForItem`).
+    func seasonNames(for id: UUID) -> [String] {
+        return seasonsForItem(id, seasons: seasons).map(\.name)
+    }
+
+    /// Reschedule's "Next week": the first day of the week after today's, by
+    /// the user's Week starts on (item-context-menu.tsx: `weekStartOf(today,
+    /// weekStartDay) + 7`).
+    var nextWeekStart: DayString {
+        return weekStartOf(today, settings.weekStartDay).adding(days: 7)
+    }
+
+    /// An item sheet whose item is gone (a fetch without it, a capture undone)
+    /// closes: there is nothing left to show or act on.
+    private func closeSheetIfItsItemIsGone() {
+        if case .item(let id, _)? = activeSheet, item(id) == nil {
+            activeSheet = nil
+        }
     }
 
     // MARK: List layout
@@ -458,23 +716,29 @@ final class SamplePlanner {
         routines = payload.routines
         seasons = payload.seasons
         settings = payload.settings
+        writes = payload.writes
         hasLoaded = true
         loadError = nil
         if zoneChanged { refreshToday() }
+        closeSheetIfItsItemIsGone()
     }
 
-    /// Puts an item back as it was before a write the server never took. Nil
-    /// removes it: a capture that never landed.
-    func restore(_ id: UUID, to snapshot: SampleItem?) {
+    /// Puts back what writes the server never took changed: the fields of
+    /// `slot`, as `snapshot` holds them (PlannerSync's rebase: the item before
+    /// the earliest failed write in the slot, with what landed there since
+    /// played on it), leaving every other field as it is now, so undoing a
+    /// failed carry never undoes a tick that landed. A nil snapshot removes
+    /// the item: a capture that never landed. An item that is gone is left
+    /// gone.
+    func restore(_ id: UUID, slot: PlannerSync.WriteSlot, from snapshot: SampleItem?) {
         if let snapshot {
             if let i = items.firstIndex(where: { $0.id == id }) {
-                items[i] = snapshot
-            } else {
-                items.append(snapshot)
+                items[i] = slot.restoring(items[i], from: snapshot)
             }
         } else {
             items.removeAll { $0.id == id }
         }
+        closeSheetIfItsItemIsGone()
     }
 
     /// The first fetch failed: what the empty state says, with a retry.
@@ -488,10 +752,18 @@ final class SamplePlanner {
         if !hasLoaded { loadError = nil }
     }
 
-    /// Shows `text` over Today for five seconds, or until a newer one.
+    /// Shows `text` over Today (or over an item's sheet, while one is up) for
+    /// five seconds, or until a newer one. VoiceOver says it too: the banner
+    /// is drawn where focus isn't, and a refused write is otherwise only a
+    /// slot's label quietly turning back. Said here, once, rather than by
+    /// `BannerView`, which more than one view draws. An error interrupts
+    /// whatever is being said, such as that slot's new label.
     func show(_ text: String, isError: Bool) {
         let shown = PlannerBanner(text, isError: isError)
         banner = shown
+        var spoken = AttributedString(text)
+        if isError { spoken.accessibilitySpeechAnnouncementPriority = .high }
+        AccessibilityNotification.Announcement(spoken).post()
         Task { [weak self] in
             try? await Task.sleep(for: .seconds(5))
             self?.dismissBanner(shown.id)
@@ -504,11 +776,6 @@ final class SamplePlanner {
 }
 
 extension DayString {
-    /// The device's calendar day now.
-    static var deviceToday: DayString {
-        DayString(date: Date())
-    }
-
     /// The calendar day `date` falls on in `calendar` (the device's by default).
     init(date: Date, calendar: Calendar = .current) {
         let c = calendar.dateComponents([.year, .month, .day], from: date)

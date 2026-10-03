@@ -39,6 +39,7 @@ import { authenticateAppRequest, dbErrorResponse, precheckToken } from '@/lib/ap
 import { GET as getPlanner } from '@/app/api/app/planner/route';
 import { POST as postCapture } from '@/app/api/app/items/route';
 import { POST as postItem } from '@/app/api/app/items/[id]/route';
+import { ITEM_WRITES } from '@/lib/app-api';
 
 const b64 = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url');
 const now = () => Math.floor(Date.now() / 1000);
@@ -193,6 +194,18 @@ describe('dbErrorResponse', () => {
 
 describe('every /api/app route is behind it', () => {
   const ITEM = '11111111-1111-4111-8111-111111111111';
+  /** One intent on POST /api/app/items/:id: each is listed, so a new one is too. */
+  const itemWrite =
+    (body: Record<string, unknown>) =>
+    (headers: Record<string, string>) =>
+      postItem(
+        new Request(`https://do.dsul.app/api/app/items/${ITEM}`, {
+          method: 'POST',
+          headers: { ...headers, 'content-type': 'application/json' },
+          body: JSON.stringify(body),
+        }),
+        { params: Promise.resolve({ id: ITEM }) },
+      );
   const calls: [string, (headers: Record<string, string>) => Promise<Response>][] = [
     ['GET /api/app/planner', (headers) => getPlanner(new Request('https://do.dsul.app/api/app/planner', { headers }))],
     [
@@ -206,19 +219,17 @@ describe('every /api/app route is behind it', () => {
           }),
         ),
     ],
-    [
-      'POST /api/app/items/:id',
-      (headers) =>
-        postItem(
-          new Request(`https://do.dsul.app/api/app/items/${ITEM}`, {
-            method: 'POST',
-            headers: { ...headers, 'content-type': 'application/json' },
-            body: JSON.stringify({ action: 'complete', date: '2026-10-02', done: true }),
-          }),
-          { params: Promise.resolve({ id: ITEM }) },
-        ),
-    ],
+    ['POST /api/app/items/:id complete', itemWrite({ action: 'complete', date: '2026-10-02', done: true })],
+    ['POST /api/app/items/:id schedule', itemWrite({ action: 'schedule', date: '2026-10-02', startTime: '09:15' })],
+    ['POST /api/app/items/:id skip', itemWrite({ action: 'skip', date: '2026-10-02', skipped: true })],
+    ['POST /api/app/items/:id move', itemWrite({ action: 'move', date: '2026-10-03' })],
+    ['POST /api/app/items/:id pause', itemWrite({ action: 'pause', paused: true, timeZone: 'Europe/Paris' })],
   ];
+
+  it('lists every intent the item route takes', () => {
+    const listed = calls.map(([name]) => name).filter((name) => name.startsWith('POST /api/app/items/:id '));
+    expect(listed.map((name) => name.split(' ').at(-1))).toEqual(ITEM_WRITES);
+  });
 
   for (const [name, call] of calls) {
     it(`${name} refuses a missing token, a dsul_ key, a cookie, an expired token and role anon`, async () => {

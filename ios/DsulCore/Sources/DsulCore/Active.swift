@@ -13,8 +13,10 @@ import Foundation
 //
 // Day comparisons stay string comparisons of yyyy-MM-dd, as on the web, so a
 // legacy timestamp (`toDateOnly`) compares the same way there and here.
-// Not ported: the write side (`resolvePauseWrite`) and the explanations
-// (`suppressionReason`, `routineStandingOn`, …), which no phone surface shows.
+// The write side, `resolvePauseWrite`, is ported for the item sheet's Pause,
+// Pause until and Resume, and checked against pause-write.json; `formatDay` is
+// in Cadence.swift. Not ported: the explanations (`suppressionReason`,
+// `routineStandingOn`, …), which no phone surface shows.
 
 /// lib/active.ts `Pausable`: the pause columns of an item or a routine.
 public protocol Pausable {
@@ -121,6 +123,24 @@ public func parseTimestamp(_ string: String) -> Date? {
     return day.date.addingTimeInterval(seconds)
 }
 
+/// JavaScript's `Date.prototype.toISOString`: UTC to the millisecond with a `Z`
+/// ("2026-10-02T15:00:00.000Z"), the stamp the web's store writes into
+/// `pausedAt`. Anything below the millisecond is dropped, as a JS Date holds
+/// none. Spelled by hand, like `parseTimestamp`, so Linux and Darwin agree.
+public func toISOString(_ date: Date) -> String {
+    let totalMs = (date.timeIntervalSince1970 * 1000).rounded(.down)
+    let wholeSeconds = (totalMs / 1000).rounded(.down)
+    let ms = Int(totalMs - wholeSeconds * 1000)
+    let c = DayString.utc.dateComponents(
+        [.year, .month, .day, .hour, .minute, .second],
+        from: Date(timeIntervalSince1970: wholeSeconds)
+    )
+    return String(
+        format: "%04d-%02d-%02dT%02d:%02d:%02d.%03dZ",
+        c.year ?? 0, c.month ?? 0, c.day ?? 0, c.hour ?? 0, c.minute ?? 0, c.second ?? 0, ms
+    )
+}
+
 /// lib/active.ts `pauseStartDate`: the user-local day a pause began, or nil if
 /// the stamp is junk (or the zone unknown, where the web would throw).
 func pauseStartDate(_ pausedAt: String, timeZone: String) -> String? {
@@ -137,6 +157,103 @@ public func isPausedOn<P: Pausable>(_ x: P, on day: DayString, timeZone: String)
     guard let started = pauseStartDate(pausedAt, timeZone: timeZone), started <= d else { return false }
     if let until = x.pausedUntil, !until.isEmpty, d >= toDateOnly(until) { return false }
     return true
+}
+
+/// One pause column in a write: set to a value, or cleared to NULL. A column
+/// the write leaves alone has no `ColumnWrite` at all (nil), which keeps the
+/// web's three states apart: a key absent, a key sent as null (`undefined` in a
+/// patch, which lib/db.ts writes as NULL), and a key with a value.
+public enum ColumnWrite: Sendable, Hashable {
+    case set(String)
+    case clear
+
+    /// The column's value once written: the string, or nil for a clear.
+    public var value: String? {
+        switch self {
+        case .set(let s): return s
+        case .clear: return nil
+        }
+    }
+}
+
+/// lib/active.ts `resolvePauseWrite`'s `patch`: the pause columns to write.
+/// Empty means write nothing.
+public struct PauseWindowPatch: Sendable, Hashable {
+    public var pausedAt: ColumnWrite?
+    public var pausedUntil: ColumnWrite?
+
+    public init(pausedAt: ColumnWrite? = nil, pausedUntil: ColumnWrite? = nil) {
+        self.pausedAt = pausedAt
+        self.pausedUntil = pausedUntil
+    }
+
+    public var isEmpty: Bool { pausedAt == nil && pausedUntil == nil }
+}
+
+/// lib/active.ts `resolvePauseWrite`'s answer: a patch (possibly empty), or a
+/// refusal with the web's own reason.
+public enum PauseWriteResult: Sendable, Hashable {
+    case patch(PauseWindowPatch)
+    case refused(String)
+}
+
+/// lib/active.ts `resolvePauseWrite`: what a pause request writes, given the
+/// row's pause columns now. The server's `pause` intent answers with the same
+/// rule, so the phone's optimistic step and the write agree.
+///
+/// - `paused`: true to pause, false to resume, nil when only moving an end.
+/// - `pausedUntil`: the resume day (exclusive). nil is "not sent", `.clear` is
+///   "sent as no end" (null), `.set(day)` a day.
+/// - `todayStr`: today in the user's zone; `nowISO`: the instant a new pause
+///   begins (`toISOString(now)`).
+///
+/// Resume: today as the end when paused now, else nothing (writing it anyway
+/// would grant the auto-age sweep a resume grace nobody earned). Pause:
+/// already paused, only a sent end moves; otherwise a stamp and the end
+/// (cleared when none), refused when the end is not after today. An end alone
+/// moves a running pause and is refused on a live item. Nothing asked,
+/// nothing written.
+public func resolvePauseWrite<P: Pausable>(
+    current: P,
+    paused: Bool? = nil,
+    pausedUntil: ColumnWrite? = nil,
+    todayStr: String,
+    nowISO: String,
+    timeZone: String
+) -> PauseWriteResult {
+    let pausedNow = DayString(todayStr).map { isPausedOn(current, on: $0, timeZone: timeZone) } ?? false
+    // `req.pausedUntil ?? undefined`, and `{ pausedUntil: until }` as a write.
+    let until: String? = pausedUntil?.value
+    let untilWrite: ColumnWrite = until.map { ColumnWrite.set($0) } ?? .clear
+
+    if paused == false {
+        return .patch(pausedNow ? PauseWindowPatch(pausedUntil: .set(todayStr)) : PauseWindowPatch())
+    }
+
+    if paused == true {
+        // Already paused: honour a new resume date, but leave pausedAt where it is.
+        if pausedNow {
+            return .patch(pausedUntil != nil ? PauseWindowPatch(pausedUntil: untilWrite) : PauseWindowPatch())
+        }
+        // A resume date already past would be a pause over before it starts.
+        if let until, !until.isEmpty, until <= todayStr {
+            return .refused("pausedUntil \(until) is not after today (\(todayStr)), so the pause would end immediately")
+        }
+        return .patch(PauseWindowPatch(pausedAt: .set(nowISO), pausedUntil: untilWrite))
+    }
+
+    // pausedUntil alone: move the end of a pause already running.
+    if pausedUntil != nil {
+        if !pausedNow {
+            return .refused(
+                "pausedUntil was sent without paused: true, but this is not currently paused — "
+                    + "a resume date on its own would change nothing"
+            )
+        }
+        return .patch(PauseWindowPatch(pausedUntil: untilWrite))
+    }
+
+    return .patch(PauseWindowPatch())
 }
 
 /// lib/active.ts `isSeasonActiveOn`. The manual states always win; only

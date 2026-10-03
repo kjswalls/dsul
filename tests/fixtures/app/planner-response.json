@@ -5,8 +5,17 @@
   "settings": {
     "timezone": "America/Los_Angeles",
     "showCompletedTasks": true,
+    "weekStartDay": "monday",
+    "timeFormat": "24h",
     "appIcon": "lime"
   },
+  "writes": [
+    "complete",
+    "schedule",
+    "skip",
+    "move",
+    "pause"
+  ],
   "items": [
     {
       "type": "habit",
@@ -51,6 +60,7 @@
       "type": "task",
       "id": "11111111-1111-4111-8111-000000000003",
       "title": "Water the plants",
+      "priority": "low",
       "startDate": "2026-09-01",
       "status": "pending",
       "timeBucket": "evening",
@@ -85,7 +95,9 @@
       "isScheduled": true,
       "completedDates": [],
       "skippedDates": [],
-      "order": 1
+      "order": 1,
+      "notes": "Ask about the wire fee.\nHave the card ready.",
+      "reminderTime": "14:15"
     },
     {
       "type": "custom",
@@ -179,7 +191,10 @@
       "timeBucket": "morning",
       "startTime": "06:30",
       "duration": 10,
-      "repeatFrequency": "weekdays"
+      "repeatFrequency": "weekdays",
+      "notes": "Ten minutes, eyes closed.",
+      "reminderTime": "06:30",
+      "reminderAnchor": "I pour my coffee"
     }
   ],
   "projects": [
