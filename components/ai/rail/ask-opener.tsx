@@ -40,6 +40,19 @@ function naturalWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
 }
 
 /**
+ * The room the header row has yet to gain from the docked right column
+ * (desktop-shell.tsx RailColumn) while it eases shut: the width it still takes
+ * (and its dress's margin, Notebook's spread). 0 once it has gone, and for an
+ * overlay, which takes no width from the row.
+ */
+function closingColumnPx(rail: Element | null): number {
+  if (!rail) return 0;
+  const style = getComputedStyle(rail);
+  if (style.position === 'absolute') return 0;
+  return rail.getBoundingClientRect().width + Math.max(0, px(style.marginLeft)) + Math.max(0, px(style.marginRight));
+}
+
+/**
  * The room the header row leaves this button, read off the row as laid out:
  * its content width less every other child that takes room (the capsule, a
  * notice, WeekScale) and the gaps between. The button's slot gives way to
@@ -55,6 +68,16 @@ function naturalWidth(el: HTMLElement, own: CSSStyleDeclaration): number {
  * and a rebinding's longer chord are what is measured, not a guess. A change
  * of face (`face`, the header slot) forgets it, since the other face's width
  * says nothing about this one's.
+ *
+ * Closing Ask (or an item) hands the button back while the docked column is
+ * still easing shut, so for 300ms the row is narrower than it is about to be.
+ * Read as it stood, the button came back as the key alone for a few frames
+ * and then whole, its rim light replaying as it switched (Classic at 1440 and
+ * 1366). So while the column eases shut a form the row is about to have room
+ * for (closingColumnPx: the width the column still takes) is waited for,
+ * unseen, rather than a smaller one standing in; one it will not have room for
+ * even then gives way at once, as ever. The column is watched too, so the last
+ * frame of its ease reads the row as it settled.
  */
 function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean, face: string): Fit {
   const [fit, setFit] = useState<Fit>('full');
@@ -69,6 +92,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       measuredFace.current = face;
       fullPx.current = 0;
     }
+    const rail = document.querySelector('[data-rail]');
     const measure = () => {
       const style = getComputedStyle(row);
       const gap = parseFloat(style.columnGap) || 0;
@@ -87,15 +111,19 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       const margins = px(own.marginLeft) + px(own.marginRight);
       if (slot.dataset.fit === 'full') fullPx.current = naturalWidth(el, own) + margins;
       const room = content - others;
-      setFit(room >= fullPx.current ? 'full' : room >= ICON_PX + margins ? 'icon' : 'none');
+      const fitIn = (r: number): Fit => (r >= fullPx.current ? 'full' : r >= ICON_PX + margins ? 'icon' : 'none');
+      const now = fitIn(room);
+      setFit(fitIn(room + closingColumnPx(rail)) === now ? now : 'none');
     };
     measure();
     if (typeof ResizeObserver === 'undefined') return;
     // The row, the button, and each sibling: a date that grows, Today coming
-    // and going, WeekScale arriving with the week, a font that loads late.
+    // and going, WeekScale arriving with the week, a font that loads late. And
+    // the column, easing shut.
     const sizes = new ResizeObserver(measure);
     sizes.observe(row);
     for (const child of Array.from(row.children)) sizes.observe(child);
+    if (rail) sizes.observe(rail);
     const siblings = new MutationObserver((records) => {
       for (const r of records) {
         r.addedNodes.forEach((n) => n instanceof Element && sizes.observe(n));

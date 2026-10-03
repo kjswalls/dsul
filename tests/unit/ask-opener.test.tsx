@@ -610,4 +610,72 @@ describe('room on the header row', () => {
     expect(pill()).toHaveClass('min-w-0', 'shrink-[1000]');
     expect(opener()).toHaveClass('min-w-0');
   });
+
+  // Closing Ask hands the button back while the docked column is still easing
+  // shut, the row narrower than it is about to be: read as it stood, the key
+  // alone stood in for a few frames before the whole key came back.
+  it('waits, unseen, for a form the row is about to have room for while the column eases shut', () => {
+    const RealRO = globalThis.ResizeObserver;
+    const observers: (() => void)[] = [];
+    const observed: Element[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe(el: Element) {
+        observed.push(el);
+      }
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    // The docked column, beside the canvas: `width` px still to go.
+    const rail = document.createElement('div');
+    rail.setAttribute('data-rail', '');
+    document.body.appendChild(rail);
+    let width = 0;
+    rail.getBoundingClientRect = () => ({ width }) as DOMRect;
+    try {
+      renderRow();
+      layOut(500, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'full');
+      act(() => useSidebarStore.getState().setAskOpen(true));
+      expect(pill()).toHaveAttribute('hidden');
+
+      // Closed: the column has 300px to go and the row has 64px of room. The
+      // key alone would fit now; the whole key will once the column has gone,
+      // so nothing shows meanwhile.
+      width = 300;
+      layOut(450, 374);
+      act(() => useRailStore.getState().closeRail());
+      resized(observers);
+      expect(observed).toContain(rail);
+      expect(pill()).toHaveAttribute('data-fit', 'none');
+      expect(pill()).toHaveAttribute('hidden');
+      // The row grows as the column goes, and the whole key comes back as soon as it fits.
+      width = 150;
+      layOut(480, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('hidden');
+      width = 60;
+      layOut(492, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'full');
+      expect(pill()).not.toHaveAttribute('hidden');
+
+      // A form it will not have room for even then gives way at once.
+      width = 30;
+      layOut(450, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+      // And an overlay takes no width from the row: nothing to wait for.
+      rail.style.position = 'absolute';
+      width = 420;
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+    } finally {
+      rail.remove();
+      globalThis.ResizeObserver = RealRO;
+    }
+  });
 });
