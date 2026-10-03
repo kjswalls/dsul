@@ -877,6 +877,14 @@ conversation is saved to the account.
   instead for every browser whose user has not chosen, including ones that have already run
   the build. Below 1180px (`PANEL_OVERLAY_QUERY`) it is an opaque overlay that shows
   only when summoned in this session, and parks on click-away or Escape.
+- **The Ask button is a lit key, and the AI has a mark** (2026-10-03, the design study's
+  "Capsule Twin" with the Aurora Key's rim light, carrying mark A, "Aurora step"): a raised
+  key reading "Ask" with the chord printed beside it, whose rim is lit in the accent from the
+  mark's lit tile and steps through the look's aurora partner (CSS in app/globals.css,
+  "Ask's key"; the measured fit shows the key alone when the chord does not fit, and nothing
+  when the key does not either). The mark is one component, `components/ai/ask-mark.tsx`,
+  drawn in the key and before "Ask" on Ask home's header, so swapping it is a change to that
+  one file; the other sparkles that mark AI elsewhere are unchanged for now.
 - **The braindump narrows while the right column is docked**, for Ask and an item alike
   (every layout but Console, whose braindump is the fixed 300px pane): `renderedSidebarWidth` takes the column's 432px reserve off the braindump's ceiling so the
   canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes the narrowed width back, so the
