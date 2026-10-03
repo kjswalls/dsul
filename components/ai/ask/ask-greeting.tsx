@@ -11,8 +11,8 @@ import { cn } from '@/lib/utils';
  * "Morning, Kirby." The greeting, in the serif, by the user's clock and the
  * first word of their display name (lib/ask-home.ts `greeting`).
  *
- *  - home      Ask home, 15px with a period. Its ✦ is
- *              the header's, one line above, so it carries none of its own.
+ *  - home      Ask home, 15px with a period, and no spark: the AI's mark
+ *              (components/ai/ask-mark.tsx) leads the header one line above.
  *  - new-chat  a new chat's empty state, 24px, no period, under the ✦ on a line
  *              of its own, centred (components/ai/ask/new-chat-empty.tsx).
  *
