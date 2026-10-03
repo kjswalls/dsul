@@ -371,9 +371,10 @@ rather than taking the flag.
   Ctrl+J (⌘J) is the frozen `toggle_right_sidebar` id re-defaulted. With no AI the rail is
   exactly the old item panel, Done included; with AI the item's header is "‹ <view
   beneath> … ✕" and has no Done. While the column is docked (Ask or an item) the
-  braindump narrows: `renderedSidebarWidth` takes the column's reserve off its ceiling so
-  the canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes that back. At ≤1180px
-  (`PANEL_OVERLAY_QUERY`) Ask is an opaque overlay that appears only when summoned and
+  braindump narrows (every layout but Console, whose braindump is the fixed 300px pane):
+  `renderedSidebarWidth` takes the column's reserve off its ceiling so the canvas keeps
+  `SIDEBAR_MIN_CANVAS`, and never writes that back. Below 1180px (`PANEL_OVERLAY_QUERY`,
+  the same query the column's `max-[1180px]:` classes compile to) Ask is an opaque overlay that appears only when summoned and
   parks on click-away or Escape, so it never locks the planner at boot. Every send goes
   through `sendFrom()` in [open-chat.ts](lib/open-chat.ts), the one place that decides
   which conversation a message lands in. The help bubble lives inside `<main>` so it can
