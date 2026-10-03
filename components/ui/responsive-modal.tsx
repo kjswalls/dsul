@@ -58,19 +58,31 @@ function ResponsiveModal({
   );
 }
 
+/** Kills the enter animation on a sheet/card and its scrim. `!` because vaul's
+ *  own keyframes sit on attribute selectors that outrank a utility. */
+const NO_ENTER = 'data-[state=open]:!animate-none';
+
 /** `className` styles the desktop DialogContent; mobile is a bottom sheet with
  *  its own scroll + safe-area. Extra props (onKeyDown, etc.) pass to both.
- *  `overlayClassName` is desktop-only — the drawer keeps the shared scrim. */
+ *  `overlayClassName` is desktop-only — the drawer keeps the shared scrim (only
+ *  `instant` reaches it).
+ *  `instant` skips the enter animation on both, for a surface that is taking
+ *  over from one already on screen (the "new" dialog's type switch). */
 function ResponsiveModalContent({
   className,
   children,
   overlayClassName,
+  instant = false,
   ...props
-}: React.ComponentProps<typeof DialogContent>) {
+}: React.ComponentProps<typeof DialogContent> & { instant?: boolean }) {
   const isMobile = React.useContext(MobileCtx);
   if (isMobile) {
     return (
-      <DrawerContent {...props}>
+      <DrawerContent
+        className={instant ? NO_ENTER : undefined}
+        overlayClassName={instant ? NO_ENTER : undefined}
+        {...props}
+      >
         <div className="overflow-y-auto overflow-x-hidden px-4 pb-[calc(env(safe-area-inset-bottom,0px)+1rem)]">
           {children}
         </div>
@@ -78,7 +90,11 @@ function ResponsiveModalContent({
     );
   }
   return (
-    <DialogContent className={className} overlayClassName={overlayClassName} {...props}>
+    <DialogContent
+      className={cn(className, instant && NO_ENTER)}
+      overlayClassName={cn(overlayClassName, instant && NO_ENTER)}
+      {...props}
+    >
       {children}
     </DialogContent>
   );
