@@ -688,8 +688,14 @@ export function MemberPicker({
 
   return (
     <div className="flex flex-col gap-1">
-      <div className="flex items-center gap-1.5 pl-[7px]">
-        <Search className="text-muted-foreground size-3.5 shrink-0" aria-hidden />
+      {/* The field is borderless (a box inside a menu crowds it), so the row
+          carries its focus: a hairline under it firms toward ink and the
+          magnifier darkens, the same move a bordered `.field` makes. */}
+      <div className="group/find flex items-center gap-1.5 border-b border-transparent pl-[7px] transition-colors has-[:focus-visible]:border-[color-mix(in_oklab,var(--input),var(--foreground)_55%)]">
+        <Search
+          className="text-muted-foreground group-has-[:focus-visible]/find:text-foreground size-3.5 shrink-0 transition-colors"
+          aria-hidden
+        />
         <Input
           ref={searchRef}
           autoFocus
