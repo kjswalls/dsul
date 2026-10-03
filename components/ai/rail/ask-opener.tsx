@@ -19,6 +19,13 @@ type Fit = 'full' | 'icon' | 'none';
 /** The key alone: the capsule's square controls' size (h-8 w-8). */
 const ICON_PX = 32;
 
+/**
+ * The longest the button waits, unseen, for the room a closing column is
+ * about to give it (useHeaderFit): the first two thirds of the column's 300ms
+ * ease, by when nearly all its width has gone. Past it, what fits shows.
+ */
+export const ASK_OPENER_CLOSE_WAIT_MS = 200;
+
 const px = (v: string) => parseFloat(v) || 0;
 
 /**
@@ -76,23 +83,34 @@ function closingColumnPx(rail: Element | null): number {
  * 1366). So while the column eases shut a form the row is about to have room
  * for (closingColumnPx: the width the column still takes) is waited for,
  * unseen, rather than a smaller one standing in; one it will not have room for
- * even then gives way at once, as ever. The column is watched too, so the last
- * frame of its ease reads the row as it settled.
+ * even then gives way at once, as ever. The column is watched too, so each
+ * frame of its ease is read. The wait is capped (ASK_OPENER_CLOSE_WAIT_MS):
+ * the guess can be generous (a braindump the column had narrowed takes some
+ * of the room back as it goes), and the focus hand-back waits for the button
+ * to be drawn (rail-store `restoreFocus`), so it must not be kept hidden for
+ * long.
  */
 function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean, face: string): Fit {
   const [fit, setFit] = useState<Fit>('full');
   const fullPx = useRef(0);
   const measuredFace = useRef(face);
+  /** When the button began waiting for a closing column's room, if it is. */
+  const waitingSince = useRef<number | null>(null);
   useLayoutEffect(() => {
     const el = ref.current;
     const slot = el?.parentElement;
     const row = slot?.parentElement;
-    if (!active || !el || !slot || !row) return;
+    if (!active || !el || !slot || !row) {
+      // Hidden (Ask or an item shows): the next close starts its own wait.
+      waitingSince.current = null;
+      return;
+    }
     if (measuredFace.current !== face) {
       measuredFace.current = face;
       fullPx.current = 0;
     }
     const rail = document.querySelector('[data-rail]');
+    let timer: ReturnType<typeof setTimeout> | undefined;
     const measure = () => {
       const style = getComputedStyle(row);
       const gap = parseFloat(style.columnGap) || 0;
@@ -113,10 +131,24 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
       const room = content - others;
       const fitIn = (r: number): Fit => (r >= fullPx.current ? 'full' : r >= ICON_PX + margins ? 'icon' : 'none');
       const now = fitIn(room);
-      setFit(fitIn(room + closingColumnPx(rail)) === now ? now : 'none');
+      let next = now;
+      if (fitIn(room + closingColumnPx(rail)) === now) waitingSince.current = null;
+      else {
+        const at = Date.now();
+        waitingSince.current ??= at;
+        const left = waitingSince.current + ASK_OPENER_CLOSE_WAIT_MS - at;
+        if (left > 0) {
+          next = 'none';
+          timer ??= setTimeout(() => {
+            timer = undefined;
+            measure();
+          }, left);
+        }
+      }
+      setFit(next);
     };
     measure();
-    if (typeof ResizeObserver === 'undefined') return;
+    if (typeof ResizeObserver === 'undefined') return () => clearTimeout(timer);
     // The row, the button, and each sibling: a date that grows, Today coming
     // and going, WeekScale arriving with the week, a font that loads late. And
     // the column, easing shut.
@@ -133,6 +165,7 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean,
     });
     siblings.observe(row, { childList: true });
     return () => {
+      clearTimeout(timer);
       sizes.disconnect();
       siblings.disconnect();
     };

@@ -29,7 +29,7 @@ vi.mock('@/lib/commands/keys', async (importOriginal) => ({
   isApplePlatform: () => platform.mac,
 }));
 
-import { AskOpener } from '@/components/ai/rail/ask-opener';
+import { AskOpener, ASK_OPENER_CLOSE_WAIT_MS } from '@/components/ai/rail/ask-opener';
 import { ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useLookStore } from '@/lib/look-store';
 import { ASK_OPEN_DEFAULT, useSidebarStore } from '@/lib/sidebar-store';
@@ -634,6 +634,7 @@ describe('room on the header row', () => {
     document.body.appendChild(rail);
     let width = 0;
     rail.getBoundingClientRect = () => ({ width }) as DOMRect;
+    vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
     try {
       renderRow();
       layOut(500, 374);
@@ -673,7 +674,38 @@ describe('room on the header row', () => {
       width = 420;
       resized(observers);
       expect(pill()).toHaveAttribute('data-fit', 'icon');
+      rail.style.position = '';
+      width = 0;
+
+      // The guess can be generous (a braindump the column narrowed takes some
+      // room back as it goes), and the focus hand-back waits for the button
+      // to be drawn: so the wait is short, and past it what fits shows, the
+      // column still going or not.
+      act(() => useSidebarStore.getState().setAskOpen(true));
+      layOut(500, 374);
+      act(() => useRailStore.getState().closeRail());
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'full');
+      act(() => useSidebarStore.getState().setAskOpen(true));
+      width = 300;
+      layOut(450, 374);
+      act(() => useRailStore.getState().closeRail());
+      resized(observers);
+      expect(pill()).toHaveAttribute('hidden');
+      act(() => vi.advanceTimersByTime(ASK_OPENER_CLOSE_WAIT_MS - 1));
+      resized(observers);
+      expect(pill()).toHaveAttribute('hidden');
+      expect(ASK_OPENER_CLOSE_WAIT_MS).toBeLessThanOrEqual(200);
+      act(() => vi.advanceTimersByTime(1));
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+      expect(pill()).not.toHaveAttribute('hidden');
+      // Each close waits afresh.
+      act(() => useSidebarStore.getState().setAskOpen(true));
+      act(() => useRailStore.getState().closeRail());
+      resized(observers);
+      expect(pill()).toHaveAttribute('hidden');
     } finally {
+      vi.useRealTimers();
       rail.remove();
       globalThis.ResizeObserver = RealRO;
     }
