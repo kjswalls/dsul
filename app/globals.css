@@ -1867,6 +1867,372 @@ body {
   }
 }
 
+/* ─── Ask's key: the Ask button, lit from the AI's mark ──────────────────────
+   components/ai/rail/ask-opener.tsx draws it and components/ai/ask-mark.tsx is
+   the mark in it (Ask's header carries the same mark). Its geometry is
+   Tailwind on the elements; what is here needs a registered property, a
+   gradient, a state or a layout selector.
+
+     [data-ask-opener]          the plate: the key, and the chord beside it
+     [data-ask-opener]::before  the well that fades in under both
+     [data-ask-key]             the raised key: the mark and "Ask"
+     [data-form='icon']         the key alone, when the row has no room for more
+
+   THE MARK IS THE LIGHT SOURCE. The key's 1px rim is a transparent border
+   painted by a radial gradient centred on the mark's lit part, under a
+   padding-box fill, so the light shows only in the rim. The centre is the
+   mark's slot (18px in from the key's left edge, at mid-height: its 1px
+   border, 9px padding and half the 16px slot) moved by ASK_MARK_LIGHT, which
+   the opener sets as --ask-light-x / --ask-light-y. At rest the accent holds
+   full strength over the cap beside the lit tile (to 19px), hands off to the
+   look's aurora partner (by 26px), and the partner steps down to the hairline
+   through three solid steps (58%, 30% and 12% partner at a quarter, half and
+   three quarters of the run, front-loaded so the tail trails off past "Ask"
+   instead of ending in a dash over the "A"). On hover, keyboard focus and
+   press the light travels round the whole rim: three registered lengths ease
+   to 30/52/84px over 220ms while the well fades in over 150ms.
+
+   THE ACCENT NEVER DIMS (CLAUDE.md). It is the raw token at full strength,
+   mixed with nothing but the partner its gradient hands off to; only the
+   partner steps toward the hairline. Nothing here puts an opacity, a filter, a
+   mask or a blend on anything (tests/unit/ask-key.test.tsx). Lime on the
+   white key is 1.47:1, a hue with no edge, and that is not fixed by fading
+   anything: the bright arc is cut tight, and the partner is the look's
+   LIGHT-mode relay colour, the deeper form the relay field and the light app
+   mark paint on paper, so a pale solid head sits on a darker solid tail. In
+   dark both glow.
+
+   The mark's slot contract (the same tokens wherever it is drawn, so swapping
+   the mark is a change to ask-mark.tsx alone), declared on the key and on the
+   mark, where each one resolves against the skin it sits in:
+     --ask-icon-ink       a glyph that must carry 3:1 alone (deep honey on the
+                          white key, --ai in dark)
+     --ask-icon-lit       honey, for a lit part in the engaged states
+     --ask-icon-accent    the theme accent, the light: full strength, never faded
+     --ask-icon-pair      the look's aurora partner, the glint's tail
+     --ask-icon-pair-ink  the partner deep enough to carry 3:1 on the key: in
+                          light deepened 14% toward the ink ("sonar": light mode
+                          cannot add light to near-white, so it deepens), except
+                          where the accent is already dark (Studio, Retro)
+     --ask-icon-key       the key's fill, to knock a detail out against it */
+@property --ask-key-hold {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 19px;
+}
+@property --ask-key-tail {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 26px;
+}
+@property --ask-key-reach {
+  syntax: '<length>';
+  inherits: false;
+  initial-value: 40px;
+}
+/* The key's fill feeds a gradient layer, so it is a registered colour: a plain
+   background-color could not sit under the rim's light, and an unregistered
+   one would not ease. The rim's three colours are registered for the same
+   reason (the theme swap, at the end of this block). */
+@property --ask-key-fill {
+  syntax: '<color>';
+  inherits: false;
+  initial-value: white;
+}
+@property --ask-key-accent {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --ask-key-pair {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+@property --ask-key-rim {
+  syntax: '<color>';
+  inherits: true;
+  initial-value: transparent;
+}
+
+:is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-ink: oklch(0.62 0.135 85);
+  --ask-icon-lit: var(--ai);
+  --ask-icon-accent: var(--lime-solid);
+  --ask-icon-pair: oklch(0.64 0.1 195);
+  --ask-icon-pair-ink: color-mix(in oklch, var(--ask-icon-pair), var(--foreground) 14%);
+  --ask-icon-key: var(--surface-2);
+}
+.dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-ink: var(--ai);
+  --ask-icon-pair: oklch(0.84 0.12 190);
+  --ask-icon-pair-ink: var(--ask-icon-pair);
+}
+/* Each look's partner: light from its light relay colour, dark from its glow
+   (Sorbet's is a deep rose beside the pink; an apricot read rust there). The
+   tints keep Paper's and Night's. */
+:root[data-look-light='studio']:not(.dark) :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.65 0.13 225);
+  --ask-icon-pair-ink: var(--ask-icon-pair);
+}
+:root[data-look-light='sorbet']:not(.dark) :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.64 0.15 18);
+}
+:root[data-look-dark='terminal'].dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.86 0.12 90);
+}
+:root[data-look-dark='dusk'].dark :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.76 0.12 350);
+}
+/* After the looks, and as specific: Notepad Retro's skin re-points the accent
+   under whichever look is on, so its partner has to win over theirs too. */
+:root:not(.dark) [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.66 0.11 210);
+  --ask-icon-pair-ink: var(--ask-icon-pair);
+}
+:root.dark [data-layout-skin='retro'] :is([data-ask-opener], [data-ask-mark]) {
+  --ask-icon-pair: oklch(0.8 0.1 215);
+}
+
+/* The plate. The rim's colours: the accent, the partner, and the hairline the
+   light steps down to, a solid mix (the colour a 9% foreground hairline
+   paints on the key). Focus, in light, adds a 1px --success-text line inside
+   the ring so the pair reads at 3:1 on paper; in dark the ring alone does. */
+[data-ask-opener] {
+  --ask-key-accent: var(--ask-icon-accent);
+  --ask-key-pair: var(--ask-icon-pair);
+  --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 9%);
+  --ask-focus-line: var(--success-text);
+  --ask-focus-rim: var(--success-text);
+  --ask-focus-rim-offset: 0px;
+  --ask-wash: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
+.dark [data-ask-opener] {
+  --ask-key-rim: color-mix(in oklab, var(--surface-2), var(--foreground) 7%);
+  --ask-focus-line: transparent;
+  --ask-focus-rim: var(--ring);
+  --ask-focus-rim-offset: -1px;
+  --ask-wash: color-mix(in oklab, var(--foreground) 6%, transparent);
+}
+
+/* The well: nothing at rest; the header capsule's own material on hover and
+   press, opening a hair as it comes. */
+[data-ask-opener]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background-color: transparent;
+  box-shadow: none;
+  transform: scale(0.96);
+  transition:
+    background-color 150ms var(--ease-out-soft),
+    box-shadow 150ms var(--ease-out-soft),
+    transform 150ms var(--ease-out-soft);
+}
+
+/* The key: the omnibar's raised key, with the light in its rim. */
+[data-ask-key] {
+  --ask-key-x: 18px;
+  --ask-key-fill: var(--surface-2);
+  --ask-key-hold: 19px;
+  --ask-key-tail: 26px;
+  --ask-key-reach: 40px;
+  background:
+    linear-gradient(var(--ask-key-fill), var(--ask-key-fill)) padding-box,
+    radial-gradient(
+        circle at calc(var(--ask-key-x) + var(--ask-light-x, 0px)) calc(50% + var(--ask-light-y, 0px)) in oklab,
+        var(--ask-key-accent) 0px,
+        var(--ask-key-accent) var(--ask-key-hold),
+        var(--ask-key-pair) var(--ask-key-tail),
+        color-mix(in oklab, var(--ask-key-pair) 58%, var(--ask-key-rim))
+          calc(var(--ask-key-tail) + (var(--ask-key-reach) - var(--ask-key-tail)) * 0.25),
+        color-mix(in oklab, var(--ask-key-pair) 30%, var(--ask-key-rim))
+          calc(var(--ask-key-tail) + (var(--ask-key-reach) - var(--ask-key-tail)) * 0.5),
+        color-mix(in oklab, var(--ask-key-pair) 12%, var(--ask-key-rim))
+          calc(var(--ask-key-tail) + (var(--ask-key-reach) - var(--ask-key-tail)) * 0.75),
+        var(--ask-key-rim) var(--ask-key-reach)
+      )
+      border-box;
+  box-shadow: var(--shadow-key-rest);
+  transition:
+    --ask-key-hold 220ms var(--ease-out-soft),
+    --ask-key-tail 220ms var(--ease-out-soft),
+    --ask-key-reach 220ms var(--ease-out-soft),
+    --ask-key-fill 150ms var(--ease-out-soft),
+    box-shadow 150ms var(--ease-out-soft),
+    translate 150ms var(--ease-out-soft);
+}
+
+/* The chord: --ink-1 on the plate at rest (the button's colour), the
+   foreground once the well is under it. */
+[data-ask-opener-chord] {
+  transition: color 150ms var(--ease-out-soft);
+}
+
+/* Engaged. Hover is pointer-only, as Tailwind's hover is (the mark's own
+   engaged state is a group-hover), so a tap never leaves it lit. */
+@media (hover: hover) {
+  [data-ask-opener]:hover::before {
+    background-color: var(--surface-3);
+    box-shadow: var(--shadow-elev-bar);
+    transform: none;
+  }
+  [data-ask-opener]:hover [data-ask-key] {
+    --ask-key-hold: 30px;
+    --ask-key-tail: 52px;
+    --ask-key-reach: 84px;
+  }
+  [data-ask-opener]:hover [data-ask-opener-chord] {
+    color: var(--foreground);
+  }
+}
+[data-ask-opener]:active::before {
+  background-color: var(--surface-3);
+  box-shadow: var(--shadow-elev-bar);
+  transform: none;
+}
+[data-ask-opener]:is(:focus-visible, :active) [data-ask-key] {
+  --ask-key-hold: 30px;
+  --ask-key-tail: 52px;
+  --ask-key-reach: 84px;
+}
+[data-ask-opener]:is(:focus-visible, :active) [data-ask-opener-chord] {
+  color: var(--foreground);
+}
+/* Pressed: the omnibar's key-press pair, a 1px sink, the fill settling toward
+   the well. */
+[data-ask-opener]:active [data-ask-key] {
+  translate: 0 1px;
+  --ask-key-fill: var(--surface-2-pressed);
+  box-shadow: var(--shadow-key-pressed);
+  transition-duration: 220ms, 220ms, 220ms, 60ms, 60ms, 60ms;
+}
+/* Focus: the app's 2px full-strength ring round the whole target, key and
+   chord, with the light-theme line inside it. */
+[data-ask-opener]:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 0;
+}
+[data-ask-opener]:focus-visible::before {
+  transform: none;
+  box-shadow: inset 0 0 0 1px var(--ask-focus-line);
+}
+
+/* The key alone. No plate and no well: the light catches the key's left arc
+   (centred 2px in, plus the mark's offset) and runs round it when engaged. */
+[data-ask-opener][data-form='icon']::before {
+  content: none;
+}
+[data-ask-opener][data-form='icon'] [data-ask-key] {
+  --ask-key-x: 2px;
+  --ask-key-hold: 13px;
+  --ask-key-tail: 17px;
+  --ask-key-reach: 27px;
+}
+@media (hover: hover) {
+  [data-ask-opener][data-form='icon']:hover [data-ask-key] {
+    --ask-key-hold: 18px;
+    --ask-key-tail: 32px;
+    --ask-key-reach: 48px;
+  }
+  [data-ask-opener][data-form='icon']:hover:not(:active) [data-ask-key] {
+    --ask-key-fill: color-mix(in oklab, var(--surface-2), var(--foreground) 4%);
+  }
+}
+[data-ask-opener][data-form='icon']:is(:focus-visible, :active) [data-ask-key] {
+  --ask-key-hold: 18px;
+  --ask-key-tail: 32px;
+  --ask-key-reach: 48px;
+}
+/* Its focus ring sits on the key, and ring and line read as one: the rim stops
+   being the light and becomes the line (--success-text on the border box, the
+   2px ring just outside it, the plate's own pair); in dark, where there is no
+   line, the rim takes the ring's colour and the outline steps 1px in over it,
+   so the ring stays 2px. */
+[data-ask-opener][data-form='icon']:focus-visible {
+  outline: none;
+}
+[data-ask-opener][data-form='icon']:focus-visible [data-ask-key] {
+  --ask-key-accent: var(--ask-focus-rim);
+  --ask-key-pair: var(--ask-focus-rim);
+  --ask-key-rim: var(--ask-focus-rim);
+  outline: 2px solid var(--ring);
+  outline-offset: var(--ask-focus-rim-offset);
+}
+
+/* The plain and masthead headers (Notebook, Notepad, Writer) take the
+   capsule's material away, so the whole key is drawn on the page: the page's
+   own colour, the light over an --input hairline, a 1px lip under it, and a
+   flat wash under key and chord on hover. The hairline under the light is
+   solid in dark too (--input is translucent there, and a partner step mixed
+   with it would be). */
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] {
+  --ask-key-rim: var(--input);
+}
+.dark :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] {
+  --ask-key-rim: color-mix(in oklab, var(--canvas), var(--foreground) 9%);
+}
+.dark [data-layout-header='masthead'] [data-ask-opener][data-form='full'] {
+  --ask-key-rim: color-mix(in oklab, var(--nb-page, var(--canvas)), var(--foreground) 9%);
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full'] [data-ask-key] {
+  --ask-key-fill: var(--canvas);
+  box-shadow: inset 0 -1px 0 0 var(--input);
+}
+[data-layout-header='masthead'] [data-ask-opener][data-form='full'] [data-ask-key] {
+  --ask-key-fill: var(--nb-page, var(--canvas));
+}
+@media (hover: hover) {
+  :is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:hover::before {
+    background-color: var(--ask-wash);
+    box-shadow: none;
+  }
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener]:active::before {
+  background-color: var(--ask-wash);
+  box-shadow: none;
+}
+:is([data-layout-header='plain'], [data-layout-header='masthead']) [data-ask-opener][data-form='full']:active [data-ask-key] {
+  --ask-key-fill: var(--canvas);
+  box-shadow: inset 0 0 0 0 var(--input);
+}
+[data-layout-header='masthead'] [data-ask-opener][data-form='full']:active [data-ask-key] {
+  --ask-key-fill: var(--nb-page, var(--canvas));
+}
+
+/* The theme swap (above) grants transitions to the colour properties only,
+   which would leave the key half swapped: its fill and its rim are registered
+   colours feeding gradient layers, not background-color, so they flipped to
+   the new mode on the first frame while the plate around them eased (a dark
+   key, "Ask" still dark, on a white plate). They join the window here, on its
+   duration and curve. */
+@media (prefers-reduced-motion: no-preference) {
+  :root[data-theme-changing] [data-ask-opener] {
+    transition-property:
+      --ask-key-accent, --ask-key-pair, --ask-key-rim, background-color, border-color, color, fill, stroke,
+      text-decoration-color, box-shadow !important;
+  }
+  :root[data-theme-changing] [data-ask-key] {
+    transition-property:
+      --ask-key-fill, background-color, border-color, color, fill, stroke, text-decoration-color, box-shadow !important;
+  }
+}
+
+/* Reduced motion: every state swaps at once (the in-app animations-off
+   setting is the global [data-reduce-motion] rule above). */
+@media (prefers-reduced-motion: reduce) {
+  [data-ask-opener],
+  [data-ask-opener]::before,
+  [data-ask-opener] *,
+  [data-ask-opener] *::before,
+  [data-ask-opener] *::after {
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
 /* ─── Notices in place ────────────────────────────────────────────────────────
    The typewriter reveal (components/primitives/typewriter-text.tsx) and the
    undo strip's expiry hairline (components/notices/undo-strip.tsx).

@@ -1479,7 +1479,7 @@ describe('the Ask button', () => {
   afterEach(() => useViewStore.setState({ scope: 'day' }));
 
   const opener = () => document.querySelector<HTMLButtonElement>('[data-ask-opener]') as HTMLButtonElement;
-  /** Its pill: the header row's child, the thing that hides. */
+  /** Its slot: the header row's child, the thing that hides. */
   const pill = () => opener().parentElement as HTMLElement;
   /** A pointer's click: the button takes focus, then the click. */
   const clickOpener = () => {
@@ -1514,15 +1514,22 @@ describe('the Ask button', () => {
     renderShell();
     const headerRow = main().querySelector('.canvas-container') as HTMLElement;
     expect(headerRow.lastElementChild).toBe(pill());
-    expect(pill()).toHaveAttribute('data-ask-opener-pill');
-    // The rail header's own offset (Classic's capsule: its p-2), so Ask's row lands where it was.
-    expect(pill()).toHaveClass('mt-2', 'ml-auto');
+    expect(pill()).toHaveAttribute('data-ask-opener-slot');
+    // Its key on the rail header's own line (Classic's capsule: its p-2, mt-2),
+    // so Ask's row lands where it was: the 48px plate from the row's top, the
+    // key 8px into it.
+    expect(opener()).toHaveAttribute('data-form', 'full');
+    expect(pill()).toHaveClass('mt-0', 'ml-auto');
+    expect(opener()).toHaveClass('py-2');
     act(() => useViewStore.setState({ scope: 'week', layout: 'buckets' }));
     expect(headerRow).toHaveAttribute('data-wide', 'true');
     // WeekScale holds the far end there; two auto margins would split the room between them.
     expect(pill()).not.toHaveClass('ml-auto');
+    // Notepad's plain header: the rail row at the top (mt-0), the 40px plate
+    // 4px above it and the key 4px into it.
     act(() => useLookStore.setState({ layout: 'notepad' }));
-    expect(pill()).toHaveClass('mt-0');
+    expect(pill()).toHaveClass('-mt-1');
+    expect(opener()).toHaveClass('py-1');
   });
 
   it('opens Ask with its box focused, as Ctrl+J does, and hides while the column shows', async () => {

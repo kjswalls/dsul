@@ -1,26 +1,28 @@
 'use client';
 
-import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Sparkles } from 'lucide-react';
+import { useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from 'react';
+import { AskMark, ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
 import { toggleRail } from '@/lib/open-chat';
 import { holdRailHeader, usePanelOverlays, useRailMode } from '@/lib/rail-store';
 import { useViewStore } from '@/lib/view-store';
+import { useLayoutDef } from '@/lib/look-store';
+import { railHeaderRowOffset } from '@/lib/layout-themes';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { cn } from '@/lib/utils';
 
-/** How much of the button the header row has room for: all of it, the spark alone, or none. */
+/** How much of the button the header row has room for: all of it, the key alone, or none. */
 type Fit = 'full' | 'icon' | 'none';
 
-/** The spark alone: the capsule's square controls' size (h-8 w-8). */
+/** The key alone: the capsule's square controls' size (h-8 w-8). */
 const ICON_PX = 32;
 
 /**
  * The room the header row leaves this button, read off the row as laid out:
  * its content width less every other child that takes room (the capsule, a
- * notice, WeekScale) and the gaps between. The button's pill gives way to
+ * notice, WeekScale) and the gaps between. The button's slot gives way to
  * them, never they to it: it shrinks first and to nothing (`min-w-0`, a shrink
  * weight no sibling has), so they keep their natural widths and what is
  * measured does not depend on what this chose. A fixed canvas breakpoint could not do this:
@@ -28,30 +30,40 @@ const ICON_PX = 32;
  * date up to ~90px wider on a long date, so any width that is safe for those
  * hides the button on every ordinary day.
  *
- * `fullPx` is the button's natural width, read whenever it is drawn whole
- * (its scrollWidth, squeezed or not), so a layout's own face and a rebinding's
- * longer chord are what is measured, not a guess.
+ * `fullPx` is the button's natural width with its own margins, read whenever
+ * it is drawn whole (its scrollWidth, squeezed or not), so a layout's own face
+ * and a rebinding's longer chord are what is measured, not a guess. A change
+ * of face (`face`, the header slot) forgets it, since the other face's width
+ * says nothing about this one's.
  */
-function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean): Fit {
+function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean, face: string): Fit {
   const [fit, setFit] = useState<Fit>('full');
   const fullPx = useRef(0);
+  const measuredFace = useRef(face);
   useLayoutEffect(() => {
     const el = ref.current;
-    const pill = el?.parentElement;
-    const row = pill?.parentElement;
-    if (!active || !el || !pill || !row) return;
+    const slot = el?.parentElement;
+    const row = slot?.parentElement;
+    if (!active || !el || !slot || !row) return;
+    if (measuredFace.current !== face) {
+      measuredFace.current = face;
+      fullPx.current = 0;
+    }
     const measure = () => {
       const style = getComputedStyle(row);
       const gap = parseFloat(style.columnGap) || 0;
       const content = row.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
       let others = 0;
       for (const child of Array.from(row.children)) {
-        if (child === pill) continue;
+        if (child === slot) continue;
         const w = child.getBoundingClientRect().width;
         // A child with nothing to say renders no box, and takes no gap either.
         if (w > 0) others += w + gap;
       }
-      if (pill.dataset.fit === 'full') fullPx.current = el.scrollWidth;
+      if (slot.dataset.fit === 'full') {
+        const own = getComputedStyle(el);
+        fullPx.current = el.scrollWidth + (parseFloat(own.marginLeft) || 0) + (parseFloat(own.marginRight) || 0);
+      }
       const room = content - others;
       setFit(room >= fullPx.current ? 'full' : room >= ICON_PX ? 'icon' : 'none');
     };
@@ -75,14 +87,15 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
       siblings.disconnect();
     };
     // `fit` re-runs it after a change, so a button drawn whole again is re-read.
-  }, [ref, active, fit]);
+  }, [ref, active, fit, face]);
   return fit;
 }
 
 /**
- * The Ask button: "✦ Ask  Ctrl+J" on the canvas's header row, while Ask is
- * closed. Ask starts closed (sidebar-store ASK_OPEN_DEFAULT), and this is the
- * way to it that does not need the chord.
+ * The Ask button: a raised key reading "Ask" with the mark in it, and the
+ * chord printed beside it on the plate ("Ctrl+J"), on the canvas's header row
+ * while Ask is closed. Ask starts closed (sidebar-store ASK_OPEN_DEFAULT), and
+ * this is the way to it that does not need the chord.
  *
  * WHAT IT DOES is exactly what Ctrl+J does from closed (lib/open-chat.ts
  * `toggleRail`): leave Zen, summon Ask with its box focused, and write
@@ -109,58 +122,83 @@ function useHeaderFit(ref: RefObject<HTMLButtonElement | null>, active: boolean)
  * but not summoned this session: the column is hidden there, and this summons
  * it as the overlay Ctrl+J would. The phone has the Ask tab instead.
  *
- * WHERE: the last thing on the canvas's header row (desktop-shell.tsx), on
- * the date's line (`railHeaderRowOffset`, the rail header's own rule, so
- * when Ask opens its header row is where this was). In day scope it takes the
- * row's far end (`ml-auto`, passed in); in the week views WeekScale does, and
- * this sits just past it. It gives way to everything else on the row
- * (useHeaderFit): the spark alone when the words do not fit, nothing when
- * that does not either, so it never overlaps the capsule, a notice or
+ * WHERE: the last thing on the canvas's header row (desktop-shell.tsx), the
+ * key on the date's line (`railHeaderRowOffset`, the rail header's own rule,
+ * so when Ask opens its header row is where the key was). In day scope it
+ * takes the row's far end (`ml-auto`, passed in); in the week views WeekScale
+ * does, and this sits just past it. It gives way to everything else on the
+ * row (useHeaderFit): the key alone when key and chord do not fit, nothing
+ * when that does not either, so it never overlaps the capsule, a notice or
  * WeekScale, never wraps onto a line of its own and never grows the row the
  * grid's height is measured under.
+ *
+ * Out of room it hides rather than docking in the capsule's date row (the
+ * design study's docked twin): that row has no room to spare in every
+ * layout. Notebook's masthead date fills it on a long date, and a past or
+ * future date's Today fills it on others, so a docked key would widen the
+ * capsule past the row it was measured into, or need the capsule to shorten
+ * its own date to make way. Ctrl+J and the command palette's "Ask AI" stay.
+ *
+ * HOW IT LOOKS (the CSS is app/globals.css, "Ask's key"):
+ *  - 'full': the plate holds the raised key (--surface-2, the omnibar's
+ *    key-press shadow pair) and the chord beside it in --ink-1. Hover and
+ *    press fade the header capsule's own well in under both, and press sinks
+ *    the key into it. The mark is the light source: the key's 1px rim glows
+ *    in the accent beside the mark's lit tile (ASK_MARK_LIGHT) and hands off
+ *    through the look's aurora partner to the hairline; engaged, the light
+ *    travels round the whole rim. The plain and masthead headers, which have
+ *    no capsule material, draw the key on the page instead.
+ *  - 'icon': the 32px key alone, the same light caught on its left arc. Its
+ *    focus ring sits on the key, whose rim takes the focus colour.
  *
  * `titlebar-hole`: in Writer the row starts at the window's top, inside the
  * desktop app's 43px drag band, which would swallow its clicks.
  *
- * The chord is the live binding through chordLabel (Ctrl+J; ⌘J on a Mac), in
- * the hint's muted mono, and in the title; never typed by hand. The spark is
- * the rail header's (`text-ai`), except alone, where it is the foreground's.
+ * The chord is the live binding through chordLabel (Ctrl+J; ⌘J on a Mac),
+ * on the plate and in the title; never typed by hand.
  */
-export function AskOpener({ className, rowOffset }: { className?: string; rowOffset: string }) {
+export function AskOpener({ className }: { className?: string }) {
   const { canChat } = useAICapabilities();
   const isMobile = useIsMobile();
   const zen = useViewStore((s) => s.zenOpen);
   const columnShown = useRailMode(usePanelOverlays()) !== 'hidden';
   const keys = useShortcutKeys('toggle_right_sidebar');
   const isMac = useMemo(() => isApplePlatform(), []);
+  const { slots } = useLayoutDef();
   const ref = useRef<HTMLButtonElement>(null);
   const hidden = columnShown || zen;
-  const fit = useHeaderFit(ref, canChat && !isMobile && !hidden);
+  const fit = useHeaderFit(ref, canChat && !isMobile && !hidden, slots.header);
 
   if (!canChat || isMobile) return null;
   const chord = chordLabel(keys, isMac);
+  const full = fit === 'full';
+  // The capsule's header raises the key off its plate; the plain and
+  // masthead headers, which take the capsule's material away, draw it on the
+  // page (globals.css keys that paint on [data-layout-header]).
+  const raised = slots.header === 'capsule';
+  // The key's top is the rail header row's (railHeaderRowOffset). The whole
+  // plate stands proud of it by its own padding: 8px round the raised key,
+  // 4px round the drawn one.
+  const offset = !full ? railHeaderRowOffset(slots) : raised ? 'mt-0' : '-mt-1';
+  // Where the rim's light comes from: the mark's lit part, from its slot's centre.
+  const light = {
+    '--ask-light-x': `${ASK_MARK_LIGHT.x}px`,
+    '--ask-light-y': `${ASK_MARK_LIGHT.y}px`,
+  } as CSSProperties;
 
   return (
-    // The pill is the capsule's (header-capsule.tsx `data-header-pill`), so a
-    // layout that takes the capsule's chrome away (header 'plain', 'masthead';
-    // app/globals.css) takes this one's too, and it reads as the quiet words
-    // the rest of that row is. It is the row's child: what is hidden, and what
-    // gives way.
+    // The slot is the row's child: what is hidden, and what gives way.
     <span
-      data-header-pill=""
-      data-ask-opener-pill=""
+      data-ask-opener-slot=""
       data-fit={fit}
       hidden={hidden || fit === 'none'}
-      className={cn(
-        'flex min-w-0 shrink-[1000] rounded-[10px] bg-surface-2 shadow-[var(--shadow-elev-sm)]',
-        rowOffset,
-        className
-      )}
+      className={cn('flex min-w-0 shrink-[1000]', offset, className)}
     >
       <button
         ref={ref}
         type="button"
         data-ask-opener=""
+        data-form={full ? 'full' : 'icon'}
         onClick={(e) => {
           if (document.activeElement !== e.currentTarget) e.currentTarget.focus({ preventScroll: true });
           if (e.detail > 0) holdRailHeader(e.currentTarget);
@@ -168,23 +206,27 @@ export function AskOpener({ className, rowOffset }: { className?: string; rowOff
         }}
         aria-label="Open Ask"
         title={`Open Ask (${chord})`}
+        style={light}
         className={cn(
-          'titlebar-hole flex h-8 min-w-0 items-center gap-1.5 overflow-hidden rounded-[10px] text-sm font-medium whitespace-nowrap text-foreground transition-colors outline-none hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring',
-          fit === 'icon' ? 'w-8 justify-center' : 'px-2.5'
+          'titlebar-hole group/ask-key relative isolate flex min-w-0 cursor-pointer items-center gap-2 text-[12px] leading-[17px] font-medium whitespace-nowrap text-[var(--ink-1)]',
+          !full ? 'size-8 rounded-[10px]' : raised ? 'h-12 rounded-[10px] py-2 pr-2.5 pl-2' : 'mr-3.5 h-10 rounded-[12px] py-1 pr-2 pl-1'
         )}
       >
-        {/* Honey beside the words; alone, the glyph is the whole control, and
-            honey is too faint to be that in light mode (about 1.6:1 on the
-            surface; globals.css --sunrise-glyph has the same reason), so it
-            takes the words' own colour. A token, never an opacity. */}
-        <Sparkles className={cn('size-4 shrink-0', fit === 'icon' ? 'text-foreground' : 'text-ai')} aria-hidden />
-        {fit === 'full' && (
-          <>
-            <span>Ask</span>
-            <span data-ask-opener-chord="" className="font-mono text-2xs font-normal text-muted-foreground" aria-hidden>
-              {chord}
-            </span>
-          </>
+        <span
+          data-ask-key=""
+          className={cn(
+            'inline-flex h-8 shrink-0 items-center gap-1.5 border border-transparent text-foreground',
+            full ? 'pr-[11px] pl-[9px]' : 'w-8 justify-center',
+            full && !raised ? 'rounded-[8px]' : 'rounded-[10px]'
+          )}
+        >
+          <AskMark />
+          {full && <span>Ask</span>}
+        </span>
+        {full && (
+          <span data-ask-opener-chord="" aria-hidden className="text-[11px] font-normal tracking-[0.01em] tabular-nums">
+            {chord}
+          </span>
         )}
       </button>
     </span>

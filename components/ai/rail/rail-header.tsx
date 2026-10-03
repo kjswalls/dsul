@@ -1,7 +1,8 @@
 'use client';
 
 import { useMemo, useRef, type ReactNode, type SyntheticEvent } from 'react';
-import { ChevronLeft, Sparkles, X } from 'lucide-react';
+import { ChevronLeft, X } from 'lucide-react';
+import { AskMark } from '@/components/ai/ask-mark';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
 import { resolveConversationId, useConversationsStore, type ConversationsState } from '@/lib/conversations-store';
@@ -99,7 +100,9 @@ export function conversationHeaderAction(
  *  - The back control keeps its words: it never shrinks, up to 45% of the row
  *    (a long item title as the label truncates there), and a long title
  *    truncates instead. Without a heading (the item view) it takes the row.
- *  - At Ask home the ground is the relay field, waking while any conversation
+ *  - At Ask home the heading leads with the AI's mark, the one the Ask button
+ *    carries (components/ai/ask-mark.tsx), so the button and the panel it
+ *    opens match. The ground is the relay field, waking while any conversation
  *    streams (it was the old chat panel's; layouts with the relay off hide it).
  *  - `actions` sit before ✕: History and "+" in Ask's views.
  *  - `data-sub-input`: the item panel's Enter-to-submit covers its whole
@@ -124,7 +127,7 @@ export function RailHeader({
   title?: string;
   heading?: ReactNode;
   actions?: ReactNode;
-  /** Ask home: the ✦, and the relay ground. */
+  /** Ask home: the mark (the Ask key's own, components/ai/ask-mark.tsx), and the relay ground. */
   home?: boolean;
   onClose: () => void;
   closeTestId?: string;
@@ -198,7 +201,7 @@ export function RailHeader({
           >
             {heading ?? (
               <>
-                {home && <Sparkles className="size-4 shrink-0 text-ai" aria-hidden />}
+                {home && <AskMark />}
                 <span className="truncate">{title}</span>
               </>
             )}

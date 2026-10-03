@@ -11,16 +11,27 @@ import { act, cleanup, fireEvent, render, screen } from '@testing-library/react'
  *  - A click is Ctrl+J from closed: Ask summoned, its box asked for, and
  *    `askOpen` written. A pointer's click also holds Ask's header against the
  *    pointer for a moment; a key's does not.
- *  - Its words and title name the live binding through chordLabel.
- *  - It gives way to the rest of the header row: whole, the spark alone, or
- *    nothing, by the room the row leaves it.
+ *  - Its chord and title name the live binding through chordLabel.
+ *  - It gives way to the rest of the header row: the key and its chord, the
+ *    key alone, or nothing, by the room the row leaves it.
+ *  - It is a raised key carrying the AI's mark (components/ai/ask-mark.tsx),
+ *    whose rim is lit from the mark's lit part; its paint is app/globals.css
+ *    ("Ask's key"), held by ask-key.test.tsx.
  *
  * The focus hand-back runs through the real shell in rail-desktop.test.tsx.
  */
 
 vi.mock('@/lib/settings-service', () => ({ saveSettings: vi.fn(async () => {}), flushSettings: vi.fn() }));
+// The platform, per test (isApplePlatform caches navigator.platform for the session).
+const platform = vi.hoisted(() => ({ mac: false }));
+vi.mock('@/lib/commands/keys', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/commands/keys')>()),
+  isApplePlatform: () => platform.mac,
+}));
 
 import { AskOpener } from '@/components/ai/rail/ask-opener';
+import { ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
+import { useLookStore } from '@/lib/look-store';
 import { ASK_OPEN_DEFAULT, useSidebarStore } from '@/lib/sidebar-store';
 import { RAIL_HEADER_HOLD_MS, SUMMON_SPOT_SLOP_PX, railHeaderHeld, useRailStore } from '@/lib/rail-store';
 import { useUIStore } from '@/lib/ui-store';
@@ -67,6 +78,8 @@ beforeEach(() => {
   useUIStore.setState({ activeDialog: null, displacedItemId: null });
   useViewStore.setState({ zenOpen: false });
   useKeyboardShortcutsStore.setState({ overrides: {} });
+  useLookStore.setState({ layout: 'classic' });
+  platform.mac = false;
   seed(CONNECTED_MODEL);
 });
 
@@ -77,6 +90,7 @@ afterEach(() => {
   window.matchMedia = realMatchMedia;
   Object.defineProperty(window, 'innerWidth', { configurable: true, value: realInnerWidth });
   useKeyboardShortcutsStore.setState({ overrides: {} });
+  useLookStore.setState({ layout: 'classic' });
   useRailStore.getState().reset();
 });
 
@@ -85,16 +99,19 @@ const renderRow = () =>
   render(
     <div data-testid="row" className="flex gap-3">
       <div data-testid="capsule" />
-      <AskOpener rowOffset="mt-2" className="ml-auto" />
+      <AskOpener className="ml-auto" />
     </div>
   );
 
 const opener = () => document.querySelector<HTMLButtonElement>('[data-ask-opener]');
-/** Its pill: the row's child, the thing that hides and gives way. */
-const pill = () => document.querySelector<HTMLElement>('[data-ask-opener-pill]');
+/** Its slot: the row's child, the thing that hides and gives way. */
+const pill = () => document.querySelector<HTMLElement>('[data-ask-opener-slot]');
+/** The raised key inside it, and the AI's mark inside that. */
+const key = () => opener()?.querySelector<HTMLElement>('[data-ask-key]') ?? null;
+const mark = () => opener()?.querySelector<SVGElement>('[data-ask-mark]') ?? null;
 
 describe('when it shows', () => {
-  it('shows, Ask closed by default, as "✦ Ask" and the chord, named for what it does', () => {
+  it('shows, Ask closed by default, as the key "Ask" and the chord beside it, named for what it does', () => {
     expect(useSidebarStore.getState().askOpen).toBe(false);
     renderRow();
     const button = screen.getByRole('button', { name: 'Open Ask' });
@@ -104,15 +121,45 @@ describe('when it shows', () => {
     expect(button).toHaveTextContent(`Ask${chordLabel(['meta', 'j'], false)}`);
     expect(button).toHaveAttribute('title', `Open Ask (${chordLabel(['meta', 'j'], false)})`);
     expect(button).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
-    // On the date's line, at the row's far end, clickable in the desktop app's drag band.
-    expect(pill()).toHaveClass('mt-2', 'ml-auto');
-    expect(button).toHaveClass('h-8', 'titlebar-hole');
-    // The capsule's pill, by the capsule's own hook, so a layout that takes the
-    // capsule's chrome away (header 'plain', 'masthead') takes this one's too.
-    expect(pill()).toHaveAttribute('data-header-pill');
-    expect(pill()).toHaveClass('bg-surface-2');
-    // The rail header's spark: the AI's colour, never lime.
-    expect(button.querySelector('svg')).toHaveClass('text-ai');
+    expect(button).toHaveAttribute('data-form', 'full');
+    // Clickable in the desktop app's drag band, at the row's far end.
+    expect(button).toHaveClass('titlebar-hole');
+    expect(pill()).toHaveClass('ml-auto');
+    // The key holds the mark and the word; the chord is printed beside it, on the plate.
+    expect(key()).toHaveTextContent(/^Ask$/);
+    expect(key()).toContainElement(mark() as unknown as HTMLElement);
+    expect(button.querySelector('[data-ask-opener-chord]')?.closest('[data-ask-key]')).toBeNull();
+    // The mark is decorative: the button is named by its label, not by a picture.
+    expect(mark()).toHaveAttribute('aria-hidden', 'true');
+    expect(button.querySelector('[data-ask-opener-chord]')).toHaveAttribute('aria-hidden');
+    // The sparkle it replaced is gone.
+    expect(button.querySelector('.lucide-sparkles')).toBeNull();
+  });
+
+  // Ask's header row opens where the key was (railHeaderRowOffset is the rail
+  // header's own rule), so the plate stands proud of that line by its padding.
+  it("puts the key on the date's line in every header: the plate stands proud of it by its own padding", () => {
+    renderRow();
+    // The capsule (Classic): the rail row sits mt-2 under the capsule's p-2;
+    // the 48px plate's py-2 puts its 32px key there from the row's top.
+    expect(pill()).toHaveClass('mt-0');
+    expect(opener()).toHaveClass('h-12', 'py-2');
+    expect(key()).toHaveClass('h-8');
+    // The plain and masthead headers: the rail row at the top, the 40px
+    // plate's py-1 under a -4px margin, and the key drawn on the page.
+    act(() => useLookStore.setState({ layout: 'writer' }));
+    expect(pill()).toHaveClass('-mt-1');
+    expect(opener()).toHaveClass('h-10', 'py-1');
+    act(() => useLookStore.setState({ layout: 'notebook' }));
+    expect(pill()).toHaveClass('-mt-1');
+  });
+
+  // The key's rim is lit from the mark's lit part (app/globals.css reads the
+  // two lengths), so the brightest arc is the one beside the lit tile.
+  it("aims the rim's light at the mark's lit part", () => {
+    renderRow();
+    expect(opener()?.style.getPropertyValue('--ask-light-x')).toBe(`${ASK_MARK_LIGHT.x}px`);
+    expect(opener()?.style.getPropertyValue('--ask-light-y')).toBe(`${ASK_MARK_LIGHT.y}px`);
   });
 
   it('is not there while the gate has not answered, nor with nothing to answer', () => {
@@ -122,7 +169,7 @@ describe('when it shows', () => {
     act(() => seed(NOTHING_CONNECTED));
     rerender(
       <div className="flex gap-3">
-        <AskOpener rowOffset="mt-2" />
+        <AskOpener />
       </div>
     );
     expect(opener()).toBeNull();
@@ -334,7 +381,17 @@ describe('the chord', () => {
     expect(label).toBe('Ctrl+Shift+K');
     expect(opener()).toHaveAttribute('title', `Open Ask (${label})`);
     expect(opener()?.querySelector('[data-ask-opener-chord]')).toHaveTextContent(label);
-    expect(opener()?.querySelector('[data-ask-opener-chord]')).toHaveClass('font-mono', 'text-muted-foreground');
+    expect(opener()).toHaveTextContent(`Ask${label}`);
+    expect(opener()).toHaveAccessibleName('Open Ask');
+  });
+
+  it('prints the Mac chord on a Mac, from the same binding', () => {
+    platform.mac = true;
+    renderRow();
+    const label = chordLabel(['meta', 'j'], true);
+    expect(label).toBe('⌘J');
+    expect(opener()).toHaveAttribute('title', `Open Ask (${label})`);
+    expect(opener()?.querySelector('[data-ask-opener-chord]')).toHaveTextContent(label);
   });
 });
 
@@ -359,7 +416,7 @@ describe('room on the header row', () => {
     act(() => observers.forEach((fire) => fire()));
   }
 
-  it('is whole while its words fit, the spark alone when only that does, and gone when not even that', () => {
+  it('is whole while key and chord fit, the key alone when only that does, and gone when not even that', () => {
     const RealRO = globalThis.ResizeObserver;
     const observers: (() => void)[] = [];
     globalThis.ResizeObserver = class {
@@ -376,21 +433,26 @@ describe('room on the header row', () => {
       layOut(500, 374);
       resized(observers);
       expect(pill()).toHaveAttribute('data-fit', 'full');
+      expect(opener()).toHaveAttribute('data-form', 'full');
       expect(opener()).toHaveTextContent('Ask');
-      expect(opener()!.querySelector('svg')).toHaveClass('text-ai');
+      expect(opener()?.querySelector('[data-ask-opener-chord]')).not.toBeNull();
 
-      // 374 + 12 + 32 = 418 fits, 492 does not: the spark alone, still named.
+      // 374 + 12 + 32 = 418 fits, 492 does not: the 32px key alone, still named.
       layOut(450, 374);
       resized(observers);
       expect(pill()).toHaveAttribute('data-fit', 'icon');
+      expect(opener()).toHaveAttribute('data-form', 'icon');
       expect(opener()).not.toHaveTextContent('Ask');
+      expect(opener()?.querySelector('[data-ask-opener-chord]')).toBeNull();
+      expect(opener()).toHaveClass('size-8', 'titlebar-hole');
+      expect(key()).toHaveClass('w-8', 'h-8');
+      // The mark carries it, still decorative: the name and title do the naming.
+      expect(mark()).toHaveAttribute('aria-hidden', 'true');
       expect(screen.getByRole('button', { name: 'Open Ask' })).toHaveAttribute('title', 'Open Ask (Ctrl+J)');
-      // Alone it is the whole control: the words' colour, since honey reads
-      // about 1.6:1 on the light surface (WCAG 1.4.11 asks 3:1).
-      expect(opener()!.querySelector('svg')).toHaveClass('text-foreground');
-      expect(opener()!.querySelector('svg')).not.toHaveClass('text-ai');
+      // Its key is on the rail header's own line (Classic's capsule: mt-2), with no plate around it.
+      expect(pill()).toHaveClass('mt-2');
 
-      // Not even the spark: nothing, rather than over the capsule or a line of its own.
+      // Not even the key: nothing, rather than over the capsule or a line of its own.
       layOut(400, 374);
       resized(observers);
       expect(pill()).toHaveAttribute('data-fit', 'none');
@@ -406,9 +468,62 @@ describe('room on the header row', () => {
     }
   });
 
+  it("counts its own margins as room it needs (the drawn key's inset)", () => {
+    const RealRO = globalThis.ResizeObserver;
+    const observers: (() => void)[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderRow();
+      // 374 + 12 + 106 = 492 fits a 500px row...
+      layOut(500, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'full');
+      // ...but not with 14px of its own margin beside it.
+      (opener() as HTMLElement).style.marginRight = '14px';
+      layOut(500, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+    }
+  });
+
+  it("forgets the width it read in another header's face", () => {
+    const RealRO = globalThis.ResizeObserver;
+    const observers: (() => void)[] = [];
+    globalThis.ResizeObserver = class {
+      constructor(cb: ResizeObserverCallback) {
+        observers.push(() => cb([], this as unknown as ResizeObserver));
+      }
+      observe() {}
+      unobserve() {}
+      disconnect() {}
+    } as unknown as typeof ResizeObserver;
+    try {
+      renderRow();
+      // 106px whole does not fit beside a 374px capsule in 450: the key alone.
+      layOut(450, 374);
+      resized(observers);
+      expect(pill()).toHaveAttribute('data-fit', 'icon');
+      // Writer's face is narrower (say 50px whole): it is read again, and fits.
+      Object.defineProperty(opener() as HTMLElement, 'scrollWidth', { configurable: true, get: () => 50 });
+      act(() => useLookStore.setState({ layout: 'writer' }));
+      expect(pill()).toHaveAttribute('data-fit', 'full');
+    } finally {
+      globalThis.ResizeObserver = RealRO;
+    }
+  });
+
   it('gives way to the row and never the other way: it shrinks first, and to nothing', () => {
     renderRow();
     expect(pill()).toHaveClass('min-w-0', 'shrink-[1000]');
-    expect(opener()).toHaveClass('min-w-0', 'overflow-hidden');
+    expect(opener()).toHaveClass('min-w-0');
   });
 });
