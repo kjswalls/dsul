@@ -125,10 +125,36 @@ const newContainer = (kind: NewContainerKind, title = 'Mornings', onOpenChange =
 const id = (t: string) => screen.getByTestId(t);
 const click = (t: string) => fireEvent.click(id(t));
 
+const ADDER: Record<string, string> = {
+  milestones: 'milestone',
+  checkins: 'checkin',
+  supporting: 'member',
+  items: 'items',
+  routines: 'routines',
+  seasons: 'seasons',
+};
+
+/**
+ * Show a section of the quiet sheet: a section exists only once it holds
+ * something or was asked for on the row of verbs under the note.
+ * `prefix` is the section's own (`goal-dialog-milestones`), or the form's
+ * prefix plus a bare key for the routine/season sections.
+ */
+function openSection(prefix: string) {
+  const at = prefix.lastIndexOf('-');
+  const form = prefix.slice(0, at);
+  const key = ADDER[prefix.slice(at + 1)];
+  const adder = screen.queryByTestId(`${form}-adder-${key}`);
+  if (adder) fireEvent.click(adder);
+}
+
 /** Open a member section's picker and pick one candidate by title. */
 function link(prefix: string, title: string) {
   // The picker stays open across adds (member-list.tsx), so only open it once.
-  if (!screen.queryByTestId(`${prefix}-member-search`)) click(`${prefix}-member-add`);
+  if (!screen.queryByTestId(`${prefix}-member-search`)) {
+    openSection(prefix);
+    click(`${prefix}-member-add`);
+  }
   const row = screen
     .getAllByTestId(`${prefix}-member-candidate`)
     .find((b) => b.textContent?.includes(title));
@@ -239,6 +265,7 @@ describe('the "new" dialog, every field', () => {
 
     link('goal-dialog-milestones', 'Run a 10k');
     // The supporting-work picker must not offer the item already a milestone.
+    openSection('goal-dialog-supporting');
     click('goal-dialog-supporting-member-add');
     const offered = screen
       .queryAllByTestId('goal-dialog-supporting-member-candidate')
@@ -251,17 +278,44 @@ describe('the "new" dialog, every field', () => {
     );
   });
 
-  it('shows the empty sections as prompts, not a blank form', () => {
+  it('opens quiet: no empty sections, one row of verbs that each bring theirs', () => {
     newContainer('goal', 'Run a half');
-    expect(id('goal-dialog-milestones-empty-hint')).toBeTruthy();
-    expect(id('goal-dialog-checkins-empty-hint')).toBeTruthy();
-    expect(id('goal-dialog-supporting-empty-hint')).toBeTruthy();
+    expect(screen.queryByTestId('goal-dialog-milestones-members')).toBeNull();
+    expect(screen.queryByTestId('goal-dialog-checkins-members')).toBeNull();
+    expect(screen.queryByTestId('goal-dialog-supporting-members')).toBeNull();
+    // The old heading hint rides the verb's tooltip.
+    expect(id('goal-dialog-adder-checkin').getAttribute('title')).toBe('A regular look back');
+
+    click('goal-dialog-adder-milestone');
+    expect(id('goal-dialog-milestones-members')).toBeTruthy();
+    // Asked for, so typed into at once — and the verb leaves the row.
+    expect(document.activeElement).toBe(id('goal-dialog-create-milestone-new-name'));
+    expect(screen.queryByTestId('goal-dialog-adder-milestone')).toBeNull();
+    expect(id('goal-dialog-adder-checkin')).toBeTruthy();
+  });
+
+  it('links from the row into the role picked on its switch, and shows that section', () => {
+    const addGoal = vi.fn(() => 'g-new');
+    usePlannerStore.setState({ addGoal });
+    newContainer('goal', 'Run a half');
+    click('goal-dialog-link');
+    // Supporting work by default; Milestone narrows to one-shot items.
+    click('goal-dialog-link-role-milestone');
+    const offered = screen
+      .getAllByTestId('goal-dialog-link-member-candidate')
+      .map((b) => b.getAttribute('data-item-id'));
+    expect(offered).toEqual(['t1']);
+    fireEvent.click(screen.getAllByTestId('goal-dialog-link-member-candidate')[0]);
+    expect(id('goal-dialog-milestones-members').textContent).toContain('Run a 10k');
+    click('goal-dialog-add');
+    expect(addGoal).toHaveBeenCalledWith(expect.objectContaining({ milestoneIds: ['t1'], memberIds: [] }));
   });
 
   it('never creates from an Enter inside a member search box', () => {
     const addRoutine = vi.fn(() => 'r-new');
     usePlannerStore.setState({ addRoutine });
     newContainer('routine');
+    openSection('routine-dialog-items');
     click('routine-dialog-items-member-add');
     const search = id('routine-dialog-items-member-search');
     fireEvent.change(search, { target: { value: 'zzz no match' } });
@@ -284,6 +338,7 @@ describe('the "new" dialog, every field', () => {
   it('closes an open picker on Escape before it closes the dialog', () => {
     const onOpenChange = vi.fn();
     newContainer('routine', 'Mornings', onOpenChange);
+    openSection('routine-dialog-items');
     click('routine-dialog-items-member-add');
     fireEvent.keyDown(id('routine-dialog-items-member-search'), { key: 'Escape' });
     expect(screen.queryByTestId('routine-dialog-items-member-search')).toBeNull();
@@ -384,6 +439,7 @@ describe('new items and seasons at birth', () => {
   it('creates a typed-in milestone and links it, in ONE undo entry', () => {
     seed({ items: [] });
     newContainer('goal', 'Half marathon');
+    click('goal-dialog-adder-milestone');
     const field = id('goal-dialog-create-milestone-new-name');
     fireEvent.change(field, { target: { value: 'Run a 10k' } });
     fireEvent.keyDown(field, { key: 'Enter' });
@@ -405,6 +461,7 @@ describe('new items and seasons at birth', () => {
   it('drops a typed-in item the user takes back before creating', () => {
     seed({ items: [] });
     newContainer('routine');
+    click('routine-dialog-adder-items');
     const field = id('routine-dialog-create-item-new-name');
     fireEvent.change(field, { target: { value: 'Floss' } });
     fireEvent.keyDown(field, { key: 'Enter' });
@@ -421,6 +478,7 @@ describe('new items and seasons at birth', () => {
     usePlannerStore.setState({ addRoutine });
     newContainer('routine');
     link('routine-dialog-items', 'Stretch');
+    click('routine-dialog-adder-seasons');
     click('routine-dialog-season');
     expect(id('routine-dialog-note-hides').textContent).toContain('puts 1 item on hold');
     click('routine-dialog-add');
@@ -435,8 +493,9 @@ describe('a new item typed into a routine', () => {
   it('is born a daily habit, unfiled like a new task', () => {
     seed({ items: [], projects: [{ id: 'pr1', name: 'Health', emoji: '' }] });
     newContainer('routine');
+    click('routine-dialog-adder-items');
     const field = id('routine-dialog-create-item-new-name');
-    expect(field.getAttribute('placeholder')).toBe('Add a new habit…');
+    expect(field.getAttribute('placeholder')).toBe('Add a habit…');
     fireEvent.change(field, { target: { value: 'Floss' } });
     fireEvent.keyDown(field, { key: 'Enter' });
     click('routine-dialog-add');
@@ -450,6 +509,7 @@ describe('a new item typed into a routine', () => {
   it('is born on the days and part of the day its row chose', () => {
     seed({ items: [], projects: [{ id: 'pr1', name: 'Health', emoji: '' }] });
     newContainer('routine');
+    click('routine-dialog-adder-items');
     const field = id('routine-dialog-create-item-new-name');
     fireEvent.change(field, { target: { value: 'Run' } });
     fireEvent.keyDown(field, { key: 'Enter' });
@@ -470,6 +530,7 @@ describe('a new item typed into a goal or season', () => {
   it('can be given a day, and is then born on it', () => {
     seed({ items: [] });
     newContainer('goal');
+    click('goal-dialog-adder-milestone');
     const field = id('goal-dialog-create-milestone-new-name');
     fireEvent.change(field, { target: { value: 'Race day' } });
     fireEvent.keyDown(field, { key: 'Enter' });
@@ -488,6 +549,7 @@ describe('a new item typed into a goal or season', () => {
   it('can repeat, and a repeating task is anchored so it shows on a day', () => {
     seed({ items: [] });
     newContainer('season');
+    click('season-dialog-adder-items');
     const field = id('season-dialog-create-item-new-name');
     fireEvent.change(field, { target: { value: 'Study' } });
     fireEvent.keyDown(field, { key: 'Enter' });
