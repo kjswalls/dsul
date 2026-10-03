@@ -333,7 +333,10 @@ function LoginPageInner() {
         >
           {/* Identity — see components/primitives/wordmark.tsx. The fixed
               height keeps the form still while a larger hover flavor is up. */}
-          <Wordmark className="h-[13px]" />
+          <div className="space-y-1.5">
+            <Wordmark className="h-[13px]" />
+            <p className="text-[11.5px] text-muted-foreground">Say it like “diesel”.</p>
+          </div>
 
           {handoffUrl ? (
             <div className="space-y-3 duration-500 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none">
