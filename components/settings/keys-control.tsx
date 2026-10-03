@@ -60,7 +60,7 @@ export function rejectionFor(
 ): string | null {
   // 'ctrl' survives normalization only on macOS — everywhere else pressedKeys
   // folds it into 'mod'. So its presence here IS the platform test.
-  if (keys.includes('ctrl')) return 'macOS text editing — use ⌘ instead';
+  if (keys.includes('ctrl')) return 'macOS text editing. Use ⌘ instead';
 
   // The dispatcher takes the FIRST match in registry order, so saving a
   // duplicate leaves the row displaying a shortcut that runs another command.
@@ -162,7 +162,7 @@ export function KeysControl({
         aria-label={
           recording
             ? `Recording a new shortcut for ${record.label}. Press a key combination, or Escape to cancel.`
-            : `${record.label} — ${formatKeys(decodeKeys(value), isMac).join(' ') || 'no shortcut'}. Press to record a new one.`
+            : `${record.label}: ${formatKeys(decodeKeys(value), isMac).join(' ') || 'no shortcut'}. Press to record a new one.`
         }
         disabled={disabled}
         onKeyDown={handleKeyDown}

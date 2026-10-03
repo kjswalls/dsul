@@ -242,7 +242,7 @@ export function RoutinesSection({
           />
         ) : (
           <SectionWelcome section="routines">
-            A routine is a set of things you do regularly, in order — a morning, a workout week.
+            A routine is a set of things you do regularly, in order, like a morning or a workout week.
           </SectionWelcome>
         )}
       </DetailColumn>
@@ -333,9 +333,9 @@ function RoutineDetail({
 
   const consequence = `“${routine.name}” is removed, but its ${liveCount} ${
     liveCount === 1 ? 'item stays' : 'items stay'
-  } exactly as ${liveCount === 1 ? 'it is' : 'they are'} — ${
-    liveCount === 1 ? 'it' : 'they'
-  } just stop being grouped${reappear ? ', and they come back into view' : ''}.`;
+  } exactly as ${liveCount === 1 ? 'it is' : 'they are'}. ${
+    liveCount === 1 ? 'It just stops' : 'They just stop'
+  } being grouped${reappear ? ', and they come back into view' : ''}.`;
 
   return (
     <div

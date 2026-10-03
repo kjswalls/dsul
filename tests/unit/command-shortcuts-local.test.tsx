@@ -4,6 +4,8 @@ import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
 import type { CommandContext } from '@/lib/commands';
 import { useViewStore } from '@/lib/view-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
+import { useRailStore } from '@/lib/rail-store';
+import { CONNECTED_MODEL, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The bare-key claim (memory/plans/organize-console.md, Phase 1).
@@ -134,13 +136,32 @@ describe('a binding whose command cannot run right now', () => {
   });
 
   it('keeps a chrome-level key from the browser, without running its command', () => {
-    // ⌘] (toggle chat) waits on the AI gate, which starts closed. The key is
-    // Forward in every macOS browser, and the app claims it on every surface,
-    // so it is consumed and does nothing rather than leaving the planner.
-    useSidebarStore.setState({ chatExpanded: false, leftSidebarOpen: false });
+    // Ctrl+J (open or close Ask) waits on the AI gate, which starts closed.
+    // The key is Downloads in Chrome, Edge and Firefox, and the app claims it
+    // on every surface, so it is consumed and does nothing rather than opening
+    // the browser's downloads.
+    useSidebarStore.setState({ askOpen: false, leftSidebarOpen: false });
     render(<Harness onEdit={() => {}} />);
-    expect(press(']', { metaKey: true })).toBe(true);
-    expect(useSidebarStore.getState().chatExpanded).toBe(false);
+    expect(press('j', { ctrlKey: true })).toBe(true);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
+    expect(useRailStore.getState().summoned).toBe(false);
     expect(useSidebarStore.getState().leftSidebarOpen).toBe(false);
+  });
+
+  it('runs it once something can answer: Ctrl+J opens Ask, and again closes it', () => {
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      useSidebarStore.setState({ askOpen: false });
+      render(<Harness onEdit={() => {}} />);
+      expect(press('j', { ctrlKey: true })).toBe(true);
+      expect(useSidebarStore.getState().askOpen).toBe(true);
+      expect(press('j', { ctrlKey: true })).toBe(true);
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      // ⌘] belongs to the browser again (Forward).
+      expect(press(']', { metaKey: true })).toBe(false);
+    } finally {
+      unseed();
+      useRailStore.getState().reset();
+    }
   });
 });

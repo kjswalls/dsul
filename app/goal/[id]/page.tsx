@@ -94,7 +94,7 @@ export default function GoalPage() {
       >
         <h1 className="text-foreground text-lg font-semibold">Goals is switched off</h1>
         <p className="text-muted-foreground text-sm">
-          Your goals are still here — switch the extension back on and this page picks up
+          Your goals are still here. Switch the extension back on and this page picks up
           where it left off. Nothing was deleted.
         </p>
         <div className="flex gap-2">
@@ -239,7 +239,7 @@ export default function GoalPage() {
           >
             {goal.state === 'achieved'
               ? `Achieved${goal.achievedAt ? ` on ${formatShort(goal.achievedAt.slice(0, 10))}` : ''}. Everything below is the record of how it went.`
-              : 'Set aside. Its work is untouched — nothing here was cancelled on your behalf.'}
+              : 'Set aside. Its work is untouched, and nothing here was cancelled on your behalf.'}
           </p>
         )}
 
@@ -288,7 +288,7 @@ export default function GoalPage() {
               </div>
             ) : (
               <p className="text-muted-foreground text-sm">
-                No check-in yet. A recurring review — weekly is usually right — is what keeps a
+                No check-in yet. A recurring review (weekly is usually right) is what keeps a
                 long goal from going quiet for a month at a time.
               </p>
             )}

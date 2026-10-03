@@ -12,6 +12,7 @@ import {
 import { useUIStore } from '@/lib/ui-store';
 import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { formatKeys } from '@/lib/commands/keys';
+import { cn } from '@/lib/utils';
 
 /**
  * The live binding printed beside "Keyboard shortcuts".
@@ -30,7 +31,7 @@ function KbdHint() {
 }
 
 /**
- * The floating "?" help hub — desktop only, bottom-right corner.
+ * The floating "?" help hub — desktop only, the canvas's bottom-right corner.
  *
  * One affordance that gathers the scattered help entry points into the spot the
  * bare shortcuts hint used to sit. Every row is an ordinary `ActiveDialog`
@@ -38,15 +39,27 @@ function KbdHint() {
  * points somewhere real — a menu whose items dead-end reads as more broken than
  * no menu at all — so Changelog / Guides / Support wait until they exist.
  *
- * Inset 24px so the whole bubble, focus ring included, clears the body panel's
- * rounded corner: the shell's p-3 gutter plus the panel's 30px radius puts the
- * corner arc's centre 42px in, and a 36px bubble at 24px shares that centre.
+ * Placed by its one mount, DesktopShell, which puts it INSIDE <main>
+ * (`absolute bottom-2.5 right-2.5`) rather than fixed to the window: the right
+ * rail rests at the window's right edge now, and a window-fixed bubble would
+ * sit on Ask's box. Inside <main> it also goes inert with the canvas under an
+ * overlaid rail, and it does not exist in Zen, which replaces the shell.
+ *
+ * 10px is the inset at which it covers nothing in the day's right gutter: the
+ * views' scrollbar track is <main>'s outer 10px (scroll-area.tsx's w-2.5) and
+ * the nearest control, a bucket's item card, starts 46px in (the canvas's 2rem
+ * padding plus the bucket's own inset), so a 36px bubble fills exactly the
+ * strip between them, at every canvas width. A list row or schedule block
+ * runs to the 2rem edge and can pass under it mid-scroll; every day view ends
+ * in pb-20 (80px), so the last row always scrolls clear. In Classic's 30px-
+ * radius corner the bubble's centre sits 2px off the arc's centre, so the
+ * whole bubble, focus ring included, stays inside the curve.
  */
-export function HelpMenu() {
+export function HelpMenu({ className }: { className?: string }) {
   const openDialog = useUIStore((s) => s.openDialog);
 
   return (
-    <div className="fixed bottom-6 right-6 z-30 hidden md:block">
+    <div className={cn('hidden md:block', className)}>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
           <button

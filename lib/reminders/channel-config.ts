@@ -63,7 +63,7 @@ export const CHANNEL_SETTINGS: ChannelSettingsSpec[] = [
         // Worth saying, because the obvious value is the one that cannot work:
         // dsul calls this from a server, not from your browser.
         description:
-          'Reachable from the internet — dsul calls it from its own server, so a LAN address only works on a self-hosted dsul.',
+          'Must be reachable from the internet. dsul calls it from its own server, so a LAN address only works on a self-hosted dsul.',
       },
       {
         key: 'players',

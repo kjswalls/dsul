@@ -1,6 +1,6 @@
 'use client';
 
-import { createElement, type ComponentProps, type ReactNode } from 'react';
+import { createElement, useState, type ComponentProps, type ReactNode } from 'react';
 import { Check, Plus } from 'lucide-react';
 import {
   ResponsiveModal,
@@ -14,7 +14,7 @@ import { useGoalsEnabled, useOrganizeEnabled } from '@/lib/extension-gates';
 import { useOpenConsole } from '@/lib/console-door';
 import { ALL_ITEM_TYPES, getItemTypeConfig } from '@/lib/item-registry';
 import { CONTAINER_KINDS } from '@/lib/container-registry';
-import type { NewContainerKind } from '@/lib/ui-store';
+import { useUIStore, type NewContainerKind } from '@/lib/ui-store';
 
 /**
  * The "new" surface's shell, shared by the two dialogs that wear it: ItemDialog
@@ -40,6 +40,28 @@ export function ColorSquare({ color }: { color: string }) {
   );
 }
 
+/**
+ * The type menu's item ↔ organizer switch, as each of the two dialogs sees it.
+ * They are separate slots, so the switch closes one Radix dialog and opens the
+ * other in the same commit; left alone, that reads as a re-open — the leaving
+ * card zooms out under the arriving one zooming in, over two scrims. So:
+ *  · `instant` — latched on each open: this open is a takeover, skip the enter
+ *    animation. Latched rather than read live, because a later switch inside
+ *    the same slot (goal → season) clears the flag, and flipping the animation
+ *    class on an open card would restart it.
+ *  · `skipExit` — this dialog was just handed off: unmount now rather than
+ *    playing the close under its replacement.
+ */
+export function useNewSurfaceHandoff(open: boolean) {
+  const handoff = useUIStore((s) => s.dialogHandoff);
+  const [wasOpen, setWasOpen] = useState(open);
+  const [instant, setInstant] = useState(open && handoff);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setInstant(handoff);
+  }
+  return { instant: open && instant, skipExit: !open && handoff };
+}
 
 // ── The two shapes of the surface ────────────────────────────────────────────
 // Same children either way. `modal` is the Radix dialog (desktop) / vaul drawer
@@ -73,17 +95,26 @@ export function SurfaceRoot({
 export function SurfaceContent({
   panel,
   inline = false,
+  rail = false,
   open,
   flat,
   panelLabel,
   className,
   overlayClassName,
+  instant,
   children,
   ...props
 }: ComponentProps<typeof ResponsiveModalContent> & {
   panel: boolean;
   /** Laid into a page's flow (/item/[id]): no width, no card, no scroll box. */
   inline?: boolean;
+  /**
+   * Docked in the right rail with its chrome (ItemDialog's `railChrome`): the
+   * aside stops scrolling and padding itself, and lays out three rows instead,
+   * the rail's header, a body that scrolls, and the pinned box. Only while
+   * something answers; without it the panel is exactly today's.
+   */
+  rail?: boolean;
   open: boolean;
   /** Docked on the backdrop (shell column) vs floating as an overlay card
    *  (the /item page). Flat drops the card chrome; floating keeps it. */
@@ -120,6 +151,8 @@ export function SurfaceContent({
         className={
           inline
             ? 'flex w-full min-w-0 flex-col outline-none'
+            : rail
+            ? 'flex h-full w-[420px] flex-col overflow-hidden bg-transparent outline-none'
             : flat
             ? 'flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto bg-transparent px-5 pt-[42px] pb-5 outline-none'
             : 'border-border bg-canvas flex h-full w-[420px] flex-col overflow-x-hidden overflow-y-auto rounded-[30px] border px-5 pt-[31px] pb-5 outline-none'
@@ -131,7 +164,12 @@ export function SurfaceContent({
     );
   }
   return (
-    <ResponsiveModalContent className={className} overlayClassName={overlayClassName} {...props}>
+    <ResponsiveModalContent
+      className={className}
+      overlayClassName={overlayClassName}
+      instant={instant}
+      {...props}
+    >
       {children}
     </ResponsiveModalContent>
   );

@@ -294,7 +294,7 @@ export function OrganizeConsole({
             Organize
           </ResponsiveModalTitle>
           <ResponsiveModalDescription className="sr-only">
-            Your routines, seasons, projects and item types — and anything
+            Your routines, seasons, projects and item types, plus anything
             you&apos;ve deleted in the last 30 days.
           </ResponsiveModalDescription>
           {/* Ours, on the header band's baseline, rather than the stock close

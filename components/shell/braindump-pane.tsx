@@ -19,8 +19,9 @@ const PANE_W = 'w-[300px]';
  */
 export function BraindumpPane({ covered = false }: { covered?: boolean }) {
   const open = useSidebarStore((s) => s.leftSidebarOpen);
-  // `covered`: the item panel overlays this pane below 1180px, so it leaves
-  // the tab order the way <main> does (desktop-shell's `inert`).
+  // `covered`: the right column (an item, or Ask) overlays this pane below
+  // 1180px, so it leaves the tab order the way <main> does (desktop-shell's
+  // `inert`).
   const away = !open || covered;
   return (
     <aside

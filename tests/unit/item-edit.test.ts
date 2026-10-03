@@ -215,9 +215,9 @@ describe('the shared sentences', () => {
   it('are the web’s words, character for character', () => {
     expect(EDIT_COPY).toEqual({
       resetStreakMessage:
-        'This will reset your streak counter to 0 days. Your completion history stays \u2014 days you already checked off remain checked.',
+        'This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.',
       subtaskPlaceholder: 'Add subtask\u2026',
-      subtaskPasteCapped: 'Added the first 500 subtasks \u2014 the paste had more.',
+      subtaskPasteCapped: 'Added the first 500 subtasks. The paste had more.',
     });
   });
 

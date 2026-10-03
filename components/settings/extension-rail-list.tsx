@@ -223,7 +223,7 @@ function ExtensionRow({
   // The state in words, for whoever can't see the dot — and the only place the
   // rail says WHY, since a disabled switch takes no focus and shows no title
   // on touch.
-  const stateText = state.reason ? `Unavailable — ${state.reason}` : state.label;
+  const stateText = state.reason ? `Unavailable: ${state.reason}` : state.label;
   const stateId = `ext-state-${rail ? 'rail' : 'pane'}-${slug}`;
   const Icon = sub.icon;
   const sw = (

@@ -174,6 +174,35 @@ export default async function globalSetup() {
           console.warn(`[globalSetup] goal sweep failed (${swept.status}): ${await swept.text()}`);
       }
     }
+
+    // Saved conversations, by the same rule. Every spec that asks the stubbed
+    // AI anything saves a real row (rail.spec, smoke.spec) and deletes it in
+    // `finally` by a title it owns; a run aborted before then leaves the row,
+    // and History lists every one. `chat_messages` needs no line: its
+    // composite FK cascades. Only ids and titles are read, never message text.
+    const foundConversations = await rest(
+      `chat_conversations?user_id=eq.${userId}&select=id,title`
+    );
+    if (!foundConversations.ok) {
+      console.warn(
+        `[globalSetup] conversation sweep skipped (${foundConversations.status}): ` +
+          (await foundConversations.text())
+      );
+    } else {
+      const litter = (
+        (await foundConversations.json()) as { id: string; title: string | null }[]
+      ).filter((row) => row.title?.startsWith(TEST_TITLE_PREFIX));
+      if (litter.length) {
+        const ids = litter.map((row) => row.id).join(',');
+        const swept = await rest(`chat_conversations?id=in.(${ids})`, { method: 'DELETE' });
+        if (swept.ok)
+          console.log(`[globalSetup] swept ${litter.length} leftover test conversation(s)`);
+        else
+          console.warn(
+            `[globalSetup] conversation sweep failed (${swept.status}): ${await swept.text()}`
+          );
+      }
+    }
   } else {
     console.warn(
       `[globalSetup] refusing to sweep items for ${env.email} — it does not look like a ` +

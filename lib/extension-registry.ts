@@ -149,7 +149,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     // role on top of projects and routines, and someone who has not asked for
     // one should be able to read this row and decide they do not want it.
     description:
-      'Long-term goals with milestones and check-ins, plus a Goal filter and grouping. A goal hides nothing — it only says why work matters.',
+      'Long-term goals with milestones and check-ins, plus a Goal filter and grouping. A goal hides nothing. It only says why work matters.',
     icon: Target,
     category: 'planning',
     defaultEnabled: false,
@@ -167,7 +167,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     slug: EXT_ORGANIZE,
     name: 'Organize console',
     description:
-      'One console for bulk container management — routines, seasons, projects, item types, habit groups and the trash.',
+      'One console for bulk container management: routines, seasons, projects, item types, habit groups and the trash.',
     icon: FolderCog,
     category: 'planning',
     // Defaults ON since the console was made approachable (2026-08-28): a warm
@@ -194,7 +194,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     // the guilt of a broken chain, so the row has to promise that quieting the
     // display does not quietly stop the reminders or stakes that count on it.
     description:
-      'Flame badges and streak counts across the app. Turn it off to hide them — your streaks keep counting for reminders and stakes.',
+      'Flame badges and streak counts across the app. Turn it off to hide them. Your streaks keep counting for reminders and stakes.',
     icon: Flame,
     category: 'habits',
     defaultEnabled: true,
@@ -280,7 +280,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     name: 'Call me',
     // Names the default out loud. A channel that rings a phone must not leave
     // anyone guessing how often it will.
-    description: 'Rings you through Twilio. Last call only unless you change it — a call for every reminder is a lot.',
+    description: 'Rings you through Twilio. Last call only unless you change it, since a call for every reminder is a lot.',
     icon: PhoneCall,
     category: 'integrations',
     defaultEnabled: false,
@@ -321,7 +321,7 @@ export const OFFICIAL_EXTENSIONS: ExtensionManifest[] = [
     // device that seems to collect and does not is worse than none, because you
     // keep trusting it — so the one sentence everyone reads has to say it.
     description:
-      'Records what each miss costs, payable to a cause you can’t stand. dsul keeps the ledger — it cannot take payment.',
+      'Records what each miss costs, payable to a cause you can’t stand. dsul keeps the ledger but cannot take payment.',
     icon: HandCoins,
     category: 'habits',
     defaultEnabled: false,

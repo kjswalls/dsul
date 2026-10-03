@@ -20,6 +20,8 @@ import { ModelPicker } from './model-picker';
 import { useAIConnectionStore, useAICapabilities } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { revealChat } from '@/lib/open-chat';
+import { chordLabel, isApplePlatform } from '@/lib/commands/keys';
+import { useShortcutKeys } from '@/lib/keyboard-shortcuts-store';
 import { getDesktopBridge } from '@/lib/desktop';
 import { useUIStore } from '@/lib/ui-store';
 import {
@@ -843,6 +845,20 @@ function ReplaceKeyForm({
   );
 }
 
+/**
+ * The desktop's way in, once a model is connected: Ask starts closed
+ * (sidebar-store ASK_OPEN_DEFAULT), so the line names each way to open it,
+ * the Ask button on the canvas's header row, the chord as the user has it
+ * bound (chordLabel: "Ctrl+J", "⌘J" on a Mac; never typed by hand) and `?` in
+ * the dock. The phone has no chord and its own Ask tab, and keeps the dock
+ * sentence.
+ */
+function JustConnectedDesktop() {
+  const keys = useShortcutKeys('toggle_right_sidebar');
+  const chord = chordLabel(keys, isApplePlatform());
+  return <>Connected. Open Ask with the Ask button or {chord}, or type ? in the dock, to ask anything.</>;
+}
+
 function ConnectedCard({
   model,
   isMobile,
@@ -899,7 +915,9 @@ function ConnectedCard({
     setActionError(null);
     useUIStore.getState().confirm({
       title: `Disconnect ${name}?`,
-      description: `dsul will delete the saved key. Chat and plan suggestions hide until you connect again. The key stays active with ${name} until you revoke it there.`,
+      // The middle sentence: once nothing answers there is no Ask and no
+      // History to look in, so nothing else says whether the chats survived.
+      description: `dsul will delete the saved key. Chat and plan suggestions hide until you connect again. Your saved conversations stay, and come back when you reconnect. The key stays active with ${name} until you revoke it there.`,
       confirmLabel: 'Disconnect',
       destructive: true,
       testId: 'model-disconnect-confirm',
@@ -1018,7 +1036,9 @@ function ConnectedCard({
               data-testid="mcp-just-connected"
               className="bg-secondary flex flex-wrap items-center justify-between gap-2 rounded-[6px] px-3 py-2"
             >
-              <p className="text-foreground text-xs">Connected. Type ? in the dock to ask anything.</p>
+              <p className="text-foreground text-xs">
+                {isMobile ? 'Connected. Type ? in the dock to ask anything.' : <JustConnectedDesktop />}
+              </p>
               <Button
                 variant="outline"
                 size="sm"

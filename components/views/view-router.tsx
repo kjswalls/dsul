@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { WeekBuckets } from '@/components/views/week-buckets';
 import { WeekList } from '@/components/views/week-list';
 import { WeekSchedule } from '@/components/views/week-schedule';
@@ -21,8 +22,11 @@ import { usePlannerSettled } from '@/lib/planner-ready';
  * store drew a real, EMPTY day — "nothing planned" — for the length of every
  * cold load, which is a claim about the account, not a loading state. The
  * view mounts on the settled edge, with its data.
+ *
+ * memo'd, with no props: DesktopShell re-renders for the right column's
+ * overlay (`covered`), and that must not re-render the day under it.
  */
-export function ViewRouter() {
+export const ViewRouter = memo(function ViewRouter() {
   const activeId = useDragStore((s) => s.activeId);
   const settled = usePlannerSettled();
   const wide = useCanvasWide();
@@ -62,4 +66,4 @@ export function ViewRouter() {
       {settled ? view : <PlannerSkeleton variant={layout} scope={scope} wide={wide} />}
     </div>
   );
-}
+});

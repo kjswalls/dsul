@@ -7,8 +7,13 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
  * moment of sending, and nothing else: no key, model, provider or system
  * prompt rides in a body any more, because all four live server-side. These
  * cases pin what a body may carry, what reaches the transcript when nothing
- * can answer (nothing), how a refusal reads, and the plugin path's lazy,
- * per-account cache of its URL and key.
+ * can answer (nothing), how a refusal reads (a CODE, its words in
+ * lib/chat-errors.ts), and the plugin path's lazy, per-account cache of its
+ * URL and key.
+ *
+ * The conversations API is a fake (configureConversations), so the only
+ * fetches here are the transport's own: `calls.map(c => c.url)` is exactly
+ * what a turn costs on the wire.
  */
 
 vi.mock('@/lib/planner-store', () => ({
@@ -28,15 +33,19 @@ vi.mock('@/lib/planner-store', () => ({
 const plannerContext = vi.hoisted(() => ({ text: '## dsul Context' }));
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => plannerContext.text }));
 
-import { createChatStore, resetPluginTransport, type ChatMessage } from '@/lib/chat-store';
+import {
+  clearChatState,
+  configureConversations,
+  conversationsSettled,
+  useConversationsStore,
+  type ChatMessage,
+} from '@/lib/conversations-store';
+import { chatTransport, outgoingTurns, pluginSessionKey, resetPluginTransport } from '@/lib/chat-transport';
+import { chatErrorCopy } from '@/lib/chat-errors';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
-import {
-  seedAI,
-  CONNECTED_MODEL,
-  NOTHING_CONNECTED,
-  OPENCLAW_PLUGIN,
-} from './helpers/ai-fixtures';
+import { seedAI, CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN } from './helpers/ai-fixtures';
+import { fakeApi, type FakeApi } from './helpers/conversations-fakes';
 
 type Call = { url: string; init: RequestInit };
 
@@ -66,20 +75,31 @@ function stubFetch(route: (url: string, init: RequestInit) => unknown) {
 }
 
 const bodyOf = (c: Call) => JSON.parse(c.init.body as string) as Record<string, unknown>;
-const lastContent = (store: ReturnType<typeof createChatStore>) =>
-  store.getState().messages.at(-1)?.content;
+const store = () => useConversationsStore.getState();
+const messagesOf = (id: string) => store().threads[id]?.messages ?? [];
+const last = (id: string) => messagesOf(id).at(-1);
+/** What the transcript shows for the last reply: its text, then its error's copy. */
+const shown = (id: string) => {
+  const m = last(id);
+  if (!m) return undefined;
+  return m.status === 'error' ? [m.content, chatErrorCopy(m.errorCode, m.answerer)].filter(Boolean).join('\n\n') : m.content;
+};
 
 let unseed: () => void = () => {};
-let store: ReturnType<typeof createChatStore>;
+let api: FakeApi;
+let id: string;
 
 beforeEach(() => {
   plannerContext.text = '## dsul Context';
-  localStorage.clear();
+  api = fakeApi();
+  configureConversations({ api: api.api, transport: chatTransport });
+  clearChatState();
   resetPluginTransport();
-  store = createChatStore({ historyKey: 'test-history', sessionKey: 'test-session' });
+  id = store().newDraft();
 });
 
-afterEach(() => {
+afterEach(async () => {
+  await conversationsSettled();
   unseed();
   unseed = () => {};
   vi.unstubAllGlobals();
@@ -95,85 +115,91 @@ describe('nothing can answer', () => {
     unseed = seedAI(seed);
     const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'hi' }) }));
 
-    await store.getState().send('plan my day');
+    await store().send(id, 'plan my day');
 
-    expect(store.getState().messages).toEqual([]);
-    expect(store.getState().isLoading).toBe(false);
-    expect(localStorage.getItem('test-history')).toBeNull();
+    expect(messagesOf(id)).toEqual([]);
+    expect(store().threads[id]?.streaming ?? false).toBe(false);
     expect(calls).toHaveLength(0);
+    expect(api.turns).toHaveLength(0);
   });
 });
 
 describe('the model path (/api/chat)', () => {
-  it('posts exactly the new keys: a target, never a key, model or prompt', async () => {
+  it('posts exactly the six keys: a target and the conversation, never a key, model or prompt', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     useAISettingsStore.setState({ systemPrompt: 'Keep it short.' });
     const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'Sure.' }) }));
 
-    await store.getState().send('  plan my day  ');
+    await store().send(id, '  plan my day  ');
 
     expect(calls.map((c) => c.url)).toEqual(['/api/chat']);
     const body = bodyOf(calls[0]);
     expect(Object.keys(body).sort()).toEqual(
-      ['context', 'customInstructions', 'messages', 'target', 'threadItemId', 'typeNouns'].sort()
+      ['context', 'conversationId', 'customInstructions', 'messages', 'target', 'typeNouns'].sort()
     );
     expect(body).toMatchObject({
       target: 'model',
       context: '## dsul Context',
       customInstructions: 'Keep it short.',
       typeNouns: ['errands'],
-      threadItemId: null,
+      conversationId: id,
       messages: [{ role: 'user', content: 'plan my day' }],
     });
-    expect(JSON.stringify(body)).not.toMatch(/apiKey|"model":|provider|systemPrompt/);
-    expect(lastContent(store)).toBe('Sure.');
+    expect(JSON.stringify(body)).not.toMatch(/apiKey|"model":|provider|systemPrompt|threadItemId/);
+    expect(last(id)).toMatchObject({ content: 'Sure.', status: 'complete', model: 'gpt-4o-mini', answerer: 'model' });
   });
 
-  it('names the thread on an item thread, never a session key', async () => {
+  it('names an item conversation by its own id, never the item or a session key', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'ok' }) }));
-    const thread = createChatStore({
-      historyKey: 'dsul-item-chat-i1',
-      sessionKey: 'dsul-item-i1',
-      focusItemId: 'i1',
-    });
+    const thread = await store().resolveItemThread('i1');
 
-    await thread.getState().send('what is next here?');
+    await store().send(thread, 'what is next here?');
 
-    expect(bodyOf(calls[0]).threadItemId).toBe('i1');
-    expect(JSON.stringify(bodyOf(calls[0]))).not.toContain('dsul-item-i1');
+    expect(bodyOf(calls[0]).conversationId).toBe(thread);
+    expect(JSON.stringify(bodyOf(calls[0]))).not.toMatch(/"i1"|dsul-item|dsul-chat/);
   });
 
   it('sends an OpenClaw gateway user through /api/chat with target openclaw', async () => {
     unseed = seedAI({ ...OPENCLAW_PLUGIN, openclaw: { gateway: true, agent: true } });
     const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'ok' }) }));
 
-    await store.getState().send('hello');
+    await store().send(id, 'hello');
 
     expect(calls.map((c) => c.url)).toEqual(['/api/chat']);
     expect(bodyOf(calls[0]).target).toBe('openclaw');
+    expect(last(id)).toMatchObject({ answerer: 'openclaw', model: null });
   });
 
   it('trims the outgoing transcript to the newest 40 turns, and keeps the stored history', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     const history: ChatMessage[] = Array.from({ length: 50 }, (_, i) => ({
+      id: `m${i}`,
       role: i % 2 === 0 ? 'user' : 'assistant',
       content: `turn ${i}`,
+      status: 'complete',
+      errorCode: null,
+      replyTo: i % 2 === 0 ? null : `m${i - 1}`,
+      answerer: i % 2 === 0 ? null : 'model',
+      model: null,
+      createdAt: Date.now(),
+      pos: i + 1,
+      sync: 'saved',
     }));
-    store.setState({ messages: history });
+    useConversationsStore.setState((s) => ({ threads: { ...s.threads, [id]: { ...s.threads[id], saved: true, messages: history } } }));
     const calls = stubFetch(() => ({ ok: true, body: sse({ content: 'ok' }) }));
 
-    await store.getState().send('the newest');
+    await store().send(id, 'the newest');
 
-    const sent = bodyOf(calls[0]).messages as ChatMessage[];
+    const sent = bodyOf(calls[0]).messages as { role: string; content: string }[];
     expect(sent).toHaveLength(40);
     expect(sent.at(-1)).toEqual({ role: 'user', content: 'the newest' });
     expect(sent[0].content).toBe('turn 11');
     // The transcript itself is not trimmed by the request.
-    expect(store.getState().messages).toHaveLength(52);
+    expect(messagesOf(id)).toHaveLength(52);
   });
 
-  it('clips each outgoing turn and the context, so one huge paste does not lock the thread', async () => {
+  it('clips the paste once, for every copy, and the context to the route limit', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     // A heavy account's planner context, past the server's 60k clip.
     plannerContext.text = 'c'.repeat(200_000);
@@ -181,25 +207,23 @@ describe('the model path (/api/chat)', () => {
       url === '/api/chat' ? { ok: true, body: sse({ content: 'ok' }) } : new Promise(() => {})
     );
 
-    await store.getState().send('x'.repeat(2_100_000));
-    await store.getState().send('hi');
+    await store().send(id, 'x'.repeat(2_100_000));
+    await store().send(id, 'hi');
 
     const MAX_BODY_BYTES = 2_000_000; // app/api/chat/route.ts
-    const sizes = calls
-      .filter((c) => c.url === '/api/chat')
-      .map((c) => new TextEncoder().encode(c.init.body as string).length);
-    expect(sizes).toHaveLength(2);
-    for (const size of sizes) expect(size).toBeLessThan(MAX_BODY_BYTES);
+    const chats = calls.filter((c) => c.url === '/api/chat');
+    expect(chats).toHaveLength(2);
+    for (const c of chats) expect(new TextEncoder().encode(c.init.body as string).length).toBeLessThan(MAX_BODY_BYTES);
 
-    const sent = bodyOf(calls.filter((c) => c.url === '/api/chat')[1]).messages as ChatMessage[];
+    const sent = bodyOf(chats[1]).messages as { role: string; content: string }[];
     expect(sent.map((m) => m.content.length)).toEqual([8_000, 2, 2]);
     expect(sent.at(-1)).toEqual({ role: 'user', content: 'hi' });
-    expect(bodyOf(calls.filter((c) => c.url === '/api/chat')[1]).context).toHaveLength(60_000);
-    // The transcript itself keeps what the user typed.
-    expect(store.getState().messages[0].content).toHaveLength(2_100_000);
+    expect(bodyOf(chats[1]).context).toHaveLength(60_000);
+    // The transcript holds what was sent and saved, not more.
+    expect(messagesOf(id)[0].content).toHaveLength(8_000);
   });
 
-  it("shows the route's own copy on a refusal and tells the gate why", async () => {
+  it('keeps the code of a refusal, not its words, and tells the gate why', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     const calls = stubFetch((url) =>
       url === '/api/chat'
@@ -211,16 +235,17 @@ describe('the model path (/api/chat)', () => {
         : new Promise(() => {}) // the gate's re-check, left in flight
     );
 
-    await store.getState().send('hello');
+    await store().send(id, 'hello');
 
-    expect(lastContent(store)).toBe('Your provider rejected the key.');
+    expect(last(id)).toMatchObject({ role: 'assistant', status: 'error', errorCode: 'auth', content: '' });
+    expect(shown(id)).toBe('Your AI key stopped working. Reconnect it in Settings.');
     // noteCallFailure('auth'): the key reads as failing at once, and the gate re-asks.
     expect(useAIConnectionStore.getState().model?.status).toBe('failing');
     expect(calls.map((c) => c.url)).toContain('/api/ai/connection');
-    expect(store.getState().isLoading).toBe(false);
+    expect(store().threads[id].streaming).toBe(false);
   });
 
-  it('falls back to our own copy when a refusal has no body', async () => {
+  it('falls back to the generic code when a refusal has no body', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     stubFetch(() => ({
       ok: false,
@@ -230,12 +255,13 @@ describe('the model path (/api/chat)', () => {
       },
     }));
 
-    await store.getState().send('hello');
+    await store().send(id, 'hello');
 
-    expect(lastContent(store)).toBe('Something went wrong. Try again.');
+    expect(last(id)).toMatchObject({ status: 'error', errorCode: 'client' });
+    expect(shown(id)).toBe('Something went wrong. Try again.');
   });
 
-  it('puts an error frame in the empty bubble, and tells the gate', async () => {
+  it('an error frame in an empty reply is the error, and the gate hears it', async () => {
     unseed = seedAI(CONNECTED_MODEL);
     const calls = stubFetch((url) =>
       url === '/api/chat'
@@ -243,10 +269,11 @@ describe('the model path (/api/chat)', () => {
         : new Promise(() => {})
     );
 
-    await store.getState().send('hello');
+    await store().send(id, 'hello');
 
-    expect(store.getState().messages.map((m) => m.role)).toEqual(['user', 'assistant']);
-    expect(lastContent(store)).toBe('Connect a model in Settings to chat.');
+    expect(messagesOf(id).map((m) => m.role)).toEqual(['user', 'assistant']);
+    expect(last(id)).toMatchObject({ status: 'error', errorCode: 'not_connected', content: '' });
+    expect(shown(id)).toBe('Connect a model in Settings to chat.');
     expect(calls.map((c) => c.url)).toContain('/api/ai/connection');
   });
 
@@ -261,9 +288,17 @@ describe('the model path (/api/chat)', () => {
       ),
     }));
 
-    await store.getState().send('hello');
+    await store().send(id, 'hello');
 
-    expect(lastContent(store)).toBe('Here is the start\n\nThe model took too long to answer.');
+    expect(last(id)).toMatchObject({ content: 'Here is the start', status: 'error', errorCode: 'timeout' });
+    expect(shown(id)).toBe('Here is the start\n\nYour provider took too long to answer. Try again.');
+  });
+
+  it('a stream that closes with nothing in it is no response', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    stubFetch(() => ({ ok: true, body: sse() }));
+    await store().send(id, 'hello');
+    expect(last(id)).toMatchObject({ status: 'error', errorCode: 'no_response' });
   });
 });
 
@@ -284,22 +319,25 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
     unseed = seedAI(OPENCLAW_PLUGIN);
     const calls = stubFetch(pluginRoute);
 
-    await store.getState().send('  how am I doing  ');
+    await store().send(id, '  how am I doing  ');
 
-    expect(calls.map((c) => c.url)).toEqual([
-      '/api/agent/chat-url',
-      'https://claw.example/plugins/dsul/chat',
-    ]);
+    expect(calls.map((c) => c.url)).toEqual(['/api/agent/chat-url', 'https://claw.example/plugins/dsul/chat']);
     const post = calls[1];
     expect(bodyOf(post)).toEqual({
       message: 'how am I doing',
-      sessionKey: 'test-session',
+      sessionKey: `dsul-chat-${id}`,
       context: '## dsul Context',
     });
-    expect((post.init.headers as Record<string, string>).Authorization).toBe(
-      'Bearer dsul-plugin-key'
-    );
-    expect(lastContent(store)).toBe('From OpenClaw.');
+    expect(pluginSessionKey(id)).toBe(`dsul-chat-${id}`);
+    expect((post.init.headers as Record<string, string>).Authorization).toBe('Bearer dsul-plugin-key');
+    expect(last(id)).toMatchObject({ content: 'From OpenClaw.', answerer: 'openclaw', model: null });
+  });
+
+  it('sends the message already clipped to the user cap', async () => {
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    const calls = stubFetch(pluginRoute);
+    await store().send(id, 'z'.repeat(9_000));
+    expect((bodyOf(calls[1]).message as string).length).toBe(8_000);
   });
 
   it("puts the user's own instructions in the context, not a new field", async () => {
@@ -307,32 +345,29 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
     useAISettingsStore.setState({ systemPrompt: '  Call me Kirby.  ' });
     const calls = stubFetch(pluginRoute);
 
-    await store.getState().send('hi');
+    await store().send(id, 'hi');
 
     const body = bodyOf(calls[1]);
     expect(Object.keys(body).sort()).toEqual(['context', 'message', 'sessionKey']);
-    expect(body.context).toBe(
-      "## dsul Context\n\n## The user's own instructions\nCall me Kirby."
-    );
+    expect(body.context).toBe("## dsul Context\n\n## The user's own instructions\nCall me Kirby.");
   });
 
-  it('reads the chat URL once per account, shared by every thread', async () => {
+  it('reads the chat URL once per account, shared by every conversation', async () => {
     unseed = seedAI(OPENCLAW_PLUGIN);
     const calls = stubFetch(pluginRoute);
-    const thread = createChatStore({
-      historyKey: 'dsul-item-chat-i1',
-      sessionKey: 'dsul-item-i1',
-      focusItemId: 'i1',
-    });
+    const other = await store().resolveItemThread('i1');
 
-    await store.getState().send('one');
-    await store.getState().send('two');
-    await thread.getState().send('three');
+    await store().send(id, 'one');
+    await store().send(id, 'two');
+    await store().send(other, 'three');
     expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(1);
+    // One OpenClaw session per conversation.
+    const keys = calls.filter((c) => c.url !== '/api/agent/chat-url').map((c) => bodyOf(c).sessionKey);
+    expect(keys).toEqual([`dsul-chat-${id}`, `dsul-chat-${id}`, `dsul-chat-${other}`]);
 
     // Another account on this browser never reuses the last one's key.
     useAIConnectionStore.setState({ hydratedUserId: 'someone-else' });
-    await store.getState().send('four');
+    await store().send(store().newDraft(), 'four');
     expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(2);
   });
 
@@ -343,16 +378,17 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
       url === '/api/agent/chat-url' && fail ? { ok: false, status: 500, json: async () => ({}) } : pluginRoute(url)
     );
 
-    await store.getState().send('one');
+    await store().send(id, 'one');
     // The gate already knows a chat URL is registered, so a failed READ is
     // "can't reach", never the setup instructions.
-    expect(lastContent(store)).toBe("Couldn't reach OpenClaw. Check that it is running.");
-    expect(store.getState().isLoading).toBe(false);
+    expect(last(id)).toMatchObject({ status: 'error', errorCode: 'plugin_unreachable' });
+    expect(shown(id)).toBe("Couldn't reach OpenClaw. Check that it is running.");
+    expect(store().threads[id].streaming).toBe(false);
 
     fail = false;
-    await store.getState().send('two');
+    await store().send(id, 'two');
     expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(2);
-    expect(lastContent(store)).toBe('From OpenClaw.');
+    expect(last(id)).toMatchObject({ content: 'From OpenClaw.', status: 'complete' });
   });
 
   it('shows the setup copy only for a read that succeeds with no URL, and re-reads next time', async () => {
@@ -364,16 +400,17 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
         : pluginRoute(url)
     );
 
-    await store.getState().send('one');
-    expect(lastContent(store)).toBe(
+    await store().send(id, 'one');
+    expect(last(id)).toMatchObject({ errorCode: 'plugin_setup' });
+    expect(shown(id)).toBe(
       "OpenClaw isn't reachable yet. Run `openclaw dsul-context setup` and set publicUrl in openclaw.json."
     );
     expect(calls.map((c) => c.url)).toEqual(['/api/agent/chat-url']);
 
     registered = true;
-    await store.getState().send('two');
+    await store().send(id, 'two');
     expect(calls.filter((c) => c.url === '/api/agent/chat-url')).toHaveLength(2);
-    expect(lastContent(store)).toBe('From OpenClaw.');
+    expect(last(id)).toMatchObject({ content: 'From OpenClaw.' });
   });
 
   it('a stop during the URL read leaves no bubble behind, even when the read then fails', async () => {
@@ -387,14 +424,14 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
         : pluginRoute(url)
     );
 
-    const sending = store.getState().send('one');
+    const sending = store().send(id, 'one');
     await Promise.resolve();
-    store.getState().stop();
+    store().stop(id);
     failRead(new TypeError('Failed to fetch'));
     await sending;
 
-    expect(store.getState().messages.map((m) => m.role)).toEqual(['user']);
-    expect(store.getState().isLoading).toBe(false);
+    expect(messagesOf(id).map((m) => m.role)).toEqual(['user']);
+    expect(store().threads[id].streaming).toBe(false);
   });
 
   it("says what to check when the plugin can't be reached, never the browser's error", async () => {
@@ -404,21 +441,76 @@ describe('the plugin path (OpenClaw with no gateway)', () => {
       throw new TypeError('Failed to fetch: ECONNREFUSED 10.0.0.5');
     });
 
-    await store.getState().send('hi');
+    await store().send(id, 'hi');
 
-    expect(lastContent(store)).toBe("Couldn't reach OpenClaw. Check that it is running.");
-    expect(lastContent(store)).not.toContain('ECONNREFUSED');
-    expect(store.getState().isLoading).toBe(false);
+    expect(shown(id)).toBe("Couldn't reach OpenClaw. Check that it is running.");
+    expect(JSON.stringify(store().threads[id])).not.toContain('ECONNREFUSED');
+    expect(store().threads[id].streaming).toBe(false);
+  });
+
+  it("never keeps the plugin's own error text", async () => {
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    stubFetch((url) =>
+      url === '/api/agent/chat-url' ? pluginRoute(url) : { ok: true, json: async () => ({ error: 'agent kirby-1 crashed at /srv' }) }
+    );
+    await store().send(id, 'hi');
+    expect(last(id)).toMatchObject({ errorCode: 'plugin_error', content: '' });
+    expect(JSON.stringify(store().threads[id])).not.toContain('/srv');
   });
 
   it('never touches /api/chat or the old readiness endpoints', async () => {
     unseed = seedAI(OPENCLAW_PLUGIN);
     const calls = stubFetch(pluginRoute);
 
-    await store.getState().send('hi');
+    await store().send(id, 'hi');
 
     const urls = calls.map((c) => c.url);
     expect(urls).not.toContain('/api/chat');
     expect(urls).not.toContain('/api/agent/gateway');
+  });
+});
+
+describe('outgoingTurns', () => {
+  const m = (id: string, role: 'user' | 'assistant', content: string, status = 'complete', replyTo: string | null = null) => ({
+    id,
+    role,
+    content,
+    status,
+    replyTo,
+  });
+
+  it('drops a failed exchange whole, and an empty or streaming reply', () => {
+    expect(
+      outgoingTurns([
+        m('u1', 'user', 'one'),
+        m('a1', 'assistant', '', 'error', 'u1'),
+        m('u2', 'user', 'two'),
+        m('a2', 'assistant', 'partial', 'error', 'u2'),
+        m('u3', 'user', 'three'),
+        m('a3', 'assistant', '', 'stopped', 'u3'),
+        m('u4', 'user', 'four'),
+        m('a4', 'assistant', 'yes', 'complete', 'u4'),
+        m('u5', 'user', 'five'),
+        m('a5', 'assistant', 'typing…', 'streaming', 'u5'),
+      ])
+    ).toEqual([
+      { role: 'user', content: 'four' },
+      { role: 'assistant', content: 'yes' },
+      { role: 'user', content: 'five' },
+    ]);
+  });
+
+  it('keeps strict alternation, and never starts on a reply', () => {
+    expect(
+      outgoingTurns([
+        m('a0', 'assistant', 'orphan'),
+        m('u1', 'user', 'first'),
+        m('u2', 'user', 'second'),
+        m('a2', 'assistant', 'ok', 'complete', 'u2'),
+      ])
+    ).toEqual([
+      { role: 'user', content: 'second' },
+      { role: 'assistant', content: 'ok' },
+    ]);
   });
 });

@@ -10,8 +10,9 @@ import {
   localStateOwner,
 } from '@/lib/local-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
-import { useChatStore, itemChatStore } from '@/lib/chat-store';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
+import { useConversationsStore } from '@/lib/conversations-store';
+import { useRailStore } from '@/lib/rail-store';
 import { useEODStore } from '@/lib/eod-store';
 import { useKeyboardShortcutsStore } from '@/lib/keyboard-shortcuts-store';
 import { useMorningStore } from '@/lib/morning-store';
@@ -165,26 +166,59 @@ describe('the AI settings — dsul-ai-settings', () => {
   });
 });
 
-describe('chat transcripts', () => {
-  it('drops the global thread and every item thread, opened this session or not', () => {
-    useChatStore.setState({ messages: [{ role: 'user', content: 'A private question' }] });
+describe('chat conversations', () => {
+  it('drops every conversation held in memory, the views and drafts over them, and the old transcripts on disk', () => {
+    // In memory: a conversation, its History row, the view showing it and a
+    // half-typed reply. Nothing of it is on disk any more.
+    const id = 'c0ffee00-0000-4000-8000-000000000001';
+    useConversationsStore.setState((s) => ({
+      ownerId: USER_A,
+      threads: {
+        ...s.threads,
+        [id]: {
+          id,
+          itemId: null,
+          draftTitle: null,
+          saved: true,
+          messages: [],
+          load: 'loaded',
+          hasEarlier: false,
+          streaming: false,
+          typing: false,
+          fetchedAt: 1,
+        },
+      },
+      summaries: {
+        ...s.summaries,
+        [id]: {
+          id,
+          itemId: null,
+          title: 'A private question',
+          renamed: false,
+          starred: false,
+          answerer: 'model',
+          openclawSeen: false,
+          changes: { added: 0, steps: 0, moved: 0, changed: 0 },
+          messageCount: 2,
+          lastMessageAt: '2026-10-02T09:00:00.000Z',
+          createdAt: '2026-10-02T09:00:00.000Z',
+        },
+      },
+      itemIndex: { 'item-1': id },
+    }));
+    useRailStore.getState().push('desktop', { kind: 'conversation', id });
+    useRailStore.getState().setDraft(`conv:${id}`, 'and another private thing');
+    const generation = useConversationsStore.getState().generation;
+    // On disk: the pre-2a transcripts a browser may still hold, the global one
+    // and every item thread's, which the old store wrote verbatim.
     localStorage.setItem(
       'dsul-chat-history',
-      JSON.stringify({
-        messages: [{ role: 'user', content: 'A private question' }],
-        savedAt: Date.now(),
-      })
+      JSON.stringify({ messages: [{ role: 'user', content: 'A private question' }], savedAt: Date.now() })
     );
-    // One thread instantiated this session…
-    itemChatStore('item-1').setState({ messages: [{ role: 'assistant', content: 'about item 1' }] });
     localStorage.setItem(
       'dsul-item-chat-item-1',
-      JSON.stringify({
-        messages: [{ role: 'assistant', content: 'about item 1' }],
-        savedAt: Date.now(),
-      })
+      JSON.stringify({ messages: [{ role: 'assistant', content: 'about item 1' }], savedAt: Date.now() })
     );
-    // …and one that exists only on disk, which clearing the live stores misses.
     localStorage.setItem(
       'dsul-item-chat-item-2',
       JSON.stringify({ messages: [{ role: 'user', content: 'about item 2' }], savedAt: Date.now() })
@@ -195,8 +229,15 @@ describe('chat transcripts', () => {
     expect(localStorage.getItem('dsul-chat-history')).toBeNull();
     expect(localStorage.getItem('dsul-item-chat-item-1')).toBeNull();
     expect(localStorage.getItem('dsul-item-chat-item-2')).toBeNull();
-    expect(useChatStore.getState().messages).toEqual([]);
-    expect(itemChatStore('item-1').getState().messages).toEqual([]);
+    const after = useConversationsStore.getState();
+    expect(after.threads).toEqual({});
+    expect(after.summaries).toEqual({});
+    expect(after.itemIndex).toEqual({});
+    expect(after.ownerId).toBeNull();
+    // A save still queued under the last account is dropped by this, not sent.
+    expect(after.generation).toBe(generation + 1);
+    expect(useRailStore.getState().stacks).toEqual({ desktop: [], phone: [] });
+    expect(useRailStore.getState().drafts).toEqual({});
   });
 });
 
@@ -305,7 +346,7 @@ describe('what a user change deliberately keeps', () => {
     useSidebarStore.setState({
       leftSidebarWidth: 640,
       leftSidebarOpen: false,
-      chatExpanded: true,
+      askOpen: false,
       leftSidebarHoverEnabled: true,
     });
 
@@ -314,7 +355,8 @@ describe('what a user change deliberately keeps', () => {
     const sidebar = useSidebarStore.getState();
     expect(sidebar.leftSidebarWidth).toBe(640);
     expect(sidebar.leftSidebarOpen).toBe(false);
-    expect(sidebar.chatExpanded).toBe(true);
+    // Whether Ask rests open is chrome too: a closed rail stays closed.
+    expect(sidebar.askOpen).toBe(false);
     // The one field that IS an account preference (it round-trips through
     // saveSettings) goes back to its default on a known change of user.
     expect(sidebar.leftSidebarHoverEnabled).toBe(false);
@@ -635,9 +677,6 @@ describe('nothing persists per-user state outside the registry', () => {
     //
     // A ninth entry here means per-user state with nothing clearing it.
     expect(filesMatching(/\bsetItem\(/)).toEqual([
-      // Per-user, disclosive, cleared by clearChatState — one key per thread,
-      // so the field-level audit above cannot walk it. Own test in this file.
-      'lib/chat-store.ts',
       // The ownership stamp itself.
       'lib/local-state.ts',
       // Per-user, disclosive, cleared by clearReleased. A bare map, likewise

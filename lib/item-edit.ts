@@ -201,11 +201,11 @@ export function resetStreakPatch(row: EditShape): EditPatch {
 export const EDIT_COPY = {
   /** Reset streak's confirm (item-dialog.tsx). */
   resetStreakMessage:
-    'This will reset your streak counter to 0 days. Your completion history stays — days you already checked off remain checked.',
+    'This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.',
   /** The new-subtask field (item-detail-sections.tsx). */
   subtaskPlaceholder: 'Add subtask…',
   /** A paste past lib/bulk-add.ts's cap, into the new-subtask field. */
-  subtaskPasteCapped: `Added the first ${MAX_BULK_ITEMS} subtasks — the paste had more.`,
+  subtaskPasteCapped: `Added the first ${MAX_BULK_ITEMS} subtasks. The paste had more.`,
 } as const;
 
 /** How long a streak runs, in words: the streak flame's tooltip (components/primitives/pills.tsx). */

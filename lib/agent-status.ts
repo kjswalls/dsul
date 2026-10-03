@@ -144,13 +144,15 @@ export function agentStatusView(
   const label = stalled ? 'Gone quiet' : LABELS[state]
 
   const detail = stalled
-    ? `No update for ${elapsed} — that run has probably stopped`
+    ? `No update for ${elapsed}, so that run has probably stopped`
     : state === 'blocked'
       ? elapsed
-        ? `Waiting on your answer — asked ${elapsed === 'just now' ? 'just now' : `${elapsed} ago`}`
+        ? `Waiting on your answer (asked ${elapsed === 'just now' ? 'just now' : `${elapsed} ago`})`
         : 'Waiting on your answer'
       : elapsed
-        ? `${LABELS[state]} — ${elapsed === 'just now' ? 'since just now' : `for ${elapsed}`}`
+        ? state === 'failed'
+          ? `${LABELS[state]} (${elapsed === 'just now' ? 'just now' : `${elapsed} ago`})`
+          : `${LABELS[state]} ${elapsed === 'just now' ? 'since just now' : `for ${elapsed}`}`
         : LABELS[state]
 
   return {

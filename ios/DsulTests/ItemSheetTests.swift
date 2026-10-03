@@ -331,8 +331,8 @@ import Testing
         #expect(ItemSheetModel.rescheduleWords(roadmap, roadmapCtx)
                 == DayPickWords(title: "Reschedule", confirmVerb: "Move to", note: nil))
         #expect(ItemSheetModel.pauseUntilWords.note
-                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile — "
-                + "your streak and history stay exactly as they are.")
+                == "It comes back on the day you pick, on its own. Nothing is lost meanwhile. "
+                + "Your streak and history stay exactly as they are.")
     }
 
     /// A Pause until picker confirmed after midnight: a day that is now today,
@@ -773,7 +773,7 @@ import Testing
         #expect(ItemSheetModel.streakRun(41) == "41 days in a row")
         #expect(ItemSheetModel.resetConfirmTitle == "Reset streak?")
         #expect(ItemSheetModel.resetConfirmMessage
-                == "This will reset your streak counter to 0 days. Your completion history stays \u{2014} "
+                == "This will reset your streak counter to 0 days. Your completion history stays, so "
                 + "days you already checked off remain checked.")
         #expect(ItemSheetModel.streakPopoverStyle(accessibilitySize: false) == .popover)
         #expect(ItemSheetModel.streakPopoverStyle(accessibilitySize: true) == .sheet)

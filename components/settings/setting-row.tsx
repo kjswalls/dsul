@@ -130,7 +130,7 @@ function PendingControl({ label }: { label: string }) {
   return (
     <span
       role="status"
-      aria-label={`${label} — still loading`}
+      aria-label={`${label}, still loading`}
       data-setting-pending="true"
       className="bg-secondary h-5 w-[52px] animate-pulse rounded-full"
     />
@@ -489,7 +489,7 @@ export function SettingRow({
             same words. Name the reason instead. */}
         {unavailableReason && (
           <p className="text-muted-foreground mt-[3px] text-[10px]">
-            Unavailable — {unavailableReason}
+            Unavailable: {unavailableReason}
           </p>
         )}
 

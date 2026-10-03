@@ -559,3 +559,34 @@ describe('suggestions validation refused', () => {
     expect(useProposalStore.getState().refused.count).toBe(0);
   });
 });
+
+describe('the lines the user dropped', () => {
+  const dropped = () => [...useProposalStore.getState().selection.dropped];
+
+  it('are tagged with the card they were dropped from, and toggle', async () => {
+    mockPropose(draft('Plan', 3));
+    await useProposalStore.getState().request('ask', 'x');
+    const id = useProposalStore.getState().proposal!.id;
+    useProposalStore.getState().toggleDropped(1);
+    useProposalStore.getState().toggleDropped(2);
+    useProposalStore.getState().toggleDropped(2);
+    expect(useProposalStore.getState().selection.proposalId).toBe(id);
+    expect(dropped()).toEqual([1]);
+  });
+
+  it('start over on a fresh ask, a retry, an accept and a dismiss', async () => {
+    mockPropose(draft('One', 3), draft('Two', 3));
+    for (const next of [
+      () => useProposalStore.getState().request('ask', 'y'),
+      () => useProposalStore.getState().retry(),
+      async () => void useProposalStore.getState().accept(),
+      async () => useProposalStore.getState().dismiss(),
+    ]) {
+      await useProposalStore.getState().request('ask', 'x');
+      useProposalStore.getState().toggleDropped(0);
+      expect(dropped()).toEqual([0]);
+      await next();
+      expect(dropped()).toEqual([]);
+    }
+  });
+});

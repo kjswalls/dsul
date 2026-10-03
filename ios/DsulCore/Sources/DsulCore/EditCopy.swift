@@ -18,11 +18,11 @@ public enum EditCopy {
     /// Reset streak's confirm: what goes (the counter) and what stays (the
     /// days already ticked), as lib/planner-store.ts `resetHabitStreak` writes it.
     public static let resetStreakMessage = "This will reset your streak counter to 0 days. "
-        + "Your completion history stays \u{2014} days you already checked off remain checked."
+        + "Your completion history stays, so days you already checked off remain checked."
     /// The new-subtask field's placeholder.
     public static let subtaskPlaceholder = "Add subtask\u{2026}"
     /// Said when a paste held more lines than one paste adds (`maxBulkItems`).
-    public static let subtaskPasteCapped = "Added the first \(maxBulkItems) subtasks \u{2014} the paste had more."
+    public static let subtaskPasteCapped = "Added the first \(maxBulkItems) subtasks. The paste had more."
 }
 
 /// lib/item-edit.ts `streakRunText`, the streak flame's tooltip: "No streak

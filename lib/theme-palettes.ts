@@ -31,7 +31,7 @@ export const THEME_PALETTES: ThemePaletteDef[] = [
   {
     value: 'default',
     label: 'dsul',
-    description: 'Warm paper and cool ink — the shipped look.',
+    description: 'Warm paper and cool ink. The shipped look.',
     themeColor: { light: '#fbfaf9', dark: '#0e1014' },
   },
   {

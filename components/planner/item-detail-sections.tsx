@@ -1,23 +1,19 @@
 'use client';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { ArrowUp, Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
-import {
-  fetchItemEvents,
-  getItemEventsAvailable,
-  recordAgentReply,
-  type ItemEvent,
-} from '@/lib/db';
-import { itemChatStore } from '@/lib/chat-store';
+import { fetchItemEvents, getItemEventsAvailable, type ItemEvent } from '@/lib/db';
+import { answerAgentQuestion } from '@/lib/agent-question';
+import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
 import { ProposalCard } from '@/components/ai/proposal-card';
+import { ItemConversation } from '@/components/ai/item-conversation';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { EXT_HABIT_HEATMAP, resolveEnabled } from '@/lib/extension-registry';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
@@ -61,9 +57,10 @@ function SubtasksSection({ item }: { item: Item }) {
 
   const { canPropose } = useAICapabilities();
   const requestProposal = useProposalStore((s) => s.request);
-  // Scoped to THIS item — see the note in chat-conversation.tsx. A breakdown
-  // loading for another item must not grey out this one's button with no
-  // spinner in sight.
+  // Scoped to THIS item, not global. The spinner renders on the surface that
+  // asked, so a breakdown loading for another item must not grey out this
+  // one's button with no spinner in sight. Superseding another surface's
+  // request is safe: the store drops the reply of any request no longer current.
   const proposalBusy = useProposalStore(
     (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
   );
@@ -379,109 +376,28 @@ function AgentSection({ item }: { item: Item }) {
   );
 }
 
-/** Shared empty list, so a render with no options allocates nothing. */
-const NO_OPTIONS: string[] = [];
-
 /**
  * The answer half of `blocked`.
  *
  * Without this the agent can ask a question and nobody can answer it — the loop
- * is open at exactly the point where a human is needed. Sending does two
- * things: it writes the reply to the item's activity trail, which is where the
- * agent reads it back from, and it flips the status to `queued` so the next
- * scheduled run picks the work up again. The flip is the load-bearing half; a
- * reply that did not re-queue would look answered and never move.
+ * is open at exactly the point where a human is needed. The options and the
+ * answer are shared with Ask home's Needs-you card: which options belong to the
+ * question on screen, and why they are tagged to it, is hooks/use-agent-
+ * question.ts; what an answer writes (the reply on the trail, then the flip
+ * back to `queued`, the load-bearing half) is lib/agent-question.ts.
  */
 function AgentReply({ item }: { item: TaskItem }) {
-  const updateTask = usePlannerStore((s) => s.updateTask);
   const [text, setText] = useState('');
-  /**
-   * The fetched options, TAGGED with the item and question they belong to.
-   *
-   * Derived during render rather than reset by an effect, for the reason the
-   * proposal card learned the same way: an effect resets a render late, so the
-   * panel paints the previous item's buttons once before clearing them — and
-   * this panel is REUSED across items (the dialog re-seeds on id change without
-   * unmounting), so that frame has the new item's id already bound to the old
-   * item's answers.
-   */
-  const optionsKey = `${item.id}\u0000${(item.aiResult ?? '').trim()}`;
-  const [fetched, setFetched] = useState<{ key: string; options: string[] }>(() => ({
-    key: '',
-    options: NO_OPTIONS,
-  }));
-  const options = fetched.key === optionsKey ? fetched.options : NO_OPTIONS;
-
-  /**
-   * The tappable answers, if the agent offered any FOR THE QUESTION ON SCREEN.
-   *
-   * Fetched here rather than lifted from the Activity section below: this only
-   * renders while `aiStatus` is `blocked`, so the query is rare, and the two
-   * sections are independent by design (Activity is collapsible and may never
-   * be opened).
-   *
-   * Two things this has to get right, both of which it got wrong first:
-   *
-   * 1. CLEAR BEFORE FETCHING. The detail panel is REUSED across items — the
-   *    dialog re-seeds on id change without unmounting — so leaving the old
-   *    options up during the round-trip meant opening blocked item B while A
-   *    was on screen showed A's buttons with B's id already bound. A tap in
-   *    that window filed A's answer against B and re-queued B unanswered.
-   *
-   * 2. MATCH THE QUESTION, not just "the newest event". The question the user
-   *    reads comes from `aiResult`, which `dsul_report_progress` can also
-   *    set — and that path writes no `agent_question` event. So an agent that
-   *    asked with options, then asked again through the old tool, left the new
-   *    question on screen above the OLD question's buttons. Comparing the
-   *    payload against `aiResult` ties the two together, and incidentally
-   *    handles a lost event (no match, no buttons) and a truncated feed the
-   *    same safe way.
-   */
-  useEffect(() => {
-    let cancelled = false;
-    if (!getItemEventsAvailable()) return;
-
-    fetchItemEvents(item.id)
-      .then((events) => {
-        if (cancelled) return;
-        const question = events.find((e) => e.action === 'agent_question');
-        if (!question) return;
-
-        // Is this the question currently being asked?
-        const asked = typeof question.payload?.question === 'string' ? question.payload.question : '';
-        if (asked.trim() !== (item.aiResult ?? '').trim()) return;
-
-        // Still open? A reply recorded AFTER it means the user already answered,
-        // and re-offering the choices would invite a duplicate answer.
-        const answeredSince = events.find((e) => e.action === 'agent_reply');
-        if (answeredSince && answeredSince.createdAt > question.createdAt) return;
-
-        const raw = Array.isArray(question.payload?.options)
-          ? (question.payload.options as unknown[])
-          : [];
-        setFetched({
-          key: optionsKey,
-          options: raw.filter((o): o is string => typeof o === 'string' && o.trim().length > 0),
-        });
-      })
-      .catch(() => {});
-
-    return () => {
-      cancelled = true;
-    };
-  }, [item.id, item.aiResult, optionsKey]);
+  const { options, clear } = useAgentQuestion(item);
 
   const answer = (value: string) => {
-    const trimmed = value.trim();
-    if (!trimmed) return;
-    recordAgentReply(item.id, itemTypeName(item), trimmed);
-    updateTask(item.id, { aiStatus: 'queued' });
+    if (!answerAgentQuestion(item, value)) return;
     setText('');
     // The question is answered; the buttons would otherwise sit there inviting
     // a second reply to a queued item. (In the app the status flip unmounts
     // this whole section — but that is the CALLER's behaviour, not this
     // component's, and it should not be load-bearing here.)
-    setFetched({ key: '', options: NO_OPTIONS });
+    clear();
   };
 
   const send = () => answer(text);
@@ -560,12 +476,12 @@ function eventLabel(e: ItemEvent): string {
       : [];
     if (!question) return 'Agent asked a question';
     return options.length > 0
-      ? `Agent asked — ${question} (${options.join(' / ')})`
-      : `Agent asked — ${question}`;
+      ? `Agent asked: ${question} (${options.join(' / ')})`
+      : `Agent asked: ${question}`;
   }
   if (e.action === 'agent_reply') {
     const text = typeof e.payload?.text === 'string' ? e.payload.text.trim() : '';
-    return text ? `You answered — ${text}` : 'You answered';
+    return text ? `You answered: ${text}` : 'You answered';
   }
   // A check-in note reads here as well as on the goal page. It is the one event
   // whose payload is something the user WROTE, so showing the action alone
@@ -574,7 +490,7 @@ function eventLabel(e: ItemEvent): string {
   // history.
   if (e.action === 'checkin') {
     const note = typeof e.payload?.note === 'string' ? e.payload.note.trim() : '';
-    return note ? `Checked in — ${note}` : 'Checked in';
+    return note ? `Checked in: ${note}` : 'Checked in';
   }
   const payload = e.payload ?? {};
   // The container ids ride along with every re-file (migration 027) and are an
@@ -796,110 +712,23 @@ function HeatmapSection({ item }: { item: Item }) {
   );
 }
 
-// ── Per-item thread ──────────────────────────────────────────────────────────
-
-export function ItemThread({ item, className }: { item: Item; className?: string }) {
-  // Store identity is cached per item id (itemChatStore), so the hook target
-  // is stable across renders and hook ORDER never changes.
-  const useThread = useMemo(() => itemChatStore(item.id), [item.id]);
-  const { messages, isLoading, isTyping, send, hydrate } = useThread();
-  const { canChat, target } = useAICapabilities();
-  const [draft, setDraft] = useState('');
-  const listRef = useRef<HTMLDivElement>(null);
-  const prevCount = useRef(0);
-
-  useEffect(() => {
-    hydrate();
-  }, [hydrate]);
-
-  // Scroll ONLY the thread's own list, and only on new messages — never on
-  // the initial hydrate. scrollIntoView would scroll every ancestor too,
-  // yanking the edit panel (or the page) down to the thread on open.
-  useEffect(() => {
-    const el = listRef.current;
-    const prev = prevCount.current;
-    prevCount.current = messages.length;
-    if (!el || prev === 0 || messages.length <= prev) return;
-    el.scrollTop = el.scrollHeight;
-  }, [messages, isTyping]);
-
-  const handleSend = () => {
-    const text = draft.trim();
-    if (!text || isLoading) return;
-    setDraft('');
-    void send(text);
-  };
-
-  // After every hook: a thread with nothing to answer it is a field that sends
-  // nowhere. Every mount (the panel's stack, /item/[id]) is gated by this.
-  if (!canChat) return null;
-
-  const placeholder =
-    target === 'openclaw' ? 'Ask OpenClaw about this item…' : 'Ask about this item…';
-
-  return (
-    <div className={cn('flex min-h-0 flex-col gap-1.5', className)} data-testid="item-thread">
-      <SectionLabel>Thread</SectionLabel>
-      {messages.length > 0 && (
-        <div ref={listRef} className="flex max-h-64 min-h-0 flex-col gap-2 overflow-y-auto pr-1">
-          {messages.map((m, i) => (
-            <div
-              key={i}
-              className={cn(
-                'max-w-[92%] rounded-md px-2.5 py-1.5 text-xs leading-relaxed whitespace-pre-wrap',
-                m.role === 'user'
-                  ? 'bg-secondary text-foreground self-end'
-                  : 'bg-warning/10 text-foreground self-start'
-              )}
-            >
-              {m.content ||
-                (isTyping || isLoading ? '…' : '')}
-            </div>
-          ))}
-        </div>
-      )}
-      <div className="border-input flex items-center gap-1.5 rounded-md border px-2 py-1">
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          placeholder={placeholder}
-          data-sub-input
-          data-testid="item-thread-input"
-          className="placeholder:text-muted-foreground -mx-1 min-w-0 flex-1 bg-transparent px-1 text-xs outline-none"
-          onKeyDown={(e) => {
-            if (e.key !== 'Enter' || e.shiftKey) return;
-            e.preventDefault();
-            handleSend();
-          }}
-        />
-        <Button
-          size="icon"
-          variant="ghost"
-          className="size-6"
-          disabled={!draft.trim() || isLoading}
-          onClick={handleSend}
-          aria-label="Send"
-        >
-          <ArrowUp className="size-3.5" />
-        </Button>
-      </div>
-    </div>
-  );
-}
-
 // ── The stack ────────────────────────────────────────────────────────────────
 
-/** Subtasks + agent + activity, gated by the type's capability config.
- *  The thread is exported separately so the page can column it. */
+/** Subtasks + agent + activity, gated by the type's capability config, then
+ *  the item's conversation (components/ai/item-conversation.tsx) in the shape
+ *  its host asks for. /item/[id] mounts that conversation itself, as its own
+ *  column, and passes nothing here. */
 export function ItemDetailSections({
   item,
-  withThread,
+  conversation = 'none',
   // Clearing folds Activity into a footer disclosure (ClearingFooter), so the
   // body stack omits it to avoid rendering the same feed twice.
   withActivity = true,
 }: {
   item: Item;
-  withThread?: boolean;
+  /** ItemDialog's `conversation` prop: 'pinned' and 'transcript' draw the
+   *  transcript only (the box is the host's), 'inline' brings its own box. */
+  conversation?: 'pinned' | 'transcript' | 'inline' | 'none';
   withActivity?: boolean;
 }) {
   const config = getItemTypeConfig(itemTypeName(item));
@@ -916,7 +745,10 @@ export function ItemDetailSections({
       {config.agentAssignable && <AgentSection item={item} />}
       {heatmapOn && config.counters.streak && <HeatmapSection item={item} />}
       {withActivity && <ActivitySection itemId={item.id} />}
-      {withThread && <ItemThread item={item} />}
+      {/* Keyed by item: the panel retargets in place, and a message count
+          carried over from the last item would read as new messages here and
+          scroll the rail body to the bottom of a different conversation. */}
+      {conversation !== 'none' && <ItemConversation key={item.id} item={item} mode={conversation} />}
     </div>
   );
 }

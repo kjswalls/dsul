@@ -79,13 +79,20 @@ import { SupabaseProvider } from '@/components/providers/supabase-provider';
 import { LOCAL_STATE_OWNER_KEY, localStateOwner } from '@/lib/local-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
-import { useChatStore } from '@/lib/chat-store';
+import { chatTransport } from '@/lib/chat-transport';
+import {
+  clearChatState,
+  configureConversations,
+  conversationsSettled,
+  useConversationsStore,
+} from '@/lib/conversations-store';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { useChannelSecretsStore } from '@/lib/channel-secrets-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { useUIStore } from '@/lib/ui-store';
+import { fail, fakeApi, fakeTransport, flush } from './helpers/conversations-fakes';
 
 const USER_A = 'user-a';
 const USER_B = 'user-b';
@@ -107,9 +114,48 @@ const original = {
 const aiHydrate = vi.fn<(userId: string) => Promise<void>>(async () => {});
 const aiReset = vi.fn<() => void>();
 
-/** User A's browser, mid-session: instructions, a transcript, filters, a stamp. */
+/** A's conversation, as the memory-only cache holds it mid-session. */
+const CONV = 'a0a0a0a0-0000-4000-8000-00000000000a';
+let seededGeneration = 0;
+
+/**
+ * User A's browser, mid-session: instructions, a conversation in memory, a
+ * pre-2a transcript still on disk, filters, a stamp.
+ */
 function seedUserAState(owner: string | null) {
   useAISettingsStore.setState({ systemPrompt: SECRET });
+  useConversationsStore.setState({
+    ownerId: USER_A,
+    threads: {
+      [CONV]: {
+        id: CONV,
+        itemId: null,
+        draftTitle: null,
+        saved: true,
+        messages: [
+          {
+            id: 'a0a0a0a0-0000-4000-8000-0000000000aa',
+            role: 'user',
+            content: 'A private question',
+            status: 'complete',
+            errorCode: null,
+            replyTo: null,
+            answerer: null,
+            model: null,
+            createdAt: 1,
+            pos: 1,
+            sync: 'saved',
+          },
+        ],
+        load: 'loaded',
+        hasEarlier: false,
+        streaming: false,
+        typing: false,
+        fetchedAt: 1,
+      },
+    },
+  });
+  seededGeneration = useConversationsStore.getState().generation;
   useViewStore.setState({
     canvasFilters: { ...useViewStore.getState().canvasFilters, containers: ['project:A Private'] },
   });
@@ -128,6 +174,11 @@ function expectUserAStateGone() {
   expect(useAISettingsStore.getState().systemPrompt).toBe('');
   expect(useViewStore.getState().canvasFilters.containers).toEqual([]);
   expect(localStorage.getItem('dsul-chat-history')).toBeNull();
+  // The conversation cache is reset, not just emptied: a newer generation, so
+  // a save or a late answer from A's session is dropped, never applied to B.
+  expect(useConversationsStore.getState().threads).toEqual({});
+  expect(useConversationsStore.getState().ownerId).toBeNull();
+  expect(useConversationsStore.getState().generation).toBeGreaterThan(seededGeneration);
   expect(JSON.stringify(localStorage)).not.toContain(SECRET);
   expect(JSON.stringify(localStorage)).not.toContain('A Private');
 }
@@ -158,7 +209,7 @@ describe('every path into "the current user changed"', () => {
     useAIConnectionStore.setState({ hydrate: aiHydrate, reset: aiReset });
     useAISettingsStore.getState().clearUserScopedState();
     useViewStore.getState().clearUserScopedState('all');
-    useChatStore.getState().clear();
+    clearChatState();
     useSessionUserStore.setState({ user: null });
     useUIStore.setState({ chatOnboardingActive: false });
   });
@@ -219,6 +270,51 @@ describe('every path into "the current user changed"', () => {
     expect(localStateOwner()).toBe(USER_B);
   });
 
+  it('2c — a save still queued under the last account is dropped, never sent under the next', async () => {
+    mountSession = { user: { id: USER_A } };
+    await mount();
+    // A's send, whose save fails once (a 5xx) and waits in the retry queue.
+    const api = fakeApi();
+    api.answer.appendTurn = () => fail(500, 'server');
+    configureConversations({ api: api.api, transport: fakeTransport().transport });
+    useAIConnectionStore.setState({
+      phase: 'ready',
+      hydratedUserId: USER_A,
+      available: true,
+      model: {
+        provider: 'openai',
+        model: 'gpt-4o-mini',
+        baseUrl: null,
+        authMethod: 'key',
+        status: 'ok',
+        problem: null,
+        checkedAt: '2026-10-01T00:00:00.000Z',
+      },
+    });
+    try {
+      const store = useConversationsStore.getState();
+      await store.send(store.newDraft(), 'A private question');
+      await conversationsSettled();
+      expect(api.turns).toHaveLength(1);
+      const generation = useConversationsStore.getState().generation;
+
+      emit('SIGNED_IN', { user: { id: USER_B } });
+      useAIConnectionStore.setState({ hydratedUserId: USER_B });
+      expect(useConversationsStore.getState().generation).toBe(generation + 1);
+      expect(useConversationsStore.getState().threads).toEqual({});
+
+      // Every retry trigger fires; nothing of A's is sent under B's cookie.
+      window.dispatchEvent(new Event('online'));
+      document.dispatchEvent(new Event('visibilitychange'));
+      await flush();
+      await conversationsSettled();
+      expect(api.turns).toHaveLength(1);
+    } finally {
+      configureConversations({ transport: chatTransport });
+      useAIConnectionStore.setState({ phase: 'unknown', hydratedUserId: null, model: null });
+    }
+  });
+
   it('3 — a plain page load already signed in as someone else', async () => {
     // No event will ever fire for this. The session expired while the tab was
     // shut, B signed in, and the app comes up with A's blobs still on disk.
@@ -255,6 +351,8 @@ describe('every path into "the current user changed"', () => {
     expect(useAISettingsStore.getState().systemPrompt).toBe(SECRET);
     expect(useViewStore.getState().canvasFilters.containers).toEqual(['project:A Private']);
     expect(localStorage.getItem('dsul-chat-history')).not.toBeNull();
+    expect(useConversationsStore.getState().threads[CONV]?.messages).toHaveLength(1);
+    expect(useConversationsStore.getState().generation).toBe(seededGeneration);
     expect(localStateOwner()).toBe(USER_A);
   });
 

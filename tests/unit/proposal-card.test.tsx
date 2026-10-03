@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { useSyncExternalStore } from 'react';
 import { render, screen, fireEvent } from '@testing-library/react';
 import type { Proposal } from '@/lib/planner-types';
 
@@ -24,6 +25,27 @@ let intent: string | null = 'ask';
 let surface = 'chat';
 let refused: { count: number; reasons: string[] } = { count: 0, reasons: [] };
 
+/**
+ * The dropped lines live in the store (lib/proposal-store.ts `selection`),
+ * so the stand-in keeps them as the real one does: tagged with the proposal
+ * they were dropped from, and announced to the card when they change.
+ */
+let selection: { proposalId: string | null; dropped: ReadonlySet<number> } = { proposalId: null, dropped: new Set() };
+let version = 0;
+const listeners = new Set<() => void>();
+const toggleDropped = (index: number) => {
+  const proposalId = proposal?.id ?? null;
+  const next = new Set(selection.proposalId === proposalId ? selection.dropped : []);
+  if (!next.delete(index)) next.add(index);
+  selection = { proposalId, dropped: next };
+  version += 1;
+  listeners.forEach((l) => l());
+};
+const subscribe = (l: () => void) => {
+  listeners.add(l);
+  return () => listeners.delete(l);
+};
+
 const storeState = () => ({
   proposal,
   status,
@@ -34,15 +56,20 @@ const storeState = () => ({
   dismiss,
   lastRequest: intent ? { intent, surface } : null,
   refused,
+  selection,
+  toggleDropped,
 });
 
 vi.mock('@/lib/proposal-store', () => {
   // Also callable as `useProposalStore.getState()` — the card reads the store
   // imperatively in its unmount cleanup, so the cleanup sees the state at
   // UNMOUNT rather than whatever was captured when the effect ran.
-  const hook = (sel: (s: unknown) => unknown) => sel(storeState());
-  hook.getState = () => storeState();
-  return { useProposalStore: hook };
+  const useProposalStore = (sel: (s: unknown) => unknown) => {
+    useSyncExternalStore(subscribe, () => version);
+    return sel(storeState());
+  };
+  useProposalStore.getState = () => storeState();
+  return { useProposalStore };
 });
 
 vi.mock('@/lib/planner-store', () => ({
@@ -83,6 +110,7 @@ beforeEach(() => {
   intent = 'ask';
   surface = 'chat';
   refused = { count: 0, reasons: [] };
+  selection = { proposalId: null, dropped: new Set() };
   proposal = makeProposal('one', 'two', 'three');
   // The gate is real (the shared fixture seeds both of its stores). Retry is
   // offered only while something can answer it, so every test below that is
@@ -262,6 +290,17 @@ describe('a card whose surface goes away', () => {
     // user's request for that would be its own bug.
     surface = 'chat';
     const { unmount } = render(<ProposalCard />);
+    unmount();
+    expect(dismiss).not.toHaveBeenCalled();
+  });
+
+  it("never dismisses a conversation's plan on unmount: leaving the conversation is the close", () => {
+    // A tab switch, an item opened over it or a closed rail unmounts the
+    // conversation's view without closing it, and the plan cost a model call.
+    // rail-store drops the card once the conversation leaves both Ask stacks.
+    surface = 'conv:abc';
+    const { unmount } = render(<ProposalCard surface="conv:abc" />);
+    expect(screen.getByTestId('proposal-card')).toBeTruthy();
     unmount();
     expect(dismiss).not.toHaveBeenCalled();
   });

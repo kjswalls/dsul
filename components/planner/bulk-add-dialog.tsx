@@ -130,7 +130,7 @@ export function BulkAddDialog({
       if (ext === 'csv' || ext === 'tsv') {
         const result = parseImportFile(file.name, raw);
         if (result.drafts.length === 0) {
-          setFileError('Nothing usable in that file — no non-empty lines or title column.');
+          setFileError('Nothing usable in that file. It has no non-empty lines or title column.');
           return;
         }
         if (result.structured) {
@@ -154,7 +154,7 @@ export function BulkAddDialog({
         // strips markers and applies the cap, and the cap notice derives from
         // what is actually in the box — nothing is dropped at import time.
         if (splitBulkLinesWithMeta(raw).titles.length === 0) {
-          setFileError('Nothing usable in that file — no non-empty lines or title column.');
+          setFileError('Nothing usable in that file. It has no non-empty lines or title column.');
           return;
         }
         appendAsText(raw.replace(/\n$/, ''));
@@ -348,7 +348,7 @@ export function BulkAddDialog({
           {fileError && <p className="text-xs text-destructive">{fileError}</p>}
           {(truncated || importTruncated) && (
             <p className="text-xs text-muted-foreground">
-              Capped at {MAX_BULK_ITEMS} items — the rest of the paste was left off.
+              Capped at {MAX_BULK_ITEMS} items. The rest of the paste was left off.
             </p>
           )}
         </div>

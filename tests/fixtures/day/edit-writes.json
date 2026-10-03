@@ -1723,8 +1723,8 @@
     }
   ],
   "copy": {
-    "resetStreakMessage": "This will reset your streak counter to 0 days. Your completion history stays — days you already checked off remain checked.",
+    "resetStreakMessage": "This will reset your streak counter to 0 days. Your completion history stays, so days you already checked off remain checked.",
     "subtaskPlaceholder": "Add subtask…",
-    "subtaskPasteCapped": "Added the first 500 subtasks — the paste had more."
+    "subtaskPasteCapped": "Added the first 500 subtasks. The paste had more."
   }
 }

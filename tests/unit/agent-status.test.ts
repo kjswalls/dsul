@@ -115,13 +115,13 @@ describe('what the row says', () => {
     // Inside the quiet threshold — past it the wording changes on purpose, see
     // the gone-quiet block at the foot of this file.
     expect(view({ aiStatus: 'working', aiStatusAt: ago(45 * MINUTE) })!.detail).toBe(
-      'Working — for 45m'
+      'Working for 45m'
     );
     expect(view({ aiStatus: 'blocked', aiStatusAt: ago(2 * HOUR) })!.detail).toBe(
-      'Waiting on your answer — asked 2h ago'
+      'Waiting on your answer (asked 2h ago)'
     );
     expect(view({ aiStatus: 'blocked', aiStatusAt: ago(10 * 1000) })!.detail).toBe(
-      'Waiting on your answer — asked just now'
+      'Waiting on your answer (asked just now)'
     );
   });
 

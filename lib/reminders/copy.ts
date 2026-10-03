@@ -176,5 +176,5 @@ export function spokenLine(nudge: Nudge): string {
  * install while installing good ones.
  */
 export function smsLine(nudge: Nudge): string {
-  return nudge.body ? `${nudge.title} — ${nudge.body}` : nudge.title
+  return nudge.body ? `${nudge.title}: ${nudge.body}` : nudge.title
 }
