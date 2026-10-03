@@ -47,12 +47,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -104,11 +109,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -160,11 +170,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "unskip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -218,11 +233,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "unskip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -273,12 +293,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -331,12 +356,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -391,11 +421,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -445,10 +480,15 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -498,11 +538,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -554,11 +599,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -608,12 +658,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -663,12 +718,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -719,12 +779,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "resume"
+        "resume",
+        "delete"
       ]
     },
     {
@@ -776,12 +841,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "resume"
+        "resume",
+        "delete"
       ]
     },
     {
@@ -833,12 +903,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -889,12 +964,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "resume"
+        "resume",
+        "delete"
       ]
     },
     {
@@ -945,12 +1025,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1000,11 +1085,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1056,11 +1146,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1109,11 +1204,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1163,13 +1263,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1222,12 +1327,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1280,12 +1390,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "unskip",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1335,12 +1450,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1390,11 +1510,16 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1448,11 +1573,16 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1501,11 +1631,16 @@
         "reschedule": {
           "eligible": true,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1555,11 +1690,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1610,13 +1750,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
         "resume",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1667,12 +1812,17 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1721,13 +1871,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1776,11 +1931,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1829,10 +1989,15 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -1881,13 +2046,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1936,13 +2106,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -1991,13 +2166,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2044,12 +2224,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2099,11 +2284,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -2153,13 +2343,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "resume",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2209,13 +2404,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2264,13 +2464,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2320,12 +2525,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2375,10 +2585,15 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
-        "tick"
+        "tick",
+        "delete"
       ]
     },
     {
@@ -2428,13 +2643,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
         "nextDay",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2484,11 +2704,16 @@
         "reschedule": {
           "eligible": false,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
-        "pause"
+        "pause",
+        "delete"
       ]
     },
     {
@@ -2536,12 +2761,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Schedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2592,13 +2822,18 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "skip",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2652,12 +2887,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "tick",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2711,12 +2951,17 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "unskip",
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     },
     {
@@ -2767,11 +3012,16 @@
         "reschedule": {
           "eligible": true,
           "label": "Reschedule"
+        },
+        "delete": {
+          "eligible": true,
+          "label": "Delete"
         }
       },
       "eligible": [
         "pause",
-        "reschedule"
+        "reschedule",
+        "delete"
       ]
     }
   ]

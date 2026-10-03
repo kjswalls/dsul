@@ -8,12 +8,17 @@ import Foundation
 // item panel's property chips (components/planner/item-dialog.tsx, the
 // "clearing field") for the chips, in its order, each shown only when set.
 // The words are the web's own (DsulCore Cadence.swift, RowMoves.swift); the
-// bar shortens a few, and that mapping is here.
+// bar shortens a few, and that mapping is here. From part 2, the typed fields'
+// rules too: what a keystroke may put in the title or the notes, and what
+// leaving a field sends (DsulCore ItemEdit.swift, lib/item-edit.ts), and
+// Delete's words (lib/item-verbs.ts `deleteConfirmTitle` and the registry's
+// `form.deleteDescription`, both in DsulCore Registry.swift).
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
+/// Delete is the web's last verb and sits last behind ⋯, never in the bar.
 enum SheetVerb: String, Hashable, Sendable, CaseIterable {
-    case tick, skip, unskip, pause, pauseUntil, resume, nextDay, reschedule
+    case tick, skip, unskip, pause, pauseUntil, resume, nextDay, reschedule, delete
 
     /// The web verb whose gate answers for it.
     var verb: VerbID {
@@ -25,6 +30,7 @@ enum SheetVerb: String, Hashable, Sendable, CaseIterable {
         case .resume: .resume
         case .nextDay: .nextDay
         case .reschedule: .reschedule
+        case .delete: .delete
         }
     }
 
@@ -39,13 +45,14 @@ enum SheetVerb: String, Hashable, Sendable, CaseIterable {
         case .pauseUntil: "pauseUntil"
         case .nextDay: "nextDay"
         case .reschedule: "reschedule"
+        case .delete: "delete"
         }
     }
 }
 
 /// Where the sheet's verbs go: up to three in the bar, the rest of the pause
-/// family behind ⋯, or, on a day a recurring item doesn't fall on, a "Not due"
-/// line instead of the bar.
+/// family and Delete behind ⋯, or, on a day a recurring item doesn't fall
+/// on, a "Not due" line instead of the bar.
 struct SheetVerbs: Hashable, Sendable {
     var bar: [SheetVerb]
     var menu: [SheetVerb]
@@ -55,6 +62,12 @@ struct SheetVerbs: Hashable, Sendable {
 /// Reschedule's menu: wall-clock today, the start of next week, or a day picked.
 enum RescheduleChoice: Hashable, Sendable {
     case today, nextWeek, pick
+}
+
+/// A typed field of the item sheet, and so where a page's focus can be: the
+/// title and the notes.
+enum SheetField: Hashable, Sendable {
+    case title, notes
 }
 
 /// The sheet's day picker's words: its title, the confirm button's verb
@@ -110,18 +123,22 @@ enum ItemSheetModel {
     /// - a recurring task-like item: the tick, Skip or Unskip, Pause.
     /// ⋯ holds whatever of Pause, Pause until and Reschedule the bar doesn't:
     /// a series' Reschedule (lib/row-moves.ts `canReschedule`) moves its start,
-    /// so it waits there rather than beside the day's verbs. A subtask is
-    /// offered the tick alone, so it gets the tick alone.
+    /// so it waits there rather than beside the day's verbs. Then Delete,
+    /// last, in every case it is offered (paused and not due included), as
+    /// the web declares it: a habit's ⋯ is Delete alone. A subtask is offered
+    /// the tick and Delete, so it gets the tick and ⋯ → Delete. A server that
+    /// doesn't take `delete` leaves ⋯ as part 1 had it.
     static func verbs(_ item: SampleItem, _ ctx: VerbContext, offered: [VerbID]) -> SheetVerbs {
         let has = Set(offered)
+        let delete: [SheetVerb] = has.contains(.delete) ? [.delete] : []
         let pausedToday = DayString(ctx.todayStr).map { isPausedOn(item, on: $0, timeZone: ctx.timeZone) } ?? false
         if pausedToday {
-            return SheetVerbs(bar: has.contains(.resume) ? [.resume] : [], menu: [], notDue: false)
+            return SheetVerbs(bar: has.contains(.resume) ? [.resume] : [], menu: delete, notDue: false)
         }
         let pauseFamily: [SheetVerb] = has.contains(.pause) ? [.pause, .pauseUntil] : []
         let overflow: [SheetVerb] = pauseFamily + (has.contains(.reschedule) ? [.reschedule] : [])
         if item.recurs && ctx.occurrence == .absent {
-            return SheetVerbs(bar: [], menu: overflow, notDue: true)
+            return SheetVerbs(bar: [], menu: overflow + delete, notDue: true)
         }
 
         let skipSlot: SheetVerb? = has.contains(.unskip) ? .unskip : (has.contains(.skip) ? .skip : nil)
@@ -138,7 +155,7 @@ enum ItemSheetModel {
             bar = [tick, skipSlot, pause].compactMap { $0 }
         }
         bar = Array(bar.prefix(3))
-        return SheetVerbs(bar: bar, menu: overflow.filter { !bar.contains($0) }, notDue: false)
+        return SheetVerbs(bar: bar, menu: overflow.filter { !bar.contains($0) } + delete, notDue: false)
     }
 
     /// The web's `onDay` (item-context-menu.tsx): "today" in a label is only
@@ -170,6 +187,8 @@ enum ItemSheetModel {
             return verbLabel(.nextDay, item, ctx) == "Move to tomorrow" ? "Tomorrow" : "Next day"
         case .reschedule:
             return verbLabel(.reschedule, item, ctx)
+        case .delete:
+            return verbLabel(.delete, item, ctx)
         }
     }
 
@@ -181,7 +200,7 @@ enum ItemSheetModel {
             return onDay(verbLabel(verb.verb, item, ctx), ctx)
         case .pauseUntil:
             return "Pause until a day"
-        case .pause, .resume, .reschedule:
+        case .pause, .resume, .reschedule, .delete:
             return barLabel(verb, item, ctx)
         }
     }
@@ -193,8 +212,9 @@ enum ItemSheetModel {
         return verbDetail(.nextDay, item, ctx)
     }
 
-    /// The ⋯ menu's words. It only ever holds Pause, Pause until and a
-    /// series' Reschedule; the rest are named for completeness.
+    /// The ⋯ menu's words. It only ever holds Pause, Pause until, a series'
+    /// Reschedule and Delete, which ⋯ names after the type
+    /// (`deleteMenuTitle`); the rest are named for completeness.
     static func menuTitle(_ verb: SheetVerb) -> String {
         switch verb {
         case .pause: "Pause"
@@ -205,6 +225,7 @@ enum ItemSheetModel {
         case .unskip: "Unskip"
         case .nextDay: "Tomorrow"
         case .reschedule: "Reschedule"
+        case .delete: "Delete"
         }
     }
 
@@ -219,6 +240,7 @@ enum ItemSheetModel {
         case .resume: "play"
         case .nextDay: "arrow.right"
         case .reschedule: "calendar"
+        case .delete: "trash"
         }
     }
 
@@ -248,7 +270,7 @@ enum ItemSheetModel {
         return "For " + formatTargetDay(ctx.dateStr)
     }
 
-    /// A counted habit's tally on the day beside its title, "1/3", so a tap
+    /// A counted habit's tally on the day under its title, "1/3", so a tap
     /// on the circle that counts one without finishing the day still shows.
     /// The web panel's count (item-dialog.tsx, beside its −/+ stepper): the
     /// day's stored count, or the target once the day is done with none
@@ -261,10 +283,177 @@ enum ItemSheetModel {
         return "\(count)/\(target)"
     }
 
+    /// The line under the title: the tally, then the day the circle ticks
+    /// ("1/3 · For Wed, Sep 30"), whichever there are. Under the title
+    /// rather than beside it, since a title field takes the full width. Nil
+    /// with neither.
+    static func titleNote(tally: String?, dayNote: String?) -> String? {
+        let parts = [tally, dayNote].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " \u{00B7} ")
+    }
+
     /// The line in place of the bar on a day the item doesn't fall on.
     static func notDueLine(_ ctx: VerbContext) -> String {
         if ctx.dateStr == ctx.todayStr { return "Not due today" }
         return "Not due " + formatTargetDay(ctx.dateStr)
+    }
+
+    // MARK: Delete
+
+    /// Delete's entry in ⋯: "Delete task", the type's noun lower-cased as
+    /// JavaScript does (`jsLowercased`), a custom type's own ("Delete side
+    /// quest"). No ellipsis: it only asks to confirm, it opens nothing to
+    /// pick from.
+    static func deleteMenuTitle(typeLabel: String) -> String {
+        return "Delete " + jsLowercased(typeLabel)
+    }
+
+    /// The confirm's title: lib/item-verbs.ts `deleteConfirmTitle`, "Delete
+    /// task?", which the web's own prompt uses (DsulCore's port, which
+    /// caps.json pins).
+    static func deleteConfirmTitle(typeLabel: String) -> String {
+        return DsulCore.deleteConfirmTitle(typeLabel)
+    }
+
+    /// The confirm's message: the registry's `form.deleteDescription` for the
+    /// type (`ItemCaps.deleteDescription`, which says the item goes to the
+    /// Trash for 30 days), then, when the delete takes subtasks with it,
+    /// one sentence saying so ("Its 2 subtasks go with it."): the phone has no
+    /// undo, and the web's prompt never mentions them. `childCount` is
+    /// `cascadeCount`.
+    static func deleteConfirmMessage(_ item: SampleItem, _ caps: ItemCaps, childCount: Int) -> String {
+        let text = caps.deleteDescription(item.title)
+        if childCount == 1 { return text + " Its subtask goes with it." }
+        if childCount > 1 { return text + " Its \(childCount) subtasks go with it." }
+        return text
+    }
+
+    /// How many subtasks a delete of `item` takes with it: deleteTask's
+    /// cascade (DsulCore `isDeletedWith`), none for a habit, whose delete
+    /// never cascades.
+    static func cascadeCount(_ item: SampleItem, in items: [SampleItem]) -> Int {
+        guard !item.isHabit else { return 0 }
+        return items.filter { isDeletedWith($0, parent: item.id) }.count
+    }
+
+    /// What VoiceOver hears once a delete has gone through: "Task deleted".
+    /// No banner: the row going is what the eye sees.
+    static func deletedAnnouncement(typeLabel: String) -> String {
+        return typeLabel + " deleted"
+    }
+
+    // MARK: Typed fields
+
+    /// The notes' placeholder, where an item has none (the web panel's
+    /// "Notes", item-dialog.tsx), so VoiceOver has something to land on.
+    static let notesPlaceholder = "Notes"
+
+    /// What the notes, and their placeholder, do when activated.
+    static let notesHint = "Edits the notes"
+
+    /// Under a title or notes stored longer than one request may carry
+    /// (`EditLimits.outerTitle`, `.outerNotes`), which are shown, not edited.
+    static let tooLongNote = "Too long to edit on the phone."
+
+    /// Is `stored` too long for the phone to send back as `kind`? Then the
+    /// field stays text, with `tooLongNote` under it.
+    static func tooLongToEdit(_ stored: String?, kind: SheetField) -> Bool {
+        let length = stored?.utf16.count ?? 0
+        switch kind {
+        case .title: return length > EditLimits.outerTitle
+        case .notes: return length > EditLimits.outerNotes
+        }
+    }
+
+    /// What the title field holds after a change from `previous` to `next`,
+    /// asked only of the text put in (the change's middle, between what the
+    /// two share at each end), so what was already there is never rewritten:
+    /// - an insertion whose only line break is its last character is a typed
+    ///   Return (an autocorrection may arrive with it): the break goes, and
+    ///   the title commits;
+    /// - any other inserted line break (a paste) becomes a space, as the web's
+    ///   one-line input reads it;
+    /// - growth past `limit` (UTF-16 units: `growthLimit` of the stored
+    ///   title) is cut from the insertion, by whole characters.
+    /// A line break already in the title (one the web stored) stays until a
+    /// change is sent, where `cleanTitle` turns it into a space. Asked only
+    /// while the field has focus, so a fill from the planner is never read
+    /// as typing.
+    static func titleEntry(previous: String, next: String, limit: Int) -> (draft: String, commit: Bool) {
+        let change = splice(previous, next)
+        var typed = change.inserted
+        var commit = false
+        if let last = typed.last, last.isNewline, !typed.dropLast().contains(where: \.isNewline) {
+            typed.removeLast()
+            commit = true
+        }
+        typed = String(typed.map { $0.isNewline ? Character(" ") : $0 })
+        return (fitted(change.head, typed, change.tail, limit: limit), commit)
+    }
+
+    /// What the notes field holds after a change from `previous` to `next`:
+    /// `next`, with growth past `limit` (`growthLimit` of the stored notes)
+    /// cut from what was put in. Return is a line break there, kept.
+    static func notesEntry(previous: String, next: String, limit: Int) -> String {
+        guard next.utf16.count > limit else { return next }
+        let change = splice(previous, next)
+        return fitted(change.head, change.inserted, change.tail, limit: limit)
+    }
+
+    /// What leaving a typed field sends, if anything (`kind` says which):
+    /// - nothing while the draft is still the seed, so focusing a field and
+    ///   leaving it never writes, whatever is stored there: a 700-character
+    ///   title, notes ending in a line break, a title the web stored with one;
+    /// - otherwise the draft cleaned (`cleanTitle`, `cleanNotes`) within
+    ///   `growthLimit` of what is stored, unless the result is what is
+    ///   stored. The limit is the stored text's, as the route measures it,
+    ///   never the seed's: after a commit that kept focus (the scene going
+    ///   inactive) the seed is the raw draft, which may be longer than the
+    ///   trimmed text stored.
+    /// A title that cleans to nothing sends nothing: the server refuses a
+    /// blank title, and the field shows the stored one again. Notes that clean
+    /// to nothing clear them. The caller sends the edit through the planner,
+    /// which gates it again, and then takes the draft as its new seed, so the
+    /// next trigger (a scene change, then `.onDisappear`) sends nothing more.
+    static func commit(draft: String, seed: String, stored: String?, kind: SheetField) -> ItemEdit? {
+        guard draft != seed else { return nil }
+        switch kind {
+        case .title:
+            guard let title = cleanTitle(draft, limit: growthLimit(cap: EditLimits.title, stored: stored)),
+                  title != stored
+            else { return nil }
+            return ItemEdit.title(title)
+        case .notes:
+            let notes = cleanNotes(draft, limit: growthLimit(cap: EditLimits.notes, stored: stored))
+            guard notes != stored else { return nil }
+            return ItemEdit.notes(notes)
+        }
+    }
+
+    /// `next` as `previous` with one run replaced: what the two share at the
+    /// front, what was put in, and what they share at the end. Compared by
+    /// Character, so an emoji or an accent is never split.
+    private static func splice(_ previous: String, _ next: String) -> (head: String, inserted: String, tail: String) {
+        let old = Array(previous)
+        let new = Array(next)
+        var front = 0
+        while front < old.count, front < new.count, old[front] == new[front] {
+            front += 1
+        }
+        var back = 0
+        while back < old.count - front, back < new.count - front,
+              old[old.count - 1 - back] == new[new.count - 1 - back] {
+            back += 1
+        }
+        let end = new.count - back
+        return (String(new[..<front]), String(new[front..<end]), String(new[end...]))
+    }
+
+    /// `head + inserted + tail`, `inserted` cut (`clampUTF16`) so the whole is
+    /// at most `limit` UTF-16 units. What was already there is never cut.
+    private static func fitted(_ head: String, _ inserted: String, _ tail: String, limit: Int) -> String {
+        let room = max(0, limit - head.utf16.count - tail.utf16.count)
+        return head + clampUTF16(inserted, room) + tail
     }
 
     // MARK: The day picker
@@ -295,13 +484,13 @@ enum ItemSheetModel {
 
     // MARK: Header
 
-    /// "Habit · Morning routine": the type's noun (the registry's label; a
-    /// custom slug capitalised) and the first routine holding the item. The
+    /// "Habit · Morning routine": the type's noun (`typeLabel`, the
+    /// registry's label with the payload's custom labels applied:
+    /// `SamplePlanner.caps(for:)`) and the first routine holding the item. The
     /// view upper-cases it, so VoiceOver reads the words as written.
-    static func eyebrow(_ item: SampleItem, routineNames: [String]) -> String {
-        let type = typeLabel(item.typeName)
-        guard let routine = routineNames.first else { return type }
-        return type + " \u{00B7} " + routine
+    static func eyebrow(typeLabel: String, routineNames: [String]) -> String {
+        guard let routine = routineNames.first else { return typeLabel }
+        return typeLabel + " \u{00B7} " + routine
     }
 
     /// The item's own pause, as the web's paused note words it ("Paused until

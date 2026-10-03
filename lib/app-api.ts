@@ -4,7 +4,9 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
   createItem,
+  deleteItem,
   fetchItems,
+  fetchItemTypes,
   fetchProjects,
   fetchRoutines,
   fetchSeasons,
@@ -16,6 +18,7 @@ import {
   type PlannerData,
 } from './db';
 import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
+import { editPatch, editRefusal, editShapeFromRow, OUTER_LIMITS } from './item-edit';
 import { isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { isRecurring } from './recurrence';
@@ -36,18 +39,23 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  *
  * WRITES ARE INTENTS, NEVER ARRAYS. Each thing the phone does (capture; tick,
  * skip or unskip a day; drop a braindump row on an hour; carry an item to
- * another day; pause or resume one) is one verb here that does what the web's
- * own store action does for the same gesture, through the same lib/db.ts
- * calls. Nothing accepts an absolute completedDates, skippedDates or
- * dailyCounts: the phone reads a 400-day window, and an array written back from
- * a window deletes what the window did not show.
+ * another day; pause or resume one; retitle it, rewrite its notes or delete
+ * it) is one verb here that does what the web's own store action does for the
+ * same gesture, through the same lib/db.ts calls. Nothing accepts an absolute
+ * completedDates, skippedDates or dailyCounts: the phone reads a 400-day
+ * window, and an array written back from a window deletes what the window did
+ * not show. Nor is there a generic `edit`: each field is its own action, so a
+ * server that doesn't take one refuses it (400) rather than dropping the key
+ * and answering 200, and the phone hides any editor whose action `writes`
+ * doesn't list.
  *
  * WEBHOOKS MATCH THE BROWSER UI, WHICH FIRES NONE. The store never passes a
- * userId to updateItem (planner-store.ts updateItemAction), and notifyPlugins
- * is a no-op without a service key, so a tick or a capture typed on the web
- * reaches no plugin. These calls keep it that way: updateItem gets no userId,
- * and createItem gets `notify: false`. The item_events rows are written exactly
- * as the web writes them.
+ * userId to updateItem or deleteItem (planner-store.ts updateItemAction,
+ * deleteTask), and notifyPlugins is a no-op without a service key, so a tick
+ * or a capture typed on the web reaches no plugin. These calls keep it that
+ * way: updateItem and deleteItem get no userId, and createItem gets
+ * `notify: false`. The item_events rows are written exactly as the web writes
+ * them.
  */
 
 type Client = SupabaseClient;
@@ -127,6 +135,24 @@ const ItemWriteActions = z.discriminatedUnion('action', [
     /** The device's zone, used only when the account has no usable one stored. */
     timeZone: z.string().max(100).optional(),
   }),
+  // The sheet's edits (lib/item-edit.ts). Strict, so a key a newer phone adds
+  // is refused by an older server instead of dropped while it answers 200.
+  // These bounds are only what a request may carry; the caps that matter are
+  // growth caps, which need the row (editRefusal).
+  z
+    .object({
+      action: z.literal('title'),
+      title: z.string().trim().min(1).max(OUTER_LIMITS.title),
+    })
+    .strict(),
+  z
+    .object({
+      action: z.literal('notes'),
+      /** null clears them, as does text that trims to nothing. */
+      notes: z.string().max(OUTER_LIMITS.notes).nullable(),
+    })
+    .strict(),
+  z.object({ action: z.literal('delete') }).strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -195,6 +221,21 @@ export interface AppPlannerPayload {
   projects: Project[];
   routines: Routine[] | null;
   seasons: Season[] | null;
+  /**
+   * The user's own item types (item_types, migration 021), named as the web
+   * names them: a custom item's eyebrow, its title placeholder and its delete
+   * words read the label. Null when the table is unreachable, which the phone
+   * reads as no custom labels (the slug, capitalised, as getItemTypeConfig's
+   * fallback does). Absent, from an older server, means the same.
+   */
+  itemTypes: AppItemType[] | null;
+}
+
+/** One custom type's names, and nothing of its config: the phone's capabilities come from the registry port. */
+export interface AppItemType {
+  name: string;
+  label: string;
+  labelPlural: string;
 }
 
 /**
@@ -244,17 +285,20 @@ function timeFormatFrom(value: string | null | undefined): TimeFormat {
 
 /**
  * The per-table fallback for a database without load_planner (050), with the
- * caller's client. Item types and goals are left out: Today needs neither, and
- * null is their "unreachable" value, which the phone never reads.
+ * caller's client. Goals are left out: the phone doesn't read them yet, and
+ * null is their "unreachable" value. Item types are read, since the sheet
+ * words a custom item by its label; fetchItemTypes answers null rather than
+ * throwing when its table is missing, so the load still answers.
  */
 async function perTable(userId: string, client: Client): Promise<PlannerData> {
-  const [items, projects, routines, seasons] = await Promise.all([
+  const [items, projects, itemTypes, routines, seasons] = await Promise.all([
     fetchItems(userId, undefined, client),
     fetchProjects(userId, client),
+    fetchItemTypes(userId, client),
     fetchRoutines(userId, client),
     fetchSeasons(userId, client),
   ]);
-  return { items, projects, itemTypes: null, routines, seasons, goals: null };
+  return { items, projects, itemTypes, routines, seasons, goals: null };
 }
 
 export async function getPlanner(req: Request): Promise<Response> {
@@ -290,6 +334,8 @@ export async function getPlanner(req: Request): Promise<Response> {
       projects: data.projects,
       routines: data.routines,
       seasons: data.seasons,
+      // Named fields only: a def also carries its icon, colour and config.
+      itemTypes: data.itemTypes?.map(({ name, label, labelPlural }) => ({ name, label, labelPlural })) ?? null,
     };
     return NextResponse.json(payload, { headers: { 'Cache-Control': 'no-store' } });
   } catch (err) {
@@ -373,6 +419,15 @@ const WRITE_ROW_COLUMNS =
   'id, type, parent_item_id, repeat_frequency, status, start_date, time_bucket, in_project_block, ' +
   'skipped_dates, daily_counts, current_day_count, paused_at, paused_until';
 
+/**
+ * What an edit reads on top: only the column it decides on. A tick never reads
+ * the notes, which can run to 200,000 characters.
+ */
+const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
+  title: 'title',
+  notes: 'notes',
+};
+
 interface WriteRow {
   id: string;
   type: string;
@@ -387,6 +442,9 @@ interface WriteRow {
   current_day_count: number | null;
   paused_at: string | null;
   paused_until: string | null;
+  /** EDIT_COLUMNS: present only when the action read it. */
+  title?: string | null;
+  notes?: string | null;
 }
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -441,11 +499,16 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   skip      Skip today / Unskip today (setItemSkipped)
  *   move      Tomorrow and Reschedule (moveTaskToDate)
  *   pause     Pause, Pause until and Resume (setItemPaused)
+ *   title     the title, typed (the dialog's title field → updateTask / updateHabit)
+ *   notes     the notes, typed or cleared (the dialog's notes field, likewise)
+ *   delete    Delete (deleteTask, with its subtasks / deleteHabit)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
- * load-bearing, not politeness: set_item_completion, set_item_skip and
- * updateItem all filter on id and type only, so under the user's client
- * someone else's id is a silent no-op that would otherwise answer 200.
+ * load-bearing, not politeness: set_item_completion, set_item_skip,
+ * updateItem and deleteItem all filter on id and type only, so under the
+ * user's client someone else's id is a silent no-op that would otherwise
+ * answer 200. A delete reads once more on a miss (deleteTrashed), since an
+ * item already in the Trash is a delete that has landed.
  *
  * Each gate is the server's copy of the web verb's capability check
  * (lib/item-verbs.ts), asked of the registry. Whether the day is due, done or
@@ -463,16 +526,17 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
   const body = await parseBody(req, ItemWriteSchema);
   if (body instanceof Response) return body;
 
+  const extra = EDIT_COLUMNS[body.action];
   const { data, error } = await client
     .from('items')
-    .select(WRITE_ROW_COLUMNS)
+    .select(extra ? `${WRITE_ROW_COLUMNS}, ${extra}` : WRITE_ROW_COLUMNS)
     .eq('id', id)
     .eq('user_id', userId)
     .is('deleted_at', null)
     .maybeSingle();
   if (error) return dbErrorResponse(error, 'app/items/:id');
   const row = data as WriteRow | null;
-  if (!row) return notFound();
+  if (!row) return body.action === 'delete' ? deleteTrashed(client, userId, id) : notFound();
 
   const config = getItemTypeConfig(row.type);
   const frequency = row.repeat_frequency ?? config.defaultFrequency;
@@ -499,6 +563,11 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
         return await move(ctx, body);
       case 'pause':
         return await pause(ctx, body);
+      case 'title':
+      case 'notes':
+        return await edit(ctx, body);
+      case 'delete':
+        return await del(client, userId, id, row.type);
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');
@@ -708,6 +777,93 @@ async function pause(ctx: WriteContext, body: IntentBody<'pause'>): Promise<Resp
   if (Object.keys(resolved.patch).length === 0) return ok();
   await updateItem(id, type, resolved.patch, undefined, client);
   return ok();
+}
+
+/**
+ * `title` and `notes`: the dialog's typed fields, one key each, through
+ * lib/item-edit.ts. Already so is 200 with no write, as the dialog's autosave
+ * skips a draft that didn't change, so a retried edit writes no second event.
+ */
+async function edit(ctx: WriteContext, body: IntentBody<'title' | 'notes'>): Promise<Response> {
+  const { client, id, type, config, row } = ctx;
+  const shape = editShapeFromRow(row);
+  const refusal = editRefusal(shape, body, config);
+  if (refusal) return refused(refusal.code, refusal.status);
+  const patch = editPatch(shape, body);
+  if (Object.keys(patch).length === 0) return ok();
+  await updateItem(id, type, patch, undefined, client);
+  return ok();
+}
+
+/**
+ * `delete`: the web's Delete, deleteTask for anything that can hold subtasks
+ * and deleteHabit for the rest. To the Trash, as there: deleteItem stamps
+ * deleted_at, and the Trash restores for 30 days.
+ *
+ * The children are read BEFORE the parent goes, as deleteTask takes them from
+ * the store before it removes anything, and each gets its own deleteItem and
+ * its own 'delete' event after the parent's, in the store's order. deleteItem
+ * cascades by itself too (lib/db.ts), so this is the web's belt and braces,
+ * not a second rule: a parent deleted alone still takes its subtasks along.
+ */
+async function del(client: Client, userId: string, id: string, type: string): Promise<Response> {
+  const children = getItemTypeConfig(type).subtasks ? await liveChildren(client, userId, id) : [];
+  await deleteItem(id, type, undefined, client);
+  for (const child of children) await deleteItem(child.id, child.type, undefined, client);
+  return ok();
+}
+
+/**
+ * A delete whose item has no live row: answered 200 when it is in the Trash
+ * (the delete landed, perhaps from an earlier try whose answer was lost, or
+ * from another device), and 404 `not_found` when there is no such row of this
+ * user's at all. The phone counts that 404 as landed too, by its code: the row
+ * is gone either way.
+ *
+ * A trashed parent's live subtasks are deleted on the way, which is what a
+ * retry is for: deleteItem's own cascade only logs a failure (lib/db.ts), so a
+ * parent can reach the Trash with children left behind, unreachable.
+ */
+async function deleteTrashed(client: Client, userId: string, id: string): Promise<Response> {
+  try {
+    const { data, error } = await client
+      .from('items')
+      .select('id, type, deleted_at')
+      .eq('id', id)
+      .eq('user_id', userId)
+      .maybeSingle();
+    if (error) throw error;
+    const row = data as { type: string; deleted_at: string | null } | null;
+    if (!row) return notFound();
+    // Restored between the two reads: it is live again, and this is its delete.
+    if (row.deleted_at == null) return await del(client, userId, id, row.type);
+    if (!getItemTypeConfig(row.type).subtasks) return ok();
+    for (const child of await liveChildren(client, userId, id)) {
+      await deleteItem(child.id, child.type, undefined, client);
+    }
+    return ok();
+  } catch (err) {
+    return dbErrorResponse(err, 'app/items/:id');
+  }
+}
+
+/**
+ * deleteTask's children: the live task-like rows under `id`, in the order the
+ * planner loads them (load_planner, fetchItems), so their events land in the
+ * order the web's would.
+ */
+async function liveChildren(client: Client, userId: string, id: string): Promise<{ id: string; type: string }[]> {
+  const { data, error } = await client
+    .from('items')
+    .select('id, type')
+    .eq('parent_item_id', id)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .neq('type', 'habit')
+    .order('order', { ascending: true, nullsFirst: false })
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data ?? []) as { id: string; type: string }[];
 }
 
 /** A zone this runtime can resolve a day in. */

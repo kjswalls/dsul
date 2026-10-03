@@ -14,7 +14,10 @@
     "schedule",
     "skip",
     "move",
-    "pause"
+    "pause",
+    "title",
+    "notes",
+    "delete"
   ],
   "items": [
     {
@@ -253,6 +256,13 @@
         "33333333-3333-4333-8333-000000000001"
       ],
       "updatedAt": "2026-09-01T08:00:00.5+00:00"
+    }
+  ],
+  "itemTypes": [
+    {
+      "name": "book",
+      "label": "Book to read",
+      "labelPlural": "Books to read"
     }
   ]
 }

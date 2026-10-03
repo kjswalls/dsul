@@ -343,7 +343,7 @@ export const STATIC_COMMANDS: Command[] = [
     // Not the default loop: `confirm` is a single slot, so N prompts would
     // leave only the last standing and delete one item. One prompt, then one
     // deleteItems — a single entry that raises the undo strip, which is why
-    // this copy says undo where the bulk bar's still says it cannot be undone.
+    // this copy offers undo where the bulk bar's names only the Trash.
     runMany: (items) => {
       const habits = items.filter(isHabit).length;
       useUIStore.getState().confirm({

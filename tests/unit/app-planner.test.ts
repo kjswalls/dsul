@@ -22,7 +22,8 @@ import path from 'path';
  * app has no case for ('noon'), a NULL repeat_frequency, a habit whose
  * container is only in the frozen `group` column, a custom type, a subtask.
  * And what the item sheet shows: notes with a line break, priorities, a
- * reminder with an anchor and one without.
+ * reminder with an anchor and one without, and the custom type's own label
+ * (item_types), which the sheet words that item by.
  */
 
 const FIXTURE = path.resolve(__dirname, '../fixtures/app/planner-response.json');
@@ -374,12 +375,32 @@ const SEASON_ROWS = [
 const SEASON_ITEM_ROWS = [{ season_id: SEASON_AUTUMN, item_id: id(3) }];
 const SEASON_ROUTINE_ROWS = [{ season_id: SEASON_AUTUMN, routine_id: ROUTINE_MORNING }];
 
+/**
+ * The custom type 'book', labelled as its owner named it, which is not the
+ * capitalised slug the phone falls back to. The row carries more than the
+ * payload sends (icon, colour, config), so the test proves the route names it.
+ */
+const ITEM_TYPE_ROWS = [
+  {
+    id: '55555555-5555-4555-8555-000000000001',
+    user_id: USER,
+    name: 'book',
+    label: 'Book to read',
+    label_plural: 'Books to read',
+    icon: 'icon:BookOpen',
+    color: 'var(--accent-3)',
+    config: {},
+    created_at: '2026-09-01T08:00:00.000000+00:00',
+    updated_at: '2026-09-01T08:00:00.000000+00:00',
+  },
+];
+
 const BUNDLE = {
   v: 1,
   uid: USER,
   items: ITEM_ROWS,
   projects: PROJECT_ROWS,
-  item_types: [],
+  item_types: ITEM_TYPE_ROWS,
   routines: ROUTINE_ROWS,
   routine_items: ROUTINE_ITEM_ROWS,
   seasons: SEASON_ROWS,
@@ -475,7 +496,7 @@ describe('the payload fixture shared with DsulCore', () => {
 
   it('has the documented top-level shape', () => {
     expect(Object.keys(generated).sort()).toEqual(
-      ['fetchedAt', 'items', 'projects', 'routines', 'seasons', 'settings', 'userId', 'v', 'writes'].sort(),
+      ['fetchedAt', 'itemTypes', 'items', 'projects', 'routines', 'seasons', 'settings', 'userId', 'v', 'writes'].sort(),
     );
     expect(generated.v).toBe(1);
     expect(generated.userId).toBe(USER);
@@ -489,7 +510,9 @@ describe('the payload fixture shared with DsulCore', () => {
     });
     // The intents the item route takes. Additive: an older server sends no
     // list, which the phone reads as ['complete', 'schedule'].
-    expect(generated.writes).toEqual(['complete', 'schedule', 'skip', 'move', 'pause']);
+    expect(generated.writes).toEqual(['complete', 'schedule', 'skip', 'move', 'pause', 'title', 'notes', 'delete']);
+    // The custom type's names, and nothing else of its row.
+    expect(generated.itemTypes).toEqual([{ name: 'book', label: 'Book to read', labelPlural: 'Books to read' }]);
   });
 
   it('carries every case the Swift decoder has to meet', () => {
@@ -662,34 +685,55 @@ describe('GET /api/app/planner', () => {
   });
 
   // LAST in the file: a missing RPC flips db.ts's module-level latch, and every
-  // later load in this module goes straight to the per-table path.
-  it('without load_planner, reads the tables as the user and answers the same items', async () => {
+  // later load in this module goes straight to the per-table path, so the
+  // tests after this one run on it.
+  const PER_TABLE: Record<string, Result> = {
+    user_settings: { data: SETTINGS_ROW, error: null },
+    items_windowed: { data: ITEM_ROWS, error: null },
+    projects: { data: PROJECT_ROWS, error: null },
+    item_types: { data: ITEM_TYPE_ROWS, error: null },
+    routines: { data: ROUTINE_ROWS, error: null },
+    routine_items: { data: ROUTINE_ITEM_ROWS, error: null },
+    seasons: { data: SEASON_ROWS, error: null },
+    season_items: { data: SEASON_ITEM_ROWS, error: null },
+    season_routines: { data: SEASON_ROUTINE_ROWS, error: null },
+  };
+
+  it('without load_planner, reads the tables as the user and answers the same payload', async () => {
     const viaRpc = await (await get()).json();
 
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     queries = [];
     rpc.mockResolvedValue({ data: null, error: { code: 'PGRST202', message: 'no such function' } });
-    respondWith({
-      user_settings: { data: SETTINGS_ROW, error: null },
-      items_windowed: { data: ITEM_ROWS, error: null },
-      projects: { data: PROJECT_ROWS, error: null },
-      routines: { data: ROUTINE_ROWS, error: null },
-      routine_items: { data: ROUTINE_ITEM_ROWS, error: null },
-      seasons: { data: SEASON_ROWS, error: null },
-      season_items: { data: SEASON_ITEM_ROWS, error: null },
-      season_routines: { data: SEASON_ROUTINE_ROWS, error: null },
-    });
+    respondWith(PER_TABLE);
     const res = await get();
     warn.mockRestore();
 
     expect(res.status).toBe(200);
     const viaTables = await res.json();
+    // Item types included: the sheet words a custom item by its label.
     expect(viaTables).toEqual(viaRpc);
-    // Today needs neither item types nor goals, so neither is read.
+    // The phone doesn't read goals yet, so they aren't read.
     const tables = queries.map((q) => q.table);
-    expect(tables).not.toContain('item_types');
+    expect(tables).toContain('item_types');
     expect(tables).not.toContain('goals');
     // Every table read is scoped to the caller (RLS does it too).
     for (const q of queries) expect(q.calls, q.table).toContainEqual(['eq', ['user_id', USER]]);
+  });
+
+  it('answers itemTypes null, and still answers, when the item_types table is unreachable', async () => {
+    // On the per-table path since the test above.
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    respondWith({
+      ...PER_TABLE,
+      item_types: { data: null, error: { code: '42P01', message: 'relation "item_types" does not exist' } },
+    });
+    const res = await get();
+    warn.mockRestore();
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.itemTypes).toBeNull();
+    expect(body.items).toHaveLength(ITEM_ROWS.length);
+    expect(rpc).not.toHaveBeenCalled();
   });
 });

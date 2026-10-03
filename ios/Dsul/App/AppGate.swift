@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 /// Which planner the app shows: none on the sign-in screen, the sample after
 /// "Try with sample data", and the signed-in user's own once there is a
@@ -58,7 +59,8 @@ struct AppGate: View {
             if let current = planner, current.userId == session.userId { return }
             planner?.stopSync()
             let api = APIClient(origin: AppConfig.apiOrigin, tokens: auth, transport: HTTP.live)
-            let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld })
+            let live = SamplePlanner(userId: session.userId, api: api, isDragging: { DragHold.shared.isHeld },
+                                     backgroundTime: .uiApplication)
             if let email = auth.takeWelcome() {
                 live.show(email.isEmpty ? "Signed in" : "Signed in as \(email)", isError: false)
             }
@@ -72,5 +74,55 @@ struct AppGate: View {
             planner?.stopSync()
             planner = nil
         }
+    }
+}
+
+extension BackgroundTime {
+    /// iOS's own: `beginBackgroundTask`, which keeps the app running for about
+    /// half a minute after it leaves the screen, so the writes PlannerSync has
+    /// out finish (a title saved on the way out, a delete just before a swipe
+    /// home). `UIKitBackgroundTasks` holds what is begun and not yet ended.
+    static let uiApplication = BackgroundTime(
+        begin: { name, expired in
+            UIKitBackgroundTasks.shared.begin(name, expired: expired)
+        },
+        end: { token in
+            UIKitBackgroundTasks.shared.end(token)
+        }
+    )
+}
+
+/// The background tasks begun and not yet ended, by a token of our own, so
+/// each is ended exactly once. iOS calls the expiry handler on the main thread
+/// when the time is up, and the task must be ended there and then (it runs
+/// synchronously rather than in a Task): the owner is told (`expired`), and
+/// the handler ends the task itself if the owner didn't, since an owner gone
+/// by then (a sync dropped with writes queued) would leave it running and iOS
+/// would kill the app.
+@MainActor
+private final class UIKitBackgroundTasks {
+    static let shared = UIKitBackgroundTasks()
+
+    private var nextToken = 0
+    private var live: [Int: UIBackgroundTaskIdentifier] = [:]
+
+    func begin(_ name: String, expired: @escaping @MainActor @Sendable () -> Void) -> Int {
+        nextToken += 1
+        let token = nextToken
+        let id = UIApplication.shared.beginBackgroundTask(withName: name) {
+            MainActor.assumeIsolated {
+                expired()
+                UIKitBackgroundTasks.shared.end(token)
+            }
+        }
+        // iOS answers `.invalid` when it won't give the time; there is
+        // nothing to end then.
+        if id != .invalid { live[token] = id }
+        return token
+    }
+
+    func end(_ token: Int) {
+        guard let id = live.removeValue(forKey: token) else { return }
+        UIApplication.shared.endBackgroundTask(id)
     }
 }

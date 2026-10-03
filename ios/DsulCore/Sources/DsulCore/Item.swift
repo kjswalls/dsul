@@ -2,8 +2,8 @@ import Foundation
 
 // The planner's data as GET /api/app/planner serves it: the web app's camelCase
 // `Item` (packages/types/src/schemas.ts `ItemSchema`, built by `itemFromRow` in
-// lib/db.ts), its containers, the settings the phone reads, and the writes the
-// server takes. The route's shape is pinned by
+// lib/db.ts), its containers, the settings the phone reads, the user's own item
+// types' names, and the writes the server takes. The route's shape is pinned by
 // tests/fixtures/app/planner-response.json, which PlannerPayloadTests decodes.
 //
 // Decoding is lenient on purpose. One bad value in a strict decode fails the
@@ -14,7 +14,9 @@ import Foundation
 //   `repeatFrequency`) stay `String`, because the agent API can write values
 //   the enums don't name, and the web reads an unknown one as "matches nothing";
 // - a number may arrive as a Double and is truncated to an Int;
-// - a null or missing array is empty, and a bad element in it is skipped;
+// - a null or missing array is empty, and a bad element in it is skipped
+//   (`itemTypes` and `writes` excepted: there, missing is nil, which means
+//   "a server older than the field", not "none");
 // - `pausedAt` stays a string, parsed in Active.swift (`parseTimestamp`), so no
 //   `dateDecodingStrategy` is involved and Linux and Darwin agree.
 
@@ -393,6 +395,12 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
     /// older than the list, which takes "complete" and "schedule" only; the
     /// app hides any verb whose write isn't listed.
     public var writes: [String]?
+    /// The user's own item types, named (`itemTypes`, from item_types): a
+    /// custom item's label, title placeholder and delete words read them
+    /// through `caps(_:labels:)`. Nil when the server couldn't read the table,
+    /// or is older than the field; either way a custom type is its slug,
+    /// capitalised. A bad element is skipped.
+    public var itemTypes: [ItemTypeLabel]?
     /// Item rows that couldn't be read and were left out.
     public var droppedItems: Int
 
@@ -406,6 +414,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         routines: [Routine] = [],
         seasons: [Season] = [],
         writes: [String]? = nil,
+        itemTypes: [ItemTypeLabel]? = nil,
         droppedItems: Int = 0
     ) {
         self.v = v
@@ -417,11 +426,12 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.routines = routines
         self.seasons = seasons
         self.writes = writes
+        self.itemTypes = itemTypes
         self.droppedItems = droppedItems
     }
 
     enum CodingKeys: String, CodingKey {
-        case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes
+        case v, userId, fetchedAt, settings, items, projects, routines, seasons, writes, itemTypes
     }
 
     /// The envelope is strict (a payload with no user can't be trusted to be
@@ -443,6 +453,7 @@ public struct PlannerPayload: Decodable, Sendable, Hashable {
         self.routines = c.lossyArray(Routine.self, .routines).values
         self.seasons = c.lossyArray(Season.self, .seasons).values
         self.writes = c.lenientStrings(.writes)
+        self.itemTypes = c.lossyArrayIfPresent(ItemTypeLabel.self, .itemTypes)
     }
 }
 
@@ -543,6 +554,13 @@ extension KeyedDecodingContainer {
             if let i = map.lenientInt(k) { out[k.stringValue] = i }
         }
         return out
+    }
+
+    /// Nil when the key is missing, null or not an array; otherwise the
+    /// elements that decode, each on its own (`lossyArray`).
+    fileprivate func lossyArrayIfPresent<T: Decodable>(_ type: T.Type, _ key: Key) -> [T]? {
+        guard (try? nestedUnkeyedContainer(forKey: key)) != nil else { return nil }
+        return lossyArray(type, key).values
     }
 
     /// Each element decoded on its own; one that fails is skipped and counted.

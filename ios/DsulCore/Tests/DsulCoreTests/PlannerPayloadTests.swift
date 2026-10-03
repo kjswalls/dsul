@@ -60,7 +60,7 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.appIcon == .lime)
         #expect(p.settings.weekStartDay == .monday)
         #expect(p.settings.timeFormat == .twentyFourHour)
-        #expect(p.writes == ["complete", "schedule", "skip", "move", "pause"])
+        #expect(p.writes == ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete"])
         #expect(p.droppedItems == 0)
         #expect(p.items.count == raw.items.count)
         #expect(!p.items.isEmpty)
@@ -81,6 +81,12 @@ private struct RawItems: Decodable, Sendable {
         #expect(custom.customType != nil)
         #expect(custom.typeName == custom.customType)
         #expect(!custom.isHabit)
+        // ... and its type is named by the user's own label.
+        let types = try #require(p.itemTypes)
+        let named = try #require(types.first { $0.name == custom.typeName }, "no itemTypes entry for the custom item")
+        #expect(!named.label.isEmpty && !named.labelPlural.isEmpty)
+        let labels = Dictionary(types.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        #expect(typeLabel(custom.typeName, labels: labels) == named.label)
         // A subtask is kept in items but never reaches Today.
         let subtask = try #require(p.items.first { $0.parentItemId != nil })
         let split = project(p.items)
@@ -219,6 +225,7 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.weekStartDay == .sunday)
         #expect(p.settings.timeFormat == .twelveHour)
         #expect(p.writes == nil)
+        #expect(p.itemTypes == nil)
     }
 
     @Test func theWeekAndTheClockAreReadLeniently() throws {
@@ -255,6 +262,35 @@ private struct RawItems: Decodable, Sendable {
         #expect(try writes(#""complete""#) == nil)
         // A bad element is skipped, as in every other list.
         #expect(try writes(#"["complete",7,"move"]"#) == ["complete", "move"])
+    }
+
+    @Test func theItemTypesAreReadLeniently() throws {
+        func itemTypes(_ value: String?) throws -> [ItemTypeLabel]? {
+            let field = value.map { #","itemTypes":"# + $0 } ?? ""
+            let json = """
+            {"v":1,"userId":"\(user)","fetchedAt":"x","settings":{}\(field),
+             "items":[],"projects":[],"routines":[],"seasons":[]}
+            """
+            return try decode(json).itemTypes
+        }
+        // A server older than the field, or one that couldn't read the table.
+        #expect(try itemTypes(nil) == nil)
+        #expect(try itemTypes("null") == nil)
+        #expect(try itemTypes(#""book""#) == nil)
+        #expect(try itemTypes("[]") == [])
+        // A bad element is skipped; a missing label reads as empty, so the
+        // slug answers for it.
+        let read = try itemTypes(#"""
+        [{"name":"book","label":"Book to read","labelPlural":"Books to read"},7,null,
+         {"label":"No name"},{"name":"errand","label":null}]
+        """#)
+        #expect(read == [
+            ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read"),
+            ItemTypeLabel(name: "errand", label: "", labelPlural: ""),
+        ])
+        let labels = Dictionary((read ?? []).map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+        #expect(typeLabel("book", labels: labels) == "Book to read")
+        #expect(typeLabel("errand", labels: labels) == "Errand")
     }
 
     @Test func theAppIconPickIsReadLeniently() throws {

@@ -530,7 +530,7 @@ export function AppShell() {
       confirm({
         title: `Delete ${n} ${n === 1 ? 'item' : 'items'}?`,
         description:
-          'This will permanently delete the selected items (and any subtasks). This action cannot be undone.',
+          'Moves the selected items (and any subtasks) to Trash for 30 days, then deletes them for good.',
         confirmLabel: 'Delete',
         destructive: true,
         onConfirm: () => {

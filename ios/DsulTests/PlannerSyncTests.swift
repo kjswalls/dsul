@@ -176,6 +176,42 @@ func waitUntil(_ condition: @MainActor () async -> Bool) async -> Bool {
     return false
 }
 
+/// A clock a test moves by hand, for a planner's `now` (and so its sync's).
+final class TestClock {
+    var now: Date
+
+    init(_ now: Date) {
+        self.now = now
+    }
+}
+
+/// Background time as a test sees it: each time asked for, by name, each
+/// token given back, and iOS taking the time back early (`expire`).
+@MainActor
+final class FakeBackgroundTime {
+    private(set) var begun: [String] = []
+    private(set) var ended: [Int] = []
+    private var expiry: (@MainActor @Sendable () -> Void)?
+
+    var time: BackgroundTime {
+        return BackgroundTime(
+            begin: { [self] name, expired in
+                begun.append(name)
+                expiry = expired
+                return begun.count
+            },
+            end: { [self] token in
+                ended.append(token)
+            }
+        )
+    }
+
+    /// iOS ending the time before the writes drained.
+    func expire() {
+        expiry?()
+    }
+}
+
 /// A recorded request's JSON body.
 func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
     guard let data = request?.body,
@@ -187,9 +223,11 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// GET /api/app/planner bodies (lib/app-api.ts), on Thursday 2026-10-01:
 /// a one-off task on the day, a habit counted three times a day (once so
 /// far), a habit skipped today, and a braindump thought; `extra` adds rows
-/// (`plants`, `bags`, `reading`) and `omitting` drops some. No stored timezone
-/// unless one is given, so the pinned day stays put. `writes` is the current
-/// server's list unless a test plays an older server (nil).
+/// (`plants`, `bags`, `reading`, `book`) and `omitting` drops some. No stored
+/// timezone unless one is given, so the pinned day stays put. `writes` is the
+/// current server's list unless a test plays an older server (nil);
+/// `itemTypes` names the user's own types, left out (an older server) unless
+/// given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -202,9 +240,14 @@ enum PlannerJSON {
     static let plants = UUID(uuidString: "0d000000-0000-4000-8000-000000000005")!
     static let bags = UUID(uuidString: "0d000000-0000-4000-8000-000000000006")!
     static let reading = UUID(uuidString: "0d000000-0000-4000-8000-000000000007")!
+    static let book = UUID(uuidString: "0d000000-0000-4000-8000-000000000009")!
 
-    /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`).
-    static let allWrites = ["complete", "schedule", "skip", "move", "pause"]
+    /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
+    /// its order.
+    static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete"]
+
+    /// The user's own type that `book` is, as they named it.
+    static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
 
     /// A task that repeats daily from September, on the morning.
     static var plantsJSON: String {
@@ -221,6 +264,13 @@ enum PlannerJSON {
             + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
     }
 
+    /// A custom item (`bookType`) in the braindump.
+    static var bookJSON: String {
+        return "{\"id\":\"\(lowerID(book))\",\"type\":\"custom\",\"customType\":\"book\","
+            + "\"title\":\"Piranesi\",\"status\":\"pending\",\"isScheduled\":false,\"order\":5,"
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+    }
+
     /// A daily habit paused since September 20, with no end.
     static var readingJSON: String {
         return "{\"id\":\"\(lowerID(reading))\",\"type\":\"habit\",\"title\":\"Read\",\"status\":\"pending\","
@@ -231,7 +281,8 @@ enum PlannerJSON {
 
     static func payload(userId: UUID = testUserID, fetchedAt: String = "fetch-1", groceriesDone: Bool = false,
                         timezone: String? = nil, writes: [String]? = PlannerJSON.allWrites,
-                        omitting: Set<UUID> = [], extra: [String] = []) -> String {
+                        itemTypes: [ItemTypeLabel]? = nil, omitting: Set<UUID> = [],
+                        extra: [String] = []) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -259,6 +310,12 @@ enum PlannerJSON {
             let quoted: [String] = writes.map { "\"\($0)\"" }
             json += "\"writes\":[" + quoted.joined(separator: ",") + "],"
         }
+        if let itemTypes {
+            let named: [String] = itemTypes.map {
+                "{\"name\":\"\($0.name)\",\"label\":\"\($0.label)\",\"labelPlural\":\"\($0.labelPlural)\"}"
+            }
+            json += "\"itemTypes\":[" + named.joined(separator: ",") + "],"
+        }
         json += "\"items\":[" + items.joined(separator: ",") + "],"
         json += "\"projects\":[],\"routines\":[],\"seasons\":[]}"
         return json
@@ -274,15 +331,17 @@ func itemRoute(_ id: UUID) -> String {
 
 /// A signed-in planner talking to `server`, its day pinned to 2026-10-01 and
 /// its clock to noon UTC that day (`PlannerJSON.noon`), so a stored zone
-/// arriving with a fetch, or a pause, reads the same day.
+/// arriving with a fetch, or a pause, reads the same day. It asks for no
+/// background time unless a test hands it some.
 @MainActor
 func makeLivePlanner(_ server: FakeServer, tokens: FakeTokens? = nil,
                      isDragging: @escaping @MainActor () -> Bool = { false },
-                     now: @escaping () -> Date = { PlannerJSON.noon }) -> SamplePlanner {
+                     now: @escaping () -> Date = { PlannerJSON.noon },
+                     backgroundTime: BackgroundTime = .foregroundOnly) -> SamplePlanner {
     let source: FakeTokens = tokens ?? FakeTokens()
     let api = APIClient(origin: URL(string: "https://dsul.test")!, tokens: source, transport: server.transport)
     return SamplePlanner(userId: testUserID, api: api, isDragging: isDragging, todayString: PlannerJSON.today,
-                         now: now)
+                         now: now, backgroundTime: backgroundTime)
 }
 
 /// Whether a drag is on, for a planner's `isDragging`.
@@ -434,9 +493,9 @@ final class DragFlag {
         #expect(planner.braindump.map(\.title) == ["Call the bank"])
     }
 
-    /// A revert puts back the failed write's slot alone: the tick that landed
-    /// says nothing about the carry that didn't, and the carry's revert leaves
-    /// the tick alone.
+    /// Worked case 1 (design §3.5): the item goes back to before the carry
+    /// that failed, with the tick that landed after it played again on top,
+    /// so the tick is kept and the carry undone.
     @Test func aFailedCarryIsUndoneThoughATickThatLandedCameAfterIt() async {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
@@ -456,8 +515,8 @@ final class DragFlag {
         #expect(posts == 2)
     }
 
-    /// The same slot: the later tick that landed is played again on the day
-    /// from before the failed one, so the day ends at the server's 3 of 3.
+    /// The later tick that landed is played again on the day from before the
+    /// failed one, so the day ends at the server's 3 of 3.
     @Test func aFailedTickGivesWayToALaterTickOnTheSameDayThatLanded() async {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
@@ -495,9 +554,9 @@ final class DragFlag {
         #expect(posts == 2)
     }
 
-    /// A one-off's tick sets its status, which is the whole item's, so two
-    /// failed ticks sent with different days share one slot: the status goes
-    /// back to before the first, not to before the second.
+    /// A one-off's tick sets its status, which is the whole item's, whatever
+    /// day it was sent with: two failed ticks on different days go back to
+    /// before the first, not to before the second.
     @Test func twoFailedTicksOfAOneOffOnDifferentDaysGoBackToTheFirst() async {
         let server = FakeServer()
         await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
@@ -662,72 +721,442 @@ final class DragFlag {
         #expect(gets == 3)
     }
 
-    @Test func aSlotPutsBackItsOwnFieldsAndNoOthers() {
-        let day = "2026-10-01"
-        let before = SampleItem(id: PlannerJSON.water, type: "habit", title: "Water", status: "pending",
-                                startDate: nil, timeBucket: "anytime", repeatFrequency: "daily", streak: 2,
-                                currentDayCount: 1, dailyCounts: [day: 1])
-        var now = before
-        now.status = "done"
-        now.completedDates = [day]
-        now.streak = 3
-        now.dailyCounts[day] = 3
-        now.currentDayCount = 3
-        now.pausedAt = "2026-10-01T12:00:00.000Z"
+    /// For a failed write of one kind and a landed one after it on the same
+    /// item, the revert is the item from before both with the landed write's
+    /// step alone played on it: whatever fields each sets, nothing the server
+    /// took is undone, and nothing it didn't take is left. A slot, part 1's
+    /// unit, would have put back only the failed write's fields.
+    @Test func aRevertKeepsEveryLandedWrite() async throws {
+        typealias Act = @MainActor (SamplePlanner) -> Void
+        typealias Step = (SampleItem) -> SampleItem
+        let id = PlannerJSON.plants
+        let today = try #require(DayString(PlannerJSON.today))
+        let friday = today.adding(days: 1)
+        // What the person does, through the planner.
+        let tick: Act = { $0.toggle(id, on: today) }
+        let skip: Act = { $0.skip(id, on: friday) }
+        let move: Act = { $0.move(id, to: "2026-10-05") }
+        let drop: Act = { $0.schedule(id, startMin: 9 * 60) }
+        let pause: Act = { $0.pause(id, until: "2026-10-08") }
+        let title: Act = { $0.edit(id, .title("Water the ferns")) }
+        let retitle: Act = { $0.edit(id, .title("Water the ficus")) }
+        let notes: Act = { $0.edit(id, .notes("Twice a week in winter")) }
+        // What the server made of it, as DsulCore's steps play it.
+        let ticked: Step = { applying(TickIntent(done: true), to: $0, on: today) }
+        let unticked: Step = { applying(TickIntent(done: false), to: $0, on: today) }
+        let skipped: Step = { skipping($0, on: friday.description, skipped: true) }
+        let moved: Step = { moving($0, to: "2026-10-05") }
+        let dropped: Step = { placing($0, on: PlannerJSON.today, startMin: 9 * 60) }
+        let paused: Step = { item in
+            var next = item
+            next.pausedAt = "2026-10-01T12:00:00.000Z"
+            next.pausedUntil = "2026-10-08"
+            return next
+        }
+        let titled: Step = { editing($0, .title("Water the ferns")) }
+        let retitled: Step = { editing($0, .title("Water the ficus")) }
+        let noted: Step = { editing($0, .notes("Twice a week in winter")) }
+        // The failed write, the landed one, and the server's end state.
+        let pairs: [(String, Act, Act, Step)] = [
+            ("tick, then title", tick, title, titled),
+            ("title, then tick", title, tick, ticked),
+            ("tick, then untick", tick, tick, unticked),
+            ("skip, then tick", skip, tick, ticked),
+            ("notes, then carry", notes, move, moved),
+            ("carry, then notes", move, notes, noted),
+            ("drop, then skip", drop, skip, skipped),
+            ("skip, then drop", skip, drop, dropped),
+            ("carry, then drop", move, drop, dropped),
+            ("drop, then carry", drop, move, moved),
+            ("pause, then title", pause, title, titled),
+            ("title, then pause", title, pause, paused),
+            ("title, then title", title, retitle, retitled),
+        ]
+        for (name, failed, landedAfter, step) in pairs {
+            let server = FakeServer()
+            await server.on(plannerRoute, .status(200, PlannerJSON.payload(timezone: "America/New_York",
+                                                                           extra: [PlannerJSON.plantsJSON])),
+                            .offline)
+            await server.on(itemRoute(id), .offline, .status(200, ok))
+            let planner = await loaded(server)
+            let before = try #require(planner.item(id))
 
-        let day1 = PlannerSync.WriteSlot.day(day).restoring(now, from: before)
-        #expect(day1.completedDates.isEmpty)
-        #expect(day1.streak == 2)
-        #expect(day1.status == "pending")
-        #expect(day1.dailyCounts[day] == 1)
-        #expect(day1.currentDayCount == 1)
-        #expect(day1.pausedAt == "2026-10-01T12:00:00.000Z")   // another slot's field
+            failed(planner)        // never reaches the server
+            landedAfter(planner)   // lands
+            await drain(planner)
 
-        let otherDay = PlannerSync.WriteSlot.day("2026-09-30").restoring(now, from: before)
-        #expect(otherDay.completedDates == [day])
-        #expect(otherDay.streak == 3)
-
-        let pause = PlannerSync.WriteSlot.pause.restoring(now, from: before)
-        #expect(pause.pausedAt == nil)
-        #expect(pause.completedDates == [day])
-
-        let status = PlannerSync.WriteSlot.status.restoring(now, from: before)
-        #expect(status.status == "pending")
-        #expect(status.completedDates == [day])
-        #expect(status.dailyCounts[day] == 3)
-
-        var moved = before
-        moved.startDate = "2026-10-02"
-        moved.timeBucket = "evening"
-        moved.status = "done"
-        let placement = PlannerSync.WriteSlot.placement.restoring(moved, from: before)
-        #expect(placement.startDate == nil)
-        #expect(placement.timeBucket == "anytime")
-        #expect(placement.status == "done")
-
-        #expect(PlannerSync.WriteSlot.create.restoring(now, from: before) == before)
+            #expect(planner.item(id) == step(before), "\(name)")
+            let posts = await server.count(itemRoute(id))
+            #expect(posts == 2, "\(name)")
+        }
     }
 
-    /// A tick's slot turns on the item it ticks: a one-off's is its status,
-    /// whatever day it was sent with; a habit's or a series' is the day.
-    @Test func eachWriteNamesItsSlot() {
+    /// Every part 1 write and each edit names its own item and nothing else;
+    /// a delete names its item and every subtask it took out with it, a
+    /// habit's only itself. None proves a row yet: from 2b a new subtask
+    /// proves its parent.
+    @Test func eachWriteNamesWhatItTouches() {
         let id = PlannerJSON.groceries
-        let oneOff = SampleItem(id: id, title: "Groceries", status: "pending")
-        let series = SampleItem(id: id, title: "Water the plants", status: "pending", repeatFrequency: "daily")
-        let habit = SampleItem(id: id, type: "habit", title: "Water", repeatFrequency: "daily")
-        let tick = PlannerSync.Write.complete(id: id, date: "2026-10-01", done: true, count: nil)
-        #expect(tick.slot(for: oneOff) == .status)
-        #expect(tick.slot(for: series) == .day("2026-10-01"))
-        #expect(tick.slot(for: habit) == .day("2026-10-01"))
-        let skip = PlannerSync.Write.skip(id: id, date: "2026-10-01", skipped: true)
-        #expect(skip.slot(for: series) == .day("2026-10-01"))
-        let drop = PlannerSync.Write.schedule(id: id, date: "2026-10-01", startTime: "09:00")
-        #expect(drop.slot(for: oneOff) == .placement)
-        #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").slot(for: oneOff) == .placement)
-        let pause = PlannerSync.Write.pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC")
-        #expect(pause.slot(for: oneOff) == .pause)
-        #expect(PlannerSync.Write.capture(id: id, title: "Buy milk").slot(for: nil) == .create)
-        #expect(PlannerSync.Write.move(id: id, date: "2026-10-02").itemId == id)
+        let own: Set<PlannerSync.Subject> = [.item(id)]
+        let writes: [PlannerSync.Write] = [
+            .complete(id: id, date: "2026-10-01", done: true, count: nil),
+            .schedule(id: id, date: "2026-10-01", startTime: "09:00"),
+            .capture(id: id, title: "Buy milk"),
+            .skip(id: id, date: "2026-10-01", skipped: true),
+            .move(id: id, date: "2026-10-02"),
+            .pause(id: id, paused: true, pausedUntil: nil, timeZone: "UTC"),
+            .edit(id: id, .title("Big shop")),
+            .edit(id: id, .notes(nil)),
+        ]
+        for write in writes {
+            #expect(write.itemId == id)
+            #expect(write.subjects == own)
+            #expect(write.proves.isEmpty)
+        }
+
+        let groceries = SampleItem(id: id, title: "Groceries", status: "pending")
+        let bags = SampleItem(id: PlannerJSON.bags, title: "Bring the bags", status: "pending",
+                              parentItemId: lowerID(id))
+        let removed = [PlacedItem(place: Place(index: 0, after: nil), item: groceries),
+                       PlacedItem(place: Place(index: 4, after: PlannerJSON.bank), item: bags)]
+        let delete = PlannerSync.Write.delete(id: id, removed: removed, cascades: true)
+        let both: Set<PlannerSync.Subject> = [.item(id), .item(PlannerJSON.bags)]
+        #expect(delete.itemId == id)
+        #expect(delete.subjects == both)
+        #expect(delete.proves.isEmpty)
+
+        let water = SampleItem(id: PlannerJSON.water, type: "habit", title: "Water")
+        let alone = PlannerSync.Write.delete(id: PlannerJSON.water,
+                                             removed: [PlacedItem(place: Place(index: 1, after: id), item: water)],
+                                             cascades: false)
+        let habit: Set<PlannerSync.Subject> = [.item(PlannerJSON.water)]
+        #expect(alone.subjects == habit)
+    }
+
+    // MARK: The rebase's worked cases (design §3.5)
+
+    // Case 1 is aFailedCarryIsUndoneThoughATickThatLandedCameAfterIt, above.
+    // Cases 2, 3, 4, 7 and 10 need a repeat edit, Reset streak or Add a
+    // subtask, and come with those writes.
+
+    /// Case 5: an edit and then a delete, both failed. The item comes back
+    /// from before the edit, with its old title, where the delete took it
+    /// from, and its subtask comes back after the row it followed.
+    @Test func aFailedEditThenAFailedDeleteBringsTheItemBackWhereItStood() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        let planner = await loaded(server)
+        let order = planner.items.map(\.id)
+        let before = planner.item(PlannerJSON.groceries)
+
+        planner.edit(PlannerJSON.groceries, .title("Big shop"))   // never reaches the server
+        planner.deleteItem(PlannerJSON.groceries)                 // nor does this
+        #expect(planner.item(PlannerJSON.groceries) == nil)
+        #expect(planner.item(PlannerJSON.bags) == nil)
+        await drain(planner)
+
+        #expect(planner.items.map(\.id) == order)
+        #expect(planner.item(PlannerJSON.groceries) == before)
+        #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 2)
+        // The server takes the subtask with its parent; the phone sends one delete.
+        let bagPosts = await server.count(itemRoute(PlannerJSON.bags))
+        #expect(bagPosts == 0)
+    }
+
+    /// Case 6: an edit that failed under a delete that landed stays deleted.
+    @Test func aFailedEditUnderALandedDeleteStaysDeleted() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.edit(PlannerJSON.groceries, .title("Big shop"))   // never reaches the server
+        planner.deleteItem(PlannerJSON.groceries)                 // lands
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.groceries) == nil)
+        // Nothing on screen moved, so nothing says it was undone.
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+    }
+
+    /// Case 8: a capture whose answer was lost, then edits on it that landed.
+    /// They prove the row, so the item is rebuilt from the capture with the
+    /// edits played on it.
+    @Test func aFailedCaptureIsRebuiltWithTheEditsThatLandedOnIt() async throws {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(captureRoute, .offline)
+        await server.setFallback(.status(200, ok))   // the new item's own route
+        let planner = await loaded(server)
+
+        planner.capture("Buy milk")                        // never answered
+        let milk = try #require(planner.items.last)
+        planner.edit(milk.id, .title("Buy oat milk"))      // lands
+        planner.edit(milk.id, .notes("The barista one"))   // lands
+        await drain(planner)
+
+        let kept = planner.item(milk.id)
+        #expect(kept?.title == "Buy oat milk")
+        #expect(kept?.notes == "The barista one")
+        #expect(planner.braindump.last?.id == milk.id)
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+    }
+
+    /// Case 9: a subtask's delete failed, then its parent's landed. The
+    /// parent's delete didn't name the subtask, which the phone had already
+    /// taken out, but the server deleted every live subtask it found, so the
+    /// subtask stays gone.
+    @Test func aSubtaskWhoseDeleteFailedStaysGoneUnderItsParentsDelete() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON])), .offline)
+        await server.on(itemRoute(PlannerJSON.bags), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.deleteItem(PlannerJSON.bags)        // never reaches the server
+        planner.deleteItem(PlannerJSON.groceries)   // lands, and takes the bags with it there
+        await drain(planner)
+
+        #expect(planner.item(PlannerJSON.bags) == nil)
+        #expect(planner.item(PlannerJSON.groceries) == nil)
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+    }
+
+    /// Case 11: a delete answered 404 with the route's own `not_found` landed,
+    /// since the row is gone either way, so the edit that failed before it
+    /// stays deleted. A 404 without that code (an edge's page) failed, and
+    /// the item comes back, title and all, where it stood.
+    @Test func aDeleteAnswered404LandedOnlyWithTheRoutesCode() async {
+        let answers: [(String, Bool)] = [("{\"error\":\"not_found\"}", true), ("<html>Not Found</html>", false)]
+        for (body, gone) in answers {
+            let server = FakeServer()
+            await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+            await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(404, body))
+            let planner = await loaded(server)
+            let before = planner.item(PlannerJSON.groceries)
+
+            planner.edit(PlannerJSON.groceries, .title("Big shop"))   // never reaches the server
+            planner.deleteItem(PlannerJSON.groceries)                 // 404
+            await drain(planner)
+
+            if gone {
+                #expect(planner.item(PlannerJSON.groceries) == nil)
+                #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+            } else {
+                #expect(planner.item(PlannerJSON.groceries) == before)
+                #expect(planner.items.first?.id == PlannerJSON.groceries)
+                #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+            }
+        }
+    }
+
+    /// Case 12: a pause that landed is replayed at its own `sentAt`, the
+    /// instant it went out, which is when the server resolved it. Here the
+    /// refetch fails a day later: on October 2 a pause until the 2nd would be
+    /// refused, but the server took it on the 1st.
+    @Test func aReplayedPauseResolvesAtItsOwnSentAt() async {
+        let clock = TestClock(PlannerJSON.noon)
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(timezone: "America/New_York")), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline, .status(200, ok))
+        let planner = makeLivePlanner(server, now: { clock.now })
+        await planner.refresh()
+        await server.gate(plannerRoute)
+
+        planner.edit(PlannerJSON.groceries, .title("Big shop"))     // never reaches the server
+        planner.pause(PlannerJSON.groceries, until: "2026-10-02")   // lands at 8:00 in New York, Oct 1
+        let refetching = await waitUntil { await server.count(plannerRoute) == 2 }
+        #expect(refetching)
+        // Noon in New York on October 2, before the refetch fails.
+        clock.now = PlannerJSON.noon.addingTimeInterval(28 * 60 * 60)
+        await server.admit(plannerRoute)
+        await drain(planner)
+
+        let groceries = planner.item(PlannerJSON.groceries)
+        #expect(groceries?.title == "Groceries")
+        #expect(groceries?.pausedAt == "2026-10-01T12:00:00.000Z")
+        #expect(groceries?.pausedUntil == "2026-10-02")
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+    }
+
+    /// Case 13: two items fail and the refetch fails with a write still out
+    /// on one of them. The other is reverted at once; the waiting one keeps
+    /// its failure and the write that landed on it since, and is rebased with
+    /// both once the write still out is in.
+    @Test func oneSubjectWaitsWhileAnotherIsReverted() async {
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .offline)
+        await server.on(itemRoute(PlannerJSON.bank), .offline, .status(200, ok))
+        let planner = await loaded(server)
+        await server.gate(itemRoute(PlannerJSON.bank))
+
+        planner.edit(PlannerJSON.groceries, .title("Big shop"))               // never reaches the server
+        planner.schedule(PlannerJSON.bank, startMin: 9 * 60)                  // nor this
+        planner.move(PlannerJSON.bank, to: "2026-10-02")                      // lands
+        planner.edit(PlannerJSON.bank, .title("Call the bank about the card"))  // held, then lands
+        await server.admit(itemRoute(PlannerJSON.bank))
+        await server.admit(itemRoute(PlannerJSON.bank))
+        let titleOut = await waitUntil { await server.count(itemRoute(PlannerJSON.bank)) == 3 }
+        #expect(titleOut)
+
+        await planner.refresh()   // fails with the bank's title still out
+        #expect(planner.item(PlannerJSON.groceries)?.title == "Groceries")
+        #expect(planner.item(PlannerJSON.bank)?.startTime == "09:00")
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+
+        await server.admit(itemRoute(PlannerJSON.bank))
+        await drain(planner)
+
+        let bank = planner.item(PlannerJSON.bank)
+        #expect(bank?.isScheduled == false)
+        #expect(bank?.startTime == nil)
+        #expect(bank?.startDate == "2026-10-02")
+        #expect(bank?.timeBucket == "anytime")
+        #expect(bank?.title == "Call the bank about the card")
+        #expect(planner.item(PlannerJSON.groceries)?.title == "Groceries")
+        let gets = await server.count(plannerRoute)
+        #expect(gets == 3)
+    }
+
+    /// Two rows deleted one after the other, both failed: each delete
+    /// recorded its place against the list the one before it left, so both
+    /// stood after the same row. They come back newest delete first, in their
+    /// own order rather than swapped. So does a subtask deleted before its
+    /// parent, whose delete took the other subtask with it.
+    @Test func failedDeletesComeBackInTheirOwnOrder() async {
+        let list = UUID(uuidString: "0d000000-0000-4000-8000-00000000000a")!
+        let listJSON = "{\"id\":\"\(lowerID(list))\",\"type\":\"task\",\"title\":\"Write the list\","
+            + "\"status\":\"pending\",\"isScheduled\":false,\"order\":6,"
+            + "\"parentItemId\":\"\(lowerID(PlannerJSON.groceries))\","
+            + "\"completedDates\":[],\"skippedDates\":[],\"dailyCounts\":{}}"
+        for second in [list, PlannerJSON.groceries] {
+            let server = FakeServer()
+            await server.on(plannerRoute,
+                            .status(200, PlannerJSON.payload(extra: [PlannerJSON.bagsJSON, listJSON])), .offline)
+            await server.on(itemRoute(PlannerJSON.bags), .offline)
+            await server.on(itemRoute(second), .offline)
+            let planner = await loaded(server)
+            let order = planner.items.map(\.id)
+            #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags, list])
+
+            planner.deleteItem(PlannerJSON.bags)   // never reaches the server
+            planner.deleteItem(second)             // nor does this
+            #expect(planner.item(list) == nil)
+            await drain(planner)
+
+            #expect(planner.items.map(\.id) == order, "after \(second == list ? "the list" : "Groceries")")
+            #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags, list])
+            #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        }
+    }
+
+    // MARK: Background time
+
+    /// iOS is asked for time when the queue goes from empty to busy, once
+    /// however many writes join it, and it is given back when the queue
+    /// drains. A fetch asks for none.
+    @Test func backgroundTimeCoversTheQueueFromItsFirstWriteToItsDrain() async {
+        let background = FakeBackgroundTime()
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = makeLivePlanner(server, backgroundTime: background.time)
+        await planner.refresh()
+        #expect(background.begun.isEmpty)
+
+        planner.toggle(PlannerJSON.groceries)
+        planner.toggle(PlannerJSON.groceries)
+        #expect(background.begun == [PlannerSync.backgroundTaskName])
+        #expect(background.ended.isEmpty)
+        await drain(planner)
+        #expect(background.ended == [1])
+
+        planner.toggle(PlannerJSON.groceries)
+        #expect(background.begun.count == 2)
+        await drain(planner)
+        #expect(background.ended == [1, 2])
+    }
+
+    /// When iOS takes the time back first, it is ended there and then, and
+    /// the write still out goes on: nothing is ended twice.
+    @Test func backgroundTimeEndsWhenIOSTakesItBack() async {
+        let background = FakeBackgroundTime()
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = makeLivePlanner(server, backgroundTime: background.time)
+        await planner.refresh()
+        await server.gate(itemRoute(PlannerJSON.groceries))
+
+        planner.toggle(PlannerJSON.groceries)
+        #expect(background.begun.count == 1)
+        background.expire()
+        #expect(background.ended == [1])
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await drain(planner)
+
+        #expect(background.ended == [1])
+        #expect(isDone(planner, PlannerJSON.groceries))
+        #expect(planner.banner == nil)
+    }
+
+    /// Once iOS has taken the time back with a write still out, the next
+    /// write queued asks again, though the queue never emptied between.
+    @Test func backgroundTimeIsAskedForAgainAfterIOSTakesItBack() async {
+        let background = FakeBackgroundTime()
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = makeLivePlanner(server, backgroundTime: background.time)
+        await planner.refresh()
+        await server.gate(itemRoute(PlannerJSON.groceries))
+
+        planner.toggle(PlannerJSON.groceries)
+        background.expire()
+        #expect(background.ended == [1])
+        planner.toggle(PlannerJSON.groceries)
+        #expect(background.begun.count == 2)
+        #expect(background.ended == [1])
+
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await drain(planner)
+        #expect(background.ended == [1, 2])
+        #expect(!isDone(planner, PlannerJSON.groceries))
+        #expect(planner.banner == nil)
+    }
+
+    /// Sign-out gives the time back at once, with a write still out and one
+    /// queued: the queued one will never be sent, and once AppGate drops the
+    /// planner nothing may be left to run the queue to its drain. The write
+    /// that comes back after ends nothing twice.
+    @Test func backgroundTimeEndsWhenTheSyncStops() async {
+        let background = FakeBackgroundTime()
+        let server = FakeServer()
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload()))
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = makeLivePlanner(server, backgroundTime: background.time)
+        await planner.refresh()
+        await server.gate(itemRoute(PlannerJSON.groceries))
+
+        planner.toggle(PlannerJSON.groceries)
+        planner.toggle(PlannerJSON.groceries)
+        let out = await waitUntil { await server.count(itemRoute(PlannerJSON.groceries)) == 1 }
+        #expect(out)
+        planner.stopSync()
+        #expect(background.ended == [1])
+
+        await server.admit(itemRoute(PlannerJSON.groceries))
+        await drain(planner)
+        #expect(background.begun.count == 1)
+        #expect(background.ended == [1])
+        let posts = await server.count(itemRoute(PlannerJSON.groceries))
+        #expect(posts == 1)
     }
 
     @Test func aCaptureSendsItsOwnIdLowercase() async {

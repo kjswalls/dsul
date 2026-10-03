@@ -224,6 +224,9 @@ describe('every /api/app route is behind it', () => {
     ['POST /api/app/items/:id skip', itemWrite({ action: 'skip', date: '2026-10-02', skipped: true })],
     ['POST /api/app/items/:id move', itemWrite({ action: 'move', date: '2026-10-03' })],
     ['POST /api/app/items/:id pause', itemWrite({ action: 'pause', paused: true, timeZone: 'Europe/Paris' })],
+    ['POST /api/app/items/:id title', itemWrite({ action: 'title', title: 'Buy stamps today' })],
+    ['POST /api/app/items/:id notes', itemWrite({ action: 'notes', notes: null })],
+    ['POST /api/app/items/:id delete', itemWrite({ action: 'delete' })],
   ];
 
   it('lists every intent the item route takes', () => {

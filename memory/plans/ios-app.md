@@ -13,7 +13,9 @@ away. One PR for all three parts, so merging deploys the routes and the app
 together.
 Item detail, part 1 adds the item sheet, opened from every surface: what the
 item is (read-only) and its verbs, with three more writes (skip, move, pause)
-on the same route. Part 2 makes it editable (see Not yet).
+on the same route. Part 2 makes it editable, in six PRs; the first (2a) edits
+the title and the notes and adds Delete, with three more writes (title, notes,
+delete), and replaces PlannerSync's slots with a rebase per subject.
 Designs, the stack comparison and the board images live in the project's
 shared folder (`ios-app/`): `stack.md` has a SwiftUI build note for every
 interaction, and `expo-vs-swiftui.md` ends with the fact-check.
@@ -66,14 +68,25 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `VerbWrites.swift` ← the store's `setItemSkipped`, `moveTaskToDate` and
   `setItemPaused` (through `resolvePauseWrite`, the rule `lib/item-pause.ts`
   applies on the server).
+  Item detail, part 2 adds `ItemEdit.swift` ← `lib/item-edit.ts` (which edits
+  a row takes, the growth caps, the cleaners, `jsTrim` as
+  `String.prototype.trim`, and `editing`, the optimistic step) and the store's
+  `deleteTask` / `deleteHabit` (`deleting`, which records each removed item's
+  `Place`, and `reinserting`, which puts a failed delete back); and
+  `ItemWriteBody.swift`, the wire body of each edit and of Delete (with the
+  `null` a cleared field sends, which a missing key is not), checked on Linux
+  against the fixture. `Registry.swift` gains the notes gate, the title
+  placeholder, Delete's words and a custom type's own label (`ItemTypeLabel`,
+  `caps(_:labels:)`).
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
   `ios/Dsul/Auth`: `AuthStore`, `TokenStore` (Keychain, or memory in tests),
   `SignInView`. `ios/Dsul/Data`: `APIClient`, `PlannerSync`.
   `ios/Dsul/Item`: the item sheet (`ItemSheet`, `ItemDetail`, `VerbBar`,
-  `ChipFlow`, `StreakChip`, `DayPickSheet`) and `ItemSheetModel`, which
-  decides what it says and offers apart from the views.
+  `ChipFlow`, `StreakChip`, `DayPickSheet`, and from part 2 `TitleField` and
+  `NotesEditor`) and `ItemSheetModel`, which decides what it says and offers
+  apart from the views.
   `SamplePlanner` keeps its name for the views, but holds `[Item]` and asks
   DsulCore what shows; `SampleData` builds the sample.
 
@@ -139,19 +152,22 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
 
   | Item | Bar | ⋯ |
   |---|---|---|
-  | Paused today | Resume | – |
-  | Recurring item on a day it doesn't fall on | – ("Not due today" in its place) | Pause, Pause until…, and for a series, Reschedule |
-  | Habit | Skip / Unskip today, Pause, Pause until (its tick is the title's circle) | – |
-  | One-off task-like | Done, Tomorrow (Next day when it lands later), Reschedule (undated: Schedule, and no Tomorrow) | Pause, Pause until… |
-  | Recurring task-like | Done today, Skip / Unskip today, Pause | Pause until…, Reschedule |
-  | Subtask | Done | – |
+  | Paused today | Resume | Delete |
+  | Recurring item on a day it doesn't fall on | – ("Not due today" in its place) | Pause, Pause until…, and for a series, Reschedule; Delete |
+  | Habit | Skip / Unskip today, Pause, Pause until (its tick is the title's circle) | Delete |
+  | One-off task-like | Done, Tomorrow (Next day when it lands later), Reschedule (undated: Schedule, and no Tomorrow) | Pause, Pause until…; Delete |
+  | Recurring task-like | Done today, Skip / Unskip today, Pause | Pause until…, Reschedule; Delete |
+  | Subtask | Done | Delete |
 
   The first two rows come first, whatever the item. ⋯ holds whatever of
-  Pause, Pause until and a series' Reschedule the bar doesn't, so a habit's ⋯
-  is empty, and hidden, except on a day it doesn't fall on. That is the one
-  exception to the design's empty habit ⋯, kept on purpose: with no bar
-  there, ⋯ is the only way to pause it, and the web's `pause` is dateless,
-  never asking whether the day is absent.
+  Pause, Pause until and a series' Reschedule the bar doesn't, then, after a
+  divider, Delete (part 2), last, as the web's verbs declare it. Delete is
+  offered on every item, so ⋯ always shows: a habit's is [Delete], a paused
+  item's is [Delete] (Kirby, 2026-10-03), and on a day an item doesn't fall
+  on it is Pause, Pause until…, divider, Delete. That last row is still the
+  only way to pause a habit there, since the web's `pause` is dateless, never
+  asking whether the day is absent. Against a server whose `writes` lacks
+  `delete`, ⋯ is part 1's, empty and hidden for a habit.
 
   Only what `SamplePlanner.offers` allows shows: the web's gate
   (`verbEligible`), the server's own where it asks more (no skip or carry for
@@ -207,16 +223,143 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   gate. The payload's `writes` lists the intents the server takes; absent (an
   older server) means `complete` and `schedule`, and the phone hides any verb
   whose write isn't listed, so an app that ships before the deploy never
-  offers a write it would be refused. In PlannerSync each write has a slot (a
-  day for a habit's or a recurring item's `complete` and for `skip`, the
-  status for a one-off's `complete`, placement for `schedule` and `move`, the
-  pause, a capture), and a revert rebases only the failed write's slot (Data,
-  below).
+  offers a write it would be refused. Part 1 shipped PlannerSync's revert as
+  one slot per write (a day, the status, placement, the pause, a capture);
+  part 2 replaced it with a rebase per subject (Data, below).
 - **Unproven on a device:** the checks in ios/README.md, "Checking the item
   sheet" (a near miss still ticks, a block doesn't swallow a drop, a
   braindump tap versus long press, each verb, another day and "Not due", a
   refused write and VoiceOver hearing its banner, a counted habit's tally,
   VoiceOver, the largest text size, the lime).
+
+## Item detail, part 2
+Six PRs, each shipping its routes with the app: 2a the title, the notes and
+Delete (below); 2b Add a subtask and Reset streak (in the streak chip's
+popover); 2c the chips as controls and "+ Add property" (priority, times a
+day, the reminder); 2d date and time; 2e repeat; 2f project, routines and
+seasons. An older server's `writes` hides any editor it doesn't take, so the
+deploy order doesn't matter.
+
+Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
+own flavour (square swatches, priority dots, a serif title) comes later as a
+view-only pass, since what the sheet says lives in `ItemSheetModel` and
+DsulCore and how it looks in small views. A subtask's page edits its title
+and notes and has Delete (priority waits for 2c). A paused item's ⋯ holds
+Delete. Delete's words are fixed on every surface, below.
+
+- **Title.** `TitleField` takes the title's place when `canWrite("title")`,
+  on every type and on a subtask's page: a vertical `TextField` with the
+  type's placeholder, `.submitLabel(.done)`, labelled "Title" and still a
+  heading. `ItemSheetModel.titleEntry` reads only the inserted text: an
+  insertion whose only line break is its last character is a typed Return
+  (an autocorrection may come with it), so the break is dropped and the
+  title commits and ends the edit; any other inserted line break (such as
+  the one in a two-line paste) becomes a space; and growth past the limit
+  is cut. A blank or unchanged title sends nothing, and the field shows
+  the stored title again. The counted habit's tally moves to the line under
+  the title, before the day note ("1/3 · For Wed, Sep 30").
+- **Notes.** `NotesEditor`: part 1's notes text (four lines and Show all),
+  or "Notes" in `.secondary` when there are none, both a button to VoiceOver
+  with the hint "Edits the notes". A tap swaps in a vertical `TextField`,
+  focused from its own `.onAppear` with the caret at the end (SwiftUI can't
+  map a tap on a `Text` to an offset). Return is a newline; the nav bar's
+  Done commits. Gated on `caps.hasNotes` (the type's schema has notes) and
+  `canWrite("notes")`.
+- **Seed, draft, commit.** A typed field holds the stored value (read from
+  the planner when needed), the seed (what it showed when editing began,
+  never cut) and the draft (what it shows now, in the page's `@State`, never
+  bound to `planner.items`, which a fetch replaces wholesale). A commit sends
+  nothing when the draft is the seed, so focusing a title the web stored
+  with a newline or over 500 characters and leaving it never writes;
+  otherwise it cleans the draft (`cleanTitle`: newlines to spaces, then trim,
+  clamp and trim again; `cleanNotes`: the same without the newlines, and
+  empty is none) and sends it only if that differs from what is stored.
+  Trimming first keeps leading whitespace from using up the limit, and
+  trimming again keeps a cut from leaving a space the server would strip. It commits on Return, the nav bar's Done,
+  focus leaving the field, `.onDisappear` (a swipe down, Close, a pushed
+  page popping) and the scene going `.inactive` or `.background`. There is
+  no idle timer. While a field has focus the sheet goes to `.large`, the
+  verb bar hides, Done takes ⋯'s place, and the scroll dismisses the
+  keyboard interactively.
+- **Caps limit growth only.** A title may grow to 500 UTF-16 units and notes
+  to 50,000, and text already longer may stay as long but never grow:
+  nothing else in dsul caps these fields, so stored text can be any length,
+  and a cap that refused it would make it uneditable or cut it on a save
+  that never touched it. The phone clamps typing, and what it sends, at
+  `growthLimit` of the stored text (the cap, or the stored length if
+  longer), never of the seed, because the server measures the same rule
+  against what is stored (`withinGrowthLimit`, 400 `invalid`). A request may
+  carry at most 10,000 / 200,000 (the schema); stored text over that makes
+  the field read-only, with "Too long to edit on the phone." under it.
+  Trimming is JavaScript's (`jsTrim`), not Foundation's, which keeps U+FEFF
+  and strips U+0085.
+- **Delete.** ⋯ ends with "Delete task" (the type's label, lowercased; a
+  custom type's own), destructive, after a divider; a subtask row has it in a
+  context menu and as a VoiceOver action (no swipe actions in a
+  `ScrollView`); a subtask's page has it in its own ⋯. It always confirms
+  (`confirmationDialog`, the phone having no undo): the title is
+  `deleteConfirmTitle` ("Delete task?", lib/item-verbs.ts), the message the
+  registry's `deleteDescription`, followed by "Its subtask goes with it." or
+  "Its N subtasks go with it." when it has live ones, and the buttons Delete
+  and Cancel. The step (`deleting`) takes the item and, unless it is a
+  habit, its subtasks, as deleteTask does. The sheet keeps drawing its last
+  content while it slides away (`lastShown`), a pushed subtask page pops
+  itself back to its parent, and VoiceOver hears "Task deleted" (the type's
+  label), a beat late so the sheet closing doesn't cut it off. The confirm's
+  words are fixed when Delete is asked, since by the time it is answered the
+  item may be gone.
+- **Delete's words** (Kirby, 2026-10-03). A deleted item goes to the Trash
+  for 30 days, restorable on the web, so the registry's
+  `form.deleteDescription` says so, on every surface and in a way that still
+  holds on a phone, which has no Trash: tasks and custom types `Moves
+  "{title}" to Trash for 30 days, then deletes it for good.`, habits `Moves
+  "{title}" and its history to Trash for 30 days, then deletes them for
+  good.` The web's bulk prompts (the bulk bar, Backspace on a selection) say
+  `Moves the selected items (and any subtasks) to Trash for 30 days, then
+  deletes them for good.`, and the mobile web's sheet uses the type's own
+  words: every one of them soft-deletes through `deleteItem`. caps.json
+  carries the words to DsulCore.
+- **The server** (lib/app-api.ts, lib/item-edit.ts). `title` (trimmed,
+  1-10,000), `notes` (up to 200,000, or null to clear) and `delete` (no
+  fields), each `.strict()`. The row read adds only the column the edit
+  decides on (`EDIT_COLUMNS`); `editRefusal` answers a type without notes
+  (`no_notes`) and growth past a cap (`invalid`), and `editPatch` is the
+  dialog's mapper for the one key, `{}` (200, no write, no event) when the row
+  already says it. Delete reads the live, task-like subtasks first, then
+  calls `deleteItem` on the parent and on each subtask in load order, one
+  'delete' event each, as deleteTask does. With no live row it reads again
+  without the `deleted_at` filter: an item already in the Trash is 200, and
+  its subtasks still live are deleted on the way (`deleteItem`'s own cascade
+  only logs a failure, so a retry is what repairs it); no row at all is 404
+  `not_found`.
+- **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
+  from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
+  when the table is unreachable. The planner keeps them as `typeLabels` and
+  hands them to `caps(_:labels:)`: a custom item's eyebrow, its title
+  placeholder ("Add a side quest…") and its delete words use the user's
+  label, while its capabilities stay the template's. With none (the sample,
+  an older server) the label is the slug, capitalised.
+- **Lime.** Text fields and the nav-bar Done tint in `Color.primary`, so the
+  caret and the selection are never a 1.5:1 lime. `DayPickSheet`'s calendar
+  tints the system blue instead: it draws the picked day as a white number on
+  a disc of the tint and today's number in it, so the label colour hid today
+  and, in dark mode, put a picked today white on white (README device check
+  12 confirms the blue in both modes). The confirm dialog's Cancel follows
+  the window tint, which DsulApp sets to `.label` inside `UIAlertController`
+  at launch. Delete is the system red.
+- **The fixture.** tests/fixtures/day/edit-writes.json, written by
+  tests/unit/edit-writes-fixtures.test.ts from the web's own gesture over the
+  real store (the panel's mapper for the one key, then `updateTask` /
+  `updateHabit`; `deleteTask` / `deleteHabit`): each case's exact wire body,
+  the refusal, the `updateItem` payload, the store's end item and the ids it
+  deleted, in order, plus `String.prototype.trim` cases and the caps
+  themselves (`limits`: `EDIT_LIMITS` and `OUTER_LIMITS`). Vitest checks
+  lib/item-edit.ts and replays every case through the route; DsulCore checks
+  `editAllowed`, `editing`, `deleting`, `reinserting`, `ItemWriteBody`,
+  `jsTrim` and `EditLimits` against the same file.
+- **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-4 and
+  9-13: the title, the notes, the keyboard, Delete, offline, VoiceOver, the
+  largest text size, the lime, and the platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -315,12 +458,13 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
 
 ## Data (PR 3)
 - **Routes, not tables.** `GET /api/app/planner` (items, projects,
-  routines, seasons, five settings and the `writes` it takes,
-  `completedDates` windowed to 400 days), `POST /api/app/items` (capture,
-  under the phone's own lowercase id, so a retry is answered 200 for the same
-  row) and `POST /api/app/items/:id` (`complete` with a date, an end state and
-  a counted habit's tally, `schedule` with a date and `HH:mm`, or the item
-  sheet's `skip`, `move` and `pause`, above). Bearer Supabase access token only;
+  routines, seasons, the user's item types, five settings and the `writes` it
+  takes, `completedDates` windowed to 400 days), `POST /api/app/items`
+  (capture, under the phone's own lowercase id, so a retry is answered 200
+  for the same row) and `POST /api/app/items/:id` (`complete` with a date, an
+  end state and a counted habit's tally, `schedule` with a date and `HH:mm`,
+  or the item sheet's `skip`, `move`, `pause`, `title`, `notes` and `delete`,
+  above). Bearer Supabase access token only;
   RLS on a user-scoped client is the tenant guard; an Auth outage is 503,
   never 401, and the phone never signs out on a 503.
 - **The day** is the stored timezone, trimmed, else the device's
@@ -340,28 +484,66 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   dropped: after the drain, or after a pause that doubles (0.5s up to 4s)
   while ticks keep landing under it. A failed write shows a banner and
   refetches once the queue drains, and the server's answer replaces every
-  guess. If that refetch fails too, each failed write's slot (`WriteSlot`) is
-  rebased: the slot goes back to the item before the earliest failed write in
-  it, with every write in it that landed after that one played again on top,
-  in order, through the planner's own steps (`replaying`; a pause is resolved
-  again against the rebased item, at the planner's clock, as the server
-  resolved it against its row). So the slot ends where the server holds it,
-  and every other slot is left as it is: a tick that landed is never undone by
-  a carry that failed. A habit's status and day count are the one overlap,
-  since every day's tick and skip writes them, so a day's rebase takes them
-  from before the item's earliest failed day with every landed day replayed
-  (`dayWideFields`). A fetch that fails while a write on the failed item is
-  still out (a pull to refresh) keeps that item's failures, records what
-  lands, and the drain refetches; they are rebased only if that fails too.
-  The "so that change was undone" banner shows only when a revert moved
-  something; otherwise it is the plain "Couldn't reach dsul". A landed write doesn't
-  moot a failed one in its slot, because two writes there need not set the
-  same fields (a carry keeps the time a failed drop set, a skip leaves the
-  tally a failed tick set, a resume of an item the server never paused writes
-  nothing), so it is replayed, never trusted. A failed capture takes its item
-  with it, unless a later write on the item landed: the route answers 404 for
-  a missing row, so any write it took proves the row is there. A payload for
-  another user is never shown.
+  guess. A payload for another user is never shown.
+- **A revert, if that refetch fails too, is per subject** (an item; from 2f
+  also a routine's or a season's membership). Part 1 rebased the failed
+  write's slot, which part 2's writes cross: a repeat edit changes how later
+  ticks read, a reset and a tick both move the streak, and a delete or a new
+  subtask changes whether an item exists at all. So each subject with a
+  failure goes back to what it was before its earliest failed write (the item
+  and its `Place` in the list, or absent for a capture), every write that
+  landed after that one and names it is played again on top, in order,
+  through the planner's own steps (`replaying`: an edit through `editing`, a
+  delete to nothing, a pause resolved again at its own `sentAt`, the instant
+  its `perform` started, on the day that instant falls on in the zone the
+  pause was sent with, as the server resolved it then), and the result is
+  put back: replaced, removed, or reinserted after the item it followed
+  (`Place.after`), else at its index, clamped. Each delete recorded its places
+  against the list the deletes before it had left, so returning items go back
+  newest failed delete first, and in ascending `Place.index` only within one
+  delete. A landed delete that cascades
+  (anything but a habit's) also removes any subject whose replayed state
+  names it as parent, matched as it replays rather than from the list
+  recorded at enqueue, so a failed subtask edit can't bring back a child the
+  server's cascade took. A subject ends where the server holds it, and
+  nothing else moves: a tick that landed is never undone by a carry that
+  failed. It is exact because a fetch is applied only with no write pending
+  or queued, so between a write's snapshot and its revert only the phone's
+  own writes changed the subject, and each phone step matches the server's
+  write (the fixtures check it).
+  A landed write doesn't moot a failed one: two writes need not set the same
+  fields (a carry keeps the time a failed drop set, a skip leaves the tally a
+  failed tick set, a resume of an item the server never paused writes
+  nothing), so it is replayed, never trusted. A write's 200 can also prove a
+  row it hangs on without changing it (`proves`: from 2b, a new subtask
+  proves its parent), so a failed capture takes its item with it unless a
+  later write that names or proves it landed: the route answers 404 for a
+  missing row. A delete answered 404 counts as landed only with the code
+  `not_found` (the row is gone either way); a 404 without it (an edge's, an
+  HTML page) is a failure. A subject with a write still queued
+  (`queuedBySubject` counts subjects and proves), or under a queued delete
+  whose cascade would take it (`queuedCascades`: that delete need not name a
+  subtask the phone had already taken out on its own), keeps its failures and
+  the landed writes that name it until that write is in, and the drain
+  refetches; so does one whose write is still out when a fetch fails (a pull
+  to refresh). Reverted subjects are dropped from each failure, a failure
+  once it is empty, and a landed write once nothing it names or proves is
+  waiting and it is not a cascading delete that would take a waiting
+  subject's item. The "so that change was undone" banner shows only when a revert
+  moved something; otherwise it is the plain "Couldn't reach dsul".
+- **Background time.** PlannerSync takes a `BackgroundTime` (two main-actor
+  closures; `.foregroundOnly`, which asks for nothing, unless one is passed,
+  and a recording fake in the tests) and begins it whenever a write is queued
+  and none is held (so a write queued after iOS took the time back asks
+  again), and ends it at the drain, on `stop()` or on expiry; AppGate passes
+  `UIApplication`'s `beginBackgroundTask` / `endBackgroundTask`, through an
+  adapter that ends each task exactly once and ends it itself on expiry if
+  its owner didn't (a sync dropped with writes queued). So a tick, a
+  title saved on `.background` or a delete just before a swipe home gets the
+  half minute or so iOS allows. A write still out at expiry fails on resume
+  and is handled as above. The queue lives in memory: an app killed while
+  suspended loses whatever was still queued, and the next fetch shows the
+  server's state.
 - **The first load shows itself on every layout**: List and Buckets put the
   spinner (or the error and Try again) in the list, and Schedule floats it
   over the grid, since an empty grid alone looks like a free day.
@@ -398,12 +580,22 @@ functions:
 - **Webhooks: none, as in the browser.** The browser has no service key, so
   `notifyPlugins` finds no registrations there and the web UI fires no
   `tasks.updated`/`habits.updated`. The phone matches it: `createItem` with
-  `{notify:false}`, and `updateItem` without a `userId`. (Not every server
-  write is silent: `/api/reminders/act`'s one-off Done passes the user and
-  does fire one.)
-- **`item_events`** are written by `createItem`/`updateItem` exactly as the
-  web writes them; a recurring tick goes through `set_item_completion` only,
-  with no status write and no event, as on the web.
+  `{notify:false}`, and `updateItem` and `deleteItem` without a `userId`.
+  (Not every server write is silent: `/api/reminders/act`'s one-off Done
+  passes the user and does fire one.)
+- **`item_events`** are written by `createItem`/`updateItem`/`deleteItem`
+  exactly as the web writes them, a delete's one per item it deletes (the
+  parent's, then each subtask's, as deleteTask writes them); a recurring tick
+  goes through `set_item_completion` only, with no status write and no event,
+  as on the web, and an edit the row already says writes neither.
+- **One action per field, never a generic edit.** Each is `.strict()`, so a
+  server that doesn't take a field, or a key a newer phone adds, answers 400
+  rather than dropping it and answering 200; and the phone hides any editor
+  whose action `writes` doesn't list. Caps are on growth only
+  (lib/item-edit.ts), so an edit never cuts what is stored.
+- **Delete is to the Trash**, as on the web: `deleteItem` stamps
+  `deleted_at`, the web's Trash restores for 30 days, and a delete of an item
+  already there answers 200.
 - **The live Beeminder post** (`reportLiveCompletion`) runs after every
   `set_item_completion`, as the browser's `reportCompletion` does after a
   tick and `/api/reminders/act` after its own: through `after()` once the
@@ -416,8 +608,9 @@ recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
 `deriveTimedEntries`, braindump membership and routine grouping. The habit
 streak stays an opaque stored counter. Item detail ports `lib/item-verbs.ts`'s
 gates, labels and details (its `run`s stay the web's; the phone's optimistic
-steps are `VerbWrites.swift`, checked against the real store). Shared JSON
-fixtures:
+steps are `VerbWrites.swift`, checked against the real store), and part 2
+`lib/item-edit.ts` with the store's delete (`ItemEdit.swift`, checked against
+`edit-writes.json`). Shared JSON fixtures:
 Vitest runs the real TS and writes cases and expected results
 (`tests/fixtures/recurrence/`, `tests/fixtures/day/`, and
 `tests/fixtures/app/planner-response.json` for the payload), DsulCore's tests
@@ -449,11 +642,13 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, item detail part 2 (editing the chips,
-title and notes; Add a subtask; Reset streak, which Round 5 moves into the
-streak chip's popover; Delete), the rest of the sheet (a routine's or a
-season's hold, the goal chip once goals are in the payload, the Beeminder
-row, the Streaks switch, the thread and Ask, Focus), sign-in with Apple,
+from the bar to the braindump sheet, the rest of item detail part 2 (Add a
+subtask and Reset streak, which Round 5 moves into the streak chip's popover,
+in 2b; the chips as controls and "+ Add property", 2c-2f), undo or restore
+after a delete (the web's Trash restores it), Change type, Duplicate and Copy
+link, the rest of the sheet (a routine's or a season's hold, the goal chip
+once goals are in the payload, the Beeminder row, the Streaks switch, the
+thread and Ask, Focus), sign-in with Apple,
 universal links (the email link uses the custom scheme), unschedule, resize
 and moving existing blocks from the phone, the overdue tray, sinking completed rows,
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the

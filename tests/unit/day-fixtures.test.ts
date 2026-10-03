@@ -16,13 +16,22 @@ import { deriveTimedEntries } from '@/components/views/day-schedule';
 import { braindumpMembers } from '@/lib/braindump-members';
 import { groupRows } from '@/lib/grouping';
 import { isRowDone, isRowSkipped, toggleRowDone, type ItemToggleActions } from '@/lib/item-toggle';
-import { ITEM_VERBS, eligibleVerbs, nextDayOf, occurrenceOn, type VerbContext } from '@/lib/item-verbs';
 import {
+  ITEM_VERBS,
+  deleteConfirmTitle,
+  eligibleVerbs,
+  nextDayOf,
+  occurrenceOn,
+  type VerbContext,
+} from '@/lib/item-verbs';
+import {
+  buildCustomTypeConfig,
   getItemTypeConfig,
   isCollectible,
   isPausable,
   isRemindable,
   isSkippable,
+  type ItemTypeConfig,
 } from '@/lib/item-registry';
 import { canMoveToNextDay, canReschedule, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { cadenceLabel } from '@/lib/cadence';
@@ -786,8 +795,13 @@ function buildToggle(): { cases: ToggleCase[] } {
 
 // ── verbs.json ───────────────────────────────────────────────────────────────
 
-/** The verbs the phone's item sheet offers, in ITEM_VERBS (declaration) order. */
-const SHEET_VERBS = ['tick', 'skip', 'unskip', 'pause', 'resume', 'nextDay', 'reschedule'] as const;
+/**
+ * The verbs the phone's item sheet offers, in ITEM_VERBS (declaration) order.
+ * `delete` is always eligible, so it alone is exempt from the both-answers
+ * check below.
+ */
+const SHEET_VERBS = ['tick', 'skip', 'unskip', 'pause', 'resume', 'nextDay', 'reschedule', 'delete'] as const;
+const ALWAYS_ELIGIBLE: ReadonlySet<SheetVerb> = new Set(['delete']);
 type SheetVerb = (typeof SHEET_VERBS)[number];
 
 type VerbAnswer = { eligible: boolean; label: string };
@@ -860,6 +874,7 @@ function buildVerbs(): { cases: VerbsCase[] } {
         resume: answer('resume'),
         nextDay: { ...answer('nextDay'), detail: ITEM_VERBS.nextDay.detail!(item, ctx)!, target: nextDayOf(item, ctx) },
         reschedule: answer('reschedule'),
+        delete: answer('delete'),
       },
       eligible: eligibleVerbs(item, ctx)
         .map((v) => v.id)
@@ -1213,6 +1228,30 @@ type TypeCaps = {
   dailyCounts: boolean;
   /** `fields.includes('priority')`, the item panel's gate on the Priority chip. */
   hasPriority: boolean;
+  /** `fields.includes('notes')`, the sheet's gate on editing the notes. */
+  hasNotes: boolean;
+  /** `form.titlePlaceholder`, the title field's empty prompt. */
+  titlePlaceholder: string;
+  /** The delete confirm's title (lib/item-verbs.ts deleteConfirmTitle). */
+  deleteTitle: string;
+  /** `form.deleteDescription` for each of DELETE_TITLES: the delete confirm's message. */
+  deleteDescriptions: DeleteDescription[];
+};
+type DeleteDescription = { title: string; text: string };
+/**
+ * A custom type as the payload's `itemTypes` names it, hydrated through
+ * buildCustomTypeConfig, the way the web's store hydrates the user's types.
+ * `typeLabel` is the label the registry answers with, and `deleteTitle` the
+ * confirm's title (lib/item-verbs.ts deleteConfirmTitle).
+ */
+type HydratedCaps = {
+  name: string;
+  label: string;
+  labelPlural: string;
+  typeLabel: string;
+  titlePlaceholder: string;
+  deleteTitle: string;
+  deleteDescriptions: DeleteDescription[];
 };
 type ItemCapsCase = {
   name: string;
@@ -1222,13 +1261,22 @@ type ItemCapsCase = {
   isRemindable: boolean;
   isCollectible: boolean;
 };
-type CapsFixture = { types: TypeCaps[]; items: ItemCapsCase[] };
+type CapsFixture = { types: TypeCaps[]; items: ItemCapsCase[]; hydrated: HydratedCaps[] };
+
+/** A plain title, and one with the quotes the message wraps it in. */
+const DELETE_TITLES = ['Buy milk', 'Say "hi"'];
+
+const deleteDescriptions = (c: ItemTypeConfig): DeleteDescription[] =>
+  DELETE_TITLES.map((title) => ({ title, text: c.form.deleteDescription(title) }));
 
 /**
- * The registry slice the phone ports. Custom slugs are not hydrated here, so
- * they answer with the on-the-fly template `getItemTypeConfig` falls back to —
- * the label is the slug with its first letter capitalised, nothing else
- * touched ('side-quest' → 'Side-quest').
+ * The registry slice the phone ports. Custom slugs are not hydrated in
+ * `types`, so they answer with the on-the-fly template `getItemTypeConfig`
+ * falls back to — the label is the slug with its first letter capitalised,
+ * nothing else touched ('side-quest' → 'Side-quest'). `hydrated` is the other
+ * case: a type the payload's `itemTypes` names, whose own label the words use
+ * (a placeholder, a delete title and message) while every capability stays
+ * the template's.
  */
 function buildCaps(): CapsFixture {
   const types = ['task', 'habit', 'errand', 'side-quest', 'book_club', 'x'].map((name): TypeCaps => {
@@ -1251,6 +1299,26 @@ function buildCaps(): CapsFixture {
       streakCounter: c.counters.streak,
       dailyCounts: c.counters.dailyCounts,
       hasPriority: c.fields.includes('priority'),
+      hasNotes: c.fields.includes('notes'),
+      titlePlaceholder: c.form.titlePlaceholder,
+      deleteTitle: deleteConfirmTitle(c.label),
+      deleteDescriptions: deleteDescriptions(c),
+    };
+  });
+  const hydrated = [
+    { name: 'side_quest', label: 'Side quest', labelPlural: 'Side quests' },
+    { name: 'book-club', label: 'Book Club', labelPlural: 'Book Clubs' },
+    // A word-final capital sigma lower-cases to the final form (Final_Sigma),
+    // which JavaScript's toLowerCase applies and Swift's lowercased() doesn't.
+    { name: 'stochos', label: 'ΣΤΟΧΟΣ', labelPlural: 'ΣΤΟΧΟΙ' },
+  ].map((def): HydratedCaps => {
+    const c = buildCustomTypeConfig(def);
+    return {
+      ...def,
+      typeLabel: c.label,
+      titlePlaceholder: c.form.titlePlaceholder,
+      deleteTitle: deleteConfirmTitle(c.label),
+      deleteDescriptions: deleteDescriptions(c),
     };
   });
   const items = (
@@ -1275,7 +1343,7 @@ function buildCaps(): CapsFixture {
     isRemindable: isRemindable(item),
     isCollectible: isCollectible(item),
   }));
-  return { types, items };
+  return { types, items, hydrated };
 }
 
 // ── chips.json ───────────────────────────────────────────────────────────────
@@ -1403,7 +1471,12 @@ describe('day fixtures shared with DsulCore', () => {
   it('the item sheet cases exercise both answers of every gate', () => {
     const both = new Set([true, false]);
     const verbs = (generated.verbs as { cases: VerbsCase[] }).cases;
-    for (const id of SHEET_VERBS) expect(new Set(verbs.map((c) => c.verbs[id].eligible)), id).toEqual(both);
+    for (const id of SHEET_VERBS) {
+      const answers = new Set(verbs.map((c) => c.verbs[id].eligible));
+      expect(answers, id).toEqual(ALWAYS_ELIGIBLE.has(id) ? new Set([true]) : both);
+    }
+    // Delete is offered on every item, and last, after every verb in the bar.
+    for (const c of verbs) expect(c.eligible.at(-1), c.name).toBe('delete');
     expect(new Set(verbs.map((c) => c.occurrence))).toEqual(new Set(['done', 'skipped', 'due', 'open', 'absent', null]));
     const tickLabels = new Set(verbs.map((c) => c.verbs.tick.label));
     for (const label of ['Mark done', 'Mark not done', 'Done today', 'Undo today', 'Count one (1/3)']) {
@@ -1426,6 +1499,18 @@ describe('day fixtures shared with DsulCore', () => {
     const caps = generated.caps as CapsFixture;
     for (const key of ['isSkippable', 'isPausable', 'isRemindable', 'isCollectible'] as const) {
       expect(new Set(caps.items.map((c) => c[key])), key).toEqual(both);
+    }
+    // The task and habit messages differ, and a hydrated label reaches every
+    // word the phone shows, so the fixture can tell a port that ignores it.
+    const words = (name: string) => caps.types.find((t) => t.name === name)!.deleteDescriptions[0].text;
+    expect(words('task')).not.toBe(words('habit'));
+    const deleteTitle = (name: string) => caps.types.find((t) => t.name === name)!.deleteTitle;
+    expect(deleteTitle('task')).not.toBe(deleteTitle('habit'));
+    for (const t of caps.types) expect(t.deleteTitle, t.name).toContain(t.label.toLowerCase());
+    for (const h of caps.hydrated) {
+      expect(h.titlePlaceholder, h.name).toContain(h.label.toLowerCase());
+      expect(h.deleteTitle, h.name).toContain(h.label.toLowerCase());
+      expect(h.typeLabel, h.name).not.toBe(getItemTypeConfig(h.name).label);
     }
 
     const pauses = (generated['pause-write'] as { cases: PauseWriteCase[] }).cases;
