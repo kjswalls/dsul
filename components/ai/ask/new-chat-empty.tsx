@@ -11,7 +11,7 @@ import { useOpenerContext } from '@/hooks/use-opener-context';
 
 /**
  * A new chat with nothing said yet: Claude's empty state (the Full Chat
- * page). Centred in the column, top to bottom: the spark and the greeting in
+ * page). Centred in the column, top to bottom: the AI's mark and the greeting in
  * serif (AskGreeting, Ask home's own, at its new-chat size), "How can I
  * help?", then the box (ConversationView's own, kept mounted in place so the
  * caret survives the first send), the model label, and four chips. The first
@@ -21,7 +21,7 @@ import { useOpenerContext } from '@/hooks/use-opener-context';
  * leaves nothing behind.
  */
 
-/** The spark, the greeting and the question, above the box. */
+/** The mark, the greeting and the question, above the box. */
 export function NewChatEmpty() {
   return (
     <div

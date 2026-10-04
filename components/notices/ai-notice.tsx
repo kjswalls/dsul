@@ -2,8 +2,8 @@
 
 import { useSyncExternalStore } from 'react';
 import { useRouter } from 'next/navigation';
-import { Sparkles } from 'lucide-react';
 
+import { AskMarkIcon } from '@/components/ai/ask-mark';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
@@ -102,7 +102,7 @@ export function useAINotice(): DockNotice | null {
       // is hidden; with OpenClaw answering, those surfaces name OpenClaw and
       // never mention the model.
       rank: NOTICE_RANK.decision,
-      icon: Sparkles,
+      icon: AskMarkIcon,
       iconClassName: 'text-destructive',
       label: <span className="font-semibold">{failingKeyLabel(canChat, provider)}</span>,
       actionLabel: 'Fix',
@@ -123,7 +123,7 @@ export function useAINotice(): DockNotice | null {
     return {
       id: 'ai-moved',
       rank: NOTICE_RANK.statement,
-      icon: Sparkles,
+      icon: AskMarkIcon,
       label: <span className="font-semibold">AI now uses your own model</span>,
       actionLabel: 'Connect',
       onSelect: openSettings,

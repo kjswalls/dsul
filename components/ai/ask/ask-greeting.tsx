@@ -1,6 +1,6 @@
 'use client';
 
-import { Sparkles } from 'lucide-react';
+import { AskMark } from '@/components/ai/ask-mark';
 import { greeting } from '@/lib/ask-home';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
@@ -11,10 +11,11 @@ import { cn } from '@/lib/utils';
  * "Morning, Kirby." The greeting, in the serif, by the user's clock and the
  * first word of their display name (lib/ask-home.ts `greeting`).
  *
- *  - home      Ask home, 15px with a period, and no spark: the AI's mark
+ *  - home      Ask home, 15px with a period, and no mark: the AI's mark
  *              (components/ai/ask-mark.tsx) leads the header one line above.
- *  - new-chat  a new chat's empty state, 24px, no period, under the ✦ on a line
- *              of its own, centred (components/ai/ask/new-chat-empty.tsx).
+ *  - new-chat  a new chat's empty state, 24px, no period, under the AI's mark
+ *              at 24px on a line of its own, centred
+ *              (components/ai/ask/new-chat-empty.tsx).
  *
  * The clock is the grid's now-marker clock, aligned to the minute, so it turns
  * from morning to afternoon at noon on its own. `data-ask-greeting` lets a
@@ -24,11 +25,11 @@ import { cn } from '@/lib/utils';
  */
 export function AskGreeting({
   variant,
-  spark = variant === 'new-chat',
+  mark = variant === 'new-chat',
   className,
 }: {
   variant: 'home' | 'new-chat';
-  spark?: boolean;
+  mark?: boolean;
   className?: string;
 }) {
   const userTimezone = usePlannerStore((s) => s.userTimezone);
@@ -47,7 +48,7 @@ export function AskGreeting({
         className
       )}
     >
-      {spark && <Sparkles className={cn('shrink-0 text-ai', home ? 'size-4' : 'size-6')} aria-hidden />}
+      {mark && <AskMark className={home ? 'size-4' : 'size-6'} />}
       <span className="min-w-0">{home ? `${text}.` : text}</span>
     </p>
   );

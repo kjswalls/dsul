@@ -1072,6 +1072,16 @@ describe("an item's inline conversation (the modal, the phone, Zen, /item/[id])"
     expect(within(section).getByTestId('reply-status')).toHaveAttribute('role', 'status');
   });
 
+  it("its box's text is the item's draft in rail-store, so an ask parked from the menu shows here", () => {
+    holdItemThread('c9', 't1', THREAD);
+    rail().setDraft('item:t1', 'Help me start');
+    render(<ItemConversation item={DENTIST} mode="inline" />);
+    const input = screen.getByTestId('item-thread-input') as HTMLInputElement;
+    expect(input.value).toBe('Help me start');
+    fireEvent.change(input, { target: { value: 'Something else' } });
+    expect(rail().drafts['item:t1']).toBe('Something else');
+  });
+
   it('a delete from its ⌄ hands focus to its box, which stays', async () => {
     const exit = animatedConfirm();
     try {
@@ -1767,7 +1777,7 @@ describe('a new chat', () => {
     expect(chipIds()).toEqual(['plan-tomorrow', 'let-go', 'review', 'start']);
   });
 
-  it("greets with Ask home's greeting, at the new chat's size, under the spark", async () => {
+  it("greets with Ask home's greeting, at the new chat's size, under the AI's mark", async () => {
     renderRail();
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     await timers();
@@ -1776,7 +1786,7 @@ describe('a new chat', () => {
     // The mock's 24px, not text-2xl, which is 22px in this theme (app/globals.css).
     expect(greeting).toHaveClass('font-serif', 'text-[24px]', 'flex-col');
     expect(greeting).not.toHaveClass('text-2xl');
-    expect(greeting.querySelector('svg')).toHaveClass('text-ai');
+    expect(greeting.querySelector('svg')).toHaveAttribute('data-ask-mark');
     expect(greeting).toHaveTextContent(/^Afternoon(, \S+)?$/);
   });
 });

@@ -2,13 +2,13 @@ import {
   Sunrise,
   Contrast,
   MoonStar,
-  Sparkles,
   Command,
   Zap,
   Blocks,
   type LucideIcon,
 } from 'lucide-react';
 
+import { AskMarkIcon } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore, type TypeMode, type ScheduleMarkStyle, type BucketStyle } from '@/lib/view-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
@@ -177,7 +177,7 @@ export const PANES: SettingsPane[] = [
     // every beacon.* record, all permanent. Only the name the user reads moved.
     id: 'beacon',
     name: 'AI',
-    icon: Sparkles,
+    icon: AskMarkIcon,
     blurb: 'Connect a model and choose who answers.',
   },
   {

@@ -1,7 +1,8 @@
 'use client';
 
 import { useEffect, useMemo } from 'react';
-import { Sparkles, Loader2, Check, RotateCcw } from 'lucide-react';
+import { Loader2, Check, RotateCcw } from 'lucide-react';
+import { AskMark } from '@/components/ai/ask-mark';
 import { Button } from '@/components/ui/button';
 import { useProposalStore, type ProposalSurface } from '@/lib/proposal-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -235,7 +236,7 @@ export function ProposalCard({
   return (
     <div className={shell} data-testid="proposal-card" role="status">
       <div className="flex items-start gap-2">
-        <Sparkles className="mt-0.5 h-4 w-4 shrink-0 text-ai" />
+        <AskMark className="mt-0.5" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-medium text-foreground">{proposal.summary}</p>
           {proposal.rationale && (

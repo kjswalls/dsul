@@ -308,6 +308,12 @@ export function buildProposalContext(
     if (isRecurring(item)) bits.push('repeats')
     if (item.type !== 'habit' && item.startDate) bits.push(item.startDate)
     if (item.timeBucket) bits.push(item.timeBucket)
+    // The clock time and length, so a plan (or "Find a time for this", which
+    // asks for a time around what is already planned) can see what is booked.
+    // A task inside a project block has none of its own: the block's is drawn.
+    if (item.startTime && !('inProjectBlock' in item && item.inProjectBlock)) {
+      bits.push(item.duration ? `at ${item.startTime} for ${item.duration} min` : `at ${item.startTime}`)
+    }
     if (item.type !== 'habit' && item.priority) bits.push(`${item.priority} priority`)
     lines.push(`- [${item.id}] ${item.title} — ${bits.join(', ')}`)
   }

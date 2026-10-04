@@ -26,6 +26,18 @@ resend, retry, action lines, receipts with Undo, a typed answer on every card) a
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
+**Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
+most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by
+`lib/open-chat.ts` (`askAboutItem`, `breakDownItem`, `proposeForItem`): Ask about this… /
+Continue conversation (the item's one conversation, its box focused), Break it down (the
+panel's own card; one predicate, `canBreakDown`, for both), Help me start / Help me get
+unstuck (sent into the item's conversation; "unstuck" only while it is sitting), Find a
+time for this (a plan card on Ask home; not on paused work, a series, a milestone or a task
+in a project block), and Make this easier to keep for a streak type instead of the
+task-shaped asks. The console's member rows (which cannot host the panel) send the item to
+its page and offer neither the compose ask nor Find a time. Containers and multiselection
+are next.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any
@@ -887,7 +899,14 @@ conversation is saved to the account.
   alone; then nothing. Each step is a width read off what the button draws, and the title
   keeps the chord in every form). The mark is one component, `components/ai/ask-mark.tsx`,
   drawn in the key and before "Ask" on Ask home's header, so swapping it is a change to that
-  one file; the other sparkles that mark AI elsewhere are unchanged for now.
+  one file. Since 2026-10-04 it is the AI's mark everywhere: every Lucide `Sparkles` that
+  stood for the AI (the Ask rows in ⌘K and the right-click menu, a proposal, a general
+  conversation in History, a new chat's greeting, the agent block, the AI settings pane, the
+  AI notices, the phone's Ask glyph) renders it instead. Where the sparkle was honey the mark
+  wears its own colours; where it took its row's ink (a muted list, a red failure notice,
+  the colourless mode card) it takes that ink too (`tone="ink"`, or `AskMarkIcon` where a
+  slot types its icon as a Lucide one). `Sparkles` survives only in the glyphs users pick
+  for their own containers (lib/category-icons.ts), and a test holds it there.
 - **The braindump narrows while the right column is docked**, for Ask and an item alike
   (every layout but Console, whose braindump is the fixed 300px pane): `renderedSidebarWidth` takes the column's 432px reserve off the braindump's ceiling so the
   canvas keeps `SIDEBAR_MIN_CANVAS`, and never writes the narrowed width back, so the

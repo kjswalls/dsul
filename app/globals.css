@@ -1974,7 +1974,9 @@ body {
 
 /* ─── Ask's key: the Ask button, lit from the AI's mark ──────────────────────
    components/ai/rail/ask-opener.tsx draws it and components/ai/ask-mark.tsx is
-   the mark in it (Ask's header carries the same mark). Its geometry is
+   the mark in it (Ask's header carries the same mark, and so does every place
+   that marks AI, which is why the slot's tokens below resolve on the mark
+   wherever it is drawn, not only inside the key). Its geometry is
    Tailwind on the elements; what is here needs a registered property, a
    gradient, a state or a layout selector.
 
