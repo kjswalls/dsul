@@ -26,6 +26,18 @@ resend, retry, action lines, receipts with Undo, a typed answer on every card) a
 (reach: @ items, / commands, the model chip, attachments, open wide). The section "Step 2a —
 Move and save" below has what shipped and the privacy statement.
 
+**Note 2026-10-04: "Ask AI" on the item's right-click menu.** One row, a submenu of at
+most four asks, declared in `lib/item-asks.ts` (gate, label, wording) and run by
+`lib/open-chat.ts` (`askAboutItem`, `breakDownItem`, `proposeForItem`): Ask about this… /
+Continue conversation (the item's one conversation, its box focused), Break it down (the
+panel's own card; one predicate, `canBreakDown`, for both), Help me start / Help me get
+unstuck (sent into the item's conversation; "unstuck" only while it is sitting), Find a
+time for this (a plan card on Ask home; not on paused work, a series, a milestone or a task
+in a project block), and Make this easier to keep for a streak type instead of the
+task-shaped asks. The console's member rows (which cannot host the panel) send the item to
+its page and offer neither the compose ask nor Find a time. Containers and multiselection
+are next.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

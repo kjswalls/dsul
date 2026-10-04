@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import { ArrowUp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { BandLabel } from '@/components/planner/item-bands';
@@ -13,7 +13,7 @@ import {
   type ConversationsState,
 } from '@/lib/conversations-store';
 import { sendFrom } from '@/lib/open-chat';
-import { useRailStore } from '@/lib/rail-store';
+import { bindingKey, useRailStore } from '@/lib/rail-store';
 import { itemChatPlaceholder } from '@/lib/chat-utils';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import type { Item } from '@/lib/planner-types';
@@ -99,7 +99,14 @@ export function ItemConversation({
     (s) => !!s.sending[`item:${item.id}`] || !!(threadId && s.threads[threadId]?.streaming)
   );
   const { canChat, target } = useAICapabilities();
-  const [draft, setDraft] = useState('');
+  // The inline box's text lives in rail-store under the item's binding key, as
+  // every composer's does (bound-composer.tsx): one draft per item, whichever
+  // surface shows it, so a half-typed message survives the view, and an ask
+  // parked while the item was still answering (lib/open-chat.ts askAboutItem)
+  // shows here as it does in the rail's box.
+  const draftKey = bindingKey({ kind: 'item', itemId: item.id });
+  const draft = useRailStore((s) => s.drafts[draftKey] ?? '');
+  const setDraft = (next: string) => useRailStore.getState().setDraft(draftKey, next);
   const listRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const prevCount = useRef(0);

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
 import { Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
@@ -12,6 +12,7 @@ import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
+import { canBreakDown } from '@/lib/item-asks';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -65,6 +66,22 @@ function SubtasksSection({ item }: { item: Item }) {
     (s) => s.status === 'loading' && s.lastRequest?.surface === `item:${item.id}`
   );
 
+  // A breakdown asked from outside the section (the right-click menu's "Ask
+  // AI") answers here, in a rail body that may be scrolled anywhere: the panel
+  // keeps its scroll across items, and "Continue conversation" scrolls it down
+  // to the conversation. So when this item's card starts loading out of view,
+  // the rail body, and only it (never scrollIntoView, which would move <main>
+  // too), brings the section to its top. Asked from the button, it is in view
+  // already and nothing moves.
+  const sectionRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => {
+    const section = sectionRef.current;
+    const body = section?.closest<HTMLElement>('[data-rail-body]');
+    if (!proposalBusy || !section || !body) return;
+    const top = section.getBoundingClientRect().top - body.getBoundingClientRect().top;
+    if (top < 0 || top > body.clientHeight - 48) body.scrollTop += top;
+  }, [proposalBusy]);
+
   // Live children — the edit dialog holds a SNAPSHOT of the parent, but the
   // subtask list must reflect toggles immediately.
   const children = items.filter(
@@ -87,19 +104,19 @@ function SubtasksSection({ item }: { item: Item }) {
    * often renders inside a dialog, and a suggestion delivered behind it would
    * be invisible.
    *
-   * Nesting is excluded because one level is all this panel renders; the
-   * validator and lib/db.ts both refuse a grandchild anyway, so a button here
-   * would only produce a rejected operation.
+   * Who may is asked of lib/item-asks.ts, which the right-click menu's "Ask AI"
+   * asks too, so the two never disagree (it excludes subtasks: one level is
+   * all this panel renders).
    */
-  const canBreakDown = canPropose && !('parentItemId' in item && item.parentItemId);
+  const breakable = canBreakDown(item, canPropose);
 
   return (
-    <div className="flex flex-col gap-1.5">
+    <div ref={sectionRef} className="flex flex-col gap-1.5">
       <div className="flex items-center justify-between gap-2">
         <SectionLabel>
           Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
         </SectionLabel>
-        {canBreakDown && (
+        {breakable && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
             disabled={proposalBusy}

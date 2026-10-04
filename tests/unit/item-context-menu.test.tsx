@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 /**
  * The right-click menus (components/planner/item-context-menu.tsx,
@@ -67,6 +67,17 @@ import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { EXT_ORGANIZE } from '@/lib/extension-registry';
 import { disableExtensions, enableExtensions } from './support/extensions';
+import { ItemContextMenu } from '@/components/planner/item-context-menu';
+import {
+  clearChatState,
+  configureConversations,
+  conversationsSettled,
+  useConversationsStore,
+} from '@/lib/conversations-store';
+import { useRailStore } from '@/lib/rail-store';
+import { useProposalStore } from '@/lib/proposal-store';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 import * as db from '@/lib/db';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
 
@@ -375,5 +386,340 @@ describe('the container right-click menu', () => {
     );
     fireEvent.click(within(rightClick(screen.getByText('Work'))).getByTestId('container-menu-open-page'));
     expect(push).toHaveBeenCalledWith('/project/p1');
+  });
+});
+
+describe('the item menu\'s Ask AI row', () => {
+  /**
+   * The asks themselves (gates, labels, prompts) are pinned in
+   * item-asks.test.ts and where each one lands in open-chat.test.ts; this pins
+   * what the MENU does with them: one row, there only while something can
+   * answer, named for the answerer, listing the asks in order, and running
+   * the one picked on the item (or, on a surface that cannot host the item
+   * panel, on the way to the item's page).
+   */
+  const askFixtures = (): Item[] =>
+    [
+      ...fixtures(),
+      {
+        type: 'habit',
+        id: 'stretch',
+        title: 'Stretch',
+        status: 'pending',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 3,
+        startDate: '2026-07-01',
+        repeatFrequency: 'daily',
+        completedDates: [],
+        skippedDates: [],
+        dailyCounts: {},
+        streak: 0,
+      },
+      // A one-off past its date and still wanted: sitting.
+      {
+        type: 'task',
+        id: 'late',
+        title: 'Renew passport',
+        status: 'pending',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 4,
+        startDate: '2026-07-10',
+        completedDates: [],
+        skippedDates: [],
+      },
+      // As far past its date, but paused: set aside, not sitting.
+      {
+        type: 'task',
+        id: 'held',
+        title: 'Repaint the fence',
+        status: 'pending',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 5,
+        startDate: '2026-07-10',
+        pausedAt: '2026-07-12T09:00:00.000Z',
+        completedDates: [],
+        skippedDates: [],
+      },
+      // A finished one-off: nothing left to start, break down or schedule.
+      {
+        type: 'task',
+        id: 'done',
+        title: 'Book the dentist',
+        status: 'completed',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 6,
+        startDate: TODAY,
+        completedDates: [],
+        skippedDates: [],
+      },
+    ] as unknown as Item[];
+
+  let api: FakeApi;
+  let tx: FakeTransport;
+  let unseed: () => void = () => {};
+  let request: ReturnType<typeof vi.fn>;
+  const realRequest = useProposalStore.getState().request;
+
+  beforeEach(async () => {
+    store().clearStore();
+    vi.mocked(db.fetchItems).mockResolvedValue(askFixtures());
+    await store().initializeStore(USER);
+    usePlannerStore.setState({ selectedDate: asDate(TODAY), userTimezone: 'UTC', routines: [], seasons: [], goals: [] });
+    api = fakeApi();
+    tx = fakeTransport();
+    configureConversations({ api: api.api, transport: tx.transport });
+    clearChatState();
+    // A plan card is a network ask; what the menu asks for is the point here.
+    request = vi.fn(async () => {});
+    useProposalStore.setState({ request: request as never });
+  });
+  afterEach(async () => {
+    await conversationsSettled();
+    useProposalStore.setState({ request: realRequest });
+    unseed();
+    unseed = () => {};
+    clearChatState();
+  });
+
+  /** Open "Ask AI ▸" the way the Edit rows are opened above: hover, then the arrow. */
+  function openAsk(menu: HTMLElement) {
+    const trigger = within(menu).getByTestId('item-menu-ask');
+    fireEvent.pointerMove(trigger);
+    fireEvent.keyDown(trigger, { key: 'ArrowRight' });
+    return screen.getByTestId('item-menu-ask-content');
+  }
+  const askIds = (content: HTMLElement) =>
+    within(content)
+      .getAllByTestId(/^item-menu-ask-/)
+      .map((el) => el.getAttribute('data-testid')!.slice('item-menu-ask-'.length));
+  const askLabel = (content: HTMLElement, id: string) => within(content).getByTestId(`item-menu-ask-${id}`).textContent;
+
+  /** The console's member row: the menu with `openHref`, acting on today. */
+  function ConsoleRow({ id }: { id: string }) {
+    const item = usePlannerStore((s) => s.items.find((i) => i.id === id))!;
+    return (
+      <ItemContextMenu item={item} date="today" openHref>
+        <div data-testid="console-row">{item.title}</div>
+      </ItemContextMenu>
+    );
+  }
+
+  it('is not there while the gate is unknown, nor when nothing can answer', () => {
+    // Fail closed: the moment before the server has answered.
+    unseed = seedAI();
+    render(<LiveRow id="once" />);
+    const unknown = rightClick(cardOf('once'));
+    expect(within(unknown).queryByTestId('item-menu-ask')).toBeNull();
+    // The rest of the menu is unaffected.
+    expect(within(unknown).getByTestId('item-menu-open')).toBeTruthy();
+    fireEvent.keyDown(unknown, { key: 'Escape' });
+    cleanup();
+    unseed();
+
+    unseed = seedAI(NOTHING_CONNECTED);
+    render(<LiveRow id="once" />);
+    expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-ask')).toBeNull();
+  });
+
+  it('reads "Ask AI" with a model connected, and "Ask OpenClaw" when OpenClaw answers', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^Ask AI$/);
+    cleanup();
+    unseed();
+
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    render(<LiveRow id="once" />);
+    expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^Ask OpenClaw$/);
+  });
+
+  it('is one row: the asks live under it, not in the menu', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    expect(within(menu).getAllByTestId(/^item-menu-ask/)).toHaveLength(1);
+    expect(screen.queryByTestId('item-menu-ask-content')).toBeNull();
+  });
+
+  it('lists the task-shaped asks, in order, for a dated one-off with no time', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    const content = openAsk(rightClick(cardOf('once')));
+    expect(askIds(content)).toEqual(['ask', 'breakdown', 'start', 'findTime']);
+    expect(askLabel(content, 'ask')).toBe('Ask about this…');
+    expect(askLabel(content, 'breakdown')).toBe('Break it down');
+    expect(askLabel(content, 'start')).toBe('Help me start');
+    expect(askLabel(content, 'findTime')).toBe('Find a time for this');
+  });
+
+  it('gives a habit its own one ask instead of the task-shaped ones', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="stretch" />);
+    const content = openAsk(rightClick(cardOf('stretch')));
+    expect(askIds(content)).toEqual(['ask', 'keep']);
+    expect(askLabel(content, 'keep')).toBe('Make this easier to keep');
+  });
+
+  it('offers no "Find a time" on a repeating task: its schedule is its series', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="daily" />);
+    expect(askIds(openAsk(rightClick(cardOf('daily'))))).toEqual(['ask', 'breakdown', 'start']);
+  });
+
+  it('offers only the conversation on a finished one-off', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="done" />);
+    expect(askIds(openAsk(rightClick(cardOf('done'))))).toEqual(['ask']);
+  });
+
+  it('words "start" as getting unstuck once a one-off is sitting, and not while it is paused', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="late" />);
+    expect(askLabel(openAsk(rightClick(cardOf('late'))), 'start')).toBe('Help me get unstuck');
+    fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+    cleanup();
+
+    render(<LiveRow id="held" />);
+    expect(askLabel(openAsk(rightClick(cardOf('held'))), 'start')).toBe('Help me start');
+  });
+
+  it('says "Continue conversation" once the item has its conversation', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    useConversationsStore.setState((s) => ({ itemIndex: { ...s.itemIndex, once: 'c-once' } }));
+    render(<LiveRow id="once" />);
+    expect(askLabel(openAsk(rightClick(cardOf('once'))), 'ask')).toBe('Continue conversation');
+  });
+
+  it('warms the conversation list on open, so "Continue conversation" shows without Ask having been opened', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    api.answer.list = () => ({
+      ok: true,
+      value: { conversations: [summary({ id: 'c-once', itemId: 'once' })], starred: [], nextCursor: null },
+    });
+    render(<LiveRow id="once" />);
+    const content = openAsk(rightClick(cardOf('once')));
+    expect(askLabel(content, 'ask')).toBe('Ask about this…');
+    expect(api.api.list).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await flush();
+    });
+    expect(askLabel(screen.getByTestId('item-menu-ask-content'), 'ask')).toBe('Continue conversation');
+  });
+
+  it('drops the asks that need a plan card when OpenClaw answers over the plugin', () => {
+    unseed = seedAI(OPENCLAW_PLUGIN);
+    render(<LiveRow id="once" />);
+    expect(askIds(openAsk(rightClick(cardOf('once'))))).toEqual(['ask', 'start']);
+  });
+
+  it('is not offered on a multiselection, whose menu is the batch verbs', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    useSelectionStore.getState().replace(['once', 'other']);
+    render(
+      <>
+        <LiveRow id="once" />
+        <LiveRow id="other" />
+      </>
+    );
+    const menu = rightClick(cardOf('once'));
+    expect(menu.textContent).toContain('2 items');
+    expect(within(menu).queryByTestId('item-menu-ask')).toBeNull();
+  });
+
+  it('"Ask about this…" opens the item in the slot with its box asked for, and sends nothing', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    fireEvent.click(within(openAsk(rightClick(cardOf('once')))).getByTestId('item-menu-ask-ask'));
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'once', type: 'task' } });
+    expect(useRailStore.getState().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'item', itemId: 'once' } });
+    expect(push).not.toHaveBeenCalled();
+    await flush();
+    expect(tx.inputs).toHaveLength(0);
+    expect(api.turns).toEqual([]);
+  });
+
+  it('"Help me start" sends its prompt into the item\'s one conversation, with the item open', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    fireEvent.click(within(openAsk(rightClick(cardOf('once')))).getByTestId('item-menu-ask-start'));
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'once' } });
+    await flush();
+    await conversationsSettled();
+    expect(tx.inputs).toHaveLength(1);
+    expect(tx.inputs[0].message).toBe("Help me get started on this. What's the smallest first step I could take?");
+    // Said as "this": the conversation already knows which item it is about.
+    expect(tx.inputs[0].message).not.toContain('File taxes');
+    const thread = useConversationsStore.getState().threads[tx.inputs[0].conversationId];
+    expect(thread?.itemId).toBe('once');
+  });
+
+  it('"Break it down" opens the item and asks for its card', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    fireEvent.click(within(openAsk(rightClick(cardOf('once')))).getByTestId('item-menu-ask-breakdown'));
+    expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'once' } });
+    expect(request).toHaveBeenCalledWith('breakdown', undefined, 'once');
+  });
+
+  it('"Find a time" asks for a plan card on Ask home, naming the item by id, with no item on top', () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    render(<LiveRow id="once" />);
+    fireEvent.click(within(openAsk(rightClick(cardOf('once')))).getByTestId('item-menu-ask-findTime'));
+    expect(request).toHaveBeenCalledTimes(1);
+    const [intent, prompt] = request.mock.calls[0];
+    expect(intent).toBe('ask');
+    expect(prompt).toContain('[once]');
+    expect(prompt).toContain('"File taxes"');
+    expect(useUIStore.getState().activeDialog).toBeNull();
+    expect(useRailStore.getState().summoned).toBe(true);
+  });
+
+  describe('on a surface that cannot host the item panel (openHref, the Organize console)', () => {
+    it('offers neither "Ask about this…" ("Open item" again) nor "Find a time" (whose card lives in Ask)', () => {
+      unseed = seedAI(CONNECTED_MODEL);
+      render(<ConsoleRow id="once" />);
+      const menu = rightClick(screen.getByTestId('console-row'));
+      expect(within(menu).getByTestId('item-menu-ask')).toHaveTextContent('Ask AI');
+      expect(askIds(openAsk(menu))).toEqual(['breakdown', 'start']);
+    });
+
+    it('never puts the item in the slot over an open console', () => {
+      unseed = seedAI(CONNECTED_MODEL);
+      useUIStore.setState({ activeDialog: { type: 'organize' } });
+      render(<ConsoleRow id="once" />);
+      fireEvent.click(within(openAsk(rightClick(screen.getByTestId('console-row')))).getByTestId('item-menu-ask-start'));
+      expect(push).toHaveBeenCalledWith('/item/once');
+      // An item armed here would spring open, unasked, on the next trip home.
+      // The console's own slot is left as it is, as "Open item" leaves it:
+      // ConsoleSlotGuard drops it once the route changes.
+      expect(useUIStore.getState().activeDialog).toEqual({ type: 'organize' });
+    });
+
+    it('"Help me start" goes to the page and sends into the item\'s conversation there', async () => {
+      unseed = seedAI(CONNECTED_MODEL);
+      render(<ConsoleRow id="once" />);
+      fireEvent.click(within(openAsk(rightClick(screen.getByTestId('console-row')))).getByTestId('item-menu-ask-start'));
+      expect(push).toHaveBeenCalledWith('/item/once');
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      await flush();
+      await conversationsSettled();
+      expect(tx.inputs).toHaveLength(1);
+      expect(useConversationsStore.getState().threads[tx.inputs[0].conversationId]?.itemId).toBe('once');
+    });
+
+    it('"Break it down" goes to the page and asks for the card there, arming no slot', () => {
+      unseed = seedAI(CONNECTED_MODEL);
+      render(<ConsoleRow id="once" />);
+      fireEvent.click(
+        within(openAsk(rightClick(screen.getByTestId('console-row')))).getByTestId('item-menu-ask-breakdown')
+      );
+      expect(push).toHaveBeenCalledWith('/item/once');
+      expect(request).toHaveBeenCalledWith('breakdown', undefined, 'once');
+      expect(useUIStore.getState().activeDialog).toBeNull();
+    });
   });
 });
