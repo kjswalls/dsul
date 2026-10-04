@@ -1072,6 +1072,16 @@ describe("an item's inline conversation (the modal, the phone, Zen, /item/[id])"
     expect(within(section).getByTestId('reply-status')).toHaveAttribute('role', 'status');
   });
 
+  it("its box's text is the item's draft in rail-store, so an ask parked from the menu shows here", () => {
+    holdItemThread('c9', 't1', THREAD);
+    rail().setDraft('item:t1', 'Help me start');
+    render(<ItemConversation item={DENTIST} mode="inline" />);
+    const input = screen.getByTestId('item-thread-input') as HTMLInputElement;
+    expect(input.value).toBe('Help me start');
+    fireEvent.change(input, { target: { value: 'Something else' } });
+    expect(rail().drafts['item:t1']).toBe('Something else');
+  });
+
   it('a delete from its ⌄ hands focus to its box, which stays', async () => {
     const exit = animatedConfirm();
     try {

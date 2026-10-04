@@ -124,6 +124,7 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, child
     <ContextMenu
       onOpenChange={(next) => {
         if (!next) return;
+        noteMenuOpener();
         // Light what the menu will act on: an item outside the selection becomes it.
         const sel = useSelectionStore.getState();
         if (!sel.selectedIds.has(item.id)) sel.replace([item.id]);
@@ -156,6 +157,29 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, child
 function keepFocusTaken(e: Event) {
   const active = document.activeElement;
   if (active && active !== document.body && active.isConnected) e.preventDefault();
+}
+
+/**
+ * What held focus when the menu opened: the row (a right click's mousedown,
+ * or Shift+F10 on it, leaves it focused). One menu is open at a time.
+ */
+let menuOpener: HTMLElement | null = null;
+
+function noteMenuOpener() {
+  const active = document.activeElement;
+  menuOpener = active instanceof HTMLElement && active !== document.body ? active : null;
+}
+
+/**
+ * Hand focus back to that row BEFORE an ask opens anything, so whatever
+ * records where to return focus records the row and not the menu item about
+ * to vanish: the item panel (returnFocusTo, captured as it opens) and the
+ * rail (rememberFocus on a summon, noteRailEntry as its box takes focus).
+ * Closing either afterwards then lands on the row. The submenu's own focus
+ * scope is not a trap, so nothing pulls the focus back into the menu.
+ */
+function returnFocusToOpener() {
+  if (menuOpener?.isConnected) menuOpener.focus({ preventScroll: true });
 }
 
 /* ── the body: one item, or the selection it belongs to ────────────────── */
@@ -423,6 +447,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   if (asks.length === 0) return null;
 
   const run = (ask: ItemAsk) => () => {
+    returnFocusToOpener();
     if (page) router.push(`/item/${item.id}`);
     switch (ask.kind) {
       case 'compose':

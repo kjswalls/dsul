@@ -96,6 +96,32 @@ test.describe('Ask AI on the item menu', () => {
     }
   });
 
+  test('closing the item an ask opened hands focus back to the row the menu came from', async ({ page }) => {
+    const title = scope.title('back');
+    const id = await createTestTask(page, {
+      title,
+      startDate: getTodayStr(),
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await reloadApp(page);
+      const asks = await openAskMenu(page, id, title);
+      await asks.getByTestId('item-menu-ask-ask').click();
+      const panel = rail(page).getByTestId('item-dialog');
+      await expect(page.getByTestId('item-context-menu')).toHaveCount(0);
+      await expect(askBox(panel)).toBeFocused();
+
+      // Escape in the empty box closes the item; the row, not <body>, has focus.
+      await page.keyboard.press('Escape');
+      await expect(page.getByTestId('item-dialog')).toHaveCount(0);
+      await expect(itemCard(page, id)).toBeFocused();
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+
   test('"Help me start" asks in the item\'s conversation and saves it there', async ({ page }) => {
     const title = scope.title('start');
     const id = await createTestTask(page, {

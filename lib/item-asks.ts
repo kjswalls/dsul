@@ -127,9 +127,9 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
     // reason). A time already set is a time found, unless its day has passed.
     eligible: (item, ctx) => {
       if (!ctx.canChat || !ctx.canPropose || isFinished(item) || isSubtask(item)) return false;
-      if (item.type === 'habit' || isRecurring(item) || ctx.milestoneIds.has(item.id)) return false;
-      if (ctx.inactiveIds.has(item.id) || ('inProjectBlock' in item && item.inProjectBlock)) return false;
       if (!getItemTypeConfig(itemTypeName(item)).dateAddressable) return false;
+      if (isRecurring(item) || ctx.milestoneIds.has(item.id)) return false;
+      if (ctx.inactiveIds.has(item.id) || ('inProjectBlock' in item && item.inProjectBlock)) return false;
       return !item.startTime || isSitting(item, ctx);
     },
     // The id rides along: the plan's context lists at most sixty items
@@ -138,9 +138,8 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
     // is found on that day, not moved into this week.
     prompt: (item, ctx) => {
       const name = `${JSON.stringify(item.title)} [${item.id}]`;
-      const day = item.type !== 'habit' && item.startDate && item.startDate.slice(0, 10) >= ctx.todayStr
-        ? item.startDate.slice(0, 10)
-        : null;
+      const start = 'startDate' in item ? item.startDate?.slice(0, 10) : undefined;
+      const day = start && start >= ctx.todayStr ? start : null;
       const when = day
         ? `on ${day}, around what's already planned that day`
         : "in the next few days, around what's already planned";

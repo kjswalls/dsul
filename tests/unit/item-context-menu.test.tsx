@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, cleanup, fireEvent, within } from '@testing-library/react';
+import { act, render, screen, cleanup, fireEvent, within } from '@testing-library/react';
 
 /**
  * The right-click menus (components/planner/item-context-menu.tsx,
@@ -77,7 +77,7 @@ import {
 import { useRailStore } from '@/lib/rail-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
-import { fakeApi, fakeTransport, flush, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
+import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 import * as db from '@/lib/db';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
 
@@ -592,6 +592,22 @@ describe('the item menu\'s Ask AI row', () => {
     useConversationsStore.setState((s) => ({ itemIndex: { ...s.itemIndex, once: 'c-once' } }));
     render(<LiveRow id="once" />);
     expect(askLabel(openAsk(rightClick(cardOf('once'))), 'ask')).toBe('Continue conversation');
+  });
+
+  it('warms the conversation list on open, so "Continue conversation" shows without Ask having been opened', async () => {
+    unseed = seedAI(CONNECTED_MODEL);
+    api.answer.list = () => ({
+      ok: true,
+      value: { conversations: [summary({ id: 'c-once', itemId: 'once' })], starred: [], nextCursor: null },
+    });
+    render(<LiveRow id="once" />);
+    const content = openAsk(rightClick(cardOf('once')));
+    expect(askLabel(content, 'ask')).toBe('Ask about this…');
+    expect(api.api.list).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      await flush();
+    });
+    expect(askLabel(screen.getByTestId('item-menu-ask-content'), 'ask')).toBe('Continue conversation');
   });
 
   it('drops the asks that need a plan card when OpenClaw answers over the plugin', () => {

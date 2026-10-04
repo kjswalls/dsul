@@ -963,6 +963,23 @@ describe("asked from an item's own menu (the item right-click menu's Ask AI)", (
         expect(rail().stacks).toEqual({ desktop: [], phone: [] });
       });
 
+      it("a send while the item is still answering waits in the item's box, which its page shows too", async () => {
+        const h = hangs('');
+        tx.next = h.run;
+        askAboutItem(task, { isMobile: false, page: true, text: 'first' });
+        await flush();
+        expect(tx.inputs).toHaveLength(1);
+        askAboutItem(task, { isMobile: false, page: true, text: 'Help me start' });
+        await flush();
+        expect(tx.inputs).toHaveLength(1);
+        // The key the page's inline box reads (components/ai/item-conversation.tsx).
+        expect(rail().drafts[bindingKey(ITEM_BINDING)]).toBe('Help me start');
+        expect(rail().pendingFocus).toBeNull();
+        h.release('done');
+        await flush();
+        await conversationsSettled();
+      });
+
       it("on the phone too: no push, and the Ask tab is left alone", async () => {
         askAboutItem(task, { isMobile: true, page: true, text: 'Help me start' });
         expect(rail().stacks.phone).toEqual([]);
@@ -989,10 +1006,13 @@ describe("asked from an item's own menu (the item right-click menu's Ask AI)", (
         expect(rail().summoned).toBe(false);
         expect(useSidebarStore.getState().askOpen).toBe(false);
 
-        // Already on top: not pushed again.
+        // Already on top: not pushed again, and no reveal re-armed (the item's
+        // conversation took the first as it mounted).
+        expect(rail().consumeReveal('i1')).toBe(true);
         const stack = rail().stacks.phone;
         askAboutItem(task, { isMobile: true });
         expect(rail().stacks.phone).toBe(stack);
+        expect(rail().pendingReveal).toBeNull();
       });
 
       it('replaces another item on top (the level rule)', () => {
