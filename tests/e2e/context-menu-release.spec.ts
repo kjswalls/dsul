@@ -12,9 +12,8 @@ import { reloadApp, itemCard } from './helpers/app';
  * menu is taller than the room under a low row, so Radix shifts it up to fit,
  * and its slide-in carries it over the pointer: the release then lands on a
  * row, and Radix selects a row released over without a press on it. Only a
- * browser can show that, and only with the real button, so these tests click
- * for real (ask-menu.spec.ts dispatches `contextmenu` instead, which never
- * holds a button down).
+ * browser can show that, and only with the real button held, so this clicks
+ * for real: a dispatched `contextmenu` holds no button and starts no guard.
  */
 
 const scope = specScope('ctxrelease');
@@ -82,6 +81,24 @@ async function putTargetUnderPointer(page: Page, title: Locator) {
   return now;
 }
 
+/**
+ * Slows the page's animations to `rate` until the returned reset is called
+ * (the session must stay attached; detaching drops the rate). A real click
+ * releases a few ms after the press, while the menu is still sliding in over
+ * the pointer, but only about the first 30ms of that slide put a row (not the
+ * menu's padding) there. Twenty times slower, a slow runner still releases
+ * inside it; measured, a 200ms press still lands on the row.
+ */
+async function slowAnimations(page: Page, rate: number) {
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send('Animation.enable');
+  await cdp.send('Animation.setPlaybackRate', { playbackRate: rate });
+  return async () => {
+    await cdp.send('Animation.setPlaybackRate', { playbackRate: 1 });
+    await cdp.detach();
+  };
+}
+
 /** Notes which menu row each pointerup lands on, before React (or the guard) sees it. */
 async function recordReleases(page: Page) {
   await page.evaluate(() => {
@@ -120,7 +137,9 @@ test.describe('the right-click that opens a menu', () => {
       const menu = menuOf(page);
 
       // 1. A real right click, as the report had it: press and release in place.
+      const restore = await slowAnimations(page, 0.05);
       await text.click({ button: 'right' });
+      await restore();
       // It reached "Move to tomorrow" (else this proves nothing)…
       expect(await releases(), 'the release never landed on the menu').toEqual([TARGET]);
       // …and chose nothing: still open, still today.
