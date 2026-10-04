@@ -469,6 +469,28 @@ describe('the right-click that opens a menu (components/ui/context-menu.tsx)', (
     expect(openMenu()).toBeNull();
   });
 
+  it('defuses the release without hiding it: the document still hears the button come up', () => {
+    // A Mac's Ctrl+click: a held LEFT press, which dnd-kit is watching as a
+    // pending drag of the row and lets go of only on document's pointerup.
+    const heard = vi.fn();
+    document.addEventListener('pointerup', heard);
+    try {
+      render(<LiveRow id="once" />);
+      fireEvent.contextMenu(cardOf('once'), { clientX: 10, clientY: 10, button: 0, buttons: 1, ctrlKey: true });
+      const menu = screen.getByTestId('item-context-menu');
+      fireEvent.pointerUp(within(menu).getByTestId('item-menu-next-day'), {
+        clientX: 10,
+        clientY: 10,
+        button: 0,
+        pointerType: 'mouse',
+      });
+      expect(itemById('once').startDate).toBe(TODAY);
+      expect(heard).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener('pointerup', heard);
+    }
+  });
+
   it('starts no watch for a menu opened with no button held (Windows, the menu key)', () => {
     render(<LiveRow id="once" />);
     const menu = rightClick(cardOf('once'));

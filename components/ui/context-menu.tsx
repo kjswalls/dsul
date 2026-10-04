@@ -18,12 +18,17 @@ import { cn } from '@/lib/utils'
  * moved to tomorrow on a plain right-click.
  *
  * So the trigger notes where a press that is still held opened the menu, and
- * the content swallows that press's release while it is still part of the
+ * the content defuses that press's release while it is still part of the
  * click: near where it went down, or soon after. A press held and steered onto
  * a row, further and longer than that, still selects, as a native menu's does.
  * Any new press ends the watch, and a menu opened with no button held (Windows,
  * the menu key, Shift+F10) never starts one, so left clicks and the keyboard
  * are untouched. tests/e2e/context-menu-release.spec.ts clicks for real.
+ *
+ * Defused is preventDefault(), which every Radix row honours, and never
+ * stopPropagation(): a Mac's Ctrl+click is a LEFT press that dnd-kit is
+ * holding as a pending drag of the row, and it lets go only on document's
+ * pointerup. Hide the release from that and the row drags off after the menu.
  */
 type OpeningPress = { x: number; y: number; at: number }
 
@@ -104,11 +109,7 @@ function ContextMenuContent({
           const press = openingPressRef?.current
           if (openingPressRef && press) {
             openingPressRef.current = null
-            if (isOpeningClick(press, event)) {
-              event.preventDefault()
-              event.stopPropagation()
-              return
-            }
+            if (isOpeningClick(press, event)) event.preventDefault()
           }
           onPointerUpCapture?.(event)
         }}

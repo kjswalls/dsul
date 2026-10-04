@@ -152,11 +152,14 @@ test.describe('the right-click that opens a menu', () => {
       await expect(menu).toHaveCount(0);
 
       // 2. The same click with the hand drifting a few pixels while it is down,
-      //    which lands the release inside the menu however fast the slide-in ran.
+      //    still part of the click. Slowed like step 1: once the slide-in
+      //    settles, at.x + 5 is the menu's border and padding, not a row.
       await page.mouse.move(at.x, at.y);
+      const restoreAgain = await slowAnimations(page, 0.05);
       await page.mouse.down({ button: 'right' });
       await page.mouse.move(at.x + 5, at.y);
       await page.mouse.up({ button: 'right' });
+      await restoreAgain();
       expect((await releases()).at(-1), 'the release never landed on the menu').toBe(TARGET);
       await expect(menu).toBeVisible();
       await settled(menu);
