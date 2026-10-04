@@ -1777,7 +1777,7 @@ describe('a new chat', () => {
     expect(chipIds()).toEqual(['plan-tomorrow', 'let-go', 'review', 'start']);
   });
 
-  it("greets with Ask home's greeting, at the new chat's size, under the spark", async () => {
+  it("greets with Ask home's greeting, at the new chat's size, under the AI's mark", async () => {
     renderRail();
     fireEvent.click(screen.getByRole('button', { name: 'New chat' }));
     await timers();
@@ -1786,7 +1786,7 @@ describe('a new chat', () => {
     // The mock's 24px, not text-2xl, which is 22px in this theme (app/globals.css).
     expect(greeting).toHaveClass('font-serif', 'text-[24px]', 'flex-col');
     expect(greeting).not.toHaveClass('text-2xl');
-    expect(greeting.querySelector('svg')).toHaveClass('text-ai');
+    expect(greeting.querySelector('svg')).toHaveAttribute('data-ask-mark');
     expect(greeting).toHaveTextContent(/^Afternoon(, \S+)?$/);
   });
 });

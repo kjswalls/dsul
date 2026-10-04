@@ -3,7 +3,7 @@
 import { useRouter } from 'next/navigation';
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Plus, Sparkles, SlashSquare, X,
+import { Plus, SlashSquare, X,
   Target, Search, CornerDownLeft, Check,
 } from 'lucide-react';
 import { Command as CommandPrimitive } from 'cmdk';
@@ -15,6 +15,7 @@ import {
   CommandShortcut,
 } from '@/components/ui/command';
 import { RelayField } from '@/components/primitives/relay-field';
+import { AskMark } from '@/components/ai/ask-mark';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useUIStore, openEditFor, openAddDialog, openBulkAdd } from '@/lib/ui-store';
 import { isBulkPaste } from '@/lib/bulk-add';
@@ -924,7 +925,7 @@ export function Omnibar({
                   {isChatMode && (
                     <CommandGroup heading="Chat">
                       <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
-                        <Sparkles className="h-4 w-4 text-ai" />
+                        <AskMark />
                         <span className="truncate">
                           {askLabel}
                           {chatText ? (
@@ -1078,7 +1079,7 @@ export function Omnibar({
                       {commandRows.map(renderCommandRow)}
                       {!isCommandMode && !isAddMode && canChat && (
                         <CommandItem value="action-chat" className="group" onSelect={askBeacon}>
-                          <Sparkles className="h-4 w-4 text-ai" />
+                          <AskMark />
                           <span className="truncate">
                             {askLabel}
                             {chatText ? (
@@ -1118,7 +1119,7 @@ export function Omnibar({
                       </span>
                       {canChat && (
                         <span className="flex items-center gap-1">
-                          <Sparkles className="h-3 w-3" /> ? chat
+                          <AskMark tone="ink" className="size-3" /> ? chat
                         </span>
                       )}
                     </div>
@@ -1582,7 +1583,7 @@ export function Omnibar({
                   </span>
                   {canChat && (
                     <span className="flex items-center gap-1">
-                      <Sparkles className="h-3 w-3" /> chat
+                      <AskMark tone="ink" className="size-3" /> chat
                     </span>
                   )}
                 </div>

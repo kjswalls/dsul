@@ -1,7 +1,8 @@
 'use client';
 
 import { useCallback, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import { Search, Sparkles, Square, SquareCheck } from 'lucide-react';
+import { Search, Square, SquareCheck } from 'lucide-react';
+import { AskMark } from '@/components/ai/ask-mark';
 import { ComposerAwakeContext } from '@/components/ai/bound-composer';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -24,11 +25,12 @@ import type { Item } from '@/lib/planner-types';
  *    is consumed; on the empty field it goes back a view (the rail's).
  *  - GROUPS: Starred (every starred conversation, and only there), then Today,
  *    Yesterday and Earlier by the last message, in the user's zone.
- *  - ROWS: a glyph (✦ a general conversation; ☐ an item's, ☑ once the item is
- *    done), the title, the time, and a second line saying what it CHANGED
- *    (lib/conversation-summary.ts historySecondLine), read live from the
- *    planner, never frozen into the row. An item's conversation is named by
- *    the item's live title, and opens the item, on its Conversation section.
+ *  - ROWS: a glyph (the AI's mark for a general conversation; ☐ an item's,
+ *    ☑ once the item is done), the title, the time, and a second line saying
+ *    what it CHANGED (lib/conversation-summary.ts historySecondLine), read
+ *    live from the planner, never frozen into the row. An item's conversation
+ *    is named by the item's live title, and opens the item, on its
+ *    Conversation section.
  *  - PAGES of 30, the next one asked for as the last row scrolls into view.
  *  - BACK finds it as it was: the view host remounts per view, so the search
  *    and the list's scroll are kept on History's own stack entry when
@@ -408,13 +410,13 @@ function itemById(items: readonly Item[], id: string): Item | undefined {
 
 /**
  * A conversation's glyph, in History and in Ask home's activity rows alike:
- * ✦ for a general one; ☐ for an item's, ☑ once the item is done. Lucide's,
- * never a text character, which falls back to each layout's face (about 6px in
- * the monospace ones).
+ * the AI's mark for a general one (components/ai/ask-mark.tsx); ☐ for an
+ * item's, ☑ once the item is done. Drawn glyphs, never a text character, which
+ * falls back to each layout's face (about 6px in the monospace ones).
  */
 export function ConversationGlyph({ itemId, done }: { itemId: string | null; done: boolean }) {
   if (itemId === null) {
-    return <Sparkles data-glyph="general" className="size-3.5 shrink-0 text-ai" aria-hidden />;
+    return <AskMark data-glyph="general" className="size-3.5" />;
   }
   const Glyph = done ? SquareCheck : Square;
   return <Glyph data-glyph={done ? 'item-done' : 'item'} className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />;
