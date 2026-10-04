@@ -30,25 +30,13 @@ const scope = specScope('ask-menu');
 /**
  * Right-click the row and open the Ask AI submenu; returns the submenu.
  *
- * The `contextmenu` event alone, at the row's left edge, not a right click:
- * Chromium on Linux opens a context menu on mouse DOWN, so a menu flipped up
- * to fit the viewport can open under the pointer, and Radix selects whatever
- * item the button is released over (here, a row's "Move to tomorrow").
+ * A real right click: it focuses the row (focusable, for dnd-kit), which is
+ * where Radix hands focus back when the menu closes, and its release never
+ * chooses a row of the menu it opened, even one shifted up under the pointer
+ * (components/ui/context-menu.tsx; context-menu-release.spec.ts).
  */
 async function openAskMenu(page: Page, id: string, title: string) {
-  // A real right click focuses the row first (it is focusable, for dnd-kit),
-  // and that row is where Radix hands focus back when the menu closes.
-  await itemCard(page, id).focus();
-  const target = itemCard(page, id).getByText(title, { exact: true });
-  const box = await target.boundingBox();
-  if (!box) throw new Error('the row is not on screen');
-  await target.dispatchEvent('contextmenu', {
-    bubbles: true,
-    cancelable: true,
-    button: 2,
-    clientX: box.x + 4,
-    clientY: box.y + box.height / 2,
-  });
+  await itemCard(page, id).getByText(title, { exact: true }).click({ button: 'right' });
   const menu = page.getByTestId('item-context-menu');
   await expect(menu).toBeVisible();
   await menu.getByTestId('item-menu-ask').click();
