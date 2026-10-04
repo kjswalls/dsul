@@ -6,7 +6,8 @@ import { render, screen, cleanup, fireEvent, within } from '@testing-library/rea
  * container-context-menu.tsx). What each verb may do is pinned in
  * item-verbs.test.ts; this pins what the MENU adds: it acts on the day the row
  * is drawn on, it lights what it acts on, a selection gets the batch verbs,
- * and the container menu's switch writes through the gate toggle.
+ * the container menu's switch writes through the gate toggle, and the press
+ * that opens either menu never also chooses from it.
  */
 
 const push = vi.fn();
@@ -375,5 +376,108 @@ describe('the container right-click menu', () => {
     );
     fireEvent.click(within(rightClick(screen.getByText('Work'))).getByTestId('container-menu-open-page'));
     expect(push).toHaveBeenCalledWith('/project/p1');
+  });
+});
+
+describe('the right-click that opens a menu (components/ui/context-menu.tsx)', () => {
+  /**
+   * A right-click as Chromium on Linux and macOS sends it: `contextmenu` on the
+   * press, the button still down, so its release is still to come.
+   */
+  function pressRight(el: Element, at = { clientX: 10, clientY: 10 }) {
+    fireEvent.contextMenu(el, { ...at, button: 2, buttons: 2 });
+    return screen.getByTestId(/context-menu$/);
+  }
+  /** Let go of the right button over `row`, without a press on it first. */
+  const releaseRight = (row: Element, at = { clientX: 10, clientY: 10 }) =>
+    fireEvent.pointerUp(row, { ...at, button: 2, pointerType: 'mouse' });
+  const later = (ms: number) => vi.setSystemTime(new Date(Date.now() + ms));
+  const openMenu = () => screen.queryByTestId('item-context-menu');
+
+  it('ignores the release of the press that opened it, whatever row it lands on', () => {
+    render(<LiveRow id="once" />);
+    const menu = pressRight(cardOf('once'));
+    releaseRight(within(menu).getByTestId('item-menu-next-day'), { clientX: 12, clientY: 11 });
+    expect(itemById('once').startDate).toBe(TODAY);
+    expect(openMenu()).toBeTruthy();
+  });
+
+  it('ignores it when the button was held a while but the pointer stayed put', () => {
+    render(<LiveRow id="once" />);
+    const menu = pressRight(cardOf('once'));
+    later(2000);
+    releaseRight(within(menu).getByTestId('item-menu-next-day'), { clientX: 14, clientY: 10 });
+    expect(itemById('once').startDate).toBe(TODAY);
+    expect(openMenu()).toBeTruthy();
+  });
+
+  it('ignores it when the pointer drifted but the release came straight away', () => {
+    render(<LiveRow id="once" />);
+    const menu = pressRight(cardOf('once'));
+    later(100);
+    releaseRight(within(menu).getByTestId('item-menu-next-day'), { clientX: 60, clientY: 10 });
+    expect(itemById('once').startDate).toBe(TODAY);
+    expect(openMenu()).toBeTruthy();
+  });
+
+  it('still selects a row the press was held and steered onto', () => {
+    render(<LiveRow id="once" />);
+    const menu = pressRight(cardOf('once'));
+    later(400);
+    releaseRight(within(menu).getByTestId('item-menu-next-day'), { clientX: 60, clientY: 120 });
+    expect(itemById('once').startDate).toBe('2026-07-17');
+    expect(openMenu()).toBeNull();
+  });
+
+  it('leaves a left click on a row alone, whether or not the release reached the menu', () => {
+    render(<LiveRow id="once" />);
+    // The release landed off the menu, so the watch is still on when the left press comes.
+    const menu = pressRight(cardOf('once'));
+    const next = within(menu).getByTestId('item-menu-next-day');
+    fireEvent.pointerDown(next, { button: 0, pointerType: 'mouse' });
+    fireEvent.pointerUp(next, { button: 0, pointerType: 'mouse' });
+    fireEvent.click(next);
+    // Once, not twice: the press on the row means its release does not click it too.
+    expect(itemById('once').startDate).toBe('2026-07-17');
+    expect(openMenu()).toBeNull();
+
+    const again = pressRight(cardOf('once'));
+    releaseRight(within(again).getByTestId('item-menu-open-page'));
+    expect(push).not.toHaveBeenCalled();
+    fireEvent.click(within(again).getByTestId('item-menu-next-day'));
+    expect(itemById('once').startDate).toBe('2026-07-18');
+  });
+
+  it('leaves the keyboard alone', () => {
+    render(<LiveRow id="once" />);
+    const menu = pressRight(cardOf('once'));
+    const next = within(menu).getByTestId('item-menu-next-day');
+    releaseRight(next);
+    fireEvent.keyDown(next, { key: 'Enter' });
+    expect(itemById('once').startDate).toBe('2026-07-17');
+    expect(openMenu()).toBeNull();
+  });
+
+  it('starts no watch for a menu opened with no button held (Windows, the menu key)', () => {
+    render(<LiveRow id="once" />);
+    const menu = rightClick(cardOf('once'));
+    // Radix's own press-drag-release, untouched: there was no press to ignore.
+    releaseRight(within(menu).getByTestId('item-menu-next-day'));
+    expect(itemById('once').startDate).toBe('2026-07-17');
+  });
+
+  it('guards the container menu too', () => {
+    enableExtensions(EXT_ORGANIZE);
+    usePlannerStore.setState({ routines: [{ id: 'r1', name: 'Mornings', itemIds: [] }] as never });
+    render(
+      <GroupSection label="Mornings" gate={{ kind: 'routine', id: 'r1' }} variant="canvas">
+        <div />
+      </GroupSection>
+    );
+    const menu = pressRight(screen.getByText('Mornings'));
+    releaseRight(within(menu).getByTestId('container-menu-gate'));
+    expect((store().routines[0] as { pausedAt?: string }).pausedAt).toBeFalsy();
+    fireEvent.click(within(menu).getByTestId('container-menu-gate'));
+    expect((store().routines[0] as { pausedAt?: string }).pausedAt).toBeTruthy();
   });
 });

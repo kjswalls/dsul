@@ -6,10 +6,51 @@ import { CheckIcon, ChevronRightIcon, CircleIcon } from 'lucide-react'
 
 import { cn } from '@/lib/utils'
 
+/**
+ * THE RIGHT-CLICK THAT OPENS A MENU NEVER ALSO CHOOSES FROM IT.
+ *
+ * Chromium on Linux and macOS fires `contextmenu` on the button's DOWN (Windows
+ * waits for the release). Radix opens the menu at the pointer, shifts one too
+ * tall for the room below up onto the viewport's floor, and slides it in from
+ * the pointer's side, so the release can land on a row — and Radix's MenuItem
+ * selects on a pointerup it saw no pointerdown for (its press-drag-release
+ * gesture). Letting go of the button picked whatever row was under it: a task
+ * moved to tomorrow on a plain right-click.
+ *
+ * So the trigger notes where a press that is still held opened the menu, and
+ * the content swallows that press's release while it is still part of the
+ * click: near where it went down, or soon after. A press held and steered onto
+ * a row, further and longer than that, still selects, as a native menu's does.
+ * Any new press ends the watch, and a menu opened with no button held (Windows,
+ * the menu key, Shift+F10) never starts one, so left clicks and the keyboard
+ * are untouched. tests/e2e/context-menu-release.spec.ts clicks for real.
+ */
+type OpeningPress = { x: number; y: number; at: number }
+
+const OpeningPressContext =
+  React.createContext<React.RefObject<OpeningPress | null> | null>(null)
+
+/** Within either, the opening press's release is still the click that opened the menu. */
+const OPENING_RELEASE_SLOP_PX = 8
+const OPENING_RELEASE_MS = 300
+
+function isOpeningClick(press: OpeningPress, release: React.PointerEvent) {
+  const travelled = Math.hypot(release.clientX - press.x, release.clientY - press.y)
+  return (
+    travelled <= OPENING_RELEASE_SLOP_PX ||
+    release.timeStamp - press.at <= OPENING_RELEASE_MS
+  )
+}
+
 function ContextMenu({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {
-  return <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
+  const openingPressRef = React.useRef<OpeningPress | null>(null)
+  return (
+    <OpeningPressContext.Provider value={openingPressRef}>
+      <ContextMenuPrimitive.Root data-slot="context-menu" {...props} />
+    </OpeningPressContext.Provider>
+  )
 }
 
 function ContextMenuPortal({
@@ -21,11 +62,22 @@ function ContextMenuPortal({
 }
 
 function ContextMenuTrigger({
+  onContextMenu,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Trigger>) {
+  const openingPressRef = React.useContext(OpeningPressContext)
   return (
     <ContextMenuPrimitive.Trigger
       data-slot="context-menu-trigger"
+      onContextMenu={(event) => {
+        onContextMenu?.(event)
+        if (!openingPressRef) return
+        // A button still down means the menu opened on the press, and its release is still to come.
+        openingPressRef.current =
+          event.buttons === 0
+            ? null
+            : { x: event.clientX, y: event.clientY, at: event.timeStamp }
+      }}
       {...props}
     />
   )
@@ -33,12 +85,33 @@ function ContextMenuTrigger({
 
 function ContextMenuContent({
   className,
+  onPointerDownCapture,
+  onPointerUpCapture,
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Content>) {
+  const openingPressRef = React.useContext(OpeningPressContext)
   return (
     <ContextMenuPrimitive.Portal>
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
+        // Capture, so it runs before any row's own handlers (submenus included: portalled, still descendants).
+        onPointerDownCapture={(event) => {
+          // A new press: the one that opened the menu is over.
+          if (openingPressRef) openingPressRef.current = null
+          onPointerDownCapture?.(event)
+        }}
+        onPointerUpCapture={(event) => {
+          const press = openingPressRef?.current
+          if (openingPressRef && press) {
+            openingPressRef.current = null
+            if (isOpeningClick(press, event)) {
+              event.preventDefault()
+              event.stopPropagation()
+              return
+            }
+          }
+          onPointerUpCapture?.(event)
+        }}
         className={cn(
           'bg-popover text-popover-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 max-h-(--radix-context-menu-content-available-height) min-w-[8rem] origin-(--radix-context-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border p-1 shadow-md',
           className,
