@@ -5,17 +5,23 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ArrowLeftToLine,
+  CalendarClock,
   CalendarDays,
   Check,
   Copy,
   Flame,
+  Footprints,
   Link2,
   Maximize2,
+  MessageSquare,
   PanelRight,
   Pause,
   Play,
   Redo2,
   SkipForward,
+  Sparkles,
+  Split,
+  Sprout,
   Trash2,
   Undo2,
   Unlink,
@@ -56,6 +62,11 @@ import { toDateStr } from '@/lib/recurrence';
 import { addDaysStr, weekStartOf, type OccurrenceState } from '@/lib/container-schedule';
 import { ITEM_VERBS, drawnState, isDoneOn, type VerbContext, type VerbId } from '@/lib/item-verbs';
 import { STATIC_COMMANDS, type Command } from '@/lib/commands';
+import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useConversationsStore } from '@/lib/conversations-store';
+import { inactiveItemIdsOn } from '@/lib/active';
+import { itemAsksFor, type ItemAsk, type ItemAskContext, type ItemAskId } from '@/lib/item-asks';
+import { askAboutItem, breakDownItem, proposeForItem } from '@/lib/open-chat';
 import { parseDay } from '@/lib/collections';
 import { cn } from '@/lib/utils';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
@@ -74,6 +85,10 @@ import type { HabitItem, Item, Task } from '@/lib/planner-types';
  * selection, through the ⌘K commands' batch versions (one ⌘Z each) and the
  * same Edit lists; right-clicking anything else makes it the selection first,
  * the way a file manager does, so what the menu acts on is always lit.
+ *
+ * "Ask AI" is one row with the asks under it (lib/item-asks.ts declares them,
+ * lib/open-chat.ts runs them), so the AI adds a single line to the menu; it is
+ * not there at all while nothing can answer.
  *
  * Pointer only. On touch a long-press already means drag (and, on phones, the
  * row swipe), so the trigger is disabled there and the row's own ⋯ / sheet
@@ -324,6 +339,7 @@ function SingleBody({
           <Row icon={<Maximize2 className="size-3.5" />} label="Open as page" testId="item-menu-open-page" onSelect={() => router.push(`/item/${item.id}`)} />
         </>
       )}
+      <AskSection item={item} todayStr={todayStr} tz={tz} page={!!openHref} />
       {status.length > 0 && <ContextMenuSeparator />}
       {status}
       {when.length > 0 && <ContextMenuSeparator />}
@@ -339,6 +355,85 @@ function SingleBody({
       <ContextMenuSeparator />
       <Row icon={<Trash2 className="size-3.5" />} label="Delete…" destructive testId="item-menu-delete" onSelect={run('delete')} />
     </>
+  );
+}
+
+/* ── Ask AI: the asks, under one row ───────────────────────────────────── */
+
+const ASK_ICON: Record<ItemAskId, ReactNode> = {
+  ask: <MessageSquare className="size-3.5" />,
+  breakdown: <Split className="size-3.5" />,
+  start: <Footprints className="size-3.5" />,
+  findTime: <CalendarClock className="size-3.5" />,
+  keep: <Sprout className="size-3.5" />,
+};
+
+/**
+ * "Ask AI ▸". Each ask runs on the item as it is when picked, and always about
+ * the item itself, whatever day it was drawn on. `page`: this surface cannot
+ * host the item panel (the console), so the item goes to its own page, as
+ * "Open item" does here, and "Find a time" (whose card lives in Ask, which
+ * that page does not show) is not offered.
+ */
+function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string; tz: string; page: boolean }) {
+  const router = useRouter();
+  const isMobile = useIsMobile();
+  const { canChat, canPropose, answererName } = useAICapabilities();
+  const hasConversation = useConversationsStore((s) => typeof s.itemIndex[item.id] === 'string');
+  const routines = usePlannerStore((s) => s.routines);
+  const seasons = usePlannerStore((s) => s.seasons);
+  const goals = usePlannerStore((s) => s.goals);
+
+  if (!canChat && !canPropose) return null;
+  const ctx: ItemAskContext = {
+    todayStr,
+    inactiveIds: inactiveItemIdsOn([item], todayStr, { userTimezone: tz, routines, seasons }),
+    milestoneIds: milestoneItemIds(goals ?? []),
+    hasConversation,
+    canChat,
+    canPropose,
+  };
+  const asks = itemAsksFor(item, ctx).filter((a) => !(page && a.kind === 'propose'));
+  if (asks.length === 0) return null;
+
+  const run = (ask: ItemAsk) => () => {
+    if (page) router.push(`/item/${item.id}`);
+    switch (ask.kind) {
+      case 'compose':
+        askAboutItem(item, { isMobile, page });
+        return;
+      case 'send':
+        askAboutItem(item, { isMobile, page, text: ask.prompt!(item, ctx) });
+        return;
+      case 'breakdown':
+        breakDownItem(item, { isMobile, page });
+        return;
+      case 'propose':
+        proposeForItem(ask.prompt!(item, ctx), isMobile);
+        return;
+    }
+  };
+
+  return (
+    <ContextMenuSub>
+      <ContextMenuSubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid="item-menu-ask">
+        <span className="flex size-3.5 shrink-0 items-center justify-center">
+          <Sparkles className="text-ai size-3.5" />
+        </span>
+        <span className="flex-1 truncate">Ask {answererName ?? 'AI'}</span>
+      </ContextMenuSubTrigger>
+      <ContextMenuSubContent className={PANEL} data-testid="item-menu-ask-content">
+        {asks.map((ask) => (
+          <Row
+            key={ask.id}
+            icon={ASK_ICON[ask.id]}
+            label={ask.label(item, ctx)}
+            testId={`item-menu-ask-${ask.id}`}
+            onSelect={run(ask)}
+          />
+        ))}
+      </ContextMenuSubContent>
+    </ContextMenuSub>
   );
 }
 

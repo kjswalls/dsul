@@ -12,6 +12,7 @@ import { useAgentQuestion } from '@/hooks/use-agent-question';
 import { useAICapabilities } from '@/lib/ai-connection-store';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { useProposalStore } from '@/lib/proposal-store';
+import { canBreakDown } from '@/lib/item-asks';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { ItemConversation } from '@/components/ai/item-conversation';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -87,11 +88,11 @@ function SubtasksSection({ item }: { item: Item }) {
    * often renders inside a dialog, and a suggestion delivered behind it would
    * be invisible.
    *
-   * Nesting is excluded because one level is all this panel renders; the
-   * validator and lib/db.ts both refuse a grandchild anyway, so a button here
-   * would only produce a rejected operation.
+   * Who may is asked of lib/item-asks.ts, which the right-click menu's "Ask AI"
+   * asks too, so the two never disagree (it excludes subtasks: one level is
+   * all this panel renders).
    */
-  const canBreakDown = canPropose && !('parentItemId' in item && item.parentItemId);
+  const breakable = canBreakDown(item, canPropose);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -99,7 +100,7 @@ function SubtasksSection({ item }: { item: Item }) {
         <SectionLabel>
           Subtasks{children.length > 0 ? ` · ${done} of ${children.length}` : ''}
         </SectionLabel>
-        {canBreakDown && (
+        {breakable && (
           <button
             onClick={() => requestProposal('breakdown', undefined, item.id)}
             disabled={proposalBusy}
