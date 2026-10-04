@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useState, type ReactElement, type ReactNode } from 'react';
+import { Fragment, useEffect, useState, type ReactElement, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
@@ -133,11 +133,29 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, child
         {children}
       </ContextMenuTrigger>
       {/* Mounted only while open (Radix Presence), so the store reads below cost nothing at rest. */}
-      <ContextMenuContent className={PANEL} data-testid="item-context-menu" data-item-id={item.id}>
+      <ContextMenuContent
+        className={PANEL}
+        data-testid="item-context-menu"
+        data-item-id={item.id}
+        onCloseAutoFocus={keepFocusTaken}
+      >
         <MenuBody item={item as Item} date={date} occurrence={occurrence} extra={extra} openHref={openHref} />
       </ContextMenuContent>
     </ContextMenu>
   );
+}
+
+/**
+ * Radix hands focus back to the row the menu opened from once its close
+ * animation ends, whatever happened in between. A row that opened something
+ * which took the focus (the item's conversation box, from "Ask AI"; a
+ * dialog) keeps it there: the row gets it back only when it would otherwise
+ * be lost, the item panel's own return rule (item-dialog.tsx returnFocusTo).
+ * By now the menu is gone, so focus left inside it reads as <body>.
+ */
+function keepFocusTaken(e: Event) {
+  const active = document.activeElement;
+  if (active && active !== document.body && active.isConnected) e.preventDefault();
 }
 
 /* ── the body: one item, or the selection it belongs to ────────────────── */
@@ -372,8 +390,13 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
  * "Ask AI ▸". Each ask runs on the item as it is when picked, and always about
  * the item itself, whatever day it was drawn on. `page`: this surface cannot
  * host the item panel (the console), so the item goes to its own page, as
- * "Open item" does here, and "Find a time" (whose card lives in Ask, which
- * that page does not show) is not offered.
+ * "Open item" does here. Two asks are not offered there: "Ask about this…" would
+ * be "Open item" again (the page shows the conversation and its box), and
+ * "Find a time" answers in Ask, which that page does not show.
+ *
+ * Opening the menu warms the conversation list (it never blocks), so "Continue
+ * conversation" can be told apart from "Ask about this…" in a session that has
+ * not opened Ask yet.
  */
 function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string; tz: string; page: boolean }) {
   const router = useRouter();
@@ -383,6 +406,9 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
+  useEffect(() => {
+    if (canChat) void useConversationsStore.getState().ensureLoaded();
+  }, [canChat]);
 
   if (!canChat && !canPropose) return null;
   const ctx: ItemAskContext = {
@@ -393,7 +419,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
     canChat,
     canPropose,
   };
-  const asks = itemAsksFor(item, ctx).filter((a) => !(page && a.kind === 'propose'));
+  const asks = itemAsksFor(item, ctx).filter((a) => !(page && (a.kind === 'propose' || a.kind === 'compose')));
   if (asks.length === 0) return null;
 
   const run = (ask: ItemAsk) => () => {

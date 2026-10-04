@@ -10,7 +10,7 @@ import type { Item } from './planner-types';
  * these under "Ask AI"; the item panel's "Break it down" button asks
  * `canBreakDown` too, so the menu and the panel can never disagree about
  * whether an item can be broken down. What each one DOES lives in
- * lib/open-chat.ts (`askAboutItem`, `breakDownItem`, `findTimeFor`), the one
+ * lib/open-chat.ts (`askAboutItem`, `breakDownItem`, `proposeForItem`), the one
  * place that decides where a message lands; this module only gates, labels
  * and words, and is pure over (item, context).
  *
@@ -20,9 +20,11 @@ import type { Item } from './planner-types';
  *
  * COPY CONTRACT (lib/ai-openers.ts, shared with proposal-card.tsx and
  * morning-check.tsx): every prompt is phrased as the user, who is the one
- * saying it; none names a failure, counts a miss or implies lateness. They say
- * "this", never the title: an item's conversation already tells the model
- * which item it is about (lib/ai-context.ts, the focused-item section).
+ * saying it; none names a failure, counts a miss or implies lateness. Those
+ * sent into the item's conversation say "this", never the title: that
+ * conversation already tells the model which item it is about
+ * (lib/ai-context.ts, the focused-item section). "Find a time" is the one that
+ * names it, because its card is asked from Ask home, about the whole plan.
  */
 
 export type ItemAskId = 'ask' | 'breakdown' | 'start' | 'findTime' | 'keep';
@@ -75,13 +77,14 @@ export function isSitting(item: Item, ctx: Pick<ItemAskContext, 'todayStr' | 'in
 }
 
 /**
- * "Break it down": a type that may carry subtasks, and not a subtask itself.
- * One level is all the panel renders; the validator and lib/db.ts both refuse
- * a grandchild, so offering it on a subtask would only produce a rejected
- * operation.
+ * "Break it down": a type that may carry subtasks, not a subtask itself, and
+ * not finished. One level is all the panel renders; the validator and
+ * lib/db.ts both refuse a grandchild, so offering it on a subtask would only
+ * produce a rejected operation. A finished one-off has nothing left to break
+ * down.
  */
 export function canBreakDown(item: Item, canPropose: boolean): boolean {
-  return canPropose && getItemTypeConfig(itemTypeName(item)).subtasks && !isSubtask(item);
+  return canPropose && getItemTypeConfig(itemTypeName(item)).subtasks && !isSubtask(item) && !isFinished(item);
 }
 
 /** A streak-counting type (habits) gets "Make this easier to keep" instead of the task-shaped asks. */
@@ -100,7 +103,7 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
     id: 'breakdown',
     kind: 'breakdown',
     label: () => 'Break it down',
-    eligible: (item, ctx) => canBreakDown(item, ctx.canPropose) && !isFinished(item),
+    eligible: (item, ctx) => canBreakDown(item, ctx.canPropose),
   },
   start: {
     id: 'start',
@@ -117,18 +120,32 @@ export const ITEM_ASKS: Record<ItemAskId, ItemAsk> = {
     kind: 'propose',
     label: () => 'Find a time for this',
     // A plan card can move a one-off; a repeating item's schedule is its
-    // series, which no card may rewrite. A time already set is a time found.
+    // series, which no card may rewrite. Paused work was set aside on purpose,
+    // and a task in a project block has the block's time (applyProposal never
+    // clears `inProjectBlock`, so a time found for it would be drawn at the
+    // block's hour, or nowhere: lib/row-moves.ts refuses these for the same
+    // reason). A time already set is a time found, unless its day has passed.
     eligible: (item, ctx) => {
       if (!ctx.canChat || !ctx.canPropose || isFinished(item) || isSubtask(item)) return false;
       if (item.type === 'habit' || isRecurring(item) || ctx.milestoneIds.has(item.id)) return false;
+      if (ctx.inactiveIds.has(item.id) || ('inProjectBlock' in item && item.inProjectBlock)) return false;
       if (!getItemTypeConfig(itemTypeName(item)).dateAddressable) return false;
-      return !item.startTime;
+      return !item.startTime || isSitting(item, ctx);
     },
     // The id rides along: the plan's context lists at most sixty items
-    // (lib/proposal.ts buildProposalContext), and this one may not be among them.
-    prompt: (item) =>
-      `Find a good time for "${item.title}" [${item.id}] in the next few days, around what's already planned. ` +
-      'Only schedule this one item; leave everything else where it is.',
+    // (lib/proposal.ts buildProposalContext), and this one may not be among
+    // them. A day the user already gave it (today or later) is kept: the time
+    // is found on that day, not moved into this week.
+    prompt: (item, ctx) => {
+      const name = `${JSON.stringify(item.title)} [${item.id}]`;
+      const day = item.type !== 'habit' && item.startDate && item.startDate.slice(0, 10) >= ctx.todayStr
+        ? item.startDate.slice(0, 10)
+        : null;
+      const when = day
+        ? `on ${day}, around what's already planned that day`
+        : "in the next few days, around what's already planned";
+      return `Find a good time for ${name} ${when}. Only schedule this one item; leave everything else where it is.`;
+    },
   },
   keep: {
     id: 'keep',
