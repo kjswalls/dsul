@@ -6,6 +6,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { bumpSettleEpoch } from '@/lib/settle-epoch';
 import {
   EASE_MOVE,
+  EASE_SET_DOWN,
   EASE_SETTLE,
   EASE_TYPE,
   SETTLE,
@@ -43,8 +44,10 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  *     only change, and they settle (or shield) like any other.
  *  4. PLAY, retargeting a scope from where its boxes are DRAWN when a commit
  *     lands mid-glide (at most twice), then FINISH: every animation cancelled.
- *     Fill is never `forwards`, so nothing outlives the run — no resting
- *     transform for dnd-kit, Zen's trace or hover-expand to trip over.
+ *     A move's fill is never `forwards`, so nothing outlives the run — no
+ *     resting transform for dnd-kit, Zen's trace or hover-expand to trip over.
+ *     (The one `forwards` is a lift's set-down, which holds a box-shadow at
+ *     `none` until its release cancels it; see "Stacking".)
  *
  * A mutation counts as a commit only when it moved something: most records in
  * a scope move nothing (a hover writing a row's --title-mask, the ScrollArea
@@ -58,13 +61,14 @@ import { prefersReducedMotion } from '@/lib/zen-transition';
  * opacity, no filter, so lime is never faded (CLAUDE.md) and nothing escapes a
  * scroller's clip. No custom-property writes and nothing on the hover path, so
  * the week recede rule is untouched. The one other thing a run writes is
- * stacking, for its length only (see "Stacking"): an inline z-index (and
- * `position: relative` where none applies) on the outermost box a row glides
- * in from outside of and on a row that crosses its neighbours, plus that
- * row's ground (a background-color, clipped to its content box), a
+ * stacking, only while the rows that need it move (see "Stacking"): an inline
+ * z-index (and `position: relative` where none applies) on the outermost box
+ * a row glides in from outside of and on a row that crosses its neighbours,
+ * plus that row's ground (a background-color over its whole box), a
  * translucent fill made solid (background-image layers) and a soft shadow
- * (box-shadow, the app's lightest elevation token) — each value put back
- * exactly as found by finishSettle, whatever ends the run.
+ * (box-shadow, the app's lightest elevation token), set down as the row lands
+ * — each value put back exactly as found, at its release or by finishSettle,
+ * whatever ends the run.
  *
  * THE LANDING SHIELD. A landing that changed what is on screen with nothing
  * holding the old geometry (reduced motion, `static` mode, a veto at play, a
@@ -954,15 +958,45 @@ function typeInFrames(start: string, text: number | undefined): { keyframes: Key
 /** The described animations, created on their boxes (running: the caller pauses or schedules them). */
 function realize(specs: AnimSpec[], boxes: Map<string, HTMLElement>): Live[] {
   const out: Live[] = [];
+  const translates = new Map<HTMLElement, number>();
+  for (const sp of specs) {
+    const box = sp.from ? boxes.get(sp.key) : undefined;
+    if (box) translates.set(box, (translates.get(box) ?? 0) + 1);
+  }
   for (const { key, from, keyframes, duration, delay, easing, composite } of specs) {
     const box = boxes.get(key);
     if (!box || typeof box.animate !== 'function') continue;
     // `backwards` only: a delayed reveal shows its first frame through the
     // delay, and nothing is left behind once it ends.
-    const anim = box.animate(keyframes, { duration, delay, easing, fill: 'backwards', composite });
+    const anim = box.animate(keyframes, {
+      duration,
+      delay,
+      easing,
+      fill: 'backwards',
+      composite: from && composite === 'add' && replaces(box, translates) ? 'replace' : composite,
+    });
     out.push({ anim, kind: from ? 'translate' : 'clip', box, from, span: delay + duration, end: 0 });
   }
   return out;
+}
+
+/**
+ * Whether a translate may `replace` rather than `add`: the box has no
+ * transform of its own to add to (Tailwind's translate utilities set the
+ * separate `translate` property, which a transform animation leaves alone),
+ * and no other translate of this pass to sum with. The two then draw the
+ * same, and only a replace can run on the compositor: Chromium animates any
+ * other composite mode on the main thread, where the landing's own work
+ * (follow-up commits, the fresh rows' effects) stalled the glide's first
+ * frames and then jumped it.
+ */
+function replaces(box: HTMLElement, translates: Map<HTMLElement, number>): boolean {
+  if ((translates.get(box) ?? 0) > 1) return false;
+  try {
+    return UNSET.has(getComputedStyle(box).transform.trim());
+  } catch {
+    return false;
+  }
 }
 
 // ── Stacking: raises and lifts ──────────────────────────────────────────
@@ -1024,6 +1058,13 @@ type StackProp = 'z-index' | 'position' | 'background-color' | 'background-clip'
 const LIFT_SHADOW = 'var(--shadow-soft-sm)';
 /** A block's own surface, drawn on a child of the row: a schedule block's pane. */
 const PLATE_SELECTOR = '[data-settle-plate]';
+/**
+ * `off` on a scope root: its rows glide without a lift. Zen's rows sit on a
+ * fixed frost layer and under the folded ledger's veil, neither of them an
+ * ancestor, so no ground read from the ancestors matches what shows behind a
+ * row at rest, and a z-index would carry a row over the veil until it lands.
+ */
+const LIFT_OFF = 'data-settle-lift';
 
 /** What a pass wants for one element: stacked (by how far its rows travel — the farther, the higher), a ground, a solid fill, a shadow. */
 interface Want {
@@ -1064,6 +1105,10 @@ interface Stacked extends Want {
   due: number;
   /** Its shadow being set down (see RELEASE), cancelled as it comes off. */
   fade: Animation | null;
+  /** Carried through a retarget: when it was due before, for a mover the retarget left where it was (it has landed). */
+  wasDue: number;
+  /** Carried through a retarget mid-set-down: its shadow as drawn, which the new set-down goes on from. */
+  drawn: string | null;
 }
 
 const UNSET = new Set(['', 'none', 'auto', 'normal']);
@@ -1333,6 +1378,8 @@ function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live
     return b;
   };
   const raiseFor = raiser(root, offsets, animated, rectOf, styleOf);
+  // A scope whose ground is painted by a layer that is no ancestor of its rows (Zen's frost) takes no lift: see LIFT_OFF.
+  const liftable = SETTLE.liftRows && root.getAttribute(LIFT_OFF) !== 'off';
 
   for (const sp of specs) {
     if (!sp.glide || !sp.from) continue;
@@ -1341,9 +1388,9 @@ function stackingWants(root: Element, specs: AnimSpec[], m: Measured, kept: Live
     if (!node || node.role !== 'row' || !box) continue;
     const travel = Math.hypot(sp.from.x, sp.from.y);
     const movers = [box];
-    if (SETTLE.liftRows && travel > node.rect.height) {
+    if (liftable && travel > node.rect.height) {
       want(box, { stack: true, travel, movers });
-      // The ground goes on the row itself: on a phone its box is the SwipeRow, which has no padding to clip to.
+      // The ground goes on the row itself, the surface it draws: on a phone its box is the SwipeRow around it.
       const row = m.els.get(sp.key) ?? box;
       const plates = platesOf(row);
       if (plates.length > 0) {
@@ -1406,6 +1453,8 @@ function restoreStacked(s: Stacked): void {
  */
 function stackScope(s: ScopeRun, specs: AnimSpec[], m: Measured, kept: Live[], merge: boolean): void {
   const carried = merge ? [...s.stacked.values()].filter((st) => st.el.isConnected) : [];
+  // Read before anything comes off: when each was due, and a set-down's shadow as it is drawn now.
+  const timing = new Map(carried.map((st) => [st.el, { due: st.due, drawn: drawnShadow(st) }]));
   unstackScope(s);
   const styleOf = styleCache();
   const wants = stackingWants(s.root, specs, m, kept, styleOf);
@@ -1426,6 +1475,8 @@ function stackScope(s: ScopeRun, specs: AnimSpec[], m: Measured, kept: Live[], m
       ...w,
       due: 0,
       fade: null,
+      wasDue: timing.get(el)?.due ?? 0,
+      drawn: timing.get(el)?.drawn ?? null,
     };
     s.stacked.set(el, st);
     if (st.stack) raised.push(st);
@@ -1478,11 +1529,26 @@ function unstackScope(s: ScopeRun): void {
   s.stacked.clear();
 }
 
+/** A set-down already under way, as it is drawn now; null when none has begun. */
+function drawnShadow(st: Stacked): string | null {
+  const p = st.fade?.effect?.getComputedTiming?.().progress;
+  if (typeof p !== 'number' || p <= 0) return null;
+  try {
+    return getComputedStyle(st.el).boxShadow;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * Times each stacked element's release (see RELEASE) from the moves as they
- * now run: when the last of its movers lands. An element with a mover that
- * runs no move is held to the run's end, as before any of this. Called once
+ * now run: when the last of its movers lands. After a retarget, a mover it
+ * left where it was has landed, when it was due before (or now, if that has
+ * passed); an element with a mover that runs no move and was never due is
+ * held to the run's end. A set-down a retarget interrupted goes on from the
+ * shadow as it was drawn, at once, so it never shows full again. Called once
  * the moves have their ends: at play, and after a retarget re-aims them.
+ * Anything already due comes off here, before the next frame.
  */
 function timeReleases(s: ScopeRun): void {
   const ends = new Map<Element, number>();
@@ -1491,7 +1557,7 @@ function timeReleases(s: ScopeRun): void {
   for (const st of s.stacked.values()) {
     let due = st.movers.length > 0 ? 0 : -1;
     for (const box of st.movers) {
-      const end = ends.get(box);
+      const end = ends.get(box) ?? (st.wasDue > 0 ? Math.max(st.wasDue, now) : undefined);
       if (end === undefined) {
         due = -1;
         break;
@@ -1499,27 +1565,29 @@ function timeReleases(s: ScopeRun): void {
       due = Math.max(due, end);
     }
     st.due = Math.max(0, due);
-    if (st.due > 0 && st.shadow && !st.fade) st.fade = setDown(st.el, st.due - now);
+    if (st.due > 0 && st.shadow && !st.fade) st.fade = setDown(st.el, st.due - now, st.drawn);
   }
-  armRelease(s);
+  releaseDue(s);
 }
 
 /**
  * The lift's shadow eased to none over the last SETTLE.liftSetDownMs of the
  * move, `left` ms from now, and held there until the release. Keyed from its
- * computed value, so the token's resolved shadow interpolates. Null when there
- * is nothing to fade or no time to fade it in.
+ * computed value, so the token's resolved shadow interpolates; a set-down a
+ * retarget interrupted goes on from `drawn`, at once, over all that is left.
+ * Null when there is nothing to fade or no time to fade it in.
  */
-function setDown(el: HTMLElement, left: number): Animation | null {
-  const duration = Math.min(SETTLE.liftSetDownMs, left);
-  if (duration <= 0 || typeof el.animate !== 'function') return null;
+function setDown(el: HTMLElement, left: number, drawn: string | null = null): Animation | null {
+  if (left <= 0 || typeof el.animate !== 'function') return null;
   try {
-    const lifted = getComputedStyle(el).boxShadow;
-    if (UNSET.has(lifted.trim())) return null;
-    return el.animate([{ boxShadow: lifted }, { boxShadow: 'none' }], {
+    const duration = drawn === null ? Math.min(SETTLE.liftSetDownMs, left) : left;
+    const from = drawn ?? getComputedStyle(el).boxShadow;
+    // Already at none, an interrupted set-down still holds it there.
+    if (drawn === null && UNSET.has(from.trim())) return null;
+    return el.animate([{ boxShadow: from }, { boxShadow: 'none' }], {
       duration,
       delay: left - duration,
-      easing: EASE_SETTLE,
+      easing: EASE_SET_DOWN,
       fill: 'forwards',
     });
   } catch {
@@ -1539,6 +1607,7 @@ function armRelease(s: ScopeRun): void {
 
 /** Every element whose movers have all landed, put back; its own writes are taken off the scope's observer, since they move nothing. */
 function releaseDue(s: ScopeRun): void {
+  if (s.releaseTimer !== null) clearTimeout(s.releaseTimer);
   s.releaseTimer = null;
   const now = performance.now();
   try {

@@ -401,7 +401,9 @@ Seeding `enabled` itself would let a cached toggle beat server truth.
 WAAPI FLIP with no dependency and no overlay. Transform and clip-path only, fill
 `backwards` and never `forwards`, on the participants' own boxes: nothing fades lime,
 nothing escapes a scroller's clip, and nothing outlives the run to trip dnd-kit, Zen's
-trace or hover-expand.
+trace or hover-expand. The one exception is a lifted row's set-down (see Release under
+Stacking): a `box-shadow` fade with `fill: forwards`, cancelled at the release in the
+same task as the inline shadow it covers comes off.
 
 SettleHost is mounted once at AppShell's top level, outside the desktop, mobile and Zen
 swap. It registers the conductor's store subscription (live only while a host is mounted,
@@ -455,7 +457,7 @@ opacity.
 
 | Change | Treatment |
 |---|---|
-| Move: matched, own displacement of 1px or more | `translate(dx, dy)` to zero, 420ms, composite `add` |
+| Move: matched, own displacement of 1px or more | `translate(dx, dy)` to zero, 420ms, composite `replace` (or `add`, below) |
 | A row that grew | a clip reveal of its new extent, alongside the move |
 | A frame of rows that grew | a bottom-edge clip reveal on the rows' curve |
 | Appear, row | clip type-in left to right, its text paced (below), plus a 4px lift, 380ms, after 100ms plus 24ms per rank (rank capped at 6) |
@@ -466,6 +468,15 @@ opacity.
 
 - A move's own delta is net of its nearest animated ancestor's, so nested moves compose
   exactly: one duration, one curve.
+- **A translate replaces unless it has something to add to.** The design said `add`, so a
+  box's own transform would carry through the glide. Chromium runs only `replace`
+  animations on the compositor; an `add` runs on the main thread, and a recording showed
+  the landing's own work (follow-up commits, the fresh rows' effects) stalling the first
+  frames of every glide for 70 to 130ms, then jumping it. Tailwind's translate utilities
+  (the gutter live-time's `-translate-y-1/2`) set the separate `translate` property, which
+  a transform animation leaves alone, so a box whose computed `transform` is `none`, with
+  no second translate in the same pass, takes `replace` and draws exactly the same. A box
+  with a transform of its own keeps `add`.
 - **A retype starts where the text changed.** Capture keeps each visible row's raw
   `textContent` beside its signature, and the plan carries the first index at which FIRST
   and LAST differ (`SettleRetype.at`). At the hold, with nothing in the scope animating,
@@ -582,15 +593,28 @@ forward on top of its own.
   kept. A row with no surface gets none: it would outline nothing.
 - **Release.** Each raised or lifted element comes off when the last move that asked for
   it lands (its "movers"), not when the run ends, which can be 250ms later while new rows
-  type in: a row that has landed rests exactly as it will. The ground and a solid fill read
-  at rest as the row's own surface does, so taking them off shows nothing; the shadow
-  would snap, so it is set down over the last `SETTLE.liftSetDownMs` (120ms) of the move,
-  a `box-shadow` fade from its computed value to none with `fill: forwards`, cancelled in
-  the same task as the inline shadow comes off. It is the run's only animation of
-  anything but transform and clip-path; it runs on the main thread, on the handful of
-  lifted boxes, while they are nearly still. A retarget re-times every release from the
-  re-aimed moves (and a row it lifts again is set down again); an element with a mover
-  that runs no move is held to the run's end, as before.
+  type in: a row that has landed rests exactly as it will. Where the nearest painted
+  ancestor is what shows behind the row at rest (every view but Zen, below), the ground
+  and a solid fill read as the row's own surface does, so taking them off shows nothing.
+  The shadow would snap, so it is set down over the last `SETTLE.liftSetDownMs` (180ms) of
+  the move, on `EASE_SET_DOWN` (ease-in-out), from where `EASE_MOVE` has the row a few
+  pixels from its slot: a `box-shadow` fade from its computed value to none with
+  `fill: forwards`, cancelled in the same task as the inline shadow comes off. (At 120ms on
+  `EASE_SETTLE` it started on a row that had visibly stopped and went in two frames.) It is
+  the run's only animation of anything but transform and clip-path; it runs on the main
+  thread, on the handful of lifted boxes, while they are nearly still.
+- **Release across a retarget.** A retarget re-times every release from the re-aimed
+  moves. A mover it leaves where it was (under a pixel from its slot, so no new move) has
+  landed: its element keeps the time it was due (or comes off at once, if that has
+  passed), never held to the run's end. A set-down the retarget interrupts goes on from the
+  shadow as it is drawn at that moment, at once, over whatever time is left, so the
+  shadow never shows full again. An element with a mover that never ran a move is held to
+  the run's end, as before.
+- **No lift in Zen** (`data-settle-lift="off"` on its scope root). Zen's rows sit on the
+  fixed frost layer and under the folded ledger's veil, neither of them an ancestor, so a
+  ground read from the ancestors (the room's `bg-surface-0`) knocked the frost out of the
+  row while it moved, and its z-index carried a row over the veil until it landed, where
+  it dimmed all at once. A Zen row glides unlifted, as every row did before the lift.
 
 None of it touches opacity, filter, transform or a custom property; nothing is written
 that would start a CSS transition (a property named in the element's own

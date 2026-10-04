@@ -55,7 +55,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import type { Item } from '@/lib/planner-types';
 import { SETTLING_ATTR } from '@/lib/settle';
 import { settleEpoch } from '@/lib/settle-epoch';
-import { EASE_MOVE, EASE_SETTLE, EASE_TYPE, SETTLE } from '@/lib/settle-plan';
+import { EASE_MOVE, EASE_SET_DOWN, EASE_SETTLE, EASE_TYPE, SETTLE } from '@/lib/settle-plan';
 import { useViewStore } from '@/lib/view-store';
 
 // ── Fake WAAPI ──────────────────────────────────────────────────────────
@@ -628,7 +628,8 @@ describe('animation shape', () => {
 
     const [moveA] = on(`${DAY}|a`);
     expect(moveA.keyframes).toEqual([{ transform: 'translate(0px, -40px)' }, { transform: 'translate(0px, 0px)' }]);
-    expect(moveA.options).toMatchObject({ duration: 420, delay: 0, composite: 'add' });
+    // No transform of its own to add to: a replace, which the compositor can run.
+    expect(moveA.options).toMatchObject({ duration: 420, delay: 0, composite: 'replace' });
     expect(on(`${DAY}|b`)[0].keyframes[0]).toEqual({ transform: 'translate(0px, 40px)' });
 
     const appear = on(`${DAY}|e`);
@@ -638,7 +639,7 @@ describe('animation shape', () => {
     expect(clip.keyframes).toEqual([{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]);
     expect(clip.options).toMatchObject({ duration: 380, delay: 100, composite: 'replace' });
     expect(lift.keyframes).toEqual([{ transform: 'translateY(4px)' }, { transform: 'translateY(0px)' }]);
-    expect(lift.options).toMatchObject({ duration: 380, delay: 100, composite: 'add' });
+    expect(lift.options).toMatchObject({ duration: 380, delay: 100, composite: 'replace' });
 
     const [retype] = on(`${DAY}|d`);
     expect(retype.keyframes).toEqual([{ clipPath: 'inset(-8px 100% -8px -8px)' }, { clipPath: 'inset(-8px)' }]);
@@ -646,6 +647,14 @@ describe('animation shape', () => {
 
     expect(on('group:inbox')).toEqual([]);
     expect(animations).toHaveLength(5);
+  });
+
+  it('a translate adds to a box’s own transform, and replaces where there is none to add to', () => {
+    startPreview(<Canvas />, CACHED());
+    row('a').style.transform = 'rotate(1deg)'; // a transform of its own, which a replace would drop for the glide
+    land(FRESH());
+    expect(on(`${DAY}|a`)[0].options.composite).toBe('add');
+    expect(on(`${DAY}|b`)[0].options.composite).toBe('replace');
   });
 
   it('cascades new rows by rank (capped at 6), unfolds a new frame, and reveals a grown row as it lands', () => {
@@ -799,7 +808,7 @@ describe('hold, play, retarget', () => {
     // The group was painted 50px higher than its new layout: it glides down for what is left of a move.
     const [group] = on('group:inbox');
     expect(group.keyframes[0]).toEqual({ transform: 'translate(0px, -50px)' });
-    expect(group.options).toMatchObject({ duration: SETTLE.moveMs - 100, delay: 0, composite: 'add' });
+    expect(group.options).toMatchObject({ duration: SETTLE.moveMs - 100, delay: 0, composite: 'replace' });
     // a keeps its own offset, net of the group's: no jump at the commit.
     const [a] = on(`${DAY}|a`);
     expect(parseTranslate(a.keyframes[0].transform).y).toBeCloseTo(-40 * (1 - 100 / 420), 5);
@@ -1816,6 +1825,16 @@ describe('a row that crosses its neighbours is lifted', () => {
     expect(inlineStyles()).toEqual(before);
   });
 
+  it('is off in a scope marked data-settle-lift="off" (Zen): stacked by nothing, given no ground or shadow', () => {
+    startPreview(<Buckets />, [item('m1'), item('m2'), item('m3')]);
+    document.querySelector('[data-settle-scope]')!.setAttribute('data-settle-lift', 'off');
+    const before = inlineStyles();
+    land([item('m3'), item('m1'), item('m2')]);
+    expect(on(`${DAY}|m3`).length).toBeGreaterThan(0); // it still glides
+    expect(row('m3').hasAttribute('style')).toBe(false);
+    expect(changedProps(before).size).toBe(0);
+  });
+
   it('is off when SETTLE.liftRows is false — and the raise still runs', () => {
     const settle = SETTLE as unknown as { liftRows: boolean };
     settle.liftRows = false;
@@ -2349,7 +2368,7 @@ describe('a lifted row comes off as its own move lands, while the rest play on',
     expect(fade.options).toMatchObject({
       duration: SETTLE.liftSetDownMs,
       delay: SETTLE.moveMs - SETTLE.liftSetDownMs,
-      easing: EASE_SETTLE,
+      easing: EASE_SET_DOWN,
       fill: 'forwards', // held at none until the release takes the inline shadow off
     });
     expect(m3.style.boxShadow).toBe(SHADOW); // the lift stands under it
@@ -2380,22 +2399,65 @@ describe('a lifted row comes off as its own move lands, while the rest play on',
     asBefore(before);
   });
 
-  it('a retarget re-times the release from the re-aimed move, and a row it lifts again is set down again', async () => {
+  it('a retarget before the set-down re-times it from the re-aimed move', async () => {
     const before = liftAndAppear();
     const m3 = row('m3');
     frame();
     frame();
-    advance(250);
+    advance(100);
     const first = fadeOf(m3)!;
-    await commit(() => useHarness.setState({ band: 30 })); // re-aims every move: SETTLE.retargetMinMs from here
+    await commit(() => useHarness.setState({ band: 30 })); // re-aims every move: moveMs − 100 from here
     expect(first.cancelled).toBe(true);
     const again = fadeOf(m3)!;
-    expect(again.options).toMatchObject({ delay: SETTLE.retargetMinMs - SETTLE.liftSetDownMs, fill: 'forwards' });
-    advance(SETTLE.moveMs - 250); // where the first move would have landed
+    const left = SETTLE.moveMs - 100;
+    expect(again.options).toMatchObject({ duration: SETTLE.liftSetDownMs, delay: left - SETTLE.liftSetDownMs, fill: 'forwards' });
+    advance(left - 1);
     expect(m3.style.zIndex).not.toBe('');
-    advance(SETTLE.retargetMinMs - (SETTLE.moveMs - 250) + 1);
+    advance(2);
     expect(m3.hasAttribute('style')).toBe(false);
     expect(again.cancelled).toBe(true);
+    advance(SETTLE.runTimeoutMs);
+    expect(live()).toEqual([]);
+    asBefore(before);
+  });
+
+  it('a retarget mid-set-down goes on from the shadow as drawn, at once: it never shows full again', async () => {
+    const before = liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    advance(SETTLE.moveMs - SETTLE.liftSetDownMs + 30); // 30ms into the set-down
+    const first = fadeOf(m3)!;
+    const drawn = getComputedStyle(m3).boxShadow;
+    await commit(() => useHarness.setState({ band: 30 })); // re-aims m3: retargetMinMs from here
+    expect(first.cancelled).toBe(true);
+    const again = fadeOf(m3)!;
+    expect(again.keyframes).toEqual([{ boxShadow: drawn }, { boxShadow: 'none' }]);
+    expect(again.options).toMatchObject({ duration: SETTLE.retargetMinMs, delay: 0, fill: 'forwards' });
+    advance(SETTLE.retargetMinMs + 1);
+    expect(m3.hasAttribute('style')).toBe(false);
+    advance(SETTLE.runTimeoutMs);
+    asBefore(before);
+  });
+
+  it('a retarget that leaves a landing row where it is keeps its release: it comes off when it was due', async () => {
+    const before = liftAndAppear();
+    const m3 = row('m3');
+    frame();
+    frame();
+    advance(SETTLE.moveMs - 4); // m3 is all but landed, its set-down nearly done
+    const first = fadeOf(m3)!;
+    // m2 grows: only m4, below it, moves. m3 is under a pixel from its slot and gets no move.
+    await commit(() =>
+      usePlannerStore.setState({ items: [item('m3'), item('m1'), item('m2', 'm2', { h: 50 }), item('m4')] })
+    );
+    expect(on(`${DAY}|m3`).filter((a) => kind(a) === 'translate')).toEqual([]);
+    expect(first.cancelled).toBe(true);
+    const again = fadeOf(m3)!;
+    expect(again.options).toMatchObject({ delay: 0, duration: 4, fill: 'forwards' }); // on from where it was, never full
+    advance(5);
+    expect(m3.hasAttribute('style')).toBe(false); // when it was due, not at the run's end
+    expect(settling()).toBe('true');
     advance(SETTLE.runTimeoutMs);
     expect(live()).toEqual([]);
     asBefore(before);

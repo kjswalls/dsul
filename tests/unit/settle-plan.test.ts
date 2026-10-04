@@ -4,6 +4,7 @@ import { join } from 'node:path';
 import {
   EASE_MOVE,
   EASE_SETTLE,
+  EASE_SET_DOWN,
   EASE_TYPE,
   SETTLE,
   SETTLE_LIMITS,
@@ -90,7 +91,7 @@ describe('SETTLE constants', () => {
       shieldMs: 250,
       clipBleedPx: 8,
       liftRows: true,
-      liftSetDownMs: 120,
+      liftSetDownMs: 180,
     });
   });
 
@@ -113,6 +114,12 @@ describe('SETTLE constants', () => {
     expect(EASE_TYPE).toBe('cubic-bezier(0.3, 0.4, 0.5, 1)');
     expect(SETTLE.typeTextAt).toBeGreaterThan(0.5);
     expect(SETTLE.typeTextAt).toBeLessThan(1);
+  });
+
+  it('EASE_SET_DOWN sets a lifted row down evenly, inside its own move and any re-aim of it', () => {
+    expect(EASE_SET_DOWN).toBe('cubic-bezier(0.42, 0, 0.58, 1)');
+    expect(SETTLE.liftSetDownMs).toBeLessThan(SETTLE.retargetMinMs);
+    expect(SETTLE.liftSetDownMs).toBeLessThan(SETTLE.moveMs / 2);
   });
 
   it('EASE_SETTLE is --ease-out-soft from app/globals.css, read as text', () => {

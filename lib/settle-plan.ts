@@ -90,8 +90,9 @@ export const SETTLE = {
   // A row gliding farther than its own height is lifted while it moves: stacked above its
   // siblings on the nearest painted ground, so texts never overprint as it crosses them.
   liftRows: true as boolean,
-  // A lifted row's shadow is set down over the last this-many ms of its own move, then the lift comes off.
-  liftSetDownMs: 120,
+  // A lifted row's shadow is set down over the last this-many ms of its own move (EASE_SET_DOWN),
+  // from where EASE_MOVE has it a few px from its slot, then the lift comes off.
+  liftSetDownMs: 180,
 } as const;
 
 /**
@@ -117,6 +118,13 @@ export const EASE_MOVE: string = EASE_SETTLE;
  * row (the empty space, a right-aligned chip) then opens on EASE_SETTLE.
  */
 export const EASE_TYPE = 'cubic-bezier(0.3, 0.4, 0.5, 1)';
+
+/**
+ * The curve a lifted row's shadow is set down on (SETTLE.liftSetDownMs): even,
+ * easing in and out. On EASE_SETTLE most of the shadow went in two frames and
+ * read as a quick soften rather than a row being put down.
+ */
+export const EASE_SET_DOWN = 'cubic-bezier(0.42, 0, 0.58, 1)';
 
 export type SettleRole = 'row' | 'frame';
 

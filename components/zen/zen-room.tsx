@@ -262,6 +262,8 @@ export function ZenSurface() {
   return (
     <div
       data-settle-scope="zen"
+      // Rows glide unlifted here: the frost and the ledger's veil are not their ancestors (lib/settle.ts LIFT_OFF).
+      data-settle-lift="off"
       className="zen-room relative flex h-[100dvh] flex-col items-center overflow-y-auto bg-surface-0 px-5 pt-7 pb-24"
     >
       {/* The look-only preview's sync line (components/shell/planner-sync-line.tsx):
