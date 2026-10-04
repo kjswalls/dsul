@@ -8,11 +8,12 @@ import { join } from 'node:path';
  * look at and safe to swap:
  *
  *  - The mark is ONE component (components/ai/ask-mark.tsx), drawn by the Ask
- *    key and by Ask's header, decorative in both; nothing else knows what it
- *    looks like, so swapping it is a change to that file. This file holds it
- *    to the slot's contract only (the accent solid, the slot's tokens, motion
- *    only when the key engages it), never to how many parts it has or which
- *    is lit, so a swap leaves it green.
+ *    key, by Ask's header and everywhere else the AI is marked (where Lucide's
+ *    Sparkles used to be), decorative in all of them; nothing else knows what
+ *    it looks like, so swapping it is a change to that file. This file holds
+ *    it to the slot's contract only (the accent solid, the slot's tokens,
+ *    motion only when the key engages it), in both its tones, never to how
+ *    many parts it has or which is lit, so a swap leaves it green.
  *  - The key's paint (app/globals.css, "Ask's key") obeys CLAUDE.md's accent
  *    rule with no exception: no opacity, filter, mask or blend anywhere in it,
  *    and the accent is never mixed into anything (only the partner steps
@@ -32,7 +33,7 @@ vi.mock('@/components/primitives/relay-field', () => ({ RelayField: () => null }
 
 import { AskOpener } from '@/components/ai/rail/ask-opener';
 import { RailHeader } from '@/components/ai/rail/rail-header';
-import { AskMark, ASK_MARK_LIGHT } from '@/components/ai/ask-mark';
+import { AskMark, AskMarkIcon, ASK_MARK_LIGHT, type AskMarkTone } from '@/components/ai/ask-mark';
 import { useLookStore } from '@/lib/look-store';
 import { seedAI, CONNECTED_MODEL } from './helpers/ai-fixtures';
 
@@ -256,16 +257,90 @@ describe('the mark', () => {
     }
   });
 
+  // The sparkle that marked AI before the mark existed: every place it stood
+  // for the AI carries the mark now, by importing it. Lucide's Sparkles stays
+  // only in the glyph library users pick for their own containers.
+  it('marks the AI everywhere the sparkle did, and no Lucide sparkle stands for it', () => {
+    const files: string[] = [];
+    const walk = (dir: string) => {
+      for (const name of readdirSync(join(ROOT, dir))) {
+        const rel = join(dir, name);
+        if (statSync(join(ROOT, rel)).isDirectory()) walk(rel);
+        else if (/\.tsx?$/.test(name)) files.push(rel);
+      }
+    };
+    ['app', 'components', 'lib', 'hooks'].forEach(walk);
+    const sparkles = files.filter((f) => /import\s*\{[^}]*\bSparkles\b[^}]*\}\s*from\s*'lucide-react'/.test(read(f)));
+    expect(sparkles).toEqual(['lib/category-icons.ts']);
+    for (const f of [
+      'components/ai/ask/ask-greeting.tsx',
+      'components/ai/ask/history-view.tsx',
+      'components/ai/proposal-card.tsx',
+      'components/mobile/mode-switcher-sheet.tsx',
+      'components/notices/ai-notice.tsx',
+      'components/planner/item-context-menu.tsx',
+      'components/planner/item-detail-sections.tsx',
+      'components/sidebar/omnibar.tsx',
+      'lib/commands/registry.ts',
+      'lib/settings/manifest.ts',
+    ]) {
+      expect(read(f), f).toMatch(/import \{[^}]*\bAskMark(?:Icon)?\b[^}]*\} from '@\/components\/ai\/ask-mark'/);
+    }
+  });
+
+  describe('in one ink, where a slot colours its glyph', () => {
+    it('paints every part in the text colour round it, and never moves', () => {
+      const { container } = render(<AskMark tone="ink" className="size-3" />);
+      const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
+      expect(svg).toHaveAttribute('data-tone', 'ink');
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+      expect(svg).toHaveClass('size-3');
+      expect(svg).not.toHaveClass('size-4');
+      const tiles = Array.from(svg.querySelectorAll('*'));
+      expect(tiles.length).toBeGreaterThan(0);
+      for (const el of tiles) {
+        expect(el.getAttribute('class')).toBe('fill-current');
+        expect(el.getAttribute('fill')).toBeNull();
+      }
+    });
+
+    it("stands in for a Lucide icon: sized by the slot's class, decorative whatever the slot passes", () => {
+      const ref = { current: null as SVGSVGElement | null };
+      const { container } = render(
+        <AskMarkIcon ref={ref} className="h-3.5 w-3.5 text-destructive" strokeWidth={2.25} aria-hidden={false} />
+      );
+      const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
+      expect(ref.current).toBe(svg);
+      expect(svg).toHaveAttribute('data-tone', 'ink');
+      // 16px until a class sizes it, Lucide's way, so h-/w- and size- both win.
+      expect(svg).toHaveAttribute('width', '16');
+      expect(svg).toHaveAttribute('height', '16');
+      expect(svg).toHaveClass('h-3.5', 'w-3.5', 'text-destructive');
+      expect(svg.getAttribute('class')).not.toMatch(/\bsize-/);
+      // A stroke means nothing to filled tiles, and it never loses aria-hidden.
+      expect(svg).not.toHaveAttribute('stroke-width');
+      expect(svg).toHaveAttribute('aria-hidden', 'true');
+    });
+
+    it('passes data attributes through, and keeps its own', () => {
+      const { container } = render(<AskMark data-glyph="general" data-ask-mark="other" />);
+      const svg = container.querySelector('svg') as SVGSVGElement;
+      expect(svg).toHaveAttribute('data-glyph', 'general');
+      expect(svg).toHaveAttribute('data-ask-mark', 'aurora-step');
+    });
+  });
+
   /*
    * The mark's contract, which any mark swapped into ask-mark.tsx keeps and
    * nothing here says what the mark looks like (how many parts, which one is
    * lit, how it moves): drawn by the slot's rules, so a swap is a change to
    * that file alone.
    */
-  describe("keeps the slot's contract, whatever it draws", () => {
-    /** Every element of the mark, the svg first. */
-    const parts = () => {
-      const { container } = render(<AskMark />);
+  describe("keeps the slot's contract, whatever it draws, in either tone", () => {
+    const TONES: AskMarkTone[] = ['aurora', 'ink'];
+    /** Every element of the mark in `tone`, the svg first. */
+    const parts = (tone: AskMarkTone = 'aurora') => {
+      const { container } = render(<AskMark tone={tone} />);
       const svg = container.querySelector('svg[data-ask-mark]') as SVGSVGElement;
       expect(svg).not.toBeNull();
       return [svg, ...Array.from(svg.querySelectorAll('*'))];
@@ -314,16 +389,18 @@ describe('the mark', () => {
     }
 
     it('is decorative and drawn for the 16px slot', () => {
-      const [svg] = parts();
-      expect(svg).toHaveAttribute('aria-hidden', 'true');
-      expect(svg).toHaveAttribute('focusable', 'false');
-      expect(svg).toHaveClass('size-4');
-      expect(svg.hasAttribute('width') || svg.hasAttribute('height')).toBe(false);
-      expect(svg).toHaveAttribute('viewBox');
+      for (const tone of TONES) {
+        const [svg] = parts(tone);
+        expect(svg).toHaveAttribute('aria-hidden', 'true');
+        expect(svg).toHaveAttribute('focusable', 'false');
+        expect(svg).toHaveClass('size-4');
+        expect(svg.hasAttribute('width') || svg.hasAttribute('height')).toBe(false);
+        expect(svg).toHaveAttribute('viewBox');
+      }
     });
 
     it('paints the accent solid: nothing fades a part that carries it, round it or inside it', () => {
-      const all = parts();
+      const all = TONES.flatMap((tone) => parts(tone));
       const lit = all.filter((el) => ACCENT.test(paintOf(el)));
       for (const el of lit) {
         const chain: Element[] = [];
@@ -336,7 +413,7 @@ describe('the mark', () => {
     });
 
     it("paints in the slot's tokens: a mix with the accent is a solid blend of slot tokens, and no colour is literal", () => {
-      for (const el of parts()) {
+      for (const el of TONES.flatMap((tone) => parts(tone))) {
         const paint = paintOf(el);
         for (const [mix] of paint.matchAll(/color-mix\((?:[^()]|\((?:[^()]|\([^()]*\))*\))*\)/g)) {
           if (!ACCENT.test(mix)) continue;
@@ -353,7 +430,7 @@ describe('the mark', () => {
     });
 
     it('moves only when the key engages it, by named properties, within 300ms with its delay, and never under reduced motion', () => {
-      for (const el of parts()) {
+      for (const el of TONES.flatMap((tone) => parts(tone))) {
         const us = utilities(el);
         const has = (raw: string) => us.some((u) => u.raw === raw);
         let duration = 0;

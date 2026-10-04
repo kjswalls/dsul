@@ -2,7 +2,8 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { addDays, format, isAfter, startOfDay, startOfWeek, subWeeks } from 'date-fns';
-import { Check, ChevronDown, Plus, Sparkles, Split, X } from 'lucide-react';
+import { Check, ChevronDown, Plus, Split, X } from 'lucide-react';
+import { AskMark } from '@/components/ai/ask-mark';
 import { Input } from '@/components/ui/input';
 import { RelayField } from '@/components/primitives/relay-field';
 import { usePlannerStore } from '@/lib/planner-store';
@@ -278,7 +279,7 @@ function AgentSection({ item }: { item: Item }) {
           'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
         )}
       >
-        <Sparkles className="size-3" />
+        <AskMark tone="ink" className="size-3" />
         Assign to OpenClaw
       </button>
     );
@@ -318,7 +319,7 @@ function AgentSection({ item }: { item: Item }) {
       )}
       <div className="relative z-10 flex flex-col gap-1">
         <div className="flex items-center gap-2">
-          <Sparkles className="text-warning-text size-3.5 shrink-0" />
+          <AskMark className="size-3.5" />
           {/* assigneeLabel, not CSS capitalize: a stored `beacon` (from before
               the AI lost its name) has to read as "AI", and the stored value is
               a contract that is never rewritten. */}

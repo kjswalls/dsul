@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { AlignLeft, Check, Sparkles, Sun } from 'lucide-react';
+import { AlignLeft, Check, Sun } from 'lucide-react';
 
+import { AskMarkIcon } from '@/components/ai/ask-mark';
 import {
   Drawer,
   DrawerContent,
@@ -32,14 +33,16 @@ import { cn } from '@/lib/utils';
 const GLYPHS: Record<MobileTab, typeof Sun> = {
   braindump: AlignLeft,
   today: Sun,
-  chat: Sparkles,
+  chat: AskMarkIcon,
 };
 
 /**
  * Lucide's default stroke of 2 is thinned to 1.5 app-wide (the
  * `.lucide[stroke-width='2']` rule in globals.css). These glyphs opt out: at
  * 18px inside a 44px card they are the only thing distinguishing three
- * surfaces, and the artboard draws them at 2.25.
+ * surfaces, and the artboard draws them at 2.25. Ask's is the AI's mark in one
+ * ink (components/ai/ask-mark.tsx), filled tiles with no stroke to set, so it
+ * ignores this and stays the colourless foreground the card asks for.
  */
 const GLYPH_STROKE = 2.25;
 

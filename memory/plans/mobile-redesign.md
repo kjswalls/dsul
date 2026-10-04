@@ -77,7 +77,8 @@ dedicated trigger moves inside this menu.
   `shadow-[var(--shadow-elev-sm)]`) then the **omnibar**, styled as the desktop pill:
   48px tall, radius 10, `bg-surface-2`, `px-[22px]`, the desktop key-rest shadow.
 - The mode card shows the **current surface's glyph** — `Sun` today / `AlignLeft`
-  braindump / `Sparkles` beacon — in `text-foreground`, **no lime tint**. Tapping it opens
+  braindump / `Sparkles` beacon (since 2026-10-04 the AI's mark in one ink,
+  `AskMarkIcon`) — in `text-foreground`, **no lime tint**. Tapping it opens
   a **mode switcher sheet** listing Braindump · Today · Beacon.
 - `DockNoticesMobile` keeps its place inside the well, above the bar row.
 - The omnibar loses its trailing sparkle/Ask-Beacon button on mobile. The Ask-Beacon

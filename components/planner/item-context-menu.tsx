@@ -19,13 +19,13 @@ import {
   Play,
   Redo2,
   SkipForward,
-  Sparkles,
   Split,
   Sprout,
   Trash2,
   Undo2,
   Unlink,
 } from 'lucide-react';
+import { AskMark } from '@/components/ai/ask-mark';
 import {
   ContextMenu,
   ContextMenuContent,
@@ -469,7 +469,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
     <ContextMenuSub>
       <ContextMenuSubTrigger className={cn(ROW, '[&>svg:last-child]:size-3.5')} data-testid="item-menu-ask">
         <span className="flex size-3.5 shrink-0 items-center justify-center">
-          <Sparkles className="text-ai size-3.5" />
+          <AskMark className="size-3.5" />
         </span>
         <span className="flex-1 truncate">Ask {answererName ?? 'AI'}</span>
       </ContextMenuSubTrigger>
