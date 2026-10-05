@@ -38,6 +38,17 @@ task-shaped asks. The console's member rows (which cannot host the panel) send t
 its page and offer neither the compose ask nor Find a time. Containers and multiselection
 are next.
 
+**Note 2026-10-05: the item menu's row is "AI ▸", and it hands off.** The submenu reads
+"AI" whoever answers (Kirby: "not loving the 'ask AI' menu name"). Under a line, a row hands
+the item to the paired agent: "Hand off to OpenClaw" (`canDelegate`; offered only where
+`lib/agent-handoff.ts` `canHandOff`, the agent queue's own filter, says the agent will see
+it, and never on a repeating task, whose one agent status cannot re-enter the queue), then
+"Take back from OpenClaw" with its status beside it, never gated on the agent being paired.
+Opening the menu on a held item reads the agent's rows first, so a finished report is not
+cleared on a stale "Queued". Both writes are named history entries with the undo strip.
+The item panel's "Assign to OpenClaw" / "Unassign" is unchanged for now (it still offers
+finished and paused tasks); naming the AI across the rest of the app is parked.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

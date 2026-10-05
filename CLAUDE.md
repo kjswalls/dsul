@@ -350,8 +350,10 @@ rather than taking the flag.
   surface that wants "may I tick / skip / carry this?" asks there rather than re-deriving.
   The right-click menus are pointer-only (long-press is drag on touch) and hold no Delete
   for containers — each Organize pane words its own delete consequence. The item menu's
-  "Ask AI ▸" asks are declared the same way, in [lib/item-asks.ts](lib/item-asks.ts), and
-  run through `lib/open-chat.ts`, never a surface's own send. Chromium on Linux and macOS
+  "AI ▸" asks are declared the same way, in [lib/item-asks.ts](lib/item-asks.ts), and
+  run through `lib/open-chat.ts`, never a surface's own send; its "Hand off to OpenClaw" /
+  "Take back" row asks [lib/agent-handoff.ts](lib/agent-handoff.ts), whose `canHandOff` is
+  the agent's own queue filter (an item offered is an item the agent will see). Chromium on Linux and macOS
   opens a context menu on the right button's DOWN, and Radix selects a row released over,
   so the wrappers in [context-menu.tsx](components/ui/context-menu.tsx) swallow the release
   of the press that opened the menu (a menu shifted to fit lands under the pointer). Build a
