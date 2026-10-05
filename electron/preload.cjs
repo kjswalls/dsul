@@ -38,6 +38,10 @@ contextBridge.exposeInMainWorld('dsulDesktop', {
   shellVersion: versionArg ? versionArg.slice(VERSION_ARG.length) : '',
   electronVersion: process.versions.electron,
   platform: process.platform,
+  // The providers openAuthUrl accepts: policy.OAUTH_PROVIDERS, which a sandboxed preload can't
+  // require, so it is copied here and a test holds the two together. Added after version 1
+  // shipped, so the page treats a missing list as Google only.
+  authProviders: ['google', 'apple'],
 
   // Subscribes first and only then tells main this page is listening: main holds a press made
   // during a page load until it hears this.
@@ -58,7 +62,7 @@ contextBridge.exposeInMainWorld('dsulDesktop', {
   },
 
   // Main checks the URL (policy.checkAuthorizeUrl) before it opens anything. True means it went
-  // to the system browser and a Google sign-in is armed.
+  // to the system browser and a Google or Apple sign-in is armed.
   openAuthUrl(url) {
     return ipcRenderer
       .invoke('dsul:open-auth-url', typeof url === 'string' ? url : '')

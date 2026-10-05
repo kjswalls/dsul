@@ -1022,6 +1022,7 @@ and moving existing blocks from the phone, the overdue tray, sinking completed r
 filters and `showPausedOnGrid` (the phone uses the defaults), syncing the
 timezone from the phone, notifications, Focus as a Live Activity, a
 local-stack password grant for development, and the web-side work the app
-still needs (a native push channel, Sign in with Apple on the web). App Store
+still needs (a native push channel). Sign in with Apple is live on the web, and
+memory/plans/sign-in-with-apple.md says what the phone's native flow needs. App Store
 review will also want in-app account deletion and consent before sending data
 to a model.

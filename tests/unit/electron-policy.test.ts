@@ -11,7 +11,8 @@ const {
   APP_ORIGIN,
   SUPABASE_HOST,
   SUPABASE_ORIGIN,
-  GOOGLE_PENDING_MS,
+  OAUTH_PROVIDERS,
+  OAUTH_PENDING_MS,
   EMAIL_PENDING_MS,
   BLOCKED_SWITCHES,
   blockedLaunch,
@@ -64,7 +65,7 @@ describe('electron/lib/policy.cjs', () => {
     expect(APP_ORIGIN).toBe('https://do.dsul.app');
     // Mirrors NEXT_PUBLIC_SUPABASE_URL (the same host tests/unit/e2e-local-target.test.ts names).
     expect(SUPABASE_HOST).toBe('ctcspcferkdlzdcqlozq.supabase.co');
-    expect(GOOGLE_PENDING_MS).toBe(10 * 60 * 1000);
+    expect(OAUTH_PENDING_MS).toBe(10 * 60 * 1000);
     expect(EMAIL_PENDING_MS).toBe(60 * 60 * 1000);
   });
 });
@@ -280,9 +281,23 @@ describe('checkAuthorizeUrl', () => {
     expect(checkAuthorizeUrl(authorizeUrl({ redirect_to: null }))).toBe(false);
   });
 
+  it('accepts Apple as well as Google', () => {
+    expect(OAUTH_PROVIDERS).toEqual(['google', 'apple']);
+    expect(checkAuthorizeUrl(authorizeUrl({ provider: 'apple' }))).toBe(true);
+  });
+
   it('rejects another provider', () => {
     expect(checkAuthorizeUrl(authorizeUrl({ provider: 'github' }))).toBe(false);
+    expect(checkAuthorizeUrl(authorizeUrl({ provider: 'Apple' }))).toBe(false);
+    expect(checkAuthorizeUrl(authorizeUrl({ provider: '' }))).toBe(false);
     expect(checkAuthorizeUrl(authorizeUrl({ provider: null }))).toBe(false);
+  });
+
+  it('is advertised to the page by the preload, provider for provider', () => {
+    // A sandboxed preload can't require policy.cjs, so it carries its own copy of the list.
+    const preload = readFileSync(path.resolve(__dirname, '../../electron/preload.cjs'), 'utf8');
+    const listed = /authProviders: \[([^\]]*)\]/.exec(preload)?.[1];
+    expect(listed?.split(',').map((p) => p.trim().replace(/'/g, ''))).toEqual([...OAUTH_PROVIDERS]);
   });
 
   it('rejects a plain or missing challenge', () => {
@@ -421,8 +436,8 @@ describe('livePending', () => {
   const now = 1_800_000_000_000;
 
   it('keeps a window that is still open', () => {
-    expect(livePending({ kind: 'google', until: now + 60_000 }, now)).toEqual({
-      kind: 'google',
+    expect(livePending({ kind: 'oauth', until: now + 60_000 }, now)).toEqual({
+      kind: 'oauth',
       until: now + 60_000,
     });
     expect(livePending({ kind: 'email', until: now + EMAIL_PENDING_MS }, now)).toEqual({
@@ -432,20 +447,22 @@ describe('livePending', () => {
   });
 
   it('drops a lapsed window', () => {
-    expect(livePending({ kind: 'google', until: now }, now)).toBeNull();
+    expect(livePending({ kind: 'oauth', until: now }, now)).toBeNull();
     expect(livePending({ kind: 'email', until: now - 1 }, now)).toBeNull();
   });
 
   it('drops a window longer than its kind allows, as after the clock moved back', () => {
-    expect(livePending({ kind: 'google', until: now + GOOGLE_PENDING_MS + 1 }, now)).toBeNull();
+    expect(livePending({ kind: 'oauth', until: now + OAUTH_PENDING_MS + 1 }, now)).toBeNull();
     expect(livePending({ kind: 'email', until: now + EMAIL_PENDING_MS + 1 }, now)).toBeNull();
   });
 
   it('drops a malformed record', () => {
     expect(livePending(null, now)).toBeNull();
     expect(livePending({ kind: 'magic', until: now + 1000 }, now)).toBeNull();
-    expect(livePending({ kind: 'google', until: String(now + 1000) }, now)).toBeNull();
-    expect(livePending({ kind: 'google', until: Infinity }, now)).toBeNull();
+    expect(livePending({ kind: 'oauth', until: String(now + 1000) }, now)).toBeNull();
+    expect(livePending({ kind: 'oauth', until: Infinity }, now)).toBeNull();
+    // What a shell before Apple wrote. Dropped, so at worst a sign-in spanning the update is retried.
+    expect(livePending({ kind: 'google', until: now + 1000 }, now)).toBeNull();
   });
 });
 

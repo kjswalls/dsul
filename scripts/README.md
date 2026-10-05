@@ -109,3 +109,19 @@ by `000_baseline.sql`), so keep the fixture honest first if the real shape ever
 disagrees. `tests/unit/collapse-classify-kind.test.ts` covers the same
 migration in CI, but only as text: it cannot catch a syntax error or a wrong
 join, which is exactly what this finds.
+
+## `apple-client-secret.mjs`
+
+Mints the client secret Supabase's Apple provider needs: a JWT signed with the Sign
+in with Apple key (.p8), valid 180 days (Apple's ceiling is six months). Run it at
+setup and again before each expiry, then paste the output into Supabase →
+Authentication → Providers → Apple. It prints the expiry date on stderr.
+
+```bash
+node scripts/apple-client-secret.mjs --team <Team ID> --key-id <Key ID> \
+  --client-id app.dsul.web --p8 ~/Downloads/AuthKey_<Key ID>.p8
+```
+
+Nothing is sent anywhere, and the .p8 never belongs in the repo. The full setup and
+rotation are in `memory/plans/sign-in-with-apple.md`;
+`tests/unit/apple-client-secret.test.ts` checks the claims and the signature.

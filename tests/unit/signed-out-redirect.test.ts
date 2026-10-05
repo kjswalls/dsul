@@ -70,7 +70,7 @@ describe('loginPathFor', () => {
   });
 
   it('is read back by /login into a sign-in that lands on the page (and is dropped on desktop)', () => {
-    // app/login/page.tsx reads `redirect` and hands it to loginRedirectTarget;
+    // app/login/login-page.tsx reads `redirect` and hands it to loginRedirectTarget;
     // /auth/callback runs safeNext over its `next` and redirects there.
     const redirect = new URL(loginPathFor('/connect?code=ABCD1234', ORIGIN), ORIGIN).searchParams.get('redirect');
     const target = loginRedirectTarget(redirect, ORIGIN);

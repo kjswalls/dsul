@@ -5,14 +5,20 @@
 // from Electron or Node. URL and URLSearchParams are globals in the main process and in vitest.
 
 const APP_ORIGIN = 'https://do.dsul.app';
-// Mirrors production's NEXT_PUBLIC_SUPABASE_URL. A desktop Google sign-in may only open an
-// authorize URL on this host.
+// Mirrors production's NEXT_PUBLIC_SUPABASE_URL. A desktop Google or Apple sign-in may only open
+// an authorize URL on this host.
 const SUPABASE_HOST = 'ctcspcferkdlzdcqlozq.supabase.co';
 const SUPABASE_ORIGIN = `https://${SUPABASE_HOST}`;
 
-// How long a sign-in started in the app keeps accepting a dsul:// link. Google's code dies at
-// 300s, so ten minutes is generous. A magic link can sit in an inbox for longer.
-const GOOGLE_PENDING_MS = 10 * 60 * 1000;
+// The providers a desktop sign-in may open in the system browser. preload.cjs advertises the
+// same list to the page as `authProviders`, so the login only offers what this file allows (a
+// test holds the two together).
+const OAUTH_PROVIDERS = Object.freeze(['google', 'apple']);
+
+// How long a sign-in started in the app keeps accepting a dsul:// link. A provider's code dies
+// with GoTrue's flow state at 300s, so ten minutes is generous. A magic link can sit in an inbox
+// for longer.
+const OAUTH_PENDING_MS = 10 * 60 * 1000;
 const EMAIL_PENDING_MS = 60 * 60 * 1000;
 
 const RELEASES_API = 'https://api.github.com/repos/kjswalls/dsul/releases/latest';
@@ -107,9 +113,9 @@ function isAuthorizeEndpoint(raw, supabaseOrigins = [SUPABASE_ORIGIN]) {
 }
 
 /**
- * Whether `openAuthUrl` may open this URL and arm a Google sign-in: exactly the URL the desktop
- * login builds with signInWithOAuth, so the bridge can't be used to open anything else, or to
- * start a flow whose code would come back somewhere other than /auth/desktop.
+ * Whether `openAuthUrl` may open this URL and arm a Google or Apple sign-in: exactly the URL the
+ * desktop login builds with signInWithOAuth, so the bridge can't be used to open anything else, or
+ * to start a flow whose code would come back somewhere other than /auth/desktop.
  */
 function checkAuthorizeUrl(raw, { appOrigin = APP_ORIGIN, supabaseOrigins = [SUPABASE_ORIGIN] } = {}) {
   const u = parse(raw);
@@ -121,7 +127,7 @@ function checkAuthorizeUrl(raw, { appOrigin = APP_ORIGIN, supabaseOrigins = [SUP
     return all.length === 1 ? all[0] : null;
   };
   return (
-    one('provider') === 'google' &&
+    OAUTH_PROVIDERS.includes(one('provider')) &&
     one('redirect_to') === `${appOrigin}/auth/desktop` &&
     (one('code_challenge_method') || '').toLowerCase() === 's256' &&
     CHALLENGE_SHAPE.test(one('code_challenge') || '')
@@ -170,7 +176,7 @@ function deepLinkFromArgv(argv) {
 function livePending(record, now) {
   if (!record || typeof record !== 'object') return null;
   const { kind, until } = record;
-  const span = kind === 'google' ? GOOGLE_PENDING_MS : kind === 'email' ? EMAIL_PENDING_MS : 0;
+  const span = kind === 'oauth' ? OAUTH_PENDING_MS : kind === 'email' ? EMAIL_PENDING_MS : 0;
   if (!span || typeof until !== 'number' || !Number.isFinite(until)) return null;
   if (until <= now || until - now > span) return null;
   return { kind, until };
@@ -213,7 +219,8 @@ module.exports = {
   APP_ORIGIN,
   SUPABASE_HOST,
   SUPABASE_ORIGIN,
-  GOOGLE_PENDING_MS,
+  OAUTH_PROVIDERS,
+  OAUTH_PENDING_MS,
   EMAIL_PENDING_MS,
   RELEASES_API,
   BLOCKED_SWITCHES,

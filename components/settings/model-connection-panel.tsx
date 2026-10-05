@@ -70,7 +70,7 @@ const isDesktopApp = () => getDesktopBridge() !== null;
  * the callback then lands in a browser that has neither the PKCE cookie (it is
  * in the app's cookie jar) nor, often, a dsul session. So the app offers the
  * key path only. A connection belongs to the account, so one made by signing
- * in from a browser works in the app too. Read as app/login/page.tsx reads it,
+ * in from a browser works in the app too. Read as app/login/login-page.tsx reads it,
  * so the server render and hydration agree.
  */
 function useInDesktopApp(): boolean {

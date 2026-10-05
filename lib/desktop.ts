@@ -14,7 +14,12 @@ export interface DsulDesktop {
   platform: 'darwin' | 'win32' | 'linux';
   /** Fires on the global quick-capture shortcut and the tray's New task. Returns an unsubscribe. */
   onQuickCapture(cb: () => void): () => void;
-  /** Opens a Google authorize URL in the system browser. False when main refused it. */
+  /**
+   * Which providers `openAuthUrl` accepts. Optional, like `setAppIcon`: a shell
+   * built before Apple lacks it and opens Google only.
+   */
+  authProviders?: readonly string[];
+  /** Opens a Google or Apple authorize URL in the system browser. False when main refused it. */
   openAuthUrl(url: string): Promise<boolean>;
   /** Tells main an email link is on its way, so the dsul:// link it ends on is accepted. */
   armEmailSignIn(): Promise<void>;
