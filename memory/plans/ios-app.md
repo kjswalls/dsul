@@ -1025,4 +1025,7 @@ local-stack password grant for development, and the web-side work the app
 still needs (a native push channel). Sign in with Apple is live on the web, and
 memory/plans/sign-in-with-apple.md says what the phone's native flow needs. App Store
 review will also want in-app account deletion and consent before sending data
-to a model.
+to a model. Notifications, the timezone write and the native push channel are
+planned in [reminders-platforms.md](reminders-platforms.md) (§2.3 and its
+Phase 2: local `UNUserNotificationCenter` triggers computed by a DsulCore port
+of `lib/reminders/plan.ts`, no paid team needed; APNs only in its Phase 3).

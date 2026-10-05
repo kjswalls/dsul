@@ -15,6 +15,13 @@ ledger has a reader** (`/ledger`, decision 17) and **Beeminder posts at completi
 time** rather than only at settlement (decisions 14–16). Neither needed a
 migration.
 
+**Cross-platform (2026-10-05):** [reminders-platforms.md](reminders-platforms.md) is the plan
+for reminders on every surface — web/PWA, the Electron desktop, the native iPhone app, Android
+and the Apple Watch — and its Phase 0 brings back the two ticks that migration 045 paused, as
+one merged job. Nothing in it has shipped; its locked decisions (18 onward) continue the list
+below. Read it before touching the scan, the channels, `push_subscriptions` or
+`/api/reminders/act`.
+
 ---
 
 ## The evidence this is built on, and what it rules out
