@@ -65,6 +65,11 @@ const SIGNIFICANT_ACTIONS = [
   // one tap changes several items at once, and the offer to take it back is
   // what makes accepting feel safe rather than irreversible.
   'Accept plan:',
+  // The right-click menu's hand-off (lib/agent-handoff.ts). A schedule block
+  // draws no agent badge, so without this a hand-off from the grid would leave
+  // no trace on screen at all, and no way back but the item panel.
+  'Hand off to ',
+  'Take back from ',
 ];
 
 /**
