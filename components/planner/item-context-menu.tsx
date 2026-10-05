@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 import {
   ArrowLeftToLine,
+  Bot,
   CalendarClock,
   CalendarDays,
   Check,
@@ -67,6 +68,10 @@ import { useConversationsStore } from '@/lib/conversations-store';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { itemAsksFor, type ItemAsk, type ItemAskContext, type ItemAskId } from '@/lib/item-asks';
 import { askAboutItem, breakDownItem, proposeForItem } from '@/lib/open-chat';
+import { canHandOff, canTakeBack, delegateName, handOffItem, heldState, takeBackItem } from '@/lib/agent-handoff';
+import { refreshAgentFreshness } from '@/hooks/use-agent-freshness';
+import { agentStatusView } from '@/lib/agent-status';
+import { assigneeLabel } from '@/lib/chat-utils';
 import { parseDay } from '@/lib/collections';
 import { cn } from '@/lib/utils';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
@@ -86,9 +91,10 @@ import type { HabitItem, Item, Task } from '@/lib/planner-types';
  * same Edit lists; right-clicking anything else makes it the selection first,
  * the way a file manager does, so what the menu acts on is always lit.
  *
- * "Ask AI" is one row with the asks under it (lib/item-asks.ts declares them,
- * lib/open-chat.ts runs them), so the AI adds a single line to the menu; it is
- * not there at all while nothing can answer.
+ * "AI" is one row with the asks under it (lib/item-asks.ts declares them,
+ * lib/open-chat.ts runs them) and the hand-off to the agent
+ * (lib/agent-handoff.ts), so the AI adds a single line to the menu; it is not
+ * there at all while nothing can answer, propose or take the item.
  *
  * Pointer only. On touch a long-press already means drag (and, on phones, the
  * row swipe), so the trigger is disabled there and the row's own ⋯ / sheet
@@ -149,7 +155,7 @@ export function ItemContextMenu({ item, date, occurrence, extra, openHref, child
 /**
  * Radix hands focus back to the row the menu opened from once its close
  * animation ends, whatever happened in between. A row that opened something
- * which took the focus (the item's conversation box, from "Ask AI"; a
+ * which took the focus (the item's conversation box, from "AI ▸"; a
  * dialog) keeps it there: the row gets it back only when it would otherwise
  * be lost, the item panel's own return rule (item-dialog.tsx returnFocusTo).
  * By now the menu is gone, so focus left inside it reads as <body>.
@@ -400,7 +406,7 @@ function SingleBody({
   );
 }
 
-/* ── Ask AI: the asks, under one row ───────────────────────────────────── */
+/* ── AI: the asks and the hand-off, under one row ─────────────────────── */
 
 const ASK_ICON: Record<ItemAskId, ReactNode> = {
   ask: <MessageSquare className="size-3.5" />,
@@ -411,12 +417,19 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
 };
 
 /**
- * "Ask AI ▸". Each ask runs on the item as it is when picked, and always about
- * the item itself, whatever day it was drawn on. `page`: this surface cannot
- * host the item panel (the console), so the item goes to its own page, as
- * "Open item" does here. Two asks are not offered there: "Ask about this…" would
- * be "Open item" again (the page shows the conversation and its box), and
- * "Find a time" answers in Ask, which that page does not show.
+ * "AI ▸": what can be asked of the AI about this item, then, under a line,
+ * handing it to the agent. Each ask runs on the item as it is when picked, and
+ * always about the item itself, whatever day it was drawn on. `page`: this
+ * surface cannot host the item panel (the console), so the item goes to its
+ * own page, as "Open item" does here. Two asks are not offered there: "Ask
+ * about this…" would be "Open item" again (the page shows the conversation and
+ * its box), and "Find a time" answers in Ask, which that page does not show.
+ * The hand-off opens nothing, so it is offered there too.
+ *
+ * The hand-off row follows the item: "Hand off to OpenClaw" while the agent
+ * could take it (lib/agent-handoff.ts canHandOff, the agent's own queue
+ * filter), "Take back from OpenClaw" with its status beside it while the agent
+ * holds it. Taking back is never gated on the agent being paired.
  *
  * Opening the menu warms the conversation list (it never blocks), so "Continue
  * conversation" can be told apart from "Ask about this…" in a session that has
@@ -425,26 +438,41 @@ const ASK_ICON: Record<ItemAskId, ReactNode> = {
 function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string; tz: string; page: boolean }) {
   const router = useRouter();
   const isMobile = useIsMobile();
-  const { canChat, canPropose, answererName } = useAICapabilities();
+  const { canChat, canPropose, canDelegate } = useAICapabilities();
   const hasConversation = useConversationsStore((s) => typeof s.itemIndex[item.id] === 'string');
   const routines = usePlannerStore((s) => s.routines);
   const seasons = usePlannerStore((s) => s.seasons);
   const goals = usePlannerStore((s) => s.goals);
+  // The menu body mounts only while open, so the status beside "Take back"
+  // reads the clock as of opening, which is all a glance needs.
+  const [now] = useState(() => Date.now());
   useEffect(() => {
     if (canChat) void useConversationsStore.getState().ensureLoaded();
   }, [canChat]);
+  // The store hears of the agent's own writes only through Ask home's
+  // throttled read, and Ask starts closed: an item handed off an hour ago may
+  // be done on the server while it still reads "Queued" here. Read the agent's
+  // rows before offering to take it back (a finished report is not the menu's
+  // to clear); the row re-renders as the newer state lands.
+  const delegated = 'assignee' in item && !!item.assignee;
+  useEffect(() => {
+    if (delegated) void refreshAgentFreshness();
+  }, [delegated]);
 
-  if (!canChat && !canPropose) return null;
+  const takeBack = canTakeBack(item);
+  if (!canChat && !canPropose && !canDelegate && !takeBack) return null;
+  const inactiveIds = inactiveItemIdsOn([item], todayStr, { userTimezone: tz, routines, seasons });
   const ctx: ItemAskContext = {
     todayStr,
-    inactiveIds: inactiveItemIdsOn([item], todayStr, { userTimezone: tz, routines, seasons }),
+    inactiveIds,
     milestoneIds: milestoneItemIds(goals ?? []),
     hasConversation,
     canChat,
     canPropose,
   };
   const asks = itemAsksFor(item, ctx).filter((a) => !(page && (a.kind === 'propose' || a.kind === 'compose')));
-  if (asks.length === 0) return null;
+  const handOff = !takeBack && canHandOff(item, { canDelegate, todayStr, inactiveIds });
+  if (asks.length === 0 && !handOff && !takeBack) return null;
 
   const run = (ask: ItemAsk) => () => {
     returnFocusToOpener();
@@ -464,6 +492,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
         return;
     }
   };
+  const who = takeBack && 'assignee' in item && item.assignee ? assigneeLabel(item.assignee) : delegateName();
 
   return (
     <ContextMenuSub>
@@ -471,9 +500,11 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
         <span className="flex size-3.5 shrink-0 items-center justify-center">
           <AskMark className="size-3.5" />
         </span>
-        <span className="flex-1 truncate">Ask {answererName ?? 'AI'}</span>
+        <span className="flex-1 truncate">AI</span>
       </ContextMenuSubTrigger>
-      <ContextMenuSubContent className={PANEL} data-testid="item-menu-ask-content">
+      {/* Sized to its rows, from the panel's width up: "Take back from OpenClaw"
+          beside a status ("Couldn't finish") does not fit in 240px. */}
+      <ContextMenuSubContent className={cn(PANEL, 'w-auto max-w-80 min-w-60')} data-testid="item-menu-ask-content">
         {asks.map((ask) => (
           <Row
             key={ask.id}
@@ -483,6 +514,30 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
             onSelect={run(ask)}
           />
         ))}
+        {asks.length > 0 && (handOff || takeBack) && <ContextMenuSeparator />}
+        {handOff && (
+          <Row
+            icon={<Bot className="size-3.5" />}
+            label={`Hand off to ${who}`}
+            testId="item-menu-handoff"
+            onSelect={() => {
+              returnFocusToOpener();
+              handOffItem(item);
+            }}
+          />
+        )}
+        {takeBack && (
+          <Row
+            icon={<Undo2 className="size-3.5" />}
+            label={`Take back from ${who}`}
+            detail={agentStatusView(heldState(item), now)?.label}
+            testId="item-menu-takeback"
+            onSelect={() => {
+              returnFocusToOpener();
+              takeBackItem(item);
+            }}
+          />
+        )}
       </ContextMenuSubContent>
     </ContextMenuSub>
   );

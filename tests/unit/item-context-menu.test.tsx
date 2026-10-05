@@ -51,6 +51,8 @@ vi.mock('@/lib/db', () => ({
   updateGoal: vi.fn(async () => {}),
   deleteGoal: vi.fn(async () => {}),
   restoreGoal: vi.fn(async () => {}),
+  // The menu reads the agent's rows before offering "Take back" (hooks/use-agent-freshness.ts).
+  fetchAgentStates: vi.fn(async () => []),
 }));
 /** Whether the planner's console (and so the "new" dialog) is mounted. */
 const hosted = vi.hoisted(() => ({ current: false }));
@@ -63,7 +65,8 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
-import { usePlannerStore } from '@/lib/planner-store';
+import { getActionLog, usePlannerStore } from '@/lib/planner-store';
+import { resetAgentFreshness } from '@/hooks/use-agent-freshness';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { EXT_ORGANIZE } from '@/lib/extension-registry';
@@ -77,7 +80,7 @@ import {
 } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI, type SeedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 import * as db from '@/lib/db';
 import type { HabitItem, Item, Task } from '@/lib/planner-types';
@@ -515,14 +518,15 @@ describe('the right-click that opens a menu (components/ui/context-menu.tsx)', (
   });
 });
 
-describe('the item menu\'s Ask AI row', () => {
+describe('the item menu\'s AI row', () => {
   /**
    * The asks themselves (gates, labels, prompts) are pinned in
    * item-asks.test.ts and where each one lands in open-chat.test.ts; this pins
    * what the MENU does with them: one row, there only while something can
-   * answer, named for the answerer, listing the asks in order, and running
-   * the one picked on the item (or, on a surface that cannot host the item
-   * panel, on the way to the item's page).
+   * answer, propose or take the item, labelled "AI" whoever answers, listing
+   * the asks in order, and running the one picked on the item (or, on a
+   * surface that cannot host the item panel, on the way to the item's page).
+   * Under a line, the hand-off to the agent (lib/agent-handoff.ts).
    */
   const askFixtures = (): Item[] =>
     [
@@ -582,6 +586,53 @@ describe('the item menu\'s Ask AI row', () => {
         completedDates: [],
         skippedDates: [],
       },
+      // A one-off the agent holds, queued and not yet picked up.
+      {
+        type: 'task',
+        id: 'queued',
+        title: 'Draft the newsletter',
+        status: 'pending',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 7,
+        startDate: TODAY,
+        assignee: 'openclaw',
+        aiStatus: 'queued',
+        completedDates: [],
+        skippedDates: [],
+      },
+      // One the agent tried and could not finish, with its report.
+      {
+        type: 'task',
+        id: 'stuck',
+        title: 'Book the venue',
+        status: 'pending',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 8,
+        startDate: TODAY,
+        assignee: 'openclaw',
+        aiStatus: 'failed',
+        aiResult: 'The booking site wanted a login.',
+        completedDates: [],
+        skippedDates: [],
+      },
+      // One the agent has finished: its report is the item panel's to keep.
+      {
+        type: 'task',
+        id: 'delivered',
+        title: 'Compare flights',
+        status: 'pending',
+        isScheduled: false,
+        timeBucket: 'anytime',
+        order: 9,
+        startDate: TODAY,
+        assignee: 'openclaw',
+        aiStatus: 'done',
+        aiResult: 'Three options, cheapest on Tuesday.',
+        completedDates: [],
+        skippedDates: [],
+      },
     ] as unknown as Item[];
 
   let api: FakeApi;
@@ -611,7 +662,7 @@ describe('the item menu\'s Ask AI row', () => {
     clearChatState();
   });
 
-  /** Open "Ask AI ▸" the way the Edit rows are opened above: hover, then the arrow. */
+  /** Open "AI ▸" the way the Edit rows are opened above: hover, then the arrow. */
   function openAsk(menu: HTMLElement) {
     const trigger = within(menu).getByTestId('item-menu-ask');
     fireEvent.pointerMove(trigger);
@@ -651,16 +702,16 @@ describe('the item menu\'s Ask AI row', () => {
     expect(within(rightClick(cardOf('once'))).queryByTestId('item-menu-ask')).toBeNull();
   });
 
-  it('reads "Ask AI" with a model connected, and "Ask OpenClaw" when OpenClaw answers', () => {
+  it('reads "AI" whoever answers: a connected model, or OpenClaw', () => {
     unseed = seedAI(CONNECTED_MODEL);
     render(<LiveRow id="once" />);
-    expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^Ask AI$/);
+    expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^AI$/);
     cleanup();
     unseed();
 
     unseed = seedAI(OPENCLAW_PLUGIN);
     render(<LiveRow id="once" />);
-    expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^Ask OpenClaw$/);
+    expect(within(rightClick(cardOf('once'))).getByTestId('item-menu-ask')).toHaveTextContent(/^AI$/);
   });
 
   it('is one row: the asks live under it, not in the menu', () => {
@@ -809,7 +860,7 @@ describe('the item menu\'s Ask AI row', () => {
       unseed = seedAI(CONNECTED_MODEL);
       render(<ConsoleRow id="once" />);
       const menu = rightClick(screen.getByTestId('console-row'));
-      expect(within(menu).getByTestId('item-menu-ask')).toHaveTextContent('Ask AI');
+      expect(within(menu).getByTestId('item-menu-ask')).toHaveTextContent(/^AI$/);
       expect(askIds(openAsk(menu))).toEqual(['breakdown', 'start']);
     });
 
@@ -846,6 +897,199 @@ describe('the item menu\'s Ask AI row', () => {
       expect(push).toHaveBeenCalledWith('/item/once');
       expect(request).toHaveBeenCalledWith('breakdown', undefined, 'once');
       expect(useUIStore.getState().activeDialog).toBeNull();
+    });
+  });
+
+  describe('handing the item to the agent, and taking it back (lib/agent-handoff.ts)', () => {
+    /** A paired OpenClaw agent: what `canDelegate` asks, whoever answers chat. */
+    const AGENT = { agent: true, agentId: 'kirby-1' };
+    const MODEL_AND_AGENT: SeedAI = { ...CONNECTED_MODEL, openclaw: AGENT };
+    /** The agent and nothing to chat with: no model, no gateway, no plugin chat. */
+    const AGENT_ONLY: SeedAI = { ...NOTHING_CONNECTED, openclaw: AGENT };
+
+    /** What the AI ▸ panel holds, top to bottom: each row's testid, or the line. */
+    const rows = (content: HTMLElement) =>
+      [...content.children].map(
+        (el) => el.getAttribute('data-testid') ?? (el.getAttribute('role') === 'separator' ? '—' : el.tagName)
+      );
+    const LINE = '—';
+    const closeMenu = () => {
+      fireEvent.keyDown(document.activeElement ?? document.body, { key: 'Escape' });
+      cleanup();
+    };
+
+    it('offers no hand-off with only a model connected: a model has no worker behind it', () => {
+      unseed = seedAI(CONNECTED_MODEL);
+      render(<LiveRow id="once" />);
+      const content = openAsk(rightClick(cardOf('once')));
+      expect(rows(content)).toEqual(['item-menu-ask-ask', 'item-menu-ask-breakdown', 'item-menu-ask-start', 'item-menu-ask-findTime']);
+      expect(within(content).queryByTestId('item-menu-handoff')).toBeNull();
+      expect(within(content).queryByTestId('item-menu-takeback')).toBeNull();
+    });
+
+    it('with an agent paired, offers "Hand off to OpenClaw" on a pending one-off, under a line after the asks', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      render(<LiveRow id="once" />);
+      const content = openAsk(rightClick(cardOf('once')));
+      expect(rows(content)).toEqual([
+        'item-menu-ask-ask',
+        'item-menu-ask-breakdown',
+        'item-menu-ask-start',
+        'item-menu-ask-findTime',
+        LINE,
+        'item-menu-handoff',
+      ]);
+      expect(within(content).getByTestId('item-menu-handoff')).toHaveTextContent(/^Hand off to OpenClaw$/);
+      expect(within(content).queryByTestId('item-menu-takeback')).toBeNull();
+    });
+
+    it('offers no hand-off the agent would never pick up: a habit, a repeating task, a finished one-off, a paused one', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      for (const id of ['stretch', 'daily', 'done', 'held']) {
+        render(<LiveRow id={id} />);
+        const content = openAsk(rightClick(cardOf(id)));
+        // The asks are still there; only the hand-off (and its line) is not.
+        expect(within(content).getAllByTestId(/^item-menu-ask-/).length, id).toBeGreaterThan(0);
+        expect(within(content).queryByTestId('item-menu-handoff'), id).toBeNull();
+        expect(within(content).queryByTestId('item-menu-takeback'), id).toBeNull();
+        expect(rows(content), id).not.toContain(LINE);
+        closeMenu();
+      }
+    });
+
+    it('with only the agent (nothing to chat with), keeps the AI row, holding just the hand-off', () => {
+      unseed = seedAI(AGENT_ONLY);
+      render(<LiveRow id="once" />);
+      const menu = rightClick(cardOf('once'));
+      expect(within(menu).getByTestId('item-menu-ask')).toHaveTextContent(/^AI$/);
+      expect(rows(openAsk(menu))).toEqual(['item-menu-handoff']);
+      closeMenu();
+
+      // And where there is nothing to hand off either, there is no row at all.
+      render(<LiveRow id="stretch" />);
+      expect(within(rightClick(cardOf('stretch'))).queryByTestId('item-menu-ask')).toBeNull();
+    });
+
+    it('hands off: assignee openclaw, queued, stamped, as one named history entry', async () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      render(<LiveRow id="once" />);
+      fireEvent.click(within(openAsk(rightClick(cardOf('once')))).getByTestId('item-menu-handoff'));
+      expect(itemById('once')).toMatchObject({
+        assignee: 'openclaw',
+        aiStatus: 'queued',
+        aiStatusAt: asDate(TODAY).toISOString(),
+      });
+      // Its own label, which is what lets the undo strip offer ⌘Z.
+      expect(getActionLog()[0].label).toBe('Hand off to OpenClaw: File taxes');
+      expect(screen.queryByTestId('item-context-menu')).toBeNull();
+      // It opens nothing.
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(push).not.toHaveBeenCalled();
+      await vi.waitFor(() =>
+        expect(db.updateItem).toHaveBeenCalledWith(
+          'once',
+          'task',
+          expect.objectContaining({ assignee: 'openclaw', aiStatus: 'queued' })
+        )
+      );
+
+      // Opened again, the row has turned into the way back.
+      const content = openAsk(rightClick(cardOf('once')));
+      expect(within(content).queryByTestId('item-menu-handoff')).toBeNull();
+      expect(within(content).getByTestId('item-menu-takeback')).toHaveTextContent('Take back from OpenClaw');
+    });
+
+    it('offers "Take back from OpenClaw", its status beside it, on an item the agent holds, and no hand-off', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      render(<LiveRow id="queued" />);
+      const content = openAsk(rightClick(cardOf('queued')));
+      const takeBack = within(content).getByTestId('item-menu-takeback');
+      expect(takeBack).toHaveTextContent(/^Take back from OpenClaw\s*Queued$/);
+      expect(within(takeBack).getByText('Queued')).toBeTruthy();
+      expect(within(content).queryByTestId('item-menu-handoff')).toBeNull();
+      expect(rows(content).slice(-2)).toEqual([LINE, 'item-menu-takeback']);
+    });
+
+    it("reads the agent's rows on opening, and stops offering \"Take back\" on work the agent has since finished", async () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      resetAgentFreshness();
+      vi.mocked(db.fetchAgentStates).mockResolvedValueOnce([
+        { id: 'queued', assignee: 'openclaw', aiStatus: 'done', aiResult: 'Drafted.', aiStatusAt: '2099-01-01T00:00:00.000Z' },
+      ]);
+      render(<LiveRow id="queued" />);
+      const content = openAsk(rightClick(cardOf('queued')));
+      expect(db.fetchAgentStates).toHaveBeenCalledTimes(1);
+      expect(within(content).getByTestId('item-menu-takeback')).toBeTruthy();
+      await act(async () => {
+        await flush();
+      });
+      // The newer server row landed: the report is the agent's, not the menu's to clear.
+      expect(itemById('queued')).toMatchObject({ aiStatus: 'done', aiResult: 'Drafted.' });
+      expect(screen.queryByTestId('item-menu-takeback')).toBeNull();
+    });
+
+    it('reads nothing for an item nobody holds', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      resetAgentFreshness();
+      vi.mocked(db.fetchAgentStates).mockClear();
+      render(<LiveRow id="once" />);
+      openAsk(rightClick(cardOf('once')));
+      expect(db.fetchAgentStates).not.toHaveBeenCalled();
+    });
+
+    it('takes back: clears the assignment, its status and the report, as one named history entry', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      render(<LiveRow id="stuck" />);
+      const content = openAsk(rightClick(cardOf('stuck')));
+      expect(within(within(content).getByTestId('item-menu-takeback')).getByText("Couldn't finish")).toBeTruthy();
+      fireEvent.click(within(content).getByTestId('item-menu-takeback'));
+      const item = itemById('stuck');
+      expect(item.assignee).toBeUndefined();
+      expect(item.aiStatus).toBeUndefined();
+      expect(item.aiResult).toBeUndefined();
+      expect(getActionLog()[0].label).toBe('Take back from OpenClaw: Book the venue');
+      expect(screen.queryByTestId('item-context-menu')).toBeNull();
+    });
+
+    it('offers take back with nothing connected: taking your own item back never depends on the agent', () => {
+      unseed = seedAI(NOTHING_CONNECTED);
+      render(<LiveRow id="queued" />);
+      const menu = rightClick(cardOf('queued'));
+      expect(within(menu).getByTestId('item-menu-ask')).toHaveTextContent(/^AI$/);
+      const content = openAsk(menu);
+      // No asks, so no line above it either.
+      expect(rows(content)).toEqual(['item-menu-takeback']);
+      fireEvent.click(within(content).getByTestId('item-menu-takeback'));
+      expect(itemById('queued').assignee).toBeUndefined();
+      expect(itemById('queued').aiStatus).toBeUndefined();
+    });
+
+    it('offers neither once the agent is done: its report is the item panel\'s to keep', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      render(<LiveRow id="delivered" />);
+      const content = openAsk(rightClick(cardOf('delivered')));
+      expect(within(content).queryByTestId('item-menu-handoff')).toBeNull();
+      expect(within(content).queryByTestId('item-menu-takeback')).toBeNull();
+      expect(rows(content)).not.toContain(LINE);
+      closeMenu();
+      unseed();
+
+      // With nothing connected there is then nothing for the row to hold.
+      unseed = seedAI(NOTHING_CONNECTED);
+      render(<LiveRow id="delivered" />);
+      expect(within(rightClick(cardOf('delivered'))).queryByTestId('item-menu-ask')).toBeNull();
+    });
+
+    it('still offers the hand-off on the console, since it opens nothing', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      useUIStore.setState({ activeDialog: { type: 'organize' } });
+      render(<ConsoleRow id="once" />);
+      const content = openAsk(rightClick(screen.getByTestId('console-row')));
+      expect(rows(content)).toEqual(['item-menu-ask-breakdown', 'item-menu-ask-start', LINE, 'item-menu-handoff']);
+      fireEvent.click(within(content).getByTestId('item-menu-handoff'));
+      expect(itemById('once')).toMatchObject({ assignee: 'openclaw', aiStatus: 'queued' });
+      expect(push).not.toHaveBeenCalled();
+      expect(useUIStore.getState().activeDialog).toEqual({ type: 'organize' });
     });
   });
 });
