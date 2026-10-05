@@ -19,8 +19,18 @@ import { RelayField } from '@/components/primitives/relay-field';
 
 const BROWSER_UNOPENED = 'Couldn’t open your browser to sign in. Try again.';
 
+type OAuthProvider = 'google' | 'apple';
+const PROVIDER_NAME: Record<OAuthProvider, string> = { google: 'Google', apple: 'Apple' };
+
 const noopSubscribe = () => () => {};
 const isDesktopApp = () => getDesktopBridge() !== null;
+// A desktop shell opens only the providers its main process allows
+// (electron/lib/policy.cjs), and a shell built before Apple doesn't list
+// `authProviders` at all. A browser has no bridge and can use them all.
+const canOpenApple = () => {
+  const desktop = getDesktopBridge();
+  return !desktop || (desktop.authProviders?.includes('apple') ?? false);
+};
 
 /**
  * How far the frost reaches from the focal point before it dissolves, as a
@@ -76,7 +86,7 @@ function useContentFocal() {
   return { ref, focal };
 }
 
-function LoginPageInner() {
+function LoginPageInner({ apple }: { apple: boolean }) {
   const searchParams = useSearchParams();
   // After auth, come back through /auth/callback and on to the requested page
   // (e.g. /connect?code=...). lib/auth-redirect.ts says why it is always the callback.
@@ -102,9 +112,18 @@ function LoginPageInner() {
   // returned error shows only until then.
   const [error, setError] = useState<string | null | undefined>(undefined);
   const shownError = error === undefined ? returnedError : error;
-  // Desktop only. The Google URL the system browser was sent to, kept so
-  // "Open again" can send it there a second time with the same verifier.
-  const [handoffUrl, setHandoffUrl] = useState<string | null>(null);
+  // Apple shows only where it can work: enabled in Supabase (`apple`, read on
+  // the server) and, in the desktop app, offered by the shell. The server
+  // snapshot is a browser's answer; an older shell drops the button once the
+  // page hydrates.
+  const appleHere = useSyncExternalStore(noopSubscribe, canOpenApple, () => true);
+  const showApple = apple && appleHere;
+  // Desktop only. The authorize URL the system browser was sent to, and whose
+  // it is, kept so "Open again" can send it there a second time with the same
+  // verifier.
+  const [handoff, setHandoff] = useState<{ url: string; provider: OAuthProvider } | null>(
+    null
+  );
   // Desktop only. The link has to be opened on this computer, where the app
   // is waiting for it, so the sent copy says so.
   const [sentToDesktop, setSentToDesktop] = useState(false);
@@ -146,15 +165,15 @@ function LoginPageInner() {
     setLoading(false);
   }
 
-  async function handleGoogle() {
+  async function handleOAuth(provider: OAuthProvider) {
     const desktop = getDesktopBridge();
-    if (desktop) return startDesktopGoogle(desktop);
+    if (desktop) return startDesktopOAuth(desktop, provider);
     setLoading(true);
     setError(null);
 
     const supabase = createClient();
     const { error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+      provider,
       options: {
         redirectTo: postAuthUrl(),
       },
@@ -201,17 +220,19 @@ function LoginPageInner() {
     setLoading(false);
   }
 
-  // The desktop app's Google sign-in. Google refuses to sign in inside an
-  // embedded window, so the URL goes to the system browser instead of this
-  // window navigating to it. The verifier is stored before signInWithOAuth
-  // resolves, so the app can exchange the code when it comes back.
-  async function startDesktopGoogle(desktop: DsulDesktop) {
+  // The desktop app's Google or Apple sign-in. Google refuses to sign in
+  // inside an embedded window, so the URL goes to the system browser instead of
+  // this window navigating to it, and Apple goes the same way (where a Mac's
+  // browser also offers Touch ID). The verifier is stored before
+  // signInWithOAuth resolves, so the app can exchange the code when it comes
+  // back.
+  async function startDesktopOAuth(desktop: DsulDesktop, provider: OAuthProvider) {
     setLoading(true);
     setError(null);
 
     const supabase = createClient();
     const { data, error } = await supabase.auth.signInWithOAuth({
-      provider: 'google',
+      provider,
       options: {
         redirectTo: desktopAuthUrl(),
         skipBrowserRedirect: true,
@@ -227,15 +248,15 @@ function LoginPageInner() {
     // Nothing on this page finishes the sign-in, so the buttons come back now
     // rather than spinning until the app is handed the code.
     setLoading(false);
-    if (opened) setHandoffUrl(data.url);
+    if (opened) setHandoff({ url: data.url, provider });
   }
 
   async function handleOpenAgain() {
     const desktop = getDesktopBridge();
-    if (!desktop || !handoffUrl) return;
+    if (!desktop || !handoff) return;
     setLoading(true);
     setError(null);
-    await openInBrowser(desktop, handoffUrl);
+    await openInBrowser(desktop, handoff.url);
     setLoading(false);
   }
 
@@ -336,7 +357,7 @@ function LoginPageInner() {
             <p className="text-[11.5px] text-muted-foreground">like vin diesel w/out the vin :)</p>
           </div>
 
-          {handoffUrl ? (
+          {handoff ? (
             <div className="space-y-3 duration-500 animate-in fade-in slide-in-from-bottom-1 fill-mode-both motion-reduce:animate-none">
               <ExternalLink
                 className="size-6 text-muted-foreground"
@@ -347,8 +368,8 @@ function LoginPageInner() {
                 Finish signing in in your browser.
               </h1>
               <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-                Google is open in your browser. Once you&rsquo;re through,
-                dsul picks up here.
+                {PROVIDER_NAME[handoff.provider]} is open in your browser. Once
+                you&rsquo;re through, dsul picks up here.
               </p>
               <div className="space-y-3 pt-2">
                 <Button
@@ -365,7 +386,7 @@ function LoginPageInner() {
                   variant="ghost"
                   className="h-9 w-full rounded-[10px] text-[12.5px] text-muted-foreground"
                   onClick={() => {
-                    setHandoffUrl(null);
+                    setHandoff(null);
                     setError(null);
                   }}
                   disabled={loading}
@@ -421,7 +442,7 @@ function LoginPageInner() {
                 <Button
                   variant="outline"
                   className="h-10 w-full gap-2 rounded-[10px] bg-card/55 text-[13.5px]"
-                  onClick={handleGoogle}
+                  onClick={() => handleOAuth('google')}
                   disabled={loading}
                 >
                   <svg className="h-4 w-4" viewBox="0 0 24 24" aria-hidden="true">
@@ -444,6 +465,23 @@ function LoginPageInner() {
                   </svg>
                   Continue with Google
                 </Button>
+
+                {/* Apple asks that its button be no less prominent than any
+                    other sign-in, so it is the Google button's twin, with the
+                    logo in the label's own ink as its guidelines require. */}
+                {showApple && (
+                  <Button
+                    variant="outline"
+                    className="h-10 w-full gap-2 rounded-[10px] bg-card/55 text-[13.5px]"
+                    onClick={() => handleOAuth('apple')}
+                    disabled={loading}
+                  >
+                    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                      <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.039 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.559-1.701" />
+                    </svg>
+                    Continue with Apple
+                  </Button>
+                )}
 
                 {/* Two hairlines, not the usual rule-with-a-knockout: the
                     knockout is an opaque `bg-background` chip, which on a
@@ -495,12 +533,13 @@ function LoginPageInner() {
   );
 }
 
-export function LoginPage() {
+/** `apple`: Supabase has Sign in with Apple switched on (lib/sign-in-providers.ts). */
+export function LoginPage({ apple }: { apple: boolean }) {
   return (
     <Suspense fallback={
       <div className="min-h-[100dvh] bg-background" />
     }>
-      <LoginPageInner />
+      <LoginPageInner apple={apple} />
     </Suspense>
   );
 }

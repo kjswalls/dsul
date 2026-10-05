@@ -48,12 +48,14 @@ function bridge(overrides: Partial<DsulDesktop> = {}): DsulDesktop {
   };
 }
 
-function mount(query = '') {
+function mount(query = '', { apple = false } = {}) {
   search = new URLSearchParams(query);
-  return render(<LoginPage />);
+  return render(<LoginPage apple={apple} />);
 }
 
 const google = () => screen.getByRole('button', { name: /continue with google/i });
+const appleButton = () => screen.queryByRole('button', { name: /continue with apple/i });
+const APPLE_AUTHORIZE = 'https://ctcspcferkdlzdcqlozq.supabase.co/auth/v1/authorize?provider=apple';
 
 async function sendEmail(address = 'kirby@example.com') {
   fireEvent.change(screen.getByLabelText('Email address'), { target: { value: address } });
@@ -106,6 +108,22 @@ describe('login in a browser', () => {
     });
     expect(screen.getByText(/open it on this device/i)).toBeInTheDocument();
   });
+
+  it('offers Apple only once Supabase has it switched on', () => {
+    mount();
+    expect(appleButton()).toBeNull();
+  });
+
+  it('sends Apple through the callback, on to the page that asked', async () => {
+    mount('redirect=%2Fgoal%2Fx', { apple: true });
+    await act(async () => {
+      fireEvent.click(appleButton()!);
+    });
+    expect(signInWithOAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'apple',
+      options: { redirectTo: `${ORIGIN}/auth/callback?next=%2Fgoal%2Fx` },
+    });
+  });
 });
 
 describe('login in the desktop app', () => {
@@ -123,6 +141,7 @@ describe('login in the desktop app', () => {
     });
     expect(b.openAuthUrl).toHaveBeenCalledExactlyOnceWith(AUTHORIZE);
     expect(screen.getByRole('heading', { name: /finish signing in in your browser/i })).toBeInTheDocument();
+    expect(screen.getByText(/google is open in your browser/i)).toBeInTheDocument();
 
     const again = screen.getByRole('button', { name: /open again/i });
     expect(again).toBeEnabled();
@@ -132,6 +151,40 @@ describe('login in the desktop app', () => {
     expect(b.openAuthUrl).toHaveBeenCalledTimes(2);
     expect(b.openAuthUrl).toHaveBeenLastCalledWith(AUTHORIZE);
     expect(signInWithOAuth).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens Apple the same way when the shell offers it', async () => {
+    const b = bridge({ authProviders: ['google', 'apple'] });
+    window.dsulDesktop = b;
+    signInWithOAuth.mockResolvedValue({ data: { provider: 'apple', url: APPLE_AUTHORIZE }, error: null });
+    mount('redirect=%2Fgoal%2Fx', { apple: true });
+    await act(async () => {
+      fireEvent.click(appleButton()!);
+    });
+
+    expect(signInWithOAuth).toHaveBeenCalledExactlyOnceWith({
+      provider: 'apple',
+      options: { redirectTo: `${ORIGIN}/auth/desktop`, skipBrowserRedirect: true },
+    });
+    expect(b.openAuthUrl).toHaveBeenCalledExactlyOnceWith(APPLE_AUTHORIZE);
+    expect(screen.getByText(/apple is open in your browser/i)).toBeInTheDocument();
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: /open again/i }));
+    });
+    expect(b.openAuthUrl).toHaveBeenLastCalledWith(APPLE_AUTHORIZE);
+  });
+
+  it('hides Apple in a shell that predates it, whose main would refuse the URL', () => {
+    window.dsulDesktop = bridge();
+    mount('', { apple: true });
+    expect(appleButton()).toBeNull();
+    expect(google()).toBeInTheDocument();
+  });
+
+  it('hides Apple in a shell that offers it while Supabase has it off', () => {
+    window.dsulDesktop = bridge({ authProviders: ['google', 'apple'] });
+    mount();
+    expect(appleButton()).toBeNull();
   });
 
   it('says so when the app would not open the browser, and stays on the form', async () => {

@@ -79,7 +79,7 @@ let loginReadAt = 0;
 let isQuitting = false;
 let shortcutRegistered = false;
 let update = null; // { version, url } once GitHub has a newer release
-let pending = null; // { kind: 'google' | 'email', until } while a sign-in may come back
+let pending = null; // { kind: 'oauth' | 'email', until } while a sign-in may come back
 let signInNoticeUntil = 0;
 let appIcon = appIcons.DEFAULT_LOOK; // the look the Dock or window shows (lib/app-icon.cjs)
 const seenCodes = new Set();
@@ -940,7 +940,7 @@ function registerIpc() {
       supabaseOrigins: SUPABASE_ORIGINS,
     });
     if (!ok) return false;
-    await armPending('google');
+    await armPending('oauth');
     try {
       await shell.openExternal(new URL(url).href);
       return true;
@@ -1059,7 +1059,7 @@ async function writePending() {
 }
 
 function armPending(kind) {
-  const span = kind === 'google' ? policy.GOOGLE_PENDING_MS : policy.EMAIL_PENDING_MS;
+  const span = kind === 'oauth' ? policy.OAUTH_PENDING_MS : policy.EMAIL_PENDING_MS;
   // One slot: a second attempt replaces the verifier, so the first attempt's code is dead anyway.
   pending = { kind, until: Date.now() + span };
   return writePending();

@@ -247,13 +247,13 @@ Three things below narrow that gap: the short pending windows, the code-navigati
   - There is no native dialog, and no text from the server is shown anywhere.
 - **Pending windows.**
   - They are kept in memory and in `userData/auth-pending.json`, so a cold start still honours them. Each write is followed by `flushStore()`.
-  - Google: 10 minutes, since its code dies at 300s.
+  - Google or Apple (kind `oauth`): 10 minutes, since its code dies at 300s.
   - Email: 60 minutes **[unverified: magic-link expiry]**.
 - **`openAuthUrl(url)` is checked in main, by `checkAuthorizeUrl`.** The URL must have:
   - protocol `https:`;
   - host === `SUPABASE_HOST`, which is `ctcspcferkdlzdcqlozq.supabase.co` per tests/unit/e2e-local-target.test.ts:17. Comment it as mirroring `NEXT_PUBLIC_SUPABASE_URL`;
   - path `/auth/v1/authorize`;
-  - `provider=google`;
+  - `provider=google` or `provider=apple` (`policy.OAUTH_PROVIDERS`, which the preload advertises to the page as `authProviders`; a shell without that list gets no Apple button);
   - `redirect_to === APP_ORIGIN + '/auth/desktop'`;
   - `code_challenge_method=s256`, with a challenge present.
 

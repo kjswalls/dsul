@@ -423,3 +423,7 @@ the capability gate, delegation to OpenClaw, saved conversations and their priva
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
+[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why its
+button follows Supabase's own settings, the desktop shell's provider list, the dashboard setup,
+and the client secret that must be re-minted every six months
+(`scripts/apple-client-secret.mjs`) or Apple sign-in stops.
