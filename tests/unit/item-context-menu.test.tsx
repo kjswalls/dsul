@@ -51,6 +51,8 @@ vi.mock('@/lib/db', () => ({
   updateGoal: vi.fn(async () => {}),
   deleteGoal: vi.fn(async () => {}),
   restoreGoal: vi.fn(async () => {}),
+  // The menu reads the agent's rows before offering "Take back" (hooks/use-agent-freshness.ts).
+  fetchAgentStates: vi.fn(async () => []),
 }));
 /** Whether the planner's console (and so the "new" dialog) is mounted. */
 const hosted = vi.hoisted(() => ({ current: false }));
@@ -64,6 +66,7 @@ vi.mock('@/lib/supabase', () => ({ createClient: vi.fn(() => ({})) }));
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
 import { GroupSection } from '@/components/primitives/group-section';
 import { getActionLog, usePlannerStore } from '@/lib/planner-store';
+import { resetAgentFreshness } from '@/hooks/use-agent-freshness';
 import { useSelectionStore } from '@/lib/selection-store';
 import { useUIStore } from '@/lib/ui-store';
 import { EXT_ORGANIZE } from '@/lib/extension-registry';
@@ -1005,6 +1008,33 @@ describe('the item menu\'s AI row', () => {
       expect(within(takeBack).getByText('Queued')).toBeTruthy();
       expect(within(content).queryByTestId('item-menu-handoff')).toBeNull();
       expect(rows(content).slice(-2)).toEqual([LINE, 'item-menu-takeback']);
+    });
+
+    it("reads the agent's rows on opening, and stops offering \"Take back\" on work the agent has since finished", async () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      resetAgentFreshness();
+      vi.mocked(db.fetchAgentStates).mockResolvedValueOnce([
+        { id: 'queued', assignee: 'openclaw', aiStatus: 'done', aiResult: 'Drafted.', aiStatusAt: '2099-01-01T00:00:00.000Z' },
+      ]);
+      render(<LiveRow id="queued" />);
+      const content = openAsk(rightClick(cardOf('queued')));
+      expect(db.fetchAgentStates).toHaveBeenCalledTimes(1);
+      expect(within(content).getByTestId('item-menu-takeback')).toBeTruthy();
+      await act(async () => {
+        await flush();
+      });
+      // The newer server row landed: the report is the agent's, not the menu's to clear.
+      expect(itemById('queued')).toMatchObject({ aiStatus: 'done', aiResult: 'Drafted.' });
+      expect(screen.queryByTestId('item-menu-takeback')).toBeNull();
+    });
+
+    it('reads nothing for an item nobody holds', () => {
+      unseed = seedAI(MODEL_AND_AGENT);
+      resetAgentFreshness();
+      vi.mocked(db.fetchAgentStates).mockClear();
+      render(<LiveRow id="once" />);
+      openAsk(rightClick(cardOf('once')));
+      expect(db.fetchAgentStates).not.toHaveBeenCalled();
     });
 
     it('takes back: clears the assignment, its status and the report, as one named history entry', () => {

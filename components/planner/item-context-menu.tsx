@@ -68,7 +68,8 @@ import { useConversationsStore } from '@/lib/conversations-store';
 import { inactiveItemIdsOn } from '@/lib/active';
 import { itemAsksFor, type ItemAsk, type ItemAskContext, type ItemAskId } from '@/lib/item-asks';
 import { askAboutItem, breakDownItem, proposeForItem } from '@/lib/open-chat';
-import { canHandOff, canTakeBack, delegateName, handOffItem, takeBackItem } from '@/lib/agent-handoff';
+import { canHandOff, canTakeBack, delegateName, handOffItem, heldState, takeBackItem } from '@/lib/agent-handoff';
+import { refreshAgentFreshness } from '@/hooks/use-agent-freshness';
 import { agentStatusView } from '@/lib/agent-status';
 import { assigneeLabel } from '@/lib/chat-utils';
 import { parseDay } from '@/lib/collections';
@@ -448,6 +449,15 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
   useEffect(() => {
     if (canChat) void useConversationsStore.getState().ensureLoaded();
   }, [canChat]);
+  // The store hears of the agent's own writes only through Ask home's
+  // throttled read, and Ask starts closed: an item handed off an hour ago may
+  // be done on the server while it still reads "Queued" here. Read the agent's
+  // rows before offering to take it back (a finished report is not the menu's
+  // to clear); the row re-renders as the newer state lands.
+  const delegated = 'assignee' in item && !!item.assignee;
+  useEffect(() => {
+    if (delegated) void refreshAgentFreshness();
+  }, [delegated]);
 
   const takeBack = canTakeBack(item);
   if (!canChat && !canPropose && !canDelegate && !takeBack) return null;
@@ -492,7 +502,9 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
         </span>
         <span className="flex-1 truncate">AI</span>
       </ContextMenuSubTrigger>
-      <ContextMenuSubContent className={PANEL} data-testid="item-menu-ask-content">
+      {/* Sized to its rows, from the panel's width up: "Take back from OpenClaw"
+          beside a status ("Couldn't finish") does not fit in 240px. */}
+      <ContextMenuSubContent className={cn(PANEL, 'w-auto max-w-80 min-w-60')} data-testid="item-menu-ask-content">
         {asks.map((ask) => (
           <Row
             key={ask.id}
@@ -518,7 +530,7 @@ function AskSection({ item, todayStr, tz, page }: { item: Item; todayStr: string
           <Row
             icon={<Undo2 className="size-3.5" />}
             label={`Take back from ${who}`}
-            detail={agentStatusView(item as { aiStatus?: string; aiStatusAt?: string; assignee?: string }, now)?.label}
+            detail={agentStatusView(heldState(item), now)?.label}
             testId="item-menu-takeback"
             onSelect={() => {
               returnFocusToOpener();

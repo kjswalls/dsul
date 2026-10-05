@@ -52,6 +52,18 @@ export function canHandOff(item: Item, ctx: HandOffContext): boolean {
 }
 
 /**
+ * The item's agent fields as the agent's queue reads them: an assignment to
+ * the delegate with no status yet is queued work (lib/mcp/tools.ts
+ * `selectAssignedWork` serves it as 'queued'; the agent API can write an
+ * assignee alone).
+ */
+export function heldState(item: Item): { assignee?: string; aiStatus?: string; aiStatusAt?: string } {
+  const held = item as { assignee?: string; aiStatus?: string; aiStatusAt?: string };
+  if (held.assignee === DELEGATE_ASSIGNEE && held.aiStatus === undefined) return { ...held, aiStatus: 'queued' };
+  return held;
+}
+
+/**
  * May the user take it back? Whenever the agent holds it in a live state
  * (queued, working, needs you, couldn't finish). Never gated on `canDelegate`:
  * taking your own item back must not depend on the agent being paired. Not
@@ -59,7 +71,7 @@ export function canHandOff(item: Item, ctx: HandOffContext): boolean {
  * panel keeps.
  */
 export function canTakeBack(item: Item): boolean {
-  return hasAgentState(item as { aiStatus?: string; assignee?: string });
+  return hasAgentState(heldState(item));
 }
 
 /** Hand it off: one undoable write, named so the undo strip offers ⌘Z. */

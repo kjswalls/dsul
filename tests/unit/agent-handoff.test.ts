@@ -58,6 +58,7 @@ import {
   canTakeBack,
   delegateName,
   handOffItem,
+  heldState,
   takeBackItem,
   type HandOffContext,
 } from '@/lib/agent-handoff';
@@ -236,14 +237,16 @@ describe('canTakeBack', () => {
     expect(canTakeBack(task({ assignee: '', aiStatus: 'queued' }))).toBe(false);
   });
 
-  it('not for an assignment with no status yet (the queue still serves it as queued)', () => {
-    // Real behaviour, pinned: hasAgentState wants a known status. The agent
-    // API can write `assignee` alone, and selectAssignedWork treats a missing
-    // aiStatus as queued, so such an item is in the agent's queue while the
-    // menu offers neither a hand-off (it is assigned) nor a take-back.
+  it('yes for an assignment to the agent with no status yet, which the queue serves as queued', () => {
+    // The agent API can write `assignee` alone, and selectAssignedWork treats
+    // a missing aiStatus as queued, so the agent holds it: it can be taken back
+    // (and, being assigned, not handed off again).
     const assignedOnly = task({ assignee: 'openclaw' });
-    expect(canTakeBack(assignedOnly)).toBe(false);
+    expect(canTakeBack(assignedOnly)).toBe(true);
+    expect(heldState(assignedOnly).aiStatus).toBe('queued');
     expect(canHandOff(assignedOnly, on())).toBe(false);
+    // Someone else's bare assignment is not the delegate's to read as queued.
+    expect(canTakeBack(task({ assignee: 'someone' }))).toBe(false);
     expect(
       selectAssignedWork({ items: [assignedOnly], fetchedAt: NOW, userTimezone: TZ }).assigned.map((i) => i.id)
     ).toEqual(['t1']);
