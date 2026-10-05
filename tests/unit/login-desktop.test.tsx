@@ -18,7 +18,7 @@ vi.mock('@/lib/supabase', () => ({
   createClient: () => ({ auth: { signInWithOAuth, signInWithOtp } }),
 }));
 
-import LoginPage from '@/app/login/page';
+import { LoginPage } from '@/app/login/login-page';
 import { getDesktopBridge } from '@/lib/desktop';
 
 const ORIGIN = window.location.origin;
