@@ -21,8 +21,12 @@ import { BASE_URL } from './env';
 /** The model id the stubbed gate reports; the answerer label under Ask's box reads it. */
 export const STUB_MODEL = 'gpt-4o-mini';
 
-/** Answer the gate "a model is connected and working", for every load of this page. */
-export async function stubConnectedModel(page: Page): Promise<void> {
+/**
+ * Answer the gate "a model is connected and working", for every load of this
+ * page. `agent: true` also reports a paired OpenClaw agent (`canDelegate`),
+ * which is what lets an item be handed off.
+ */
+export async function stubConnectedModel(page: Page, o: { agent?: boolean } = {}): Promise<void> {
   await page.route('**/api/ai/connection', (route) =>
     route.fulfill({
       status: 200,
@@ -39,7 +43,7 @@ export async function stubConnectedModel(page: Page): Promise<void> {
           problem: null,
           checkedAt: '2026-10-01T00:00:00.000Z',
         },
-        openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+        openclaw: { gateway: false, pluginChat: false, agent: !!o.agent, agentId: null },
       }),
     })
   );

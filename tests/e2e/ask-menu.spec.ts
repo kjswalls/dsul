@@ -14,8 +14,9 @@ import {
 } from './helpers/ai';
 
 /**
- * "Ask AI ▸" on the item's right-click menu (components/planner/item-context-menu.tsx,
- * the asks declared in lib/item-asks.ts and run by lib/open-chat.ts), end to end
+ * "AI ▸" on the item's right-click menu (components/planner/item-context-menu.tsx,
+ * the asks declared in lib/item-asks.ts and run by lib/open-chat.ts, and the
+ * hand-off to the agent in lib/agent-handoff.ts), end to end
  * on the desktop: the stubbed model answers (helpers/ai.ts), the item's
  * conversation is saved through the real routes, and a plan card is answered by
  * a stubbed /api/ai/propose.
@@ -28,7 +29,7 @@ import {
 const scope = specScope('ask-menu');
 
 /**
- * Right-click the row and open the Ask AI submenu; returns the submenu.
+ * Right-click the row and open the AI submenu; returns the submenu.
  *
  * A real right click: it focuses the row (focusable, for dnd-kit), which is
  * where Radix hands focus back when the menu closes, and its release never
@@ -191,6 +192,60 @@ test.describe('Ask AI on the item menu', () => {
 
       await card.getByTestId('proposal-accept').click();
       await expect.poll(async () => (await fetchTestTask(page, id))?.startTime).toBe('14:00');
+    } finally {
+      await cleanupByTitlePrefix(page, title);
+    }
+  });
+});
+
+test.describe('Handing an item to the agent from its menu', () => {
+  test.beforeEach(async ({ page }) => {
+    // A model AND a paired OpenClaw agent: the hand-off asks `canDelegate`.
+    await stubConnectedModel(page, { agent: true });
+    const answered = gateAnswered(page);
+    await loginTestUser(page);
+    await answered;
+  });
+
+  test('"Hand off to OpenClaw" queues it with an Undo, and "Take back" undoes the hand-off', async ({ page }) => {
+    const title = scope.title('handoff');
+    const id = await createTestTask(page, {
+      title,
+      startDate: getTodayStr(),
+      isScheduled: true,
+      timeBucket: 'morning',
+    });
+
+    try {
+      await reloadApp(page);
+      const asks = await openAskMenu(page, id, title);
+      await expect(page.getByTestId('item-menu-ask')).toHaveText('AI');
+      await expect(asks.getByTestId('item-menu-takeback')).toHaveCount(0);
+      await asks.getByTestId('item-menu-handoff').click();
+
+      // Nothing opens: the menu closes onto the row, and the strip says what happened.
+      await expect(page.getByTestId('item-context-menu')).toHaveCount(0);
+      await expect(page.getByTestId('item-dialog')).toHaveCount(0);
+      await expect(itemCard(page, id)).toBeFocused();
+      await expect(page.getByTestId('undo-strip')).toContainText(`Hand off to OpenClaw: ${title}`);
+      await expect
+        .poll(async () => {
+          const task = await fetchTestTask(page, id);
+          return [task?.assignee, task?.aiStatus];
+        })
+        .toEqual(['openclaw', 'queued']);
+
+      // Handed off, the row offers the way back, with where the agent is.
+      const again = await openAskMenu(page, id, title);
+      await expect(again.getByTestId('item-menu-handoff')).toHaveCount(0);
+      const back = again.getByTestId('item-menu-takeback');
+      await expect(back).toContainText('Take back from OpenClaw');
+      await expect(back).toContainText('Queued');
+      await back.click();
+      await expect(page.getByTestId('undo-strip')).toContainText(`Take back from OpenClaw: ${title}`);
+      await expect
+        .poll(async () => (await fetchTestTask(page, id))?.assignee ?? null)
+        .toBeNull();
     } finally {
       await cleanupByTitlePrefix(page, title);
     }
