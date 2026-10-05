@@ -407,10 +407,10 @@ function LoginPageInner() {
                 {/* Negative tracking is doing real work here — Inter sets loose
                     at display sizes and the two lines won't lock up without it. */}
                 <h1 className="text-[27px] font-semibold leading-[1.12] tracking-[-0.032em] text-balance">
-                  Plan the day you actually want.
+                  Ok! what are we doing today?
                 </h1>
                 <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-                  Sign in and pick up where the week left off.
+                  sign in and we&rsquo;ll figure it out together
                 </p>
               </div>
 
