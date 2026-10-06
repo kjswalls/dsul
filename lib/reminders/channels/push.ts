@@ -30,17 +30,11 @@ export const ACTION_SNOOZE = 'snooze'
  */
 export const SNOOZE_MINUTES = 15
 
-/** The topic for a push about one item: its UUID's 32 hex digits. */
-export function itemTopic(itemId: string): string {
-  return itemId.replace(/-/g, '')
-}
-
 /**
  * The topic for a push about one day as a whole: `lc-20260810`.
  *
- * The date drops its dashes to fit the 32 characters a topic may have. The
- * prefix keeps its own, which is what keeps every day topic apart from every
- * item topic: an item's is hex digits with no dash at all.
+ * The date drops its dashes to fit the 32 characters a topic may have, and the
+ * prefix keeps the kinds apart, so a day's last call never replaces its review.
  */
 export function dayTopic(prefix: 'lc' | 'eod' | 'pl', dateStr: string): string {
   return `${prefix}-${dateStr.replace(/-/g, '')}`
@@ -57,9 +51,20 @@ export function dayTopic(prefix: 'lc' | 'eod' | 'pl', dateStr: string): string {
  * stays good until midnight and is no worse for arriving when the phone is
  * next picked up, and the pledge notice after it.
  *
- * A cue's topic is its item, so a snooze that matures while the phone is still
- * off replaces the cue it snoozed rather than queueing behind it. A last call's
- * is its day, whether it names one habit or three, and so is the review's.
+ * A last call's topic is its day, whether it names one habit or three, and so
+ * is the review's: a handful of topics a day, whatever the user has set.
+ *
+ * A cue has NO topic. Chrome's push service is FCM, which holds at most four
+ * collapse keys per device and makes no promise which four it keeps
+ * (memory/plans/reminders-platforms.md §2.4 quotes the limit). Whether FCM
+ * reads a web push's Topic as one of those keys is not confirmed here, and the
+ * cost if it does is silent: keyed by item, a morning of six habits cued at
+ * 07:00 to a phone out of signal until 07:20 is six topics, and two cues never
+ * arrive while every send came back 201, the claims spent and the tick
+ * reporting six delivered. Without a topic a push is non-collapsible and
+ * waits beside the others. All the item topic bought was a snooze maturing
+ * while the phone was still off replacing its cue in the queue, and the
+ * `dsul-item-<id>` tag already does that in the shade, where two would show.
  *
  * Keyed by kind and total, so a new kind cannot ship without someone choosing.
  */
@@ -67,7 +72,7 @@ const DELIVERY: Record<
   NudgeKind,
   { urgency: NonNullable<PushPayload['urgency']>; topic: (nudge: Nudge) => string | undefined }
 > = {
-  cue: { urgency: 'high', topic: (nudge) => (nudge.itemId ? itemTopic(nudge.itemId) : undefined) },
+  cue: { urgency: 'high', topic: () => undefined },
   'last-call': { urgency: 'high', topic: (nudge) => dayTopic('lc', nudge.dateStr) },
   eod: { urgency: 'normal', topic: (nudge) => dayTopic('eod', nudge.dateStr) },
 }

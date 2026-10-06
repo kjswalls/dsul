@@ -13,7 +13,7 @@ vi.mock('web-push', () => ({
 import { assertSafeUrl, isBlockedHost, requireString } from '@/lib/reminders/channels/http';
 import { escapeXml } from '@/lib/reminders/channels/twilio';
 import { callTwiml, callChannel } from '@/lib/reminders/channels/call';
-import { dayTopic, itemTopic, pushChannel } from '@/lib/reminders/channels/push';
+import { dayTopic, pushChannel } from '@/lib/reminders/channels/push';
 import { smsChannel } from '@/lib/reminders/channels/sms';
 import { voiceChannel } from '@/lib/reminders/channels/voice';
 import { channelIsOn, CHANNELS, deliverNudge } from '@/lib/reminders/deliver';
@@ -570,12 +570,15 @@ describe('the push channel says how long a push may wait, and how hard to wake f
     vi.unstubAllEnvs();
   });
 
-  it('a cue: TTL from the nudge, high urgency, its item as the topic', async () => {
+  // No topic on a cue. If FCM reads a topic as a collapse key, it holds four
+  // per device: a topic per item, and a morning of six cues to a phone out of
+  // signal loses two, every send still a 201. The tag collapses a cue and its
+  // snooze in the shade instead.
+  it('a cue: TTL from the nudge, high urgency, and no topic', async () => {
     await pushChannel.deliver(cue({ itemId: UUID, expiresAtMs: TICK + 1800_000 }), oneDevice());
 
     const { options, body } = sentAs();
-    expect(options).toEqual({ TTL: 1800, urgency: 'high', topic: '6f1c2b0e8d4a4c3e9b7a2f5d1e0c9a8b' });
-    expect((options as { topic: string }).topic).toMatch(TOPIC);
+    expect(options).toEqual({ TTL: 1800, urgency: 'high' });
     // Headers, not notification: the service worker never sees them.
     expect(body).not.toHaveProperty('ttl');
     expect(body).not.toHaveProperty('urgency');
@@ -618,16 +621,22 @@ describe('the push channel says how long a push may wait, and how hard to wake f
     expect(sentAs().body).not.toHaveProperty('expiresAtMs');
   });
 
-  // A day topic always carries its dash and an item topic never does, so the
-  // two can never collide in a push service's queue.
-  it('names topics that fit, and that never collide', () => {
-    expect(itemTopic(UUID)).toMatch(TOPIC);
-    expect(itemTopic(UUID)).toHaveLength(32);
+  // A matured snooze is a cue like any other, and travels the same way.
+  it('a matured snooze: no topic either, and the tag its cue had', async () => {
+    await pushChannel.deliver(cue({ itemId: UUID, snoozed: true, expiresAtMs: TICK + 1800_000 }), oneDevice());
+
+    const { options, body } = sentAs();
+    expect(options).not.toHaveProperty('topic');
+    expect(body).toMatchObject({ tag: `dsul-item-${UUID}` });
+  });
+
+  // One topic per kind per day, so however many habits a user sets, a phone
+  // that is off holds a handful of them at most.
+  it('names day topics that fit, one per kind', () => {
     for (const prefix of ['lc', 'eod', 'pl'] as const) {
       expect(dayTopic(prefix, '2026-08-10')).toMatch(TOPIC);
       expect(dayTopic(prefix, '2026-08-10')).toBe(`${prefix}-20260810`);
     }
-    expect(itemTopic(UUID)).not.toContain('-');
   });
 });
 

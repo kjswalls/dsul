@@ -515,6 +515,34 @@ describe('the EOD review (Tier 0)', () => {
     expect(summary.users).toBe(0);
   });
 
+  // The review's own switch is the one gate left on it. The route this tier
+  // replaced asked for `eod_review_enabled = true` in its SQL; the scan's query
+  // lets a user in for reminders, stakes OR the review, and every row holds a
+  // review hour whether or not the review is on (21:00 is 010's default). So
+  // someone here for their habit cues, inside that hour's window, is the case
+  // that must stay quiet. Null is a row the column's default never reached,
+  // and reads as off.
+  it.each([false, null])('never invites a review whose switch is %s, even inside its window', async (enabled) => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service, calls } = makeServiceFake({
+      'user_settings.select': { data: [{ ...USER, eod_review_enabled: enabled, eod_review_time: '21:00' }] },
+      'items.select': { data: [BOOK_ROW] },
+      // Granted, so nothing but the switch stands between this user and a claim.
+      'user_settings.update': { data: [{ user_id: 'u1' }] },
+    });
+
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+
+    // In the tick for the cues, and served them (none is due at 21:05)…
+    expect(summary.users).toBe(1);
+    expect(fetchItems).toHaveBeenCalledTimes(1);
+    // …and never asked about the review: no claim, no nudge, no push.
+    expect(eodClaim(calls)).toBeUndefined();
+    expect(summary.eod).toBe(0);
+    expect(nudges().filter((nudge) => nudge.kind === 'eod')).toEqual([]);
+    expect(sendPushToUser).not.toHaveBeenCalled();
+  });
+
   // The window is the scan's own: thirty minutes from the review's hour, the
   // same grace every cue gets, where the old route had five and lost the night
   // to one failed tick.

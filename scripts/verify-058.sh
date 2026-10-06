@@ -28,6 +28,7 @@
 #   4. The tick's behaviour, read from the stub queue: nobody enabled → no
 #      request; one enabled account → exactly one, to the right URL with the
 #      right bearer; force → one; a missing column or table → one (fails open).
+#      A call that raises reads ERROR, never "no request": quiet is a return.
 #   5. The bare pass: with both extensions dropped, 058 still applies.
 #
 # NOT WIRED INTO CI, for the reason verify-039.sh gives: CI has no Postgres
@@ -411,10 +412,21 @@ check() { # check <label> <actual> <expected>
   fi
 }
 
-# One call to the tick in a fresh session, answering how many requests it queued.
+# One call to the tick in a fresh session, answering how many requests it queued,
+# or ERROR and the error when the call failed.
+#
+# Never a count after a failed call. tick() always runs inside $(…), where bash
+# turns errexit off (5.2, without inherit_errexit), so a psql that failed would
+# be ignored, the queue would read empty and every "→ 0" check below would pass
+# on a tick that crashed rather than returned. A crash is not a quiet tick: on
+# the local stack and in CI, which hold no Vault names, it is a failed pg_cron
+# run every five minutes.
 tick() {
-  q -c "truncate net.http_request_queue" >/dev/null
-  q -c "$1" >/dev/null
+  q -c "truncate net.http_request_queue" >/dev/null || { echo "ERROR: could not empty the queue"; return; }
+  if ! q -c "$1" >/dev/null 2> "$WORK/tick.err"; then
+    echo "ERROR: $(sed -n 's/^.*ERROR: *//p' "$WORK/tick.err" | head -1)"
+    return
+  fi
   qa -c "select count(*) from net.http_request_queue"
 }
 
@@ -486,6 +498,9 @@ check "…with the one-argument body"   "$(qa -c "select command from cron.job w
 
 # ── 6. the tick's behaviour ───────────────────────────────────────────────────
 echo "── the short-circuit, read from the stub queue ──"
+# The instrument before the readings: every "→ 0" below means a call that
+# returned, so a call that raises must read as something else.
+check "a call that raises reads ERROR, not 0" "$(tick "select 1/0" | cut -d: -f1)" ERROR
 CALL="select public.dsul_tick('/api/cron/reminders')"
 check "no settings rows, no Vault → 0"       "$(tick "$CALL")" 0
 

@@ -28,11 +28,12 @@ import { join } from 'node:path';
  *   4. `authenticated` never reads `token` or `keys` (design decision 21). A
  *      web-push endpoint plus its keys is a bearer capability to push; the
  *      owner reads a column list that excludes both.
- *   5. Every `cron.*` call sits in a `do` block guarded by
- *      `to_regclass('cron.job')`. CI's stack has real pg_cron, so an unguarded
- *      call passes there (013/035/044 call it unguarded and pass every day);
- *      only scripts/verify-058.sh's bare replay finds one, and that runs by
- *      hand. This is its cheap twin.
+ *   5. Every `cron.*` call sits behind a `to_regclass('cron.job')` guard in a
+ *      `do` block: after 058's early exit, or inside an `is not null` branch.
+ *      CI's stack has real pg_cron, so an unguarded call passes there
+ *      (013/035/044 call it unguarded and pass every day); only
+ *      scripts/verify-058.sh's bare replay finds one, and that runs by hand
+ *      and replays 058 alone. For 059 on, this is the only check.
  *
  * SCOPED FROM 058. Older migrations are applied and never edited, and several
  * predate a rule (035/044's `public, vault, net` path, 012's bare service_role
@@ -203,19 +204,79 @@ function secretColumnGrantViolations(sql: string, secretTables: Set<string>): st
   return out;
 }
 
-/** Rule 5: a `cron.*` reference outside a `do` block guarded by to_regclass('cron.job'). */
-function unguardedCronViolations(sql: string): string[] {
-  const src = code(sql);
-  const guarded: [number, number][] = [];
-  for (const block of src.matchAll(/\bdo\s+(\$[a-z_]*\$)([\s\S]*?)\1/g)) {
-    if (/to_regclass\s*\(\s*'cron\.job'\s*\)/.test(block[2])) {
-      guarded.push([block.index, block.index + block[0].length]);
+/** A `cron.*` name, never the quoted 'cron.job' a guard names. */
+const CRON_REF = /(?<!')\bcron\.[a-z_]+/g;
+
+/** `to_regclass('cron.job') is ` — a guard's condition, up to its null test. */
+const CRON_GUARD = String.raw`to_regclass\s*\(\s*'cron\.job'\s*\)\s+is\s+`;
+
+/** The early exit, from just after its `if`: `if to_regclass('cron.job') is null then return; end if`. */
+const EARLY_EXIT = new RegExp(String.raw`^\s*${CRON_GUARD}null\s+then\s+return\s*;\s*end\s+if\b`);
+
+/** The guarded branch, from just after its `if`: `if to_regclass('cron.job') is not null then`. */
+const GUARDED_BRANCH = new RegExp(String.raw`^\s*${CRON_GUARD}not\s+null\s+then\b`);
+
+/**
+ * What a `do` block's body opens and closes, in order: an IF statement (an
+ * `if` that starts a statement, which `drop … if exists` never does), its
+ * `end if`, a statement-level `else`/`elsif`, a loop and its `end loop`, and
+ * every cron reference.
+ */
+const BLOCK_TOKEN =
+  /(?<=(?:^|;|\bbegin|\bthen|\belse|\bloop)\s*)if\b|\bend\s+if\b|(?<=;\s*)(?:elsif|else)\b|\bend\s+loop\b|\bloop\b|(?<!')\bcron\.[a-z_]+/g;
+
+/**
+ * The cron references in one `do` block's body that a bare Postgres would
+ * reach. A reference is guarded only in one of two shapes:
+ *
+ *   · after 058's early exit, `if to_regclass('cron.job') is null then
+ *     return; end if;`, taken at the block's top level (inside another IF or a
+ *     loop it might never run);
+ *   · inside the THEN branch of `if to_regclass('cron.job') is not null then
+ *     … end if` (an `else` there is the branch with NO pg_cron).
+ *
+ * Mentioning the guard somewhere in the block is not enough. Guarding only
+ * the unschedule, because it raises on a job that is missing, and then
+ * scheduling bare is the realistic slip, and a stack with pg_cron passes it.
+ */
+function unguardedInBlock(body: string): string[] {
+  const out: string[] = [];
+  const ifs: { guarded: boolean }[] = [];
+  let loops = 0;
+  let exited = false;
+  for (const match of body.matchAll(BLOCK_TOKEN)) {
+    const token = match[0];
+    if (token === 'if') {
+      const rest = body.slice(match.index + token.length);
+      if (ifs.length === 0 && loops === 0 && EARLY_EXIT.test(rest)) exited = true;
+      ifs.push({ guarded: GUARDED_BRANCH.test(rest) });
+    } else if (/^end\s+if$/.test(token)) {
+      ifs.pop();
+    } else if (token === 'else' || token === 'elsif') {
+      if (ifs.length > 0) ifs[ifs.length - 1].guarded = false;
+    } else if (/^end\s+loop$/.test(token)) {
+      loops = Math.max(0, loops - 1);
+    } else if (token === 'loop') {
+      loops += 1;
+    } else if (!exited && !ifs.some((frame) => frame.guarded)) {
+      out.push(token);
     }
   }
+  return out;
+}
+
+/** Rule 5: a `cron.*` reference outside a guard on to_regclass('cron.job') in a `do` block. */
+function unguardedCronViolations(sql: string): string[] {
+  const src = code(sql);
+  const blocks = [...src.matchAll(/\bdo\s+(\$[a-z_]*\$)([\s\S]*?)\1/g)];
   const out: string[] = [];
-  for (const ref of src.matchAll(/(?<!')\bcron\.[a-z_]+/g)) {
-    if (!guarded.some(([from, to]) => ref.index > from && ref.index < to)) out.push(ref[0]);
+  // Outside every do block: a top-level statement, which nothing can guard.
+  for (const ref of src.matchAll(CRON_REF)) {
+    if (!blocks.some((block) => ref.index > block.index && ref.index < block.index + block[0].length)) {
+      out.push(ref[0]);
+    }
   }
+  for (const block of blocks) out.push(...unguardedInBlock(block[2]));
   if (/create\s+extension\s+(?:if\s+not\s+exists\s+)?pg_cron/.test(src)) {
     out.push('create extension pg_cron (013/035 own it; a bare Postgres has none)');
   }
@@ -342,6 +403,66 @@ describe('the rules bite', () => {
           perform cron.schedule('j', '*/5 * * * *', $job$select public.dsul_tick('/x')$job$);
         end$$;`)
     ).toEqual([]);
+  });
+
+  // The guard has to stand in front of the call, not merely share its block.
+  it('cron: a block that guards one call and makes the next bare is refused', () => {
+    expect(
+      unguardedCronViolations(`do $$ begin
+        if to_regclass('cron.job') is not null then perform cron.unschedule('dsul-morning'); end if;
+        perform cron.schedule('dsul-morning', '0 * * * *', $job$select 1$job$);
+      end$$;`)
+    ).toEqual(['cron.schedule']);
+    // A call ahead of the early exit runs before the exit can.
+    expect(
+      unguardedCronViolations(`do $$ begin
+        perform cron.unschedule('j');
+        if to_regclass('cron.job') is null then return; end if;
+        perform cron.schedule('j', '* * * * *', $job$select 1$job$);
+      end$$;`)
+    ).toEqual(['cron.unschedule']);
+  });
+
+  it('cron: an early exit inside another IF or a loop guards nothing after it', () => {
+    expect(
+      unguardedCronViolations(`do $$ begin
+        if current_setting('x', true) = 'y' then
+          if to_regclass('cron.job') is null then return; end if;
+        end if;
+        perform cron.schedule('j', '* * * * *', $job$select 1$job$);
+      end$$;`)
+    ).toEqual(['cron.schedule']);
+    expect(
+      unguardedCronViolations(`do $$ declare r record; begin
+        for r in select 1 from pg_class where false loop
+          if to_regclass('cron.job') is null then return; end if;
+        end loop;
+        perform cron.schedule('j', '* * * * *', $job$select 1$job$);
+      end$$;`)
+    ).toEqual(['cron.schedule']);
+  });
+
+  it("cron: an `is not null` branch guards what is inside it, and not its else", () => {
+    expect(
+      unguardedCronViolations(`do $$ begin
+        if to_regclass('cron.job') is not null then
+          if not exists (select 1 from cron.job where jobname = 'j') then
+            perform cron.schedule('j', '* * * * *', $job$select 1$job$);
+          end if;
+          drop table if exists public.t;
+          perform cron.alter_job(1, active := true);
+        end if;
+      end$$;`)
+    ).toEqual([]);
+    expect(
+      unguardedCronViolations(`do $$ begin
+        if to_regclass('cron.job') is not null then
+          perform cron.unschedule('j');
+        else
+          perform cron.schedule('j', '* * * * *', $job$select 1$job$);
+        end if;
+      end$$;`)
+    ).toEqual(['cron.schedule']);
   });
 });
 
