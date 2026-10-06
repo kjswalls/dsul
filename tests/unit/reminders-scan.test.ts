@@ -17,53 +17,7 @@ vi.mock('@/lib/db', () => ({
 }));
 
 import { runReminderScan, localClock } from '@/lib/reminders/scan';
-
-/**
- * A Supabase stand-in routed by (table, operation) rather than by a call queue.
- *
- * The scan issues its reads and writes in an order that is an implementation
- * detail — a queue would make every future reordering look like a regression,
- * which is exactly the kind of test that gets deleted instead of read.
- */
-type Result = { data?: unknown; error?: unknown };
-
-function makeService(results: Record<string, Result>) {
-  const calls: { table: string; op: string; payload?: unknown }[] = [];
-
-  const chain = (result: Result): Record<string, unknown> => {
-    const proxy: Record<string, unknown> = {};
-    return new Proxy(proxy, {
-      get(_t, prop: string) {
-        if (prop === 'then') {
-          return (resolve: (v: unknown) => void, reject?: (e: unknown) => void) =>
-            Promise.resolve({ data: result.data ?? null, error: result.error ?? null }).then(
-              resolve,
-              reject,
-            );
-        }
-        if (prop === 'maybeSingle' || prop === 'single') {
-          return () => Promise.resolve({ data: result.data ?? null, error: result.error ?? null });
-        }
-        return () => chain(result);
-      },
-    });
-  };
-
-  const service = {
-    from: (table: string) => ({
-      select: (_cols?: string) => {
-        calls.push({ table, op: 'select' });
-        return chain(results[`${table}.select`] ?? {});
-      },
-      update: (payload: unknown) => {
-        calls.push({ table, op: 'update', payload });
-        return chain(results[`${table}.update`] ?? {});
-      },
-    }),
-  };
-
-  return { service: service as never, calls };
-}
+import { makeServiceFake } from './support/service-fake';
 
 const habit = (over: Partial<Item> = {}): Item => ({
   type: 'habit', id: 'h1', title: 'Vitamins', project: 'G', streak: 12, status: 'pending',
@@ -132,7 +86,7 @@ describe('localClock', () => {
 
 describe('runReminderScan', () => {
   it('degrades to silence when migration 032 has not been applied', async () => {
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { error: { code: '42703', message: 'column does not exist' } },
     });
     const summary = await runReminderScan(service, { now: AT_0735_NY });
@@ -142,7 +96,7 @@ describe('runReminderScan', () => {
 
   it('delivers a cue that is due, worded from the anchor', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30', reminderAnchor: 'you pour your coffee' })]);
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { data: [USER] },
       'items.select': { data: [BOOK_ROW] },
       // The claim is conditional and returns the rows it actually changed.
@@ -165,23 +119,24 @@ describe('runReminderScan', () => {
   // once a channel rings a phone.
   it('claims the day BEFORE it delivers', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
-    const { service, calls } = makeService({
+    const { service, calls, mark } = makeServiceFake({
       'user_settings.select': { data: [USER] },
       'items.select': { data: [BOOK_ROW] },
       'items.update': { data: [{ id: 'h1' }] },
     });
 
-    let claimedBeforeSend = false;
-    sendPushToUser.mockImplementation(async () => {
-      claimedBeforeSend = calls.some((c) => c.table === 'items' && c.op === 'update');
+    // The send goes into the same list as the statements, so the order is read
+    // off it. A push that never went out leaves no mark, and fails below too.
+    sendPushToUser.mockImplementationOnce(async () => {
+      mark('push');
       return { sent: 1, expired: 0 };
     });
 
     await runReminderScan(service, { now: AT_0735_NY });
-    expect(claimedBeforeSend).toBe(true);
 
     const claim = calls.find((c) => c.table === 'items' && c.op === 'update');
     expect(claim?.payload).toMatchObject({ reminder_sent_key: '2026-08-10T07:30' });
+    expect(calls.indexOf(claim!)).toBeLessThan(calls.findIndex((c) => c.op === 'push'));
   });
 
   // A blind stamp is not exclusive: two overlapping ticks — which a slow push
@@ -189,7 +144,7 @@ describe('runReminderScan', () => {
   // both deliver. Only rows the database actually changed may be sent.
   it('delivers nothing when the claim changed no rows', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { data: [USER] },
       'items.select': { data: [BOOK_ROW] },
       'items.update': { data: [] },
@@ -202,7 +157,7 @@ describe('runReminderScan', () => {
 
   it('sends nothing when the claim fails, rather than sending every tick', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { data: [USER] },
       'items.select': { data: [BOOK_ROW] },
       'items.update': { error: { message: 'write conflict' } },
@@ -216,7 +171,7 @@ describe('runReminderScan', () => {
   // One user's failure must not cost everyone else their reminders.
   it('one user throwing does not abort the tick', async () => {
     fetchItems.mockRejectedValueOnce(new Error('PostgREST exploded'));
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { data: [USER] },
       'items.select': { data: [BOOK_ROW] },
     });
@@ -226,7 +181,7 @@ describe('runReminderScan', () => {
   });
 
   it('does not pay for the item fetch when nothing is set and nothing is owed', async () => {
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { data: [USER] },
       'items.select': { data: [] },
     });
@@ -236,7 +191,7 @@ describe('runReminderScan', () => {
   });
 
   it('skips a user whose timezone is unusable, and keeps going', async () => {
-    const { service } = makeService({
+    const { service } = makeServiceFake({
       'user_settings.select': { data: [{ ...USER, timezone: 'Mars/Olympus' }] },
       'items.select': { data: [BOOK_ROW] },
     });
@@ -252,7 +207,7 @@ describe('runReminderScan', () => {
 
     it('names what is still open and the streak riding on it', async () => {
       fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
-      const { service } = makeService({
+      const { service } = makeServiceFake({
         'user_settings.select': { data: [lastCallUser] },
         'items.select': { data: [] },
         // The last call is CLAIMED, not stamped — the update reports the row it
@@ -271,7 +226,7 @@ describe('runReminderScan', () => {
     // it every tick for the rest of the window.
     it('stamps but says nothing when the day is already clear', async () => {
       fetchItems.mockResolvedValue([habit({ completedDates: ['2026-08-10'] })]);
-      const { service, calls } = makeService({
+      const { service, calls } = makeServiceFake({
         'user_settings.select': { data: [lastCallUser] },
         'items.select': { data: [] },
         'user_settings.update': { data: [{ user_id: 'u1' }] },
@@ -288,7 +243,7 @@ describe('runReminderScan', () => {
     // deliver — with the call channel on, that is two Twilio calls for one nudge.
     it('does not deliver when another tick won the claim', async () => {
       fetchItems.mockResolvedValue([habit()]);
-      const { service } = makeService({
+      const { service } = makeServiceFake({
         'user_settings.select': { data: [lastCallUser] },
         'items.select': { data: [] },
         'user_settings.update': { data: [] },
@@ -300,7 +255,7 @@ describe('runReminderScan', () => {
 
     it('does not repeat once it has been sent today', async () => {
       fetchItems.mockResolvedValue([habit()]);
-      const { service } = makeService({
+      const { service } = makeServiceFake({
         'user_settings.select': { data: [{ ...lastCallUser, habit_last_call_date: '2026-08-10' }] },
         'items.select': { data: [] },
       });

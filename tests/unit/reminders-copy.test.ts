@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { formatCueTime, streakPhrase, reminderCopy, lastCallCopy } from '@/lib/reminders/copy';
 import type { ReminderCandidate } from '@/lib/reminders/due';
 import type { Item } from '@dsul/types';
+import { assertContract } from './support/copy-contract';
 
 const habit = (over: Partial<Item> = {}): Item => ({
   type: 'habit', id: 'h', title: 'Vitamins', project: 'G', streak: 0, status: 'pending',
@@ -62,7 +63,7 @@ describe('reminderCopy', () => {
   it('appends the streak as a plain number', () => {
     const body = reminderCopy(candidate({ item: habit({ streak: 12 }) })).body;
     expect(body).toBe('7:30 am · 12 days');
-    expect(body).not.toMatch(/lose|don't|!/i);
+    assertContract(body);
   });
 
   it('says nothing about a streak of zero', () => {
@@ -102,7 +103,6 @@ describe('lastCallCopy', () => {
   });
 
   it('never scolds', () => {
-    const copy = lastCallCopy([habit({ title: 'Reading', streak: 3 })]);
-    expect(copy?.body).not.toMatch(/still haven't|failed|behind|you didn't/i);
+    assertContract(lastCallCopy([habit({ title: 'Reading', streak: 3 })]));
   });
 });

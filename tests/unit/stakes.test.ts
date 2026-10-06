@@ -16,6 +16,8 @@ import { daysToSettle } from '@/lib/reminders/scan';
 import type { ActivationContext } from '@/lib/active';
 import type { Item, Season } from '@dsul/types';
 import type { StakeContext } from '@/lib/stakes/types';
+import { assertContract } from './support/copy-contract';
+import { makeServiceFake } from './support/service-fake';
 
 vi.mock('@/lib/push-send', () => ({
   sendPushToUser: vi.fn(async () => ({ sent: 1, expired: 0 })),
@@ -208,7 +210,7 @@ describe('stakes copy', () => {
     );
     expect(digest).toContain("Kirby's");
     expect(digest).toContain('1/2 done');
-    expect(digest).not.toMatch(/failed|let .* down|should have|disappoint/i);
+    assertContract(digest);
   });
 
   it('reports a clean day too, rather than only ever arriving on failure', () => {
@@ -288,42 +290,25 @@ describe('adapters plan only what they are configured for', () => {
 /* ── settleOneDay ─────────────────────────────────────────────────────────── */
 
 /**
- * A stand-in for the two statements settleOneDay actually issues: the claim
- * upsert, and the read-back of everything still uncommitted for the day.
+ * The shared fake, answering the statements settleOneDay actually issues: the
+ * claim upsert, the read-back of everything still uncommitted for the day, and
+ * the commit stamp.
  *
  * `pendingRows` is what the read-back answers — which is the interesting knob,
  * because it is how "already settled" (empty) is distinguished from "claimed
  * earlier and never delivered" (non-empty).
  */
 function makeService(pendingRows: unknown[], opts: { error?: unknown } = {}) {
-  const upserts: unknown[][] = [];
-  const commits: unknown[] = [];
-
-  const chain = (result: { data?: unknown; error?: unknown }): Record<string, unknown> =>
-    new Proxy({}, {
-      get(_t, prop: string) {
-        if (prop === 'then') {
-          return (resolve: (v: unknown) => void) =>
-            Promise.resolve({ data: result.data ?? null, error: result.error ?? null }).then(resolve);
-        }
-        return () => chain(result);
-      },
-    });
-
-  const service = {
-    from: () => ({
-      upsert: (rows: unknown[]) => {
-        upserts.push(rows);
-        return chain({ error: opts.error ?? null });
-      },
-      select: () => chain({ data: opts.error ? null : pendingRows, error: null }),
-      update: (payload: unknown) => {
-        commits.push(payload);
-        return chain({ error: null });
-      },
-    }),
+  const { service, calls } = makeServiceFake({
+    'stake_events.upsert': { error: opts.error },
+    'stake_events.select': { data: opts.error ? null : pendingRows },
+  });
+  const payloads = (op: string) => calls.filter((c) => c.op === op).map((c) => c.payload);
+  return {
+    service,
+    upserts: () => payloads('upsert') as unknown[][],
+    commits: () => payloads('update'),
   };
-  return { service: service as never, upserts, commits };
 }
 
 describe('settleOneDay — claim then act', () => {
@@ -346,8 +331,8 @@ describe('settleOneDay — claim then act', () => {
 
     expect(report.misses).toBe(1);
     expect(report.notes).toEqual([]);
-    expect(upserts[0]).toHaveLength(1);
-    expect(upserts[0][0]).toMatchObject({
+    expect(upserts()[0]).toHaveLength(1);
+    expect(upserts()[0][0]).toMatchObject({
       user_id: 'u1', date: DAY, subject: 'h1', channel: 'pledge',
       kind: 'miss', amount_cents: 1000, currency: 'GBP',
     });
@@ -397,7 +382,7 @@ describe('settleOneDay — claim then act', () => {
     expect(sendPushToUser).toHaveBeenCalledTimes(1);
     expect(report.notes).toEqual([]);
     // …and it is marked done, so the NEXT tick leaves it alone.
-    expect(commits[0]).toHaveProperty('committed_at');
+    expect(commits()[0]).toHaveProperty('committed_at');
   });
 
   it('leaves a failed row uncommitted, and says so, so the day is not stamped', async () => {
@@ -411,13 +396,13 @@ describe('settleOneDay — claim then act', () => {
     });
 
     expect(report.notes.join()).toMatch(/accountability-partner/);
-    expect(commits).toEqual([]);
+    expect(commits()).toEqual([]);
   });
 
   it('does nothing at all when no stake extension is on', async () => {
     const { service, upserts } = makeService([]);
     const report = await settleOneDay(service, { ...base, extensionEnabled: {} });
-    expect(upserts).toEqual([]);
+    expect(upserts()).toEqual([]);
     expect(report.misses).toBe(1); // still reported, just not acted on
   });
 
