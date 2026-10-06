@@ -133,10 +133,12 @@ export const pushChannel: NudgeChannel = {
         dateStr: nudge.dateStr,
         kind: nudge.kind,
       },
-      // Worked out by the scan, which holds the user's clock; this channel
-      // only says it as a TTL. Without one the push service would hand a phone
-      // switched on at noon its 07:30 cue, or yesterday's last call.
-      ttl: nudge.expiresInSeconds,
+      // Worked out by the scan, which holds the user's clock, and passed on as
+      // the instant it is: push-send turns it into a TTL as each device's
+      // request leaves, so the device read in between is not added on after
+      // midnight. Without one the push service would hand a phone switched on
+      // at noon its 07:30 cue, or yesterday's last call.
+      expiresAtMs: nudge.expiresAtMs,
       urgency: DELIVERY[nudge.kind].urgency,
       topic: DELIVERY[nudge.kind].topic(nudge),
     }

@@ -351,6 +351,8 @@ describe('058_resume_cron_tick', () => {
     sql.indexOf('create or replace function public.dsul_tick('),
     sql.indexOf('$$;', sql.indexOf('create or replace function public.dsul_tick('))
   );
+  /** The function on one line, every run of whitespace a single space, for the tests that read structure. */
+  const flat = tick.replace(/\s+/g, ' ');
 
   it('drops the one-argument tick before creating the two-argument one', () => {
     // With a default on `force`, leaving dsul_tick(text) in place would make the
@@ -363,10 +365,15 @@ describe('058_resume_cron_tick', () => {
   });
 
   it('gates on the three tick rituals and a time zone, with no clock in it', () => {
-    for (const flag of ['habit_reminders_enabled', 'stakes_enabled', 'eod_review_enabled']) {
-      expect(tick).toContain(`coalesce(${flag}, false)`);
-    }
-    expect(tick).toContain('timezone is not null');
+    // The whole expression, not its words. Each flag and the zone appearing
+    // somewhere passed with the ORs turned into ANDs, which would silence the
+    // tick for everyone without all three switches on: nearly everyone.
+    expect(flat).toContain(
+      'where timezone is not null ' +
+        'and (coalesce(habit_reminders_enabled, false) ' +
+        'or coalesce(stakes_enabled, false) ' +
+        'or coalesce(eod_review_enabled, false))'
+    );
     // Decision 13: the morning check is not a tier, so it must not wake the tick.
     expect(tick).not.toContain('morning_check');
     // Decision 22, the narrow form: no time-of-day and no interval at all.
@@ -376,6 +383,21 @@ describe('058_resume_cron_tick', () => {
   it('fails OPEN when the gate cannot be read, and only for a schema that is behind', () => {
     expect(tick).toMatch(/when undefined_column or undefined_table then\s+anyone := true;/);
     expect(tick).not.toContain('when others');
+  });
+
+  // Which way round the short-circuit runs. Inverted, the tick would fire only
+  // when nobody is enabled; with `force` ignored, a Free project's keepalive
+  // would never send its one request a day. scripts/verify-058.sh catches both
+  // on a real database, but it runs by hand, and the E2E job replays 058
+  // without ever calling dsul_tick: this is the check that runs in CI.
+  it('asks only when not forced, and returns before the request only when nobody is enabled', () => {
+    expect(flat).toMatch(/anyone boolean := true; begin if not force then begin select exists \(/);
+    expect(flat).toContain(') into anyone; exception');
+    expect(flat).toContain('anyone := true; end; if not anyone then return; end if; end if;');
+    // Exactly one way out before the Vault reads, and it is that one.
+    const beforeVault = flat.slice(0, flat.indexOf('vault.decrypted_secrets'));
+    expect(beforeVault.match(/\breturn;/g)).toEqual(['return;']);
+    expect(flat.indexOf('if not anyone then return;')).toBeLessThan(flat.indexOf('net.http_get('));
   });
 
   it('keeps the Vault names, the fallback, and the 55 s request', () => {

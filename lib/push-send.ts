@@ -51,7 +51,7 @@ export interface PushPayload {
   /** Echoed back to the service worker on click — the item id, the date. */
   data?: Record<string, unknown>
 
-  // The three below are about the DELIVERY, not the notification. sendWebPush
+  // The four below are about the DELIVERY, not the notification. sendWebPush
   // turns them into RFC 8030 request headers and strips them from the
   // encrypted body, so the service worker never sees them.
 
@@ -63,6 +63,16 @@ export interface PushPayload {
    * being one.
    */
   ttl?: number
+  /**
+   * The same limit as an instant (epoch milliseconds), for a caller that knows
+   * when its moment ENDS rather than how long it lasts: the reminder scan,
+   * whose windows stop at a minute of the user's day. It becomes the TTL as
+   * each device's request leaves, never earlier, so whatever ran before the
+   * send (the subscription read, the users served ahead of this one in a tick)
+   * comes off the TTL rather than being added to it past that instant. With
+   * `ttl` as well, the sooner of the two wins.
+   */
+  expiresAtMs?: number
   /** How hard the push service may wake the device for it (§5.3). Absent means 'normal'. */
   urgency?: Urgency
   /**
@@ -132,22 +142,28 @@ export type WebPushTarget = Pick<WebPushSubscription, 'endpoint' | 'keys'>
 export type WebPushOptions = Pick<RequestOptions, 'TTL' | 'urgency' | 'topic'>
 
 /** The notification the service worker reads: a PushPayload less its delivery fields. */
-type PushBody = Omit<PushPayload, 'ttl' | 'urgency' | 'topic'>
+type PushBody = Omit<PushPayload, 'ttl' | 'expiresAtMs' | 'urgency' | 'topic'>
 
 /**
- * Split a payload into what is encrypted and what is a header.
+ * Split a payload into what is encrypted and what is a header, as of `nowMs`.
  *
  * Every option is checked here rather than left to web-push, which THROWS on
  * a topic outside the alphabet or a negative TTL, and a throw inside
  * sendWebPush is a failed send to every device the user has. A topic that
  * cannot be sent costs the queue its collapse and nothing else; a TTL that is
  * not a number gets the default. A TTL below zero means the moment has already
- * passed, which is 0 ("now or not at all"), not the default.
+ * passed, which is 0 ("now or not at all"), not the default; so does an
+ * `expiresAtMs` that `nowMs` is already past.
  */
-function transportOf(payload: PushPayload): { body: PushBody; options: WebPushOptions } {
-  const { ttl, urgency, topic, ...body } = payload
+function transportOf(payload: PushPayload, nowMs: number): { body: PushBody; options: WebPushOptions } {
+  const { ttl, expiresAtMs, urgency, topic, ...body } = payload
+  const limits: number[] = []
+  if (typeof ttl === 'number' && Number.isFinite(ttl)) limits.push(ttl)
+  if (typeof expiresAtMs === 'number' && Number.isFinite(expiresAtMs)) {
+    limits.push((expiresAtMs - nowMs) / 1000)
+  }
   const options: WebPushOptions = {
-    TTL: typeof ttl === 'number' && Number.isFinite(ttl) ? Math.max(0, Math.floor(ttl)) : DEFAULT_TTL_S,
+    TTL: limits.length > 0 ? Math.max(0, Math.floor(Math.min(...limits))) : DEFAULT_TTL_S,
   }
   if (urgency) options.urgency = urgency
   if (topic !== undefined && isPushTopic(topic)) options.topic = topic
@@ -228,14 +244,16 @@ function classifyRejection(err: unknown): DeviceResult {
  * own rows and calls the same function, so moving the read never moves the
  * send, its options or its classification.
  *
- * The payload is the encrypted body, less its delivery fields (ttl, urgency,
- * topic), which go as headers instead: see transportOf. They ride on the
- * payload rather than beside it so that every caller, and every device a
- * caller fans out to, sends the same headers for the same push.
+ * The payload is the encrypted body, less its delivery fields (ttl,
+ * expiresAtMs, urgency, topic), which go as headers instead: see transportOf.
+ * They ride on the payload rather than beside it so that every caller, and
+ * every device a caller fans out to, sends the same headers for the same push.
  */
 export async function sendWebPush(sub: WebPushTarget, payload: PushPayload): Promise<DeviceResult> {
   if (!isPushConfigured()) return { outcome: 'failed', detail: 'push not configured' }
-  const { body, options } = transportOf(payload)
+  // The clock is read HERE, as this device's request is about to leave, and
+  // not by the caller: see PushPayload.expiresAtMs.
+  const { body, options } = transportOf(payload, Date.now())
   try {
     // Inside the try: setVapidDetails throws on a malformed key, and a key
     // that cannot be used is a failed send, not a crashed caller.

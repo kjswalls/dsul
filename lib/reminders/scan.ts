@@ -86,34 +86,65 @@ export function localClock(now: Date, timezone: string): LocalClock {
 const MINUTES_PER_DAY = 1440
 
 /**
- * Seconds from this tick until `endMinutes` on the user's own day: how long a
- * push about it may wait for a device that is off (Nudge.expiresInSeconds).
+ * How often the tick runs: the five-minute schedule pg_cron holds for
+ * dsul-reminders (044, re-created by 058 when missing). Not a setting; the
+ * schedule is in SQL, and tests/unit/reminders-scan.test.ts holds the two to
+ * each other.
  *
- * To the second, because `nowMinutes` is truncated: a tick that runs at
- * 23:50:40 would otherwise hold a push until 00:00:40 and deliver yesterday's
- * last call after midnight, which is the one thing the clamp is there to stop.
- * The seconds past the minute come off the instant rather than the zone; every
- * zone in use is a whole number of minutes from UTC, so they are the same in
- * all of them.
+ * Every zone in use is a whole number of quarter hours from UTC, so a tick
+ * lands on a multiple of five in every user's own minutes too, and the day's
+ * last one is at 23:55 everywhere.
  */
-export function secondsUntil(clock: LocalClock, endMinutes: number): number {
-  const intoMinute = Math.floor(clock.nowMs / 1000) % 60
-  return Math.max(0, (endMinutes - clock.nowMinutes) * 60 - intoMinute)
+export const TICK_MINUTES = 5
+
+/**
+ * Where a window that is clamped at midnight must open for a tick to land in
+ * it: at its own minute, or at the day's last tick if that minute is later.
+ *
+ * Clamped, a window opening at 23:57 is [23:57, 24:00), and no tick falls in
+ * it: the last one of the day ran at 23:55, and the next is tomorrow's 00:00,
+ * by which time the date has rolled and nothing about today is owed. A review
+ * set to 23:56 through 23:59 (the setting is a native time input, so any
+ * minute can be saved) would never be sent, with no note to say so. Opened at
+ * 23:55 it goes a few minutes early instead, which is the better of the two.
+ */
+export function windowOpensAt(minutes: number): number {
+  return Math.min(minutes, MINUTES_PER_DAY - TICK_MINUTES)
 }
 
 /**
- * How long a cue may wait for a device: to the end of the window it was found
- * in, which is dueReminders' own (target + grace, clamped at midnight). The
- * push service then drops it at the moment the scan itself would have stopped
- * sending it.
+ * The instant `endMinutes` arrives on the user's own day: when a nudge about
+ * it stops being worth delivering (Nudge.expiresAtMs). Never before this tick.
+ *
+ * Counted from the start of the tick's minute, because `nowMinutes` is
+ * truncated: counted from the tick itself, a tick that runs at 23:50:40 would
+ * put midnight at 00:00:40 and hold yesterday's last call past it, which is
+ * the one thing the clamp is there to stop. The minute starts at the same
+ * instant in every zone in use, each being a whole number of minutes from UTC.
+ *
+ * An instant and not a TTL. The push transport turns it into seconds as each
+ * request leaves (lib/push-send.ts), so the time the tick takes to reach a
+ * user, and the device read before the send, come off the TTL instead of
+ * landing after midnight.
+ */
+export function expiryAt(clock: LocalClock, endMinutes: number): number {
+  const minuteStartMs = clock.nowMs - (clock.nowMs % 60_000)
+  return Math.max(clock.nowMs, minuteStartMs + (endMinutes - clock.nowMinutes) * 60_000)
+}
+
+/**
+ * When a cue stops being worth delivering: at the end of the window it was
+ * found in, which is dueReminders' own (target + grace, clamped at midnight).
+ * The push service then drops it at the moment the scan itself would have
+ * stopped sending it.
  *
  * A matured snooze has no window. It waits for the first tick after it
  * matures, any time that day, so its grace runs from the tick that claimed it,
  * as the last call's does.
  */
-function cueExpiresIn(candidate: ReminderCandidate, clock: LocalClock, grace: number): number {
+function cueExpiresAt(candidate: ReminderCandidate, clock: LocalClock, grace: number): number {
   const target = candidate.snoozed ? null : minutesOfDay(candidate.at)
-  return secondsUntil(clock, Math.min((target ?? clock.nowMinutes) + grace, MINUTES_PER_DAY))
+  return expiryAt(clock, Math.min((target ?? clock.nowMinutes) + grace, MINUTES_PER_DAY))
 }
 
 interface ReminderUserRow {
@@ -386,11 +417,16 @@ export async function runReminderScan(
       // value a row can hold, and the strict HH:mm parser would read it as no
       // time at all and the review as never due. The window is due.ts's,
       // clamped at midnight like every other here: a 23:50 review gets ten
-      // minutes, and is never sent again at 00:05 as the next day's.
+      // minutes, and is never sent again at 00:05 as the next day's. It opens
+      // no later than the day's last tick (windowOpensAt), so a 23:57 review
+      // goes at 23:55 rather than never, and owed is then asked as of the
+      // review's own hour, or the veto below would undo that by asking at
+      // 23:55 whether 23:57 has come.
       const eodMinutes = user.eod_review_time ? eodMinutesOfDay(user.eod_review_time) : null
       const eodDue =
         eodMinutes !== null &&
         user.last_eod_notified_date !== clock.dateStr &&
+        isWithinWindow(windowOpensAt(eodMinutes), clock.nowMinutes, grace) &&
         isEodOwed(
           {
             eodReviewEnabled: user.eod_review_enabled === true,
@@ -398,9 +434,8 @@ export async function runReminderScan(
             lastEodReviewDate: user.last_eod_review_date,
           },
           clock.dateStr,
-          clock.nowMinutes,
-        ) &&
-        isWithinWindow(eodMinutes, clock.nowMinutes, grace)
+          Math.max(clock.nowMinutes, eodMinutes),
+        )
 
       // The item tiers' cheap question. A standing cue wants the master switch
       // AND a row with a reminder on it: rows left over from before the switch
@@ -454,7 +489,7 @@ export async function runReminderScan(
             items: [],
             // Good until the user's own midnight and no further: the review
             // is about today, and tomorrow's invitation is tomorrow's.
-            expiresInSeconds: secondsUntil(clock, MINUTES_PER_DAY),
+            expiresAtMs: expiryAt(clock, MINUTES_PER_DAY),
           }
           const reports = await deliverNudge(nudge, base, channelState)
           noteFailures(summary, user.user_id, 'eod', reports)
@@ -557,7 +592,7 @@ export async function runReminderScan(
               itemId: candidate.item.id,
               items: [toNudgeItem(candidate.item)],
               snoozed: candidate.snoozed,
-              expiresInSeconds: cueExpiresIn(candidate, clock, grace),
+              expiresAtMs: cueExpiresAt(candidate, clock, grace),
             }
             const reports = await deliverNudge(nudge, base, channelState)
             noteFailures(summary, user.user_id, 'cue', reports)
@@ -605,7 +640,7 @@ export async function runReminderScan(
             // end of the window it was found in. What a last call says is the
             // day's state at the minute it was computed, so how long it stays
             // true runs from then.
-            expiresInSeconds: secondsUntil(clock, Math.min(clock.nowMinutes + grace, MINUTES_PER_DAY)),
+            expiresAtMs: expiryAt(clock, Math.min(clock.nowMinutes + grace, MINUTES_PER_DAY)),
           }
           const reports = await deliverNudge(nudge, base, channelState)
           noteFailures(summary, user.user_id, 'last-call', reports)

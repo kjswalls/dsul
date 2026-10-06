@@ -15,13 +15,14 @@
  *   baseUrl   — e.g. https://home.example.com  (Nabu Casa or your own domain)
  *   players   — comma-separated media_player entity ids
  *   ttsEntity — the tts.* entity to speak through (default tts.google_translate_say)
- *   kinds     — which nudges to speak (default REMINDER_KINDS: cue, last call)
+ *   kinds     — which nudges to speak (default REMINDER_KINDS: cue, last call;
+ *               a list narrows them and never adds to them)
  * Secret (user_secrets.reminder_secrets.voice, service-role only):
  *   token     — a Home Assistant long-lived access token
  */
 
 import { spokenLine } from '../copy'
-import { REMINDER_KINDS } from '../nudge'
+import { channelKinds } from '../nudge'
 import { assertSafeUrl, postToChannel, requireString } from './http'
 import type { NudgeChannel } from './types'
 
@@ -54,10 +55,10 @@ export const voiceChannel: NudgeChannel = {
 
     // The `kinds` filter is what stops a speaker announcing every single cue in
     // a household where that would be intolerable. Absent means the habit
-    // reminders, named rather than "everything": the EOD review is not read out
-    // in the kitchen unless someone lists it (see REMINDER_KINDS).
-    const listed = parseList(ctx.config.kinds)
-    const kinds: readonly string[] = listed.length > 0 ? listed : REMINDER_KINDS
+    // reminders, named rather than "everything", and a list can only narrow
+    // them: the EOD review is not read out in the kitchen, even when someone
+    // types it in (see channelKinds).
+    const kinds = channelKinds(parseList(ctx.config.kinds))
     if (!kinds.includes(nudge.kind)) {
       return { ok: true, skipped: true, detail: `voice declines ${nudge.kind}` }
     }

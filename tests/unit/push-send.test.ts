@@ -163,6 +163,33 @@ describe('sendPushToUser', () => {
     }
   });
 
+  // An instant becomes a TTL as each request leaves, so the time the read took
+  // comes off it. Worked out before the read, a push with five minutes left at
+  // 23:55:00 would still carry 300 at 23:55:02 and be held until 00:00:02.
+  it('works an expiry instant out after the subscription read, not before it', async () => {
+    const MIDNIGHT = Date.parse('2026-08-11T04:00:00Z');
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const rows = devicesAnswering(201, 201);
+      vi.setSystemTime(MIDNIGHT - 300_000);
+      const { service } = makeServiceFake(() => {
+        // The read is slow: two seconds pass before it answers.
+        vi.setSystemTime(MIDNIGHT - 298_000);
+        return { data: rows };
+      });
+
+      await sendPushToUser(service, 'u1', { ...PAYLOAD, expiresAtMs: MIDNIGHT });
+
+      expect(sendNotification).toHaveBeenCalledTimes(2);
+      for (const [, body, options] of sendNotification.mock.calls) {
+        expect(options).toEqual({ TTL: 298 });
+        expect(JSON.parse(body as string)).toEqual(PAYLOAD);
+      }
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
   it('keeps its counts when the prune itself rejects', async () => {
     const rows = devicesAnswering(201, 410);
     const { service } = makeServiceFake((call) => {
@@ -247,6 +274,48 @@ describe('sendWebPush', () => {
       DEFAULT_TTL_S,
       599,
     ]);
+  });
+
+  // The reminder scan knows when its moment ENDS (midnight, the end of a
+  // window), not how long is left of it by the time a device is asked.
+  describe('an expiry instant', () => {
+    const MIDNIGHT = Date.parse('2026-08-11T04:00:00Z');
+    beforeEach(() => vi.useFakeTimers({ toFake: ['Date'] }));
+    afterEach(() => vi.useRealTimers());
+
+    const ttlsFor = async (...payloads: Partial<Parameters<typeof sendWebPush>[1]>[]) => {
+      for (const extra of payloads) await sendWebPush(target, { ...PAYLOAD, ...extra });
+      return sendNotification.mock.calls.map(([, , options]) => (options as { TTL: number }).TTL);
+    };
+
+    it('becomes what is left of it as the request leaves, in whole seconds, and is stripped from the body', async () => {
+      vi.setSystemTime(MIDNIGHT - 290_500);
+      await sendWebPush(target, { ...PAYLOAD, expiresAtMs: MIDNIGHT, urgency: 'normal' });
+
+      const { body, options } = sentAs();
+      expect(options).toEqual({ TTL: 290, urgency: 'normal' });
+      expect(body).toEqual(PAYLOAD);
+      expect(body).not.toHaveProperty('expiresAtMs');
+    });
+
+    it('is 0 once it has passed, never the default', async () => {
+      vi.setSystemTime(MIDNIGHT + 10_000);
+      expect(await ttlsFor({ expiresAtMs: MIDNIGHT })).toEqual([0]);
+    });
+
+    it('beside a ttl, the sooner of the two wins', async () => {
+      vi.setSystemTime(MIDNIGHT - 600_000);
+      expect(
+        await ttlsFor({ expiresAtMs: MIDNIGHT, ttl: 60 }, { expiresAtMs: MIDNIGHT, ttl: 3600 }),
+      ).toEqual([60, 600]);
+    });
+
+    it('one that is not a number is left out: the ttl stands, or the default', async () => {
+      vi.setSystemTime(MIDNIGHT - 600_000);
+      expect(
+        await ttlsFor({ expiresAtMs: Number.NaN, ttl: 60 }, { expiresAtMs: Number.NaN }),
+      ).toEqual([60, DEFAULT_TTL_S]);
+    });
   });
 
   it.each([

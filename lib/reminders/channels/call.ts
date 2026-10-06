@@ -25,20 +25,26 @@
 import { spokenLine } from '../copy'
 import { escapeXml, twilioCredentials, twilioPost } from './twilio'
 import type { NudgeChannel } from './types'
-import type { Nudge } from '../nudge'
+import { channelKinds, type Nudge, type NudgeKind } from '../nudge'
 
 export const EXT_PHONE_CALL = 'phone-call'
 
 /** Deliberately narrow. See the note above on why this is not both kinds. */
-const DEFAULT_KINDS = ['last-call']
+const DEFAULT_KINDS: readonly NudgeKind[] = ['last-call']
 
-function kindsFor(config: Record<string, unknown>): string[] {
+/**
+ * What the user listed, narrowed to the reminder kinds (channelKinds): "cue"
+ * is theirs to add, and the EOD review is not, so a phone never rings at the
+ * review's hour to read out a line written for a notification.
+ */
+function kindsFor(config: Record<string, unknown>): readonly NudgeKind[] {
   const raw = config.kinds
-  if (Array.isArray(raw)) return raw.filter((v): v is string => typeof v === 'string')
-  if (typeof raw === 'string' && raw.trim()) {
-    return raw.split(',').map((s) => s.trim()).filter(Boolean)
-  }
-  return DEFAULT_KINDS
+  const listed = Array.isArray(raw)
+    ? raw.filter((v): v is string => typeof v === 'string')
+    : typeof raw === 'string'
+      ? raw.split(',').map((s) => s.trim()).filter(Boolean)
+      : []
+  return channelKinds(listed, DEFAULT_KINDS)
 }
 
 /**

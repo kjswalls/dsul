@@ -12,14 +12,15 @@
  * Unlike the call, it accepts both reminder kinds by default (REMINDER_KINDS:
  * the cue and the last call) — a text costs a fraction of a cent and is
  * glanceable, so the argument that keeps calls to once a day does not apply.
- * The EOD review is not one of them: it is push only unless the user lists it.
+ * The EOD review is not one of them, and typing it into `kinds` does not make
+ * it one: it is push only (channelKinds).
  *
- * Config:  to, from, kinds (default: REMINDER_KINDS)
+ * Config:  to, from, kinds (default: REMINDER_KINDS; a list only narrows it)
  * Secrets: accountSid, authToken
  */
 
 import { smsLine } from '../copy'
-import { REMINDER_KINDS } from '../nudge'
+import { channelKinds } from '../nudge'
 import { twilioCredentials, twilioPost } from './twilio'
 import type { NudgeChannel } from './types'
 
@@ -38,8 +39,9 @@ export const smsChannel: NudgeChannel = {
           ? raw.filter((v): v is string => typeof v === 'string')
           : []
     // Blank is the named default, never "every kind there is": a kind added
-    // to NudgeKind does not start texting anyone by being added.
-    const kinds: readonly string[] = listed.length > 0 ? listed : REMINDER_KINDS
+    // to NudgeKind does not start texting anyone by being added, or by being
+    // typed in here.
+    const kinds = channelKinds(listed)
     if (!kinds.includes(nudge.kind)) {
       return { ok: true, skipped: true, detail: `sms declines ${nudge.kind}` }
     }

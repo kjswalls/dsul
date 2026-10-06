@@ -90,6 +90,14 @@ they teach people to take the device off).
 5. **The window clamps at midnight, never wraps.** A wrapping window plus a same-day
    dedupe stamp is a double-send: 23:50 fires and stamps day N; at 00:05 the window is
    still open, the date has rolled, and the cue goes out again for yesterday.
+
+   *Addendum, 2026-10-06.* A clamped window must still hold a tick. One that opens after
+   the day's last tick (23:55; the tick runs every five minutes) is `[23:57, 24:00)` with
+   no tick in it, so the EOD review's window opens no later than 23:55
+   (`windowOpensAt` in `lib/reminders/scan.ts`) and a 23:57 review goes two minutes
+   early rather than never. Cues and the last call still have that gap for a time set to
+   23:56–23:59; it predates the fold, and closing it for cues is a `due.ts` change, which
+   the Swift port mirrors.
 6. **The last call names streak-bearing types only.** Its whole frame is what today's miss
    costs; a dated task has nothing to lose by that argument, and including one turns a
    sharp message back into the generic evening nag.
