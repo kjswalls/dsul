@@ -136,8 +136,8 @@ habit answers with `project` internally and `toLegacyHabit` renames it on the wa
 (lib/db.ts), while `habitGroups[]` is a projection of the one container list.
 
 **Reminders reach outward; everything else in the app waits to be opened.** A cue at the
-habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended
-from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
+habit's own hour, a streak-at-risk last call, the end-of-day review's push, and a nightly
+settlement all run unattended from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
 The one exception is Beeminder, which also posts the instant a habit is ticked
 ([lib/stakes/live.ts](lib/stakes/live.ts), hooked at `setItemCompletion`) because a
 datapoint that arrives after the goal's midnight deadline arrives after the money is
@@ -427,3 +427,11 @@ right rail, or anything under `components/ai/`.
 button follows Supabase's own settings, the desktop shell's provider list, the dashboard setup,
 and the client secret that must be re-minted every six months
 (`scripts/apple-client-secret.mjs`) or Apple sign-in stops.
+[reminders-platforms.md](memory/plans/reminders-platforms.md) is the plan for reminders on
+every surface (web/PWA, Electron, the iPhone app, Android, Apple Watch): one server authority
+on owed/discharged, a `devices` registry replacing `push_subscriptions`, device-local scheduling
+on the phone, and a Phase 0 that brings the ticks migration 045 paused back as one merged
+pg_cron job. Kirby decided its §7 on 2026-10-06; Phase 0 is built (migration 058 resumes the
+tick once Kirby applies it), and its top addendum lists where Phase 0's code departs from the body. Read
+it before touching `lib/reminders/**`, `lib/push-send.ts`, `app/api/cron/**`,
+`/api/reminders/act`, `push_subscriptions`, or notification code in `electron/` or `ios/`.
