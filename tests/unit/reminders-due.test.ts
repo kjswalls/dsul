@@ -70,7 +70,8 @@ describe('isWithinWindow', () => {
     expect(isWithinWindow(450, 450 + REMINDER_GRACE_MINUTES)).toBe(false);
   });
 
-  // The divergence from eod-notify, and the reason it exists: a wrapping window
+  // The divergence from the old eod-notify route (now the scan's EOD tier,
+  // which uses this window too), and the reason it exists: a wrapping window
   // plus a same-day dedupe stamp double-sends. 23:50 fires and stamps day N;
   // at 00:05 the window is still open, the local date has rolled to N+1, the
   // stamp no longer matches, and the cue goes out again for yesterday.
@@ -178,6 +179,27 @@ describe('dueReminders', () => {
 
   it('ignores items with no reminder set', () => {
     expect(dueReminders([row(habit())], clock(450), ctx)).toEqual([]);
+  });
+
+  // A clock that ticks every five minutes last ticks at 23:55, and a 23:58
+  // cue's clamped window, [23:58, 24:00), holds no tick of its own. That clock
+  // says when its last tick is, and the window opens there. One that ticks
+  // every minute says nothing, and its 23:58 cue waits for 23:58.
+  it('opens a late window at the clock\'s last tick, when the clock names one', () => {
+    const late = habit({ reminderTime: '23:58' });
+    const coarse = (nowMinutes: number) => ({ ...clock(nowMinutes), latestOpening: 1435 });
+
+    expect(dueReminders([row(late)], coarse(1435), ctx).map((c) => c.at)).toEqual(['23:58']);
+    expect(dueReminders([row(late)], coarse(1430), ctx)).toEqual([]);
+    // Stamped by its own time, so the claim at 23:55 still holds it at 23:58.
+    expect(dueReminders([row(late, { sentKey: `${MON}T23:58` })], coarse(1438), ctx)).toEqual([]);
+    // No earlier than it has to: a cue before the last tick opens at its own minute.
+    const earlier = habit({ reminderTime: '23:50' });
+    expect(dueReminders([row(earlier)], coarse(1425), ctx)).toEqual([]);
+    expect(dueReminders([row(earlier)], coarse(1430), ctx)).toHaveLength(1);
+
+    expect(dueReminders([row(late)], clock(1435), ctx)).toEqual([]);
+    expect(dueReminders([row(late)], clock(1438), ctx)).toHaveLength(1);
   });
 
   it('will not send twice for the same day and time', () => {

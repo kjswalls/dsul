@@ -34,6 +34,14 @@ const DEFAULT_CURRENCY = 'USD'
 const MAX_AMOUNT_CENTS = 1_000_000_00
 
 /**
+ * How long the push service may hold the notice for a phone that is off: a
+ * day. It reports a day that is already over, so it does not go stale by the
+ * hour the way a cue does, and a phone left off overnight should still hear of
+ * it; a notice that turns up later than that can be read on /ledger.
+ */
+const PLEDGE_TTL_S = 24 * 3600
+
+/**
  * "10", "10.50", "£10" → minor units.
  *
  * Parsed to an integer immediately and stored that way. Floats and money is the
@@ -113,7 +121,7 @@ export const pledgeAdapter: StakeAdapter = {
     const problems: string[] = []
 
     try {
-      await sendPushToUser(ctx.service, ctx.userId, {
+      const pushed = await sendPushToUser(ctx.service, ctx.userId, {
         title: copy.title,
         body: copy.body,
         // The ledger, not the planner. This notification asserts a number, and
@@ -121,7 +129,23 @@ export const pledgeAdapter: StakeAdapter = {
         // backed by rows you can read — so the tap has to land on them.
         url: '/ledger',
         tag: `dsul-pledge-${outcome.dateStr}`,
+        ttl: PLEDGE_TTL_S,
+        // A summary, not a moment: it can wait for the phone to wake.
+        urgency: 'normal',
+        // NO topic, as a cue has none (channels/push.ts says why). Each day's
+        // notice goes once, against the stake_events claim, and none replaces
+        // another, so a topic would collapse nothing and only spend one of the
+        // four collapse keys FCM keeps per device. And it is the one sender
+        // whose topics have no bound: a catch-up after an outage settles up to
+        // a week in one tick (MAX_CATCH_UP_DAYS, lib/reminders/scan.ts), a
+        // notice a day, so with that evening's last call and review a phone
+        // that is off would hold nine keys, and lose three or more without a
+        // trace while every send came back 201. The tag keeps each day to one
+        // entry in the shade.
       })
+      // A failed subscription read is answered now rather than thrown. It is
+      // still the one push outcome reported as a problem, as when it threw.
+      if (pushed.detail) problems.push(`push: ${pushed.detail}`)
     } catch (err) {
       problems.push(`push: ${err instanceof Error ? err.message : String(err)}`)
     }

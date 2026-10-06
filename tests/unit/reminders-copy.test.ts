@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { formatCueTime, streakPhrase, reminderCopy, lastCallCopy } from '@/lib/reminders/copy';
+import { formatCueTime, streakPhrase, reminderCopy, lastCallCopy, EOD_COPY } from '@/lib/reminders/copy';
 import type { ReminderCandidate } from '@/lib/reminders/due';
 import type { Item } from '@dsul/types';
+import { assertContract } from './support/copy-contract';
 
 const habit = (over: Partial<Item> = {}): Item => ({
   type: 'habit', id: 'h', title: 'Vitamins', project: 'G', streak: 0, status: 'pending',
@@ -62,7 +63,7 @@ describe('reminderCopy', () => {
   it('appends the streak as a plain number', () => {
     const body = reminderCopy(candidate({ item: habit({ streak: 12 }) })).body;
     expect(body).toBe('7:30 am · 12 days');
-    expect(body).not.toMatch(/lose|don't|!/i);
+    assertContract(body);
   });
 
   it('says nothing about a streak of zero', () => {
@@ -102,7 +103,19 @@ describe('lastCallCopy', () => {
   });
 
   it('never scolds', () => {
-    const copy = lastCallCopy([habit({ title: 'Reading', streak: 3 })]);
-    expect(copy?.body).not.toMatch(/still haven't|failed|behind|you didn't/i);
+    assertContract(lastCallCopy([habit({ title: 'Reading', streak: 3 })]));
+  });
+});
+
+describe('EOD_COPY', () => {
+  // Moved, word for word, from the cron route that used to send it alone. The
+  // words did not change when the sender did.
+  it('says what the review always said', () => {
+    expect(EOD_COPY).toEqual({ title: 'End of day 🌙', body: "How'd today go?" });
+  });
+
+  // It asks about the day; it never tallies what is left of it.
+  it('never scolds', () => {
+    assertContract(EOD_COPY);
   });
 });

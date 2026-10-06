@@ -48,7 +48,10 @@ export default async function globalSetup() {
   // time (its "already shown today" guard lives only in localStorage, so a fresh
   // Playwright context after 21:00 pops it again). show_completed_tasks must be
   // true or completion assertions can't see their own row; default_view must be
-  // 'day' so nothing inherits a leaked Week.
+  // 'day' so nothing inherits a leaked Week. habit_reminders_enabled is off so
+  // the tick serves nobody until reminders-tick.spec switches it on for itself:
+  // a run aborted before that spec's teardown would otherwise leave the shared
+  // user enrolled in every later run's tick.
   const existing = await rest(
     `user_settings?user_id=eq.${userId}&select=openclaw_api_key`
   ).then((r) => (r.ok ? r.json() : []));
@@ -66,6 +69,7 @@ export default async function globalSetup() {
       onboarding_completed: true,
       morning_check_enabled: false,
       eod_review_enabled: false,
+      habit_reminders_enabled: false,
       show_completed_tasks: true,
       compact_mode: false,
       default_view: 'day',
