@@ -19,8 +19,9 @@ import { isPushConfigured, sendPushToUser, type PushAction } from '@/lib/push-se
  * weeks.
  *
  * The delivery itself lives in lib/push-send.ts — this route is the HTTP
- * surface and the auth gate, nothing more. In-process callers (the reminder
- * scan, eod-notify) call the library directly rather than POSTing here.
+ * surface and the auth gate, nothing more. The in-process caller (the reminder
+ * scan, the EOD review included) calls the library directly rather than
+ * POSTing here.
  */
 export async function POST(req: NextRequest) {
   if (!isPushConfigured()) {

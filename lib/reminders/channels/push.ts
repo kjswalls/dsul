@@ -50,14 +50,16 @@ export function dayTopic(prefix: 'lc' | 'eod' | 'pl', dateStr: string): string {
  * How each kind travels: how hard the push service may wake a phone for it,
  * and which queued push it replaces (RFC 8030 §5.3, §5.4).
  *
- * Both kinds here are 'high'. A cue is the minute the user chose and a last
- * call is the day's final chance at a streak, so a push service that holds
- * either until the phone next wakes on its own has delivered it late. A
- * summary that can wait for the phone (the pledge notice) is 'normal'.
+ * The two reminder kinds are 'high'. A cue is the minute the user chose and a
+ * last call is the day's final chance at a streak, so a push service that
+ * holds either until the phone next wakes on its own has delivered it late.
+ * What can wait for the phone is 'normal': the EOD review, an invitation that
+ * stays good until midnight and is no worse for arriving when the phone is
+ * next picked up, and the pledge notice after it.
  *
  * A cue's topic is its item, so a snooze that matures while the phone is still
  * off replaces the cue it snoozed rather than queueing behind it. A last call's
- * is its day, whether it names one habit or three.
+ * is its day, whether it names one habit or three, and so is the review's.
  *
  * Keyed by kind and total, so a new kind cannot ship without someone choosing.
  */
@@ -67,6 +69,7 @@ const DELIVERY: Record<
 > = {
   cue: { urgency: 'high', topic: (nudge) => (nudge.itemId ? itemTopic(nudge.itemId) : undefined) },
   'last-call': { urgency: 'high', topic: (nudge) => dayTopic('lc', nudge.dateStr) },
+  eod: { urgency: 'normal', topic: (nudge) => dayTopic('eod', nudge.dateStr) },
 }
 
 /**
@@ -112,9 +115,11 @@ export const pushChannel: NudgeChannel = {
       title: nudge.title,
       body: nudge.body,
       url: nudge.url,
-      // Collapse on the item (or on the day, for a multi-item last call) so a
-      // re-delivery REPLACES rather than stacks. A shade with four copies of
-      // the same cue is how someone learns to swipe the whole app away.
+      // Collapse on the item (or on the day, for a multi-item last call and
+      // for the EOD review, whose `dsul-eod-<date>` is the tag its old route
+      // sent) so a re-delivery REPLACES rather than stacks. A shade with four
+      // copies of the same cue is how someone learns to swipe the whole app
+      // away.
       tag: nudge.itemId ? `dsul-item-${nudge.itemId}` : `dsul-${nudge.kind}-${nudge.dateStr}`,
       actions: actionable
         ? [

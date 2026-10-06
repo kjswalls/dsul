@@ -3,7 +3,7 @@
  *
  * Extracted from app/api/push/send/route.ts when the reminder scan became a
  * second caller. The scan could have POSTed to that route the way
- * /api/cron/eod-notify does, and that pattern is exactly why this file exists:
+ * /api/cron/eod-notify did, and that pattern is exactly why this file exists:
  * a server route calling ITSELF over HTTP has to reconstruct its own origin
  * from a Host header, carry the service key in a header so it can authenticate
  * to itself, and pay a network round-trip per user — three failure modes bought
@@ -11,7 +11,8 @@
  *
  * The route keeps its HTTP surface (the browser and OpenClaw both use it) and
  * now delegates here. eod-notify was switched over in the same change rather
- * than left as the last self-fetching caller.
+ * than left as the last self-fetching caller, and has since been folded into
+ * the scan, so the scan's push channel is the one in-process caller.
  */
 
 import webPush, {

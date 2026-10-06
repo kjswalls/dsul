@@ -14,7 +14,27 @@
  * suppression context and the timezone — i.e. all of the scan, again.
  */
 
-export type NudgeKind = 'cue' | 'last-call'
+/**
+ * Every kind of nudge the scan sends. `eod` is the end-of-day review's
+ * invitation, folded into the scan from its own cron route; it is about the
+ * day as a whole, never an item, so it carries no `itemId` and no `items`.
+ */
+export type NudgeKind = 'cue' | 'last-call' | 'eod'
+
+/**
+ * The kinds an outward channel takes when the user has not listed any: the
+ * habit reminders, and nothing else.
+ *
+ * Explicit rather than "blank means every kind", which is what voice and SMS
+ * used to read a blank `kinds` as. That reading was harmless while there were
+ * two kinds, and it is a trap the moment there is a third: widening NudgeKind
+ * would have texted "How'd today go?" to every SMS user and read it aloud in
+ * every kitchen, without anyone deciding either. A new kind now reaches those
+ * channels only by being added here, or by a user typing it into their own
+ * `kinds`. The EOD review is push only (memory/plans/reminders-platforms.md §7,
+ * decision 12).
+ */
+export const REMINDER_KINDS: readonly NudgeKind[] = ['cue', 'last-call']
 
 /** The minimum a channel needs to name an item out loud. */
 export interface NudgeItem {
@@ -37,10 +57,11 @@ export interface Nudge {
   /**
    * The single item this is about, when it is about exactly one. A cue always
    * has it; a last call has it only when one thing is left, which is what lets
-   * the last call carry a Done button in that case and not otherwise.
+   * the last call carry a Done button in that case and not otherwise. The EOD
+   * review never has it.
    */
   itemId?: string
-  /** Everything the nudge covers. One entry for a cue. */
+  /** Everything the nudge covers. One entry for a cue; none for the EOD review. */
   items: NudgeItem[]
   /** True when this delivery is a matured snooze rather than a first cue. */
   snoozed?: boolean

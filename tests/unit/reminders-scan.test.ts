@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Item } from '@dsul/types';
+import type { PushResult } from '@/lib/push-send';
 
 /* ── Mocks ────────────────────────────────────────────────────────────────── */
 
-const sendPushToUser = vi.fn(async () => ({ devices: 1, sent: 1, expired: 0, failed: 0 }));
+const sendPushToUser = vi.fn(async (): Promise<PushResult> => ({ devices: 1, sent: 1, expired: 0, failed: 0 }));
 vi.mock('@/lib/push-send', () => ({
   sendPushToUser: (...args: unknown[]) => sendPushToUser(...(args as [])),
   isPushConfigured: () => true,
@@ -23,10 +24,10 @@ vi.mock('@/lib/reminders/deliver', async (importOriginal) => {
   return { ...actual, deliverNudge: vi.fn(actual.deliverNudge) };
 });
 
-import { runReminderScan, localClock, secondsUntil } from '@/lib/reminders/scan';
+import { runReminderScan, localClock, secondsUntil, ReminderScanError } from '@/lib/reminders/scan';
 import { deliverNudge } from '@/lib/reminders/deliver';
 import type { Nudge } from '@/lib/reminders/nudge';
-import { makeServiceFake } from './support/service-fake';
+import { makeServiceFake, type FakeCall } from './support/service-fake';
 
 const habit = (over: Partial<Item> = {}): Item => ({
   type: 'habit', id: 'h1', title: 'Vitamins', project: 'G', streak: 12, status: 'pending',
@@ -47,6 +48,12 @@ const USER = {
   stakes_enabled: false,
   stakes_settle_time: '03:00',
   stakes_settled_date: null,
+  // The review is off here, so every suite below that is not about it sees
+  // the tick it saw before the review was a tier. Its own describe turns it on.
+  eod_review_enabled: false,
+  eod_review_time: '21:00',
+  last_eod_notified_date: null,
+  last_eod_review_date: null,
 };
 
 /** 2026-08-10T11:35Z is 07:35 in New York — inside a 07:30 cue's window. */
@@ -127,9 +134,9 @@ describe('runReminderScan', () => {
     expect(payload.actions).toHaveLength(2);
   });
 
-  // The deliberate divergence from eod-notify. Deliver-first survives a failed
-  // write by re-sending, which is nearly free for a push and very much not free
-  // once a channel rings a phone.
+  // The deliberate divergence from the old eod-notify route. Deliver-first
+  // survives a failed write by re-sending, which is nearly free for a push and
+  // very much not free once a channel rings a phone.
   it('claims the day BEFORE it delivers', async () => {
     fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
     const { service, calls, mark } = makeServiceFake({
@@ -378,6 +385,372 @@ describe('runReminderScan', () => {
       expect(summary.lastCalls).toBe(0);
       expect(sendPushToUser).not.toHaveBeenCalled();
     });
+  });
+});
+
+/* ── The end-of-day review ────────────────────────────────────────────────── */
+
+// The review's invitation used to be a cron route of its own, which delivered
+// before it stamped, wrapped its window past midnight and never asked whether
+// the review was already done. It is the scan's first tier now, under the
+// scan's rules: claim, then deliver, through the same fan-out as every nudge.
+describe('the EOD review (Tier 0)', () => {
+  /** Someone who wants the evening review and no reminders at all. */
+  const EOD_USER = { ...USER, habit_reminders_enabled: false, eod_review_enabled: true };
+
+  /** New York is UTC−4 in August: 21:05 local on the 10th is 01:05Z on the 11th. */
+  const AT_2105_NY = new Date('2026-08-11T01:05:00Z');
+
+  const ONE_DEVICE = { devices: 1, sent: 1, expired: 0, failed: 0 };
+  const NO_DEVICE = { devices: 0, sent: 0, expired: 0, failed: 0 };
+
+  /** A user row, their (empty) bookkeeping, and a claim the database grants. */
+  const eodService = (user: Record<string, unknown> = EOD_USER) =>
+    makeServiceFake({
+      'user_settings.select': { data: [user] },
+      'items.select': { data: [] },
+      'user_settings.update': { data: [{ user_id: user.user_id }] },
+    });
+
+  /** What the one push sent was handed. */
+  const pushed = () => sendPushToUser.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>];
+
+  const eodClaim = (calls: FakeCall[]) =>
+    calls.find((c) => c.table === 'user_settings' && c.op === 'update');
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('claims the day BEFORE it sends, and only from a row not already holding it', async () => {
+    const { service, calls, mark } = eodService();
+    sendPushToUser.mockImplementationOnce(async () => {
+      mark('push');
+      return ONE_DEVICE;
+    });
+
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+
+    const claim = calls.find((c) => c.table === 'user_settings' && c.op === 'update');
+    expect(claim?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+    expect(claim?.filters).toEqual([
+      ['eq', ['user_id', 'u1']],
+      ['or', ['last_eod_notified_date.is.null,last_eod_notified_date.neq.2026-08-10']],
+      ['select', ['user_id']],
+    ]);
+    expect(calls.indexOf(claim!)).toBeLessThan(calls.findIndex((c) => c.op === 'push'));
+    expect(summary).toMatchObject({ users: 1, eod: 1, cues: 0, lastCalls: 0, unreached: 0, notes: [] });
+  });
+
+  it('says what the review always said: one tap into it, and no buttons', async () => {
+    await runReminderScan(eodService().service, { now: AT_2105_NY });
+
+    expect(sendPushToUser).toHaveBeenCalledTimes(1);
+    const [, userId, payload] = pushed();
+    expect(userId).toBe('u1');
+    expect(payload).toMatchObject({
+      title: 'End of day 🌙',
+      body: "How'd today go?",
+      url: '/?eod=1',
+      tag: 'dsul-eod-2026-08-10',
+    });
+    expect(payload.actions).toBeUndefined();
+    // Good until the user's own midnight (175 minutes from 21:05), and an
+    // invitation rather than an alarm, so it does not wake a dozing phone.
+    expect(payload).toMatchObject({ ttl: 175 * 60, urgency: 'normal', topic: 'eod-20260810' });
+    expect(nudges()[0]).toMatchObject({ kind: 'eod', items: [], expiresInSeconds: 175 * 60 });
+    expect(nudges()[0].itemId).toBeUndefined();
+  });
+
+  it('sends nothing when another tick won the claim', async () => {
+    const { service } = makeServiceFake({
+      'user_settings.select': { data: [EOD_USER] },
+      'items.select': { data: [] },
+      'user_settings.update': { data: [] },
+    });
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(summary.eod).toBe(0);
+    expect(summary.notes).toEqual([]);
+  });
+
+  it('sends nothing when the claim fails, and says so', async () => {
+    const { service } = makeServiceFake({
+      'user_settings.select': { data: [EOD_USER] },
+      'items.select': { data: [] },
+      'user_settings.update': { error: { message: 'write conflict' } },
+    });
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(summary.notes.join('\n')).toMatch(/u1: eod claim failed — write conflict/);
+  });
+
+  it('does not ask again once today is claimed', async () => {
+    const { service, calls } = eodService({ ...EOD_USER, last_eod_notified_date: '2026-08-10' });
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+    expect(eodClaim(calls)).toBeUndefined();
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(summary.users).toBe(0);
+  });
+
+  // The window is the scan's own: thirty minutes from the review's hour, the
+  // same grace every cue gets, where the old route had five and lost the night
+  // to one failed tick.
+  it.each([
+    ['21:29', '2026-08-11T01:29:00Z', true],
+    ['21:30', '2026-08-11T01:30:00Z', false],
+    ['20:59', '2026-08-11T00:59:00Z', false],
+  ])('a 21:00 review at %s: sent is %s', async (_, iso, sent) => {
+    const { service, calls } = eodService();
+    const summary = await runReminderScan(service, { now: new Date(iso) });
+    expect(sendPushToUser).toHaveBeenCalledTimes(sent ? 1 : 0);
+    expect(eodClaim(calls) !== undefined).toBe(sent);
+    expect(summary.eod).toBe(sent ? 1 : 0);
+  });
+
+  // The old route wrapped its window past midnight, and a wrap plus a stamp
+  // that names the day is a double-send: wrapped, a 23:50 review's thirty
+  // minutes are still open at 00:05, the date has rolled, the stamp no longer
+  // matches, and yesterday's review goes out again. Clamped, it gets ten
+  // minutes and the next day owes nothing until 23:50.
+  it('a 23:50 review: sent at 23:55, and nothing at 00:05 the next day', async () => {
+    const late = { ...EOD_USER, eod_review_time: '23:50' };
+
+    const first = eodService(late);
+    const summary = await runReminderScan(first.service, { now: new Date('2026-08-11T03:55:00Z') });
+    expect(summary.eod).toBe(1);
+    expect(eodClaim(first.calls)?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+    // …and it stops at midnight: five minutes is all the review has left.
+    expect(nudges()[0]).toMatchObject({ kind: 'eod', expiresInSeconds: 300 });
+
+    sendPushToUser.mockClear();
+    // As the 23:55 claim left it, and as a database read just after it gives it.
+    const next = eodService({ ...late, last_eod_notified_date: '2026-08-10' });
+    const after = await runReminderScan(next.service, { now: new Date('2026-08-11T04:05:00Z') });
+    expect(eodClaim(next.calls)).toBeUndefined();
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(after.eod).toBe(0);
+  });
+
+  // eod_review_time has no CHECK, and the store saves what it is given. due.ts's
+  // strict HH:mm parser would read '9:00' as no time at all; lib/eod.ts's, which
+  // the dock already uses, reads it as nine.
+  it("reads an unpadded '9:00' as 09:00, and sends at 09:10", async () => {
+    const { service, calls } = eodService({ ...EOD_USER, eod_review_time: '9:00' });
+    const summary = await runReminderScan(service, { now: new Date('2026-08-10T13:10:00Z') });
+    expect(summary.eod).toBe(1);
+    expect(eodClaim(calls)?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+  });
+
+  // The question the dock asks, asked here too. A review already done is not
+  // owed, and inviting someone to what they finished an hour ago is noise.
+  it('does not invite a review already done today, and claims nothing', async () => {
+    const { service, calls } = eodService({ ...EOD_USER, last_eod_review_date: '2026-08-10' });
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+    expect(eodClaim(calls)).toBeUndefined();
+    expect(sendPushToUser).not.toHaveBeenCalled();
+    expect(summary.eod).toBe(0);
+  });
+
+  it('a malformed hour is never due', async () => {
+    const { service, calls } = eodService({ ...EOD_USER, eod_review_time: '9pm' });
+    await runReminderScan(service, { now: AT_2105_NY });
+    expect(eodClaim(calls)).toBeUndefined();
+  });
+
+  // localClock names the hour cycle, so midnight is minute 0, inside a 00:00
+  // review's window, rather than 1440 and a whole day outside it.
+  it('a 00:00 review is sent at 00:05, as that day\'s', async () => {
+    const { service } = eodService({ ...EOD_USER, eod_review_time: '00:00' });
+    const summary = await runReminderScan(service, { now: new Date('2026-08-10T04:05:00Z') });
+    expect(summary.eod).toBe(1);
+    expect(pushed()[2]).toMatchObject({ tag: 'dsul-eod-2026-08-10' });
+  });
+
+  // Reminder rows left over from before the switch went off included: they bring
+  // the item tiers nothing to do.
+  it('a user who only wants the review never pays for the item fetch', async () => {
+    const { service } = makeServiceFake({
+      'user_settings.select': { data: [EOD_USER] },
+      'items.select': { data: [BOOK_ROW] },
+      'user_settings.update': { data: [{ user_id: 'u1' }] },
+    });
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+    expect(fetchItems).not.toHaveBeenCalled();
+    expect(summary).toMatchObject({ users: 1, eod: 1 });
+  });
+
+  it("one user's throw leaves the next one invited", async () => {
+    const { service } = makeServiceFake((call) => {
+      if (call.table === 'user_settings' && call.op === 'select') {
+        return { data: [EOD_USER, { ...EOD_USER, user_id: 'u2' }] };
+      }
+      if (call.table === 'user_settings' && call.op === 'update') {
+        if (call.filters.some(([method, args]) => method === 'eq' && args[1] === 'u1')) {
+          throw new Error('PostgREST exploded');
+        }
+        return { data: [{ user_id: 'u2' }] };
+      }
+      return undefined;
+    });
+
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+
+    expect(summary.notes.join('\n')).toMatch(/u1: skipped — PostgREST exploded/);
+    expect(sendPushToUser).toHaveBeenCalledTimes(1);
+    expect(pushed()[1]).toBe('u2');
+    expect(summary.eod).toBe(1);
+  });
+
+  // Why the review goes through deliverNudge and never straight to the push
+  // channel: the fan-out is what absorbs a channel that fails. Called directly
+  // at the top of the per-user try, one PostgREST hiccup on the device read
+  // would have cost this user the review AND every cue after it this tick.
+  it.each([
+    ['answers with a failed read', () => sendPushToUser.mockResolvedValueOnce({ ...NO_DEVICE, detail: 'read failed: fetch failed' })],
+    ['rejects outright', () => sendPushToUser.mockRejectedValueOnce(new Error('fetch failed'))],
+  ])('a push that %s: the claim stands, a note says so, nothing throws, and the cues still run', async (_, failPush) => {
+    // A 07:30 review and a 07:30 cue, for someone with both on.
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    failPush();
+    const { service, calls } = makeServiceFake({
+      'user_settings.select': { data: [{ ...USER, eod_review_enabled: true, eod_review_time: '07:30' }] },
+      'items.select': { data: [BOOK_ROW] },
+      'user_settings.update': { data: [{ user_id: 'u1' }] },
+      'items.update': { data: [{ id: 'h1' }] },
+    });
+
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+
+    expect(eodClaim(calls)?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+    expect(summary.notes.join('\n')).toMatch(/u1: eod via push failed — push (read failed|threw): fetch failed/);
+    expect(summary).toMatchObject({ eod: 1, cues: 1, unreached: 0 });
+    expect(nudges().map((n) => n.kind)).toEqual(['eod', 'cue']);
+    expect(sendPushToUser).toHaveBeenCalledTimes(2);
+  });
+
+  // decision 4, as for a cue: an invitation with no device to go to is
+  // discharged, not held over for the next tick.
+  it('a review with no device is still claimed, counted, and called unreached', async () => {
+    sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+    const { service, calls } = eodService();
+
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+
+    expect(eodClaim(calls)?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+    expect(summary).toMatchObject({ eod: 1, unreached: 1 });
+    expect(summary.notes.join('\n')).toMatch(/u1: eod via push unreached/);
+  });
+
+  // Push only (decision 12): voice and SMS read a blank `kinds` as the
+  // reminders, never as everything, so turning the review on texts nobody.
+  it('is not texted to an SMS user who listed no kinds', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+    vi.stubGlobal('fetch', fetchMock);
+    const { service } = makeServiceFake({
+      'user_settings.select': { data: [EOD_USER] },
+      'items.select': { data: [] },
+      'user_settings.update': { data: [{ user_id: 'u1' }] },
+      'user_extensions.select': {
+        data: [{ slug: 'sms-nudge', enabled: true, config: { to: '+15551234567', from: '+15557654321' } }],
+      },
+      'user_secrets.select': {
+        data: { reminder_secrets: { 'sms-nudge': { accountSid: 'AC1', authToken: 'tok' } } },
+      },
+    });
+
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+
+    expect(summary.eod).toBe(1);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(sendPushToUser).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(deliverNudge).mock.results).toHaveLength(1);
+    const reports = await vi.mocked(deliverNudge).mock.results[0].value;
+    expect(reports).toContainEqual(expect.objectContaining({ channel: 'sms-nudge', skipped: true, detail: 'sms declines eod' }));
+  });
+
+  /* ── Who is in the tick ─────────────────────────────────────────────── */
+
+  // Any of the three switches brings a user in; filtering on reminders alone
+  // would never invite the review of someone who wants only that.
+  it('the enumeration asks for the review\'s switch beside the other two', async () => {
+    const { service, calls } = eodService();
+    await runReminderScan(service, { now: AT_2105_NY });
+
+    const read = calls.find((c) => c.table === 'user_settings' && c.op === 'select');
+    expect(read?.payload).toEqual(
+      'user_id, timezone, time_format, habit_reminders_enabled, habit_last_call_enabled, ' +
+        'habit_last_call_time, habit_last_call_date, ' +
+        'eod_review_enabled, eod_review_time, last_eod_notified_date, last_eod_review_date, ' +
+        'stakes_enabled, stakes_settle_time, stakes_settled_date',
+    );
+    expect(read?.filters).toEqual([
+      ['or', ['habit_reminders_enabled.eq.true,stakes_enabled.eq.true,eod_review_enabled.eq.true']],
+      ['not', ['timezone', 'is', null]],
+    ]);
+  });
+
+  // A database without the stakes columns (034) retries without them. The
+  // review's columns are older than 032, so they stay, and so does its flag.
+  it('still invites the review on the retry without the stakes columns', async () => {
+    const { service, calls } = makeServiceFake((call) => {
+      if (call.table === 'user_settings' && call.op === 'select') {
+        return String(call.payload).includes('stakes_enabled')
+          ? { error: { code: '42703', message: 'column user_settings.stakes_enabled does not exist' } }
+          : { data: [EOD_USER] };
+      }
+      if (call.table === 'user_settings' && call.op === 'update') return { data: [{ user_id: 'u1' }] };
+      return undefined;
+    });
+
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+
+    const reads = calls.filter((c) => c.table === 'user_settings' && c.op === 'select');
+    expect(reads).toHaveLength(2);
+    expect(String(reads[1].payload)).not.toMatch(/stakes/);
+    expect(reads[1].filters).toEqual([
+      ['or', ['habit_reminders_enabled.eq.true,eod_review_enabled.eq.true']],
+      ['not', ['timezone', 'is', null]],
+    ]);
+    expect(summary.eod).toBe(1);
+    expect(summary.notes).toEqual(['migration 034 not applied — settling is off, reminders continue']);
+  });
+});
+
+/* ── When the scan cannot start ───────────────────────────────────────────── */
+
+// The two reads every claim depends on. A failure there claims nothing and
+// sends nothing, so the route may answer 500 (decision 7), and it carries what
+// the scan had already found so the 500 says more than its message.
+describe('ReminderScanError', () => {
+  it('is what a failed user read rejects with, carrying the notes so far', async () => {
+    const { service } = makeServiceFake((call) => {
+      if (call.table !== 'user_settings') return undefined;
+      return String(call.payload).includes('stakes_enabled')
+        ? { error: { code: '42703', message: 'column user_settings.stakes_enabled does not exist' } }
+        : { error: { message: 'Gateway Timeout' } };
+    });
+
+    const outcome = runReminderScan(service, { now: AT_0735_NY });
+
+    await expect(outcome).rejects.toBeInstanceOf(ReminderScanError);
+    await expect(outcome).rejects.toMatchObject({
+      message: 'Gateway Timeout',
+      notes: ['migration 034 not applied — settling is off, reminders continue'],
+    });
+    expect(sendPushToUser).not.toHaveBeenCalled();
+  });
+
+  it('is what a failed bookkeeping read rejects with', async () => {
+    const { service, calls } = makeServiceFake({
+      'user_settings.select': { data: [{ ...USER, eod_review_enabled: true }] },
+      'items.select': { error: { message: 'Gateway Timeout' } },
+    });
+    await expect(runReminderScan(service, { now: AT_0735_NY })).rejects.toMatchObject({
+      name: 'ReminderScanError',
+      message: 'Gateway Timeout',
+      notes: [],
+    });
+    // Before any claim: not even the review's.
+    expect(calls.some((c) => c.op === 'update')).toBe(false);
   });
 });
 

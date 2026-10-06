@@ -300,8 +300,9 @@ export function AppShell() {
   // every refresh after that time re-open the modal until "Done for today" was
   // pressed — Esc/✕ don't count as reviewed. The review is reached on purpose
   // instead: the rituals.eod palette command, or the nightly push notification
-  // (cron/eod-notify, gated on the same eod_review_enabled/eod_review_time
-  // settings) whose tap lands on the ?eod=1 deep link above.
+  // (the reminder scan's EOD tier, lib/reminders/scan.ts, gated on the same
+  // eod_review_enabled/eod_review_time settings) whose tap lands on the ?eod=1
+  // deep link above.
 
   const sensors = useShellSensors();
 

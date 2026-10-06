@@ -57,12 +57,14 @@ export function minutesOfDay(hhmm: string | undefined | null): number | null {
  * Is `nowMinutes` inside [target, target + grace) on the SAME local day?
  *
  * The window is clamped to midnight rather than wrapped, which is the one place
- * this deliberately diverges from the eod-notify cron it is modelled on. That
- * route wraps (`windowEnd >= 1440 ? now >= start || now < end - 1440`), and a
+ * this deliberately diverged from the eod-notify cron it was modelled on. That
+ * route wrapped (`windowEnd >= 1440 ? now >= start || now < end - 1440`), and a
  * wrap plus a same-day dedupe stamp is a double-send: a 23:50 cue fires and
  * stamps day N, then at 00:05 the window is still open, the local date has
  * rolled to N+1, the stamp no longer matches, and the same reminder goes out
- * again — at ten past midnight, for yesterday's habit.
+ * again — at ten past midnight, for yesterday's habit. The EOD review now runs
+ * through this window too, as a tier of the scan, so the double-send is gone
+ * from the review by construction rather than by a fix to that route.
  *
  * Clamping costs a late-evening reminder some of its grace and nothing else.
  */

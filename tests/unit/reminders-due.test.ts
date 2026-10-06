@@ -70,7 +70,8 @@ describe('isWithinWindow', () => {
     expect(isWithinWindow(450, 450 + REMINDER_GRACE_MINUTES)).toBe(false);
   });
 
-  // The divergence from eod-notify, and the reason it exists: a wrapping window
+  // The divergence from the old eod-notify route (now the scan's EOD tier,
+  // which uses this window too), and the reason it exists: a wrapping window
   // plus a same-day dedupe stamp double-sends. 23:50 fires and stamps day N;
   // at 00:05 the window is still open, the local date has rolled to N+1, the
   // stamp no longer matches, and the cue goes out again for yesterday.

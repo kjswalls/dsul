@@ -130,7 +130,13 @@ this issue is done.
 
 ### What it would need
 
-1. `app/api/cron/morning-notify/route.ts`, mirroring the existing `eod-notify` route.
+1. ~~`app/api/cron/morning-notify/route.ts`, mirroring the existing `eod-notify` route.~~
+   **A tier of the reminder scan, not a route** (2026-10-06): `eod-notify` itself has been
+   folded into `lib/reminders/scan.ts` as its Tier 0 and deleted, and
+   `tests/unit/one-cron.test.ts` holds `app/api/cron/` to the one `reminders` route. The
+   morning check would be a claim column (say `morning_check_notified_date`, a migration of
+   its own), a window from `lib/reminders/due.ts` and a `deliverNudge` with a new
+   `NudgeKind`, which voice and SMS decline unless it is added to `REMINDER_KINDS`.
 2. A schedule that actually invokes it — see the sibling issue below, which is a prerequisite.
 3. Per-user timezone resolution. `user_settings.timezone` is synced from the client; the cron
    must bucket users by local time, not fire once at a server hour.
@@ -143,6 +149,11 @@ this issue is done.
 ## Nothing invokes the EOD cron — `vercel.json` is empty
 
 **Not a removed row** — this is the bug found while auditing the ones that were.
+
+**Resolved, then superseded.** Option (b) below shipped as migration 035 (pg_cron + pg_net,
+renamed by 044). Since 2026-10-06 there is no separate EOD cron at all: the review's push is
+Tier 0 of the reminder scan behind `/api/cron/reminders`, and `app/api/cron/eod-notify/` is
+deleted. The finding below is kept as written.
 
 ### The finding
 
