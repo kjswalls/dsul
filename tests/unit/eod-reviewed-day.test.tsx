@@ -10,10 +10,12 @@ import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
  * 23:30 push finished at 00:15 on the 7th recorded the 7th as reviewed, and
  * the 7th's invitation was retired before it was sent: a night owl got every
  * other night's push. The push's link names its day now (`?eod=2026-10-06`,
- * opened by AppShell through `openInvited`), and lib/eod.ts's reviewedDay
- * picks the day. These pin the wiring between the two, the part a pure test
- * of reviewedDay cannot see. Sibling of eod-dismiss.test.tsx and set up the
- * same way: real stores, real component, db mocked, fixed clock.
+ * opened through `openInvited` by lib/eod-link.ts, which eod-link.test.ts
+ * pins), and lib/eod.ts's reviewedDay picks the day. These pin the
+ * component's half, the part a pure test of reviewedDay cannot see: the
+ * opening it holds, and the settings it hands over at Done. Sibling of
+ * eod-dismiss.test.tsx and set up the same way: real stores, real component,
+ * db mocked, fixed clock.
  */
 
 vi.mock('@/lib/db', () => ({
@@ -123,6 +125,57 @@ describe('Done records the day the review was for', () => {
     await pressDone();
 
     expect(stamped()).toEqual(['2026-10-06']);
+  });
+
+  // Each day's push has its own tag, so the 6th's can wait in the shade into
+  // the 7th. Tapped in the evening, before the 7th's 21:00 review or after it,
+  // it opens a review of the 7th's list, and Done must record the 7th: filed
+  // under the 6th, the scan would invite at 21:00 a review just finished, and
+  // the dock would put its line back up straight after Done.
+  it.each(['20:30', '20:50', '21:10'])("the 6th's push, opened at %s on the 7th, is the 7th's review", async (hhmm) => {
+    vi.setSystemTime(new Date(`2026-10-07T${hhmm}:00Z`));
+    act(() => useEODStore.getState().openInvited('2026-10-06'));
+    render(<EODReview />);
+
+    await pressDone();
+
+    expect(stamped()).toEqual(['2026-10-07']);
+    expect(useEODStore.getState().lastEodReviewDate).toBe('2026-10-07');
+  });
+
+  // The 7th reviewed already (from the palette, just after midnight), and then
+  // the 6th's push is tapped and finished: the stamp stays on the 7th. Moved
+  // back to the 6th, the 7th would be owed again.
+  it('never moves the stamp back behind a review already recorded', async () => {
+    useEODStore.setState({ lastEodReviewDate: '2026-10-07' });
+    vi.setSystemTime(new Date('2026-10-07T00:15:00Z'));
+    act(() => useEODStore.getState().openInvited('2026-10-06'));
+    render(<EODReview />);
+
+    await pressDone();
+
+    expect(stamped()).toEqual(['2026-10-07']);
+    expect(useEODStore.getState().lastEodReviewDate).toBe('2026-10-07');
+  });
+
+  // AppShell mounts the review once, for the life of the tab, and a desktop
+  // window or an installed PWA keeps that tab for days. The day it opened on
+  // is taken when it OPENS, not when it mounted: held from the mount, a
+  // review opened on the 7th in a window loaded on the 5th would record the
+  // 5th, and the 7th would stay owed.
+  it.each([
+    ['the palette', () => useEODStore.getState().open()],
+    ['the push', () => useEODStore.getState().openInvited('2026-10-07')],
+  ])('opened from %s days after the mount, it is the day it opened on', async (_, openIt) => {
+    vi.setSystemTime(new Date('2026-10-05T12:00:00Z'));
+    render(<EODReview />);
+    expect(screen.queryByRole('dialog')).toBeNull();
+
+    vi.setSystemTime(new Date('2026-10-07T21:10:00Z'));
+    act(openIt);
+    await pressDone();
+
+    expect(stamped()).toEqual(['2026-10-07']);
   });
 
   // An opening from the push does not outlive itself: the next opening any

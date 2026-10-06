@@ -30,7 +30,8 @@ interface EODStore {
    * The day the open review was invited for, when it was opened from the
    * review's push (`?eod=<yyyy-MM-dd>`); null when it was opened any other way.
    * Read once, by Done, through lib/eod.ts's `reviewedDay`, so a review the push
-   * for the 6th opens at 00:15 on the 7th is recorded as the 6th's. Like
+   * for the 6th opens at 00:15 on the 7th is recorded as the 6th's (and one it
+   * opens at 20:30 on the 7th, from a shade nobody cleared, as the 7th's). Like
    * `isOpen`, never persisted: it describes this opening and nothing after it.
    */
   invitedFor: string | null;

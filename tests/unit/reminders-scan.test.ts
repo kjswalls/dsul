@@ -508,6 +508,59 @@ describe('runReminderScan', () => {
       expect(writes()).toEqual([]);
     });
   });
+
+  // The settlement's time is no window, but `now >= settle time` has the same
+  // gap the windows had: 23:56–23:59 is a minute no tick reaches, and at 00:00
+  // the date has rolled and the clock is back below it. A free time input
+  // (rituals.stakesTime), and 034's CHECK takes any HH:mm, so '23:58' is a value
+  // a row can hold, and it used to settle no day at all: no pledge rows, no
+  // partner digest, no Beeminder backstop, and no note.
+  describe('the stakes settlement', () => {
+    const STAKES_USER = {
+      ...USER,
+      habit_reminders_enabled: false,
+      stakes_enabled: true,
+      stakes_settled_date: '2026-08-08',
+    };
+
+    const stakesService = (user: Record<string, unknown>) =>
+      makeServiceFake({
+        'user_settings.select': { data: [user] },
+        'items.select': { data: [] },
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
+      });
+
+    it.each(['23:55', '23:56', '23:58', '23:59'])('a %s settlement settles yesterday on the 23:55 tick', async (time) => {
+      const { service, writes } = stakesService({ ...STAKES_USER, stakes_settle_time: time });
+
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T03:55:00Z') });
+
+      expect(summary.daysSettled).toBe(1);
+      expect(writes().map((c) => [c.table, c.payload])).toEqual([['user_settings', { stakes_settled_date: '2026-08-09' }]]);
+    });
+
+    it('a 23:58 settlement settles nothing new at 00:00', async () => {
+      // As the 23:55 tick left it.
+      const { service, writes } = stakesService({
+        ...STAKES_USER,
+        stakes_settle_time: '23:58',
+        stakes_settled_date: '2026-08-09',
+      });
+
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T04:00:00Z') });
+
+      expect(summary.daysSettled).toBe(0);
+      expect(writes()).toEqual([]);
+    });
+
+    // Opened early only where it has to be: a 21:00 settlement waits for 21:00.
+    it('a 21:00 settlement does not settle at 20:55', async () => {
+      const { service, writes } = stakesService({ ...STAKES_USER, stakes_settle_time: '21:00' });
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T00:55:00Z') });
+      expect(summary.daysSettled).toBe(0);
+      expect(writes()).toEqual([]);
+    });
+  });
 });
 
 /* ── The end-of-day review ────────────────────────────────────────────────── */
@@ -608,6 +661,40 @@ describe('the EOD review (Tier 0)', () => {
     const summary = await runReminderScan(service, { now: AT_2105_NY });
     expect(sendPushToUser).not.toHaveBeenCalled();
     expect(summary.notes.join('\n')).toMatch(/u1: eod claim failed — write conflict/);
+  });
+
+  // A claim that errors or is lost costs the review and nothing else: the
+  // cues, the last call and the settlement come after it in the same user's
+  // turn, and a `continue` there would take them all, every tick of the
+  // review's window, with only the note to show for it. The push-failure test
+  // below pins the same isolation for a claim that was won.
+  it.each([
+    ['fails', { error: { message: 'write conflict' } }],
+    ['is lost', { data: [] }],
+  ])('a review claim that %s leaves the cues running', async (outcome, claim) => {
+    // A 07:30 review and a 07:30 cue, for someone with both on.
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service, calls, writes } = makeServiceFake({
+      'user_settings.select': { data: [{ ...USER, eod_review_enabled: true, eod_review_time: '07:30' }] },
+      'items.select': { data: [BOOK_ROW] },
+      'user_settings.update': claim,
+      'items.update': { data: [{ id: 'h1' }] },
+    });
+
+    const summary = await runReminderScan(service, { now: AT_0735_NY });
+
+    // The review was asked for, and not sent…
+    expect(eodClaim(calls)?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+    expect(summary.eod).toBe(0);
+    // …and the cue went regardless, claimed and delivered.
+    expect(summary.cues).toBe(1);
+    expect(nudges().map((n) => n.kind)).toEqual(['cue']);
+    expect(writes().map((c) => [c.table, c.payload])).toContainEqual(['items', { reminder_sent_key: '2026-08-10T07:30' }]);
+    if (outcome === 'fails') {
+      expect(summary.notes).toEqual(['u1: eod claim failed — write conflict']);
+    } else {
+      expect(summary.notes).toEqual([]);
+    }
   });
 
   it('does not ask again once today is claimed', async () => {

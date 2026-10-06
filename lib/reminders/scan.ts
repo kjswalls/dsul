@@ -111,7 +111,8 @@ const LAST_TICK = MINUTES_PER_DAY - TICK_MINUTES
  * input, so any minute can be saved) would never be sent, with no note to say
  * so. Opened at 23:55 it goes a few minutes early instead, which is the better
  * of the two. All three windows open here: the review's and the last call's
- * below, the cues' through dueReminders' `latestOpening`.
+ * below, the cues' through dueReminders' `latestOpening`. So does the stakes
+ * settlement's threshold, which is no window but has the same gap.
  */
 export function windowOpensAt(minutes: number): number {
   return Math.min(minutes, LAST_TICK)
@@ -429,10 +430,15 @@ export async function runReminderScan(
         user.habit_last_call_date !== clock.dateStr &&
         isWithinWindow(windowOpensAt(lastCallMinutes), clock.nowMinutes, grace)
 
+      // Not a window but a threshold, and it has the same gap: a settle time of
+      // 23:56–23:59 is a minute no tick reaches, and at 00:00 the date has
+      // rolled and the clock starts again below it, so `>= 23:58` was never
+      // true and no day was ever settled, with no note. It opens where the
+      // windows do (windowOpensAt): at 23:55, yesterday is settled.
       const settleMinutes =
         stakesAvailable && user.stakes_enabled ? minutesOfDay(user.stakes_settle_time) : null
       const pendingDays =
-        settleMinutes !== null && clock.nowMinutes >= settleMinutes
+        settleMinutes !== null && clock.nowMinutes >= windowOpensAt(settleMinutes)
           ? daysToSettle(clock.dateStr, user.stakes_settled_date)
           : []
 

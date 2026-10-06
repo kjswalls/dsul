@@ -96,8 +96,9 @@ they teach people to take the device off).
    no tick in it, so every window the scan opens starts no later than 23:55
    (`windowOpensAt` in `lib/reminders/scan.ts`), and a review, last call or cue set to
    23:56–23:59 goes a few minutes early rather than never. The review's and the last
-   call's windows are the scan's own and open there directly. A cue's is `due.ts`'s
-   (`dueReminders`), which takes the opening from its caller as
+   call's windows are the scan's own and open there directly, and so does the stakes
+   settlement's threshold (`now >= stakes_settle_time`, which a 23:58 time never met).
+   A cue's is `due.ts`'s (`dueReminders`), which takes the opening from its caller as
    `ScanClock.latestOpening`: the scan passes 23:55, and a clock that ticks every minute
    (Phase 1's open page) passes nothing and rings at the minute itself. No Swift mirrors
    any of it yet: DsulCore ports only `occursOn` from `due.ts` and `formatCueTime` from

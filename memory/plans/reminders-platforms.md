@@ -1,7 +1,7 @@
 # Reminders across platforms — web, desktop, iPhone, watch, Android
 
 > **Addendum (2026-10-06): what Phase 0 changed on the way in.** Phase 0 was built and
-> reviewed three times, and nine shapes in the body below (§2.1's "What rings" row, §3.1,
+> reviewed four times, and nine shapes in the body below (§2.1's "What rings" row, §3.1,
 > the PR-0/A/B/C rows of §5.1.2, §5.8's cron rule) are not what the code does. **The body
 > predates these and keeps the old shapes** — read it through this list. Each was changed
 > because the old shape was wrong, not for taste.
@@ -27,7 +27,10 @@
 >    never sent; each now goes at 23:55. The review's and the last call's windows are the
 >    scan's; a cue's opens through `dueReminders`' optional `ScanClock.latestOpening`, which
 >    the scan sets and a clock that ticks every minute leaves out (Phase 1's page tick,
->    Phase 2's Swift port). Owed is asked as of `max(now, eodMinutes)`. See
+>    Phase 2's Swift port). Owed is asked as of `max(now, eodMinutes)`. The stakes
+>    settlement's `now >= stakes_settle_time` is a threshold, not a window, with the same
+>    gap (a 23:58 settle time settled no day, ever); it compares against
+>    `windowOpensAt(settleMinutes)` too, so 23:56–23:59 settles yesterday at 23:55. See
 >    [habit-reminders.md](habit-reminders.md) decision 5's addendum.
 > 4. **`channelKinds` (`lib/reminders/nudge.ts`) narrows what voice, SMS and the call
 >    list to `REMINDER_KINDS`**, as well as filling a blank list: typed into a free-text
@@ -52,11 +55,17 @@
 >    inside an `is not null` branch. `scripts/verify-058.sh` replays 058 alone, so from
 >    059 on that text rule is the only check.
 > 8. **The review's push opens `/?eod=<yyyy-MM-dd>`, not `/?eod=1`**, and Done records
->    `last_eod_review_date` as the day the review was for (`reviewedDay` in `lib/eod.ts`:
->    the push's day when it is the day the review opened on or the one before, else the
->    day it opened on), never the day Done is pressed. PR-C's `isEodOwed` veto reads that
->    column, and stamped with the press day, the 6th's 23:30 push finished at 00:15
->    recorded the 7th as reviewed and cancelled the 7th's invitation unsent. The app
+>    `last_eod_review_date` as the day the review was for (`reviewedDay` in `lib/eod.ts`),
+>    never the day Done is pressed. PR-C's `isEodOwed` veto reads that column, and
+>    stamped with the press day, the 6th's 23:30 push finished at 00:15 recorded the 7th
+>    as reviewed and cancelled the 7th's invitation unsent. The push's day is taken when
+>    it is the day the review opened on, or the day before **only in the small hours**:
+>    opened before 04:00, from a review hour outside 00:00–03:59, with nothing yet
+>    recorded for the opening day. Otherwise it is the day the review opened on, held
+>    from the opening (never the mount). Each day's push has its own tag, so the 6th's can
+>    wait in a shade into the 7th; tapped at 20:30 it opens the 7th's list, and filed
+>    under the 6th the scan would invite at 21:00 the review just finished. The step from
+>    URL to store is `lib/eod-link.ts`, out of AppShell so a unit test can ask it. The app
 >    still opens a bare `?eod=1` (pushes already in a shade), naming no day. Any later
 >    sender of the review (§2.3's local trigger) records the same way: the day it
 >    invites, not the day it is answered.

@@ -8,7 +8,7 @@
  * an argument.
  *
  * THE GAP THIS EXISTS TO CLOSE. The review has never had an in-app entry point
- * that appears on its own. components/shell/app-shell.tsx opens the modal from
+ * that appears on its own. lib/eod-link.ts (from AppShell) opens the modal from
  * `?eod=<day>` — a tapped push notification — and lib/commands/registry.ts opens it
  * from the palette. That is the whole list. Turn the review on, deny
  * notification permission or swipe the notification away, and the app will
@@ -99,27 +99,71 @@ function dayBefore(dateStr: string): string {
 }
 
 /**
+ * Where a night carried past midnight ends: 04:00, the hour lib/ask-home.ts's
+ * dayPart starts the morning at. Before it, a review opened from the day
+ * before's push is that day's review, finished late; from it on, it is today's.
+ */
+const NIGHT_ENDS_AT = 4 * 60;
+
+/** When a review opened: the day and the minute, in the user's saved timezone. */
+export interface ReviewOpening {
+  /** yyyy-MM-dd (`toDateStr`, never the machine's day). */
+  day: string;
+  /** Minutes past midnight on that day. */
+  minutes: number;
+}
+
+/**
  * The day a finished review is recorded against (`last_eod_review_date`).
  *
- * The day its invitation was for, when the review was opened from one and that
- * day is the one it opened on or the one before; otherwise the day it opened
- * on. Never the day Done is pressed, which is what it used to be, and which
- * is wrong exactly when it matters: a 23:30 review's push tapped at 00:15
- * stamped the NEW day as reviewed, and isEodOwed then retired that evening's
- * invitation before it was sent. The scan asks isEodOwed too, so a night owl
- * lost every other night's push, and the dock its line.
+ * The day its invitation was for, when the review was opened from one on that
+ * same day, or from the day before's after midnight, in the small hours;
+ * otherwise the day it opened on. Never the day Done is pressed, which is what
+ * it used to be, and which is wrong exactly when it matters: a 23:30 review's
+ * push tapped at 00:15 stamped the NEW day as reviewed, and isEodOwed then
+ * retired that evening's invitation before it was sent. The scan asks
+ * isEodOwed too, so a night owl lost every other night's push, and the dock
+ * its line.
  *
- * Bounded to the day before because the after-midnight review is the case;
- * a notification tapped days later opens a review of today, and recording a
- * day long gone would leave tonight's owed. A day after the opening one is
- * no day anyone was invited to review.
+ * The day before is the after-midnight case and nothing wider, because the
+ * review always lists the day it opened on. Each day's push has its own tag,
+ * so yesterday's can sit in the shade all day: tapped at 20:30, it opens a
+ * review of today, and filed under yesterday that review would leave today
+ * owed. The scan would invite at 21:00 a review finished half an hour before,
+ * and the dock would put its line back up straight after Done. So the day
+ * before is taken only when all three hold:
+ *
+ *   - it opened before NIGHT_ENDS_AT: the night the push was sent, carried on;
+ *   - the review hour is not itself inside those small hours. Set to 01:00,
+ *     yesterday's push went out at 01:00 yesterday, a whole day before, and
+ *     tonight's own (at 01:00, still to come or just sent) is the one this
+ *     review answers;
+ *   - nothing is recorded for the opening day already. Today reviewed (from
+ *     the palette at 00:05, say), a stamp of yesterday would move it back and
+ *     owe today again.
+ *
+ * A notification tapped days later opens a review of today, and recording a
+ * day long gone would leave tonight's owed. A day after the opening one is no
+ * day anyone was invited to review.
  *
  * @param invitedFor the day the deep link named (eodLinkDay), or null.
- * @param openedOn today in the user's saved timezone when the review opened.
+ * @param opened when the review opened, held from the opening (not Done).
+ * @param settings the review's hour, and the day last recorded as reviewed.
  */
-export function reviewedDay(invitedFor: string | null, openedOn: string): string {
+export function reviewedDay(
+  invitedFor: string | null,
+  opened: ReviewOpening,
+  settings: Pick<EodOwedInput, 'eodReviewTime' | 'lastEodReviewDate'>
+): string {
+  const openedOn = opened.day;
   if (invitedFor === null || !DAY.test(invitedFor)) return openedOn;
-  return invitedFor === openedOn || invitedFor === dayBefore(openedOn) ? invitedFor : openedOn;
+  if (invitedFor === openedOn) return invitedFor;
+  if (invitedFor !== dayBefore(openedOn)) return openedOn;
+  if (opened.minutes >= NIGHT_ENDS_AT) return openedOn;
+  const due = minutesOfDay(settings.eodReviewTime);
+  if (due !== null && due < NIGHT_ENDS_AT) return openedOn;
+  if (settings.lastEodReviewDate === openedOn) return openedOn;
+  return invitedFor;
 }
 
 /** Minutes past midnight right now, in `timeZone`. */
