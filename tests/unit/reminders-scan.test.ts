@@ -1,9 +1,9 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import type { Item } from '@dsul/types';
 
 /* ── Mocks ────────────────────────────────────────────────────────────────── */
 
-const sendPushToUser = vi.fn(async () => ({ sent: 1, expired: 0 }));
+const sendPushToUser = vi.fn(async () => ({ devices: 1, sent: 1, expired: 0, failed: 0 }));
 vi.mock('@/lib/push-send', () => ({
   sendPushToUser: (...args: unknown[]) => sendPushToUser(...(args as [])),
   isPushConfigured: () => true,
@@ -129,7 +129,7 @@ describe('runReminderScan', () => {
     // off it. A push that never went out leaves no mark, and fails below too.
     sendPushToUser.mockImplementationOnce(async () => {
       mark('push');
-      return { sent: 1, expired: 0 };
+      return { devices: 1, sent: 1, expired: 0, failed: 0 };
     });
 
     await runReminderScan(service, { now: AT_0735_NY });
@@ -198,6 +198,108 @@ describe('runReminderScan', () => {
     const summary = await runReminderScan(service, { now: AT_0735_NY });
     expect(summary.notes.join()).toMatch(/unusable timezone/);
     expect(sendPushToUser).not.toHaveBeenCalled();
+  });
+
+  describe('a nudge that reaches nobody', () => {
+    const NO_DEVICE = { devices: 0, sent: 0, expired: 0, failed: 0 };
+    const cueDue = () => fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+
+    afterEach(() => vi.unstubAllGlobals());
+
+    // habit-reminders.md decision 4: claimed, then delivered, and a delivery
+    // that went nowhere does not hand the claim back. A cue with no device is
+    // discharged, not held over to be retried into an SMS on the next tick.
+    it('still claims the cue, counts it, and says it was unreached', async () => {
+      cueDue();
+      sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+      const { service, calls } = makeServiceFake({
+        'user_settings.select': { data: [USER] },
+        'items.select': { data: [BOOK_ROW] },
+        'items.update': { data: [{ id: 'h1' }] },
+      });
+
+      const summary = await runReminderScan(service, { now: AT_0735_NY });
+
+      const claim = calls.find((c) => c.table === 'items' && c.op === 'update');
+      expect(claim?.payload).toEqual({ reminder_sent_key: '2026-08-10T07:30' });
+      expect(summary.cues).toBe(1);
+      expect(summary.unreached).toBe(1);
+      expect(summary.notes.join('\n')).toMatch(/u1: cue via push unreached/);
+    });
+
+    /** A user with the SMS channel switched on and configured. */
+    const smsOn = () =>
+      makeServiceFake({
+        'user_settings.select': { data: [USER] },
+        'items.select': { data: [BOOK_ROW] },
+        'items.update': { data: [{ id: 'h1' }] },
+        'user_extensions.select': {
+          data: [{ slug: 'sms-nudge', enabled: true, config: { to: '+15551234567', from: '+15557654321' } }],
+        },
+        'user_secrets.select': {
+          data: { reminder_secrets: { 'sms-nudge': { accountSid: 'AC1', authToken: 'tok' } } },
+        },
+      });
+
+    // Reached by text is reached. And with the SMS sent, a push with nowhere
+    // to go is how this user set things up, not a line in the notes.
+    it('is not unreached when the SMS got through', async () => {
+      cueDue();
+      sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+      const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+      vi.stubGlobal('fetch', fetchMock);
+
+      const summary = await runReminderScan(smsOn().service, { now: AT_0735_NY });
+
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(summary.cues).toBe(1);
+      expect(summary.unreached).toBe(0);
+      expect(summary.notes).toEqual([]);
+    });
+
+    // A failure is its own note; counting the nudge as unreached as well would
+    // file one broken Twilio token under two headings.
+    it('is a failure, not unreached, when the SMS failed', async () => {
+      cueDue();
+      sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+      vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 401 })));
+
+      const summary = await runReminderScan(smsOn().service, { now: AT_0735_NY });
+
+      expect(summary.unreached).toBe(0);
+      const notes = summary.notes.join('\n');
+      expect(notes).toMatch(/cue via sms-nudge failed/);
+      // Nothing got through, so the empty push is worth its line here.
+      expect(notes).toMatch(/cue via push unreached/);
+    });
+
+    it('counts an unreached last call the same way', async () => {
+      fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
+      sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+      const { service } = makeServiceFake({
+        'user_settings.select': { data: [{ ...USER, habit_last_call_enabled: true }] },
+        'items.select': { data: [] },
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
+      });
+
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T00:35:00Z') });
+
+      expect(summary.lastCalls).toBe(1);
+      expect(summary.unreached).toBe(1);
+      expect(summary.notes.join('\n')).toMatch(/last-call via push unreached/);
+    });
+
+    it('a delivered cue is not unreached', async () => {
+      cueDue();
+      const { service } = makeServiceFake({
+        'user_settings.select': { data: [USER] },
+        'items.select': { data: [BOOK_ROW] },
+        'items.update': { data: [{ id: 'h1' }] },
+      });
+      const summary = await runReminderScan(service, { now: AT_0735_NY });
+      expect(summary.cues).toBe(1);
+      expect(summary.unreached).toBe(0);
+    });
   });
 
   describe('the last call', () => {

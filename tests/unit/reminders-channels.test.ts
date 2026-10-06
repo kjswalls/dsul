@@ -1,13 +1,26 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
+
+// The push channel's own transport. Only the push describes below reach it:
+// everywhere else VAPID is unset, so push answers before it would send.
+const sendNotification = vi.fn();
+vi.mock('web-push', () => ({
+  default: {
+    sendNotification: (...args: unknown[]) => sendNotification(...args),
+    setVapidDetails: () => {},
+  },
+}));
+
 import { assertSafeUrl, isBlockedHost, requireString } from '@/lib/reminders/channels/http';
 import { escapeXml } from '@/lib/reminders/channels/twilio';
 import { callTwiml, callChannel } from '@/lib/reminders/channels/call';
+import { pushChannel } from '@/lib/reminders/channels/push';
 import { smsChannel } from '@/lib/reminders/channels/sms';
 import { voiceChannel } from '@/lib/reminders/channels/voice';
 import { channelIsOn, CHANNELS, deliverNudge } from '@/lib/reminders/deliver';
 import { spokenLine, smsLine } from '@/lib/reminders/copy';
 import type { Nudge } from '@/lib/reminders/nudge';
 import type { ChannelContext } from '@/lib/reminders/channels/types';
+import { makeServiceFake } from './support/service-fake';
 
 const cue = (over: Partial<Nudge> = {}): Nudge => ({
   kind: 'cue',
@@ -254,6 +267,78 @@ describe('the call channel declines ordinary cues by default', () => {
     );
     expect(result.ok).toBe(true);
     vi.unstubAllGlobals();
+  });
+});
+
+/* ── Push ─────────────────────────────────────────────────────────────────── */
+
+describe('the push channel says what became of the push', () => {
+  const subscription = (n: number) => ({ endpoint: `https://push.example/${n}`, p256dh: 'p', auth: 'a' });
+  const withRows = (rows: unknown[]) =>
+    ctx({ service: makeServiceFake({ 'push_subscriptions.select': { data: rows } }).service });
+
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'test-public');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private');
+    sendNotification.mockReset();
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  // "sent=0" with ok:true used to be the whole report, and nobody read it.
+  it('no device: ok, but unreached', async () => {
+    const result = await pushChannel.deliver(cue(), withRows([]));
+    expect(result).toMatchObject({ ok: true, unreached: true });
+    expect(result.detail).toMatch(/no device subscribed/);
+  });
+
+  it('no VAPID pair: unreached too, and it says which', async () => {
+    vi.stubEnv('VAPID_PRIVATE_KEY', '');
+    const result = await pushChannel.deliver(cue(), withRows([subscription(1)]));
+    expect(result).toMatchObject({ ok: true, unreached: true });
+    expect(result.detail).toMatch(/no VAPID pair/);
+  });
+
+  it('every device refused it: a failure, counted', async () => {
+    sendNotification.mockRejectedValue(Object.assign(new Error('nope'), { statusCode: 503 }));
+    const result = await pushChannel.deliver(cue(), withRows([subscription(1), subscription(2)]));
+    expect(result.ok).toBe(false);
+    expect(result.unreached).toBeFalsy();
+    expect(result.detail).toMatch(/^push failed: 0 of 2 accepted/);
+  });
+
+  it('one device took it: a delivery', async () => {
+    sendNotification
+      .mockResolvedValueOnce({ statusCode: 201, body: '', headers: {} })
+      .mockRejectedValueOnce(Object.assign(new Error('gone'), { statusCode: 410 }));
+    const result = await pushChannel.deliver(cue(), withRows([subscription(1), subscription(2)]));
+    expect(result.ok).toBe(true);
+    expect(result.unreached).toBeFalsy();
+    expect(result.detail).toBe('push sent=1/2 expired=1 failed=0');
+  });
+
+  // The channel contract (channels/types.ts): a failure is a result. And a
+  // read nobody answered is a failure, not "this user has no phone".
+  it('service read rejects ⇒ a failed result, not a rejection', async () => {
+    const { service } = makeServiceFake(() => {
+      throw new Error('fetch failed');
+    });
+    const outcome = pushChannel.deliver(cue(), ctx({ service }));
+    await expect(outcome).resolves.toMatchObject({ ok: false });
+    const result = await outcome;
+    expect(result.unreached).toBeFalsy();
+    expect(result.detail).toMatch(/read failed: fetch failed/);
+  });
+
+  it('deliverNudge carries unreached into its report', async () => {
+    const { service } = makeServiceFake({ 'push_subscriptions.select': { data: [] } });
+    const reports = await deliverNudge(
+      cue(),
+      { userId: 'u1', service, timeFormat: '12h', timezone: 'UTC' },
+      { extensionEnabled: {}, configs: {}, secrets: {} },
+    );
+    expect(reports).toEqual([
+      expect.objectContaining({ channel: 'push', ok: true, skipped: false, unreached: true }),
+    ]);
   });
 });
 

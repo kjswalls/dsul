@@ -20,7 +20,7 @@ import { assertContract } from './support/copy-contract';
 import { makeServiceFake } from './support/service-fake';
 
 vi.mock('@/lib/push-send', () => ({
-  sendPushToUser: vi.fn(async () => ({ sent: 1, expired: 0 })),
+  sendPushToUser: vi.fn(async () => ({ devices: 1, sent: 1, expired: 0, failed: 0 })),
   isPushConfigured: () => true,
 }));
 
@@ -383,6 +383,20 @@ describe('settleOneDay — claim then act', () => {
     expect(report.notes).toEqual([]);
     // …and it is marked done, so the NEXT tick leaves it alone.
     expect(commits()[0]).toHaveProperty('committed_at');
+  });
+
+  // sendPushToUser answers a failed subscription read rather than throwing it.
+  // The pledge still reports it, exactly as it did when the read threw.
+  it('still reports a push whose read failed, now that the read answers instead of throwing', async () => {
+    const { sendPushToUser } = await import('@/lib/push-send');
+    vi.mocked(sendPushToUser).mockResolvedValueOnce({
+      devices: 0, sent: 0, expired: 0, failed: 0, detail: 'read failed: connection reset',
+    });
+
+    const { service } = makeService([{ subject: 'h1', channel: 'pledge' }]);
+    const report = await settleOneDay(service, { ...base, extensionEnabled: { pledge: true } });
+
+    expect(report.notes.join()).toMatch(/push: read failed: connection reset/);
   });
 
   it('leaves a failed row uncommitted, and says so, so the day is not stamped', async () => {

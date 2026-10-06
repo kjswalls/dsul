@@ -75,12 +75,16 @@ export async function GET(req: NextRequest) {
     // caller; there is no isolation to lose, since both ends were always the
     // same process.
     try {
-      await sendPushToUser(service, userId, {
+      const pushed = await sendPushToUser(service, userId, {
         title: 'End of day 🌙',
         body: "How'd today go?",
         url: '/?eod=1',
         tag: `dsul-eod-${userToday}`,
       });
+      // A failed subscription read is answered now rather than thrown, and it
+      // still skips the stamp below, so the next tick inside the window tries
+      // again exactly as it did when the read threw.
+      if (pushed.detail) throw new Error(pushed.detail);
     } catch (err) {
       console.error('[eod-notify] Push failed for', userId, err);
       continue;

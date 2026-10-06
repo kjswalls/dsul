@@ -113,7 +113,7 @@ export const pledgeAdapter: StakeAdapter = {
     const problems: string[] = []
 
     try {
-      await sendPushToUser(ctx.service, ctx.userId, {
+      const pushed = await sendPushToUser(ctx.service, ctx.userId, {
         title: copy.title,
         body: copy.body,
         // The ledger, not the planner. This notification asserts a number, and
@@ -122,6 +122,9 @@ export const pledgeAdapter: StakeAdapter = {
         url: '/ledger',
         tag: `dsul-pledge-${outcome.dateStr}`,
       })
+      // A failed subscription read is answered now rather than thrown. It is
+      // still the one push outcome reported as a problem, as when it threw.
+      if (pushed.detail) problems.push(`push: ${pushed.detail}`)
     } catch (err) {
       problems.push(`push: ${err instanceof Error ? err.message : String(err)}`)
     }

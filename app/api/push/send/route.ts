@@ -49,6 +49,12 @@ export async function POST(req: NextRequest) {
       actions: actions as PushAction[] | undefined,
       data,
     });
+    // sendPushToUser answers a failed subscription read instead of throwing it.
+    // Still a 500 here, as it was when it threw: a 200 with `sent: 0` would
+    // tell the caller "no devices" about a question nobody answered.
+    if (result.detail) {
+      return NextResponse.json({ error: result.detail }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, sent: result.sent });
   } catch (err) {
     return NextResponse.json(

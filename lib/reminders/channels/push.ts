@@ -9,8 +9,8 @@
  * lost. The Done action closes it in one tap.
  */
 
-import { sendPushToUser } from '../../push-send'
-import type { NudgeChannel } from './types'
+import { isPushConfigured, sendPushToUser, type PushPayload, type PushResult } from '../../push-send'
+import type { ChannelResult, NudgeChannel } from './types'
 
 /** Matched in app/sw.ts. Changing either string breaks deployed notifications. */
 export const ACTION_DONE = 'done'
@@ -29,6 +29,37 @@ export const ACTION_SNOOZE = 'snooze'
  */
 export const SNOOZE_MINUTES = 15
 
+/**
+ * What a push came to, in the channel's terms.
+ *
+ * Three answers, and the middle one is why this exists. A push with no device
+ * to go to used to report `ok: true` ("sent=0", read by nobody), so a user
+ * whose only subscription had expired, or a deployment with no VAPID pair, got
+ * a cue that reached no one and a tick that called it delivered. It is now
+ * `unreached`: still ok (nothing is broken, and a retry finds the same
+ * nothing), but no longer a delivery. Devices that all refused it are a
+ * failure; one that took it is a delivery.
+ *
+ * A read that failed is a failure too, not "no devices": the zero it carries
+ * is a question nobody answered, and calling it unreached would file a
+ * database blip under "this user has no phone".
+ */
+function channelResultOf(result: PushResult): ChannelResult {
+  if (result.detail) return { ok: false, detail: `push ${result.detail}` }
+  if (result.devices === 0) {
+    return {
+      ok: true,
+      unreached: true,
+      detail: isPushConfigured() ? 'push: no device subscribed' : 'push: no VAPID pair configured',
+    }
+  }
+  const counts = `expired=${result.expired} failed=${result.failed}`
+  if (result.sent === 0) {
+    return { ok: false, detail: `push failed: 0 of ${result.devices} accepted (${counts})` }
+  }
+  return { ok: true, detail: `push sent=${result.sent}/${result.devices} ${counts}` }
+}
+
 export const pushChannel: NudgeChannel = {
   slug: 'push',
   extensionSlug: null,
@@ -37,7 +68,7 @@ export const pushChannel: NudgeChannel = {
     // mean. A last call naming three habits gets a plain click-through instead
     // of a button that silently picks one of them.
     const actionable = Boolean(nudge.itemId)
-    const result = await sendPushToUser(ctx.service, ctx.userId, {
+    const payload: PushPayload = {
       title: nudge.title,
       body: nudge.body,
       url: nudge.url,
@@ -57,7 +88,17 @@ export const pushChannel: NudgeChannel = {
         dateStr: nudge.dateStr,
         kind: nudge.kind,
       },
-    })
-    return { ok: true, detail: `push sent=${result.sent} expired=${result.expired}` }
+    }
+
+    let result: PushResult
+    try {
+      result = await sendPushToUser(ctx.service, ctx.userId, payload)
+    } catch (err) {
+      // sendPushToUser answers rather than throws. Caught anyway, because the
+      // channel contract (types.ts) is this channel's to keep, not a promise
+      // borrowed from the function it calls.
+      return { ok: false, detail: `push threw: ${err instanceof Error ? err.message : String(err)}` }
+    }
+    return channelResultOf(result)
   },
 }

@@ -136,6 +136,13 @@ export interface ScanSummary {
   cues: number
   /** Last calls delivered. */
   lastCalls: number
+  /**
+   * Nudges that reached nobody: every channel that took one had nowhere to
+   * deliver it (push with no device) or declined it. Each is ALSO counted in
+   * `cues` or `lastCalls`, because its claim was consumed all the same — see
+   * noteFailures.
+   */
+  unreached: number
   /** Days closed by the stakes settlement. */
   daysSettled: number
   /** Non-fatal problems, one line each. */
@@ -158,7 +165,14 @@ export async function runReminderScan(
   service: ServiceClient,
   options: ScanOptions,
 ): Promise<ScanSummary> {
-  const summary: ScanSummary = { users: 0, cues: 0, lastCalls: 0, daysSettled: 0, notes: [] }
+  const summary: ScanSummary = {
+    users: 0,
+    cues: 0,
+    lastCalls: 0,
+    unreached: 0,
+    daysSettled: 0,
+    notes: [],
+  }
 
   // Split exactly the way lib/settings-service.ts splits its own select, and
   // for a sharper version of the same reason. PostgREST rejects the WHOLE query
@@ -609,13 +623,39 @@ async function claimCandidates(
   return won
 }
 
+/**
+ * Note what went wrong with one nudge's delivery, and count it if it reached
+ * nobody.
+ *
+ * `unreached` counts the nudge only when EVERY report is unreached or skipped:
+ * push had no device, and nothing else was on or wanted it. The claim was
+ * consumed all the same, and on purpose (habit-reminders.md decision 4): a cue
+ * with no device is discharged, not held over and retried into an SMS the next
+ * tick. So this is the count of cues spent on silence, the number that says
+ * push has quietly stopped reaching someone. A failure among the reports keeps
+ * the nudge out of it; that is already a note of its own.
+ *
+ * An unreached channel earns a line only when nothing else got through. With
+ * the SMS sent, a push with no device is how the user set things up, not a
+ * problem.
+ */
 function noteFailures(
   summary: ScanSummary,
   userId: string,
   kind: string,
   reports: DeliveryReport[],
 ): void {
+  if (reports.some((r) => r.unreached) && reports.every((r) => r.unreached || r.skipped)) {
+    summary.unreached += 1
+  }
+  const delivered = reports.some((r) => r.ok && !r.skipped && !r.unreached)
   for (const report of reports) {
+    if (report.unreached) {
+      if (!delivered) {
+        summary.notes.push(`${userId}: ${kind} via ${report.channel} unreached — ${report.detail ?? '?'}`)
+      }
+      continue
+    }
     if (report.ok || report.skipped) continue
     summary.notes.push(`${userId}: ${kind} via ${report.channel} failed — ${report.detail ?? '?'}`)
   }
