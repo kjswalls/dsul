@@ -16,7 +16,16 @@ vi.mock('@/lib/db', () => ({
   fetchSeasons: async () => [],
 }));
 
-import { runReminderScan, localClock } from '@/lib/reminders/scan';
+// Passed through untouched, and watched: the nudge the scan hands over is its
+// whole contract with the channels, expiresInSeconds included.
+vi.mock('@/lib/reminders/deliver', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/reminders/deliver')>();
+  return { ...actual, deliverNudge: vi.fn(actual.deliverNudge) };
+});
+
+import { runReminderScan, localClock, secondsUntil } from '@/lib/reminders/scan';
+import { deliverNudge } from '@/lib/reminders/deliver';
+import type { Nudge } from '@/lib/reminders/nudge';
 import { makeServiceFake } from './support/service-fake';
 
 const habit = (over: Partial<Item> = {}): Item => ({
@@ -53,9 +62,13 @@ const BOOK_ROW = {
 
 beforeEach(() => {
   sendPushToUser.mockClear();
+  vi.mocked(deliverNudge).mockClear();
   fetchItems.mockReset();
   fetchItems.mockResolvedValue([]);
 });
+
+/** Every nudge the scan handed to the channels, in order. */
+const nudges = () => vi.mocked(deliverNudge).mock.calls.map(([nudge]) => nudge as Nudge);
 
 /* ── localClock ───────────────────────────────────────────────────────────── */
 
@@ -365,5 +378,94 @@ describe('runReminderScan', () => {
       expect(summary.lastCalls).toBe(0);
       expect(sendPushToUser).not.toHaveBeenCalled();
     });
+  });
+});
+
+/* ── How long a push may wait ─────────────────────────────────────────────── */
+
+// The scan holds the user's clock, so it is the scan that says how long each
+// nudge stays worth delivering; the push channel only turns it into a TTL.
+// Every answer stops at the user's own midnight, never past it.
+describe('expiresInSeconds', () => {
+  /** New York is UTC−4 in August: 23:50 local on the 10th is 03:50Z on the 11th. */
+  const AT_2350_NY = new Date('2026-08-11T03:50:00Z');
+
+  const cueService = () =>
+    makeServiceFake({
+      'user_settings.select': { data: [USER] },
+      'items.select': { data: [BOOK_ROW] },
+      'items.update': { data: [{ id: 'h1' }] },
+    }).service;
+
+  const lastCallService = (time: string) =>
+    makeServiceFake({
+      'user_settings.select': { data: [{ ...USER, habit_last_call_enabled: true, habit_last_call_time: time }] },
+      'items.select': { data: [] },
+      'user_settings.update': { data: [{ user_id: 'u1' }] },
+    }).service;
+
+  it('a cue lasts to the end of ITS window, not one grace from the tick', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    await runReminderScan(cueService(), { now: AT_0735_NY });
+    // 07:30 + 30 = 08:00, and the tick is at 07:35.
+    expect(nudges()[0]).toMatchObject({ kind: 'cue', expiresInSeconds: 25 * 60 });
+  });
+
+  it('a 23:45 cue at 23:50 stops at midnight', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '23:45' })]);
+    await runReminderScan(cueService(), { now: AT_2350_NY });
+    expect(nudges()[0]).toMatchObject({ kind: 'cue', expiresInSeconds: 600 });
+  });
+
+  it('a 23:50 last call expires in 600 seconds', async () => {
+    fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
+    await runReminderScan(lastCallService('23:50'), { now: AT_2350_NY });
+
+    expect(nudges()[0]).toMatchObject({ kind: 'last-call', expiresInSeconds: 600 });
+    // …and that is the TTL the push carries, beside its urgency and topic.
+    const [, , payload] = sendPushToUser.mock.calls[0] as unknown as [unknown, string, Record<string, unknown>];
+    expect(payload).toMatchObject({ ttl: 600, urgency: 'high', topic: 'lc-20260810' });
+  });
+
+  // What a last call says is the day's state at the minute it was worked out,
+  // so its grace runs from the tick that sent it.
+  it('a last call found late in its window still gets one grace from the tick', async () => {
+    fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
+    // 20:45 in New York; the last call was due at 20:30.
+    await runReminderScan(lastCallService('20:30'), { now: new Date('2026-08-11T00:45:00Z') });
+    expect(nudges()[0]).toMatchObject({ kind: 'last-call', expiresInSeconds: 1800 });
+  });
+
+  // A matured snooze waits for the first tick after it, any time that day, so
+  // the window of the cue it snoozed says nothing about it.
+  it('a matured snooze gets one grace from the tick that claimed it', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '07:30' })]);
+    const { service } = makeServiceFake({
+      'user_settings.select': { data: [USER] },
+      'items.select': {
+        data: [{ ...BOOK_ROW, reminder_snooze_until: '2026-08-10T11:34:00+00:00', reminder_snooze_date: '2026-08-10' }],
+      },
+      'items.update': { data: [{ id: 'h1' }] },
+    });
+
+    await runReminderScan(service, { now: AT_0735_NY });
+
+    expect(nudges()[0]).toMatchObject({ kind: 'cue', snoozed: true, expiresInSeconds: 1800 });
+  });
+
+  // nowMinutes is truncated. Counted in whole minutes, a tick at 23:50:40
+  // would hold the push until 00:00:40, i.e. hand yesterday's last call to a
+  // phone after midnight.
+  it('counts to the second, so a tick part-way through a minute still stops at midnight', async () => {
+    fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
+    await runReminderScan(lastCallService('23:50'), { now: new Date('2026-08-11T03:50:40Z') });
+    expect(nudges()[0]).toMatchObject({ kind: 'last-call', expiresInSeconds: 560 });
+  });
+
+  it('secondsUntil never answers below zero', () => {
+    const clock = localClock(AT_2350_NY, 'America/New_York');
+    expect(secondsUntil(clock, 1440)).toBe(600);
+    expect(secondsUntil(clock, 1430)).toBe(0);
+    expect(secondsUntil(clock, 1400)).toBe(0);
   });
 });

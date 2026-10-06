@@ -17,6 +17,7 @@
 import webPush, {
   type PushSubscription as WebPushSubscription,
   type RequestOptions,
+  type Urgency,
 } from 'web-push'
 import type { createServiceClient } from './supabase-service'
 
@@ -48,6 +49,50 @@ export interface PushPayload {
   actions?: PushAction[]
   /** Echoed back to the service worker on click — the item id, the date. */
   data?: Record<string, unknown>
+
+  // The three below are about the DELIVERY, not the notification. sendWebPush
+  // turns them into RFC 8030 request headers and strips them from the
+  // encrypted body, so the service worker never sees them.
+
+  /**
+   * Seconds the push service may hold this for a device that is off or out of
+   * signal (RFC 8030 §5.2). Absent means DEFAULT_TTL_S, never web-push's own
+   * four weeks; 0 means now or not at all. The caller that knows the moment
+   * works it out: a push library with no clock cannot know when a cue stops
+   * being one.
+   */
+  ttl?: number
+  /** How hard the push service may wake the device for it (§5.3). Absent means 'normal'. */
+  urgency?: Urgency
+  /**
+   * Replaces an UNDELIVERED push with the same topic in the push service's
+   * queue (§5.4). `tag` collapses what is already in the shade; this collapses
+   * what never got there, so a phone that was off wakes to the latest push
+   * about a thing rather than every one sent while it was away. At most 32
+   * characters of the URL-safe base64 alphabet: anything else is left off
+   * (see transportOf), never sent.
+   */
+  topic?: string
+}
+
+/**
+ * The TTL a push gets when its caller names none: six hours.
+ *
+ * web-push's own default (DEFAULT_TTL = 2419200 in its web-push-lib.js) is
+ * four weeks, so a push to a phone left in a drawer used to arrive the next
+ * time it was switched on, whenever that was, looking like news. Six hours
+ * covers a phone that was off for an afternoon or a night and stops there.
+ * What uses it is a caller with no window of its own, /api/push/send above
+ * all, whose body has no field for one.
+ */
+export const DEFAULT_TTL_S = 6 * 3600
+
+/** RFC 8030 §5.4: a Topic is 1 to 32 characters of the URL-safe base64 alphabet. */
+const PUSH_TOPIC = /^[A-Za-z0-9_-]{1,32}$/
+
+/** Is this a Topic a push service will accept? web-push throws on one it will not. */
+export function isPushTopic(topic: string): boolean {
+  return PUSH_TOPIC.test(topic)
 }
 
 export interface PushResult {
@@ -84,6 +129,29 @@ export type WebPushTarget = Pick<WebPushSubscription, 'endpoint' | 'keys'>
  * body the service worker reads.
  */
 export type WebPushOptions = Pick<RequestOptions, 'TTL' | 'urgency' | 'topic'>
+
+/** The notification the service worker reads: a PushPayload less its delivery fields. */
+type PushBody = Omit<PushPayload, 'ttl' | 'urgency' | 'topic'>
+
+/**
+ * Split a payload into what is encrypted and what is a header.
+ *
+ * Every option is checked here rather than left to web-push, which THROWS on
+ * a topic outside the alphabet or a negative TTL, and a throw inside
+ * sendWebPush is a failed send to every device the user has. A topic that
+ * cannot be sent costs the queue its collapse and nothing else; a TTL that is
+ * not a number gets the default. A TTL below zero means the moment has already
+ * passed, which is 0 ("now or not at all"), not the default.
+ */
+function transportOf(payload: PushPayload): { body: PushBody; options: WebPushOptions } {
+  const { ttl, urgency, topic, ...body } = payload
+  const options: WebPushOptions = {
+    TTL: typeof ttl === 'number' && Number.isFinite(ttl) ? Math.max(0, Math.floor(ttl)) : DEFAULT_TTL_S,
+  }
+  if (urgency) options.urgency = urgency
+  if (topic !== undefined && isPushTopic(topic)) options.topic = topic
+  return { body, options }
+}
 
 /**
  * What one device's push came to.
@@ -159,23 +227,22 @@ function classifyRejection(err: unknown): DeviceResult {
  * own rows and calls the same function, so moving the read never moves the
  * send, its options or its classification.
  *
- * The payload is the whole encrypted body. What is about the delivery rather
- * than the notification goes in `opts`, as headers — see WebPushOptions.
+ * The payload is the encrypted body, less its delivery fields (ttl, urgency,
+ * topic), which go as headers instead: see transportOf. They ride on the
+ * payload rather than beside it so that every caller, and every device a
+ * caller fans out to, sends the same headers for the same push.
  */
-export async function sendWebPush(
-  sub: WebPushTarget,
-  payload: PushPayload,
-  opts: WebPushOptions = {},
-): Promise<DeviceResult> {
+export async function sendWebPush(sub: WebPushTarget, payload: PushPayload): Promise<DeviceResult> {
   if (!isPushConfigured()) return { outcome: 'failed', detail: 'push not configured' }
+  const { body, options } = transportOf(payload)
   try {
     // Inside the try: setVapidDetails throws on a malformed key, and a key
     // that cannot be used is a failed send, not a crashed caller.
     configureVapid()
     const response = await webPush.sendNotification(
       { endpoint: sub.endpoint, keys: sub.keys },
-      JSON.stringify(payload),
-      opts,
+      JSON.stringify(body),
+      options,
     )
     return { outcome: 'sent', status: response.statusCode }
   } catch (err) {

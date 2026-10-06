@@ -21,6 +21,7 @@ import {
   dueReminders,
   lastCallItems,
   minutesOfDay,
+  REMINDER_GRACE_MINUTES,
   sentKeyFor,
   streakOf,
   type ReminderCandidate,
@@ -64,6 +65,40 @@ export function localClock(now: Date, timezone: string): LocalClock {
     nowIso: now.toISOString(),
     nowMs: now.getTime(),
   }
+}
+
+/** Minutes in a day: where every window here stops, rather than wrapping. */
+const MINUTES_PER_DAY = 1440
+
+/**
+ * Seconds from this tick until `endMinutes` on the user's own day: how long a
+ * push about it may wait for a device that is off (Nudge.expiresInSeconds).
+ *
+ * To the second, because `nowMinutes` is truncated: a tick that runs at
+ * 23:50:40 would otherwise hold a push until 00:00:40 and deliver yesterday's
+ * last call after midnight, which is the one thing the clamp is there to stop.
+ * The seconds past the minute come off the instant rather than the zone; every
+ * zone in use is a whole number of minutes from UTC, so they are the same in
+ * all of them.
+ */
+export function secondsUntil(clock: LocalClock, endMinutes: number): number {
+  const intoMinute = Math.floor(clock.nowMs / 1000) % 60
+  return Math.max(0, (endMinutes - clock.nowMinutes) * 60 - intoMinute)
+}
+
+/**
+ * How long a cue may wait for a device: to the end of the window it was found
+ * in, which is dueReminders' own (target + grace, clamped at midnight). The
+ * push service then drops it at the moment the scan itself would have stopped
+ * sending it.
+ *
+ * A matured snooze has no window. It waits for the first tick after it
+ * matures, any time that day, so its grace runs from the tick that claimed it,
+ * as the last call's does.
+ */
+function cueExpiresIn(candidate: ReminderCandidate, clock: LocalClock, grace: number): number {
+  const target = candidate.snoozed ? null : minutesOfDay(candidate.at)
+  return secondsUntil(clock, Math.min((target ?? clock.nowMinutes) + grace, MINUTES_PER_DAY))
 }
 
 interface ReminderUserRow {
@@ -174,6 +209,10 @@ export async function runReminderScan(
     notes: [],
   }
 
+  // One grace for every window this tick opens and for how long the pushes it
+  // sends may wait, so the two cannot be tuned apart.
+  const grace = options.graceMinutes ?? REMINDER_GRACE_MINUTES
+
   // Split exactly the way lib/settings-service.ts splits its own select, and
   // for a sharper version of the same reason. PostgREST rejects the WHOLE query
   // with 42703 when one named column is missing, so naming the stakes columns
@@ -279,7 +318,7 @@ export async function runReminderScan(
         lastCallMinutes !== null &&
         user.habit_last_call_date !== clock.dateStr &&
         clock.nowMinutes >= lastCallMinutes &&
-        clock.nowMinutes < Math.min(lastCallMinutes + (options.graceMinutes ?? 30), 1440)
+        clock.nowMinutes < Math.min(lastCallMinutes + grace, MINUTES_PER_DAY)
 
       const settleMinutes =
         stakesAvailable && user.stakes_enabled ? minutesOfDay(user.stakes_settle_time) : null
@@ -353,7 +392,7 @@ export async function runReminderScan(
       }
 
       const candidates = remindersOn
-        ? dueReminders(scanRows, { ...clock, graceMinutes: options.graceMinutes }, ctx)
+        ? dueReminders(scanRows, { ...clock, graceMinutes: grace }, ctx)
         : []
 
       if (candidates.length > 0) {
@@ -389,6 +428,7 @@ export async function runReminderScan(
               itemId: candidate.item.id,
               items: [toNudgeItem(candidate.item)],
               snoozed: candidate.snoozed,
+              expiresInSeconds: cueExpiresIn(candidate, clock, grace),
             }
             const reports = await deliverNudge(nudge, base, channelState)
             noteFailures(summary, user.user_id, 'cue', reports)
@@ -432,6 +472,11 @@ export async function runReminderScan(
             dateStr: clock.dateStr,
             itemId: open.length === 1 ? open[0].id : undefined,
             items: open.map(toNudgeItem),
+            // One grace from THIS tick, never past midnight, rather than to the
+            // end of the window it was found in. What a last call says is the
+            // day's state at the minute it was computed, so how long it stays
+            // true runs from then.
+            expiresInSeconds: secondsUntil(clock, Math.min(clock.nowMinutes + grace, MINUTES_PER_DAY)),
           }
           const reports = await deliverNudge(nudge, base, channelState)
           noteFailures(summary, user.user_id, 'last-call', reports)

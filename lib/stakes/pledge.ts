@@ -22,6 +22,7 @@
  */
 
 import { assertSafeUrl, postToChannel, requireString } from '../reminders/channels/http'
+import { dayTopic } from '../reminders/channels/push'
 import { sendPushToUser } from '../push-send'
 import { formatMoney, pledgeSummary } from './copy'
 import type { StakeAdapter, StakeEventDraft } from './types'
@@ -32,6 +33,14 @@ const DEFAULT_CURRENCY = 'USD'
 
 /** Comfortably inside int4, and far past any honest per-miss stake. */
 const MAX_AMOUNT_CENTS = 1_000_000_00
+
+/**
+ * How long the push service may hold the notice for a phone that is off: a
+ * day. It reports a day that is already over, so it does not go stale by the
+ * hour the way a cue does, and a phone left off overnight should still hear of
+ * it; a notice that turns up later than that can be read on /ledger.
+ */
+const PLEDGE_TTL_S = 24 * 3600
 
 /**
  * "10", "10.50", "£10" → minor units.
@@ -121,6 +130,12 @@ export const pledgeAdapter: StakeAdapter = {
         // backed by rows you can read — so the tap has to land on them.
         url: '/ledger',
         tag: `dsul-pledge-${outcome.dateStr}`,
+        ttl: PLEDGE_TTL_S,
+        // A summary, not a moment: it can wait for the phone to wake.
+        urgency: 'normal',
+        // By day, as the tag is. A catch-up that settles several days at once
+        // sends one notice per day, and none of them replaces another.
+        topic: dayTopic('pl', outcome.dateStr),
       })
       // A failed subscription read is answered now rather than thrown. It is
       // still the one push outcome reported as a problem, as when it threw.

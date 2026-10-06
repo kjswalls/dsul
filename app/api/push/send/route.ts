@@ -14,6 +14,10 @@ import { isPushConfigured, sendPushToUser, type PushAction } from '@/lib/push-se
  *
  * Body: { userId, title, body, url?, tag?, actions?, data? }
  *
+ * No ttl, urgency or topic: a push from here waits up to DEFAULT_TTL_S (six
+ * hours) for a device that is off, where web-push alone would hold it for four
+ * weeks.
+ *
  * The delivery itself lives in lib/push-send.ts — this route is the HTTP
  * surface and the auth gate, nothing more. In-process callers (the reminder
  * scan, eod-notify) call the library directly rather than POSTing here.

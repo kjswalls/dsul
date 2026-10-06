@@ -44,4 +44,16 @@ export interface Nudge {
   items: NudgeItem[]
   /** True when this delivery is a matured snooze rather than a first cue. */
   snoozed?: boolean
+  /**
+   * How long from now this nudge is still worth delivering, in seconds: what
+   * is left of its window, never past the user's local midnight.
+   *
+   * Set by the scan, the one place that holds the user's clock, so channels
+   * stay clock-free. A channel that can hand a message to something that waits
+   * for the device (push's TTL header today) says it in that transport's terms;
+   * one that speaks now (a speaker, a call, a text) has no use for it. Required,
+   * so a new kind of nudge cannot reach a channel without someone deciding how
+   * long it lasts.
+   */
+  expiresInSeconds: number
 }

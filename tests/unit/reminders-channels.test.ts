@@ -13,7 +13,7 @@ vi.mock('web-push', () => ({
 import { assertSafeUrl, isBlockedHost, requireString } from '@/lib/reminders/channels/http';
 import { escapeXml } from '@/lib/reminders/channels/twilio';
 import { callTwiml, callChannel } from '@/lib/reminders/channels/call';
-import { pushChannel } from '@/lib/reminders/channels/push';
+import { dayTopic, itemTopic, pushChannel } from '@/lib/reminders/channels/push';
 import { smsChannel } from '@/lib/reminders/channels/sms';
 import { voiceChannel } from '@/lib/reminders/channels/voice';
 import { channelIsOn, CHANNELS, deliverNudge } from '@/lib/reminders/deliver';
@@ -30,6 +30,7 @@ const cue = (over: Partial<Nudge> = {}): Nudge => ({
   dateStr: '2026-08-10',
   itemId: 'h1',
   items: [{ id: 'h1', title: 'Vitamins', streak: 12 }],
+  expiresInSeconds: 1800,
   ...over,
 });
 
@@ -43,6 +44,7 @@ const lastCall = (over: Partial<Nudge> = {}): Nudge => ({
     { id: 'a', title: 'Reading', streak: 12 },
     { id: 'b', title: 'Stretch', streak: 0 },
   ],
+  expiresInSeconds: 1800,
   ...over,
 });
 
@@ -339,6 +341,64 @@ describe('the push channel says what became of the push', () => {
     expect(reports).toEqual([
       expect.objectContaining({ channel: 'push', ok: true, skipped: false, unreached: true }),
     ]);
+  });
+});
+
+describe('the push channel says how long a push may wait, and how hard to wake for it', () => {
+  /** RFC 8030 §5.4: 1 to 32 characters of the URL-safe base64 alphabet. */
+  const TOPIC = /^[A-Za-z0-9_-]{1,32}$/;
+  /** A real item id: items.id is a uuid (migration 019). */
+  const UUID = '6f1c2b0e-8d4a-4c3e-9b7a-2f5d1e0c9a8b';
+
+  const oneDevice = () =>
+    ctx({
+      service: makeServiceFake({
+        'push_subscriptions.select': { data: [{ endpoint: 'https://push.example/1', p256dh: 'p', auth: 'a' }] },
+      }).service,
+    });
+
+  /** What web-push was handed for the one push sent: the body it encrypted, and the options. */
+  const sentAs = () => {
+    const [, body, options] = sendNotification.mock.calls[0];
+    return { body: JSON.parse(body as string) as Record<string, unknown>, options };
+  };
+
+  beforeEach(() => {
+    vi.stubEnv('NEXT_PUBLIC_VAPID_PUBLIC_KEY', 'test-public');
+    vi.stubEnv('VAPID_PRIVATE_KEY', 'test-private');
+    sendNotification.mockReset();
+    sendNotification.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+  });
+  afterEach(() => vi.unstubAllEnvs());
+
+  it('a cue: TTL from the nudge, high urgency, its item as the topic', async () => {
+    await pushChannel.deliver(cue({ itemId: UUID, expiresInSeconds: 1800 }), oneDevice());
+
+    const { options, body } = sentAs();
+    expect(options).toEqual({ TTL: 1800, urgency: 'high', topic: '6f1c2b0e8d4a4c3e9b7a2f5d1e0c9a8b' });
+    expect((options as { topic: string }).topic).toMatch(TOPIC);
+    // Headers, not notification: the service worker never sees them.
+    expect(body).not.toHaveProperty('ttl');
+    expect(body).not.toHaveProperty('urgency');
+    expect(body).not.toHaveProperty('topic');
+    expect(body).toMatchObject({ title: 'Vitamins', tag: `dsul-item-${UUID}` });
+  });
+
+  it('a last call: high urgency, and its DAY as the topic, even when it names one habit', async () => {
+    await pushChannel.deliver(lastCall({ itemId: 'a', expiresInSeconds: 600 }), oneDevice());
+    expect(sentAs().options).toEqual({ TTL: 600, urgency: 'high', topic: 'lc-20260810' });
+  });
+
+  // A day topic always carries its dash and an item topic never does, so the
+  // two can never collide in a push service's queue.
+  it('names topics that fit, and that never collide', () => {
+    expect(itemTopic(UUID)).toMatch(TOPIC);
+    expect(itemTopic(UUID)).toHaveLength(32);
+    for (const prefix of ['lc', 'eod', 'pl'] as const) {
+      expect(dayTopic(prefix, '2026-08-10')).toMatch(TOPIC);
+      expect(dayTopic(prefix, '2026-08-10')).toBe(`${prefix}-20260810`);
+    }
+    expect(itemTopic(UUID)).not.toContain('-');
   });
 });
 

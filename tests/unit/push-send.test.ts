@@ -14,7 +14,7 @@ vi.mock('web-push', () => ({
   },
 }));
 
-import { sendPushToUser, sendWebPush } from '@/lib/push-send';
+import { DEFAULT_TTL_S, sendPushToUser, sendWebPush } from '@/lib/push-send';
 import { makeServiceFake } from './support/service-fake';
 
 /** web-push's rejection for a non-2xx answer: a WebPushError carrying the status. */
@@ -148,6 +148,21 @@ describe('sendPushToUser', () => {
     });
   });
 
+  // Every device gets the same headers for the same push, and none of them
+  // finds a header in what its service worker decrypts.
+  it('sends the delivery fields to every device as options, never in the body', async () => {
+    const rows = devicesAnswering(201, 201);
+    const { service } = makeServiceFake({ 'push_subscriptions.select': { data: rows } });
+
+    await sendPushToUser(service, 'u1', { ...PAYLOAD, ttl: 1800, urgency: 'high', topic: 'h1' });
+
+    expect(sendNotification).toHaveBeenCalledTimes(2);
+    for (const [, body, options] of sendNotification.mock.calls) {
+      expect(options).toEqual({ TTL: 1800, urgency: 'high', topic: 'h1' });
+      expect(JSON.parse(body as string)).toEqual(PAYLOAD);
+    }
+  });
+
   it('keeps its counts when the prune itself rejects', async () => {
     const rows = devicesAnswering(201, 410);
     const { service } = makeServiceFake((call) => {
@@ -169,16 +184,69 @@ describe('sendPushToUser', () => {
 describe('sendWebPush', () => {
   const target = { endpoint: 'https://push.example/1', keys: { p256dh: 'p', auth: 'a' } };
 
-  it('sends the payload as the body, to the subscription it was given', async () => {
-    sendNotification.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+  /** The [body, options] web-push was handed for the one push sent. */
+  const sentAs = () => {
+    const [, body, options] = sendNotification.mock.calls[0];
+    return { body: JSON.parse(body as string) as Record<string, unknown>, options };
+  };
 
-    const result = await sendWebPush(target, PAYLOAD, { TTL: 60 });
+  beforeEach(() => {
+    sendNotification.mockResolvedValue({ statusCode: 201, body: '', headers: {} });
+  });
+
+  it('sends the payload as the body, to the subscription it was given', async () => {
+    const result = await sendWebPush(target, PAYLOAD);
 
     expect(result).toEqual({ outcome: 'sent', status: 201 });
-    const [sub, body, options] = sendNotification.mock.calls[0];
+    const [sub] = sendNotification.mock.calls[0];
     expect(sub).toEqual(target);
-    expect(JSON.parse(body as string)).toEqual(PAYLOAD);
-    expect(options).toEqual({ TTL: 60 });
+    expect(sentAs().body).toEqual(PAYLOAD);
+  });
+
+  // RFC 8030's TTL, Urgency and Topic are request headers. In the body they
+  // would be text the service worker shows nobody, and no push service would
+  // ever act on them.
+  it('carries ttl, urgency and topic as web-push options, and strips them from the body', async () => {
+    await sendWebPush(target, { ...PAYLOAD, ttl: 1800, urgency: 'high', topic: '6f1c2b0e8d4a4c3e9b7a2f5d1e0c9a8b' });
+
+    const { body, options } = sentAs();
+    expect(options).toEqual({ TTL: 1800, urgency: 'high', topic: '6f1c2b0e8d4a4c3e9b7a2f5d1e0c9a8b' });
+    expect(body).toEqual(PAYLOAD);
+    expect(body).not.toHaveProperty('ttl');
+    expect(body).not.toHaveProperty('urgency');
+    expect(body).not.toHaveProperty('topic');
+  });
+
+  // web-push's own default is four weeks (DEFAULT_TTL = 2419200): a phone left
+  // in a drawer would wake next month to a push that reads as news.
+  it('names a six-hour TTL when the payload names none, and no urgency or topic', async () => {
+    await sendWebPush(target, PAYLOAD);
+    expect(DEFAULT_TTL_S).toBe(21600);
+    expect(sentAs().options).toStrictEqual({ TTL: DEFAULT_TTL_S });
+  });
+
+  // web-push THROWS on a topic outside the URL-safe alphabet or over 32
+  // characters, and inside sendWebPush that would be a failed send to every
+  // device. A topic that cannot go costs the queue its collapse, nothing more.
+  it.each([
+    ['a character outside the alphabet', 'dsul:item'],
+    ['more than 32 characters', 'x'.repeat(33)],
+    ['an empty string', ''],
+  ])('leaves off a topic with %s, and still sends', async (_label, topic) => {
+    const result = await sendWebPush(target, { ...PAYLOAD, topic });
+    expect(result.outcome).toBe('sent');
+    expect(sentAs().options).not.toHaveProperty('topic');
+  });
+
+  it('sends a TTL whose moment has passed as 0, and one that is not a number as the default', async () => {
+    await sendWebPush(target, { ...PAYLOAD, ttl: -30 });
+    await sendWebPush(target, { ...PAYLOAD, ttl: Number.NaN });
+    await sendWebPush(target, { ...PAYLOAD, ttl: 599.7 });
+    expect(sendNotification.mock.calls.map(([, , options]) => (options as { TTL: number }).TTL)).toEqual([
+      0,
+      DEFAULT_TTL_S,
+      599,
+    ]);
   });
 
   it.each([

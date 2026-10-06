@@ -10,6 +10,7 @@
  */
 
 import { isPushConfigured, sendPushToUser, type PushPayload, type PushResult } from '../../push-send'
+import type { Nudge, NudgeKind } from '../nudge'
 import type { ChannelResult, NudgeChannel } from './types'
 
 /** Matched in app/sw.ts. Changing either string breaks deployed notifications. */
@@ -28,6 +29,45 @@ export const ACTION_SNOOZE = 'snooze'
  * with extra steps.
  */
 export const SNOOZE_MINUTES = 15
+
+/** The topic for a push about one item: its UUID's 32 hex digits. */
+export function itemTopic(itemId: string): string {
+  return itemId.replace(/-/g, '')
+}
+
+/**
+ * The topic for a push about one day as a whole: `lc-20260810`.
+ *
+ * The date drops its dashes to fit the 32 characters a topic may have. The
+ * prefix keeps its own, which is what keeps every day topic apart from every
+ * item topic: an item's is hex digits with no dash at all.
+ */
+export function dayTopic(prefix: 'lc' | 'eod' | 'pl', dateStr: string): string {
+  return `${prefix}-${dateStr.replace(/-/g, '')}`
+}
+
+/**
+ * How each kind travels: how hard the push service may wake a phone for it,
+ * and which queued push it replaces (RFC 8030 §5.3, §5.4).
+ *
+ * Both kinds here are 'high'. A cue is the minute the user chose and a last
+ * call is the day's final chance at a streak, so a push service that holds
+ * either until the phone next wakes on its own has delivered it late. A
+ * summary that can wait for the phone (the pledge notice) is 'normal'.
+ *
+ * A cue's topic is its item, so a snooze that matures while the phone is still
+ * off replaces the cue it snoozed rather than queueing behind it. A last call's
+ * is its day, whether it names one habit or three.
+ *
+ * Keyed by kind and total, so a new kind cannot ship without someone choosing.
+ */
+const DELIVERY: Record<
+  NudgeKind,
+  { urgency: NonNullable<PushPayload['urgency']>; topic: (nudge: Nudge) => string | undefined }
+> = {
+  cue: { urgency: 'high', topic: (nudge) => (nudge.itemId ? itemTopic(nudge.itemId) : undefined) },
+  'last-call': { urgency: 'high', topic: (nudge) => dayTopic('lc', nudge.dateStr) },
+}
 
 /**
  * What a push came to, in the channel's terms.
@@ -88,6 +128,12 @@ export const pushChannel: NudgeChannel = {
         dateStr: nudge.dateStr,
         kind: nudge.kind,
       },
+      // Worked out by the scan, which holds the user's clock; this channel
+      // only says it as a TTL. Without one the push service would hand a phone
+      // switched on at noon its 07:30 cue, or yesterday's last call.
+      ttl: nudge.expiresInSeconds,
+      urgency: DELIVERY[nudge.kind].urgency,
+      topic: DELIVERY[nudge.kind].topic(nudge),
     }
 
     let result: PushResult

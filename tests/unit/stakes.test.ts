@@ -385,6 +385,27 @@ describe('settleOneDay — claim then act', () => {
     expect(commits()[0]).toHaveProperty('committed_at');
   });
 
+  // A notice about a day already over: it can wait a day for a phone that is
+  // off, need not wake one, and replaces only an undelivered notice for the
+  // SAME day, so a catch-up across several days loses none of them.
+  it('pushes the notice with a 24-hour TTL, normal urgency and the day as its topic', async () => {
+    const { sendPushToUser } = await import('@/lib/push-send');
+    vi.mocked(sendPushToUser).mockClear();
+
+    const { service } = makeService([{ subject: 'h1', channel: 'pledge' }]);
+    await settleOneDay(service, { ...base, extensionEnabled: { pledge: true } });
+
+    expect(sendPushToUser).toHaveBeenCalledTimes(1);
+    const [, , payload] = vi.mocked(sendPushToUser).mock.calls[0];
+    expect(payload).toMatchObject({
+      tag: 'dsul-pledge-2026-08-10',
+      ttl: 24 * 3600,
+      urgency: 'normal',
+      topic: 'pl-20260810',
+    });
+    expect(payload.topic).toMatch(/^[A-Za-z0-9_-]{1,32}$/);
+  });
+
   // sendPushToUser answers a failed subscription read rather than throwing it.
   // The pledge still reports it, exactly as it did when the read threw.
   it('still reports a push whose read failed, now that the read answers instead of throwing', async () => {
