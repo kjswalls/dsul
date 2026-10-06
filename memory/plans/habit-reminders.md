@@ -56,6 +56,20 @@ they teach people to take the device off).
    019 and 024) and is indifferent to hosting plans. The routes stay ordinary
    authenticated GETs, so any other scheduler can still drive them.
 
+   *Addendum, 2026-10-06 (migration 058).* **One job since 058.** `dsul-reminders` is the
+   only tick: `/api/cron/eod-notify` is folded into the scan as Tier 0 and its job is
+   unscheduled, and 058 resumes the job 045 paused. `dsul_tick(route, force)` asks one
+   flag-only question before the request (any account with a time zone and habit
+   reminders, stakes or the EOD review on?), fails open on a schema that is behind, and
+   returns without a request when the answer is no; `force` is for a Free project's
+   keepalive. **Postgres `time + interval` wraps modulo 24 hours — never write a
+   reminder window in SQL.** `time '23:50' + interval '30 minutes'` is `00:20:00`, and
+   `least(…, time '23:59:59')` does not clamp it, so a window written that way is closed
+   from 23:30 to midnight. Windows are decided in `lib/reminders/due.ts`, in minutes of
+   day, clamped (decision 5). `tests/unit/migration-text.test.ts` refuses the spelling in
+   any migration from 058 on, and `scripts/verify-058.sh` replays 058 on a bare Postgres.
+   See [reminders-platforms.md](reminders-platforms.md) §3.6 and §4.1.
+
 1. **`reminder_time` is a local wall-clock string, never a timestamp.** "07:30, every
    weekday, wherever I am standing" is not an instant. `items.reminder_at` (a timestamptz
    inherited by migration 019 and read by nothing) was deliberately left alone rather than
@@ -161,7 +175,10 @@ they teach people to take the device off).
 - **`lib/reminders/due.ts`** — the one definition of "is a nudge owed". Pure.
 - **`lib/reminders/copy.ts`** — the words, and the copy contract, under test.
 - **`lib/reminders/scan.ts`** — the tick: local clock per user, dedupe, fan-out.
-- **`/api/cron/reminders`** — every 5 minutes, registered in `vercel.json`.
+- **`/api/cron/reminders`** — every 5 minutes, driven by pg_cron's `dsul-reminders` job
+  through `dsul_tick` (035, renamed by 044, the only tick since 058). Not `vercel.json`,
+  which declares no crons (`{}`): Hobby rejects a sub-daily cron at deploy time
+  (decision 0).
 - **`/api/reminders/act`** — Done / Snooze from the notification, cookie-authed so RLS
   scopes the write.
 - **`app/sw.ts`** — action buttons, tag-collapse, a visible failure when an action does
