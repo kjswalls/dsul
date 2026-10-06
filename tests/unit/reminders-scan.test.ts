@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Item } from '@dsul/types';
 import type { PushResult } from '@/lib/push-send';
@@ -31,6 +31,7 @@ import {
   localClock,
   expiryAt,
   ReminderScanError,
+  TICK_FLAGS,
   TICK_MINUTES,
   windowOpensAt,
 } from '@/lib/reminders/scan';
@@ -310,6 +311,75 @@ describe('runReminderScan', () => {
       expect(notes).toMatch(/cue via push unreached/);
     });
 
+    // The usual case, not the edge: voice, SMS and the call decline every
+    // review (decision 12), and the call declines every cue unless the user
+    // lists them. A decline is not a delivery, so with push finding no device
+    // the nudge reached nobody: counted, and the empty push gets its line.
+    // Without these, counting only `every(unreached)` or calling a skip a
+    // delivery passed every other test here, and the one signal that push has
+    // quietly stopped reaching an SMS user went with it.
+    it('is unreached when push found no device and the SMS declined the review', async () => {
+      sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+      const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const { service } = makeServiceFake({
+        'user_settings.select': { data: [{ ...USER, habit_reminders_enabled: false, eod_review_enabled: true }] },
+        'items.select': { data: [] },
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
+        // kinds left blank: the reminders, never the review.
+        'user_extensions.select': {
+          data: [{ slug: 'sms-nudge', enabled: true, config: { to: '+15551234567', from: '+15557654321' } }],
+        },
+        'user_secrets.select': {
+          data: { reminder_secrets: { 'sms-nudge': { accountSid: 'AC1', authToken: 'tok' } } },
+        },
+      });
+
+      // 21:05 in New York, inside the 21:00 review's window.
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T01:05:00Z') });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      const reports = await vi.mocked(deliverNudge).mock.results[0].value;
+      expect(reports).toEqual([
+        expect.objectContaining({ channel: 'push', unreached: true }),
+        expect.objectContaining({ channel: 'sms-nudge', ok: true, skipped: true, detail: 'sms declines eod' }),
+      ]);
+      expect(summary.eod).toBe(1);
+      expect(summary.unreached).toBe(1);
+      expect(summary.notes.join('\n')).toMatch(/u1: eod via push unreached/);
+    });
+
+    it('is unreached when push found no device and the call declined the cue', async () => {
+      cueDue();
+      sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
+      const fetchMock = vi.fn(async () => new Response('{}', { status: 201 }));
+      vi.stubGlobal('fetch', fetchMock);
+      const { service } = makeServiceFake({
+        'user_settings.select': { data: [USER] },
+        'items.select': { data: [BOOK_ROW] },
+        'items.update': { data: [{ id: 'h1' }] },
+        // kinds left blank: the last call only.
+        'user_extensions.select': {
+          data: [{ slug: 'phone-call', enabled: true, config: { to: '+15551234567', from: '+15557654321' } }],
+        },
+        'user_secrets.select': {
+          data: { reminder_secrets: { 'phone-call': { accountSid: 'AC1', authToken: 'tok' } } },
+        },
+      });
+
+      const summary = await runReminderScan(service, { now: AT_0735_NY });
+
+      expect(fetchMock).not.toHaveBeenCalled();
+      const reports = await vi.mocked(deliverNudge).mock.results[0].value;
+      expect(reports).toEqual([
+        expect.objectContaining({ channel: 'push', unreached: true }),
+        expect.objectContaining({ channel: 'phone-call', ok: true, skipped: true, detail: 'call declines cue' }),
+      ]);
+      expect(summary.cues).toBe(1);
+      expect(summary.unreached).toBe(1);
+      expect(summary.notes.join('\n')).toMatch(/u1: cue via push unreached/);
+    });
+
     it('counts an unreached last call the same way', async () => {
       fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
       sendPushToUser.mockResolvedValueOnce(NO_DEVICE);
@@ -406,6 +476,37 @@ describe('runReminderScan', () => {
       expect(summary.lastCalls).toBe(0);
       expect(sendPushToUser).not.toHaveBeenCalled();
     });
+
+    // 'Last call at' is a free time input. Clamped at midnight, a 23:58 last
+    // call's window is [23:58, 24:00) and holds no tick: 23:55 is before it
+    // and 00:00 is tomorrow. It opens at the day's last tick instead, as the
+    // review's does, and goes a few minutes early rather than never.
+    it.each(['23:55', '23:56', '23:58', '23:59'])('a %s last call is sent on the 23:55 tick, until midnight', async (time) => {
+      fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
+      const { service, writes } = makeServiceFake({
+        'user_settings.select': { data: [{ ...lastCallUser, habit_last_call_time: time }] },
+        'items.select': { data: [] },
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
+      });
+
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T03:55:00Z') });
+
+      expect(summary.lastCalls).toBe(1);
+      expect(writes().map((c) => c.payload)).toEqual([{ habit_last_call_date: '2026-08-10' }]);
+      expect(nudges()[0]).toMatchObject({ kind: 'last-call', expiresAtMs: Date.parse('2026-08-11T04:00:00Z') });
+    });
+
+    it('a 23:58 last call is nothing at 00:00, the next day\'s', async () => {
+      fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
+      const { service, writes } = makeServiceFake({
+        'user_settings.select': { data: [{ ...lastCallUser, habit_last_call_time: '23:58' }] },
+        'items.select': { data: [] },
+        'user_settings.update': { data: [{ user_id: 'u1' }] },
+      });
+      const summary = await runReminderScan(service, { now: new Date('2026-08-11T04:00:00Z') });
+      expect(summary.lastCalls).toBe(0);
+      expect(writes()).toEqual([]);
+    });
   });
 });
 
@@ -470,7 +571,9 @@ describe('the EOD review (Tier 0)', () => {
     expect(payload).toMatchObject({
       title: 'End of day 🌙',
       body: "How'd today go?",
-      url: '/?eod=1',
+      // The day it invites a review of, so a tap after midnight is recorded
+      // against that day and not the new one (lib/eod.ts's reviewedDay).
+      url: '/?eod=2026-08-10',
       tag: 'dsul-eod-2026-08-10',
     });
     expect(payload.actions).toBeUndefined();
@@ -630,6 +733,35 @@ describe('the EOD review (Tier 0)', () => {
     }
   });
 
+  // The tick's gate in SQL asks the scan's own question first, and only while
+  // the two name the same switches. A flag the scan reads and the gate does not
+  // (#220's morning check, say, added to TICK_FLAGS alone) is a tier dsul_tick
+  // never wakes the route for, for anyone with only that switch on, and with
+  // nothing to say so: the job succeeds and sends no request. Read from the
+  // LATEST migration that defines the function, so a new one that redefines
+  // the gate is what this checks from then on.
+  it('TICK_FLAGS are the switches dsul_tick gates on', () => {
+    const dir = join(process.cwd(), 'supabase/migrations');
+    const defines = /create\s+(?:or\s+replace\s+)?function\s+public\.dsul_tick\s*\(/i;
+    const latest = readdirSync(dir)
+      .filter((file) => /^\d{3}_.*\.sql$/.test(file))
+      .sort()
+      .filter((file) => defines.test(readFileSync(join(dir, file), 'utf8')))
+      .at(-1);
+    // 058 when this was written; whichever redefines the gate after it.
+    expect(latest).toBeDefined();
+
+    const sql = readFileSync(join(dir, latest!), 'utf8');
+    const start = sql.search(defines);
+    // The body only, its comments dropped, so a flag named in prose is not read
+    // as one the gate asks about.
+    const body = sql.slice(start, sql.indexOf('$$;', start)).replace(/--[^\n]*/g, '');
+    const gated = [...body.matchAll(/coalesce\(\s*(\w+)\s*,\s*false\s*\)/gi)].map((m) => m[1]);
+
+    expect(new Set(gated)).toEqual(new Set(TICK_FLAGS));
+    expect(gated).toHaveLength(TICK_FLAGS.length);
+  });
+
   // eod_review_time has no CHECK, and the store saves what it is given. due.ts's
   // strict HH:mm parser would read '9:00' as no time at all; lib/eod.ts's, which
   // the dock already uses, reads it as nine.
@@ -648,6 +780,25 @@ describe('the EOD review (Tier 0)', () => {
     expect(eodClaim(calls)).toBeUndefined();
     expect(sendPushToUser).not.toHaveBeenCalled();
     expect(summary.eod).toBe(0);
+  });
+
+  // The veto reads a date, so it is only right while the date is the day the
+  // review was FOR. Last night's 21:00 push, tapped and finished at 00:15 this
+  // morning, used to be stamped with this morning's date, and that cancelled
+  // tonight's invitation before it was sent: a night owl got every other
+  // night's push. Its link names its day now, and Done records that day
+  // (eod.test.ts and eod-reviewed-day.test.tsx pin the client half), so the
+  // row says the 9th, and the 10th is still owed.
+  it('a review of last night, finished after midnight, leaves tonight invited', async () => {
+    const { service, calls } = eodService({
+      ...EOD_USER,
+      last_eod_notified_date: '2026-08-09',
+      last_eod_review_date: '2026-08-09',
+    });
+    const summary = await runReminderScan(service, { now: AT_2105_NY });
+    expect(eodClaim(calls)?.payload).toEqual({ last_eod_notified_date: '2026-08-10' });
+    expect(pushed()[2]).toMatchObject({ url: '/?eod=2026-08-10' });
+    expect(summary.eod).toBe(1);
   });
 
   it('a malformed hour is never due', async () => {
@@ -942,6 +1093,26 @@ describe('expiresAtMs', () => {
     expect(secondsLeft(nudges()[0], AT_2350_NY)).toBe(600);
   });
 
+  // The scan ticks every five minutes, so it tells dueReminders its last tick
+  // and a 23:58 cue's window opens there: sent at 23:55, claimed under its own
+  // time, and good until midnight.
+  it('a 23:58 cue is sent on the 23:55 tick, and stops at midnight', async () => {
+    fetchItems.mockResolvedValue([habit({ reminderTime: '23:58' })]);
+    const { service, writes } = makeServiceFake({
+      'user_settings.select': { data: [USER] },
+      'items.select': { data: [BOOK_ROW] },
+      'items.update': { data: [{ id: 'h1' }] },
+    });
+    const at = new Date('2026-08-11T03:55:00Z');
+
+    const summary = await runReminderScan(service, { now: at });
+
+    expect(summary.cues).toBe(1);
+    expect(writes().map((c) => c.payload)).toEqual([{ reminder_sent_key: '2026-08-10T23:58' }]);
+    expect(nudges()[0]).toMatchObject({ kind: 'cue', expiresAtMs: Date.parse('2026-08-11T04:00:00Z') });
+    expect(secondsLeft(nudges()[0], at)).toBe(300);
+  });
+
   it('a 23:50 last call expires at midnight, 600 seconds on', async () => {
     fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
     await runReminderScan(lastCallService('23:50'), { now: AT_2350_NY });
@@ -999,8 +1170,12 @@ describe('expiresAtMs', () => {
   it('is an instant fixed by the tick, however late in the tick the send is', async () => {
     vi.useFakeTimers({ toFake: ['Date'] });
     try {
-      // The tick began at 23:50, and this user is reached ten seconds later.
-      vi.setSystemTime(AT_2350_NY.getTime() + 10_000);
+      // The tick began at 23:50, and this user is reached seventy seconds
+      // later, in the NEXT minute. A lag inside the tick's own minute proves
+      // nothing: expiryAt rounds down to the minute, so a wall-clock read ten
+      // seconds in rounds back to 23:50:00 and gives the same midnight. Read
+      // at 23:51:10, the wall clock would answer 00:01:00.
+      vi.setSystemTime(AT_2350_NY.getTime() + 70_000);
       fetchItems.mockResolvedValue([habit({ title: 'Reading', streak: 12 })]);
       await runReminderScan(lastCallService('23:50'), { now: AT_2350_NY });
       expect(nudges()[0].expiresAtMs).toBe(Date.parse('2026-08-11T04:00:00Z'));

@@ -1,8 +1,8 @@
 # Reminders across platforms — web, desktop, iPhone, watch, Android
 
 > **Addendum (2026-10-06): what Phase 0 changed on the way in.** Phase 0 was built and
-> reviewed twice, and seven shapes in the body below (§2.1's "What rings" row, §3.1, the
-> PR-0/A/B/C rows of §5.1.2, §5.8's cron rule) are not what the code does. **The body
+> reviewed three times, and nine shapes in the body below (§2.1's "What rings" row, §3.1,
+> the PR-0/A/B/C rows of §5.1.2, §5.8's cron rule) are not what the code does. **The body
 > predates these and keeps the old shapes** — read it through this list. Each was changed
 > because the old shape was wrong, not for taste.
 >
@@ -21,11 +21,14 @@
 >    `topic` ride on `PushPayload` and are split off into headers (and out of the
 >    encrypted body) inside `sendWebPush`, so every device a caller fans out to sends the
 >    same headers for the same push. Phase 1's webpush transport calls it the same way.
-> 3. **The EOD window opens at `windowOpensAt(eodMinutes)`**, not `eodMinutes`: no later
->    than 23:55, the day's last tick (`TICK_MINUTES`, pinned to 044/058's `*/5`). Clamped
->    at midnight, a 23:56–23:59 review's window had no tick in it and was never sent; it
->    now goes at 23:55. Owed is asked as of `max(now, eodMinutes)`. Cues and the last call
->    keep the gap (see [habit-reminders.md](habit-reminders.md) decision 5's addendum).
+> 3. **Every window the scan opens starts at `windowOpensAt(minutes)`**: no later than
+>    23:55, the day's last tick (`TICK_MINUTES`, pinned to 044/058's `*/5`). Clamped at
+>    midnight, a 23:56–23:59 review, last call or cue had no tick in its window and was
+>    never sent; each now goes at 23:55. The review's and the last call's windows are the
+>    scan's; a cue's opens through `dueReminders`' optional `ScanClock.latestOpening`, which
+>    the scan sets and a clock that ticks every minute leaves out (Phase 1's page tick,
+>    Phase 2's Swift port). Owed is asked as of `max(now, eodMinutes)`. See
+>    [habit-reminders.md](habit-reminders.md) decision 5's addendum.
 > 4. **`channelKinds` (`lib/reminders/nudge.ts`) narrows what voice, SMS and the call
 >    list to `REMINDER_KINDS`**, as well as filling a blank list: typed into a free-text
 >    `kinds` field, `eod` is dropped, never opted in. Decision 12's alternative (an EOD
@@ -34,17 +37,35 @@
 >    (`auth`, `rpc`), answers from the whole query at await time (a head count,
 >    `.contains`) and pins the raw method log; the shared `service-fake.ts` stayed the
 >    service client's.
-> 6. **A cue push carries no `Topic`.** Last call, EOD and pledge keep their day topics
->    (`lc-` / `eod-` / `pl-<yyyymmdd>`). Chrome's push service is FCM, which holds four
->    collapse keys per device (§2.4); if it reads a web push's Topic as one (not
->    confirmed), a topic per item loses cues past the fourth to a phone that is offline,
->    every send still a 201 and every claim spent. The `dsul-item-<id>` tag already
->    collapses a cue and its snooze in the shade.
+> 6. **Neither a cue push nor a pledge push carries a `Topic`.** Last call and EOD keep
+>    their day topics (`lc-` / `eod-<yyyymmdd>`): one each a day, each gone by midnight.
+>    Chrome's push service is FCM, which holds four collapse keys per device (§2.4); if it
+>    reads a web push's Topic as one (not confirmed), a topic per item loses cues past the
+>    fourth to a phone that is offline, every send still a 201 and every claim spent. The
+>    pledge's `pl-<yyyymmdd>` had the same flaw by day: a catch-up settles up to seven
+>    days in one tick, one notice each, and none replaces another, so its topic collapsed
+>    nothing and spent up to seven keys. The `dsul-item-<id>` and `dsul-pledge-<date>`
+>    tags collapse in the shade instead.
 > 7. **§5.8's cron rule is enforced as a guard shape**, not a mention:
 >    `tests/unit/migration-text.test.ts` counts a `cron.*` call as guarded only after a
 >    top-level `if to_regclass('cron.job') is null then return; end if;` (058's shape) or
 >    inside an `is not null` branch. `scripts/verify-058.sh` replays 058 alone, so from
 >    059 on that text rule is the only check.
+> 8. **The review's push opens `/?eod=<yyyy-MM-dd>`, not `/?eod=1`**, and Done records
+>    `last_eod_review_date` as the day the review was for (`reviewedDay` in `lib/eod.ts`:
+>    the push's day when it is the day the review opened on or the one before, else the
+>    day it opened on), never the day Done is pressed. PR-C's `isEodOwed` veto reads that
+>    column, and stamped with the press day, the 6th's 23:30 push finished at 00:15
+>    recorded the 7th as reviewed and cancelled the 7th's invitation unsent. The app
+>    still opens a bare `?eod=1` (pushes already in a shade), naming no day. Any later
+>    sender of the review (§2.3's local trigger) records the same way: the day it
+>    invites, not the day it is answered.
+> 9. **The tick's flags are one list, `TICK_FLAGS` in `lib/reminders/scan.ts`**, which
+>    builds the user query's `.or()`; `tests/unit/reminders-scan.test.ts` holds it equal to
+>    the `coalesce(<flag>, false)` set of the latest migration that defines
+>    `public.dsul_tick(`. A flag the scan reads and the SQL gate does not is a tier
+>    dsul_tick never wakes the route for, with nothing erroring, so #220's morning check
+>    (when decision 13 changes) comes with a migration that redefines the gate.
 
 2026-10-05. **Status: plan, decided 2026-10-06 — Kirby took every default in §7; nothing in it has been built yet, nothing was written to prod.** Phase 0 is next. Every code citation is tree-level (`main` at `b8d480c`, 2026-10-04; every cited `file:line` holds at `3200896`, #405, 2026-10-05 — six cited files changed between the two commits, `electron/main.cjs`, `electron/preload.cjs`, `lib/desktop.ts`, `desktop-app.md`, `ios-app.md`, `CLAUDE.md`, but not at the cited lines; `preload.cjs` gained `authProviders`): the live project was read on 2026-10-05, read-only, and the observed values sit at the top of §5.1.1: the organisation is on the **Pro** plan, both ticks are paused exactly as 045 left them, no ritual is enabled by any of the four accounts, and Kirby is the only user, so the runbook's EXPECT lines are now observations and the §5.1 writes have no one to disturb. Kirby also holds a paid Apple Developer Program membership (confirmed 2026-10-05), which removes the purchase gate the brief assumed (decision 5, resolved). Facts taken from search snippets of pages the planning sessions could not open are marked `[S]`; facts no source verified are marked **[unverified]** inline and collected in §6. Sibling plans: [habit-reminders.md](habit-reminders.md) (the reminder model this builds on — read it first), [desktop-app.md](desktop-app.md), [ios-app.md](ios-app.md).
 

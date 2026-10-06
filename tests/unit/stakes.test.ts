@@ -386,9 +386,9 @@ describe('settleOneDay — claim then act', () => {
   });
 
   // A notice about a day already over: it can wait a day for a phone that is
-  // off, need not wake one, and replaces only an undelivered notice for the
-  // SAME day, so a catch-up across several days loses none of them.
-  it('pushes the notice with a 24-hour TTL, normal urgency and the day as its topic', async () => {
+  // off, and need not wake one. No topic: each day's notice is sent once and
+  // replaces nothing, so a topic would only spend a collapse key.
+  it('pushes the notice with a 24-hour TTL, normal urgency and no topic', async () => {
     const { sendPushToUser } = await import('@/lib/push-send');
     vi.mocked(sendPushToUser).mockClear();
 
@@ -401,9 +401,32 @@ describe('settleOneDay — claim then act', () => {
       tag: 'dsul-pledge-2026-08-10',
       ttl: 24 * 3600,
       urgency: 'normal',
-      topic: 'pl-20260810',
     });
-    expect(payload.topic).toMatch(/^[A-Za-z0-9_-]{1,32}$/);
+    expect(payload).not.toHaveProperty('topic');
+  });
+
+  // FCM keeps at most four collapse keys per device and promises nothing about
+  // which survive; a push it drops still came back 201, its claim spent. A
+  // topic per day let the one sender with no bound on its days spend them: a
+  // catch-up after an outage settles a week in one tick, and beside that
+  // evening's last call and review a phone that is off held nine keys.
+  it('a week of catch-up sends a notice a day and not one topic among them', async () => {
+    const { sendPushToUser } = await import('@/lib/push-send');
+    vi.mocked(sendPushToUser).mockClear();
+
+    // As the scan finds them after an outage: the most a tick will settle.
+    const days = daysToSettle('2026-08-17', '2026-08-01');
+    expect(days).toHaveLength(7);
+
+    for (const day of days) {
+      const { service } = makeService([{ subject: 'h1', channel: 'pledge' }]);
+      const report = await settleOneDay(service, { ...base, dateStr: day, extensionEnabled: { pledge: true } });
+      expect(report.notes).toEqual([]);
+    }
+
+    const payloads = vi.mocked(sendPushToUser).mock.calls.map(([, , payload]) => payload);
+    expect(payloads.map((p) => p.tag)).toEqual(days.map((day) => `dsul-pledge-${day}`));
+    expect(new Set(payloads.map((p) => p.topic).filter((t) => t !== undefined))).toEqual(new Set());
   });
 
   // sendPushToUser answers a failed subscription read rather than throwing it.

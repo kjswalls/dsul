@@ -93,11 +93,16 @@ they teach people to take the device off).
 
    *Addendum, 2026-10-06.* A clamped window must still hold a tick. One that opens after
    the day's last tick (23:55; the tick runs every five minutes) is `[23:57, 24:00)` with
-   no tick in it, so the EOD review's window opens no later than 23:55
-   (`windowOpensAt` in `lib/reminders/scan.ts`) and a 23:57 review goes two minutes
-   early rather than never. Cues and the last call still have that gap for a time set to
-   23:56–23:59; it predates the fold, and closing it for cues is a `due.ts` change, which
-   the Swift port mirrors.
+   no tick in it, so every window the scan opens starts no later than 23:55
+   (`windowOpensAt` in `lib/reminders/scan.ts`), and a review, last call or cue set to
+   23:56–23:59 goes a few minutes early rather than never. The review's and the last
+   call's windows are the scan's own and open there directly. A cue's is `due.ts`'s
+   (`dueReminders`), which takes the opening from its caller as
+   `ScanClock.latestOpening`: the scan passes 23:55, and a clock that ticks every minute
+   (Phase 1's open page) passes nothing and rings at the minute itself. No Swift mirrors
+   any of it yet: DsulCore ports only `occursOn` from `due.ts` and `formatCueTime` from
+   `copy.ts`, so the port that comes with Phase 2 should carry `latestOpening` as an
+   optional it leaves unset.
 6. **The last call names streak-bearing types only.** Its whole frame is what today's miss
    costs; a dated task has nothing to lose by that argument, and including one turns a
    sharp message back into the generic evening nag.

@@ -35,8 +35,10 @@ export const SNOOZE_MINUTES = 15
  *
  * The date drops its dashes to fit the 32 characters a topic may have, and the
  * prefix keeps the kinds apart, so a day's last call never replaces its review.
+ * Two kinds and no more, one each a day: the pledge notice has no topic either
+ * (lib/stakes/pledge.ts), because a catch-up sends one per day it settles.
  */
-export function dayTopic(prefix: 'lc' | 'eod' | 'pl', dateStr: string): string {
+export function dayTopic(prefix: 'lc' | 'eod', dateStr: string): string {
   return `${prefix}-${dateStr.replace(/-/g, '')}`
 }
 
@@ -52,7 +54,8 @@ export function dayTopic(prefix: 'lc' | 'eod' | 'pl', dateStr: string): string {
  * next picked up, and the pledge notice after it.
  *
  * A last call's topic is its day, whether it names one habit or three, and so
- * is the review's: a handful of topics a day, whatever the user has set.
+ * is the review's: two topics a day at most, whatever the user has set, and
+ * each gone by its midnight.
  *
  * A cue has NO topic. Chrome's push service is FCM, which holds at most four
  * collapse keys per device and makes no promise which four it keeps

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { isEodOwed, minutesOfDay, nowMinutesIn, shouldShowEodNotice } from '@/lib/eod';
+import {
+  eodLinkDay,
+  isEodOwed,
+  minutesOfDay,
+  nowMinutesIn,
+  reviewedDay,
+  shouldShowEodNotice,
+} from '@/lib/eod';
 
 /**
  * The review-is-owed predicate. Pure precisely so these cases can exist: the
@@ -94,5 +101,55 @@ describe('nowMinutesIn', () => {
     // hour12:false yields "24" for midnight under some ICU versions, which
     // would put the clock an entire day past every review hour.
     expect(nowMinutesIn(new Date('2026-08-11T04:00:00Z'), 'America/New_York')).toBe(0);
+  });
+});
+
+describe('eodLinkDay', () => {
+  it('reads the day the review push names', () => {
+    expect(eodLinkDay('2026-10-06')).toBe('2026-10-06');
+  });
+
+  // Pushes sent before the link named its day said ?eod=1, and a notification
+  // can wait in the shade: it still opens the review, naming no day.
+  it('names no day for the bare ?eod=1, or anything that is not a day', () => {
+    expect(eodLinkDay('1')).toBeNull();
+    expect(eodLinkDay('')).toBeNull();
+    expect(eodLinkDay('2026-10-6')).toBeNull();
+    expect(eodLinkDay('2026-10-06T00:15')).toBeNull();
+  });
+});
+
+describe('reviewedDay', () => {
+  // THE case. Done used to stamp the day it was pressed, so the 6th's 23:30
+  // push, finished at 00:15 on the 7th, recorded the 7th as reviewed, and
+  // isEodOwed (which the scan asks too) retired the 7th's invitation before
+  // it was sent.
+  it('records an after-midnight review against the day its push invited', () => {
+    expect(reviewedDay('2026-10-06', '2026-10-07')).toBe('2026-10-06');
+  });
+
+  it('records a review opened from tonight\'s push as tonight\'s', () => {
+    expect(reviewedDay('2026-10-06', '2026-10-06')).toBe('2026-10-06');
+  });
+
+  // Opened from the palette or the dock: the day it opened on, which a Done
+  // pressed after midnight no longer moves.
+  it('falls back to the day the review opened on', () => {
+    expect(reviewedDay(null, '2026-10-06')).toBe('2026-10-06');
+  });
+
+  // A notification tapped days later opens a review of today; filing it under
+  // a day long gone would leave tonight's review owed. A day after the one it
+  // opened on is no day anyone was invited to review.
+  it('ignores an invitation that is not for the day it opened on or the one before', () => {
+    expect(reviewedDay('2026-10-04', '2026-10-07')).toBe('2026-10-07');
+    expect(reviewedDay('2026-10-08', '2026-10-07')).toBe('2026-10-07');
+    expect(reviewedDay('1', '2026-10-07')).toBe('2026-10-07');
+  });
+
+  it('counts the day before across a month and a year', () => {
+    expect(reviewedDay('2026-09-30', '2026-10-01')).toBe('2026-09-30');
+    expect(reviewedDay('2025-12-31', '2026-01-01')).toBe('2025-12-31');
+    expect(reviewedDay('2028-02-29', '2028-03-01')).toBe('2028-02-29');
   });
 });

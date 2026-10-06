@@ -44,6 +44,7 @@ import { milestoneItemIds } from '@/lib/goals';
 import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useEODStore } from '@/lib/eod-store';
+import { eodLinkDay } from '@/lib/eod';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
@@ -261,14 +262,22 @@ export function AppShell() {
     []
   );
 
-  // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
+  // EOD deep link: ?eod=<yyyy-MM-dd> opens the EOD review modal for the day the
+  // review's push invited (lib/eod.ts's reviewedDay records Done against it,
+  // so a push tapped after midnight is not filed under the new day). The bare
+  // ?eod=1 that pushes sent before 2026-10-06 still opens it, naming no day.
   useEffect(() => {
     if (typeof window === 'undefined') return;
     const params = new URLSearchParams(window.location.search);
-    if (params.get('eod') !== '1') return;
+    const eod = params.get('eod');
+    if (eod === null) return;
+    const invitedFor = eodLinkDay(eod);
+    if (eod !== '1' && invitedFor === null) return;
 
     const openAndClear = () => {
-      useEODStore.getState().open();
+      const eodStore = useEODStore.getState();
+      if (invitedFor) eodStore.openInvited(invitedFor);
+      else eodStore.open();
       window.history.replaceState({}, '', '/');
     };
 
@@ -301,8 +310,8 @@ export function AppShell() {
   // pressed — Esc/✕ don't count as reviewed. The review is reached on purpose
   // instead: the rituals.eod palette command, or the nightly push notification
   // (the reminder scan's EOD tier, lib/reminders/scan.ts, gated on the same
-  // eod_review_enabled/eod_review_time settings) whose tap lands on the ?eod=1
-  // deep link above.
+  // eod_review_enabled/eod_review_time settings) whose tap lands on the
+  // ?eod=<day> deep link above.
 
   const sensors = useShellSensors();
 

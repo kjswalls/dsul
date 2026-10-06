@@ -18,6 +18,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { milestoneItemIds } from '@/lib/goals';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useEODStore } from '@/lib/eod-store';
+import { reviewedDay } from '@/lib/eod';
 import { anchoredSeriesOn, shouldShowOnDate, isCompletedOnDate, isSkippedOnDate, isRecurring } from '@/lib/recurrence';
 import { ITEM_TYPES, isSkippable } from '@/lib/item-registry';
 import { isOpenLoopSuppressedOn } from '@/lib/active';
@@ -107,7 +108,7 @@ type TaskAction =
 export function EODReview() {
   const { tasks, habits, updateTask, unscheduleTask, toggleHabitStatus, toggleTaskStatus, setItemSkipped } =
     usePlannerStore();
-  const { isOpen, close, saveLastReviewDate } = useEODStore();
+  const { isOpen, close, saveLastReviewDate, invitedFor } = useEODStore();
   const userId = usePlannerStore((s) => s.userId);
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const routines = usePlannerStore((s) => s.routines);
@@ -161,9 +162,15 @@ export function EODReview() {
   // Snapshot pendingTasks at dialog open time so tasks marked done during
   // the session don't disappear from the list (circle stays visible for undo).
   const [pendingTasksSnapshot, setPendingTasksSnapshot] = useState<typeof livePendingTasks>(livePendingTasks);
+  // The day the review opened on, held for the same reason: `today` is worked
+  // out at every render, so a review opened at 23:55 and finished at 00:05
+  // would otherwise be recorded as the new day's, and that evening's push and
+  // dock line would treat it as already done. See handleDone.
+  const [openedOn, setOpenedOn] = useState(today);
   useEffect(() => {
     if (isOpen) {
       setPendingTasksSnapshot(livePendingTasks);
+      setOpenedOn(today);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
@@ -395,8 +402,13 @@ export function EODReview() {
     pendingTasks.filter(isCarryable).forEach((t) => handleMoveTo(t.id, tomorrow));
   };
 
+  // Recorded against the day this review is FOR, never the day Done is
+  // pressed: the day the push invited, when it was opened from one, else the
+  // day it opened on (lib/eod.ts's reviewedDay). The scan asks isEodOwed of
+  // this stamp before it invites tonight's review, so a 23:30 push tapped at
+  // 00:15 and stamped with the new day would cancel that evening's push.
   const handleDone = async () => {
-    await saveLastReviewDate(userId, today);
+    await saveLastReviewDate(userId, reviewedDay(invitedFor, openedOn));
   };
 
   // How many rows the bulk verb would actually carry — the same predicate

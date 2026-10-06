@@ -97,20 +97,41 @@ const MINUTES_PER_DAY = 1440
  */
 export const TICK_MINUTES = 5
 
+/** The day's last tick, in every user's own minutes: 23:55. */
+const LAST_TICK = MINUTES_PER_DAY - TICK_MINUTES
+
 /**
  * Where a window that is clamped at midnight must open for a tick to land in
  * it: at its own minute, or at the day's last tick if that minute is later.
  *
  * Clamped, a window opening at 23:57 is [23:57, 24:00), and no tick falls in
  * it: the last one of the day ran at 23:55, and the next is tomorrow's 00:00,
- * by which time the date has rolled and nothing about today is owed. A review
- * set to 23:56 through 23:59 (the setting is a native time input, so any
- * minute can be saved) would never be sent, with no note to say so. Opened at
- * 23:55 it goes a few minutes early instead, which is the better of the two.
+ * by which time the date has rolled and nothing about today is owed. A review,
+ * a last call or a cue set to 23:56 through 23:59 (each is a native time
+ * input, so any minute can be saved) would never be sent, with no note to say
+ * so. Opened at 23:55 it goes a few minutes early instead, which is the better
+ * of the two. All three windows open here: the review's and the last call's
+ * below, the cues' through dueReminders' `latestOpening`.
  */
 export function windowOpensAt(minutes: number): number {
-  return Math.min(minutes, MINUTES_PER_DAY - TICK_MINUTES)
+  return Math.min(minutes, LAST_TICK)
 }
+
+/**
+ * The switches that bring a user into the tick, any one of them.
+ *
+ * Asked twice, in two languages: here, as the user query's .or(), and in SQL,
+ * where dsul_tick (058) asks the same question before it sends the request at
+ * all. The two must name the same flags. A flag added here and not there is a
+ * tier that never runs for anyone with only that switch on: dsul_tick finds no
+ * one, never calls the route, and nothing errors (cron.job_run_details says
+ * succeeded; the fail-open clause catches a column that is missing, not one
+ * that was left out). So a new flag needs a new migration that redefines
+ * dsul_tick's gate, and tests/unit/reminders-scan.test.ts holds the latest
+ * definition to this list. On a database without 034 the user query's retry
+ * drops stakes_enabled, the one flag with a migration of its own.
+ */
+export const TICK_FLAGS = ['habit_reminders_enabled', 'stakes_enabled', 'eod_review_enabled'] as const
 
 /**
  * The instant `endMinutes` arrives on the user's own day: when a nudge about
@@ -312,9 +333,13 @@ export async function runReminderScan(
     // reminders alone would silently never settle their days or invite their
     // review. Without the stakes columns there is no stakes flag to OR
     // against; the review's is still there.
-    const wants = stakesKnown
-      ? 'habit_reminders_enabled.eq.true,stakes_enabled.eq.true,eod_review_enabled.eq.true'
-      : 'habit_reminders_enabled.eq.true,eod_review_enabled.eq.true'
+    //
+    // A flag added to TICK_FLAGS needs a new migration that redefines
+    // dsul_tick's gate to match, or the tick never reaches the route for
+    // anyone with only that switch on (see TICK_FLAGS).
+    const wants = TICK_FLAGS.filter((flag) => stakesKnown || flag !== 'stakes_enabled')
+      .map((flag) => `${flag}.eq.true`)
+      .join(',')
     return service.from('user_settings').select(columns).or(wants).not('timezone', 'is', null)
   }
 
@@ -396,11 +421,13 @@ export async function runReminderScan(
       const lastCallMinutes = remindersOn && user.habit_last_call_enabled
         ? minutesOfDay(user.habit_last_call_time)
         : null
+      // Clamped at midnight, and opened no later than the day's last tick
+      // (windowOpensAt), so a last call set to 23:58 goes at 23:55 rather than
+      // never. What it names is worked out at the tick, so nothing else moves.
       const lastCallDue =
         lastCallMinutes !== null &&
         user.habit_last_call_date !== clock.dateStr &&
-        clock.nowMinutes >= lastCallMinutes &&
-        clock.nowMinutes < Math.min(lastCallMinutes + grace, MINUTES_PER_DAY)
+        isWithinWindow(windowOpensAt(lastCallMinutes), clock.nowMinutes, grace)
 
       const settleMinutes =
         stakesAvailable && user.stakes_enabled ? minutesOfDay(user.stakes_settle_time) : null
@@ -412,6 +439,10 @@ export async function runReminderScan(
       // Is tonight's review owed, and is this its window? Owed is lib/eod.ts's
       // isEodOwed, the question the dock asks, so a review already DONE today
       // is never invited — which the route this tier replaced never checked.
+      // That veto is only as good as the stamp it reads: last_eod_review_date
+      // is the day a review was FOR (the push's own date, via its link and
+      // lib/eod.ts's reviewedDay), so last night's review finished after
+      // midnight does not cancel tonight's invitation.
       // Its hour is read by lib/eod.ts's parser, never due.ts's: the column has
       // no CHECK (010) and the store saves what it is given, so '9:00' is a
       // value a row can hold, and the strict HH:mm parser would read it as no
@@ -484,7 +515,11 @@ export async function runReminderScan(
             kind: 'eod',
             title: EOD_COPY.title,
             body: EOD_COPY.body,
-            url: '/?eod=1',
+            // The day it invites a review of, so a tap after midnight is
+            // recorded as that day's review and not the new one's, which would
+            // retire the new day's invitation before it is sent (lib/eod.ts's
+            // reviewedDay). The app still opens the bare ?eod=1 of older pushes.
+            url: `/?eod=${clock.dateStr}`,
             dateStr: clock.dateStr,
             items: [],
             // Good until the user's own midnight and no further: the review
@@ -554,8 +589,12 @@ export async function runReminderScan(
           .or(`reminder_snooze_date.is.null,reminder_snooze_date.neq.${clock.dateStr}`)
       }
 
+      // latestOpening: this clock ticks every five minutes, so a cue's window
+      // opens no later than its last tick, as the review's and the last
+      // call's do. due.ts leaves it to the caller because a clock that ticks
+      // every minute should not ring a 23:58 cue at 23:55.
       const candidates = remindersOn
-        ? dueReminders(scanRows, { ...clock, graceMinutes: grace }, ctx)
+        ? dueReminders(scanRows, { ...clock, graceMinutes: grace, latestOpening: LAST_TICK }, ctx)
         : []
 
       if (candidates.length > 0) {

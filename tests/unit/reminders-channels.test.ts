@@ -60,7 +60,7 @@ const eod = (over: Partial<Nudge> = {}): Nudge => ({
   kind: 'eod',
   title: 'End of day 🌙',
   body: "How'd today go?",
-  url: '/?eod=1',
+  url: '/?eod=2026-08-10',
   dateStr: '2026-08-10',
   items: [],
   expiresAtMs: TICK + 10500_000,
@@ -602,9 +602,9 @@ describe('the push channel says how long a push may wait, and how hard to wake f
     expect(body).toMatchObject({
       title: 'End of day 🌙',
       body: "How'd today go?",
-      url: '/?eod=1',
+      url: '/?eod=2026-08-10',
       tag: 'dsul-eod-2026-08-10',
-      data: { url: '/?eod=1', dateStr: '2026-08-10', kind: 'eod' },
+      data: { url: '/?eod=2026-08-10', dateStr: '2026-08-10', kind: 'eod' },
     });
     expect(body).not.toHaveProperty('actions');
   });
@@ -631,9 +631,10 @@ describe('the push channel says how long a push may wait, and how hard to wake f
   });
 
   // One topic per kind per day, so however many habits a user sets, a phone
-  // that is off holds a handful of them at most.
+  // that is off holds two of them at most. The pledge notice has none
+  // (stakes.test.ts pins that), since a catch-up sends one per day.
   it('names day topics that fit, one per kind', () => {
-    for (const prefix of ['lc', 'eod', 'pl'] as const) {
+    for (const prefix of ['lc', 'eod'] as const) {
       expect(dayTopic(prefix, '2026-08-10')).toMatch(TOPIC);
       expect(dayTopic(prefix, '2026-08-10')).toBe(`${prefix}-20260810`);
     }

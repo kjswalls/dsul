@@ -26,7 +26,17 @@ interface EODStore {
    * completed review.
    */
   eodDeferredDate: string | null;
+  /**
+   * The day the open review was invited for, when it was opened from the
+   * review's push (`?eod=<yyyy-MM-dd>`); null when it was opened any other way.
+   * Read once, by Done, through lib/eod.ts's `reviewedDay`, so a review the push
+   * for the 6th opens at 00:15 on the 7th is recorded as the 6th's. Like
+   * `isOpen`, never persisted: it describes this opening and nothing after it.
+   */
+  invitedFor: string | null;
   open: () => void;
+  /** Open the review the push for `dateStr` invited. */
+  openInvited: (dateStr: string) => void;
   close: () => void;
   /** "Not tonight" — hide the dock line until the date rolls over. */
   deferToday: (date: string) => void;
@@ -47,6 +57,10 @@ interface EODStore {
  * account-agnostic: inherited, they suppress the next user's review line for a
  * night they were never asked about.
  *
+ * `isOpen` and `invitedFor` describe the review on screen, and go with the
+ * account that opened it: a Done the next user presses must not be recorded
+ * against a day the last one was invited to review.
+ *
  * `_hasHydrated` stays out. It is a fact about this page load, not about anyone.
  */
 const USER_SCOPED_DEFAULTS = {
@@ -55,6 +69,7 @@ const USER_SCOPED_DEFAULTS = {
   eodReviewTime: '21:00',
   lastEodReviewDate: null as string | null,
   eodDeferredDate: null as string | null,
+  invitedFor: null as string | null,
 };
 
 export const useEODStore = create<EODStore>()(
@@ -67,7 +82,8 @@ export const useEODStore = create<EODStore>()(
 
       clearUserScopedState: () => set({ ...USER_SCOPED_DEFAULTS }),
 
-      open: () => set({ isOpen: true }),
+      open: () => set({ isOpen: true, invitedFor: null }),
+      openInvited: (dateStr) => set({ isOpen: true, invitedFor: dateStr }),
       close: () => set({ isOpen: false }),
       deferToday: (date) => set({ eodDeferredDate: date, isOpen: false }),
 
