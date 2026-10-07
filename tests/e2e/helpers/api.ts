@@ -6,11 +6,11 @@ import { BASE_URL, SETUP_ARTIFACT, TEST_TITLE_PREFIX } from './env';
  * Fixtures created through the agent API.
  *
  * The /api/agent/* routes authenticate with Bearer <dsul_api_key> (stored in
- * user_settings.openclaw_api_key). That key is resolved ONCE in globalSetup and
+ * user_secrets.openclaw_api_key since migration 059). That key is resolved ONCE in globalSetup and
  * read from disk here.
  *
  * Why not fetch it per test, as before? The old getAccessToken() POSTed
- * /api/agent/apikey whenever GET returned null, and that route REGENERATES the
+ * /api/agent/apikey (since removed) whenever GET returned null, and that route REGENERATED the
  * key. Under fullyParallel two workers could both see null, both mint a key, and
  * the loser's Bearer token would 401 — with cleanupTestData swallowing the
  * failure as a console.warn, leaking rows permanently.

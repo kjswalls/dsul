@@ -359,27 +359,36 @@ function present(v: unknown): boolean {
 }
 
 /**
- * user_settings (openclaw_gateway_url, openclaw_agent_id, openclaw_api_key,
- * openclaw_chat_url) + user_secrets.openclaw_gateway_token via the service
+ * user_settings (openclaw_gateway_url, openclaw_agent_id, openclaw_chat_url)
+ * + user_secrets (openclaw_gateway_token, openclaw_api_key) via the service
  * client. Booleans + agentId only. Missing schema => all false. Other errors
  * THROW.
+ *
+ * The agent key moved to user_secrets in migration 059. Until that is
+ * applied, user_secrets has no such column (the read retries without it) and
+ * the key is still in user_settings.openclaw_api_key, so a key in EITHER
+ * place counts; after 059 the old column is null and CHECKed null.
  */
 export async function readOpenClawStatus(userId: string): Promise<OpenClawView> {
   const svc = service('openclaw');
-  const [settings, secrets] = await Promise.all([
+  const readSecrets = (columns: string) =>
+    svc.from('user_secrets').select(columns).eq('user_id', userId).maybeSingle();
+  const [settings, firstSecrets] = await Promise.all([
     svc
       .from('user_settings')
       .select('openclaw_gateway_url, openclaw_agent_id, openclaw_api_key, openclaw_chat_url')
       .eq('user_id', userId)
       .maybeSingle(),
-    svc.from('user_secrets').select('openclaw_gateway_token').eq('user_id', userId).maybeSingle(),
+    readSecrets('openclaw_gateway_token, openclaw_api_key'),
   ]);
+  const secrets =
+    codeOf(firstSecrets.error) === '42703' ? await readSecrets('openclaw_gateway_token') : firstSecrets;
   if (settings.error && !isNoSchema(settings.error)) throw new AiDbError('openclaw', codeOf(settings.error));
   if (secrets.error && !isNoSchema(secrets.error)) throw new AiDbError('openclaw', codeOf(secrets.error));
 
   const s = (settings.error ? null : settings.data) as Record<string, unknown> | null;
   const sec = (secrets.error ? null : secrets.data) as Record<string, unknown> | null;
-  const apiKey = present(s?.openclaw_api_key);
+  const apiKey = present(sec?.openclaw_api_key) || present(s?.openclaw_api_key);
   return {
     gateway: present(s?.openclaw_gateway_url) && present(sec?.openclaw_gateway_token),
     pluginChat: apiKey && present(s?.openclaw_chat_url),

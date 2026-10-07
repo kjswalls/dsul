@@ -44,9 +44,9 @@ export interface ModelConnectionView {
 export interface OpenClawView {
   /** user_settings.openclaw_gateway_url AND user_secrets.openclaw_gateway_token present. */
   gateway: boolean;
-  /** user_settings.openclaw_api_key AND openclaw_chat_url present. */
+  /** The agent key (user_secrets, 059) AND user_settings.openclaw_chat_url present. */
   pluginChat: boolean;
-  /** user_settings.openclaw_api_key present (an agent can pull delegated work). */
+  /** The agent key present (an agent can pull delegated work). */
   agent: boolean;
   agentId: string | null;
 }

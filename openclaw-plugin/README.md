@@ -106,6 +106,8 @@ Config lives in `openclaw.json` under `plugins.entries.dsul-context.config.dsul-
 | `dsulUrl` | ✅ | Base URL of your dsul deployment (written by setup) |
 | `apiKey` | ✅ | Your personal dsul API key (written by setup) |
 | `publicUrl` | Optional | Your gateway's public URL. Required for webhook push and chat from Ask in dsul; omit for pull-only mode |
+
+The chat route (`/plugins/dsul/chat`) does not accept `apiKey` itself. dsul's browser sends a chat token derived from it (an HMAC, `dsulchat_…`), so the key that reaches dsul's agent API is never in a web page. Plugin versions before this change accepted only the raw key, and dsul no longer sends it: update the plugin to keep chat from Ask working.
 | `webhookSecret` | Optional | HMAC secret for verifying change event payloads. **Without it the webhook endpoint accepts unsigned requests** — set it if your gateway is reachable from the internet |
 | `agentId` | Optional | OpenClaw agent that answers in dsul's Ask (default: `main`) |
 | `cacheTtlMs` | Optional | Max cache age before re-fetch (default: `300000` = 5 min) |

@@ -651,6 +651,23 @@ describe('readOpenClawStatus', () => {
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null });
   });
 
+  it('the agent key counts from user_secrets (059 on)', async () => {
+    respondWith({ openclaw_chat_url: 'https://claw.example/chat' }, { openclaw_api_key: 'dsul_k' });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: true, agent: true, agentId: null });
+  });
+
+  it('before 059 the secrets read retries without the key column and the old column counts', async () => {
+    answer((call) => {
+      if (call.table === 'user_settings') return { data: { openclaw_api_key: 'k' }, error: null };
+      const cols = String(call.ops.find((o) => o[0] === 'select')?.[1]?.[0] ?? '');
+      return cols.includes('openclaw_api_key')
+        ? { data: null, error: { code: '42703' } }
+        : { data: { openclaw_gateway_token: 'tok' }, error: null };
+    });
+    expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: true, agentId: null });
+    expect(mock.state.calls.filter((c) => c.table === 'user_secrets')).toHaveLength(2);
+  });
+
   it('missing schema → all false', async () => {
     respondWith(null, null, { settings: { code: '42703' }, secrets: { code: '42P01' } });
     expect(await readOpenClawStatus(USER)).toEqual({ gateway: false, pluginChat: false, agent: false, agentId: null });
