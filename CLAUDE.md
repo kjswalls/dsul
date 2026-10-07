@@ -420,6 +420,12 @@ third container role (`aspire`), where milestones and check-ins are ordinary ite
 a membership role. Read it before touching `lib/goals.ts`, the goals store slice, or
 anything that writes an item's `startDate` in bulk: a milestone's start date is a target
 date, and the sweep and the carry verbs are excluded from it on purpose.
+[mods.md](memory/plans/mods.md) is the plan for **mods and recipes** (Kirby's pick,
+2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
+capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
+user themes and Looks as token values. It reverses plugins-themes-store.md's "skip
+tier (c)" and "skip sidebar-panel slots" for private code only. Nothing is built yet; read it before adding a mod
+event, a recipe step, or anything that lets user-written code or values into the app.
 [ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
 the capability gate, delegation to OpenClaw, saved conversations and their privacy
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching

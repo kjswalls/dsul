@@ -21,7 +21,9 @@ import {
  * plan doc (memory/plans/plugins-themes-store.md, Project B) calls for: adding
  * an extension means adding config here, a gate at its surface, and nothing
  * else. No third-party code executes — "extensions" are declarative by locked
- * decision; the sandboxed-runtime tier is deliberately unbuilt.
+ * decision. Your OWN code is a separate, planned surface: private mods and
+ * recipes (memory/plans/mods.md, unbuilt) will live in Settings → Make, never
+ * in this catalog.
  *
  * Enabled state lives in the user_extensions table (migration 026) as sparse
  * per-user rows; a slug with no row falls back to defaultEnabled here. Slugs
