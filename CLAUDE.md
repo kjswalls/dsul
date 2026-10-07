@@ -424,7 +424,7 @@ date, and the sweep and the carry verbs are excluded from it on purpose.
 2026-10-03; decisions 2026-10-07): private, sandboxed mods (QuickJS-in-WASM behind a
 capability broker, host-drawn UI, never CSS), no-code recipes over `ITEM_VERBS`, and
 user themes and Looks as token values. It reverses plugins-themes-store.md's "skip
-tier (c)" and "skip sidebar-panel slots" for private code only. Nothing is built yet; read it before adding a mod
+tier (c)" and "skip sidebar-panel slots" for private code only. Build orders 2 to 5 are built; read it before adding a mod
 event, a recipe step, or anything that lets user-written code or values into the app.
 [ai-vision.md](memory/plans/ai-vision.md) does the same for the AI: the model connection,
 the capability gate, delegation to OpenClaw, saved conversations and their privacy

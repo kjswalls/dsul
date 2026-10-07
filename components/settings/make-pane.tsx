@@ -11,16 +11,20 @@ import type { SettingCtx } from '@/lib/settings/manifest';
 import { RecipeBuilder } from './recipe-builder';
 import { RecipeRuns } from './recipe-runs';
 import { ThemeBuilder } from './theme-builder';
+import { LookBuilder } from './look-builder';
 import { releaseUserTheme } from '@/lib/user-themes/release';
 
 /**
  * Settings → Make: what the person made, one section per kind, each with a
  * switch and Delete (memory/plans/mods.md). Recipes also get New, Edit and
- * Recent runs (./recipe-builder.tsx, ./recipe-runs.tsx), and themes New and
- * Edit (./theme-builder.tsx); building mods and Looks comes in later PRs.
+ * Recent runs (./recipe-builder.tsx, ./recipe-runs.tsx), themes New and Edit
+ * (./theme-builder.tsx), and Looks New and Edit (./look-builder.tsx);
+ * building mods comes in a later PR.
  *
  * Switching off or deleting a theme that is a saved pick writes the default
  * pick first (lib/user-themes/release.ts), so no device keeps pointing at it.
+ * A Look needs no such release: no pick stores a Look, and a recipe naming
+ * one that is off or gone does nothing.
  *
  * Rows load here, and from RecipeHost (components/recipes/recipe-host.tsx) on
  * any route where the planner has loaded, since that is where recipes run.
@@ -29,7 +33,7 @@ import { releaseUserTheme } from '@/lib/user-themes/release';
  */
 
 interface Editing {
-  kind: 'recipe' | 'theme';
+  kind: 'recipe' | 'theme' | 'look';
   id: 'new' | string;
 }
 
@@ -40,13 +44,13 @@ const SECTION: Record<ModKind, string> = {
   look: 'Looks',
 };
 
-export function MakePane({ ctx }: { ctx: SettingCtx }) {
+export function MakePane({ ctx, isMobile = false }: { ctx: SettingCtx; isMobile?: boolean }) {
   const available = useModsStore((s) => s.available);
   const loaded = useModsStore((s) => s.loaded);
   const failed = useModsStore((s) => s.failed);
   const rows = useModsStore((s) => s.rows);
   const safeMode = useModsStore((s) => s.safeMode);
-  /** null: the list. Otherwise the recipe or theme form in its place, for a new one or a row. */
+  /** null: the list. Otherwise the recipe, theme or Look form in its place, for a new one or a row. */
   const [editing, setEditing] = useState<null | Editing>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const editingRow =
@@ -110,7 +114,15 @@ export function MakePane({ ctx }: { ctx: SettingCtx }) {
           </Button>
         </div>
       ) : !loaded ? null : editing && ctx.userId && (editing.id === 'new' || editingRow) ? (
-        editing.kind === 'theme' ? (
+        editing.kind === 'look' ? (
+          <LookBuilder
+            key={editing.id}
+            userId={ctx.userId}
+            editing={editingRow}
+            onCancel={() => setEditing(null)}
+            onDone={done}
+          />
+        ) : editing.kind === 'theme' ? (
           <ThemeBuilder
             key={editing.id}
             userId={ctx.userId}
@@ -152,8 +164,9 @@ export function MakePane({ ctx }: { ctx: SettingCtx }) {
                     key={row.id}
                     row={row}
                     ctx={ctx}
+                    isMobile={isMobile}
                     onEdit={
-                      row.kind === 'recipe' || row.kind === 'theme'
+                      row.kind === 'recipe' || row.kind === 'theme' || row.kind === 'look'
                         ? () => open({ kind: row.kind as Editing['kind'], id: row.id })
                         : undefined
                     }
@@ -166,7 +179,7 @@ export function MakePane({ ctx }: { ctx: SettingCtx }) {
       )}
 
       {available && loaded && !failed && !editing && ctx.userId && (
-        <div className="mt-3 flex items-center gap-3">
+        <div className="mt-3 flex flex-wrap items-center gap-3">
           <Button
             variant="outline"
             size="sm"
@@ -182,6 +195,14 @@ export function MakePane({ ctx }: { ctx: SettingCtx }) {
             onClick={() => open({ kind: 'theme', id: 'new' })}
           >
             <Plus className="size-3.5" aria-hidden /> New theme
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            data-testid="make-new-look"
+            onClick={() => open({ kind: 'look', id: 'new' })}
+          >
+            <Plus className="size-3.5" aria-hidden /> New Look
           </Button>
           {notice && (
             <p role="status" data-testid="make-notice" className="text-muted-foreground text-xs">
@@ -199,7 +220,18 @@ function waitsForServer(row: UserMod): boolean {
   return (row.manifest as { trigger?: { on?: unknown } } | null)?.trigger?.on === 'time';
 }
 
-function MakeRow({ row, ctx, onEdit }: { row: UserMod; ctx: SettingCtx; onEdit?: () => void }) {
+function MakeRow({
+  row,
+  ctx,
+  isMobile,
+  onEdit,
+}: {
+  row: UserMod;
+  ctx: SettingCtx;
+  /** A phone has no Looks row (look-picker.tsx), so a Look's line says where it is. */
+  isMobile: boolean;
+  onEdit?: () => void;
+}) {
   const stateId = `make-state-${row.id}`;
   const label = modLabel(row);
   const stateText = row.disabledReason
@@ -207,7 +239,11 @@ function MakeRow({ row, ctx, onEdit }: { row: UserMod; ctx: SettingCtx; onEdit?:
     : row.enabled
       ? row.kind === 'theme'
         ? 'On. Pick it in Look, under Yours.'
-        : 'On'
+        : row.kind === 'look'
+          ? isMobile
+            ? 'On. Apply it in Look on a computer, under Yours.'
+            : 'On. Apply it in Look, under Yours.'
+          : 'On'
       : 'Off';
   /**
    * A theme that has gone stops being anyone's pick, once the switch-off or

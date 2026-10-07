@@ -821,7 +821,7 @@ export function SettingsShell({
 
               {/* Make opens with the list of what you made; its one record
                   (make.allOff) is drawn below by the flat rows. */}
-              {pane === 'make' && <MakePane ctx={ctx} />}
+              {pane === 'make' && <MakePane ctx={ctx} isMobile={isMobile} />}
 
               {pane === 'extensions' && (
                 <>

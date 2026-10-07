@@ -2,7 +2,9 @@ import { z } from 'zod';
 import { TimeBucketSchema } from '@dsul/types';
 import type { ModEvent } from '@/lib/mod-events';
 import type { VerbId } from '@/lib/item-verbs';
-import { ThemeManifestSchema, type ThemeManifest } from './theme-grammar';
+import { isLayoutTheme, type LayoutTheme } from '@/lib/layout-themes';
+import { DRAFT_SLUG, USER_THEME_SLUG_RE } from '@/lib/user-themes/css';
+import { DARK_BASES, LIGHT_BASES, ThemeManifestSchema, type ThemeManifest } from './theme-grammar';
 
 /**
  * The shapes of what a person makes in Settings → Make (memory/plans/mods.md).
@@ -252,8 +254,36 @@ export type RecipeTrigger = z.infer<typeof RecipeTriggerSchema>;
 export const ModManifestSchema = z.unknown();
 // A theme's token grammar: ./theme-grammar.ts (build order 5).
 export { ThemeManifestSchema, type ThemeManifest };
-// PLACEHOLDER: a Look's {label, layout, light, dark} lands with user Looks, build order 5.
-export const LookManifestSchema = z.unknown();
+
+/**
+ * One of the owner's own themes, by its `u-` slug. Never the editor's draft
+ * slug, which no row has. Whether it names a theme of the right mode is asked
+ * at save (lib/user-looks.ts, lookRefProblems) and again when the Look
+ * resolves, since the owner can write the row straight through PostgREST.
+ */
+const OwnThemeRefSchema = z
+  .string()
+  .regex(USER_THEME_SLUG_RE)
+  .refine((s) => s !== DRAFT_SLUG) as unknown as z.ZodType<`u-${string}`>;
+
+/**
+ * A Look (build order 5b): a shipped layout with a light and a dark theme.
+ * Decision 5, no layout remixes: the layout is one of LAYOUTS, never a slot
+ * mix. The built-in lists come from theme-grammar's bases, which a test pins
+ * to LIGHT_LOOKS and DARK_LOOKS: lib/theme-looks.ts cannot be imported here
+ * (it reads the user-theme registry, which imports this file).
+ *
+ * No `label`: the name is the row's, as for a theme, so the two cannot drift.
+ */
+export const LookManifestSchema = z
+  .object({
+    version: z.literal(1),
+    layout: z.custom<LayoutTheme>(isLayoutTheme, { message: 'Pick a layout.' }),
+    light: z.union([z.enum(LIGHT_BASES), OwnThemeRefSchema]),
+    dark: z.union([z.enum(DARK_BASES), OwnThemeRefSchema]),
+  })
+  .strict();
+export type LookManifest = z.infer<typeof LookManifestSchema>;
 
 export function manifestSchemaFor(kind: ModKind): z.ZodTypeAny {
   switch (kind) {

@@ -67,6 +67,15 @@ describe('validateRecipe', () => {
     expect(validateRecipe(m({ steps }), env)).toEqual(['Pick a light theme for step 3.']);
   });
 
+  it('takes one of your Looks by its ref, and refuses a ref of the wrong shape', () => {
+    const steps = [
+      { do: 'applyLook', look: 'u-abcdef01' },
+      { do: 'applyLook', look: 'u-moss' },
+      { do: 'applyLook', look: 'nothing' },
+    ];
+    expect(validateRecipe(m({ steps }), env)).toEqual(['Pick a Look for step 2.', 'Pick a Look for step 3.']);
+  });
+
   it('refuses a habit, an unknown type, an unknown theme or Look', () => {
     const steps = [
       { do: 'create', type: 'habit', title: 'Daily' },

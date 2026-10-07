@@ -3,6 +3,7 @@ import { canCreateType } from '@/lib/proposal';
 import { isDarkLook, isLightLook } from '@/lib/theme-looks';
 import { isUserThemeSlug } from '@/lib/user-themes/css';
 import { lookById } from '@/lib/looks';
+import { isUserLookRef } from '@/lib/user-looks';
 import {
   RECIPE_VERBS,
   RecipeManifestSchema,
@@ -106,7 +107,9 @@ export function validateRecipe(m: RecipeManifest, env: RecipeEnv): string[] {
         (step.mode === 'light' ? isLightLook(step.theme) : isDarkLook(step.theme)) || isUserThemeSlug(step.theme);
       if (!ok) problems.push(`Pick a ${step.mode} theme for step ${n}.`);
     }
-    if (step.do === 'applyLook' && !lookById(step.look)) {
+    // One of your Looks is taken by its ref's shape: whether it is on is the
+    // step's question when it runs, and one that is off or gone does nothing.
+    if (step.do === 'applyLook' && !lookById(step.look) && !isUserLookRef(step.look)) {
       problems.push(`Pick a Look for step ${n}.`);
     }
   });

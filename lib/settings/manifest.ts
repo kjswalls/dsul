@@ -57,11 +57,13 @@ import {
   LAYOUTS,
   LAYOUT_FAMILIES,
   isLayoutTheme,
+  type LayoutTheme,
   layoutDef,
   layoutStyles,
 } from '@/lib/layout-themes';
 import { APP_ICONS, DEFAULT_APP_ICON, isAppIcon } from '@/lib/app-icons';
 import { lookChanges, type LookPreset } from '@/lib/looks';
+import { userLookChanges, type UserLook } from '@/lib/user-looks';
 import { toast } from 'sonner';
 import { saveSettings } from '@/lib/settings-service';
 import {
@@ -1826,12 +1828,12 @@ export function pickLayoutFamily(v: string | boolean, ctx: SettingCtx): boolean 
 }
 
 /**
- * Applies a Look (lib/looks.ts): its exact layout, style included, and the
- * theme for each mode it pairs with, as one settings patch. The mode is left
- * alone, so following the device keeps following it.
+ * Writes a Look's picks: the layout, and each theme given that differs from
+ * the store's, as one settings patch. The mode is left alone, so following
+ * the device keeps following it. Shared by built-in and user Looks.
  */
-export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
-  const { layout, light, dark } = lookChanges(preset);
+function applyPicks(picks: { layout: LayoutTheme; light?: LightPick; dark?: DarkPick }, ctx: SettingCtx): void {
+  const { layout, light, dark } = picks;
   look().setLayout(layout);
   if (light && look().light !== light) look().setLight(light, { eased: true });
   if (dark && look().dark !== dark) look().setDark(dark, { eased: true });
@@ -1842,6 +1844,27 @@ export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
       ...(dark && { theme_dark: dark }),
     });
   }
+}
+
+/**
+ * Applies a Look (lib/looks.ts): its exact layout, style included, and the
+ * theme for each mode it pairs with, as one settings patch. The mode is left
+ * alone, so following the device keeps following it.
+ */
+export function applyLook(preset: LookPreset, ctx: SettingCtx): void {
+  applyPicks(lookChanges(preset), ctx);
+}
+
+/**
+ * Applies one of your own Looks (lib/user-looks.ts): all three parts, each
+ * theme by its pick (userLookChanges), so one of yours that is off is saved
+ * as itself and shows the default until it is on again, and a side already
+ * holding that pick is left as it is. On a phone the layout is written too
+ * (it is the account's) and only the colours show there. Nothing in safe mode.
+ */
+export function applyUserLook(look: UserLook, ctx: SettingCtx): void {
+  if (useModsStore.getState().safeMode) return;
+  applyPicks(userLookChanges(look), ctx);
 }
 
 /* ---------------------------------------------------------------- lookups */
