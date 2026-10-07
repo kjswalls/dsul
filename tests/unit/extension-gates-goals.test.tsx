@@ -475,7 +475,7 @@ describe('Goals switched off — the remaining surfaces', () => {
       if (url === '/api/agent/chat-url') {
         return {
           ok: true,
-          json: async () => ({ chatUrl: 'https://example.test/chat', agentId: null, dsulApiKey: 'k' }),
+          json: async () => ({ chatUrl: 'https://example.test/chat', agentId: null, chatToken: 'k' }),
         } as never;
       }
       posted.push(JSON.parse(init.body ?? '{}').context ?? '');

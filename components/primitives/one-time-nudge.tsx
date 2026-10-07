@@ -56,5 +56,18 @@ export function OneTimeNudge({ id, enabled = true }: { id: string; enabled?: boo
     });
   }, [enabled, active, id, userId, dismiss, router]);
 
+  // A toast fired for one account comes down when the account changes. Left
+  // up, its close button would record the dismissal for the account that
+  // fired it, against whoever is signed in now. A programmatic dismiss calls
+  // no onDismiss, so nothing is recorded; the latch is released so the toast
+  // can fire again for whichever account is next. Declared after the effect
+  // above so a switch that fires the next account's toast (same id) lands
+  // first and leaves nothing to take down.
+  useEffect(() => {
+    if (firedForUser.current === null || firedForUser.current === userId) return;
+    toast.dismiss(id);
+    firedForUser.current = null;
+  }, [userId, id]);
+
   return null;
 }

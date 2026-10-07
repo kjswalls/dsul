@@ -124,8 +124,12 @@ export function outgoingTurns(
 /** What the plugin path needs to reach the user's OpenClaw directly. */
 interface PluginTransport {
   chatUrl: string | null;
-  /** The user's dsul plugin key (not a provider key), sent as the bearer. */
-  dsulApiKey: string | null;
+  /**
+   * The plugin chat token, sent as the bearer: an HMAC of the agent key that
+   * the plugin's chat route accepts and dsul's agent API does not
+   * (lib/plugin-chat-token.ts). Never the agent key itself (#123, #142).
+   */
+  chatToken: string | null;
 }
 
 /**
@@ -133,9 +137,9 @@ interface PluginTransport {
  *
  * Only the plugin path needs `/api/agent/chat-url`: the gate already knows a
  * chat URL is registered (`openclaw.pluginChat`), but the browser still needs
- * the URL itself and the plugin key to call it. Fetched on the first plugin
+ * the URL itself and the chat token to call it. Fetched on the first plugin
  * send, not on every mount, and keyed by the account the gate answered for,
- * so a different user on this browser never reuses the last one's key. A
+ * so a different user on this browser never reuses the last one's token. A
  * failure is not cached: the next send asks again.
  */
 let pluginTransport: { userId: string | null; promise: Promise<PluginTransport> } | null = null;
@@ -155,7 +159,7 @@ function loadPluginTransport(): Promise<PluginTransport> {
       })
       .then((body): PluginTransport => {
         const b = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
-        return { chatUrl: strOrNull(b.chatUrl), dsulApiKey: strOrNull(b.dsulApiKey) };
+        return { chatUrl: strOrNull(b.chatUrl), chatToken: strOrNull(b.chatToken) };
       }),
   };
   pluginTransport = entry;
@@ -175,7 +179,7 @@ function dropPluginTransport(entry: NonNullable<typeof pluginTransport>) {
 }
 
 /**
- * Forget the cached plugin URL and key. The sign-out clear (`clearChatState`,
+ * Forget the cached plugin URL and chat token. The sign-out clear (`clearChatState`,
  * lib/conversations-store.ts) and a user's change of answerer
  * (`chooseChatTarget`, lib/chat-target.ts) both call it.
  */
@@ -237,7 +241,7 @@ async function viaPlugin(input: TurnInput): Promise<TurnOutcome> {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        ...(transport.dsulApiKey ? { Authorization: `Bearer ${transport.dsulApiKey}` } : {}),
+        ...(transport.chatToken ? { Authorization: `Bearer ${transport.chatToken}` } : {}),
       },
       signal,
       // The plugin contract, exactly. Nothing else rides along.

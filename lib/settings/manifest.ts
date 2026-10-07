@@ -1416,8 +1416,30 @@ export const SETTINGS: SettingRecord[] = [
     description: 'Stored encrypted on the server. Never shown again.',
     control: 'info',
     // Never 'api key': that is the label, which is indexed already, and the
-    // manifest's own rule forbids restating it.
-    keywords: ['key', 'token', 'byok', 'openai', 'chatgpt', 'anthropic', 'claude', 'gemini', 'openrouter', 'llm'],
+    // manifest's own rule forbids restating it. The verbs are how people look
+    // for the form: "connect" used to land only on "Who answers in chat" and
+    // OpenClaw, and "set up" on nothing; 'model' makes the app's own words for
+    // it, "Connect a model", land here too. Never 'sign in': the AI pane draws
+    // above the account's in the results, so "sign" would put this row over
+    // Sign out, and "openrouter" already finds OpenRouter's sign-in.
+    keywords: [
+      'connect',
+      'connection',
+      'set up',
+      'setup',
+      'model',
+      'ai',
+      'key',
+      'token',
+      'byok',
+      'openai',
+      'chatgpt',
+      'anthropic',
+      'claude',
+      'gemini',
+      'openrouter',
+      'llm',
+    ],
     read: () => {
       const conn = aiConn();
       if (conn.phase === 'unknown') return 'Checking…';
