@@ -3,6 +3,7 @@ import { isItemActiveOn, isOpenLoopOn } from '../active'
 import { AGENT_QUIET_AFTER_MS } from '../agent-status'
 import { getItemTypeConfig } from '../item-registry'
 import type { Item, Routine, Season } from '../planner-types'
+import { toDateStr } from '../recurrence'
 import type { McpToolDescriptor } from './protocol'
 
 /**
@@ -228,6 +229,32 @@ function inactiveIdsFrom(
   return inactive
 }
 
+/**
+ * The user's day at the moment the context was fetched.
+ *
+ * `fetchedAt` is a UTC instant, and its first ten characters are the UTC date,
+ * which is not the day the user is living in for the hours between UTC midnight
+ * and theirs. Everything else asks this on the local day: the context route's
+ * own suppression, the grid, and the item menu's "Hand off" (which is meant to
+ * offer only what this queue serves). Slicing here made a season that ends
+ * today, or a pause that ends tomorrow, read differently to the queue for those
+ * hours, so a hand-off the menu allowed sat at "Queued" with no one to take it.
+ *
+ * A missing or unreadable `fetchedAt` gives no day, which gates nothing (the
+ * server did not say). A zone Intl does not know, which throws, falls back to
+ * the UTC date, as before, rather than taking the poll down.
+ */
+function queueDayFrom(root: { fetchedAt?: unknown; userTimezone?: unknown }): string {
+  const at = new Date(String(root.fetchedAt ?? ''))
+  if (!Number.isFinite(at.getTime())) return ''
+  const tz = typeof root.userTimezone === 'string' ? root.userTimezone : 'UTC'
+  try {
+    return toDateStr(at, tz)
+  } catch {
+    return at.toISOString().slice(0, 10)
+  }
+}
+
 export function selectAssignedWork(
   body: unknown,
   opts: { includeFinished?: boolean } = {}
@@ -246,7 +273,7 @@ export function selectAssignedWork(
   // things the user has since completed, cancelled, or paused for the season —
   // the app arguing with a decision the user already made, which is the failure
   // this rule exists to prevent.
-  const today = String(root.fetchedAt ?? '').slice(0, 10)
+  const today = queueDayFrom(root)
   const typed = items.filter((raw): raw is Item => !!raw && typeof raw === 'object')
   const inactive = today
     ? inactiveIdsFrom(typed, today, root)

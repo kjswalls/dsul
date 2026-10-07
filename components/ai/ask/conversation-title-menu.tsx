@@ -253,7 +253,7 @@ function RenameField({ id, title, onDone }: { id: string; title: string; onDone:
         }
       }}
       onBlur={() => finish(true, false)}
-      className="-ml-1.5 h-7 min-w-0 flex-1 rounded-md border border-input bg-transparent px-1.5 text-sm font-medium text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="field -ml-1.5 h-7 min-w-0 flex-1 border bg-transparent px-1.5 text-sm font-medium text-foreground outline-none"
     />
   );
 }

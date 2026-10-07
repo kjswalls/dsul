@@ -7,7 +7,8 @@ import path from 'path';
  *
  * verb-writes-fixtures.test.ts pins what the sheet's verbs write; this pins its
  * edits (lib/item-edit.ts: the title, the notes, and the priority, times per
- * day, reminder and time chips), its Delete, Add a subtask and Reset streak.
+ * day, reminder, time and repeat chips), its Delete, Add a subtask and Reset
+ * streak.
  * Each case drives the web's REAL
  * gesture for the same change over the real planner store, with the db layer
  * mocked and the clock pinned (Thursday 1 October), and records to
@@ -39,16 +40,26 @@ import path from 'path';
  * so at 0 it writes nothing. A refused case comes from `refusal` alone, since
  * the store has no such refusal: the dialog never caps a field, and never
  * offers a subtask under a habit or a subtask, a reset on a task, a priority on
- * a habit, a count on a task, a reminder on a subtask, or a time on a subtask
- * or an undated task. Three cases have a
- * body the route's schema refuses, which the phone never builds:
- * `reminder-anchor-without-time` (cue words with no time),
- * `time-refused-anytime-with-a-time` and `time-refused-empty`.
+ * a habit, a count on a task, a reminder on a subtask, a time on a subtask
+ * or an undated task, or a repeat its type doesn't list. A repeat on a
+ * subtask is the route's refusal alone: the web's panel offers one, which
+ * would show nowhere, since a subtask shows only in its parent's sheet.
+ * Twelve cases have a body the route's schema refuses, which the phone never
+ * builds: `reminder-anchor-without-time` (cue words with no time),
+ * `time-refused-anytime-with-a-time`, `time-refused-empty`, and the nine
+ * repeat bodies whose days or day sit beside the wrong frequency, are missing,
+ * out of order or out of range.
  *
  * The Time chip's cases (2d) go through commitEdit's both passes: a part of
  * day picked away from the stored one is scheduleTask, which releases a
  * project block; a new time alone is updateTask twice (the mapper, then the
  * second pass's setTime), auto-corrected, and keeps the block.
+ *
+ * The Repeat chip's cases (2e) are the chip's rows: a frequency, then Custom
+ * days' keys or Monthly's day, written by the mappers as all three keys
+ * together (repeatPatch), or nothing when the draft is its seed. fetchGoals
+ * holds no goals here, so no case takes a goal role back: item-repeat-edit
+ * and the route's tests pin that.
  *
  * In `updates`, a key present with null is a column cleared (the store wrote
  * undefined, which lib/db.ts sends as SQL NULL).
@@ -71,7 +82,9 @@ import path from 'path';
  * hour, edges included), `corrected` is autoCorrectBucket (null kept as null)
  * and `starts` is BUCKET_START_TIMES, where Add a time starts the wheel.
  * `durations` pins the Time chip's lengths and their words (lib/item-edit.ts
- * DURATION_ORDER and durationLabel), for DsulCore's EditCopy.
+ * DURATION_ORDER and durationLabel), for DsulCore's EditCopy. `repeats` pins
+ * the Repeat chip's words: lib/planner-types.ts REPEAT_FREQUENCY_LABELS, in
+ * its order, and WEEKDAY_LABELS, for DsulCore's Cadence.
  *
  * Regenerate with:
  *
@@ -166,7 +179,7 @@ import { MAX_BULK_ITEMS, isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-
 import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
-import type { Item, TimeBucket } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, type Item, type TimeBucket } from '@/lib/planner-types';
 
 const FILE = path.resolve(__dirname, '../fixtures/day/edit-writes.json');
 const USER = 'user-1';
@@ -222,6 +235,9 @@ const shapeOf = (item: Item) => {
     startTime?: string;
     isScheduled?: boolean;
     duration?: number;
+    repeatFrequency?: string;
+    repeatDays?: number[];
+    repeatMonthDay?: number;
   };
   return editShapeFromRow({
     id: item.id,
@@ -240,6 +256,9 @@ const shapeOf = (item: Item) => {
     start_time: i.startTime ?? null,
     is_scheduled: i.isScheduled ?? null,
     duration: i.duration ?? null,
+    repeat_frequency: i.repeatFrequency ?? null,
+    repeat_days: i.repeatDays ?? null,
+    repeat_month_day: i.repeatMonthDay ?? null,
   });
 };
 
@@ -320,6 +339,14 @@ function panelChange(edit: ItemEdit): Partial<ItemDraft> {
         ...(edit.startTime !== undefined ? { startTime: edit.startTime ?? '' } : {}),
         ...(edit.duration !== undefined ? { duration: String(edit.duration) } : {}),
       };
+    case 'repeat':
+      // The chip's rows: a frequency, then Custom days' keys or Monthly's day. A body with custom
+      // always carries its days, so the chip's own pre-selection of today never reaches a case.
+      return {
+        repeatFrequency: edit.frequency,
+        ...(edit.days !== undefined ? { repeatDays: edit.days } : {}),
+        ...(edit.monthDay !== undefined ? { repeatMonthDay: edit.monthDay } : {}),
+      };
   }
 }
 
@@ -370,6 +397,8 @@ type EditBuckets = {
 };
 /** The Time chip's lengths and their words, which DsulCore's EditCopy must equal. */
 type EditDurations = { presets: number[]; labels: { minutes: number; label: string }[] };
+/** The Repeat chip's frequencies and weekdays, in the web's order and words, which DsulCore's Cadence must equal. */
+type EditRepeats = { labels: { frequency: string; label: string }[]; weekdays: string[] };
 type EditWrites = {
   today: string;
   limits: EditLimits;
@@ -378,6 +407,7 @@ type EditWrites = {
   bulk: BulkCase[];
   streakRun: StreakRunCase[];
   copy: Record<string, string>;
+  repeats: EditRepeats;
   buckets: EditBuckets;
   durations: EditDurations;
 };
@@ -762,6 +792,95 @@ async function build(): Promise<EditWrites> {
     cases.push(await editCase(...args));
   }
 
+  // The Repeat chip (2e): a frequency, with Custom days' keys or Monthly's day, written as all
+  // three keys together, or nothing when the draft is its seed.
+  const gym = (n: number) => task(n, 'Gym', { startDate: TODAY });
+  for (const args of [
+    [
+      'repeat-none-task',
+      task(1280, 'Water the plants', { startDate: '2026-09-01', timeBucket: 'morning', repeatFrequency: 'daily' }),
+      { action: 'repeat', frequency: 'none' },
+    ],
+    ['repeat-daily', task(1281, 'Groceries', { startDate: TODAY, timeBucket: 'anytime' }), { action: 'repeat', frequency: 'daily' }],
+    [
+      'repeat-custom',
+      task(1282, 'Gym', { startDate: TODAY, timeBucket: 'evening' }),
+      { action: 'repeat', frequency: 'custom', days: [1, 3, 5] },
+    ],
+    ['repeat-monthly', task(1283, 'Pay rent', { startDate: TODAY }), { action: 'repeat', frequency: 'monthly', monthDay: 1 }],
+    // A habit always repeats: the registry never offers it No repeat.
+    ['repeat-refused-habit-none', habit(1284, 'Meds'), { action: 'repeat', frequency: 'none' }, 'frequency_not_allowed'],
+    // A repeat touches no status: a finished one-off stays finished.
+    [
+      'repeat-finished-one-off-keeps-status',
+      task(1285, 'Renew passport', { startDate: '2026-09-30', status: 'completed' }),
+      { action: 'repeat', frequency: 'weekdays' },
+    ],
+    // The same days in another order differ by JSON, as the dialog compares its draft.
+    [
+      'repeat-custom-days-reordered',
+      task(1286, 'Gym', { startDate: TODAY, repeatFrequency: 'custom', repeatDays: [3, 1] }),
+      { action: 'repeat', frequency: 'custom', days: [1, 3] },
+    ],
+    [
+      'repeat-custom-to-monthly',
+      task(1287, 'Gym', { startDate: TODAY, repeatFrequency: 'custom', repeatDays: [1, 3] }),
+      { action: 'repeat', frequency: 'monthly', monthDay: 15 },
+    ],
+    // None stored reads as the type's default, 'none' for a task: already so.
+    ['repeat-unchanged-none', task(1288, 'Groceries', { startDate: TODAY }), { action: 'repeat', frequency: 'none' }],
+    [
+      'repeat-unchanged-days',
+      task(1289, 'Gym', { startDate: TODAY, repeatFrequency: 'custom', repeatDays: [1, 3] }),
+      { action: 'repeat', frequency: 'custom', days: [1, 3] },
+    ],
+    // A stale day under Daily is in the seed, so Daily sent alone is already so, and it stays.
+    [
+      'repeat-stale-month-day-kept',
+      task(1290, 'Stretch', { startDate: TODAY, repeatFrequency: 'daily', repeatMonthDay: 15 }),
+      { action: 'repeat', frequency: 'daily' },
+    ],
+    // No day stored seeds the 1st.
+    [
+      'repeat-monthly-no-day-stored',
+      task(1291, 'Pay rent', { startDate: TODAY, repeatFrequency: 'monthly' }),
+      { action: 'repeat', frequency: 'monthly', monthDay: 1 },
+    ],
+    ['repeat-habit-weekdays', habit(1292, 'Meds'), { action: 'repeat', frequency: 'weekdays' }],
+    ['repeat-habit-custom', habit(1293, 'Water the plants'), { action: 'repeat', frequency: 'custom', days: [0, 3] }],
+    [
+      'repeat-custom-type-monthly',
+      custom(1294, 'errand', 'Pay rent', { startDate: TODAY }),
+      { action: 'repeat', frequency: 'monthly', monthDay: 31 },
+    ],
+    // A subtask shows only in its parent's sheet, so a repeat there would show nowhere.
+    [
+      'repeat-refused-subtask',
+      task(1295, 'Write the three bets', { parentItemId: uid(1), isScheduled: false }),
+      { action: 'repeat', frequency: 'daily' },
+      'not_for_subtask',
+    ],
+    ['repeat-weekends', task(1296, 'Long run', { startDate: TODAY }), { action: 'repeat', frequency: 'weekends' }],
+    // The schema's nine: days or a day beside the wrong frequency, missing, out of order or out
+    // of range.
+    ['repeat-refused-days-without-custom', gym(1297), { action: 'repeat', frequency: 'daily', days: [1] }, 'invalid'],
+    ['repeat-refused-custom-without-days', gym(1298), { action: 'repeat', frequency: 'custom' }, 'invalid'],
+    ['repeat-refused-custom-empty-days', gym(1299), { action: 'repeat', frequency: 'custom', days: [] }, 'invalid'],
+    ['repeat-refused-days-unsorted', gym(1300), { action: 'repeat', frequency: 'custom', days: [3, 1] }, 'invalid'],
+    ['repeat-refused-day-twice', gym(1301), { action: 'repeat', frequency: 'custom', days: [1, 1] }, 'invalid'],
+    ['repeat-refused-day-seven', gym(1302), { action: 'repeat', frequency: 'custom', days: [7] }, 'invalid'],
+    [
+      'repeat-refused-month-day-without-monthly',
+      gym(1303),
+      { action: 'repeat', frequency: 'daily', monthDay: 1 },
+      'invalid',
+    ],
+    ['repeat-refused-monthly-without-day', gym(1304), { action: 'repeat', frequency: 'monthly' }, 'invalid'],
+    ['repeat-refused-month-day-32', gym(1305), { action: 'repeat', frequency: 'monthly', monthDay: 32 }, 'invalid'],
+  ] as [string, Item, ItemEdit, string?][]) {
+    cases.push(await editCase(...args));
+  }
+
   const trim = (
     [
       ['spaces', '  hi  '],
@@ -829,6 +948,10 @@ async function build(): Promise<EditWrites> {
     bulk: bulkCases(),
     streakRun,
     copy: { ...EDIT_COPY },
+    repeats: {
+      labels: Object.entries(REPEAT_FREQUENCY_LABELS).map(([frequency, label]) => ({ frequency, label })),
+      weekdays: [...WEEKDAY_LABELS],
+    },
     buckets,
     durations,
   };
@@ -886,11 +1009,24 @@ describe('edit writes shared with DsulCore', () => {
       // Nothing the schema would add or strip: the fixture is the wire.
       expect(asJson(parsed.data), c.name).toEqual(c.edit);
     }
-    expect(refused).toEqual(['reminder-anchor-without-time', 'time-refused-anytime-with-a-time', 'time-refused-empty']);
+    expect(refused).toEqual([
+      'reminder-anchor-without-time',
+      'time-refused-anytime-with-a-time',
+      'time-refused-empty',
+      'repeat-refused-days-without-custom',
+      'repeat-refused-custom-without-days',
+      'repeat-refused-custom-empty-days',
+      'repeat-refused-days-unsorted',
+      'repeat-refused-day-twice',
+      'repeat-refused-day-seven',
+      'repeat-refused-month-day-without-monthly',
+      'repeat-refused-monthly-without-day',
+      'repeat-refused-month-day-32',
+    ]);
   });
 
   it('lib/item-edit.ts refuses, and writes, what the web gesture did', () => {
-    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time'];
+    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time', 'repeat'];
     for (const c of generated.cases) {
       if (!fields.includes(String(c.edit.action))) continue;
       // A body the schema refuses never reaches the row (the check above).
@@ -946,6 +1082,22 @@ describe('edit writes shared with DsulCore', () => {
     ]);
     const released = blocks.find((c) => c.name === 'time-in-project-block-by-bucket')!;
     expect(released.updates).toMatchObject({ inProjectBlock: false, previousStartTime: null, previousStartDate: null });
+  });
+
+  it('a repeat writes its three keys together, and nothing else', () => {
+    const repeats = generated.cases.filter(
+      (c) => c.edit.action === 'repeat' && c.refusal === null && Object.keys(c.updates!).length > 0,
+    );
+    expect(repeats.length).toBeGreaterThan(0);
+    // Never the date, the status, the streak or the completion history.
+    const kept = (i: Item | null) => {
+      const x = i as { status?: string; startDate?: string; streak?: number; completedDates?: string[] };
+      return { status: x.status, startDate: x.startDate, streak: x.streak, completedDates: x.completedDates };
+    };
+    for (const c of repeats) {
+      expect(Object.keys(c.updates!).sort(), c.name).toEqual(['repeatDays', 'repeatFrequency', 'repeatMonthDay']);
+      expect(kept(c.after), c.name).toEqual(kept(asJson(c.item)));
+    }
   });
 
   it('a delete takes the item and, unless it is a habit, its subtasks, in the store’s order', () => {
@@ -1014,12 +1166,23 @@ describe('edit writes shared with DsulCore', () => {
     const cases = generated.cases;
     const actions = new Set(cases.map((c) => c.edit.action));
     expect(actions).toEqual(
-      new Set(['title', 'notes', 'delete', 'addSubtask', 'resetStreak', 'priority', 'timesPerDay', 'reminder', 'time']),
+      new Set([
+        'title',
+        'notes',
+        'delete',
+        'addSubtask',
+        'resetStreak',
+        'priority',
+        'timesPerDay',
+        'reminder',
+        'time',
+        'repeat',
+      ]),
     );
     // Refused, already so, a write, and a cleared column.
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'title')).toBe(true);
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'notes')).toBe(true);
-    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time']) {
+    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time', 'repeat']) {
       const of = cases.filter((c) => c.edit.action === action && !c.refusal);
       expect(of.some((c) => Object.keys(c.updates!).length === 0), action).toBe(true);
       expect(of.some((c) => Object.keys(c.updates!).length > 0), action).toBe(true);
@@ -1081,6 +1244,19 @@ describe('edit writes shared with DsulCore', () => {
     const overruled = cases.find((c) => c.name === 'time-habit-time-overrules-bucket')!;
     expect(Object.keys(overruled.updates!).length).toBeGreaterThan(0);
     expect(overruled.after).toEqual(asJson(overruled.item));
+    // The Repeat chip's refusals: a frequency the type doesn't list, a subtask, and the schema's.
+    const repeats = cases.filter((c) => c.edit.action === 'repeat');
+    expect(repeats.some((c) => c.refusal === 'frequency_not_allowed')).toBe(true);
+    expect(repeats.some((c) => c.refusal === 'not_for_subtask')).toBe(true);
+    expect(repeats.some((c) => c.refusal === 'invalid' && !ItemWriteSchema.safeParse(c.edit).success)).toBe(true);
+    // Every frequency sent and written, by a habit, a task and a custom item between them.
+    for (const frequency of Object.keys(REPEAT_FREQUENCY_LABELS)) {
+      expect(
+        repeats.some((c) => c.edit.frequency === frequency && !c.refusal && Object.keys(c.updates!).length > 0),
+        frequency,
+      ).toBe(true);
+    }
+    expect(new Set(repeats.filter((c) => !c.refusal).map((c) => c.item.type))).toEqual(new Set(['task', 'habit', 'custom']));
   });
 
   it('buckets and durations are lib/time-bucket.ts’s and the Time chip’s', () => {

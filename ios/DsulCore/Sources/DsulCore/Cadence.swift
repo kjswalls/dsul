@@ -2,6 +2,10 @@ import Foundation
 
 // The words the item sheet's chips say, ported from where the web says them:
 // - lib/cadence.ts `cadenceLabel`: how often an item repeats ("Mon, Wed");
+// - lib/planner-types.ts `REPEAT_FREQUENCY_LABELS` and `WEEKDAY_LABELS`, from
+//   2e read by the Repeat chip's menu and the Repeat sheet's keys too
+//   (`repeatFrequencyOrder`, `repeatFrequencyLabel`, `weekdayLabel`), with the
+//   keys' order in the user's week (`weekdayOrder`);
 // - lib/item-bands.ts `membershipSummary`: "Wind down", or "Wind down +1";
 // - lib/reminders/copy.ts `formatCueTime`: a reminder's "HH:mm" in the user's
 //   12h or 24h preference;
@@ -12,18 +16,21 @@ import Foundation
 // tables of lib/planner-types.ts. Keep in step: a change there without the
 // same change here is drift, and the phone words a chip differently from the
 // web. Checked against the web by CadenceFixtureTests
-// (tests/fixtures/day/cadence.json) and ChipsFixtureTests (chips.json).
+// (tests/fixtures/day/cadence.json), ChipsFixtureTests (chips.json) and, for
+// the repeat words, EditWritesFixtureTests (edit-writes.json's `repeats`).
 //
 // Everything is spelled by hand in English, the way the web spells it, so no
 // locale or ICU difference between Linux and Darwin can move a word.
 
-/// lib/planner-types.ts `WEEKDAY_LABELS`, indexed 0 = Sun … 6 = Sat.
+/// lib/planner-types.ts `WEEKDAY_LABELS`, indexed 0 = Sun … 6 = Sat
+/// (`weekdayLabel` reads it with the web's answer outside the table).
 let weekdayLabels = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]
 
 /// lib/active.ts `MONTHS` (and the en-US short month), indexed 0 = Jan.
 let monthLabels = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
 
-/// lib/planner-types.ts `REPEAT_FREQUENCY_LABELS`.
+/// lib/planner-types.ts `REPEAT_FREQUENCY_LABELS`. Read through
+/// `repeatFrequencyLabel`, so there is one lookup.
 let repeatFrequencyLabels: [String: String] = [
     "none": "No repeat",
     "daily": "Daily",
@@ -32,6 +39,24 @@ let repeatFrequencyLabels: [String: String] = [
     "monthly": "Monthly",
     "custom": "Custom days",
 ]
+
+/// lib/planner-types.ts `REPEAT_FREQUENCY_LABELS`' keys, in their order, which
+/// is the order the web's Repeat chip lists them in (and the registry's
+/// `allowedFrequencies` keeps). Checked by edit-writes.json's `repeats`.
+public let repeatFrequencyOrder: [String] = ["none", "daily", "weekdays", "weekends", "monthly", "custom"]
+
+/// lib/planner-types.ts `REPEAT_FREQUENCY_LABELS`: "No repeat", "Daily",
+/// "Weekdays", "Weekends", "Monthly", "Custom days". An unknown frequency is
+/// its own word, as `cadenceLabel` has it.
+public func repeatFrequencyLabel(_ frequency: String) -> String {
+    return repeatFrequencyLabels[frequency] ?? frequency
+}
+
+/// lib/planner-types.ts `WEEKDAY_LABELS`: 0 "Sun" … 6 "Sat"; "" outside 0...6,
+/// as the web's `undefined` joins.
+public func weekdayLabel(_ day: Int) -> String {
+    return (0...6).contains(day) ? weekdayLabels[day] : ""
+}
 
 /// lib/reminders/copy.ts `TimeFormat`, the `user_settings.time_format` column.
 public enum TimeFormat: String, Sendable, Hashable, CaseIterable {
@@ -54,6 +79,14 @@ public enum WeekStartDay: String, Sendable, Hashable, CaseIterable {
     }
 }
 
+/// The seven weekdays (0 = Sun … 6 = Sat) in the week's own order, starting on
+/// `weekStartDay`: Monday gives [1, 2, 3, 4, 5, 6, 0]. The Repeat sheet's
+/// Custom days keys run in it, as the phone's week dots do; the web's keys
+/// always run from Sunday (`WEEKDAY_LABELS`).
+public func weekdayOrder(_ weekStartDay: WeekStartDay) -> [Int] {
+    return (0..<7).map { (weekStartDay.weekday + $0) % 7 }
+}
+
 /// lib/container-schedule.ts `weekStartOf`: the first day of `day`'s week.
 public func weekStartOf(_ day: DayString, _ weekStartDay: WeekStartDay) -> DayString {
     return day.adding(days: -((day.weekday - weekStartDay.weekday + 7) % 7))
@@ -71,14 +104,14 @@ public func cadenceLabel(_ item: Item) -> String {
             let days = (item.repeatDays ?? []).sorted()
             if days.count == 7 { return "Daily" }
             // An index past the table is `undefined` on the web, which joins as "".
-            let joined = days.map { (0...6).contains($0) ? weekdayLabels[$0] : "" }.joined(separator: ", ")
+            let joined = days.map(weekdayLabel).joined(separator: ", ")
             return joined.isEmpty ? "Custom days" : joined
         }
         if f == "monthly" {
             if let monthDay = item.repeatMonthDay, monthDay != 0 { return "Monthly · \(monthDay)" }
             return "Monthly"
         }
-        return repeatFrequencyLabels[f] ?? f
+        return repeatFrequencyLabel(f)
     }
     guard let start = item.startDate, !start.isEmpty else { return "No date" }
     return formatShort(start)

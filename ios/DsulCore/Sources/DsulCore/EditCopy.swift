@@ -16,6 +16,10 @@ import Foundation
 // Duration rows and its time chip read (checked by edit-writes.json's
 // `durations`).
 //
+// From 2e, the Repeat sheet's two sentences: Custom days' "Select at least one
+// day" and Monthly's note on short months (the dialog's Repeat chip). The
+// frequency and weekday words are lib/planner-types.ts's, in Cadence.swift.
+//
 // The phone's own words (the "Add a subtask" row, the confirm's title) are
 // the app's, in ItemSheetModel.
 
@@ -38,6 +42,10 @@ public enum EditCopy {
     /// Under the time, for a dated type with no date (`reminderNeedsDate`).
     public static let reminderNeedsDate = "Give this a date and it will fire. "
         + "Without one there is no day for the reminder to land on."
+    /// Under Custom days' keys while none is picked.
+    public static let selectAtLeastOneDay = "Select at least one day"
+    /// Under Monthly's days: a day past a short month's end lands on its last.
+    public static let monthlyNote = "For months with fewer days, it will occur on the last day."
 
     /// lib/item-edit.ts `DURATION_ORDER`: the lengths the Time sheet offers,
     /// in minutes, in the dialog's order.

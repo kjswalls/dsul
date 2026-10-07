@@ -25,7 +25,11 @@ import Foundation
 //   specific time ("HH:mm", or null for none) and a length (a JSON number).
 //   At least one, and never a time beside Anytime or a null part of day,
 //   which the route's schema refuses (`editAllowed` keeps the phone from
-//   building either).
+//   building either);
+// - `{"action":"repeat","frequency":…}`, with `"days":[…]` (0 = Sun … 6 =
+//   Sat, ascending, a JSON array of numbers) with Custom days alone and
+//   `"monthDay":…` (a JSON number, 1 to 31) with Monthly alone; neither key
+//   otherwise, and never null. The server writes all three columns together.
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -38,7 +42,7 @@ import Foundation
 /// One write the item sheet sends, ready to encode.
 public enum ItemWriteBody: Encodable, Sendable, Hashable {
     /// A typed edit: `title`, `notes`, `priority`, `timesPerDay`,
-    /// `reminder` or `time`.
+    /// `reminder`, `time` or `repeat`.
     case edit(ItemEdit)
     /// Delete: the item, and, unless it is a habit, its subtasks.
     case delete
@@ -62,6 +66,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
     private enum Key: String, CodingKey {
         case action, id, title, notes, priority, timesPerDay, time, anchor
         case timeBucket, startTime, duration
+        case frequency, days, monthDay
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -113,6 +118,16 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
             }
             if let duration {
                 try c.encode(duration, forKey: .duration)
+            }
+        case .edit(.repeats(let frequency, let days, let monthDay)):
+            // The days and the day only when the edit carries them; absent,
+            // never null.
+            try c.encode(frequency, forKey: .frequency)
+            if let days {
+                try c.encode(days, forKey: .days)
+            }
+            if let monthDay {
+                try c.encode(monthDay, forKey: .monthDay)
             }
         case .addSubtask(let id, let title):
             try c.encode(id.uuidString.lowercased(), forKey: .id)

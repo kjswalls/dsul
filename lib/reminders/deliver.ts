@@ -33,6 +33,8 @@ export interface DeliveryReport {
   channel: string
   ok: boolean
   skipped: boolean
+  /** The channel had nowhere to deliver (ChannelResult.unreached). */
+  unreached: boolean
   detail?: string
 }
 
@@ -93,6 +95,7 @@ export async function deliverNudge(
         channel: channel.slug,
         ok: outcome.value.ok,
         skipped: outcome.value.skipped ?? false,
+        unreached: outcome.value.unreached ?? false,
         detail: outcome.value.detail,
       }
     }
@@ -101,6 +104,7 @@ export async function deliverNudge(
       channel: channel.slug,
       ok: false,
       skipped: false,
+      unreached: false,
       detail: reason instanceof Error ? reason.message : String(reason),
     }
   })

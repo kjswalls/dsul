@@ -1,9 +1,10 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { reportLiveCompletion, stakeEligibleRow } from '@/lib/stakes/live';
 import { decodeDetail, encodeDetail, datapointIdFrom } from '@/lib/stakes/beeminder';
+import { makeServiceFake } from './support/service-fake';
 
 /**
- * A service-client stub good enough for the live path.
+ * The shared fake, answering the way the live path needs.
  *
  * Every read is a table → result lookup and every write is recorded, which is
  * what the assertions below are actually about: this feature's correctness is
@@ -11,48 +12,29 @@ import { decodeDetail, encodeDetail, datapointIdFrom } from '@/lib/stakes/beemin
  * PostgREST returns.
  */
 function makeService(tables: Record<string, unknown>, vanished = false) {
-  const writes: { table: string; op: string; payload?: unknown }[] = [];
   // The ledger row the code reads back after its own claim. Modelled, because
   // read-after-claim is the step the whole idempotency story turns on: a stub
   // that always answered "no row" would make every post look like a lost claim.
   let ledgerRow: unknown = tables.stake_events ?? null;
 
-  const chain = (result: { data?: unknown; error?: unknown }): Record<string, unknown> =>
-    new Proxy({}, {
-      get(_t, prop: string) {
-        if (prop === 'then') {
-          return (resolve: (v: unknown) => void) =>
-            Promise.resolve({ data: result.data ?? null, error: result.error ?? null }).then(resolve);
-        }
-        return () => chain(result);
-      },
-    });
-
-  const service = {
-    from: (table: string) => ({
-      select: () =>
-        chain({ data: table === 'stake_events' ? ledgerRow : (tables[table] ?? null) }),
-      upsert: (rows: unknown) => {
-        writes.push({ table, op: 'upsert', payload: rows });
+  return makeServiceFake((call) => {
+    switch (call.op) {
+      case 'select':
+        return { data: call.table === 'stake_events' ? ledgerRow : (tables[call.table] ?? null) };
+      case 'upsert':
         if (!ledgerRow) {
-          const first = (rows as Record<string, unknown>[])[0];
+          const first = (call.payload as Record<string, unknown>[])[0];
           ledgerRow = { id: 'e1', detail: first.detail, committed_at: null };
         }
-        return chain({});
-      },
-      update: (payload: unknown) => {
-        writes.push({ table, op: 'update', payload });
+        return {};
+      case 'update':
         // The stamp reads back its own row, so the code can tell "updated" from
         // "the row is gone". `vanished` models the row being deleted underneath.
-        return chain({ data: vanished ? [] : [{ id: 'e1' }] });
-      },
-      delete: () => {
-        writes.push({ table, op: 'delete' });
-        return chain({});
-      },
-    }),
-  };
-  return { service: service as never, writes };
+        return { data: vanished ? [] : [{ id: 'e1' }] };
+      default:
+        return {};
+    }
+  });
 }
 
 const DAY = '2026-08-10';
@@ -102,12 +84,12 @@ describe('reportLiveCompletion — posting', () => {
     expect(result).toMatchObject({ ok: true });
     expect(fetchMock).toHaveBeenCalledTimes(1);
 
-    const claim = writes.find((w) => w.op === 'upsert');
+    const claim = writes().find((w) => w.op === 'upsert');
     expect((claim?.payload as Record<string, unknown>[])[0]).toMatchObject({
       user_id: 'u1', date: DAY, subject: 'h1', channel: 'beeminder', kind: 'hit', detail: 'vits',
     });
 
-    const stamp = writes.find((w) => w.op === 'update')?.payload as Record<string, unknown>;
+    const stamp = writes().find((w) => w.op === 'update')?.payload as Record<string, unknown>;
     expect(stamp.detail).toBe('vits#dp-1');
     expect(stamp.committed_at).toEqual(expect.any(String));
   });
@@ -137,7 +119,7 @@ describe('reportLiveCompletion — the gates', () => {
     const result = await reportLiveCompletion(service, input);
     expect(result).toMatchObject({ ok: true, skipped: true, detail });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(writes).toEqual([]);
+    expect(writes()).toEqual([]);
   };
 
   // The master switch is read from the DATABASE, not from the caller's claim —
@@ -176,7 +158,7 @@ describe('reportLiveCompletion — the gates', () => {
     const { service, writes } = makeService(configured());
     const result = await reportLiveCompletion(service, { ...input, dateStr: '2999-01-01' });
     expect(result).toMatchObject({ skipped: true, detail: 'future date' });
-    expect(writes).toEqual([]);
+    expect(writes()).toEqual([]);
   });
 
   it('refuses an item that is not this user’s', () =>
@@ -201,7 +183,7 @@ describe('reportLiveCompletion — retraction', () => {
     expect(result).toMatchObject({ ok: true, detail: 'datapoint withdrawn' });
     expect(fetchMock.mock.calls[0][0]).toContain('/datapoints/dp-1.json');
     expect(fetchMock.mock.calls[0][1].method).toBe('DELETE');
-    expect(writes.map((w) => w.op)).toEqual(['delete']);
+    expect(writes().map((w) => w.op)).toEqual(['delete']);
   });
 
   // The row IS the claim on the datapoint, so releasing an uncommitted claim
@@ -214,7 +196,7 @@ describe('reportLiveCompletion — retraction', () => {
 
     expect(result).toMatchObject({ ok: true, detail: 'claim released' });
     expect(fetchMock).not.toHaveBeenCalled();
-    expect(writes.map((w) => w.op)).toEqual(['delete']);
+    expect(writes().map((w) => w.op)).toEqual(['delete']);
   });
 
   // Says what is true rather than reporting a retraction that did not happen.
@@ -231,7 +213,7 @@ describe('reportLiveCompletion — retraction', () => {
     const { service, writes } = makeService(configured({ ...notDone, stake_events: null }));
     const result = await reportLiveCompletion(service, unticked);
     expect(result).toMatchObject({ skipped: true, detail: 'nothing posted' });
-    expect(writes).toEqual([]);
+    expect(writes()).toEqual([]);
   });
 });
 
@@ -275,7 +257,7 @@ describe('reportLiveCompletion — failure', () => {
     const { service, writes } = makeService(configured());
     const result = await reportLiveCompletion(service, { ...input, dateStr: 'yesterday' });
     expect(result).toMatchObject({ skipped: true, detail: 'bad date' });
-    expect(writes).toEqual([]);
+    expect(writes()).toEqual([]);
   });
 });
 

@@ -1,5 +1,12 @@
 import { describe, it, expect } from 'vitest';
-import { isEodOwed, minutesOfDay, nowMinutesIn, shouldShowEodNotice } from '@/lib/eod';
+import {
+  eodLinkDay,
+  isEodOwed,
+  minutesOfDay,
+  nowMinutesIn,
+  reviewedDay,
+  shouldShowEodNotice,
+} from '@/lib/eod';
 
 /**
  * The review-is-owed predicate. Pure precisely so these cases can exist: the
@@ -94,5 +101,107 @@ describe('nowMinutesIn', () => {
     // hour12:false yields "24" for midnight under some ICU versions, which
     // would put the clock an entire day past every review hour.
     expect(nowMinutesIn(new Date('2026-08-11T04:00:00Z'), 'America/New_York')).toBe(0);
+  });
+});
+
+describe('eodLinkDay', () => {
+  it('reads the day the review push names', () => {
+    expect(eodLinkDay('2026-10-06')).toBe('2026-10-06');
+  });
+
+  // Pushes sent before the link named its day said ?eod=1, and a notification
+  // can wait in the shade: it still opens the review, naming no day.
+  it('names no day for the bare ?eod=1, or anything that is not a day', () => {
+    expect(eodLinkDay('1')).toBeNull();
+    expect(eodLinkDay('')).toBeNull();
+    expect(eodLinkDay('2026-10-6')).toBeNull();
+    expect(eodLinkDay('2026-10-06T00:15')).toBeNull();
+  });
+});
+
+describe('reviewedDay', () => {
+  /** A review opened on `day` at `hhmm`, set for `eodReviewTime`, nothing recorded yet. */
+  const at = (
+    invitedFor: string | null,
+    day: string,
+    hhmm: string,
+    settings: { eodReviewTime?: string; lastEodReviewDate?: string | null } = {}
+  ) =>
+    reviewedDay(
+      invitedFor,
+      { day, minutes: minutesOfDay(hhmm)! },
+      { eodReviewTime: '21:00', lastEodReviewDate: null, ...settings }
+    );
+
+  // THE case. Done used to stamp the day it was pressed, so the 6th's 23:30
+  // push, finished at 00:15 on the 7th, recorded the 7th as reviewed, and
+  // isEodOwed (which the scan asks too) retired the 7th's invitation before
+  // it was sent.
+  it('records an after-midnight review against the day its push invited', () => {
+    expect(at('2026-10-06', '2026-10-07', '00:15', { eodReviewTime: '23:30' })).toBe('2026-10-06');
+    expect(at('2026-10-06', '2026-10-07', '03:59')).toBe('2026-10-06');
+  });
+
+  it('records a review opened from tonight\'s push as tonight\'s', () => {
+    expect(at('2026-10-06', '2026-10-06', '21:10')).toBe('2026-10-06');
+  });
+
+  // Opened from the palette or the dock: the day it opened on, which a Done
+  // pressed after midnight no longer moves.
+  it('falls back to the day the review opened on', () => {
+    expect(at(null, '2026-10-06', '23:55')).toBe('2026-10-06');
+  });
+
+  // Each day's push has its own tag, so yesterday's can wait in the shade all
+  // day. Tapped in the evening, before tonight's review hour or after it, it
+  // opens a review of TODAY (the review lists the day it opened on), and
+  // filed under yesterday that review would leave today owed: the scan would
+  // invite at 21:00 a review finished half an hour before, and the dock would
+  // put its line back up straight after Done.
+  it.each(['04:00', '12:00', '20:30', '20:50', '21:10'])(
+    "yesterday's push opened at %s is today's review",
+    (hhmm) => {
+      expect(at('2026-10-06', '2026-10-07', hhmm)).toBe('2026-10-07');
+    }
+  );
+
+  // A review hour inside the small hours sent yesterday's push at 01:00
+  // yesterday, a whole day before. Tonight's own, sent at 01:00 or about to
+  // be, is the one a review at either side of it answers, and the Done must
+  // retire it rather than leave it to ring after the review is finished.
+  it.each(['00:30', '01:30'])(
+    "yesterday's push for a 01:00 review, opened at %s, is today's review",
+    (hhmm) => {
+      expect(at('2026-10-06', '2026-10-07', hhmm, { eodReviewTime: '01:00' })).toBe('2026-10-07');
+    }
+  );
+
+  // …and an hour of the evening or the morning leaves the small hours to the
+  // night before, whichever it is.
+  it.each(['04:00', '07:30', '23:30', '9:00'])('a %s review still files a 02:00 opening under yesterday', (time) => {
+    expect(at('2026-10-06', '2026-10-07', '02:00', { eodReviewTime: time })).toBe('2026-10-06');
+  });
+
+  // Today reviewed already (from the palette at 00:05, say), and then
+  // yesterday's push is tapped and finished: the stamp stays on today. Moved
+  // back to yesterday, it would owe today's review again.
+  it('never moves the stamp back behind a review already recorded for today', () => {
+    expect(at('2026-10-06', '2026-10-07', '00:15', { lastEodReviewDate: '2026-10-07' })).toBe('2026-10-07');
+    expect(at('2026-10-06', '2026-10-07', '00:15', { lastEodReviewDate: '2026-10-05' })).toBe('2026-10-06');
+  });
+
+  // A notification tapped days later opens a review of today; filing it under
+  // a day long gone would leave tonight's review owed. A day after the one it
+  // opened on is no day anyone was invited to review.
+  it('ignores an invitation that is not for the day it opened on or the one before', () => {
+    expect(at('2026-10-04', '2026-10-07', '00:15')).toBe('2026-10-07');
+    expect(at('2026-10-08', '2026-10-07', '00:15')).toBe('2026-10-07');
+    expect(at('1', '2026-10-07', '00:15')).toBe('2026-10-07');
+  });
+
+  it('counts the day before across a month and a year', () => {
+    expect(at('2026-09-30', '2026-10-01', '00:15')).toBe('2026-09-30');
+    expect(at('2025-12-31', '2026-01-01', '00:15')).toBe('2025-12-31');
+    expect(at('2028-02-29', '2028-03-01', '00:15')).toBe('2028-02-29');
   });
 });

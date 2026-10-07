@@ -99,6 +99,24 @@ export function assertLocalTarget(env: Record<string, string | undefined>): void
 /** The port half of BASE_URL, for the dev-server command. */
 export const E2E_PORT = new URL(BASE_URL).port || '3000';
 
+/**
+ * The bearer the cron routes accept in this run, or undefined when there is none.
+ *
+ * local-setup.sh writes a fresh random CRON_SECRET into .env.test on every run;
+ * playwright.config.ts loads it, and the webServer inherits it, so the route under
+ * test and the spec calling it hold the same value. It is never production's: it
+ * guards a throwaway local stack.
+ *
+ * Optional, unlike testEnv(): only the tick spec needs it, and an .env.test
+ * written before 058 has none. Without it that spec SKIPS rather than passing on
+ * a technicality, because `next dev` lets every cron request through when the
+ * secret is unset (lib/cron-auth.ts), so "401 without the bearer" could not be
+ * asserted at all.
+ */
+export function cronSecret(): string | undefined {
+  return process.env.CRON_SECRET || undefined;
+}
+
 /** Where globalSetup parks the authenticated session + resolved API key. */
 export const STORAGE_STATE = 'tests/e2e/.auth/state.json';
 export const SETUP_ARTIFACT = 'tests/e2e/.auth/setup.json';

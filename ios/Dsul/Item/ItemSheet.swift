@@ -14,9 +14,10 @@ import SwiftUI
 /// - Its verbs act on the day it was opened with (`SheetDay`), read when one
 ///   is tapped. Pause until, Reschedule's Pick a date and the date chip's
 ///   Pick a date… open a day picker sheet of its own, the reminder chip and
-///   Remind… the Remind sheet, and the time chip and Time… the Time sheet
-///   (`SheetEditor`), never the planner's slot, which would close this one to
-///   open it.
+///   Remind… the Remind sheet, the time chip and Time… the Time sheet, and
+///   the repeat chip's and Repeat ▸'s Monthly… and Custom days… the Repeat
+///   sheet (`SheetEditor`), never the planner's slot, which would close this
+///   one to open it.
 /// - It stays open after a verb, as the web's item panel does. When its item
 ///   is gone (deleted, or a fetch without it), the planner clears the slot
 ///   and it closes, still showing the item as it slides away.
@@ -68,8 +69,9 @@ private struct ItemSheetStack: View {
         // themselves too. The sheet's own sheets tint themselves: the day
         // pickers' calendar (the date chip's Pick a date… included) the
         // system blue, since it draws a white number on the tint, and
-        // ReminderSheet and TimeSheet the label colour, since nothing in them
-        // is lime.
+        // ReminderSheet, TimeSheet and RepeatSheet the label colour, since
+        // nothing in them is lime. RepeatSheet's picked keys and day are the
+        // day pickers' blue under white (`DayPickSheet.calendarTint`).
         .sheet(item: $editor) { editor in
             editorSheet(editor)
         }
@@ -77,8 +79,8 @@ private struct ItemSheetStack: View {
         .presentationDragIndicator(.visible)
     }
 
-    /// The sheet's own sheets: the day pickers, the Remind sheet and the Time
-    /// sheet.
+    /// The sheet's own sheets: the day pickers, the Remind sheet, the Time
+    /// sheet and the Repeat sheet.
     ///
     /// Reschedule starts on the item's own day (or the day the sheet acts
     /// on, when it has none) and may pick any day, as the web's does; it is
@@ -91,11 +93,13 @@ private struct ItemSheetStack: View {
     /// so today is read again when it confirms, and a day no longer after it
     /// writes nothing and says so in the banner.
     ///
-    /// The Remind and Time sheets are handed the item as it is now, and keep
-    /// what they opened on (`ReminderSheet`, `TimeSheet`): this runs again
-    /// whenever the planner's items change, and a sheet whose item went would
-    /// otherwise go blank under the user, so there is no `if let`. The
-    /// planner closes the item sheet, and these with it, when the item goes.
+    /// The Remind, Time and Repeat sheets are handed the item as it is now,
+    /// and keep what they opened on (`ReminderSheet`, `TimeSheet`,
+    /// `RepeatSheet`, which takes today too, for the day Custom days picks
+    /// when none is stored): this runs again whenever the planner's items
+    /// change, and a sheet whose item went would otherwise go blank under the
+    /// user, so there is no `if let`. The planner closes the item sheet, and
+    /// these with it, when the item goes.
     @ViewBuilder
     private func editorSheet(_ editor: SheetEditor) -> some View {
         switch editor {
@@ -124,6 +128,8 @@ private struct ItemSheetStack: View {
         case .time(let itemID):
             TimeSheet(id: itemID, opening: planner.item(itemID),
                       caps: planner.item(itemID).map { planner.caps(for: $0) })
+        case .repeatDetail(let itemID, let detail):
+            RepeatSheet(id: itemID, detail: detail, opening: planner.item(itemID), today: planner.today)
         }
     }
 

@@ -336,7 +336,7 @@ dateless surfaces resolve at today (decision 3).
 | Manager UI | Shows containers, their states, and their members (including suppressed) with state pills. NOT the home for container-less paused items — that's the braindump Paused section (decision 10). |
 | User-card streak pill (user-card.tsx:79) | NEW ROW: unchanged — bestStreak reads ALL habits including paused ones, now as a decision rather than an accident (streaks are preserved state, not an open obligation; filtering here would read as losing the streak). |
 | Mobile — schedule-sheet.tsx | Gains Pause / Pause until… rows (touch has no hover — #195 contract). Resume reaches mobile via the braindump Paused section's rows + the omnibar (search hit → edit sheet → overflow); an unskip-style resume row (sheet-unskip-button precedent) renders when the sheet opens on a paused item's row. |
-| EOD/morning crons (eod-notify) | Unchanged — user-level, never item-level; the review dialog itself just has fewer rows. |
+| EOD/morning crons (eod-notify, since folded into the reminder scan as its EOD tier) | Unchanged — user-level, never item-level; the review dialog itself just has fewer rows. |
 
 ## Store plan
 

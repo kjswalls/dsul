@@ -9,15 +9,18 @@
  * months ago and no service worker to have been evicted. It is what still works
  * on the day push quietly stopped.
  *
- * Unlike the call, it accepts BOTH kinds by default — a text costs a fraction of
- * a cent and is glanceable, so the argument that keeps calls to once a day does
- * not apply.
+ * Unlike the call, it accepts both reminder kinds by default (REMINDER_KINDS:
+ * the cue and the last call) — a text costs a fraction of a cent and is
+ * glanceable, so the argument that keeps calls to once a day does not apply.
+ * The EOD review is not one of them, and typing it into `kinds` does not make
+ * it one: it is push only (channelKinds).
  *
- * Config:  to, from, kinds (default: both)
+ * Config:  to, from, kinds (default: REMINDER_KINDS; a list only narrows it)
  * Secrets: accountSid, authToken
  */
 
 import { smsLine } from '../copy'
+import { channelKinds } from '../nudge'
 import { twilioCredentials, twilioPost } from './twilio'
 import type { NudgeChannel } from './types'
 
@@ -29,13 +32,17 @@ export const smsChannel: NudgeChannel = {
 
   async deliver(nudge, ctx) {
     const raw = ctx.config.kinds
-    const kinds =
+    const listed =
       typeof raw === 'string' && raw.trim()
         ? raw.split(',').map((s) => s.trim()).filter(Boolean)
         : Array.isArray(raw)
           ? raw.filter((v): v is string => typeof v === 'string')
           : []
-    if (kinds.length > 0 && !kinds.includes(nudge.kind)) {
+    // Blank is the named default, never "every kind there is": a kind added
+    // to NudgeKind does not start texting anyone by being added, or by being
+    // typed in here.
+    const kinds = channelKinds(listed)
+    if (!kinds.includes(nudge.kind)) {
       return { ok: true, skipped: true, detail: `sms declines ${nudge.kind}` }
     }
 

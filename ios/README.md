@@ -4,8 +4,8 @@ A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
 and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
 the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
 and notes, Delete, a new subtask, a streak reset, an item's priority, times
-per day and reminder, and an item's date, part of day, time and length are
-saved to the server.
+per day and reminder, and an item's date, part of day, time and length, and
+how it repeats, are saved to the server.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -20,11 +20,11 @@ Tap an item anywhere (a row, a block on the grid, a braindump row, a search
 result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
 Pause until, Resume, whichever apply), and Delete behind ⋯. Tap the title or
-the notes to edit them in place. Tap the priority, date, time, times per day
-or reminder chip to change it, and Add property (a plus once there are chips)
-to add one; the other chips are read-only for now, and the streak chip opens
-this week and Reset streak. Add a subtask from the Subtasks section, one at a
-time or by pasting a list. A tap on a row's circle still just ticks it.
+the notes to edit them in place. Tap the priority, date, time, times per day,
+repeat or reminder chip to change it, and Add property (a plus once there are
+chips) to add one; the other chips are read-only for now, and the streak chip
+opens this week and Reset streak. Add a subtask from the Subtasks section, one
+at a time or by pasting a list. A tap on a row's circle still just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
@@ -161,9 +161,10 @@ server's `skip`, `move` and `pause` writes are deployed (an older server's
 verbs simply don't show); a check that needs one or the other says so. The
 sample's habits are Meds and Stretch 10 min (daily, already done today),
 Journal (daily, not done today), Plan tomorrow (weekdays) and Water the
-plants (Sundays and Wednesdays), and its tasks are all one-offs. Draft Q4
-roadmap has two subtasks (Pull the September numbers, done, and Write the
-three bets), and no sample note runs past four lines.
+plants (Sundays and Wednesdays), and its tasks are all one-offs but Pay
+rent, last in the braindump, which repeats monthly on the 1st and has no day.
+Draft Q4 roadmap has two subtasks (Pull the September numbers, done, and
+Write the three bets), and no sample note runs past four lines.
 
 1. **Opening.** A row on List and on Buckets, a block on Schedule, a braindump
    row (the item's sheet stacks on the braindump sheet) and a Search result
@@ -233,12 +234,12 @@ three bets), and no sample note runs past four lines.
 The hosted tests pin what each field sends and what Delete says, but not how
 typing feels. Check on the iPhone, on the sample or signed in once the
 server's `title`, `notes`, `delete`, `addSubtask`, `resetStreak`, `priority`,
-`timesPerDay`, `reminder` and `time` writes are deployed (against an older
-server the title and notes stay text, ⋯ has no Delete, there is no Add a
-subtask row, the streak popover has no Reset, and the chips stay read-only,
-with no chevrons, but for the date chip, which moves the item as Reschedule
-does; Add property then holds Date alone, on an undated task); a check that
-needs one or the other says so.
+`timesPerDay`, `reminder`, `time` and `repeat` writes are deployed (against
+an older server the title and notes stay text, ⋯ has no Delete, there is no
+Add a subtask row, the streak popover has no Reset, and the chips stay
+read-only, with no chevrons, but for the date chip, which moves the item as
+Reschedule does; Add property then holds Date alone, on an undated task); a
+check that needs one or the other says so.
 The sample comes back whole each time the app starts, so relaunch it to undo
 a delete, a reset or a chip.
 
@@ -315,11 +316,12 @@ a delete, a reset or a chip.
    - On Call the bank in the braindump (no date, priority or reminder), the
      only chip reads "Add property". On Groceries it is a plus after the
      project chip. VoiceOver reads both as "Add property".
-   - Tap it on Groceries: Priority, Time… and Remind…, and no Times per day (a
-     task has none). On Call the bank: Priority, Date and Remind…, and no
-     Time… (it has no day yet). On Journal: Times per day and Remind…. On
-     Meds: Times per day alone. On Draft Q4 roadmap's subtask Pull the
-     September numbers (its own page): Priority alone, with no Date, Time… or
+   - Tap it on Groceries: Priority, Time…, Repeat and Remind…, and no Times
+     per day (a task has none). On Call the bank: Priority, Date, Repeat and
+     Remind…, and no Time… (it has no day yet). On Journal: Times per day and
+     Remind…, and no Repeat (a habit always shows its repeat chip). On Meds:
+     Times per day alone. On Draft Q4 roadmap's subtask Pull the September
+     numbers (its own page): Priority alone, with no Date, Time…, Repeat or
      Remind….
    - Priority ▸ Low on Groceries: one pick, a "Low" chip with a chevron
      appears, and Priority is gone from Add property.
@@ -329,6 +331,8 @@ a delete, a reset or a chip.
      "Today" chip with a chevron appears, Date leaves Add property, Time…
      joins it, and Renew passport leaves the braindump for today's list.
    - Time… opens the Time sheet at once.
+   - Repeat ▸ on Groceries: Daily, Weekdays, Weekends, Monthly… and Custom
+     days…, and no No repeat.
    - Once everything it offers is set, there is no Add property.
 8. **The chips.**
    - Priority: on Draft Q4 roadmap, tap "High": None, Low, Medium and High,
@@ -440,9 +444,57 @@ a delete, a reset or a chip.
      shows it in the block. Pick Anytime instead (or, on one with no time,
      another part of day), and the web shows it out of the block, on the
      same day.
+   - Repeat: open Plan tomorrow (Search finds it on a weekend) and tap
+     "Weekdays": Daily, Weekdays, Weekends, Monthly… and Custom days…, with
+     Weekdays checked, and no No repeat (a habit always repeats). Pick Daily:
+     the chip reads Daily at once.
+   - On Groceries, Add property ▸ Repeat ▸ Weekdays: a "Weekdays" chip with a
+     chevron appears, and Repeat leaves Add property. Tap the chip: No repeat
+     comes first. Pick it: the chip goes, and Repeat is back in Add property.
+   - Open Water the plants (Search finds it on any day) and tap "Sun, Wed",
+     then Custom days…: a sheet titled "Custom days" with seven keys, Sun and
+     Wed picked in blue. Tap Fri, then Done: the chip reads "Sun, Wed, Fri".
+   - Open it again and tap the three picked keys: "Select at least one day"
+     shows in red under them, and Done is grey. Swipe the sheet down: it
+     stays. Tap Cancel: "Discard changes?". Discard: the chip still reads
+     "Sun, Wed, Fri".
+   - On Stretch 10 min (Daily), pick Custom days…: only today's key is
+     picked. Swipe the sheet down: it closes with no "Discard changes?", and
+     the chip still reads Daily. Pick Custom days… again and tap Done: the
+     chip reads today's day alone (for example "Thu").
+   - With the chip on Custom days, open its menu and pick Custom days… again:
+     the sheet opens on the days already set.
+   - On Water the plants, pick Custom days… and turn on every key, then
+     Done: the chip reads "Daily" (seven days read as Daily, as Today's rows
+     read them), and its menu has Custom days… checked, not Daily.
+   - Open Pay rent, last in the braindump: its chip reads "Monthly · 1". Pick
+     Monthly…: a sheet titled "Monthly" with days 1 to 31 in a grid, 1
+     picked, and "For months with fewer days, it will occur on the last
+     day." under it. Pick 31 and tap Done: the chip reads "Monthly · 31", and
+     Pay rent stays in the braindump, with no date.
+   - On Call the bank, in the braindump, Add property ▸ Repeat ▸ Daily: a
+     Daily chip, and Call the bank stays in the braindump, with no date chip.
+   - Write the three bets (a subtask) has no Repeat in Add property.
+   - Signed in, set Week starts on to Monday on the web (Settings → Your day)
+     and pull to refresh. On a task of your own, pick Custom days… (Add
+     property ▸ Repeat, or its repeat chip): the keys run Mon to Sun. The
+     sheet opens with today's key picked, or the days already set, so turn
+     keys on and off until only Mon and Sun are picked, and tap Done: the
+     chip reads "Sun, Mon", the web's Sunday-first order, as Today's rows
+     read it.
+   - Signed in, on a task that is a milestone of one of your goals on the
+     web, pick Daily here, then reload the web: it is a plain member of that
+     goal now, with no notice on either side. Pick No repeat here and reload
+     the web: it is still a plain member (the role doesn't come back). The
+     same for a check-in that is a repeating task (the web's goal pane makes
+     check-ins weekly Sunday tasks) set to No repeat.
+   - Signed in, on a repeating task of your own whose first day is before
+     today, pick No repeat: the date chip reads that first day, the task
+     leaves Today and is in no list on the phone, and Search finds it. The
+     web shows it in its past-due bar.
 
-Check 8's other chips (repeat, project, routines and seasons) come with the
-PRs that make them editable.
+Check 8's other chips (project, routines and seasons) come with the PRs that
+make them editable.
 
 9. **Offline** (signed in only: the sample sends nothing, so nothing fails).
    With Airplane Mode and Wi-Fi off:
@@ -459,7 +511,8 @@ PRs that make them editable.
      the count is one more than before the reset, and matches the web;
    - change a priority, a times per day and a reminder: each turns back, with
      the banner;
-   - pick a date, and change a time: each turns back, with the banner.
+   - pick a date, and change a time: each turns back, with the banner;
+   - change a repeat: it turns back, with the banner.
 10. **VoiceOver.**
     - The title reads as "Title", a text field and a heading; the notes, and
       "Notes" where there are none, as a button with the hint "Edits the
@@ -479,7 +532,7 @@ PRs that make them editable.
     - An editable chip reads its words, "button" and a hint: "High priority,
       button, Changes the priority"; "3 times a day, button, Changes how many
       times a day"; "Reminder: After I pour my coffee, 8:00 am, button,
-      Changes the reminder". A read-only chip (the repeat, the project) has
+      Changes the reminder". A read-only chip (the project, a routine) has
       no hint.
     - "Add property" is a button. Pick None on a priority chip: VoiceOver
       moves to Add property.
@@ -508,6 +561,23 @@ PRs that make them editable.
       is.
     - After Done on Anytime, VoiceOver is on Add property. After Done on
       Time… from Add property, it is on the new time chip.
+    - The repeat chip on Plan tomorrow (Search finds it on a weekend) reads
+      "Repeats: Weekdays, button, Changes how it repeats". In its menu the
+      checked frequency is read as selected.
+    - On Plan tomorrow, pick Daily: VoiceOver is on the repeat chip. On
+      Groceries, Add property ▸ Repeat ▸ Weekdays: VoiceOver lands on the new
+      chip. Then the chip's No repeat: VoiceOver is on Add property.
+    - In the Custom days sheet each key reads its full day ("Wednesday"), and
+      a picked one is read as selected. Turn off the last picked key:
+      VoiceOver says "Select at least one day" at once, the line is read
+      under the keys, and Done is dimmed.
+    - In the Monthly sheet each day reads "Day 12", the picked one as
+      selected, and the note is read under the grid.
+    - After Done in either sheet, VoiceOver is on the repeat chip.
+    - At the largest text size, a picked Custom days row reads "Wednesday,
+      selected", with no "checkmark".
+    - With Voice Control on (and VoiceOver off), in the Custom days sheet "Tap
+      Wed" toggles Wed, and in the Monthly sheet "Tap 12" picks 12.
 11. **The largest text size.** The title and the notes still edit, and
     Delete's confirm shows all its words. The streak chip opens a sheet, not a
     popover, at half height with a grabber. The flame and the count sit above
@@ -516,7 +586,20 @@ PRs that make them editable.
     and the Remind sheet scrolls to its wheel, Right after, its notes, the
     settings lines and No reminder. The date menu's days fit under their
     words, and the Time sheet scrolls to Duration with every part of day, the
-    line under them, the wheel and No specific time on the way.
+    line under them, the wheel and No specific time on the way. The Custom
+    days sheet shows seven rows with the full day names and a check, and the
+    Monthly sheet a list from Day 1 to Day 31; each scrolls to its footer. On
+    Pay rent, pick Day 31 in Monthly… and tap Done, then open Monthly… again:
+    it opens with Day 31 checked and in view. (Check 10 relaunched the
+    sample, so Pay rent is back on the 1st.)
+    - At xxxLarge, the largest size below the accessibility sizes (Larger
+      Text with Larger Accessibility Sizes off, the slider at its end): the
+      Custom days keys are seven rows with the full names; the Monthly sheet
+      is still a grid, every number whole.
+    - At xLarge (one step above the default), with Display Zoom set to
+      Larger Text (Settings → Display & Brightness): the seven keys share one
+      row, every word whole (none reads "W…"), each 44pt tall, and each still
+      toggles alone.
 12. **Lime, in light and dark mode.**
     - The caret, the selection, the nav bar's Done and the confirm's Cancel
       aren't lime.
@@ -541,6 +624,11 @@ PRs that make them editable.
       the checks, Add a time, No specific time, the wheel, Cancel and Done
       aren't lime; Discard is red. Pick a date…'s calendar is the system
       blue.
+    - The repeat chip's words, symbol and chevron are the label colour or
+      gray, not lime, at rest and while pressed. In the Repeat sheets the
+      picked keys and the picked day are the system blue with white text, in
+      light and dark mode, and the rest gray or the label colour; Cancel and
+      Done aren't lime; Select at least one day and Discard are red.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
     - Return in the subtask field (a vertical field with a Next key) adds
@@ -592,6 +680,18 @@ PRs that make them editable.
     - The Time sheet's wheel runs in GMT: signed in, on a habit of your own at
       9:00, with the phone in another time zone, the wheel shows 9:00 and Done
       without touching it sends nothing.
+    - Each Custom days key toggles alone: the seven share one row, and each
+      is a borderless button, so a tap fires only the one under it.
+    - Picking Custom days… or Monthly… in the repeat chip's menu opens its
+      sheet even when that row is already checked (the Picker's binding is
+      set again on a re-pick). If it doesn't, the menu's rows become toggles,
+      which run on every tap and still read as selected (check 10 stays as
+      it is), and this line says so.
+    - Custom days… and Monthly…, in the chip's menu and in Add property's
+      Repeat submenu, open their sheet (a sheet presented from a menu action).
+    - A swipe on a changed Repeat sheet is refused, and the discard confirm
+      comes up over the nested sheet.
+    - With Increase Contrast on, the picked keys' blue is darker.
 
 ## Rules
 

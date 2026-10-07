@@ -15,6 +15,14 @@ ledger has a reader** (`/ledger`, decision 17) and **Beeminder posts at completi
 time** rather than only at settlement (decisions 14–16). Neither needed a
 migration.
 
+**Cross-platform (2026-10-05):** [reminders-platforms.md](reminders-platforms.md) is the plan
+for reminders on every surface — web/PWA, the Electron desktop, the native iPhone app, Android
+and the Apple Watch — and its Phase 0 brings back the two ticks that migration 045 paused, as
+one merged job. Phase 0 is built (its addendum says where the code departs from the plan's
+body), and migration 058 resumes the tick once applied; its locked decisions (18 onward) continue the list
+below. Read it before touching the scan, the channels, `push_subscriptions` or
+`/api/reminders/act`.
+
 ---
 
 ## The evidence this is built on, and what it rules out
@@ -56,6 +64,20 @@ they teach people to take the device off).
    019 and 024) and is indifferent to hosting plans. The routes stay ordinary
    authenticated GETs, so any other scheduler can still drive them.
 
+   *Addendum, 2026-10-06 (migration 058).* **One job since 058.** `dsul-reminders` is the
+   only tick: `/api/cron/eod-notify` is folded into the scan as Tier 0 and its job is
+   unscheduled, and 058 resumes the job 045 paused. `dsul_tick(route, force)` asks one
+   flag-only question before the request (any account with a time zone and habit
+   reminders, stakes or the EOD review on?), fails open on a schema that is behind, and
+   returns without a request when the answer is no; `force` is for a Free project's
+   keepalive. **Postgres `time + interval` wraps modulo 24 hours — never write a
+   reminder window in SQL.** `time '23:50' + interval '30 minutes'` is `00:20:00`, and
+   `least(…, time '23:59:59')` does not clamp it, so a window written that way is closed
+   from 23:30 to midnight. Windows are decided in `lib/reminders/due.ts`, in minutes of
+   day, clamped (decision 5). `tests/unit/migration-text.test.ts` refuses the spelling in
+   any migration from 058 on, and `scripts/verify-058.sh` replays 058 on a bare Postgres.
+   See [reminders-platforms.md](reminders-platforms.md) §3.6 and §4.1.
+
 1. **`reminder_time` is a local wall-clock string, never a timestamp.** "07:30, every
    weekday, wherever I am standing" is not an instant. `items.reminder_at` (a timestamptz
    inherited by migration 019 and read by nothing) was deliberately left alone rather than
@@ -76,6 +98,20 @@ they teach people to take the device off).
 5. **The window clamps at midnight, never wraps.** A wrapping window plus a same-day
    dedupe stamp is a double-send: 23:50 fires and stamps day N; at 00:05 the window is
    still open, the date has rolled, and the cue goes out again for yesterday.
+
+   *Addendum, 2026-10-06.* A clamped window must still hold a tick. One that opens after
+   the day's last tick (23:55; the tick runs every five minutes) is `[23:57, 24:00)` with
+   no tick in it, so every window the scan opens starts no later than 23:55
+   (`windowOpensAt` in `lib/reminders/scan.ts`), and a review, last call or cue set to
+   23:56–23:59 goes a few minutes early rather than never. The review's and the last
+   call's windows are the scan's own and open there directly, and so does the stakes
+   settlement's threshold (`now >= stakes_settle_time`, which a 23:58 time never met).
+   A cue's is `due.ts`'s (`dueReminders`), which takes the opening from its caller as
+   `ScanClock.latestOpening`: the scan passes 23:55, and a clock that ticks every minute
+   (Phase 1's open page) passes nothing and rings at the minute itself. No Swift mirrors
+   any of it yet: DsulCore ports only `occursOn` from `due.ts` and `formatCueTime` from
+   `copy.ts`, so the port that comes with Phase 2 should carry `latestOpening` as an
+   optional it leaves unset.
 6. **The last call names streak-bearing types only.** Its whole frame is what today's miss
    costs; a dated task has nothing to lose by that argument, and including one turns a
    sharp message back into the generic evening nag.
@@ -161,7 +197,10 @@ they teach people to take the device off).
 - **`lib/reminders/due.ts`** — the one definition of "is a nudge owed". Pure.
 - **`lib/reminders/copy.ts`** — the words, and the copy contract, under test.
 - **`lib/reminders/scan.ts`** — the tick: local clock per user, dedupe, fan-out.
-- **`/api/cron/reminders`** — every 5 minutes, registered in `vercel.json`.
+- **`/api/cron/reminders`** — every 5 minutes, driven by pg_cron's `dsul-reminders` job
+  through `dsul_tick` (035, renamed by 044, the only tick since 058). Not `vercel.json`,
+  which declares no crons (`{}`): Hobby rejects a sub-daily cron at deploy time
+  (decision 0).
 - **`/api/reminders/act`** — Done / Snooze from the notification, cookie-authed so RLS
   scopes the write.
 - **`app/sw.ts`** — action buttons, tag-collapse, a visible failure when an action does

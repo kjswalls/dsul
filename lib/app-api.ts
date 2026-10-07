@@ -1,7 +1,7 @@
 import { after, NextResponse } from 'next/server';
 import { z } from 'zod';
 import type { SupabaseClient } from '@supabase/supabase-js';
-import { PrioritySchema, TimeBucketSchema } from '@dsul/types';
+import { PrioritySchema, RepeatFrequencySchema, TimeBucketSchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
   createItem,
@@ -33,6 +33,7 @@ import {
   subtaskRefusal,
   TIMES_PER_DAY_MAX,
 } from './item-edit';
+import { demoteInvalidGoalRoles } from './goal-roles';
 import { EXT_STREAKS, resolveEnabled } from './extension-registry';
 import { isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
@@ -56,9 +57,9 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * skip or unskip a day; drop a braindump row on an hour; carry an item to
  * another day; pause or resume one; retitle it, rewrite its notes or delete
  * it; add a subtask under it, reset its streak; set its priority, a habit's
- * times a day, its reminder, or its part of day, time and length) is one verb
- * here that does what the web's own store action does for the same gesture,
- * through the same lib/db.ts calls.
+ * times a day, its reminder, its part of day, time and length, or how it
+ * repeats) is one verb here that does what the web's own store action does
+ * for the same gesture, through the same lib/db.ts calls.
  * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
  * phone reads a 400-day window, and an array written back from a window
  * deletes what the window did not show. Nor is there a generic
@@ -213,6 +214,17 @@ const ItemWriteActions = z.discriminatedUnion('action', [
       duration: z.number().int().min(1).max(MAX_DURATION_MINUTES).optional(),
     })
     .strict(),
+  // The Repeat chip (2e): a frequency, with its days or its day of the month.
+  z
+    .object({
+      action: z.literal('repeat'),
+      frequency: RepeatFrequencySchema,
+      /** 0 = Sun … 6 = Sat. Custom days only; ascending, each day once (the superRefine). */
+      days: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
+      /** Monthly only. A short month takes its last day (lib/recurrence.ts). */
+      monthDay: z.number().int().min(1).max(31).optional(),
+    })
+    .strict(),
 ]);
 
 export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
@@ -235,6 +247,24 @@ export const ItemWriteSchema = ItemWriteActions.superRefine((body, ctx) => {
     // Anytime and none hold no time (the dialog's Anytime row clears it).
     if (typeof body.startTime === 'string' && (body.timeBucket === 'anytime' || body.timeBucket === null)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['startTime'], message: 'only with a part of day' });
+    }
+  }
+  if (body.action === 'repeat') {
+    // The days belong to Custom days and the day to Monthly, as the chip shows them; beside
+    // another frequency the server would drop them while answering 200. The phone never
+    // builds such a body.
+    const custom = body.frequency === 'custom';
+    if (custom !== (body.days !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['days'], message: custom ? 'required' : 'only with custom' });
+    }
+    // Refused, never coerced: the dialog's keys sort as they toggle and never hold a day twice.
+    const days = body.days ?? [];
+    if (days.some((day, i) => i > 0 && day <= days[i - 1])) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['days'], message: 'ascending, each day once' });
+    }
+    const monthly = body.frequency === 'monthly';
+    if (monthly !== (body.monthDay !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['monthDay'], message: monthly ? 'required' : 'only with monthly' });
     }
   }
 });
@@ -570,6 +600,8 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   reminder: 'reminder_time, reminder_anchor',
   // start_date, time_bucket and in_project_block are in every read.
   time: 'start_time, is_scheduled, duration',
+  // repeat_frequency is in every read.
+  repeat: 'repeat_days, repeat_month_day',
 };
 
 interface WriteRow {
@@ -597,6 +629,8 @@ interface WriteRow {
   start_time?: string | null;
   is_scheduled?: boolean | null;
   duration?: number | null;
+  repeat_days?: number[] | null;
+  repeat_month_day?: number | null;
 }
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -660,6 +694,8 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   timesPerDay  a habit's times a day (the dialog's chip → updateHabit)
  *   reminder     Remind, its time and cue words together, or off (the dialog's chip, reminderPatch)
  *   time         part of day, a specific time and a length (the dialog's Time chip, commitEdit)
+ *   repeat       how it repeats, its three keys together (the dialog's Repeat chip, repeatPatch),
+ *                then any goal role it left untrue demoted (lib/goal-roles.ts)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -727,6 +763,7 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
       case 'timesPerDay':
       case 'reminder':
       case 'time':
+      case 'repeat':
         return await edit(ctx, body);
       case 'delete':
         return await del(client, userId, id, row.type);
@@ -955,19 +992,40 @@ async function pause(ctx: WriteContext, body: IntentBody<'pause'>): Promise<Resp
  * (timeEditPatch): one updateItem where the web makes up to two, the same end
  * row, and a project block released when the part of day moves
  * (scheduleTaskPatch). It never writes the date; the Date chip is `move`.
+ *
+ * `repeat`, the Repeat chip, is the dialog's save over the keys sent
+ * (repeatEditPatch): all three keys whenever any moved, never the date, the
+ * status or the streak. Then `demoteRoles`.
  */
 async function edit(
   ctx: WriteContext,
-  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time'>,
+  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time' | 'repeat'>,
 ): Promise<Response> {
   const { client, id, type, config, row } = ctx;
   const shape = editShapeFromRow(row);
   const refusal = editRefusal(shape, body, config);
   if (refusal) return refused(refusal.code, refusal.status);
   const patch = editPatch(shape, body, config);
-  if (Object.keys(patch).length === 0) return ok();
-  await updateItem(id, type, patch, undefined, client);
+  if (Object.keys(patch).length > 0) await updateItem(id, type, patch, undefined, client);
+  if (body.action === 'repeat') await demoteRoles(ctx);
   return ok();
+}
+
+/**
+ * A repeat can leave a goal role untrue: a milestone that now repeats, or a check-in that no
+ * longer does. The web's store takes it back in the same gesture (planGoalRoleDemotion); the
+ * phone holds no goals, so the route does it here, through the rule the agent PATCH runs
+ * (lib/goal-roles.ts), on the user's own client, once the write has landed. Also when the edit
+ * changed nothing, so a demotion that failed after an earlier write is put right by the next.
+ * A failure is logged and swallowed: the item write landed, and an error here would make the
+ * phone undo a change the server kept.
+ */
+async function demoteRoles(ctx: WriteContext): Promise<void> {
+  try {
+    await demoteInvalidGoalRoles(ctx.client, ctx.userId, ctx.id);
+  } catch (err) {
+    console.error('[app/items] goal role demotion failed:', err instanceof Error ? err.message : err);
+  }
 }
 
 /**

@@ -15,3 +15,17 @@ describe('isToastWorthy — completions', () => {
     expect(isToastWorthy({ label: 'Complete habit: Stretch' })).toBe(true);
   });
 });
+
+describe('isToastWorthy — the hand-off', () => {
+  it("announces the right-click menu's hand-off and take-back (lib/agent-handoff.ts)", () => {
+    // A schedule block draws no agent badge, so the strip is the only trace.
+    expect(isToastWorthy({ label: 'Hand off to OpenClaw: Book dentist' })).toBe(true);
+    expect(isToastWorthy({ label: 'Take back from OpenClaw: Book dentist' })).toBe(true);
+    expect(isToastWorthy({ label: 'Take back from AI: Draft the email' })).toBe(true);
+  });
+
+  it("still keeps the panel's plain edit quiet", () => {
+    // The item panel's Assign/Unassign go through updateTask's default label.
+    expect(isToastWorthy({ label: 'Edit task: Book dentist' })).toBe(false);
+  });
+});

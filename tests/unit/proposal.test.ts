@@ -348,6 +348,19 @@ describe('buildProposalContext', () => {
     expect(text).toContain('nothing open');
   });
 
+  it('shows a clock time and its length, so a plan can see what is booked', () => {
+    const timed: Item[] = [
+      { type: 'task', id: 'a', title: 'Dentist', status: 'pending', isScheduled: true, order: 0, completedDates: [], startDate: '2026-08-04', startTime: '14:00', duration: 60 },
+      { type: 'task', id: 'b', title: 'Call', status: 'pending', isScheduled: true, order: 1, completedDates: [], startDate: '2026-08-04', startTime: '09:30' },
+      // A task in a project block is drawn at the block's time, not its own.
+      { type: 'task', id: 'c', title: 'Inbox', status: 'pending', isScheduled: true, order: 2, completedDates: [], startDate: '2026-08-04', startTime: '11:00', inProjectBlock: true },
+    ] as Item[];
+    const text = buildProposalContext({ items: timed, customTypeNames: [], todayStr: '2026-07-31' });
+    expect(text).toContain('[a] Dentist — task, 2026-08-04, at 14:00 for 60 min');
+    expect(text).toContain('[b] Call — task, 2026-08-04, at 09:30');
+    expect(text).not.toContain('at 11:00');
+  });
+
   it('bounds the list so the prompt cannot grow without limit', () => {
     const many: Item[] = Array.from({ length: 200 }, (_, i) => ({
       type: 'task',

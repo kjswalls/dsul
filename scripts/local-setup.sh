@@ -33,7 +33,8 @@
 # only when the file has no usable one: a valid key is never replaced, because a
 # rotated key leaves every sealed model key unreadable. A blank or malformed one
 # (which the app refuses, so it has sealed nothing) is swapped for a fresh key.
-# .env.test gets a fresh one on every run (its database is reset on every run too).
+# .env.test gets a fresh one on every run (its database is reset on every run too),
+# and a fresh random CRON_SECRET beside it, so the e2e suite can call the tick.
 #
 # TO GO BACK TO PRODUCTION:  vercel env pull .env.local
 #
@@ -94,6 +95,16 @@ docker info >/dev/null 2>&1 || {
 KEY="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('base64'))")"
 [ "${#KEY}" -eq 44 ] || {
   echo "❌ Could not generate MODEL_KEYS_ENCRYPTION_KEY (is node on PATH?)"; exit 1;
+}
+
+# The bearer /api/cron/* accepts in the e2e run (lib/cron-auth.ts), written into
+# .env.test only. Without one, `next dev` waves every cron request through (an
+# unset CRON_SECRET passes in development), so the tick spec could not tell an
+# authorised request from an unauthorised one. Fresh on every run, like the key
+# above: it guards a throwaway local stack and is never production's.
+E2E_CRON_SECRET="$(node -e "process.stdout.write(require('crypto').randomBytes(32).toString('hex'))")"
+[ "${#E2E_CRON_SECRET}" -eq 64 ] || {
+  echo "❌ Could not generate CRON_SECRET (is node on PATH?)"; exit 1;
 }
 
 # supabase/config.toml is not in the repo (only migrations/ and schema.sql are),
@@ -221,6 +232,7 @@ NEXT_PUBLIC_SUPABASE_URL=${API_URL}
 NEXT_PUBLIC_SUPABASE_ANON_KEY=${ANON_KEY}
 SUPABASE_SECRET_KEY=${SERVICE_ROLE_KEY}
 MODEL_KEYS_ENCRYPTION_KEY=${KEY}
+CRON_SECRET=${E2E_CRON_SECRET}
 TEST_USER_EMAIL=${TEST_USER_EMAIL}
 TEST_USER_PASSWORD=${TEST_USER_PASSWORD}
 EOF

@@ -2,12 +2,13 @@ import DsulCore
 import SwiftUI
 
 // The item sheet's chips that edit by menu, and the "+ Add property" seed at
-// the end of the chip row: the web panel's priority, date and times chips and
-// its clearing-field seed (components/planner/item-dialog.tsx), whose picks
-// write at once. Which chips edit, what the seed holds and every word here are
-// ItemSheetModel's (`chipEditor`, `unsetProperties`, `priorityChoices`,
-// `timesChoices`, `dateOptions`), so the hosted tests pin them; these only
-// draw them.
+// the end of the chip row: the web panel's priority, date, times and repeat
+// chips and its clearing-field seed (components/planner/item-dialog.tsx),
+// whose picks write at once (the repeat's Monthly… and Custom days… open the
+// Repeat sheet instead). Which chips edit, what the seed holds and every word
+// here are ItemSheetModel's (`chipEditor`, `unsetProperties`,
+// `priorityChoices`, `timesChoices`, `dateOptions`, `repeatChoices`), so the
+// hosted tests pin them; these only draw them.
 //
 // Each is the editable-chip style: the chip in its 44pt hit frame
 // (`chipHit()`) as the menu's label, scaling when pressed (`PressScaleStyle`)
@@ -142,26 +143,81 @@ struct TimesChipMenu: View {
     }
 }
 
+/// The repeat chip as a menu: the type's frequencies in the web's order and
+/// words (`ItemSheetModel.repeatChoices`), the stored one checked. No repeat,
+/// Daily, Weekdays and Weekends write at once (`onPick`); Monthly… and Custom
+/// days… open the Repeat sheet (`ItemSheetModel.repeatPick`), the checked one
+/// too, which leans on the Picker setting its selection again when the
+/// checked row is picked (README, "Editing an item", check 13, names the
+/// fallback if it doesn't). A habit has no No repeat, which would make it a
+/// one-off; No repeat on a task takes the chip away, and Repeat goes back
+/// into Add property. Never on a subtask (the page asks `chipEditor`).
+///
+/// The check stays on the stored frequency while a sheet is up: the
+/// selection reads the item, never the pick. A stored frequency the type
+/// doesn't list has a row of its own, so the selection always has a tag.
+/// Picking the checked Daily changes nothing and sends nothing (the planner
+/// drops an unmoved edit).
+struct RepeatChipMenu: View {
+    let chip: SheetChip
+    let item: SampleItem
+    /// The planner's caps for `item`: its frequencies, and the one a stored
+    /// none reads as.
+    let caps: ItemCaps
+    let onPick: (String) -> Void
+
+    var body: some View {
+        Menu {
+            Picker(ItemSheetModel.seedEntry(.repeats),
+                   selection: Binding(get: { item.repeatFrequency ?? caps.defaultFrequency },
+                                      set: { onPick($0) })) {
+                ForEach(ItemSheetModel.repeatChoices(allowed: caps.allowedFrequencies,
+                                                     stored: item.repeatFrequency)) { choice in
+                    Text(choice.word)
+                        .tag(choice.frequency)
+                }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            ChipView(chip: chip, editable: true)
+                .chipHit()
+        }
+        .menuOrder(.fixed)
+        .menuStyle(.button)
+        .buttonStyle(PressScaleStyle())
+        .tint(Color.primary)
+        .accessibilityLabel(Text(chip.spoken))
+        .accessibilityHint(Text(ItemSheetModel.chipHint(.repeats) ?? ""))
+    }
+}
+
 /// "+ Add property": the properties that are unset and editable (`kinds`,
 /// `ItemSheetModel.unsetProperties`, in chip order). Adding one opens its
 /// picker straight away (Kirby, 2026-09-24): a menu property is a submenu set
 /// in one pick, listing only what would change it (Priority ▸ Low, Medium,
 /// High; Date ▸ Today, Tomorrow, Next week, or Pick a date…, which opens the
-/// day picker; Times per day ▸ 2× to 5× a day), Time… opens the Time sheet
-/// (`onTime`), and Remind… opens the Remind sheet with its wheel already on a
-/// time (`onRemind`). Its plus carries "Add property" while the row has
-/// nothing else (`label`), and is bare after the chips; VoiceOver always hears
-/// "Add property". No chevron: the plus already says what it does.
+/// day picker; Times per day ▸ 2× to 5× a day; Repeat ▸ Daily, Weekdays,
+/// Weekends, or Monthly… and Custom days…, which open the Repeat sheet), Time…
+/// opens the Time sheet (`onTime`), and Remind… opens the Remind sheet with
+/// its wheel already on a time (`onRemind`). Its plus carries "Add property"
+/// while the row has nothing else (`label`), and is bare after the chips;
+/// VoiceOver always hears "Add property". No chevron: the plus already says
+/// what it does.
 struct AddPropertyMenu: View {
     let kinds: [SheetChip.Kind]
     /// `ItemSheetModel.seedLabel`: the words beside the plus, or nil.
     let label: String?
     /// `ItemSheetModel.dateOptions`, for Date ▸.
     let dates: [DateOption]
+    /// `ItemSheetModel.repeatSeedChoices`, for Repeat ▸.
+    let repeats: [RepeatChoice]
     let onPriority: (String?) -> Void
     let onDate: (DateChoice) -> Void
     let onTime: () -> Void
     let onTimes: (Int) -> Void
+    /// A Repeat ▸ pick's frequency (`ItemSheetModel.repeatPick` says what it
+    /// does).
+    let onRepeat: (String) -> Void
     let onRemind: () -> Void
 
     var body: some View {
@@ -196,8 +252,9 @@ struct AddPropertyMenu: View {
     }
 
     /// One property's entry: a submenu for a menu property, a button for the
-    /// time and the reminder, each of which opens its sheet. The seed holds no
-    /// other kind until 2e.
+    /// time and the reminder, each of which opens its sheet. Repeat ▸ has no
+    /// checkmark, since nothing repeats yet. The seed holds no other kind
+    /// until 2f.
     @ViewBuilder
     private func entry(_ kind: SheetChip.Kind) -> some View {
         switch kind {
@@ -226,11 +283,17 @@ struct AddPropertyMenu: View {
                     }
                 }
             }
+        case .repeats:
+            Menu(ItemSheetModel.seedEntry(.repeats), systemImage: ItemSheetModel.seedSymbol(.repeats)) {
+                ForEach(repeats) { choice in
+                    Button(choice.word) { onRepeat(choice.frequency) }
+                }
+            }
         case .reminder:
             Button(ItemSheetModel.seedEntry(.reminder), systemImage: ItemSheetModel.seedSymbol(.reminder)) {
                 onRemind()
             }
-        case .repeats, .project, .routine, .season:
+        case .project, .routine, .season:
             EmptyView()
         }
     }

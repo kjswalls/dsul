@@ -136,8 +136,8 @@ habit answers with `project` internally and `toLegacyHabit` renames it on the wa
 (lib/db.ts), while `habitGroups[]` is a projection of the one container list.
 
 **Reminders reach outward; everything else in the app waits to be opened.** A cue at the
-habit's own hour, a streak-at-risk last call, and a nightly settlement all run unattended
-from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
+habit's own hour, a streak-at-risk last call, the end-of-day review's push, and a nightly
+settlement all run unattended from one cron (`/api/cron/reminders` → [lib/reminders/scan.ts](lib/reminders/scan.ts)).
 The one exception is Beeminder, which also posts the instant a habit is ticked
 ([lib/stakes/live.ts](lib/stakes/live.ts), hooked at `setItemCompletion`) because a
 datapoint that arrives after the goal's midnight deadline arrives after the money is
@@ -349,7 +349,16 @@ rather than taking the flag.
   ([item-context-menu.tsx](components/planner/item-context-menu.tsx)) all read it; a new
   surface that wants "may I tick / skip / carry this?" asks there rather than re-deriving.
   The right-click menus are pointer-only (long-press is drag on touch) and hold no Delete
-  for containers — each Organize pane words its own delete consequence.
+  for containers — each Organize pane words its own delete consequence. The item menu's
+  "AI ▸" asks are declared the same way, in [lib/item-asks.ts](lib/item-asks.ts), and
+  run through `lib/open-chat.ts`, never a surface's own send; its "Hand off to OpenClaw" /
+  "Take back" row asks [lib/agent-handoff.ts](lib/agent-handoff.ts), whose `canHandOff` is
+  the agent's own queue filter (an item offered is an item the agent will see). Chromium on Linux and macOS
+  opens a context menu on the right button's DOWN, and Radix selects a row released over,
+  so the wrappers in [context-menu.tsx](components/ui/context-menu.tsx) swallow the release
+  of the press that opened the menu (a menu shifted to fit lands under the pointer). Build a
+  context menu from those wrappers (`ContextMenu`, `ContextMenuTrigger`,
+  `ContextMenuContent`), never the bare Radix primitives, or the guard is gone.
 - **The right rail is Ask, and an item opens on top of it.** The item is still ui-store's
   `edit-item` slot (on desktop, every reader and every `openEditFor` caller is unchanged);
   [rail-store.ts](lib/rail-store.ts) holds only what Ask shows under it (a stack per
@@ -414,3 +423,15 @@ the capability gate, delegation to OpenClaw, saved conversations and their priva
 statement, and which earlier decisions steps 1 and 2a superseded. Read it before touching
 `lib/ai-*`, `lib/ai-server/**`, `app/api/ai/**`, `app/api/chat`, the AI settings pane, the
 right rail, or anything under `components/ai/`.
+[sign-in-with-apple.md](memory/plans/sign-in-with-apple.md) holds the Apple provider: why its
+button follows Supabase's own settings, the desktop shell's provider list, the dashboard setup,
+and the client secret that must be re-minted every six months
+(`scripts/apple-client-secret.mjs`) or Apple sign-in stops.
+[reminders-platforms.md](memory/plans/reminders-platforms.md) is the plan for reminders on
+every surface (web/PWA, Electron, the iPhone app, Android, Apple Watch): one server authority
+on owed/discharged, a `devices` registry replacing `push_subscriptions`, device-local scheduling
+on the phone, and a Phase 0 that brings the ticks migration 045 paused back as one merged
+pg_cron job. Kirby decided its §7 on 2026-10-06; Phase 0 is built (migration 058 resumes the
+tick once Kirby applies it), and its top addendum lists where Phase 0's code departs from the body. Read
+it before touching `lib/reminders/**`, `lib/push-send.ts`, `app/api/cron/**`,
+`/api/reminders/act`, `push_subscriptions`, or notification code in `electron/` or `ios/`.

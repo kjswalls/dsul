@@ -43,6 +43,13 @@ export interface ChannelResult {
   detail?: string
   /** True when the channel declined because it isn't configured — not an error. */
   skipped?: boolean
+  /**
+   * True when the channel had nowhere to deliver: push, with no device
+   * subscribed (or no VAPID pair to push with). `ok` stays true — nothing is
+   * broken, and a retry finds the same nothing — but it is not a delivery
+   * either, and the scan counts a nudge that every channel left unreached.
+   */
+  unreached?: boolean
 }
 
 export interface NudgeChannel {

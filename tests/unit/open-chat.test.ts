@@ -31,11 +31,14 @@ vi.mock('@/lib/planner-store', () => ({
 vi.mock('@/lib/ai-context', () => ({ buildDsulContext: () => '## dsul Context' }));
 
 import {
+  askAboutItem,
   askNew,
   bindingKey,
+  breakDownItem,
   newChat,
   openConversation,
   openHistory,
+  proposeForItem,
   resolveSendTarget,
   revealChat,
   sendFrom,
@@ -58,7 +61,7 @@ import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { registerItemPanelClose, registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
 import { useViewStore } from '@/lib/view-store';
 import { useProposalStore } from '@/lib/proposal-store';
-import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
+import { CONNECTED_MODEL, NOTHING_CONNECTED, OPENCLAW_PLUGIN, capsFor, seedAI } from './helpers/ai-fixtures';
 import { fakeApi, fakeTransport, flush, hangs, summary, type FakeApi, type FakeTransport } from './helpers/conversations-fakes';
 
 const store = () => useConversationsStore.getState();
@@ -778,5 +781,491 @@ describe('openConversation (C4)', () => {
     unseed = seedAI(NOTHING_CONNECTED);
     openConversation('c6', false);
     expect(rail().stacks.desktop).toEqual([]);
+  });
+});
+
+describe("asked from an item's own menu (the item right-click menu's Ask AI)", () => {
+  /**
+   * A one-off and a habit as the planner holds them. Typed loosely, as
+   * openConversation's own items are above: the functions read only id, type
+   * and title.
+   */
+  const task = { id: 'i1', type: 'task', title: 'Book the dentist', status: 'pending' } as never;
+  const habit = { id: 'h1', type: 'habit', title: 'Stretch' } as never;
+  const PROMPT =
+    'Find a good time for "Book the dentist" [i1] in the next few days, around what\'s already planned. ' +
+    'Only schedule this one item; leave everything else where it is.';
+  const ITEM_BINDING = { kind: 'item', itemId: 'i1' } as const;
+
+  const realRequest = useProposalStore.getState().request;
+  let request: ReturnType<typeof vi.fn<typeof realRequest>>;
+  let fetchMock: ReturnType<typeof vi.fn<(url: string, init?: RequestInit) => Promise<Response>>>;
+  let offs: (() => void)[] = [];
+
+  /** The body the proposal store POSTed to /api/ai/propose. */
+  const proposeBody = (call = 0) => {
+    const [url, init] = fetchMock.mock.calls[call];
+    expect(url).toBe('/api/ai/propose');
+    return JSON.parse(String(init?.body)) as { mode: string; prompt: string; target: string };
+  };
+
+  beforeEach(() => {
+    planner.items = [task, habit];
+    // The real request runs (its surface and lastRequest are what the cards
+    // read), but its one network call is answered here: nothing to suggest.
+    fetchMock = vi.fn(async () => Response.json({ message: 'No changes to suggest.' }));
+    vi.stubGlobal('fetch', fetchMock);
+    request = vi.fn(realRequest);
+    useProposalStore.setState({ request });
+  });
+
+  afterEach(async () => {
+    for (const off of offs) off();
+    offs = [];
+    await flush();
+    useProposalStore.getState().dismiss();
+    useProposalStore.setState({ request: realRequest });
+    vi.unstubAllGlobals();
+  });
+
+  it('the fixtures this block leans on: OpenClaw over its plugin chats but cannot propose', () => {
+    expect(capsFor(OPENCLAW_PLUGIN)).toMatchObject({ canChat: true, canPropose: false });
+    expect(capsFor(CONNECTED_MODEL)).toMatchObject({ canChat: true, canPropose: true });
+  });
+
+  describe('askAboutItem', () => {
+    it('desktop, compose: opens the item in the slot with its box asked for, and sends nothing', async () => {
+      askAboutItem(task, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1', type: 'task' } });
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: ITEM_BINDING });
+      // Not known to have none (the index is filled from History's first page,
+      // which may not have been read): revealed, which costs nothing if there
+      // turns out to be nothing to show.
+      expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+      // The item is in the slot, never pushed on the rail's stack.
+      expect(rail().stacks.desktop).toEqual([]);
+      expect(rail().stacks.phone).toEqual([]);
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+      await flush();
+      await conversationsSettled();
+      expect(tx.inputs).toHaveLength(0);
+      expect(api.api.forItem).not.toHaveBeenCalled();
+      expect(api.turns).toEqual([]);
+      expect(store().sending).toEqual({});
+    });
+
+    it('opens a habit as a habit', () => {
+      askAboutItem(habit, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'h1', type: 'habit' } });
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: { kind: 'item', itemId: 'h1' } });
+    });
+
+    it('reveals the conversation on arrival unless the item is known to have none', () => {
+      // Looked up and found to have none: no reveal.
+      useConversationsStore.setState((s) => ({ itemIndex: { ...s.itemIndex, i1: null } }));
+      askAboutItem(task, { isMobile: false });
+      expect(rail().pendingReveal).toBeNull();
+
+      useUIStore.setState({ activeDialog: null });
+      useConversationsStore.setState((s) => ({ itemIndex: { ...s.itemIndex, i1: 'c1' } }));
+      askAboutItem(task, { isMobile: false });
+      expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+      expect(tx.inputs).toHaveLength(0);
+    });
+
+    it('a blank text is a compose, not a send', async () => {
+      askAboutItem(task, { isMobile: false, text: '   ' });
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: ITEM_BINDING });
+      await flush();
+      await conversationsSettled();
+      expect(tx.inputs).toHaveLength(0);
+      expect(store().sending).toEqual({});
+    });
+
+    it('never re-opens the item already in the slot (the panel would only re-seed)', () => {
+      openItem('i1');
+      const open = useUIStore.getState().activeDialog;
+      useConversationsStore.setState((s) => ({ itemIndex: { ...s.itemIndex, i1: 'c1' } }));
+      askAboutItem(task, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toBe(open);
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: ITEM_BINDING });
+      // No reveal for an item already showing: its conversation took the last
+      // one as it mounted, and this one would wait to scroll its NEXT open.
+      expect(rail().pendingReveal).toBeNull();
+    });
+
+    it('retargets the slot when another item is open', () => {
+      openItem('i2');
+      askAboutItem(task, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1', type: 'task' } });
+    });
+
+    it('leaves Zen: the item panel is the desktop shell, which Zen replaces', () => {
+      useViewStore.setState({ zenOpen: true });
+      askAboutItem(task, { isMobile: false });
+      expect(useViewStore.getState().zenOpen).toBe(false);
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+    });
+
+    it("desktop, send: through sendFrom into the item's one conversation, nothing pushed", async () => {
+      const text = "Help me get started on this. What's the smallest first step I could take?";
+      askAboutItem(task, { isMobile: false, text });
+      // sendFrom's mark, at once: the item's box shows Stop.
+      expect(store().sending[bindingKey(ITEM_BINDING)]).toBe(true);
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+      // A send's own first turn scrolls into view; it needs no reveal.
+      expect(rail().pendingReveal).toBeNull();
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: ITEM_BINDING });
+
+      await flush();
+      await conversationsSettled();
+      expect(api.api.forItem).toHaveBeenCalledWith('i1');
+      expect(tx.inputs).toHaveLength(1);
+      const id = tx.inputs[0].conversationId;
+      expect(tx.inputs[0]).toMatchObject({ message: text });
+      expect(store().threads[id]).toMatchObject({ itemId: 'i1' });
+      expect(store().threads[id].messages.map((m) => [m.role, m.content])).toEqual([
+        ['user', text],
+        ['assistant', 'Sure.'],
+      ]);
+      expect(api.turns[0]).toMatchObject({ id, body: { create: { itemId: 'i1' } } });
+      // The item's conversation shows inside the item: no conversation view is pushed.
+      expect(rail().stacks.desktop).toEqual([]);
+      expect(store().sending).toEqual({});
+    });
+
+    it("desktop, send: continues the item's saved conversation, read first", async () => {
+      useConversationsStore.setState((s) => ({ itemIndex: { ...s.itemIndex, i1: 'c1' } }));
+      api.rows.set('c1', summary({ id: 'c1', itemId: 'i1', messageCount: 0 }));
+      api.answer.forItem = () => ({ ok: true, value: summary({ id: 'c1', itemId: 'i1', messageCount: 0 }) });
+      api.answer.thread = (id) => ({
+        ok: true,
+        value: { conversation: summary({ id, itemId: 'i1' }), messages: [], hasEarlier: false },
+      });
+      askAboutItem(task, { isMobile: false, text: 'Help me start' });
+      await flush();
+      await conversationsSettled();
+      expect(tx.inputs[0]).toMatchObject({ conversationId: 'c1', message: 'Help me start' });
+      expect(rail().pendingReveal).toBeNull();
+    });
+
+    it("a send while the item is still answering waits in the item's box, as the command bar's does", async () => {
+      const h = hangs('');
+      tx.next = h.run;
+      askAboutItem(task, { isMobile: false, text: 'first' });
+      await flush();
+      expect(tx.inputs).toHaveLength(1);
+      // Under anything already typed there.
+      rail().setDraft(bindingKey(ITEM_BINDING), 'half a thought');
+      askAboutItem(task, { isMobile: false, text: 'Help me start' });
+      await flush();
+      expect(tx.inputs).toHaveLength(1);
+      expect(rail().drafts[bindingKey(ITEM_BINDING)]).toBe('half a thought\nHelp me start');
+      expect(rail().pendingFocus).toEqual({ target: 'composer', binding: ITEM_BINDING });
+      h.release('done');
+      await flush();
+      await conversationsSettled();
+      expect(store().threads[tx.inputs[0].conversationId].messages.map((m) => m.content)).toEqual(['first', 'done']);
+    });
+
+    describe('page: the surface sends the item to /item/[id] itself', () => {
+      it('compose: touches neither the slot nor the rail, and sends nothing', async () => {
+        askAboutItem(task, { isMobile: false, page: true });
+        expect(useUIStore.getState().activeDialog).toBeNull();
+        expect(rail().pendingFocus).toBeNull();
+        expect(rail().pendingReveal).toBeNull();
+        expect(rail().stacks).toEqual({ desktop: [], phone: [] });
+        expect(rail().summoned).toBe(false);
+        await flush();
+        await conversationsSettled();
+        expect(tx.inputs).toHaveLength(0);
+      });
+
+      it("send: still sends into the item's conversation, with no slot armed", async () => {
+        askAboutItem(task, { isMobile: false, page: true, text: 'Help me start' });
+        expect(useUIStore.getState().activeDialog).toBeNull();
+        expect(rail().pendingFocus).toBeNull();
+        expect(rail().pendingReveal).toBeNull();
+        await flush();
+        await conversationsSettled();
+        expect(tx.inputs).toHaveLength(1);
+        expect(tx.inputs[0]).toMatchObject({ message: 'Help me start' });
+        expect(store().threads[tx.inputs[0].conversationId]).toMatchObject({ itemId: 'i1' });
+        expect(useUIStore.getState().activeDialog).toBeNull();
+        expect(rail().stacks).toEqual({ desktop: [], phone: [] });
+      });
+
+      it("a send while the item is still answering waits in the item's box, which its page shows too", async () => {
+        const h = hangs('');
+        tx.next = h.run;
+        askAboutItem(task, { isMobile: false, page: true, text: 'first' });
+        await flush();
+        expect(tx.inputs).toHaveLength(1);
+        askAboutItem(task, { isMobile: false, page: true, text: 'Help me start' });
+        await flush();
+        expect(tx.inputs).toHaveLength(1);
+        // The key the page's inline box reads (components/ai/item-conversation.tsx).
+        expect(rail().drafts[bindingKey(ITEM_BINDING)]).toBe('Help me start');
+        expect(rail().pendingFocus).toBeNull();
+        h.release('done');
+        await flush();
+        await conversationsSettled();
+      });
+
+      it("on the phone too: no push, and the Ask tab is left alone", async () => {
+        askAboutItem(task, { isMobile: true, page: true, text: 'Help me start' });
+        expect(rail().stacks.phone).toEqual([]);
+        expect(useMobileNavStore.getState().activeTab).toBe('today');
+        await flush();
+        await conversationsSettled();
+        expect(tx.inputs).toHaveLength(1);
+      });
+    });
+
+    describe('phone', () => {
+      it("compose: pushes the item over the Ask tab, once, with the dock's box asked for", () => {
+        rail().push('phone', { kind: 'history' });
+        askAboutItem(task, { isMobile: true });
+        expect(useMobileNavStore.getState().activeTab).toBe('chat');
+        expect(rail().stacks.phone).toEqual([{ kind: 'history' }, { kind: 'item', itemId: 'i1' }]);
+        // The dock's one box follows the pushed item, so the request names no binding.
+        expect(rail().pendingFocus).toEqual({ target: 'composer' });
+        // Not known to have none: revealed as it is pushed.
+        expect(rail().pendingReveal).toEqual({ itemId: 'i1' });
+        // Never the drawer, and never the desktop rail.
+        expect(useUIStore.getState().activeDialog).toBeNull();
+        expect(rail().stacks.desktop).toEqual([]);
+        expect(rail().summoned).toBe(false);
+        expect(useSidebarStore.getState().askOpen).toBe(false);
+
+        // Already on top: not pushed again, and no reveal re-armed (the item's
+        // conversation took the first as it mounted).
+        expect(rail().consumeReveal('i1')).toBe(true);
+        const stack = rail().stacks.phone;
+        askAboutItem(task, { isMobile: true });
+        expect(rail().stacks.phone).toBe(stack);
+        expect(rail().pendingReveal).toBeNull();
+      });
+
+      it('replaces another item on top (the level rule)', () => {
+        rail().push('phone', { kind: 'item', itemId: 'i2' });
+        askAboutItem(task, { isMobile: true });
+        expect(rail().stacks.phone).toEqual([{ kind: 'item', itemId: 'i1' }]);
+      });
+
+      it("send: pushed, the text sent into the item's conversation", async () => {
+        askAboutItem(task, { isMobile: true, text: 'Help me start' });
+        expect(useMobileNavStore.getState().activeTab).toBe('chat');
+        expect(rail().stacks.phone).toEqual([{ kind: 'item', itemId: 'i1' }]);
+        expect(rail().pendingReveal).toBeNull();
+        await flush();
+        await conversationsSettled();
+        expect(tx.inputs).toHaveLength(1);
+        expect(store().threads[tx.inputs[0].conversationId]).toMatchObject({ itemId: 'i1' });
+        expect(rail().stacks.phone).toEqual([{ kind: 'item', itemId: 'i1' }]);
+      });
+    });
+
+    it('does nothing when nothing can answer', async () => {
+      unseed();
+      unseed = seedAI(NOTHING_CONNECTED);
+      askAboutItem(task, { isMobile: false });
+      askAboutItem(task, { isMobile: false, text: 'Help me start' });
+      askAboutItem(task, { isMobile: true, text: 'Help me start' });
+      askAboutItem(task, { isMobile: false, page: true, text: 'Help me start' });
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(rail().pendingFocus).toBeNull();
+      expect(rail().pendingReveal).toBeNull();
+      expect(rail().stacks).toEqual({ desktop: [], phone: [] });
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+      await flush();
+      await conversationsSettled();
+      expect(tx.inputs).toHaveLength(0);
+      expect(api.api.forItem).not.toHaveBeenCalled();
+      expect(store().sending).toEqual({});
+    });
+  });
+
+  describe('breakDownItem', () => {
+    it("desktop: opens the item, then asks for the item's own breakdown card (item:<id>)", async () => {
+      breakDownItem(task, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1', type: 'task' } });
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith('breakdown', undefined, 'i1');
+      expect(useProposalStore.getState()).toMatchObject({
+        status: 'loading',
+        lastRequest: { intent: 'breakdown', itemId: 'i1', surface: 'item:i1' },
+      });
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+      expect(proposeBody()).toMatchObject({ mode: 'breakdown', target: 'model' });
+      // The card answers inside the item: no reveal, no box, nothing sent.
+      expect(rail().pendingReveal).toBeNull();
+      expect(rail().pendingFocus).toBeNull();
+      expect(rail().stacks.desktop).toEqual([]);
+      await flush();
+      expect(tx.inputs).toHaveLength(0);
+      expect(useProposalStore.getState().status).toBe('empty');
+    });
+
+    it('never re-opens the item already in the slot, and leaves Zen', () => {
+      openItem('i1');
+      const open = useUIStore.getState().activeDialog;
+      useViewStore.setState({ zenOpen: true });
+      breakDownItem(task, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toBe(open);
+      expect(useViewStore.getState().zenOpen).toBe(false);
+      expect(request).toHaveBeenCalledWith('breakdown', undefined, 'i1');
+    });
+
+    it('page: asks for the card, which the item page shows, and arms no slot', () => {
+      breakDownItem(task, { isMobile: false, page: true });
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(rail().stacks).toEqual({ desktop: [], phone: [] });
+      expect(rail().pendingReveal).toBeNull();
+      expect(request).toHaveBeenCalledWith('breakdown', undefined, 'i1');
+      expect(useProposalStore.getState().lastRequest?.surface).toBe('item:i1');
+    });
+
+    it('phone: pushes the item over the Ask tab, then asks', () => {
+      breakDownItem(task, { isMobile: true });
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+      expect(rail().stacks.phone).toEqual([{ kind: 'item', itemId: 'i1' }]);
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(rail().pendingReveal).toBeNull();
+      expect(request).toHaveBeenCalledWith('breakdown', undefined, 'i1');
+    });
+
+    it('does nothing when nothing can propose, even with chat (OpenClaw over its plugin)', () => {
+      unseed();
+      unseed = seedAI(OPENCLAW_PLUGIN);
+      breakDownItem(task, { isMobile: false });
+      breakDownItem(task, { isMobile: true });
+      breakDownItem(task, { isMobile: false, page: true });
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(rail().stacks).toEqual({ desktop: [], phone: [] });
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+      expect(request).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(useProposalStore.getState().status).toBe('idle');
+    });
+
+    it('does nothing when nothing can answer', () => {
+      unseed();
+      unseed = seedAI(NOTHING_CONNECTED);
+      breakDownItem(task, { isMobile: false });
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      expect(request).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('proposeForItem', () => {
+    it('desktop: closes the item through the one flushing close, shows Ask home, and asks for a plan card there', () => {
+      const flushPanel = vi.fn();
+      const closePanel = vi.fn(() => useUIStore.getState().closeDialog());
+      offs.push(registerItemPanelFlush(flushPanel), registerItemPanelClose(closePanel));
+      rail().push('desktop', { kind: 'history' });
+      rail().push('desktop', { kind: 'conversation', id: 'c1' });
+      openItem('i1');
+
+      proposeForItem(PROMPT, false);
+      expect(flushPanel).toHaveBeenCalledTimes(1);
+      expect(closePanel).toHaveBeenCalledTimes(1);
+      expect(useUIStore.getState().activeDialog).toBeNull();
+      // Flushed BEFORE the ask: a title typed a moment ago is in the plan's context.
+      expect(flushPanel.mock.invocationCallOrder[0]).toBeLessThan(request.mock.invocationCallOrder[0]);
+      // Ask summoned, at home, its box asked for.
+      expect(useSidebarStore.getState().askOpen).toBe(true);
+      expect(rail().summoned).toBe(true);
+      expect(rail().stacks.desktop).toEqual([]);
+      expect(rail().pendingFocus).toEqual({ target: 'composer' });
+      expect(request).toHaveBeenCalledTimes(1);
+      expect(request).toHaveBeenCalledWith('ask', PROMPT);
+      expect(useProposalStore.getState()).toMatchObject({
+        status: 'loading',
+        lastRequest: { intent: 'ask', prompt: PROMPT, surface: 'chat' },
+      });
+      expect(useProposalStore.getState().lastRequest?.itemId).toBeUndefined();
+      expect(proposeBody()).toMatchObject({ mode: 'plan', prompt: PROMPT, target: 'model' });
+      // A card, not a conversation: nothing sent to chat.
+      expect(tx.inputs).toHaveLength(0);
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+    });
+
+    it('with no item open: shows Ask home and asks, closing nothing', () => {
+      const flushPanel = vi.fn();
+      offs.push(registerItemPanelFlush(flushPanel));
+      proposeForItem(PROMPT, false);
+      expect(flushPanel).not.toHaveBeenCalled();
+      expect(rail().summoned).toBe(true);
+      expect(request).toHaveBeenCalledWith('ask', PROMPT);
+    });
+
+    it('leaves Zen', () => {
+      useViewStore.setState({ zenOpen: true });
+      proposeForItem(PROMPT, false);
+      expect(useViewStore.getState().zenOpen).toBe(false);
+      expect(rail().summoned).toBe(true);
+    });
+
+    it("with History on top, pops home before summoning: the focus request is home's box, not History's search", () => {
+      // A 'history-search' request computed before the pop would wait for the
+      // next History and take the caret there unasked.
+      rail().push('desktop', { kind: 'history' });
+      proposeForItem(PROMPT, false);
+      expect(rail().stacks.desktop).toEqual([]);
+      expect(rail().pendingFocus).toEqual({ target: 'composer' });
+    });
+
+    it("phone: the Ask tab at home with no box asked for (the card's buttons are to tap)", () => {
+      rail().push('phone', { kind: 'conversation', id: 'c1' });
+      rail().push('phone', { kind: 'item', itemId: 'i1' });
+      rail().push('desktop', { kind: 'history' });
+      proposeForItem(PROMPT, true);
+      expect(useMobileNavStore.getState().activeTab).toBe('chat');
+      expect(rail().stacks.phone).toEqual([]);
+      expect(rail().pendingFocus).toBeNull();
+      // The desktop rail is not the phone's.
+      expect(rail().stacks.desktop).toEqual([{ kind: 'history' }]);
+      expect(rail().summoned).toBe(false);
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      expect(request).toHaveBeenCalledWith('ask', PROMPT);
+      expect(useProposalStore.getState().lastRequest?.surface).toBe('chat');
+    });
+
+    it('does nothing when nothing can propose, even with chat (OpenClaw over its plugin)', () => {
+      unseed();
+      unseed = seedAI(OPENCLAW_PLUGIN);
+      const flushPanel = vi.fn();
+      offs.push(registerItemPanelFlush(flushPanel));
+      rail().push('desktop', { kind: 'history' });
+      openItem('i1');
+      const open = useUIStore.getState().activeDialog;
+
+      proposeForItem(PROMPT, false);
+      proposeForItem(PROMPT, true);
+      // The item is left exactly as it was: not flushed, not closed.
+      expect(flushPanel).not.toHaveBeenCalled();
+      expect(useUIStore.getState().activeDialog).toBe(open);
+      expect(rail().summoned).toBe(false);
+      expect(useSidebarStore.getState().askOpen).toBe(false);
+      expect(rail().stacks.desktop).toEqual([{ kind: 'history' }]);
+      expect(useMobileNavStore.getState().activeTab).toBe('today');
+      expect(request).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+      expect(useProposalStore.getState().status).toBe('idle');
+    });
+
+    it('does nothing when nothing can answer', () => {
+      unseed();
+      unseed = seedAI(NOTHING_CONNECTED);
+      openItem('i1');
+      proposeForItem(PROMPT, false);
+      expect(useUIStore.getState().activeDialog?.type).toBe('edit-item');
+      expect(rail().summoned).toBe(false);
+      expect(request).not.toHaveBeenCalled();
+      expect(fetchMock).not.toHaveBeenCalled();
+    });
   });
 });

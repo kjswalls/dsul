@@ -179,7 +179,7 @@ const activity = () => screen.queryAllByTestId('ai-activity-row');
 /* ── greeting and load line ──────────────────────────────────────────── */
 
 describe('the greeting', () => {
-  it('reads "Morning, Kirby." in the serif, with no spark of its own', () => {
+  it('reads "Morning, Kirby." in the serif, with no mark of its own', () => {
     render(<AskHome />);
     expect(greetingEl()).toHaveTextContent(/^Morning, Kirby\.$/);
     expect(greetingEl()).toHaveAttribute('data-ask-greeting', 'home');
@@ -194,12 +194,17 @@ describe('the greeting', () => {
     expect(greetingEl()).toHaveTextContent(/^Afternoon\.$/);
   });
 
-  it('leads a new chat larger, with the spark and no period', () => {
+  it("leads a new chat larger, under the AI's mark, with no period", () => {
     render(<AskGreeting variant="new-chat" />);
     const el = document.querySelector('[data-ask-greeting="new-chat"]') as HTMLElement;
     expect(el).toHaveTextContent(/^Morning, Kirby$/);
     expect(el).toHaveClass('font-serif', 'text-[24px]');
-    expect(el.querySelector('svg')).toHaveClass('text-ai');
+    // The AI's mark in its own colours, at 24px; the honey sparkle is gone.
+    const mark = el.querySelector('svg');
+    expect(mark).toHaveAttribute('data-ask-mark');
+    expect(mark).toHaveAttribute('data-tone', 'aurora');
+    expect(mark).toHaveClass('size-6');
+    expect(el.querySelector('.lucide-sparkles')).toBeNull();
   });
 });
 

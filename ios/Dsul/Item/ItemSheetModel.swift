@@ -24,7 +24,11 @@ import Foundation
 // Time sheet's rules and words, the web's where it has them (item-dialog.tsx's
 // date and Time chips, `DATE_SHORTCUTS`, its Duration rows; DsulCore
 // DayBuckets.swift and EditCopy.swift, lib/time-bucket.ts and
-// lib/item-edit.ts).
+// lib/item-edit.ts). From 2e, the Repeat chip's menu (`repeatChoices`,
+// `repeatPick`) and the Repeat sheet's rules and words, the web's where it
+// has them (item-dialog.tsx's Repeat chip; DsulCore Cadence.swift and
+// EditCopy.swift, lib/planner-types.ts `REPEAT_FREQUENCY_LABELS` and
+// `WEEKDAY_LABELS`, lib/item-edit.ts `repeatEditPatch` and `EDIT_COPY`).
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
@@ -123,8 +127,9 @@ struct DayPickWords: Hashable, Sendable {
 /// The sheets an item's page opens over itself, nested in the item sheet,
 /// never the planner's slot, which holds the item sheet and would close it to
 /// open one: the day pickers (Reschedule, Pause until), from 2c the Remind
-/// sheet, and, from 2d, the Date chip's day picker and the Time sheet. Here,
-/// apart from the views, since `chipEditor` names one.
+/// sheet, from 2d the Date chip's day picker and the Time sheet, and, from
+/// 2e, the Repeat sheet. Here, apart from the views, since `chipEditor` names
+/// one.
 enum SheetEditor: Identifiable, Hashable, Sendable {
     /// A new day for the item (Reschedule's Pick a date…).
     case reschedule(UUID)
@@ -136,6 +141,8 @@ enum SheetEditor: Identifiable, Hashable, Sendable {
     case pickDate(UUID)
     /// The Time sheet (`TimeSheet`).
     case time(UUID)
+    /// The Repeat sheet (`RepeatSheet`): Custom days… or Monthly….
+    case repeatDetail(UUID, RepeatDetail)
 
     var id: String {
         switch self {
@@ -144,8 +151,30 @@ enum SheetEditor: Identifiable, Hashable, Sendable {
         case .reminder(let id): return "reminder-" + id.uuidString
         case .pickDate(let id): return "pick-date-" + id.uuidString
         case .time(let id): return "time-" + id.uuidString
+        case .repeatDetail(let id, let detail): return "repeat-" + detail.rawValue + "-" + id.uuidString
         }
     }
+}
+
+/// Which Repeat sheet: Custom days' keys or Monthly's days.
+enum RepeatDetail: String, Hashable, Sendable {
+    case custom, monthly
+}
+
+/// One row of the Repeat menu: the frequency stored and its word.
+struct RepeatChoice: Identifiable, Hashable, Sendable {
+    let frequency: String
+    /// The web's word (`repeatFrequencyLabel`), with an ellipsis for a row
+    /// that opens a sheet: "Monthly…", "Custom days…".
+    let word: String
+
+    var id: String { frequency }
+}
+
+/// What a pick in the Repeat menu does: write at once, or open the sheet.
+enum RepeatPick: Hashable, Sendable {
+    case write(ItemEdit)
+    case open(RepeatDetail)
 }
 
 /// The Date chip's choices (Q3 a, Q4 a): today and tomorrow, wall-clock days
@@ -891,8 +920,8 @@ enum ItemSheetModel {
     /// drawn without a chevron). It edits when `canEdit` takes its action,
     /// which is the planner's `canEdit`: the server lists the action in
     /// `writes`, and DsulCore's `editAllowed` takes it for the item (a habit
-    /// has no priority, a task no count, a subtask no reminder and no time,
-    /// an undated task no time). No type gate lives here:
+    /// has no priority, a task no count, a subtask no reminder, no time and
+    /// no repeat, an undated task no time). No type gate lives here:
     /// - priority and times per day: a menu, whose pick writes at once;
     /// - the date: a menu (`dateOptions`) whose pick moves the item at once,
     ///   offered exactly where the Reschedule verb is (`offered`, the page's
@@ -901,8 +930,11 @@ enum ItemSheetModel {
     ///   slots: a paused task is offered Reschedule (`canReschedule` has no
     ///   pause test) though its bar shows Resume alone, so its date chip
     ///   edits, as the web's date chip does;
+    /// - the repeat: a menu (`repeatChoices`) whose No repeat, Daily,
+    ///   Weekdays and Weekends write at once and whose Monthly… and Custom
+    ///   days… open the Repeat sheet (`repeatPick`);
     /// - the reminder and the time: their sheets;
-    /// - every other chip: read-only, until 2e-2f.
+    /// - every other chip: read-only, until 2f.
     static func chipEditor(_ kind: SheetChip.Kind, _ item: SampleItem, offered: [VerbID],
                            canEdit: (String) -> Bool) -> ChipEditor? {
         switch kind {
@@ -914,27 +946,32 @@ enum ItemSheetModel {
             return canEdit("time") ? .sheet(.time(item.id)) : nil
         case .timesPerDay:
             return canEdit("timesPerDay") ? .menu : nil
+        case .repeats:
+            return canEdit("repeat") ? .menu : nil
         case .reminder:
             return canEdit("reminder") ? .sheet(.reminder(item.id)) : nil
-        case .repeats, .project, .routine, .season:
+        case .project, .routine, .season:
             return nil
         }
     }
 
     /// What "+ Add property" offers for `item`, in chip order: each of
-    /// priority, the date, the time, times per day and the reminder that
-    /// `shown` (`chips(…)`'s answer) has no chip for, and whose chip would
-    /// edit (`chipEditor`). Unset means no chip, so a habit counted once a
-    /// day (part 1 shows its count only above 1) is offered Times per day, a
-    /// stored priority the chips can't name is offered Priority, an undated
-    /// task is offered Date (and no Time…: it has no day for a time yet), and
-    /// an Anytime item is offered Time… (part 1 draws no chip for Anytime).
-    /// Never drawn as dimmed placeholder chips (Q2 a).
+    /// priority, the date, the time, times per day, the repeat and the
+    /// reminder that `shown` (`chips(…)`'s answer) has no chip for, and whose
+    /// chip would edit (`chipEditor`), the web seed's order. Unset means no
+    /// chip, so a habit counted once a day (part 1 shows its count only above
+    /// 1) is offered Times per day, a stored priority the chips can't name is
+    /// offered Priority, an undated task is offered Date (and no Time…: it has
+    /// no day for a time yet), an Anytime item is offered Time… (part 1 draws
+    /// no chip for Anytime), and a one-off task is offered Repeat (a recurring
+    /// item, and every habit, draws its chip). Never drawn as dimmed
+    /// placeholder chips (Q2 a).
     static func unsetProperties(_ item: SampleItem, shown: [SheetChip], offered: [VerbID],
                                 canEdit: (String) -> Bool) -> [SheetChip.Kind] {
         let drawn = Set(shown.map(\.kind))
         var out: [SheetChip.Kind] = []
-        for kind in [SheetChip.Kind.priority, .date, .time, .timesPerDay, .reminder] where !drawn.contains(kind) {
+        let kinds: [SheetChip.Kind] = [.priority, .date, .time, .timesPerDay, .repeats, .reminder]
+        for kind in kinds where !drawn.contains(kind) {
             if chipEditor(kind, item, offered: offered, canEdit: canEdit) != nil { out.append(kind) }
         }
         return out
@@ -952,14 +989,15 @@ enum ItemSheetModel {
 
     /// The chip whose property a closing sheet edited on page `id`, so
     /// VoiceOver goes there (`voiceOverTarget`): the Remind sheet's reminder,
-    /// Pick a date…'s date, the Time sheet's time. Nil for any other editor
-    /// (the bar's Reschedule and Pause until move no VoiceOver focus), and
-    /// for another page's item.
+    /// Pick a date…'s date, the Time sheet's time, the Repeat sheet's repeat.
+    /// Nil for any other editor (the bar's Reschedule and Pause until move no
+    /// VoiceOver focus), and for another page's item.
     static func chipKind(closing editor: SheetEditor, on id: UUID) -> SheetChip.Kind? {
         switch editor {
         case .reminder(let itemID): return itemID == id ? .reminder : nil
         case .pickDate(let itemID): return itemID == id ? .date : nil
         case .time(let itemID): return itemID == id ? .time : nil
+        case .repeatDetail(let itemID, _): return itemID == id ? .repeats : nil
         case .reschedule, .pauseUntil: return nil
         }
     }
@@ -972,8 +1010,9 @@ enum ItemSheetModel {
         case .date: return "Changes the date"
         case .time: return "Changes the time"
         case .timesPerDay: return "Changes how many times a day"
+        case .repeats: return "Changes how it repeats"
         case .reminder: return "Changes the reminder"
-        case .repeats, .project, .routine, .season: return nil
+        case .project, .routine, .season: return nil
         }
     }
 
@@ -992,9 +1031,9 @@ enum ItemSheetModel {
 
     /// A property's entry in the seed: the web seed's label, with an ellipsis
     /// for one that opens a sheet rather than a submenu ("Remind…", "Time…").
-    /// 2d's seed holds the first five alone (`unsetProperties`); the rest
-    /// carry the words design §3.7 gives their PRs (Repeat, Project, Routine,
-    /// Season).
+    /// 2e's seed holds the first six (`unsetProperties`); the rest carry the
+    /// words design §3.7 gives their PRs (Project, Routine, Season). Repeat
+    /// is a submenu, so its entry is "Repeat", with no ellipsis.
     static func seedEntry(_ kind: SheetChip.Kind) -> String {
         switch kind {
         case .priority: return "Priority"
@@ -1056,6 +1095,56 @@ enum ItemSheetModel {
     /// the chip and in its menu.
     static func timesSpoken(_ n: Int) -> String {
         return n == 1 ? "1 time a day" : "\(n) times a day"
+    }
+
+    /// The repeat menu: the type's frequencies (`allowed`, the registry's
+    /// `allowedFrequencies`) in the web's order and words
+    /// (`repeatFrequencyOrder` filtered, as the web's Repeat chip filters
+    /// `REPEAT_FREQUENCY_LABELS`' entries), Monthly… and Custom days… with an
+    /// ellipsis since each opens the Repeat sheet. Then a `stored` frequency
+    /// that repeats (`isRecurring`'s test, the only case that draws the chip)
+    /// and is none of those, on a row of its own in its own word, so the
+    /// menu's Picker always has a row tagged for its selection and never
+    /// hides what is stored, as `timesChoices(stored:)` keeps a count above
+    /// five. The items table's CHECK keeps such a value out of a real row;
+    /// the open text Item.swift keeps (a legacy "weekly") is what this
+    /// guards. Picking that row changes nothing: `repeatPick` makes it a
+    /// write the gate refuses (`frequency_not_allowed`).
+    static func repeatChoices(allowed: [String], stored: String?) -> [RepeatChoice] {
+        var out = repeatFrequencyOrder.filter { allowed.contains($0) }.map { frequency in
+            RepeatChoice(frequency: frequency,
+                         word: repeatFrequencyLabel(frequency) + (opensRepeatSheet(frequency) ? "\u{2026}" : ""))
+        }
+        if let stored, isRecurring(RepeatRule(frequency: stored)),
+           !out.contains(where: { $0.frequency == stored }) {
+            out.append(RepeatChoice(frequency: stored, word: repeatFrequencyLabel(stored)))
+        }
+        return out
+    }
+
+    /// Add property's Repeat ▸: the menu's rows with no stored value and
+    /// without No repeat, since the seed holds Repeat only while nothing
+    /// repeats.
+    static func repeatSeedChoices(allowed: [String]) -> [RepeatChoice] {
+        return repeatChoices(allowed: allowed, stored: nil).filter { $0.frequency != "none" }
+    }
+
+    /// What a pick in the repeat menu does: Monthly… and Custom days… open
+    /// the Repeat sheet, and every other frequency is written at once, the
+    /// days and the day left off (the server writes all three keys).
+    static func repeatPick(_ frequency: String) -> RepeatPick {
+        switch frequency {
+        case "monthly": return .open(.monthly)
+        case "custom": return .open(.custom)
+        default: return .write(.repeats(frequency: frequency, days: nil, monthDay: nil))
+        }
+    }
+
+    /// Does `frequency`'s row open the Repeat sheet (and so take an
+    /// ellipsis, design §3.8)?
+    private static func opensRepeatSheet(_ frequency: String) -> Bool {
+        if case .open = repeatPick(frequency) { return true }
+        return false
     }
 
     // MARK: Streak
@@ -1504,4 +1593,89 @@ enum ItemSheetModel {
     /// nothing (`pickBucket`), so the check that doesn't move has a reason on
     /// screen. The web has none, since its rows always move the check.
     static let timeSetsPartOfDay = "The time sets the part of day."
+
+    // MARK: The Repeat sheet
+
+    /// The days Custom days' keys open on: the stored ones within 0...6 when
+    /// any are stored, else today's alone, as the web's Repeat chip picks
+    /// `currentDayOfWeek` in the user's zone when its draft holds none
+    /// (item-dialog.tsx). `today` is the planner's, the user's day now.
+    static func repeatDaysSeed(_ item: SampleItem, today: DayString) -> Set<Int> {
+        let stored = Set((item.repeatDays ?? []).filter { (0...6).contains($0) })
+        return stored.isEmpty ? Set([today.weekday]) : stored
+    }
+
+    /// The day Monthly's grid opens on: the stored one when within 1...31,
+    /// else the 1st (item-dialog.tsx `draftFromItem`'s `|| 1`).
+    static func monthDaySeed(_ item: SampleItem) -> Int {
+        guard let day = item.repeatMonthDay, (1...31).contains(day) else { return 1 }
+        return day
+    }
+
+    /// What Done sends, if anything: Custom days with the days picked,
+    /// ascending (the order the server takes, as the dialog's keys sort as
+    /// they toggle), or Monthly with the day picked; nil for Custom days with
+    /// no day, which Done is never offered for, and nil when the edit leaves
+    /// `stored` as it is (DsulCore `editing`, lib/item-edit.ts
+    /// `repeatEditPatch`: the frequency, the days and the day all as
+    /// stored). `stored` is the item read when Done is tapped, so a change
+    /// the web made while the sheet was up is measured too. A clean sheet on
+    /// another frequency still sends (Custom days… on a daily item, Done at
+    /// once): its frequency moves. From the sheet's keys (0...6) and grid
+    /// (1...31), every edit returned passes `editAllowed`: the days a set, so
+    /// each once, sorted.
+    static func repeatCommit(_ detail: RepeatDetail, days: Set<Int>, monthDay: Int,
+                             stored: SampleItem) -> ItemEdit? {
+        let edit: ItemEdit
+        switch detail {
+        case .custom:
+            guard !days.isEmpty else { return nil }
+            edit = .repeats(frequency: "custom", days: days.sorted(), monthDay: nil)
+        case .monthly:
+            edit = .repeats(frequency: "monthly", days: nil, monthDay: monthDay)
+        }
+        return editing(stored, edit) == stored ? nil : edit
+    }
+
+    /// Custom days' keys, 0 = Sun … 6 = Sat, in the user's Week starts on
+    /// order (DsulCore `weekdayOrder`; open question 2), so a Monday week
+    /// reads Mon to Sun, as the week dots do. The web's always run from Sun.
+    static func repeatDayKeys(weekStartDay: WeekStartDay) -> [Int] {
+        return weekdayOrder(weekStartDay)
+    }
+
+    /// A key's word, the web's (DsulCore `weekdayLabel`, lib/planner-types.ts
+    /// `WEEKDAY_LABELS`): "Sun" … "Sat".
+    static func repeatDayWord(_ day: Int) -> String {
+        return weekdayLabel(day)
+    }
+
+    /// A key's day in full, for VoiceOver and the rows at the larger text
+    /// sizes: "Sunday" … "Saturday", spelled in English as the rest of the
+    /// sheet is. Each begins with its word (`repeatDayWord`), so what
+    /// VoiceOver says holds what the key shows. "" outside 0...6.
+    static func repeatDayName(_ day: Int) -> String {
+        let names = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"]
+        return (0...6).contains(day) ? names[day] : ""
+    }
+
+    /// A day of the month as the web's chip names it ("Day 12",
+    /// item-dialog.tsx `repeatValue`): the grid's VoiceOver label, and the
+    /// row at the accessibility sizes. The grid itself shows the bare
+    /// number, as the web's does.
+    static func monthDayWord(_ day: Int) -> String {
+        return "Day \(day)"
+    }
+
+    /// The Repeat sheet's title: the web's word for its frequency, without
+    /// the menu's ellipsis ("Custom days", "Monthly").
+    static func repeatTitle(_ detail: RepeatDetail) -> String {
+        return repeatFrequencyLabel(detail.rawValue)
+    }
+
+    /// Under Custom days' keys while none is picked, the web's (`EDIT_COPY`).
+    static let selectAtLeastOneDay = EditCopy.selectAtLeastOneDay
+
+    /// Under Monthly's days, the web's (`EDIT_COPY`).
+    static let monthlyNote = EditCopy.monthlyNote
 }

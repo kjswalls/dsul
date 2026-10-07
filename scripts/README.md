@@ -60,7 +60,9 @@ supabase stop       # shut the stack down (frees the RAM)
   valid key is never replaced, because a rotated key leaves every sealed model key
   unreadable. A blank or malformed one (the app refuses it, so it has sealed
   nothing) is swapped for a fresh key. `.env.test` is fully regenerated (it has nothing else in it, and
-  gets a fresh key each run), backed up to `.env.test.bak`.
+  gets a fresh key and a fresh random `CRON_SECRET` each run, the second so
+  `tests/e2e/reminders-tick.spec.ts` can call the tick with a bearer the dev
+  server enforces), backed up to `.env.test.bak`.
 - **Back to production:** `vercel env pull .env.local`.
 - Two separate accounts on purpose: `dev@dsul.test` for development and
   `e2e@dsul.test` for the suite, so the e2e litter-sweep never deletes rows you
@@ -109,3 +111,48 @@ by `000_baseline.sql`), so keep the fixture honest first if the real shape ever
 disagrees. `tests/unit/collapse-classify-kind.test.ts` covers the same
 migration in CI, but only as text: it cannot catch a syntax error or a wrong
 join, which is exactly what this finds.
+
+## `verify-058.sh`
+
+Replays the real migrations `000..057` onto a **throwaway bare Postgres**, then
+applies `058_resume_cron_tick.sql` and checks what it is for: the jobs (one
+`*/5` tick, `dsul-eod-notify` gone, the daily jobs untouched), `dsul_tick`'s
+grants and empty `search_path`, a byte-identical snapshot after a second run, a
+hand-unscheduled `dsul-reminders` re-created, the short-circuit read from a stub
+request queue (nobody enabled → no request; one account → one GET with the
+Vault bearer; `force` → one; a missing column or table → one, failing open), and
+finally a **bare pass** with both extensions dropped, where 058 must still apply.
+
+CI's E2E job replays every migration too, but on a Supabase stack with real
+pg_cron, where an unguarded `cron.*` call passes; this is the only place the
+guards are exercised. The repository's migrations cannot replay on a Postgres
+without pg_cron and pg_net, so the script installs **stub extensions** into
+`$(pg_config --sharedir)/extension/` (refusing to overwrite a real one) and
+removes them on exit. That needs root, or write access to that directory:
+
+```bash
+sudo ./scripts/verify-058.sh     # or PGBIN=/path/to/pg/bin
+```
+
+As root it runs the cluster as the `postgres` OS user under `/var/lib/postgresql/`.
+It needs no Supabase credentials and cannot reach a remote database. Run it by
+hand before applying 058, or after any edit to `dsul_tick` or the cron jobs.
+`tests/unit/migration-text.test.ts` is its cheap twin in CI: it reads every
+migration from 058 on as text (empty `search_path`, no `time + interval`, revoke
+before grant, no token or keys for `authenticated`, guarded `cron.*`).
+
+## `apple-client-secret.mjs`
+
+Mints the client secret Supabase's Apple provider needs: a JWT signed with the Sign
+in with Apple key (.p8), valid 180 days (Apple's ceiling is six months). Run it at
+setup and again before each expiry, then paste the output into Supabase →
+Authentication → Providers → Apple. It prints the expiry date on stderr.
+
+```bash
+node scripts/apple-client-secret.mjs --team <Team ID> --key-id <Key ID> \
+  --client-id app.dsul.web --p8 ~/Downloads/AuthKey_<Key ID>.p8
+```
+
+Nothing is sent anywhere, and the .p8 never belongs in the repo. The full setup and
+rotation are in `memory/plans/sign-in-with-apple.md`;
+`tests/unit/apple-client-secret.test.ts` checks the claims and the signature.

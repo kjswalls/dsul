@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { inactiveItemIdsOn, isOpenLoopOn } from '@/lib/active';
 import { MCP_TOOLS, TOOL_DESCRIPTORS, selectAssignedWork, toolByName } from '@/lib/mcp/tools';
+import type { Item, Routine, Season } from '@/lib/planner-types';
 
 /**
  * Tool planning is pure: arguments in, "which agent endpoint" out. Executing
@@ -349,6 +351,88 @@ describe('selectAssignedWork', () => {
     expect(selectAssignedWork({}).assigned).toEqual([]);
     expect(selectAssignedWork({ items: 'nope' }).assigned).toEqual([]);
     expect(selectAssignedWork({ items: [null, 3, 'x'] }).assigned).toEqual([]);
+  });
+
+  /**
+   * "Today" is the user's day, not fetchedAt's UTC date. The item menu's "Hand
+   * off" offers on the local day (toDateStr(new Date(), tz)), so a queue that
+   * read the UTC date disagreed with it for every hour between UTC midnight and
+   * the user's, and a hand-off it allowed sat at "Queued" forever.
+   */
+  describe("on the user's day, near midnight", () => {
+    // 18:00 on Oct 5 in Los Angeles (PDT, UTC-7) is already Oct 6 in UTC.
+    const LA = { fetchedAt: '2026-10-06T01:00:00.000Z', userTimezone: 'America/Los_Angeles' };
+    const LA_DAY = '2026-10-05';
+    // 01:00 on Oct 6 in Auckland (NZDT, UTC+13) is still Oct 5 in UTC.
+    const AKL = { fetchedAt: '2026-10-05T12:00:00.000Z', userTimezone: 'Pacific/Auckland' };
+
+    const season = (over: Record<string, unknown>) => ({
+      id: 's', name: 'Season', state: 'auto', itemIds: ['held'], routineIds: [], ...over,
+    });
+    const held = () => task({ id: 'held', title: 'In the season', assignee: 'openclaw', aiStatus: 'queued' });
+    const served = (body: Record<string, unknown>) => selectAssignedWork(body).assigned.map((i) => i.id);
+
+    it('still serves work in a season that ends today, after UTC midnight', () => {
+      expect(served({ ...LA, seasons: [season({ endsOn: '2026-10-05' })], items: [held()] })).toEqual(['held']);
+    });
+
+    it('does not serve work in a season that starts tomorrow, after UTC midnight', () => {
+      expect(served({ ...LA, seasons: [season({ startsOn: '2026-10-06' })], items: [held()] })).toEqual([]);
+    });
+
+    it('keeps a pause that ends tomorrow in force, after UTC midnight', () => {
+      const paused = task({
+        id: 'paused', title: 'Paused', assignee: 'openclaw', aiStatus: 'queued',
+        pausedAt: '2026-09-01T00:00:00.000Z', pausedUntil: '2026-10-06',
+      });
+      expect(served({ ...LA, items: [paused] })).toEqual([]);
+    });
+
+    it('drops a season that ended yesterday east of UTC, before UTC midnight', () => {
+      expect(served({ ...AKL, seasons: [season({ endsOn: '2026-10-05' })], items: [held()] })).toEqual([]);
+    });
+
+    it("serves exactly what the menu's rule offers on the local day", () => {
+      const routines = [
+        { id: 'r', name: 'Term time', itemIds: ['in-routine'], pausedAt: '2026-09-01T00:00:00.000Z', pausedUntil: '2026-10-06' },
+      ];
+      const seasons = [
+        season({ id: 's-ends', endsOn: '2026-10-05', itemIds: ['ends-today'] }),
+        season({ id: 's-starts', startsOn: '2026-10-06', itemIds: ['starts-tomorrow'] }),
+      ];
+      const items = [
+        task({ id: 'plain', title: 'Plain' }),
+        task({ id: 'ends-today', title: 'Season ends today' }),
+        task({ id: 'starts-tomorrow', title: 'Season starts tomorrow' }),
+        task({ id: 'in-routine', title: 'Routine paused until tomorrow' }),
+        task({ id: 'pause-ends', title: 'Pause ends tomorrow', pausedAt: '2026-09-01T00:00:00.000Z', pausedUntil: '2026-10-06' }),
+      ].map((i) => ({ ...i, assignee: 'openclaw', aiStatus: 'queued' }));
+
+      const inactive = inactiveItemIdsOn(items as unknown as Item[], LA_DAY, {
+        userTimezone: LA.userTimezone,
+        routines: routines as unknown as Routine[],
+        seasons: seasons as unknown as Season[],
+      });
+      const offered = (items as unknown as Item[])
+        .filter((i) => isOpenLoopOn(i, LA_DAY) && !inactive.has(i.id))
+        .map((i) => i.id);
+
+      expect(offered).toEqual(['plain', 'ends-today']);
+      expect(served({ ...LA, routines, seasons, items })).toEqual(offered);
+    });
+
+    it('falls back to the UTC date on a zone Intl does not know, rather than failing the poll', () => {
+      const body = { ...LA, userTimezone: 'Not/AZone', seasons: [season({ endsOn: '2026-10-05' })], items: [held()] };
+      expect(() => selectAssignedWork(body)).not.toThrow();
+      expect(served(body)).toEqual([]);
+    });
+
+    it('still serves open work when fetchedAt is missing or unreadable', () => {
+      // No day to gate on is "the server did not say", so nothing is suppressed.
+      const seasons = [season({ endsOn: '2026-01-01' })];
+      expect(served({ userTimezone: LA.userTimezone, seasons, items: [held()] })).toEqual(['held']);
+      expect(served({ fetchedAt: 'later', userTimezone: LA.userTimezone, seasons, items: [held()] })).toEqual(['held']);
+    });
   });
 });
 

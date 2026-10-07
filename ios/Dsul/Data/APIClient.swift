@@ -68,8 +68,8 @@ enum APIError: Error, Equatable, Sendable {
 /// The app's writes and one read on /api/app (lib/app-api.ts), with a
 /// Supabase access token as the bearer: capture, and the item writes (tick,
 /// braindump row to an hour, skip, move, pause, and the item sheet's title,
-/// notes, priority, times a day, reminder and time, Delete, Add a subtask and
-/// Reset streak).
+/// notes, priority, times a day, reminder, time and repeat, Delete, Add a
+/// subtask and Reset streak).
 ///
 /// Writes are intents, never arrays: a tick or a skip sends the date and the
 /// end state, never `completedDates` or `skippedDates`, because the phone reads
@@ -131,10 +131,11 @@ final class APIClient {
     }
 
     /// POST /api/app/items/:id `title`, `notes`, `priority`, `timesPerDay`,
-    /// `reminder` or `time`: a typed edit, as its own action. The body is
-    /// DsulCore's `ItemWriteBody`, which sends a cleared field as `null`,
-    /// never as a missing key, a reminder's anchor only when it changed, and
-    /// a time edit's keys only when they changed.
+    /// `reminder`, `time` or `repeat`: a typed edit, as its own action. The
+    /// body is DsulCore's `ItemWriteBody`, which sends a cleared field as
+    /// `null`, never as a missing key, a reminder's anchor only when it
+    /// changed, a time edit's keys only when they changed, and a repeat's days
+    /// only with Custom days and its day only with Monthly.
     func edit(id: UUID, _ edit: ItemEdit) async throws {
         _ = try await send("POST", Self.itemPath(id), body: try Self.encode(ItemWriteBody.edit(edit)))
     }

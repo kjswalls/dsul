@@ -40,11 +40,10 @@ import { OneTimeNudge } from '@/components/primitives/one-time-nudge';
 import { SettleHost } from '@/components/shell/settle-host';
 
 import { batchHistory, usePlannerStore } from '@/lib/planner-store';
-import { selectPlannerSettled } from '@/lib/planner-ready';
 import { milestoneItemIds } from '@/lib/goals';
 import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
-import { useEODStore } from '@/lib/eod-store';
+import { openReviewFromLink } from '@/lib/eod-link';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
@@ -268,38 +267,17 @@ export function AppShell() {
     []
   );
 
-  // EOD deep link: ?eod=1 opens the EOD review modal (e.g. tapped from a push notification)
+  // EOD deep link: ?eod=<yyyy-MM-dd> opens the EOD review modal for the day the
+  // review's push invited, once the planner has loaded (lib/eod-link.ts, which
+  // says why "loaded" is not `!isLoading`). The bare ?eod=1 of older pushes
+  // still opens it, naming no day.
   useEffect(() => {
     if (typeof window === 'undefined') return;
-    const params = new URLSearchParams(window.location.search);
-    if (params.get('eod') !== '1') return;
-
-    const openAndClear = () => {
-      useEODStore.getState().open();
-      window.history.replaceState({}, '', '/');
-    };
-
-    // `!isLoading` alone is NOT "loaded" — the store initialises with
-    // isLoading:false, and this effect runs before the load even starts:
-    // initializeStore is called from SupabaseProvider, a PARENT, and React runs
-    // child effects first. So the fast path used to fire against an EMPTY store,
-    // and EODReview snapshots its pending list once on the isOpen transition and
-    // never re-snapshots — leaving a permanently empty review for anyone who
-    // arrived by tapping the push notification. `userId` is set in the same
-    // set() as isLoading:true, so it is the signal that a load has begun.
-    const isLoaded = selectPlannerSettled;
-
-    if (isLoaded(usePlannerStore.getState())) {
-      openAndClear();
-    } else {
-      const unsub = usePlannerStore.subscribe((state) => {
-        if (isLoaded(state)) {
-          openAndClear();
-          unsub();
-        }
-      });
-      return unsub;
-    }
+    return openReviewFromLink(window.location.search, {
+      getState: usePlannerStore.getState,
+      subscribe: usePlannerStore.subscribe,
+      clearLink: () => window.history.replaceState({}, '', '/'),
+    });
   }, []);
 
   // There is deliberately NO in-app EOD auto-trigger here. There used to be
@@ -307,8 +285,9 @@ export function AppShell() {
   // every refresh after that time re-open the modal until "Done for today" was
   // pressed — Esc/✕ don't count as reviewed. The review is reached on purpose
   // instead: the rituals.eod palette command, or the nightly push notification
-  // (cron/eod-notify, gated on the same eod_review_enabled/eod_review_time
-  // settings) whose tap lands on the ?eod=1 deep link above.
+  // (the reminder scan's EOD tier, lib/reminders/scan.ts, gated on the same
+  // eod_review_enabled/eod_review_time settings) whose tap lands on the
+  // ?eod=<day> deep link above.
 
   const sensors = useShellSensors();
 

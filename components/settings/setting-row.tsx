@@ -256,9 +256,8 @@ function ControlFor({
             if (e.target.value) onWrite(e.target.value);
           }}
           className={cn(
-            'border-input bg-background text-foreground h-8 w-[104px] rounded-md border px-2',
-            'font-num text-xs disabled:cursor-not-allowed disabled:opacity-50',
-            'focus-visible:ring-ring focus-visible:ring-2 focus-visible:outline-none'
+            'field bg-background text-foreground h-8 w-[104px] border px-2',
+            'font-num text-xs outline-none disabled:cursor-not-allowed disabled:opacity-50'
           )}
         />
       );

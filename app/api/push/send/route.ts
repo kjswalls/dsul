@@ -14,9 +14,14 @@ import { isPushConfigured, sendPushToUser, type PushAction } from '@/lib/push-se
  *
  * Body: { userId, title, body, url?, tag?, actions?, data? }
  *
+ * No ttl, urgency or topic: a push from here waits up to DEFAULT_TTL_S (six
+ * hours) for a device that is off, where web-push alone would hold it for four
+ * weeks.
+ *
  * The delivery itself lives in lib/push-send.ts — this route is the HTTP
- * surface and the auth gate, nothing more. In-process callers (the reminder
- * scan, eod-notify) call the library directly rather than POSTing here.
+ * surface and the auth gate, nothing more. The in-process caller (the reminder
+ * scan, the EOD review included) calls the library directly rather than
+ * POSTing here.
  */
 export async function POST(req: NextRequest) {
   if (!isPushConfigured()) {
@@ -49,6 +54,12 @@ export async function POST(req: NextRequest) {
       actions: actions as PushAction[] | undefined,
       data,
     });
+    // sendPushToUser answers a failed subscription read instead of throwing it.
+    // Still a 500 here, as it was when it threw: a 200 with `sent: 0` would
+    // tell the caller "no devices" about a question nobody answered.
+    if (result.detail) {
+      return NextResponse.json({ error: result.detail }, { status: 500 });
+    }
     return NextResponse.json({ ok: true, sent: result.sent });
   } catch (err) {
     return NextResponse.json(

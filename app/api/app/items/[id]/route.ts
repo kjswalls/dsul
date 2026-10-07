@@ -19,6 +19,10 @@ import { postItemWrite } from '@/lib/app-api';
  *   { action: 'time', timeBucket?, startTime?, duration? }
  *                                                         part of day, a specific time and a length;
  *                                                         each key only when it changed
+ *   { action: 'repeat', frequency, days?, monthDay? }     how it repeats: all three keys together,
+ *                                                         the days with Custom days only and the day
+ *                                                         with Monthly only; then any goal role it
+ *                                                         left untrue is demoted
  * The handler is in lib/app-api.ts.
  */
 export async function POST(

@@ -5,8 +5,9 @@ import DsulCore
 // ItemEdit.swift on hand-written text and lists: the cleaners at their limits,
 // JavaScript's trim, the growth caps, the type gate and the chips' edits (the
 // time chip's with the time-to-bucket rules under it, from DayBuckets.swift,
-// and the lengths' words, from EditCopy.swift), a new subtask and a streak
-// reset, and where a failed delete puts things back. The web's own answers for
+// and the lengths' words, from EditCopy.swift; the repeat chip's, with the
+// Repeat sheet's two sentences), a new subtask and a streak reset, and where a
+// failed delete puts things back. The web's own answers for
 // the same functions are in EditWritesFixtureTests; these restate them.
 
 /// 00000000-0000-4000-8000-000000000012 for 12.
@@ -272,6 +273,7 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         let edits: [ItemEdit] = [
             .title("x"), .notes(nil), .priority("high"), .timesPerDay(2), .reminder(time: "08:00", anchor: nil),
             .time(bucket: .set("evening"), startTime: nil, duration: 45),
+            .repeats(frequency: "weekdays", days: nil, monthDay: nil),
         ]
         for item in [roadmap, numbers, meds, errand] {
             for edit in edits {
@@ -906,6 +908,243 @@ private func task(_ n: Int, _ title: String, parent: Int? = nil) -> Item {
         // Each start files in its own part of day.
         for bucket in [DayBucket.morning, .afternoon, .evening] {
             #expect(bucketStartTime(bucket).map(bucketForTime) == bucket, "\(bucket)")
+        }
+    }
+}
+
+/// The Repeat chip's gate: lib/item-edit.ts `editRefusal`'s `repeat` arm
+/// (`not_for_subtask`, `frequency_not_allowed`), and the route's schema for
+/// the body (`invalid`), which `editAllowed` judges with no row.
+@Suite struct RepeatEditAllowedTests {
+    private let roadmap = task(1, "Draft Q4 roadmap")
+    private let numbers = task(2, "Pull the numbers", parent: 1)
+    private let meds = Item(id: uuid(3), type: "habit", title: "Meds", repeatFrequency: "daily")
+    private let errand = Item(id: uuid(4), type: "custom", customType: "errand", title: "Post office")
+
+    private func allowed(_ action: String, _ item: Item, caps: ItemCaps? = nil) -> Bool {
+        return editAllowed(action: action, on: item, caps: caps ?? DsulCore.caps(item.typeName))
+    }
+
+    private func allowed(_ frequency: String, days: [Int]? = nil, monthDay: Int? = nil, on item: Item) -> Bool {
+        return editAllowed(.repeats(frequency: frequency, days: days, monthDay: monthDay), on: item,
+                           caps: caps(item.typeName))
+    }
+
+    /// A task's, a habit's and a custom item's, dated or not; never a
+    /// subtask's; and never a type with one frequency, whose chip the web
+    /// doesn't offer.
+    @Test func aRepeatIsAnyTypesButASubtasks() {
+        #expect(allowed("repeat", roadmap), "an undated task")
+        #expect(allowed("repeat", meds))
+        #expect(allowed("repeat", errand))
+        #expect(!allowed("repeat", numbers), "a subtask")
+        var blank = roadmap
+        blank.parentItemId = ""
+        #expect(allowed("repeat", blank), "an empty parent is none")
+        var once = ItemCaps.task
+        once.allowedFrequencies = ["daily"]
+        #expect(!allowed("repeat", roadmap, caps: once))
+        #expect(!editAllowed(.repeats(frequency: "daily", days: nil, monthDay: nil), on: roadmap, caps: once))
+    }
+
+    /// The type's own frequencies: a habit has no "none", and a frequency no
+    /// type lists (the legacy "weekly") is never sent.
+    @Test func theFrequencyIsOneTheTypeOffers() {
+        #expect(!allowed("none", on: meds), "frequency_not_allowed")
+        #expect(allowed("none", on: roadmap))
+        #expect(allowed("none", on: errand))
+        for frequency in ["daily", "weekdays", "weekends"] {
+            #expect(allowed(frequency, on: roadmap) && allowed(frequency, on: meds) && allowed(frequency, on: errand),
+                    "\(frequency)")
+        }
+        #expect(!allowed("weekly", on: roadmap))
+        #expect(!allowed("weekly", on: meds))
+        #expect(!allowed("", on: roadmap))
+        #expect(ItemCaps.task.allowedFrequencies == ["none", "daily", "weekdays", "weekends", "monthly", "custom"])
+        #expect(ItemCaps.habit.allowedFrequencies == ["daily", "weekdays", "weekends", "monthly", "custom"])
+        #expect(caps("errand").allowedFrequencies == ItemCaps.task.allowedFrequencies)
+    }
+
+    /// Custom days carry their days, at least one, ascending, each once,
+    /// Sunday (0) to Saturday (6); refused, never cleaned.
+    @Test func customDaysAreAscendingAndInTheWeek() {
+        #expect(!allowed("custom", days: nil, on: roadmap))
+        #expect(!allowed("custom", days: [], on: roadmap))
+        #expect(!allowed("custom", days: [3, 1], on: roadmap))
+        #expect(!allowed("custom", days: [1, 1], on: roadmap))
+        #expect(!allowed("custom", days: [7], on: roadmap))
+        #expect(!allowed("custom", days: [-1, 2], on: roadmap))
+        #expect(allowed("custom", days: [0, 6], on: roadmap))
+        #expect(allowed("custom", days: [0, 1, 2, 3, 4, 5, 6], on: meds))
+        // Days beside any other frequency.
+        #expect(!allowed("daily", days: [1], on: roadmap))
+        #expect(!allowed("monthly", days: [1], monthDay: 1, on: roadmap))
+        // A day of the month beside Custom days.
+        #expect(!allowed("custom", days: [1], monthDay: 1, on: roadmap))
+    }
+
+    /// Monthly carries its day, 1 to 31; no other frequency carries one.
+    @Test func monthlyCarriesItsDay() {
+        #expect(!allowed("monthly", monthDay: nil, on: roadmap))
+        #expect(!allowed("monthly", monthDay: 0, on: roadmap))
+        #expect(!allowed("monthly", monthDay: 32, on: roadmap))
+        #expect(allowed("monthly", monthDay: 31, on: roadmap))
+        #expect(allowed("monthly", monthDay: 1, on: meds))
+        #expect(!allowed("daily", monthDay: 1, on: roadmap))
+        #expect(!allowed("none", monthDay: 1, on: roadmap))
+    }
+
+    /// The type gate still comes first: a body the schema takes is refused
+    /// on a subtask.
+    @Test func theTypeGateComesFirst() {
+        #expect(!allowed("daily", on: numbers))
+        #expect(!allowed("custom", days: [1], on: numbers))
+    }
+}
+
+/// `editing(.repeats)`: lib/item-edit.ts `repeatEditPatch`, the dialog's
+/// Repeat chip over the keys sent, all three keys through `repeatPatch`.
+@Suite struct RepeatEditingTests {
+    /// A daily task from September, done yesterday, with a stale day of the
+    /// month from an old Monthly.
+    private let plants = Item(
+        id: uuid(1), title: "Water the plants", status: "pending", startDate: "2026-09-01", timeBucket: "morning",
+        repeatFrequency: "daily", repeatMonthDay: 15, isScheduled: true, completedDates: ["2026-09-30"],
+        skippedDates: ["2026-09-28"]
+    )
+    /// A finished one-off.
+    private let passport = Item(
+        id: uuid(2), title: "Renew passport", status: "completed", startDate: "2026-09-30"
+    )
+    private let meds = Item(
+        id: uuid(3), type: "habit", title: "Meds", repeatFrequency: "daily", streak: 41,
+        completedDates: ["2026-09-30"], dailyCounts: ["2026-09-30": 1]
+    )
+
+    private func repeats(_ frequency: String, _ days: [Int]? = nil, _ monthDay: Int? = nil) -> ItemEdit {
+        return .repeats(frequency: frequency, days: days, monthDay: monthDay)
+    }
+
+    /// No repeat on a task clears all three keys, the stale day too, and
+    /// nothing else: the start day stays, so it is a one-off on that day.
+    @Test func noRepeatClearsAllThree() {
+        var want = plants
+        want.repeatFrequency = nil
+        want.repeatDays = nil
+        want.repeatMonthDay = nil
+        #expect(editing(plants, repeats("none")) == want)
+        let errand = Item(id: uuid(4), type: "custom", customType: "errand", title: "Stamps", repeatFrequency: "weekdays")
+        #expect(editing(errand, repeats("none")).repeatFrequency == nil)
+    }
+
+    /// A habit's frequency is kept as given, never cleared; the gate refuses
+    /// "none" on one, and the port writes it as `repeatPatch`'s habit
+    /// overload would.
+    @Test func aHabitKeepsItsFrequency() {
+        var weekdays = meds
+        weekdays.repeatFrequency = "weekdays"
+        #expect(editing(meds, repeats("weekdays")) == weekdays)
+        var daily = weekdays
+        daily.repeatFrequency = "daily"
+        #expect(editing(weekdays, repeats("daily")) == daily)
+        #expect(editing(meds, repeats("none")).repeatFrequency == "none")
+        // A habit with none stored reads as daily, so daily changes nothing.
+        var unset = meds
+        unset.repeatFrequency = nil
+        #expect(editing(unset, repeats("daily")) == unset)
+    }
+
+    /// Custom days set the days and clear the day; Monthly sets the day and
+    /// clears the days.
+    @Test func eachFrequencyCarriesItsOwnKey() {
+        var custom = plants
+        custom.repeatFrequency = "custom"
+        custom.repeatDays = [1, 3, 5]
+        custom.repeatMonthDay = nil
+        #expect(editing(plants, repeats("custom", [1, 3, 5])) == custom)
+        var monthly = custom
+        monthly.repeatFrequency = "monthly"
+        monthly.repeatDays = nil
+        monthly.repeatMonthDay = 31
+        #expect(editing(custom, repeats("monthly", nil, 31)) == monthly)
+        var weekends = monthly
+        weekends.repeatFrequency = "weekends"
+        weekends.repeatMonthDay = nil
+        #expect(editing(monthly, repeats("weekends")) == weekends)
+    }
+
+    /// What equals the seed changes nothing: the stored rule sent back, a
+    /// task with none stored sent none, Monthly with no day stored sent the
+    /// 1st, and a stale day under Daily sent Daily (the 15 stays).
+    @Test func anEditEqualToTheSeedChangesNothing() {
+        #expect(editing(plants, repeats("daily")) == plants)
+        #expect(editing(plants, repeats("daily")).repeatMonthDay == 15)
+        #expect(editing(passport, repeats("none")) == passport)
+        var gym = passport
+        gym.status = "pending"
+        gym.repeatFrequency = "custom"
+        gym.repeatDays = [1, 3]
+        #expect(editing(gym, repeats("custom", [1, 3])) == gym)
+        var rent = passport
+        rent.repeatFrequency = "monthly"
+        #expect(rent.repeatMonthDay == nil)
+        #expect(editing(rent, repeats("monthly", nil, 1)) == rent)
+        // A stored 0 reads as the 1st too (`|| 1`).
+        var zero = rent
+        zero.repeatMonthDay = 0
+        #expect(editing(zero, repeats("monthly", nil, 1)) == zero)
+        #expect(editing(rent, repeats("monthly", nil, 2)).repeatMonthDay == 2)
+    }
+
+    /// The days compare as an ordered list, as `JSON.stringify` does: stored
+    /// days out of order, sent in order, are written.
+    @Test func reorderedDaysAreWritten() {
+        var stored = passport
+        stored.repeatFrequency = "custom"
+        stored.repeatDays = [3, 1]
+        var want = stored
+        want.repeatDays = [1, 3]
+        #expect(editing(stored, repeats("custom", [1, 3])) == want)
+    }
+
+    /// No repeat edit moves the status, the day, the part of day, the streak
+    /// or the done days: a finished one-off that starts repeating stays
+    /// finished, and an undated task stays undated.
+    @Test func nothingElseMoves() {
+        let edits = [
+            repeats("none"), repeats("daily"), repeats("weekdays"), repeats("weekends"),
+            repeats("monthly", nil, 12), repeats("custom", [0, 3]),
+        ]
+        for item in [plants, passport, meds] {
+            for edit in edits {
+                let next = editing(item, edit)
+                #expect(next.status == item.status, "\(item.title): \(edit)")
+                #expect(next.startDate == item.startDate, "\(item.title): \(edit)")
+                #expect(next.timeBucket == item.timeBucket && next.isScheduled == item.isScheduled,
+                        "\(item.title): \(edit)")
+                #expect(next.streak == item.streak, "\(item.title): \(edit)")
+                #expect(next.completedDates == item.completedDates && next.skippedDates == item.skippedDates,
+                        "\(item.title): \(edit)")
+                #expect(next.dailyCounts == item.dailyCounts, "\(item.title): \(edit)")
+            }
+        }
+        var weekdays = passport
+        weekdays.repeatFrequency = "weekdays"
+        #expect(editing(passport, repeats("weekdays")) == weekdays)
+        let undated = Item(id: uuid(5), title: "Call the bank", status: "pending", isScheduled: false)
+        let daily = editing(undated, repeats("daily"))
+        #expect(daily.repeatFrequency == "daily" && daily.startDate == nil && daily.isScheduled == false)
+    }
+}
+
+/// EditCopy.swift's Repeat sheet sentences, by hand. The fixture's `copy`
+/// (`theCopyIsTheWebs`) is what pins them to the web.
+@Suite struct RepeatCopyTests {
+    @Test func theSentencesSayWhatTheWebsSay() {
+        #expect(EditCopy.selectAtLeastOneDay == "Select at least one day")
+        #expect(EditCopy.monthlyNote == "For months with fewer days, it will occur on the last day.")
+        for sentence in [EditCopy.selectAtLeastOneDay, EditCopy.monthlyNote] {
+            #expect(!sentence.unicodeScalars.contains("\u{2014}"), "no em dash: \(sentence)")
         }
     }
 }
