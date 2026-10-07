@@ -12,7 +12,9 @@ import { join } from 'node:path';
  *
  *  - Setup home: the greeting, what the person could ask now (the chips Ask
  *    would offer today, quoted, nothing to press), and the connect card
- *    (its own behaviour is connect-ai.test.tsx's).
+ *    (its own behaviour is connect-ai.test.tsx's). A question kept from `?`
+ *    takes the previews' place as YOUR QUESTION, and its Clear gives them
+ *    back with focus on their heading.
  *  - Fix home: the saved connection, what is wrong in plain words, a box for
  *    a new key, and a fresh check where one can help (the box's own behaviour
  *    is connect-fix.test.tsx's).
@@ -30,11 +32,30 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
   useSearchParams: () => new URLSearchParams(),
 }));
+/** The openers' clock, or none: a page whose clock is not known yet previews nothing. Set before a render, never during. */
+const openerClock = vi.hoisted(() => ({ unknown: false }));
+vi.mock('@/hooks/use-opener-context', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/hooks/use-opener-context')>();
+  return {
+    ...real,
+    useOpenerContext: () =>
+      openerClock.unknown
+        ? { ctx: null, minutesNow: null, now: null, todayStr: null, tz: 'UTC' }
+        : real.useOpenerContext(),
+  };
+});
 
 import { AskSetup, SETUP_MODEL_HREF, SETUP_SETTINGS_HREF, fixCopy } from '@/components/ai/rail/ask-setup';
 import { UndoStrip } from '@/components/notices/undo-strip';
 import { AI_OFF_FAILED, AI_OFF_LABEL, AI_OFF_STRIP_MS, AI_STILL_OFF_LABEL } from '@/lib/no-ai';
 import { useAIConnectionStore, getAICapabilities, useAICapabilities } from '@/lib/ai-connection-store';
+import {
+  ASK_CLAIMED_KEY,
+  __resetKeptForTests,
+  clearKeptQuestionState,
+  keepQuestion,
+  readKept,
+} from '@/lib/ask-pending';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useRailStore } from '@/lib/rail-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
@@ -43,7 +64,7 @@ import { useUndoStripStore } from '@/lib/undo-strip-store';
 import { useLookStore } from '@/lib/look-store';
 import type { ModelConnectionView } from '@/lib/ai-types';
 import type { Item } from '@/lib/planner-types';
-import { seedAI, KEY_TURNED_DOWN, NOTHING_CONNECTED, type SeedAI } from './helpers/ai-fixtures';
+import { seedAI, KEY_TURNED_DOWN, NOTHING_CONNECTED, SEED_USER_ID, type SeedAI } from './helpers/ai-fixtures';
 
 const TODAY = '2026-10-07';
 /** 19:30 UTC: evening, so the openers look back at today and ahead to tomorrow. */
@@ -158,6 +179,10 @@ afterEach(() => {
   cleanup();
   unseed();
   unseed = () => {};
+  openerClock.unknown = false;
+  clearKeptQuestionState();
+  localStorage.removeItem(ASK_CLAIMED_KEY);
+  __resetKeptForTests();
   useSessionUserStore.setState({ user: null });
   useUndoStripStore.setState({ entry: null });
   vi.unstubAllGlobals();
@@ -416,6 +441,86 @@ describe('the fix home', () => {
     for (const copy of [custom('https://llm.example.com/v1'), custom(null)]) {
       expect(`${copy.note} ${copy.still}`).not.toMatch(/\bOther\b/);
     }
+  });
+});
+
+describe('YOUR QUESTION', () => {
+  const KEPT = 'what should I do first';
+  const question = () => screen.queryByTestId('setup-question');
+  const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+  /** The focus hand-off after Clear (a 0ms timer). */
+  const settle = () => act(() => new Promise((r) => setTimeout(r, 0)));
+
+  beforeEach(() => {
+    setItems([task('Fix the squeaky door', { startDate: '2026-10-01' })]);
+    expect(keepQuestion(KEPT)).toBe(true);
+  });
+
+  it('takes the previews’ place, between the greeting and the card, in F14b’s words', () => {
+    render(<AskSetup visible />);
+    const block = question()!;
+    expect(within(block).getByRole('heading', { level: 3 })).toHaveTextContent(/^Your question$/);
+    expect(within(block).getByRole('heading', { level: 3 }).className).toMatch(/uppercase/);
+    expect(screen.getByTestId('setup-question-text')).toHaveTextContent(/^“what should I do first”$/);
+    expect(block).toHaveTextContent('It’s kept here, and sent once AI is connected.');
+    const clear = within(block).getByRole('button', { name: 'Clear your question' });
+    expect(clear).toHaveTextContent(/^Clear$/);
+    // In the previews' place: none of them while it waits.
+    expect(screen.queryByTestId('setup-previews')).toBeNull();
+    const greeting = column().querySelector('[data-ask-greeting]')!;
+    const card = screen.getByTestId('connect-ai');
+    expect(follows(greeting, block) && follows(block, card)).toBe(true);
+    // Outside the connect card: ✕, its Clear, and No AI, thanks.
+    expect(
+      within(column())
+        .getAllByRole('button')
+        .filter((b) => !card.contains(b))
+        .map((b) => b.getAttribute('aria-label') ?? b.textContent)
+    ).toEqual(['Close', 'Clear your question', 'No AI, thanks']);
+    // And the card knows it asks it.
+    expect(card).toHaveTextContent('dsul checks it with one tiny test question, then asks yours.');
+  });
+
+  it('Clear takes it back, here and for a duplicated tab, and focus goes to the previews that return', async () => {
+    render(<AskSetup visible />);
+    const id = readKept(SEED_USER_ID)!.id;
+    const clear = screen.getByRole('button', { name: 'Clear your question' });
+    clear.focus();
+    fireEvent.click(clear);
+    expect(question()).toBeNull();
+    expect(readKept(SEED_USER_ID)).toBeNull();
+    expect(JSON.parse(localStorage.getItem(ASK_CLAIMED_KEY) ?? '[]')).toContain(id);
+    expect(previewIds()).toEqual(['plan-tomorrow', 'let-go', 'review']);
+    expect(screen.getByTestId('connect-ai')).toHaveTextContent(
+      'dsul checks it the moment you paste, with one tiny test question.'
+    );
+    await settle();
+    const heading = within(screen.getByTestId('setup-previews')).getByRole('heading', { name: 'What you could ask now' });
+    expect(heading).toHaveAttribute('tabindex', '-1');
+    expect(document.activeElement).toBe(heading);
+  });
+
+  it('with no previews to come back, focus goes to the key box', async () => {
+    openerClock.unknown = true;
+    render(<AskSetup visible />);
+    fireEvent.click(screen.getByRole('button', { name: 'Clear your question' }));
+    expect(screen.queryByTestId('setup-previews')).toBeNull();
+    await settle();
+    expect(document.activeElement).toBe(screen.getByTestId('connect-key'));
+  });
+
+  it('is not shown in the fix home', () => {
+    seed(KEY_TURNED_DOWN);
+    render(<AskSetup visible />);
+    expect(column()).toHaveAttribute('data-ask-setup', 'fix');
+    expect(question()).toBeNull();
+  });
+
+  it('adds nothing lime', () => {
+    render(<AskSetup visible />);
+    fireEvent.paste(screen.getByTestId('connect-key'), { clipboardData: { getData: () => 'AIzaSyTEST-SENTINEL-9876' } });
+    expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
+    expect(Array.from(column().querySelectorAll('[class*="bg-primary"]'))).toEqual([]);
   });
 });
 
@@ -731,12 +836,15 @@ describe('the column’s rules', () => {
 
 describe('its copy', () => {
   // Whole files, comments and all: a string-picking regex misses JSX text set
-  // on its own line, which is most of the column's copy. Neither file has an
+  // on its own line, which is most of the column's copy. No file here has an
   // em dash anywhere, so none may arrive. (no-beacon-copy.test.ts walks the
   // AST for "Beacon" across the app; this is the column's own check.)
-  it.each(['components/ai/rail/ask-setup.tsx', 'lib/no-ai.ts'])('%s has no em dashes and never names the AI', (file) => {
-    const src = readFileSync(join(process.cwd(), file), 'utf8');
-    expect(src).not.toMatch(/—/);
-    expect(src).not.toMatch(/\bBeacon\b/);
-  });
+  it.each(['components/ai/rail/ask-setup.tsx', 'components/mobile/setup-tab.tsx', 'lib/no-ai.ts'])(
+    '%s has no em dashes and never names the AI',
+    (file) => {
+      const src = readFileSync(join(process.cwd(), file), 'utf8');
+      expect(src).not.toMatch(/—/);
+      expect(src).not.toMatch(/\bBeacon\b/);
+    }
+  );
 });

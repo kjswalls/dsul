@@ -233,6 +233,7 @@ export function CheckNoteView({
   noteRef,
   elsewhere,
   testId = 'connect-note',
+  consentId,
   onCheckAgain,
   onUseIt,
   onClear,
@@ -242,6 +243,11 @@ export function CheckNoteView({
   /** Where a key from another service can go, for the region line. */
   elsewhere: Elsewhere;
   testId?: string;
+  /**
+   * The consent line above the note, while a kept question rides on this key
+   * (connect-ai.tsx): Check again sends it, so the line describes it.
+   */
+  consentId?: string;
   onCheckAgain: () => void;
   onUseIt: (provider: DetectedProvider) => void;
   onClear: () => void;
@@ -306,7 +312,7 @@ export function CheckNoteView({
           {(again || keyPage) && (
             <div className="flex flex-wrap items-center gap-2">
               {again && (
-                <Button type="button" variant="outline" size="sm" onClick={onCheckAgain}>
+                <Button type="button" variant="outline" size="sm" aria-describedby={consentId} onClick={onCheckAgain}>
                   Check again
                 </Button>
               )}

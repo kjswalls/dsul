@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -10,6 +10,8 @@ import {
   localStateOwner,
 } from '@/lib/local-state';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import { ASK_PENDING_KEY, clearKeptQuestionState, keepQuestion, readKept } from '@/lib/ask-pending';
 import { useCommandUsageStore } from '@/lib/command-usage-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useRailStore } from '@/lib/rail-store';
@@ -321,7 +323,21 @@ describe('hostile storage cannot take the clear — or the boot — down with it
   });
 });
 
+/** A question kept from `?` as `uid` (the gate's account, which is whom keepQuestion asks). */
+function keepAs(uid: string, text: string) {
+  const before = useAIConnectionStore.getState().hydratedUserId;
+  useAIConnectionStore.setState({ hydratedUserId: uid });
+  try {
+    expect(keepQuestion(text)).toBe(true);
+  } finally {
+    useAIConnectionStore.setState({ hydratedUserId: before });
+  }
+  expect(readKept(uid)?.text).toBe(text);
+}
+
 describe('another tab adopting a new user (case 5)', () => {
+  afterEach(() => clearKeptQuestionState());
+
   /** What the browser delivers to every tab EXCEPT the one that wrote. */
   function siblingTabStamped(userId: string | null) {
     localStorage.setItem(LOCAL_STATE_OWNER_KEY, userId ?? '');
@@ -333,8 +349,13 @@ describe('another tab adopting a new user (case 5)', () => {
   it('clears this tab, which the stamp comparison alone can never do', () => {
     adoptLocalState(USER_A);
     useAISettingsStore.setState({ systemPrompt: A_PROMPT });
+    keepAs(USER_A, 'A private question');
 
     siblingTabStamped(USER_B);
+
+    // A's kept question, in sessionStorage and in the memory mirror alike.
+    expect(sessionStorage.getItem(ASK_PENDING_KEY)).toBeNull();
+    expect(readKept(USER_A)).toBeNull();
 
     // The whole hazard: this tab's own adopt now returns false, because the
     // stamp already says USER_B. If the listener had not cleared, the next
@@ -727,6 +748,13 @@ describe('nothing persists per-user state outside the registry', () => {
       // `dsul-user-themes`: the account's own themes, printed, for the pre-paint
       // script. Per user, so clearUserThemeCache is in RAW_CLEARERS.
       'lib/user-themes/store.ts',
+      // Two writers. `dsul-ask-pending`, sessionStorage: a question kept from
+      // `?` while nothing answered, text the user wrote, so
+      // clearKeptQuestionState is in RAW_CLEARERS (the other-tab block above
+      // checks it). `dsul-ask-claimed`, localStorage: at most eight random ids
+      // of questions already asked or cleared, so a duplicated tab never asks
+      // one again. Nothing about anyone, so nothing clears it.
+      'lib/ask-pending.ts',
     ].sort());
   });
 });

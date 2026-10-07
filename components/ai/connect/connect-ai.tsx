@@ -19,17 +19,27 @@ import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
 import { Button, buttonVariants } from '@/components/ui/button';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { detectKeyProvider, isSureKey, type DetectedProvider } from '@/lib/ai-key-prefix';
-import { AI_SETTINGS_PATH, PROVIDER_META, isModelId } from '@/lib/ai-types';
+import { AI_SETTINGS_PATH, PROVIDER_META, isModelId, type ModelProviderId } from '@/lib/ai-types';
+import { markConsent, useKeptQuestion } from '@/lib/ask-pending';
 import { FLOW_COPY, type FlowResult } from '@/lib/connect-flow';
 import { getDesktopBridge } from '@/lib/desktop';
 import { useRailStore } from '@/lib/rail-store';
 import { cn } from '@/lib/utils';
 import { KeyField, type KeyFieldHandle } from './key-field';
-import { CheckNoteView, KeyPageLink, KeyStarts, noteHasActions, useKeyCheck, type CheckTarget } from './key-check';
+import {
+  CheckNoteView,
+  KeyPageLink,
+  KeyStarts,
+  noteHasActions,
+  useKeyCheck,
+  type CheckNote,
+  type CheckTarget,
+} from './key-check';
 import {
   ANCHOR_CLASS,
   checkingCopy,
   companyName,
+  consentCopy,
   desktopSignInLink,
   openRouterStartHref,
   settingAnchor,
@@ -59,6 +69,18 @@ import {
  * column that is the moment it becomes Ask, home first, with "It works." (the
  * store's `justConnected`); in the pane, the connected card takes over.
  *
+ * A QUESTION KEPT from `?` (lib/ask-pending.ts) changes the column's card, and
+ * only the column's: it goes out once a connection lands, so nothing is sent
+ * without saying where. A paste only fills the box, however sure its prefix.
+ * Then a consent line ("Connecting sends your question … to Google.") sits
+ * right above whatever would send it, [Connect and ask], or a refusal's
+ * [Check again], and describes that control and the box; pressing it stamps
+ * the consent the question is sent on. [Use it with OpenAI] only points the
+ * card at OpenAI (`armed`): the line names OpenAI, and Connect and ask sends.
+ * The OpenRouter sign-in, or the desktop app's link for it, has the line too.
+ * The pane ignores a kept question: a connection made there leaves it waiting
+ * in Ask's box, unsent.
+ *
  * Nothing in it is lime in the column (ask-setup.tsx's rule): every button
  * there is outline or a quiet text action. It has one live region, there from
  * the start, so a check that begins is announced, and so is a paste that is
@@ -70,9 +92,14 @@ export function ConnectAI({
   highlightId = null,
   onConnected,
   unfold,
+  afterFolds,
 }: {
   host: 'column' | 'pane';
-  /** The phone's Ask tab arrives with its own layout (AI setup PR 5). */
+  /**
+   * The phone's setup page (components/mobile/setup-tab.tsx): a key that
+   * works pops the phone's Ask stack home, and the OpenRouter sign-in comes
+   * back "here", to the tab, rather than to a column.
+   */
   layout?: 'desktop' | 'phone';
   /** The pane's deep-link ring (`?focus=beacon.apiKey` lands on the key box). */
   highlightId?: string | null;
@@ -80,6 +107,8 @@ export function ConnectAI({
   onConnected?: () => void;
   /** `?start=openrouter`: the sign-in fold open and its button focused. Never a sign-in by itself. */
   unfold?: 'openrouter';
+  /** Between the folds and Good to know: the phone's page puts its previews there, the key card leading. */
+  afterFolds?: ReactNode;
 }) {
   const flowResult = useAIConnectionStore((s) => s.flowResult);
   // Read where it is mounted only, never on the server (a host shows it once
@@ -97,6 +126,8 @@ export function ConnectAI({
   const [checking, setChecking] = useState<CheckTarget | null>(null);
   const [said, setSaid] = useState('');
   const signInRef = useRef<HTMLAnchorElement>(null);
+  // Read in either host, so the hooks hold still; only the column acts on it.
+  const asks = useKeptQuestion() !== null && host === 'column';
   useFlowResultSpentOnLeave();
 
   useEffect(() => {
@@ -117,7 +148,7 @@ export function ConnectAI({
     // model turns the column into the fix home instead, with nothing to cheer.
     const model = useAIConnectionStore.getState().model;
     if (!model || model.status !== 'ok' || !model.model) return;
-    useRailStore.getState().popToHome('desktop');
+    useRailStore.getState().popToHome(layout === 'phone' ? 'phone' : 'desktop');
     useAIConnectionStore
       .getState()
       .setJustConnected({ provider: model.provider, model: model.model, freeTier, at: Date.now() });
@@ -130,7 +161,7 @@ export function ConnectAI({
     setChecking(target);
   };
 
-  const forms = { host, busy: checking !== null, onChecking, onOk: succeed };
+  const forms = { host, busy: checking !== null, onChecking, onOk: succeed, asks };
 
   return (
     <div data-testid="connect-ai" data-connect-host={host} data-layout={layout} className="flex flex-col gap-5">
@@ -146,7 +177,7 @@ export function ConnectAI({
           open={openFold === 'openrouter'}
           onToggle={() => toggle('openrouter')}
         >
-          <OpenRouterBody host={host} signInRef={signInRef} onSay={setSaid} />
+          <OpenRouterBody host={host} layout={layout} asks={asks} signInRef={signInRef} onSay={setSaid} />
         </Fold>
         <Fold
           id="any"
@@ -158,6 +189,7 @@ export function ConnectAI({
           <AnyKeyBody {...forms} onSay={setSaid} />
         </Fold>
       </div>
+      {afterFolds}
       <GoodToKnow host={host} />
       {/* The one live region: there before anything is said into it. */}
       <p role="status" data-testid="connect-status" className="sr-only">
@@ -175,6 +207,8 @@ interface FormProps {
   busy: boolean;
   onChecking: (target: CheckTarget | null) => void;
   onOk: (o: { freeTier: boolean }) => void;
+  /** A question kept from `?` goes out with this connect (the column only): see ConnectAI. */
+  asks: boolean;
 }
 
 /** Says a line through ConnectAI's live region ('' clears it). */
@@ -201,17 +235,25 @@ function CheckingPill({ target }: { target: CheckTarget }) {
   );
 }
 
-/** [Connect] for a key that was typed, or pasted without a prefix to be sure of. */
+/**
+ * [Connect] for a key that was typed, or pasted without a prefix to be sure
+ * of; [Connect and ask] for any key while a question is kept.
+ */
 function ConnectButton({
   host,
   busy,
   disabled,
+  asks,
+  consentId,
   onClick,
   testId,
 }: {
   host: FormProps['host'];
   busy: boolean;
   disabled?: boolean;
+  asks: boolean;
+  /** The consent line right above it, while it is there. */
+  consentId?: string;
   onClick: () => void;
   testId: string;
 }) {
@@ -224,15 +266,40 @@ function ConnectButton({
       size="sm"
       data-testid={testId}
       aria-disabled={busy || disabled || undefined}
+      aria-describedby={consentId}
       onClick={() => {
         if (!busy && !disabled) onClick();
       }}
       className="self-start aria-disabled:opacity-50"
     >
-      Connect
+      {asks ? 'Connect and ask' : 'Connect'}
     </Button>
   );
 }
+
+/**
+ * Where the press right under it sends the kept question, said before it is
+ * pressed. Its id describes the box and the control that sends, and only a
+ * press made while it is on screen stamps the consent the question goes out on.
+ */
+function ConsentLine({ id, to }: { id: string; to: CheckTarget }) {
+  return (
+    <p id={id} data-testid="connect-consent" className={HELP}>
+      {consentCopy(to.provider, to.baseUrl)}
+    </p>
+  );
+}
+
+/**
+ * What the control under the consent line sends to: a refusal's [Check
+ * again], standing in for the button, resends where the key last went;
+ * otherwise wherever the form points now.
+ */
+function sendingTarget(note: CheckNote | null, now: CheckTarget): CheckTarget {
+  return note?.kind === 'failure' && noteHasActions(note) ? { provider: note.provider, baseUrl: note.baseUrl } : now;
+}
+
+const OPENROUTER: CheckTarget = { provider: 'openrouter', baseUrl: null };
 
 /* ── The key card: a free key from Google ───────────────────────────────── */
 
@@ -241,17 +308,21 @@ function KeyCard({
   busy,
   onChecking,
   onOk,
+  asks,
   onSay,
   highlightId,
 }: FormProps & { onSay: Say; highlightId: string | null }) {
   const uid = useId();
   const keyId = `${uid}-key`;
   const helpId = `${uid}-help`;
+  const consentId = `${uid}-consent`;
   const stepsId = `${uid}-steps`;
   const field = useRef<KeyFieldHandle>(null);
   const [hasKey, setHasKey] = useState(false);
   // The steps fold once a key is in the box; this opens them anyway.
   const [stepsShown, setStepsShown] = useState(false);
+  // [Use it with OpenAI] while a question is kept: where Connect and ask sends instead of Google.
+  const [armed, setArmed] = useState<DetectedProvider | null>(null);
   const check = useKeyCheck({
     field,
     onChecking,
@@ -263,15 +334,34 @@ function KeyCard({
   });
   const stepsOpen = !hasKey || stepsShown;
   const target = check.target;
+  const sendTo: ModelProviderId = armed ?? 'gemini';
+  // The line is up while something under it would send the key; never over
+  // another company's note, whose actions send nothing while a question is kept.
+  const consent = asks && hasKey && target === null && check.note?.kind !== 'wrong';
+
+  /** Sends the box's key. A press under the consent line says first that the question may go there too. */
+  const connect = (provider: ModelProviderId = sendTo) => {
+    if (consent) markConsent({ provider });
+    void check.send(provider);
+  };
 
   const onPaste = (key: string) => {
     spendFlowResult();
     setHasKey(true);
     setStepsShown(false);
+    setArmed(null);
     onSay('');
     const detected = detectKeyProvider(key);
     if (detected === 'gemini' && isSureKey(key)) {
-      void check.send('gemini');
+      if (!asks) {
+        void check.send('gemini');
+        return;
+      }
+      // A question kept: the paste only fills the box, and Connect and ask
+      // sends both. The page changes silently otherwise, so the region says
+      // where it would go.
+      check.forget();
+      onSay(consentCopy('gemini'));
       return;
     }
     // Not sure it is Google's: it waits for Connect. A detection is only a
@@ -289,7 +379,25 @@ function KeyCard({
     field.current?.focus();
   };
 
+  /** Use it with X: at once, or, with a question kept, points Connect and ask at X and sends nothing. */
+  const useIt = (provider: DetectedProvider) => {
+    if (!asks) {
+      void check.send(provider);
+      return;
+    }
+    check.forget();
+    setArmed(provider);
+    field.current?.focus();
+    // The box's description changes after focus lands: the region says it.
+    onSay(consentCopy(provider));
+  };
+
   const showConnect = hasKey && target === null && !noteHasActions(check.note);
+  // Right above whatever sends: the refusal's Check again, or the button.
+  const consentAboveNote = consent && noteHasActions(check.note);
+  const consentLine = consent && (
+    <ConsentLine id={consentId} to={sendingTarget(check.note, { provider: sendTo, baseUrl: null })} />
+  );
 
   return (
     <section
@@ -304,7 +412,13 @@ function KeyCard({
         Free, no card
       </span>
       <div className="flex flex-col gap-1">
-        <h3 id={`${uid}-title`} className="text-sm font-medium text-foreground">
+        {/* Focusable for YOUR QUESTION's Clear on the phone: a title, so no keyboard comes up. */}
+        <h3
+          id={`${uid}-title`}
+          tabIndex={-1}
+          data-setup-card-heading=""
+          className="text-sm font-medium text-foreground outline-none"
+        >
           Get a free key from Google
         </h3>
         <p className="text-sm leading-snug text-muted-foreground">
@@ -365,35 +479,52 @@ function KeyCard({
           ref={field}
           id={keyId}
           checking={target !== null}
-          describedBy={target === null ? helpId : undefined}
+          describedBy={target !== null ? undefined : asks && hasKey ? (consent ? consentId : undefined) : helpId}
           testId="connect-key"
           onChange={(key) => {
             setHasKey(key !== '');
+            setArmed(null);
             check.forget();
             onSay('');
           }}
           onPaste={onPaste}
-          onEnter={() => hasKey && void check.send('gemini')}
+          onEnter={() => hasKey && connect()}
         />
         {target ? (
           <CheckingPill target={target} />
         ) : (
-          <p id={helpId} className={HELP}>
-            dsul checks it the moment you paste, with one tiny test question.
-          </p>
+          // With a question kept, the helper is for the empty box: the
+          // consent line takes its place once a key is in.
+          !(asks && hasKey) && (
+            <p id={helpId} className={HELP}>
+              {asks
+                ? 'dsul checks it with one tiny test question, then asks yours.'
+                : 'dsul checks it the moment you paste, with one tiny test question.'}
+            </p>
+          )
         )}
+        {consentAboveNote && consentLine}
         {check.note && (
           <CheckNoteView
             note={check.note}
             noteRef={check.noteRef}
             elsewhere="below"
-            onCheckAgain={() => check.note?.kind === 'failure' && void check.send(check.note.provider)}
-            onUseIt={(p) => void check.send(p)}
+            consentId={consentAboveNote ? consentId : undefined}
+            onCheckAgain={() => check.note?.kind === 'failure' && connect(check.note.provider)}
+            onUseIt={useIt}
             onClear={clear}
           />
         )}
+        {showConnect && consentLine}
         {showConnect && (
-          <ConnectButton host={host} busy={busy} onClick={() => void check.send('gemini')} testId="connect-submit" />
+          <ConnectButton
+            host={host}
+            busy={busy}
+            asks={asks}
+            consentId={consent ? consentId : undefined}
+            onClick={() => connect()}
+            testId="connect-submit"
+          />
         )}
       </div>
     </section>
@@ -466,13 +597,18 @@ const OPENROUTER_FIRST =
 
 function OpenRouterBody({
   host,
+  layout,
+  asks,
   signInRef,
   onSay,
 }: {
   host: FormProps['host'];
+  layout: 'desktop' | 'phone';
+  asks: boolean;
   signInRef: RefObject<HTMLAnchorElement | null>;
   onSay: (text: string) => void;
 }) {
+  const consentId = useId();
   const inDesktopApp = useInDesktopApp();
   const flowResult = useAIConnectionStore((s) => s.flowResult);
   return (
@@ -480,23 +616,29 @@ function OpenRouterBody({
       <p className="text-sm leading-snug text-foreground">{OPENROUTER_FIRST}</p>
       {inDesktopApp ? (
         <>
-          <DesktopSignIn onSay={onSay} />
+          <DesktopSignIn onSay={onSay} asks={asks} />
           <p className={HELP}>Or use the free Google key above, which works here as it is.</p>
         </>
       ) : (
         <>
+          {/* The sign-in sends the kept question once it lands: said above it, stamped as it is pressed. */}
+          {asks && <ConsentLine id={consentId} to={OPENROUTER} />}
           <a
             ref={signInRef}
             href={openRouterStartHref(host === 'pane' ? 'settings' : 'home')}
             data-testid="connect-openrouter-signin"
-            onClick={spendFlowResult}
+            aria-describedby={asks ? consentId : undefined}
+            onClick={() => {
+              if (asks) markConsent(OPENROUTER);
+              spendFlowResult();
+            }}
             className={cn(buttonVariants({ variant: mainVariant(host), size: 'sm' }), 'self-start')}
           >
             Sign in with OpenRouter
             <ArrowUpRight aria-hidden className="size-3.5" />
           </a>
           <p className={HELP}>
-            {host === 'pane'
+            {host === 'pane' || layout === 'phone'
               ? 'OpenRouter opens in this tab and sends you back here.'
               : 'OpenRouter opens in this tab and sends you back to this column.'}
           </p>
@@ -529,13 +671,25 @@ const COPIED = 'Copied. Paste it into your browser.';
  * (useRefreshOnWindowFocus, called by the host), and the connection is there.
  *
  * `onSay` speaks "Copied" through the host's live region; `inline` also shows
- * it beside the button, for a host whose region is not on screen.
+ * it beside the button, for a host whose region is not on screen. `asks`: a
+ * question is kept, and the connection the browser makes will send it, so the
+ * consent line sits above the button and the copy stamps it.
  */
-export function DesktopSignIn({ onSay, inline = true }: { onSay: (text: string) => void; inline?: boolean }) {
+export function DesktopSignIn({
+  onSay,
+  inline = true,
+  asks = false,
+}: {
+  onSay: (text: string) => void;
+  inline?: boolean;
+  asks?: boolean;
+}) {
+  const consentId = useId();
   // The link, when it could not be copied: shown, so it can be copied by hand.
   const [copied, setCopied] = useState<{ ok: true } | { ok: false; link: string } | null>(null);
 
   const copyLink = () => {
+    if (asks) markConsent(OPENROUTER);
     spendFlowResult();
     const link = desktopSignInLink();
     const failed = () => setCopied({ ok: false, link });
@@ -552,8 +706,16 @@ export function DesktopSignIn({ onSay, inline = true }: { onSay: (text: string) 
         Sign-in can’t finish inside the desktop app yet. Open dsul in your browser and sign in there. This window picks
         up the connection when you come back.
       </p>
+      {asks && <ConsentLine id={consentId} to={OPENROUTER} />}
       <div className="flex flex-wrap items-center gap-2">
-        <Button type="button" variant="outline" size="sm" onClick={copyLink} data-testid="connect-copy-link">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          aria-describedby={asks ? consentId : undefined}
+          onClick={copyLink}
+          data-testid="connect-copy-link"
+        >
           Copy the link
         </Button>
         {inline && copied?.ok && (
@@ -577,9 +739,10 @@ const CHOOSABLE: readonly DetectedProvider[] = ['openai', 'anthropic', 'gemini',
 const CANT_TELL = 'dsul can’t tell which service this key is for.';
 
 /** "I already use…": a key from any of them, placed by its prefix; another service; OpenClaw. */
-function AnyKeyBody({ host, busy, onChecking, onOk, onSay }: FormProps & { onSay: Say }) {
+function AnyKeyBody({ host, busy, onChecking, onOk, asks, onSay }: FormProps & { onSay: Say }) {
   const uid = useId();
   const keyId = `${uid}-key`;
+  const consentId = `${uid}-consent`;
   const field = useRef<KeyFieldHandle>(null);
   const chooserRef = useRef<HTMLDivElement>(null);
   const [hasKey, setHasKey] = useState(false);
@@ -587,16 +750,20 @@ function AnyKeyBody({ host, busy, onChecking, onOk, onSay }: FormProps & { onSay
   const [detected, setDetected] = useState<DetectedProvider | null>(null);
   const [sure, setSure] = useState(false);
   const [choice, setChoice] = useState<DetectedProvider | null>(null);
+  // [Use it with X] while a question is kept: where Connect and ask sends instead.
+  const [armed, setArmed] = useState<DetectedProvider | null>(null);
   const [customOpen, setCustomOpen] = useState(false);
   const check = useKeyCheck({ field, onChecking, onOk });
   const target = check.target;
-  const provider = sure ? detected : choice;
+  const provider = armed ?? (sure ? detected : choice);
+  const consent = asks && hasKey && target === null && provider !== null && check.note?.kind !== 'wrong';
 
   /** Reads the prefix; an unsure one (a bare `sk-`) preselects its guess in the chooser. */
   const place = (key: string) => {
     const d = detectKeyProvider(key);
     const s = d !== null && isSureKey(key);
     setHasKey(key !== '');
+    setArmed(null);
     if (d !== detected || s !== sure) {
       setDetected(d);
       setSure(s);
@@ -607,15 +774,38 @@ function AnyKeyBody({ host, busy, onChecking, onOk, onSay }: FormProps & { onSay
     return s ? d : null;
   };
 
+  /** Sends the box's key. A press under the consent line says first that the question may go there too. */
+  const send = (to: ModelProviderId) => {
+    if (consent) markConsent({ provider: to });
+    void check.send(to);
+  };
+
   const connect = () => {
     if (!provider) {
       chooserRef.current?.querySelector<HTMLElement>('[role="radio"]')?.focus();
       return;
     }
-    void check.send(provider);
+    send(provider);
+  };
+
+  const useIt = (p: DetectedProvider) => {
+    // The chooser moves with the aim, so it never names another company than the line.
+    if (!sure) setChoice(p);
+    if (!asks) {
+      void check.send(p);
+      return;
+    }
+    check.forget();
+    setArmed(p);
+    field.current?.focus();
+    onSay(consentCopy(p));
   };
 
   const showConnect = hasKey && target === null && !noteHasActions(check.note);
+  const consentAboveNote = consent && noteHasActions(check.note);
+  const consentLine = consent && provider && (
+    <ConsentLine id={consentId} to={sendingTarget(check.note, { provider, baseUrl: null })} />
+  );
 
   return (
     <>
@@ -630,12 +820,15 @@ function AnyKeyBody({ host, busy, onChecking, onOk, onSay }: FormProps & { onSay
           ref={field}
           id={keyId}
           checking={target !== null}
+          describedBy={consent ? consentId : undefined}
           testId="connect-any-key"
           onChange={place}
           onPaste={(key) => {
             spendFlowResult();
             const sureOf = place(key);
-            if (sureOf) void check.send(sureOf);
+            // A question kept: placed, not sent, until Connect and ask.
+            if (sureOf && asks) onSay(consentCopy(sureOf));
+            else if (sureOf) void check.send(sureOf);
             // Nothing is sent, and the chooser it brings is otherwise named only
             // once focus reaches a radio.
             else onSay(CANT_TELL);
@@ -664,26 +857,38 @@ function AnyKeyBody({ host, busy, onChecking, onOk, onSay }: FormProps & { onSay
               busy={target !== null}
               onChange={(p) => {
                 setChoice(p);
+                setArmed(null);
                 check.forget();
               }}
             />
           </div>
         )}
+        {consentAboveNote && consentLine}
         {check.note && (
           <CheckNoteView
             note={check.note}
             noteRef={check.noteRef}
             elsewhere="here"
-            onCheckAgain={() => check.note?.kind === 'failure' && void check.send(check.note.provider)}
-            onUseIt={(p) => void check.send(p)}
+            consentId={consentAboveNote ? consentId : undefined}
+            onCheckAgain={() => check.note?.kind === 'failure' && send(check.note.provider)}
+            onUseIt={useIt}
             onClear={() => {
               field.current?.clear();
               field.current?.focus();
             }}
           />
         )}
+        {showConnect && consentLine}
         {showConnect && (
-          <ConnectButton host={host} busy={busy} disabled={!provider} onClick={connect} testId="connect-any-submit" />
+          <ConnectButton
+            host={host}
+            busy={busy}
+            disabled={!provider}
+            asks={asks}
+            consentId={consent ? consentId : undefined}
+            onClick={connect}
+            testId="connect-any-submit"
+          />
         )}
       </div>
       <p className={HELP}>
@@ -724,7 +929,7 @@ function AnyKeyBody({ host, busy, onChecking, onOk, onSay }: FormProps & { onSay
             />
           </button>
           <div id={`${uid}-custom`} hidden={!customOpen} className="flex flex-col gap-3 px-3 pb-3">
-            <CustomService host={host} busy={busy} onChecking={onChecking} onOk={onOk} />
+            <CustomService host={host} busy={busy} onChecking={onChecking} onOk={onOk} asks={asks} onSay={onSay} />
           </div>
         </div>
         <Link
@@ -818,24 +1023,51 @@ function ServiceChooser({
  * Connect: its keys have no prefix to go by. Its two plain fields are drawn as
  * `Input` draws one, without its lime selection.
  */
-function CustomService({ host, busy, onChecking, onOk }: FormProps) {
+function CustomService({ host, busy, onChecking, onOk, asks, onSay }: FormProps & { onSay: Say }) {
   const uid = useId();
+  const consentId = `${uid}-consent`;
   const field = useRef<KeyFieldHandle>(null);
   const [hasKey, setHasKey] = useState(false);
   const [baseUrl, setBaseUrl] = useState('');
   const [modelName, setModelName] = useState('');
+  // [Use it with X] while a question is kept: the key goes to X, and the address is not asked for.
+  const [armed, setArmed] = useState<DetectedProvider | null>(null);
   const check = useKeyCheck({ field, onChecking, onOk });
   const target = check.target;
   const typedModel = modelName.trim();
   const modelOk = typedModel === '' || isModelId(typedModel);
   const ready = hasKey && baseUrl.trim() !== '' && modelOk;
+  const consent = asks && target === null && (armed !== null || ready) && check.note?.kind !== 'wrong';
+  const sendTo: CheckTarget = armed ? { provider: armed, baseUrl: null } : { provider: 'custom', baseUrl: baseUrl.trim() };
+
+  /** Any edit: what the form points at is what it now holds. */
+  const edited = () => {
+    setArmed(null);
+    check.forget();
+  };
 
   const connect = () => {
-    if (!ready) return;
-    void check.send('custom', { baseUrl: baseUrl.trim(), model: typedModel || undefined });
+    if (!armed && !ready) return;
+    // A press under the consent line says first that the question may go there too.
+    if (consent) markConsent(sendTo);
+    if (armed) void check.send(armed);
+    else void check.send('custom', { baseUrl: baseUrl.trim(), model: typedModel || undefined });
+  };
+
+  const useIt = (p: DetectedProvider) => {
+    if (!asks) {
+      void check.send(p);
+      return;
+    }
+    check.forget();
+    setArmed(p);
+    field.current?.focus();
+    onSay(consentCopy(p));
   };
 
   const showConnect = target === null && !noteHasActions(check.note);
+  const consentAboveNote = consent && noteHasActions(check.note);
+  const consentLine = consent && <ConsentLine id={consentId} to={sendingTarget(check.note, sendTo)} />;
   // The address and model hold still while the key is out, as the box does
   // (read-only, never `disabled`): the answer is about what was sent.
   const out = target !== null;
@@ -853,7 +1085,7 @@ function CustomService({ host, busy, onChecking, onOk }: FormProps) {
           value={baseUrl}
           onChange={(e) => {
             setBaseUrl(e.target.value);
-            check.forget();
+            edited();
           }}
           placeholder="https://api.example.com/v1"
           autoComplete="off"
@@ -879,7 +1111,7 @@ function CustomService({ host, busy, onChecking, onOk }: FormProps) {
           value={modelName}
           onChange={(e) => {
             setModelName(e.target.value);
-            check.forget();
+            edited();
           }}
           autoComplete="off"
           autoCapitalize="none"
@@ -905,34 +1137,46 @@ function CustomService({ host, busy, onChecking, onOk }: FormProps) {
           id={`${uid}-key`}
           placeholder={PROVIDER_META.custom.keyPlaceholder}
           checking={out}
+          describedBy={consent ? consentId : undefined}
           testId="connect-custom-key"
           onChange={(key) => {
             setHasKey(key !== '');
-            check.forget();
+            edited();
           }}
           onPaste={() => {
             spendFlowResult();
             setHasKey(true);
-            check.forget();
+            edited();
           }}
           onEnter={connect}
         />
         {target && <CheckingPill target={target} />}
+        {consentAboveNote && consentLine}
         {check.note && (
           <CheckNoteView
             note={check.note}
             noteRef={check.noteRef}
             elsewhere="here"
+            consentId={consentAboveNote ? consentId : undefined}
             onCheckAgain={connect}
-            onUseIt={(p) => void check.send(p)}
+            onUseIt={useIt}
             onClear={() => {
               field.current?.clear();
               field.current?.focus();
             }}
           />
         )}
+        {showConnect && consentLine}
         {showConnect && (
-          <ConnectButton host={host} busy={busy} disabled={!ready} onClick={connect} testId="connect-custom-submit" />
+          <ConnectButton
+            host={host}
+            busy={busy}
+            disabled={!ready && !armed}
+            asks={asks}
+            consentId={consent ? consentId : undefined}
+            onClick={connect}
+            testId="connect-custom-submit"
+          />
         )}
       </div>
     </>

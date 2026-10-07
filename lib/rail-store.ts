@@ -6,6 +6,7 @@ import { openEditFor, setEditItemInterceptor, useUIStore } from './ui-store';
 import { askOpenOf, useSidebarStore } from './sidebar-store';
 import { getAICapabilities, useAIConnectionStore } from './ai-connection-store';
 import { useAISettingsStore } from './ai-settings-store';
+import { useMobileNavStore } from './mobile-nav-store';
 import { useViewStore } from './view-store';
 import type { Item, Task } from './planner-types';
 
@@ -223,6 +224,12 @@ interface RailState {
    * reads it any more. conversations-store's markGone calls it.
    */
   carryDraftHome(id: string): void;
+  /**
+   * Text that waits in Ask home's box, after anything already typed there:
+   * a question kept from `?` whose connection is not the one its consent line
+   * named (lib/ask-pending.ts), left for the person to send or not.
+   */
+  appendDraftHome(text: string): void;
   requestFocus(req: FocusRequest): void;
   focusComposer(binding?: ComposerBinding): void;
   /**
@@ -316,8 +323,9 @@ function dismissLeftCards(before: Record<AskSurface, AskView[]>, after: Record<A
  * sign-in that came home saved one whose test question went unanswered
  * (`flowResult`, lib/connect-return.ts). A conversation pushed (a send from
  * home, New chat) or opened (lib/open-chat.ts `openConversation`, an item's
- * too) or Ask closing spends both; so does any send (conversations-store's
- * `send`), a model change, a disconnect and a sign-out (ai-connection-store.ts).
+ * too) or Ask closing spends both (on the phone, leaving its Ask tab, under
+ * "The phone" below); so does any send (conversations-store's `send`), a
+ * model change, a disconnect and a sign-out (ai-connection-store.ts).
  */
 export function spendJustConnected(): void {
   const ai = useAIConnectionStore.getState();
@@ -442,6 +450,13 @@ export const useRailStore = create<RailState>()((set, get) => {
         const home = drafts.home ?? '';
         drafts.home = home ? `${home}\n${text}` : text;
         return { drafts };
+      }),
+
+    appendDraftHome: (text) =>
+      set((s) => {
+        if (!text) return s;
+        const home = s.drafts.home ?? '';
+        return { drafts: { ...s.drafts, home: home ? `${home}\n${text}` : text } };
       }),
 
     requestFocus: (req) => set({ pendingFocus: req }),
@@ -880,6 +895,18 @@ export function usePanelOverlays(): boolean {
 }
 
 // ── The phone ────────────────────────────────────────────────────────────────
+
+/**
+ * Leaving the phone's Ask tab is the phone's close: by the sheet, a swipe, a
+ * command or the shell moving off a tab that is no longer offered, it spends
+ * "It works." as Ask closing does on the desktop. Only that: the stack and
+ * every draft stay, so the tab comes back as it was left. A subscription,
+ * not a setter, so a write by setState spends it too, and mobile-nav-store
+ * stays a leaf.
+ */
+useMobileNavStore.subscribe((s, prev) => {
+  if (prev.activeTab === 'chat' && s.activeTab !== 'chat') spendJustConnected();
+});
 
 /**
  * Whether arriving on the phone's Ask tab puts the caret in the dock's box:

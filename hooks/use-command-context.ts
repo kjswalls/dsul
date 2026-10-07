@@ -30,8 +30,11 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
   // identity when the gate flips. The palette's AI rows decide `hidden` /
   // `availableWhen` off the store (CommandContext is deliberately not
   // widened), and every list memoised on `ctx` must recompute when the answer
-  // arrives, or the palette keeps showing the rows from before it.
-  const { canChat } = useAICapabilities();
+  // arrives, or the palette keeps showing the rows from before it. That is
+  // every answer, not only canChat's: unknown to invited, invited to No AI,
+  // and a key turning down all keep canChat false while "Set up AI" and
+  // "Fix AI" come and go.
+  const { canChat, askInvite, askFix, aiHidden } = useAICapabilities();
 
   return useMemo<CommandContext>(
     () => ({
@@ -61,6 +64,9 @@ export function useCommandContext(overrides?: { openChat?: () => void }): Comman
       isMobile,
       navigate: (href: string) => router.push(href),
     }),
-    [theme, resolvedTheme, setTheme, userId, isMobile, openChatOverride, router, canChat]
+    // askInvite, askFix and aiHidden look unused to the linter and are not:
+    // they are what give the context a new identity when only they move.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [theme, resolvedTheme, setTheme, userId, isMobile, openChatOverride, router, canChat, askInvite, askFix, aiHidden]
   );
 }

@@ -1095,7 +1095,8 @@ describe('failing', () => {
     fireEvent.click(screen.getByTestId('mcp-connect'));
     await waitFor(() => expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working'));
     expect(screen.getByTestId('mcp-provider')).toHaveTextContent('Anthropic');
-    expect(screen.queryByTestId('mcp-switch-panel')).toBeNull();
+    // As above: the panel closes on its own render, which can land after the card's.
+    await waitFor(() => expect(screen.queryByTestId('mcp-switch-panel')).toBeNull());
     expectNoKeyInMarkup('SENTINEL');
   });
 

@@ -92,6 +92,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { useViewStore } from '@/lib/view-store';
 import { useSessionUserStore } from '@/lib/session-user-store';
 import { useUIStore } from '@/lib/ui-store';
+import { ASK_PENDING_KEY, clearKeptQuestionState, keepQuestion, readKept } from '@/lib/ask-pending';
 import { fail, fakeApi, fakeTransport, flush } from './helpers/conversations-fakes';
 
 const USER_A = 'user-a';
@@ -113,6 +114,31 @@ const original = {
  */
 const aiHydrate = vi.fn<(userId: string) => Promise<void>>(async () => {});
 const aiReset = vi.fn<() => void>();
+
+/** A question A kept from `?` while nothing answered: sessionStorage, and the memory mirror. */
+const KEPT = 'A private question kept for later';
+
+/** Kept as A, as the door keeps it: under the AI gate's account. */
+function keepAsUserA() {
+  const before = useAIConnectionStore.getState().hydratedUserId;
+  useAIConnectionStore.setState({ hydratedUserId: USER_A });
+  try {
+    expect(keepQuestion(KEPT)).toBe(true);
+  } finally {
+    useAIConnectionStore.setState({ hydratedUserId: before });
+  }
+}
+
+/**
+ * The kept question is gone from storage AND from the mirror: a reader that
+ * filled the mirror before the clear ran (the setup page renders before the
+ * provider adopts) must find nothing either. readKept(USER_A) would return
+ * the mirror's copy if only the key had gone.
+ */
+function expectKeptQuestionGone() {
+  expect(sessionStorage.getItem(ASK_PENDING_KEY)).toBeNull();
+  expect(readKept(USER_A)).toBeNull();
+}
 
 /** A's conversation, as the memory-only cache holds it mid-session. */
 const CONV = 'a0a0a0a0-0000-4000-8000-00000000000a';
@@ -168,6 +194,7 @@ function seedUserAState(owner: string | null) {
   );
   if (owner) localStorage.setItem(LOCAL_STATE_OWNER_KEY, owner);
   else localStorage.removeItem(LOCAL_STATE_OWNER_KEY);
+  keepAsUserA();
 }
 
 function expectUserAStateGone() {
@@ -181,6 +208,8 @@ function expectUserAStateGone() {
   expect(useConversationsStore.getState().generation).toBeGreaterThan(seededGeneration);
   expect(JSON.stringify(localStorage)).not.toContain(SECRET);
   expect(JSON.stringify(localStorage)).not.toContain('A Private');
+  // A question A kept from `?` goes on every path, as their conversations do.
+  expectKeptQuestionGone();
 }
 
 async function mount() {
@@ -212,10 +241,12 @@ describe('every path into "the current user changed"', () => {
     clearChatState();
     useSessionUserStore.setState({ user: null });
     useUIStore.setState({ chatOnboardingActive: false });
+    clearKeptQuestionState();
   });
 
   afterEach(() => {
     cleanup();
+    clearKeptQuestionState();
     usePlannerStore.setState({ initializeStore: original.initializeStore });
     useExtensionsStore.setState({ hydrate: original.extensions });
     useChannelSecretsStore.setState({ hydrate: original.secrets });
@@ -355,6 +386,8 @@ describe('every path into "the current user changed"', () => {
     expect(localStorage.getItem('dsul-chat-history')).not.toBeNull();
     expect(useConversationsStore.getState().threads[CONV]?.messages).toHaveLength(1);
     expect(useConversationsStore.getState().generation).toBe(seededGeneration);
+    expect(readKept(USER_A)?.text).toBe(KEPT);
+    expect(sessionStorage.getItem(ASK_PENDING_KEY)).toContain(KEPT);
     expect(localStateOwner()).toBe(USER_A);
   });
 
@@ -497,10 +530,12 @@ describe('the session profile the chrome displays', () => {
     useAIConnectionStore.setState({ hydrate: aiHydrate, reset: aiReset });
     useSessionUserStore.setState({ user: null });
     useUIStore.setState({ chatOnboardingActive: false });
+    clearKeptQuestionState();
   });
 
   afterEach(() => {
     cleanup();
+    clearKeptQuestionState();
     usePlannerStore.setState({ initializeStore: original.initializeStore });
     useExtensionsStore.setState({ hydrate: original.extensions });
     useChannelSecretsStore.setState({ hydrate: original.secrets });

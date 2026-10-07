@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import type { ReactNode } from 'react';
 
 /**
  * Connect AI (components/ai/connect/connect-ai.tsx): the way in wherever
@@ -16,7 +17,12 @@ import { join } from 'node:path';
  *    a working one leaves it at once.
  *  - Every answer has its own line, in our words, naming the company.
  *  - Success: the column becomes Ask with "It works." only for a connection
- *    that can answer; the pane hands off to its connected card.
+ *    that can answer; the pane hands off to its connected card. On the
+ *    phone's page, the phone's stack goes home.
+ *  - A question kept from `?` (lib/ask-pending.ts), in the column only: a
+ *    paste never sends, a consent line names where the question goes right
+ *    above whatever would send it, and each such press stamps the consent the
+ *    question is later sent on. [Use it with X] only points the card at X.
  *  - Nothing in the column is lime, and no connect file has an em dash or
  *    names the AI.
  */
@@ -37,11 +43,20 @@ import {
   wrongKindCopy,
 } from '@/components/ai/connect/connect-shared';
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
+import {
+  ASK_CLAIMED_KEY,
+  __resetKeptForTests,
+  clearKept,
+  clearKeptQuestionState,
+  keepQuestion,
+  readKept,
+  type KeptConsent,
+} from '@/lib/ask-pending';
 import { FLOW_COPY } from '@/lib/connect-flow';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useRailStore } from '@/lib/rail-store';
 import type { ModelConnectionView } from '@/lib/ai-types';
-import { seedAI, NOTHING_CONNECTED } from './helpers/ai-fixtures';
+import { seedAI, NOTHING_CONNECTED, SEED_USER_ID } from './helpers/ai-fixtures';
 
 /* ── Keys ───────────────────────────────────────────────────────────────── */
 
@@ -122,6 +137,9 @@ beforeEach(() => {
 afterEach(() => {
   cleanup();
   unseed();
+  clearKeptQuestionState();
+  localStorage.removeItem(ASK_CLAIMED_KEY);
+  __resetKeptForTests();
   vi.unstubAllGlobals();
   delete (window as unknown as { dsulDesktop?: unknown }).dsulDesktop;
   delete (navigator as unknown as { clipboard?: unknown }).clipboard;
@@ -1003,6 +1021,486 @@ describe('good to know', () => {
     expect(within(good).getByRole('link', { name: 'Settings → AI' })).toHaveAttribute('href', '/settings/ai');
     // Never fine print.
     for (const li of Array.from(good.querySelectorAll('li'))) expect(li.className).toMatch(/text-\[13px\]/);
+  });
+});
+
+/* ── A question kept from `?` ───────────────────────────────────────────── */
+
+const KEPT = 'what should I do first';
+
+/** The consent line, naming where the question goes. */
+const consentLine = (company: string) =>
+  `Connecting sends your question, and the parts of your plan it needs, from dsul’s server to ${company}.`;
+
+/** The consent the kept question would be sent on, as the record holds it now. */
+const consent = (): KeptConsent | null => readKept(SEED_USER_ID)?.consent ?? null;
+
+/** A route that works, noting the consent as it stood when the key arrived. */
+let consentAtPut: KeptConsent | null | undefined;
+const worksNoting = (body: Put) => {
+  consentAtPut = consent();
+  return works()(body);
+};
+
+/** A click on a link, kept from navigating (jsdom has nowhere to go). */
+function clickLink(link: HTMLElement) {
+  link.addEventListener('click', (e) => e.preventDefault(), { once: true });
+  fireEvent.click(link);
+}
+
+describe('with a question kept from ?', () => {
+  beforeEach(() => {
+    consentAtPut = undefined;
+    expect(keepQuestion(KEPT)).toBe(true);
+  });
+
+  const card = () => screen.getByTestId('connect-key-card');
+  const cardLine = () => within(card()).queryByTestId('connect-consent');
+  const follows = (a: Node, b: Node) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+
+  describe('the key card', () => {
+    it('says it asks yours, and a sure Google paste only fills the box, under a line naming Google', async () => {
+      renderConnect('column');
+      expect(card()).toHaveTextContent('dsul checks it with one tiny test question, then asks yours.');
+      expect(card()).not.toHaveTextContent('the moment you paste');
+      expect(box()).toHaveAccessibleDescription('dsul checks it with one tiny test question, then asks yours.');
+      expect(cardLine()).toBeNull();
+
+      await paste(box(), GOOGLE);
+      // Nothing sent, nothing checking: the box holds it, the steps fold.
+      expect(puts).toEqual([]);
+      expect(screen.queryByTestId('connect-checking')).toBeNull();
+      expect(screen.getByTestId('connect-steps')).toHaveAttribute('hidden');
+      expect(box().value).toBe(GOOGLE);
+      expectKeyOnlyInValue();
+
+      // The line takes the helper's place, and describes the box and the button right under it.
+      const line = cardLine()!;
+      expect(line).toHaveTextContent(consentLine('Google'));
+      expect(card()).not.toHaveTextContent('then asks yours');
+      expect(box()).toHaveAccessibleDescription(consentLine('Google'));
+      const submit = screen.getByTestId('connect-submit');
+      expect(submit).toHaveTextContent(/^Connect and ask$/);
+      expect(submit).toHaveAccessibleDescription(consentLine('Google'));
+      expect(follows(box(), line) && follows(line, submit)).toBe(true);
+      // The page changed without a check: the region says where it would go.
+      expect(status()).toHaveTextContent(consentLine('Google'));
+      expect(consent()).toBeNull();
+
+      // Connect and ask: the consent first, at the press, then the key, as ever.
+      putReply = worksNoting;
+      await press(submit);
+      expect(puts).toEqual([{ provider: 'gemini', apiKey: GOOGLE }]);
+      expect(consentAtPut).toEqual({ provider: 'gemini', baseUrl: null, at: expect.any(Number) });
+      // Kept still: the watcher asks it once the gate lights (lib/ask-pending.ts).
+      expect(readKept(SEED_USER_ID)?.text).toBe(KEPT);
+    });
+
+    it('Enter is Connect and ask; an empty box sends and stamps nothing', async () => {
+      putReply = worksNoting;
+      renderConnect('column');
+      fireEvent.keyDown(box(), { key: 'Enter' });
+      expect(consent()).toBeNull();
+      type(box(), GOOGLE);
+      expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
+      await act(async () => {
+        fireEvent.keyDown(box(), { key: 'Enter' });
+      });
+      expect(puts).toEqual([{ provider: 'gemini', apiKey: GOOGLE }]);
+      expect(consentAtPut?.provider).toBe('gemini');
+    });
+
+    it('Paste reads the clipboard and checks nothing, even a sure key', async () => {
+      Object.defineProperty(navigator, 'clipboard', { value: { readText: vi.fn(async () => GOOGLE) }, configurable: true });
+      renderConnect('column');
+      await press(screen.getByTestId('connect-key-paste'));
+      expect(puts).toEqual([]);
+      expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
+      expect(document.activeElement).toBe(box());
+    });
+
+    it('a refusal keeps the line, above the note whose Check again it describes and stamps', async () => {
+      putReply = () => json({ error: 'unreachable' }, 502);
+      renderConnect('column');
+      await paste(box(), GOOGLE);
+      await press(screen.getByTestId('connect-submit'));
+      expect(note()).toHaveAttribute('data-code', 'unreachable');
+      // The note's Check again stands in for the button, and the line stays, above it.
+      expect(screen.queryByTestId('connect-submit')).toBeNull();
+      const line = cardLine()!;
+      expect(line).toHaveTextContent(consentLine('Google'));
+      expect(follows(line, note())).toBe(true);
+      const again = within(note()).getByRole('button', { name: 'Check again' });
+      expect(again).toHaveAccessibleDescription(consentLine('Google'));
+      expect(box()).toHaveAccessibleDescription(consentLine('Google'));
+
+      // Kept afresh, so nothing is stamped: Check again stamps it, then resends.
+      act(() => {
+        keepQuestion(KEPT);
+      });
+      expect(consent()).toBeNull();
+      putReply = worksNoting;
+      await press(within(note()).getByRole('button', { name: 'Check again' }));
+      expect(puts.map((p) => p.provider)).toEqual(['gemini', 'gemini']);
+      expect(consentAtPut?.provider).toBe('gemini');
+    });
+
+    it('another company’s key: Use it with that company only points Connect and ask at it', async () => {
+      putReply = worksNoting;
+      renderConnect('column');
+      await paste(box(), ANTHROPIC);
+      expect(note()).toHaveAttribute('data-note', 'wrong');
+      // Its actions send nothing now, so no line stands over them.
+      expect(cardLine()).toBeNull();
+      expect(screen.queryByTestId('connect-submit')).toBeNull();
+
+      await press(within(note()).getByRole('button', { name: 'Use it with Anthropic' }));
+      expect(puts).toEqual([]);
+      expect(consent()).toBeNull();
+      expect(screen.queryByTestId('connect-note')).toBeNull();
+      expect(document.activeElement).toBe(box());
+      expect(cardLine()).toHaveTextContent(consentLine('Anthropic'));
+      expect(status()).toHaveTextContent(consentLine('Anthropic'));
+      const submit = screen.getByTestId('connect-submit');
+      expect(submit).toHaveTextContent('Connect and ask');
+      expect(submit).toHaveAccessibleDescription(consentLine('Anthropic'));
+
+      await press(submit);
+      expect(puts).toEqual([{ provider: 'anthropic', apiKey: ANTHROPIC }]);
+      expect(consentAtPut?.provider).toBe('anthropic');
+    });
+
+    it('an edit to the box takes the aim back to Google', async () => {
+      renderConnect('column');
+      await paste(box(), OPENAI_SURE);
+      await press(within(note()).getByRole('button', { name: 'Use it with OpenAI' }));
+      expect(cardLine()).toHaveTextContent(consentLine('OpenAI'));
+      type(box(), GOOGLE);
+      expect(cardLine()).toHaveTextContent(consentLine('Google'));
+    });
+
+    it('the route’s own wrong_provider: Use it with OpenAI arms, and Connect and ask sends there', async () => {
+      putReply = (body) => (body.provider === 'gemini' ? json({ error: 'wrong_provider', detected: 'openai' }, 400) : worksNoting(body));
+      renderConnect('column');
+      await paste(box(), UNKNOWN);
+      await press(screen.getByTestId('connect-submit'));
+      expect(note()).toHaveAttribute('data-detected', 'openai');
+      await press(within(note()).getByRole('button', { name: 'Use it with OpenAI' }));
+      expect(puts.map((p) => p.provider)).toEqual(['gemini']);
+      expect(cardLine()).toHaveTextContent(consentLine('OpenAI'));
+      await press(screen.getByTestId('connect-submit'));
+      expect(puts.map((p) => p.provider)).toEqual(['gemini', 'openai']);
+      expect(consentAtPut?.provider).toBe('openai');
+    });
+
+    it('Clear on YOUR QUESTION puts the card back as it was: the next sure paste checks itself', async () => {
+      renderConnect('column');
+      act(() => clearKept());
+      expect(card()).toHaveTextContent('dsul checks it the moment you paste, with one tiny test question.');
+      putReply = works();
+      await paste(box(), GOOGLE);
+      expect(puts).toEqual([{ provider: 'gemini', apiKey: GOOGLE }]);
+    });
+  });
+
+  describe('“I already use…”', () => {
+    const any = () => box('connect-any-key');
+    const body = () => screen.getByTestId('connect-fold-any-body');
+    const anyLine = () => within(body()).queryAllByTestId('connect-consent').find((el) => !el.closest('[hidden]')) ?? null;
+
+    it('a sure key waits, the line names its company, and Connect and ask sends it there', async () => {
+      putReply = worksNoting;
+      renderConnect('column');
+      openFold('any');
+      await paste(any(), ANTHROPIC);
+      expect(puts).toEqual([]);
+      expect(screen.getByTestId('connect-detected')).toHaveTextContent('Anthropic key');
+      expect(anyLine()).toHaveTextContent(consentLine('Anthropic'));
+      expect(any()).toHaveAccessibleDescription(consentLine('Anthropic'));
+      expect(status()).toHaveTextContent(consentLine('Anthropic'));
+      const submit = screen.getByTestId('connect-any-submit');
+      expect(submit).toHaveTextContent('Connect and ask');
+      expect(submit).toHaveAccessibleDescription(consentLine('Anthropic'));
+      await press(submit);
+      expect(puts).toEqual([{ provider: 'anthropic', apiKey: ANTHROPIC }]);
+      expect(consentAtPut?.provider).toBe('anthropic');
+    });
+
+    it('a key the prefix can’t place: the line follows the choice, and names nothing until there is one', async () => {
+      renderConnect('column');
+      openFold('any');
+      await paste(any(), SK_UNSURE);
+      expect(anyLine()).toHaveTextContent(consentLine('OpenAI'));
+      fireEvent.click(within(screen.getByTestId('connect-chooser')).getByRole('radio', { name: 'Anthropic' }));
+      expect(anyLine()).toHaveTextContent(consentLine('Anthropic'));
+
+      await paste(any(), UNKNOWN);
+      expect(anyLine()).toBeNull();
+      expect(screen.getByTestId('connect-any-submit')).toHaveAttribute('aria-disabled', 'true');
+      expect(screen.getByTestId('connect-any-submit')).toHaveTextContent('Connect and ask');
+    });
+
+    it('Use it with X arms the fold, and a new choice takes the aim back', async () => {
+      putReply = (body) =>
+        body.provider === 'openai' ? json({ error: 'wrong_provider', detected: 'openrouter' }, 400) : worksNoting(body);
+      renderConnect('column');
+      openFold('any');
+      // No prefix at all, so nothing here stops it going wherever it is aimed.
+      type(any(), UNKNOWN);
+      const radio = (name: string) => within(screen.getByTestId('connect-chooser')).getByRole('radio', { name });
+      fireEvent.click(radio('OpenAI'));
+      await press(screen.getByTestId('connect-any-submit'));
+      expect(note()).toHaveAttribute('data-detected', 'openrouter');
+      await press(within(note()).getByRole('button', { name: 'Use it with OpenRouter' }));
+      expect(puts.map((p) => p.provider)).toEqual(['openai']);
+      expect(anyLine()).toHaveTextContent(consentLine('OpenRouter'));
+      expect(screen.getByTestId('connect-any-submit')).toHaveAccessibleDescription(consentLine('OpenRouter'));
+
+      fireEvent.click(radio('Gemini'));
+      expect(anyLine()).toHaveTextContent(consentLine('Google'));
+      fireEvent.click(radio('OpenAI'));
+      await press(screen.getByTestId('connect-any-submit'));
+      await press(within(note()).getByRole('button', { name: 'Use it with OpenRouter' }));
+      await press(screen.getByTestId('connect-any-submit'));
+      expect(puts.map((p) => p.provider)).toEqual(['openai', 'openai', 'openrouter']);
+      expect(consentAtPut?.provider).toBe('openrouter');
+    });
+
+    it('Use it with X moves the chooser to X too, so the checked company is the one the line names', async () => {
+      putReply = (body) =>
+        body.provider === 'openai' ? json({ error: 'wrong_provider', detected: 'openrouter' }, 400) : worksNoting(body);
+      renderConnect('column');
+      openFold('any');
+      const chooser = () => within(screen.getByTestId('connect-chooser'));
+      const checked = () =>
+        chooser()
+          .getAllByRole('radio')
+          .filter((r) => r.getAttribute('aria-checked') === 'true')
+          .map((r) => r.getAttribute('data-provider'));
+
+      // A bare `sk-` chosen as Anthropic's: the card's own mismatch offers OpenAI.
+      await paste(any(), SK_UNSURE);
+      fireEvent.click(chooser().getByRole('radio', { name: 'Anthropic' }));
+      await press(screen.getByTestId('connect-any-submit'));
+      expect(puts).toEqual([]);
+      await press(within(note()).getByRole('button', { name: 'Use it with OpenAI' }));
+      expect(anyLine()).toHaveTextContent(consentLine('OpenAI'));
+      expect(checked()).toEqual(['openai']);
+
+      // A key no prefix places, chosen as OpenAI's: the route says OpenRouter.
+      type(any(), UNKNOWN);
+      fireEvent.click(chooser().getByRole('radio', { name: 'OpenAI' }));
+      await press(screen.getByTestId('connect-any-submit'));
+      expect(note()).toHaveAttribute('data-detected', 'openrouter');
+      await press(within(note()).getByRole('button', { name: 'Use it with OpenRouter' }));
+      expect(anyLine()).toHaveTextContent(consentLine('OpenRouter'));
+      expect(checked()).toEqual(['openrouter']);
+      await press(screen.getByTestId('connect-any-submit'));
+      expect(puts.map((p) => p.provider)).toEqual(['openai', 'openrouter']);
+      expect(consentAtPut?.provider).toBe('openrouter');
+    });
+
+    it('a refusal keeps the line, above the note whose Check again it describes and stamps', async () => {
+      putReply = () => json({ error: 'unreachable' }, 502);
+      renderConnect('column');
+      openFold('any');
+      await paste(any(), ANTHROPIC);
+      await press(screen.getByTestId('connect-any-submit'));
+      expect(note()).toHaveAttribute('data-code', 'unreachable');
+      expect(screen.queryByTestId('connect-any-submit')).toBeNull();
+      const line = anyLine()!;
+      expect(line).toHaveTextContent(consentLine('Anthropic'));
+      expect(follows(line, note())).toBe(true);
+      const again = within(note()).getByRole('button', { name: 'Check again' });
+      expect(again).toHaveAccessibleDescription(consentLine('Anthropic'));
+
+      // Kept afresh, so nothing is stamped: Check again stamps it, then resends.
+      act(() => {
+        keepQuestion(KEPT);
+      });
+      expect(consent()).toBeNull();
+      putReply = worksNoting;
+      await press(within(note()).getByRole('button', { name: 'Check again' }));
+      expect(puts.map((p) => p.provider)).toEqual(['anthropic', 'anthropic']);
+      expect(consentAtPut?.provider).toBe('anthropic');
+    });
+
+    describe('another service', () => {
+      const custom = () =>
+        document.getElementById(screen.getByTestId('connect-custom-toggle').getAttribute('aria-controls')!) as HTMLElement;
+      const customLine = () => within(custom()).queryByTestId('connect-consent');
+      const openCustom = () => {
+        openFold('any');
+        fireEvent.click(screen.getByTestId('connect-custom-toggle'));
+      };
+
+      it('names its host, once there is something to send', async () => {
+        putReply = worksNoting;
+        renderConnect('column');
+        openCustom();
+        type(box('connect-custom-key'), UNKNOWN);
+        expect(customLine()).toBeNull();
+        expect(screen.getByTestId('connect-custom-submit')).toHaveTextContent('Connect and ask');
+        type(screen.getByTestId('connect-base-url'), 'https://llm.example.com/v1');
+        expect(customLine()).toHaveTextContent(consentLine('llm.example.com'));
+        expect(box('connect-custom-key')).toHaveAccessibleDescription(consentLine('llm.example.com'));
+        expect(screen.getByTestId('connect-custom-submit')).toHaveAccessibleDescription(consentLine('llm.example.com'));
+        await press(screen.getByTestId('connect-custom-submit'));
+        expect(puts).toEqual([{ provider: 'custom', apiKey: UNKNOWN, baseUrl: 'https://llm.example.com/v1' }]);
+        expect(consentAtPut).toEqual({ provider: 'custom', baseUrl: 'https://llm.example.com/v1', at: expect.any(Number) });
+      });
+
+      it('a refusal keeps the host line, above the note whose Check again it describes and stamps', async () => {
+        putReply = () => json({ error: 'unreachable' }, 502);
+        renderConnect('column');
+        openCustom();
+        type(screen.getByTestId('connect-base-url'), 'https://llm.example.com/v1');
+        type(box('connect-custom-key'), UNKNOWN);
+        await press(screen.getByTestId('connect-custom-submit'));
+        expect(note()).toHaveAttribute('data-code', 'unreachable');
+        const line = customLine()!;
+        expect(line).toHaveTextContent(consentLine('llm.example.com'));
+        expect(follows(line, note())).toBe(true);
+        const again = within(note()).getByRole('button', { name: 'Check again' });
+        expect(again).toHaveAccessibleDescription(consentLine('llm.example.com'));
+
+        act(() => {
+          keepQuestion(KEPT);
+        });
+        expect(consent()).toBeNull();
+        putReply = worksNoting;
+        await press(within(note()).getByRole('button', { name: 'Check again' }));
+        expect(puts.map((p) => p.provider)).toEqual(['custom', 'custom']);
+        expect(puts.at(-1)).toEqual({ provider: 'custom', apiKey: UNKNOWN, baseUrl: 'https://llm.example.com/v1' });
+        expect(consentAtPut).toEqual({ provider: 'custom', baseUrl: 'https://llm.example.com/v1', at: expect.any(Number) });
+      });
+
+      it('Use it with X sends to X without the address; an edit to the address takes the aim back', async () => {
+        putReply = (body) =>
+          body.provider === 'custom' ? json({ error: 'wrong_provider', detected: 'anthropic' }, 400) : worksNoting(body);
+        renderConnect('column');
+        openCustom();
+        type(screen.getByTestId('connect-base-url'), 'https://llm.example.com/v1');
+        type(box('connect-custom-key'), ANTHROPIC);
+        await press(screen.getByTestId('connect-custom-submit'));
+        await press(within(note()).getByRole('button', { name: 'Use it with Anthropic' }));
+        expect(puts).toHaveLength(1);
+        expect(customLine()).toHaveTextContent(consentLine('Anthropic'));
+        expect(screen.getByTestId('connect-custom-submit')).not.toHaveAttribute('aria-disabled');
+
+        type(screen.getByTestId('connect-base-url'), 'https://llm.example.org/v1');
+        expect(customLine()).toHaveTextContent(consentLine('llm.example.org'));
+        type(screen.getByTestId('connect-base-url'), 'https://llm.example.com/v1');
+        await press(screen.getByTestId('connect-custom-submit'));
+        await press(within(note()).getByRole('button', { name: 'Use it with Anthropic' }));
+        await press(screen.getByTestId('connect-custom-submit'));
+        expect(puts.at(-1)).toEqual({ provider: 'anthropic', apiKey: ANTHROPIC });
+        expect(consentAtPut).toEqual({ provider: 'anthropic', baseUrl: null, at: expect.any(Number) });
+      });
+    });
+  });
+
+  describe('the OpenRouter sign-in', () => {
+    const orBody = () => screen.getByTestId('connect-fold-openrouter-body');
+
+    it('on the web: the line sits above the sign-in, which it describes, and the press stamps OpenRouter', () => {
+      renderConnect('column');
+      openFold('openrouter');
+      const line = within(orBody()).getByTestId('connect-consent');
+      const link = screen.getByTestId('connect-openrouter-signin');
+      expect(line).toHaveTextContent(consentLine('OpenRouter'));
+      expect(link).toHaveAccessibleDescription(consentLine('OpenRouter'));
+      // Above the button; the line about where it goes stays under it.
+      const help = within(orBody()).getByText('OpenRouter opens in this tab and sends you back to this column.');
+      expect(follows(line, link) && follows(link, help)).toBe(true);
+      clickLink(link);
+      expect(consent()).toEqual({ provider: 'openrouter', baseUrl: null, at: expect.any(Number) });
+    });
+
+    it('in the desktop app: the line sits above Copy the link, and the copy stamps OpenRouter', async () => {
+      (window as unknown as { dsulDesktop?: unknown }).dsulDesktop = { version: 1 };
+      const writeText = vi.fn(async () => {});
+      Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+      renderConnect('column');
+      openFold('openrouter');
+      const line = within(orBody()).getByTestId('connect-consent');
+      const copy = screen.getByTestId('connect-copy-link');
+      expect(line).toHaveTextContent(consentLine('OpenRouter'));
+      expect(copy).toHaveAccessibleDescription(consentLine('OpenRouter'));
+      expect(follows(screen.getByTestId('connect-openrouter-desktop'), line) && follows(line, copy)).toBe(true);
+      await press(copy);
+      expect(writeText).toHaveBeenCalledTimes(1);
+      expect(consent()?.provider).toBe('openrouter');
+    });
+  });
+
+  it('the pane ignores it: a sure paste checks at once, and no line, no stamp, no "and ask"', async () => {
+    putReply = worksNoting;
+    renderConnect('pane');
+    expect(screen.getByTestId('connect-key-card')).toHaveTextContent(
+      'dsul checks it the moment you paste, with one tiny test question.'
+    );
+    clickLink(screen.getByTestId('connect-openrouter-signin'));
+    expect(screen.getByTestId('connect-openrouter-signin')).not.toHaveAttribute('aria-describedby');
+    expect(consent()).toBeNull();
+    await paste(box(), GOOGLE);
+    expect(puts).toEqual([{ provider: 'gemini', apiKey: GOOGLE }]);
+    expect(consentAtPut).toBeNull();
+    expect(screen.queryAllByTestId('connect-consent')).toEqual([]);
+    expect(document.body.textContent).not.toMatch(/and ask|asks yours/);
+  });
+
+  it('nothing lime in the column, with the line and Connect and ask up', async () => {
+    renderConnect('column');
+    await paste(box(), GOOGLE);
+    expect(screen.getByTestId('connect-submit')).toHaveTextContent('Connect and ask');
+    expect(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"]')).toHaveLength(0);
+    openFold('openrouter');
+    expect(document.querySelectorAll('[data-ask-setup] [class*="bg-primary"]')).toHaveLength(0);
+  });
+});
+
+/* ── The phone's page ───────────────────────────────────────────────────── */
+
+describe('layout phone', () => {
+  const renderPhone = (afterFolds?: ReactNode) =>
+    render(
+      <div data-setup-tab="invite">
+        <ConnectAI host="column" layout="phone" afterFolds={afterFolds} />
+      </div>
+    );
+
+  it('a key that works pops the phone’s stack home, not the desktop’s, and says "It works."', async () => {
+    act(() => {
+      useRailStore.getState().push('phone', { kind: 'history' });
+      useRailStore.getState().push('desktop', { kind: 'history' });
+    });
+    putReply = works({}, { freeTier: true });
+    renderPhone();
+    expect(screen.getByTestId('connect-ai')).toHaveAttribute('data-layout', 'phone');
+    await paste(box(), GOOGLE);
+    expect(useRailStore.getState().stacks.phone).toEqual([]);
+    expect(useRailStore.getState().stacks.desktop).toEqual([{ kind: 'history' }]);
+    expect(useAIConnectionStore.getState().justConnected).toMatchObject({ provider: 'gemini', freeTier: true });
+  });
+
+  it('the OpenRouter sign-in comes back here, to the tab, home', () => {
+    renderPhone();
+    expect(screen.getByTestId('connect-openrouter-signin')).toHaveAttribute('href', '/api/ai/openrouter/start?r=home');
+    expect(screen.getByTestId('connect-fold-openrouter-body')).toHaveTextContent(
+      'OpenRouter opens in this tab and sends you back here.'
+    );
+    expect(screen.getByTestId('connect-fold-openrouter-body')).not.toHaveTextContent('column');
+  });
+
+  it('puts what it is given between the folds and Good to know', () => {
+    renderPhone(<p data-testid="after-folds">Previews</p>);
+    const after = screen.getByTestId('after-folds');
+    const folds = screen.getByTestId('connect-folds');
+    const good = screen.getByTestId('connect-good-to-know');
+    expect(folds.compareDocumentPosition(after) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(after.compareDocumentPosition(good) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getAllByTestId('connect-good-to-know')).toHaveLength(1);
   });
 });
 

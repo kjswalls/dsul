@@ -2,8 +2,14 @@ import { test, expect } from '@playwright/test';
 import { loginTestUser } from './helpers/auth';
 import { createTestTask, cleanupByTitlePrefix, specScope } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
-import { reloadApp, itemCard, switchMobileTab } from './helpers/app';
-import { gateAnswered, stubConnectedModel } from './helpers/ai';
+import { reloadApp, itemCard, omnibar, switchMobileTab } from './helpers/app';
+import {
+  gateAnswered,
+  pasteInto,
+  stubAIGate,
+  stubConnectedModel,
+  STUB_GOOD_KEY,
+} from './helpers/ai';
 
 /**
  * Ask on the phone: the third surface, named "Ask" whoever answers, holds its
@@ -105,5 +111,68 @@ test.describe('Ask on the phone @mobile', () => {
     } finally {
       await cleanupByTitlePrefix(page, title);
     }
+  });
+});
+
+/**
+ * The same third surface while nothing answers (AI setup PR 5): the gate
+ * offers to set AI up, so the sheet lists it as "Set up AI", marked
+ * Optional, and the tab holds the setup page, the desktop column's pieces
+ * laid out as a tab (components/mobile/setup-tab.tsx). It is not Ask: the
+ * dock keeps its omnibar there. A key that works turns the tab into Ask in
+ * place, home first, with "It works.".
+ *
+ * The gate is stubbed statefully (helpers/ai.ts `stubAIGate`), as rail.spec
+ * does: a real connect would save a key to the shared e2e account.
+ */
+test.describe('Set up AI on the phone @mobile', () => {
+  test('nothing connected: the sheet offers Set up AI, its page takes a key, and the tab becomes Ask', async ({
+    page,
+  }) => {
+    const gate = await stubAIGate(page);
+    const answered = gateAnswered(page);
+    await loginTestUser(page);
+    await answered;
+
+    // 1. The sheet's third row is "Set up AI", with its quiet note.
+    const card = page.getByTestId('mobile-mode-card');
+    await card.click();
+    const option = page.getByTestId('mode-option-chat');
+    await expect(option).toContainText('Set up AI');
+    await expect(option.locator('[data-mode-note]')).toHaveText('Optional');
+    await option.click();
+    await expect(option).toHaveCount(0);
+    await expect(card).toHaveAttribute('data-surface', 'chat');
+    await expect(card).toHaveAttribute('aria-label', 'Surface: Set up AI. Change surface.');
+
+    // 2. The setup page, not Ask: the word in its capsule, the key card, the
+    //    foot at the end, nothing lime, and the dock's omnibar, no composer.
+    const setup = page.locator('[data-setup-tab="invite"]');
+    await expect(setup).toBeVisible();
+    await expect(setup.getByRole('heading', { name: 'Set up AI', exact: true, level: 2 })).toBeVisible();
+    await expect(page.locator('[data-ask-tab]')).toHaveCount(0);
+    await expect(setup.locator('[data-setup-foot]')).toContainText(
+      'AI is optional. dsul works fully without it.'
+    );
+    await expect(setup.locator('.bg-primary')).toHaveCount(0);
+    await expect(omnibar(page)).toBeVisible();
+    await expect(page.getByTestId('chat-dock-input')).toHaveCount(0);
+
+    // 3. A Google key is checked the moment it lands (no question is kept),
+    //    and the tab becomes Ask home, which says it works.
+    const field = setup.getByTestId('connect-key-card').getByLabel('Your Gemini key');
+    await pasteInto(field, STUB_GOOD_KEY);
+    const tab = page.locator('[data-ask-tab]');
+    const home = tab.locator('[data-ask-home]');
+    await expect(home).toBeVisible();
+    await expect(setup).toHaveCount(0);
+    await expect(home.getByTestId('it-works').getByRole('heading', { name: 'It works.' })).toBeVisible();
+    await expect(card).toHaveAttribute('aria-label', 'Surface: Ask. Change surface.');
+    // Ask's box replaces the omnibar, and the keyboard stays down over the card.
+    const box = page.getByTestId('chat-dock-input');
+    await expect(box).toBeVisible();
+    await expect(box).not.toBeFocused();
+    expect(gate.connects).toEqual([{ provider: 'gemini', accepted: true }]);
+    expect(await page.content()).not.toContain(STUB_GOOD_KEY);
   });
 });

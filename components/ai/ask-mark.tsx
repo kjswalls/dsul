@@ -139,8 +139,8 @@ function Mark({
  * Lucide's Sparkles used to (the Ask rows in ⌘K and the right-click menu, a
  * proposal, a general conversation in History, a new chat's greeting, the
  * agent block, the AI settings pane, the AI notices, the phone's Ask glyph;
- * tests/unit/ask-key.test.tsx lists them). Each renders <AskMark /> or
- * <AskMarkIcon />, the key reads
+ * tests/unit/ask-key.test.tsx lists them). Each renders <AskMark />,
+ * <AskMarkIcon /> or <AskMarkUnlitIcon />, the key reads
  * ASK_MARK_LIGHT to aim its rim light, and nothing else knows what the mark
  * looks like. Swapping it is a change to this file alone: a new svg on the
  * same slot and tokens, and its own light point.
@@ -152,6 +152,9 @@ function Mark({
  * `lit={false}` is the aurora mark before anything answers (the AI gate's
  * `askInvite` or `askFix`): the "Set up AI" or "Fix AI" key and the setup
  * column's header draw it in neutral ink, and it lights only with `canChat`.
+ * AskMarkUnlitIcon carries the same paint into a slot that takes a Lucide
+ * icon: Ctrl+K's "Set up AI" and "Fix AI", the launcher's chat hint and the
+ * dock's `?` row while nothing answers, and the phone's switcher row.
  */
 export function AskMark({
   className,
@@ -174,4 +177,19 @@ export const AskMarkIcon: LucideIcon = forwardRef<SVGSVGElement, Omit<LucideProp
   ref
 ) {
   return <Mark ref={ref} tone="ink" sized className={className} />;
+});
+
+/**
+ * The unlit mark where a slot takes a Lucide icon (see AskMark's `lit`): the
+ * doors into setup while nothing answers. Sized and decorative exactly as
+ * AskMarkIcon is, but in the unlit aurora paint, not one ink: its neutral
+ * tiles are what say "not connected yet", so a muted row keeps them, and it
+ * carries no accent anywhere, so nothing lime sits on a row that cannot
+ * answer.
+ */
+export const AskMarkUnlitIcon: LucideIcon = forwardRef<SVGSVGElement, Omit<LucideProps, 'ref'>>(function AskMarkUnlitIcon(
+  { className },
+  ref
+) {
+  return <Mark ref={ref} tone="aurora" lit={false} sized className={className} />;
 });

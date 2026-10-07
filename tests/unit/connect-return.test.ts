@@ -9,6 +9,7 @@ import {
 import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { useRailStore } from '@/lib/rail-store';
+import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useViewStore } from '@/lib/view-store';
 import type { ModelConnectionView } from '@/lib/ai-types';
@@ -74,6 +75,7 @@ beforeEach(() => {
   rail().reset();
   useViewStore.setState({ zenOpen: false });
   useSidebarStore.setState({ askOpen: false });
+  useMobileNavStore.setState({ activeTab: 'today' });
 });
 
 afterEach(() => {
@@ -335,13 +337,39 @@ describe('opening the column where the sign-in began', () => {
     expect(ai().justConnected).not.toBeNull();
   });
 
-  it('the phone gets the store write and no summon (its setup page is AI setup PR 5)', () => {
+  // The phone's setup page and Ask both live on its Ask tab. A summon there
+  // would arm the desktop column to spring open on a wider window.
+  it('phone: the Ask tab on its home, with the store write, and never a summon or Zen', () => {
     useViewStore.setState({ zenOpen: true });
+    rail().push('phone', { kind: 'history' });
+    rail().push('desktop', { kind: 'history' });
     take('?connect=denied', { phone: true });
     unseed = seedAI(NOTHING_CONNECTED);
     expect(ai().flowResult).toBe('denied');
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(rail().stacks.phone).toEqual([]);
     expect(rail().summoned).toBe(false);
+    expect(useSidebarStore.getState().askOpen).toBe(false);
     expect(useViewStore.getState().zenOpen).toBe(true);
+    // The desktop's own stack is the desktop's.
+    expect(rail().stacks.desktop).toEqual([{ kind: 'history' }]);
+  });
+
+  it('phone, ok: the Ask tab opens on its home, with the card to show', () => {
+    rail().push('phone', { kind: 'history' });
+    take('?connect=ok', { phone: true });
+    unseed = seedAI(SIGNED_IN_SEED);
+    expect(useMobileNavStore.getState().activeTab).toBe('chat');
+    expect(rail().stacks.phone).toEqual([]);
+    expect(rail().summoned).toBe(false);
+    expect(ai().justConnected).toMatchObject({ provider: 'openrouter', model: SIGNED_IN.model, freeTier: false, at: NOW });
+  });
+
+  it('phone: stays where it is when the gate offers nothing to show', () => {
+    take('?connect=denied', { phone: true });
+    unseed = seedAI(AI_HIDDEN);
+    expect(useMobileNavStore.getState().activeTab).toBe('today');
+    expect(rail().summoned).toBe(false);
   });
 
   it('leaves no summon waiting when the gate offers nothing to show', () => {
