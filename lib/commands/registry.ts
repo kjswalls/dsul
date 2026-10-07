@@ -88,6 +88,7 @@ import { runRecipeCommand } from '../recipes/command-run';
 import { railModeNow, useRailStore } from '../rail-store';
 import { useUndoStripStore } from '../undo-strip-store';
 import { goToDate, stepScope } from '../nav-commands';
+import { openHoveredSlot } from '../slot-add';
 import { resolveCategoryIcon } from '../category-icons';
 import { getCustomTypeDefs, getItemTypeConfig } from '../item-registry';
 import { selectOverdue } from '../overdue';
@@ -244,6 +245,10 @@ export const STATIC_COMMANDS: Command[] = [
     aliases: ['task'],
     shortcut: { id: 'new_task', keys: ['n'] },
     run: () => openAddDialog('task'),
+    // Over a grid slot or an add row, the key adds right there.
+    runFromShortcut: () => {
+      if (!openHoveredSlot()) openAddDialog('task');
+    },
   },
   {
     id: 'create.habit',

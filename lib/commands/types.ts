@@ -249,6 +249,12 @@ export interface Command {
    * argument — the chosen item's id.
    */
   run: (ctx: CommandContext, arg?: string) => void;
+  /**
+   * What the key does, when it differs from the palette row. `n` adds at the
+   * slot under the pointer (lib/slot-add.ts), which the palette has no
+   * pointer for; picking "Add task" from ⌘K always opens the add dialog.
+   */
+  runFromShortcut?: (ctx: CommandContext) => void;
 }
 
 /**
