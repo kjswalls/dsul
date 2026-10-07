@@ -354,7 +354,7 @@ function LoginPageInner({ apple }: { apple: boolean }) {
               height keeps the form still while a larger hover flavor is up. */}
           <div className="space-y-1.5">
             <Wordmark className="h-[13px]" />
-            <p className="text-[11.5px] text-muted-foreground">like vin diesel w/out the vin :)</p>
+            <p className="text-[11.5px] text-muted-foreground">like vin diesel, vin sold separately</p>
           </div>
 
           {handoff ? (
@@ -426,11 +426,8 @@ function LoginPageInner({ apple }: { apple: boolean }) {
                 {/* Negative tracking is doing real work here — Inter sets loose
                     at display sizes and the two lines won't lock up without it. */}
                 <h1 className="text-[27px] font-semibold leading-[1.12] tracking-[-0.032em] text-balance">
-                  Ok! what are we doing today?
+                  what stuff should we do today?
                 </h1>
-                <p className="text-[13.5px] leading-relaxed text-muted-foreground">
-                  sign in and we&rsquo;ll figure it out together
-                </p>
               </div>
 
               <div className="space-y-3 delay-200 duration-700 animate-in fade-in slide-in-from-bottom-2 fill-mode-both motion-reduce:animate-none">
@@ -502,7 +499,6 @@ function LoginPageInner({ apple }: { apple: boolean }) {
                     type="email"
                     aria-label="Email address"
                     placeholder="you@example.com"
-                    autoFocus
                     autoComplete="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
