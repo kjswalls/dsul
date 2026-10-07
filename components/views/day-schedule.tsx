@@ -54,6 +54,10 @@ import { BUCKET_ORDER } from '@/lib/day-items';
 import { groupRows } from '@/lib/grouping';
 import { groupBySupport } from '@/lib/view-options';
 import { SeasonNotice } from '@/components/views/season-notice';
+import { SlotLayer } from '@/components/planner/slot-layer';
+import { AddRow } from '@/components/planner/slot-composer';
+import { rowScope } from '@/lib/slot-add';
+import { format } from 'date-fns';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -1630,6 +1634,18 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
     return merged;
   }, [overlapEntries, hourPx, gridStartHour, fieldWidth, lanePlan]);
 
+  // Adding in place is the desktop's; the phone's capture bar is its way in.
+  const isMobile = useIsMobile();
+  const addHere = !isMobile;
+  const dayStr = format(selectedDate, 'yyyy-MM-dd');
+  const anytimeAdd = (
+    <AddRow
+      persistent
+      target={{ kind: 'row', scope: rowScope('anytime', dayStr), dateStr: dayStr, bucket: 'anytime' }}
+      placeholder="Add to Anytime"
+    />
+  );
+
   return (
     <ScrollArea className="h-full flex-1">
       <div
@@ -1644,8 +1660,10 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
             day — see SeasonNotice. */}
         <SeasonNotice className="px-1" />
 
-        {/* ANYTIME — untimed items; drop here to keep something time-free */}
-        {(untimed.length > 0 || dragging) && (
+        {/* ANYTIME — untimed items; drop here to keep something time-free.
+            On desktop it is always there, even empty, because its last row is
+            where you add one (the phone keeps its own capture bar). */}
+        {(untimed.length > 0 || dragging || addHere) && (
           <div
             ref={anytimeRootRef}
             data-dnd-id="unscheduled:anytime"
@@ -1667,13 +1685,16 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
                 bucket, and the strip is already identified by its position and
                 its drop target. */}
             {grouped ? (
-              untimedGroups.map((g) => (
-                <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
-                  {g.rows.map((row) => (
-                    <TaskRow key={row.item.id} row={row} />
-                  ))}
-                </GroupSection>
-              ))
+              <>
+                {untimedGroups.map((g) => (
+                  <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
+                    {g.rows.map((row) => (
+                      <TaskRow key={row.item.id} row={row} />
+                    ))}
+                  </GroupSection>
+                ))}
+                {addHere && anytimeAdd}
+              </>
             ) : (
               <GroupSection label="Anytime" variant="canvas">
                 {/* groupRows returns [] for an empty strip, which renders while dragging. */}
@@ -1685,6 +1706,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
                     Drop here to keep it time-free
                   </div>
                 )}
+                {addHere && !dragging && anytimeAdd}
               </GroupSection>
             )}
           </div>
@@ -1734,6 +1756,17 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
               block (PANE_OFFSET) so the rail and bead can still sit on the true
               hour line while the pane clears its neighbour. */}
           <div ref={fieldRef} className="absolute bottom-0 right-0 top-0" style={{ left: DAY_FIELD_LEFT }}>
+            {/* Under everything else in the field, so it hears only empty grid. */}
+            <SlotLayer
+              date={selectedDate}
+              dateStr={dayStr}
+              gridStartHour={gridStartHour}
+              gridEndHour={gridEndHour}
+              hourPx={hourPx}
+              lanePlan={lanePlan}
+              formatTime={(min, meridiem) => formatClock(min, timeFormatStr, meridiem)}
+              disabled={dragging || resizing}
+            />
             {/* One rail per lane. The hour rules deliberately do NOT break at a
                 lane boundary — the grammar is "y is shared, x is categorical",
                 and ruling each lane separately would draw a table, which claims

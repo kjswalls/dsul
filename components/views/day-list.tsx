@@ -15,6 +15,9 @@ import { orderRows } from '@/lib/sort-rows';
 import { useSinkHold } from '@/hooks/use-sink-hold';
 import { SeasonNotice } from '@/components/views/season-notice';
 import { ListDropZone } from '@/components/views/list-drop-zone';
+import { AddRow } from '@/components/planner/slot-composer';
+import { rowScope } from '@/lib/slot-add';
+import { useIsMobile } from '@/hooks/use-mobile';
 import type { Task, HabitItem } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
 
@@ -76,6 +79,7 @@ export function DayList() {
    */
   const dateStr = toDateStr(selectedDate, userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone);
   const rows = flattenDayRows(day);
+  const addHere = !useIsMobile();
   const groups = (
     canvasGroupBy === 'none'
       ? defaultListGroups(rows)
@@ -114,6 +118,15 @@ export function DayList() {
                 ))}
               </GroupSection>
             ))
+          )}
+          {/* The day's own add line, at its end like the braindump's. Pointer
+              surfaces only: the phone keeps its capture bar. */}
+          {addHere && (
+            <AddRow
+              persistent
+              target={{ kind: 'row', scope: rowScope('list', dateStr), dateStr, bucket: 'anytime' }}
+              placeholder={`Add to ${format(selectedDate, 'EEEE')}`}
+            />
           )}
         </ListDropZone>
       </div>

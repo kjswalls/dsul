@@ -43,6 +43,10 @@ import { useSinkHold } from '@/hooks/use-sink-hold';
 import { useDayItemsForDates } from '@/hooks/use-day-items';
 import { seasonBoundaries, boundaryLabel } from '@/lib/season-boundaries';
 import { cn } from '@/lib/utils';
+import { Plus } from 'lucide-react';
+import { SlotLayer } from '@/components/planner/slot-layer';
+import { AddRow } from '@/components/planner/slot-composer';
+import { isHolding, rowScope, setHoveredSlot, useSlotComposer, type SlotTarget } from '@/lib/slot-add';
 
 /**
  * Week × Schedule: one grid, seven day-columns + a left hour gutter. Each
@@ -175,6 +179,17 @@ function WeekScheduleColumn({
   const focusedKey = useScheduleFocusStore((s) => s.focusedKey);
   const dragging = !!activeId;
   const { isOver, setNodeRef } = useDroppable({ id: `week:${col.dateStr}:anytime` });
+  const timeFormatStr = useTimeFormat();
+  const resizing = useScheduleResizeStore((s) => s.resizing);
+  // This day's Anytime add row: opened by the strip's +, a click on its empty
+  // space, `n` over it, or the grid's right-click "New task in Anytime".
+  const stripTarget: Extract<SlotTarget, { kind: 'row' }> = useMemo(
+    () => ({ kind: 'row', scope: rowScope('anytime', col.dateStr), dateStr: col.dateStr, bucket: 'anytime' }),
+    [col.dateStr]
+  );
+  const stripAdding = useSlotComposer((s) => s.target?.scope === stripTarget.scope);
+  const openComposer = useSlotComposer((s) => s.open);
+  const stripPress = useRef<{ holding: boolean; composerWasOpen: boolean } | null>(null);
 
   // Measured before paint, so a busy week opens at its grown height instead of
   // flashing at 88px for a frame. The observer catches every later change: a
@@ -353,16 +368,40 @@ function WeekScheduleColumn({
           </span>
         </button>
 
-        {/* Per-day Anytime strip */}
+        {/* Per-day Anytime strip, with its + floating in the corner: outside
+            the measured rows, so it never grows the strip it sits in. */}
+        <div
+          className="group/strip relative mt-2"
+          data-slot-scope={stripTarget.scope}
+          onPointerEnter={() => setHoveredSlot(stripTarget)}
+          onPointerLeave={() => setHoveredSlot(null)}
+        >
         <div
           ref={anytimeRootRef}
           data-dnd-id={`week:${col.dateStr}:anytime`}
           data-dnd-over={isOver ? 'true' : 'false'}
           style={{ height: anytimeH }}
           className={cn(
-            'mt-2 overflow-y-auto rounded-[8px] border border-dashed border-border/40 p-1 transition-colors',
+            'overflow-y-auto rounded-[8px] border border-dashed border-border/40 p-1 transition-colors',
             isOver && 'border-primary bg-primary/5'
           )}
+          // A click on the strip's own empty space opens its add row, by the
+          // grid's rule: not while it would only let go of a selection or the
+          // item panel, and not as the click that puts a composer away.
+          onPointerDown={(e) => {
+            stripPress.current =
+              e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.pointerType !== 'touch'
+                ? { holding: isHolding(), composerWasOpen: !!useSlotComposer.getState().target }
+                : null;
+          }}
+          onClick={(e) => {
+            const p = stripPress.current;
+            stripPress.current = null;
+            if (!p || p.holding || p.composerWasOpen || e.detail > 1 || dragging) return;
+            const t = e.target as HTMLElement;
+            if (t !== e.currentTarget && t !== anytimeContentRef.current && !t.hasAttribute('data-strip-empty')) return;
+            openComposer(stripTarget);
+          }}
         >
           {/* Same rule as Day × Schedule: the hour grid below cannot take
               headings, this strip can. It is capped and scrolls past the cap, so
@@ -382,10 +421,29 @@ function WeekScheduleColumn({
                 ))
               )
             )}
-            {col.untimed.length === 0 && (
-              <div className="pt-3 text-center text-2xs text-muted-foreground/40">Anytime</div>
+            {col.untimed.length === 0 && !stripAdding && (
+              <div data-strip-empty="" className="pt-3 text-center text-2xs text-muted-foreground/40">
+                Anytime
+              </div>
+            )}
+            {stripAdding && !dragging && (
+              <AddRow target={stripTarget} placeholder="Add to Anytime" className="gap-2 py-1" />
             )}
           </div>
+        </div>
+        {!stripAdding && !dragging && (
+          <button
+            type="button"
+            data-testid="week-anytime-add"
+            aria-label={`Add to ${format(col.date, 'EEEE')}'s Anytime`}
+            title="Add to Anytime"
+            onClick={() => openComposer(stripTarget)}
+            // Hover-only on a pointer that can hover; always there otherwise.
+            className="absolute bottom-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-[5px] border-[1.5px] border-muted-foreground/70 bg-canvas text-foreground/80 transition-[opacity,colors] hover:border-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/strip:opacity-100"
+          >
+            <Plus className="h-2.5 w-2.5" aria-hidden />
+          </button>
+        )}
         </div>
       </div>
 
@@ -397,6 +455,17 @@ function WeekScheduleColumn({
             <WeekHourCell key={h} dateStr={col.dateStr} hour={h} isActive={dragging} hourPx={hourPx} />
           ))}
         </div>
+        {/* Before the blocks' overlay, so it hears only empty grid. */}
+        <SlotLayer
+          date={col.date}
+          dateStr={col.dateStr}
+          gridStartHour={gridStartMin / 60}
+          gridEndHour={gridStartMin / 60 + hours.length}
+          hourPx={hourPx}
+          formatTime={(min, meridiem) => formatClock(min, timeFormatStr, meridiem)}
+          disabled={dragging || resizing}
+          compact
+        />
         <div className="pointer-events-none absolute inset-0">
           <span
             aria-hidden
