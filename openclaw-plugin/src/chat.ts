@@ -2,6 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import type { PluginConfig } from "./plugin-types.js";
 import type { PluginRuntime } from "openclaw/plugin-sdk";
 import { readBody } from "./webhook.js";
+import { isValidChatToken, pluginChatToken } from "./chat-token.js";
 
 const SESSION_KEY_PREFIX = "dsul-chat";
 
@@ -29,7 +30,10 @@ export async function handleChatRequest(
 
   const authHeader = (req.headers["authorization"] as string | undefined) ?? "";
   const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-  if (!token || token !== cfg.apiKey) {
+  // The bearer is the derived chat token, never the API key itself (#142):
+  // dsul hands the browser only the token, so the key that reaches dsul's
+  // agent API is never in a page. A raw key presented here is refused.
+  if (!isValidChatToken(token, cfg.apiKey)) {
     res.writeHead(401, { ...CORS_HEADERS, "Content-Type": "application/json" });
     res.end(JSON.stringify({ error: "Unauthorized" }));
     return;
@@ -48,7 +52,7 @@ export async function handleChatRequest(
       return;
     }
     message = body.message.trim();
-    sessionKey = body.sessionKey ?? `${SESSION_KEY_PREFIX}:${cfg.apiKey.slice(-8)}`;
+    sessionKey = body.sessionKey ?? `${SESSION_KEY_PREFIX}:${pluginChatToken(cfg.apiKey).slice(-8)}`;
     extraContext = body.context;
   } catch {
     res.writeHead(400, { ...CORS_HEADERS, "Content-Type": "application/json" });

@@ -11,8 +11,9 @@ import { assertAllowedGatewayUrl } from '@/lib/openclaw-gateway'
  * policies — service role only, migration 012), and is NEVER returned: GET
  * reports whether one is stored, never what it is.
  *
- * Contrast /api/agent/chat-url, which hands the browser an API key so it can
- * POST at the gateway itself. That is the arrangement this transport exists to
+ * Contrast /api/agent/chat-url, which hands the browser a plugin chat token
+ * (an HMAC of the agent key, good on the plugin's chat route only) so it can
+ * POST at the plugin itself. That is the arrangement this transport exists to
  * retire; it stays only until the plugin chat path is removed.
  */
 

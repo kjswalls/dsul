@@ -72,7 +72,10 @@ const mockServiceClient = {
   })),
 };
 
-vi.mock('@/lib/supabase-service', () => ({
+// readAgentKey / storeAgentKey stay real: the routes hand them the service
+// client, so their reads and writes draw from the same queue.
+vi.mock('@/lib/supabase-service', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/lib/supabase-service')>()),
   createServiceClient: vi.fn(() => mockServiceClient),
   resolveUserIdFromApiKey: vi.fn(),
 }));
@@ -236,6 +239,11 @@ describe('POST /api/agent/connect/authorize', () => {
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body).toEqual({ ok: true });
+    // The key is read from and minted into user_secrets (service role only),
+    // never user_settings, which the user's own browser can SELECT (#123).
+    const tables = mockServiceClient.from.mock.calls.map((c) => c[0]);
+    expect(tables).toEqual(['connect_sessions', 'user_secrets', 'user_secrets', 'connect_sessions']);
+    expect(tables).not.toContain('user_settings');
   });
 
   it('reuses existing API key when user already has one', async () => {
@@ -378,6 +386,11 @@ describe('GET /api/agent/connect/poll', () => {
     expect(body.status).toBe('authorized');
     expect(body.apiKey).toBe('dsul_abc123');
     expect(body.dsulUrl).toBe('https://do.dsul.app');
+    // The consumed row keeps no copy of the key.
+    const updates = mockServiceClient.from.mock.results
+      .map((r) => (r.value as { update: ReturnType<typeof vi.fn> }).update.mock.calls)
+      .flat();
+    expect(updates).toContainEqual([expect.objectContaining({ status: 'consumed', api_key: null })]);
   });
 
   it('returns { status: "consumed" } without apiKey for already-consumed sessions', async () => {

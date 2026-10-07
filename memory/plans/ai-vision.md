@@ -211,6 +211,16 @@ directly to the gateway ([lib/chat-store.ts](../../lib/chat-store.ts), deleted i
 [app/api/agent/chat-url/route.ts](../../app/api/agent/chat-url/route.ts)). After this, the
 browser talks only to dsul.
 
+*Narrowed 2026-10-07 (#123, #142, migration 059), for accounts still on the plugin path:* the
+browser no longer holds the agent key. `/api/agent/chat-url` hands it a plugin chat token, an
+HMAC of the key ([lib/plugin-chat-token.ts](../../lib/plugin-chat-token.ts), mirrored in
+`openclaw-plugin/src/chat-token.ts`), which the plugin's chat route accepts and dsul's agent API
+does not. The key itself moved from `user_settings` (browser-readable under RLS) to
+`user_secrets` (service role only), read and written only through the helpers in
+[lib/supabase-service.ts](../../lib/supabase-service.ts); the old column is CHECKed null. The
+plugin path stays browser-direct because a plugin on a tailnet is reachable from the user's
+browser and not from Vercel, so a server proxy would break it.
+
 **2. Delegation → `POST /hooks/agent`,** with the agent reporting results back through the
 dsul items tools the plugin already registers. Because announce is best-effort,
 **dsul's DB is the source of truth** for threads and delegation state; gateway reports

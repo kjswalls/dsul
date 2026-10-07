@@ -52,13 +52,16 @@ export default async function globalSetup() {
   // the tick serves nobody until reminders-tick.spec switches it on for itself:
   // a run aborted before that spec's teardown would otherwise leave the shared
   // user enrolled in every later run's tick.
+  //
+  // The agent key lives in user_secrets (migration 059), never user_settings,
+  // which CHECKs its old column null.
   const existing = await rest(
-    `user_settings?user_id=eq.${userId}&select=openclaw_api_key`
+    `user_secrets?user_id=eq.${userId}&select=openclaw_api_key`
   ).then((r) => (r.ok ? r.json() : []));
 
   const apiKey: string =
     existing?.[0]?.openclaw_api_key ??
-    // Same shape the app mints: app/api/agent/apikey/route.ts.
+    // Same shape the app mints: app/api/agent/connect/authorize/route.ts.
     `dsul_${randomBytes(32).toString('hex')}`;
 
   const settingsRes = await rest('user_settings', {
@@ -75,13 +78,21 @@ export default async function globalSetup() {
       default_view: 'day',
       time_format: '12h',
       week_start_day: 'sunday',
-      openclaw_api_key: apiKey,
     }),
   });
   if (!settingsRes.ok) {
     throw new Error(
       `Failed to seed user_settings (${settingsRes.status}): ${await settingsRes.text()}`
     );
+  }
+
+  const keyRes = await rest('user_secrets', {
+    method: 'POST',
+    headers: { Prefer: 'resolution=merge-duplicates,return=minimal' },
+    body: JSON.stringify({ user_id: userId, openclaw_api_key: apiKey }),
+  });
+  if (!keyRes.ok) {
+    throw new Error(`Failed to seed the agent key (${keyRes.status}): ${await keyRes.text()}`);
   }
 
   // 2b. Switch on the extensions the specs drive.

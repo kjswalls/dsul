@@ -371,8 +371,9 @@ export interface AppItemType {
 }
 
 /**
- * Named columns, never `*`: the same row holds `openclaw_api_key`, a plaintext
- * key with service-role power that RLS lets this token read.
+ * Named columns, never `*`: the row is the user's own and RLS lets this token
+ * read all of it. It held the plaintext agent key until migration 059 moved it
+ * to user_secrets; the habit stays.
  *
  * The week start and the time format are migration 008, and stable.
  */

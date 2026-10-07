@@ -71,10 +71,12 @@ export async function GET(req: NextRequest) {
     }
 
     if (session.status === 'authorized') {
-      // One-shot: mark consumed atomically, then return the key
+      // One-shot: mark consumed atomically, then return the key. The row's
+      // copy of the key goes with it: a consumed session has no further use
+      // for it, and it should not outlive the hand-off.
       const { error: consumeErr } = await service
         .from('connect_sessions')
-        .update({ status: 'consumed', consumed_at: new Date().toISOString() })
+        .update({ status: 'consumed', consumed_at: new Date().toISOString(), api_key: null })
         .eq('id', sessionId)
         .eq('status', 'authorized') // guard against double-consumption
 

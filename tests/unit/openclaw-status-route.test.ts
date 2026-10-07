@@ -36,6 +36,11 @@ vi.mock('@/lib/supabase-server', () => ({
   })),
 }));
 
+// The key itself is read through the service-role helper (user_secrets since
+// migration 059); this row's openclaw_api_key stands in for what it finds.
+const readAgentKey = vi.fn(async () => mockRow?.openclaw_api_key ?? null);
+vi.mock('@/lib/supabase-service', () => ({ readAgentKey }));
+
 const { GET } = await import('@/app/api/openclaw/status/route');
 
 beforeEach(() => {
