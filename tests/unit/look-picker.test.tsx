@@ -349,3 +349,126 @@ describe('your themes, under Yours', () => {
     expect(screen.queryByTestId('look-yours-dark')).toBeNull();
   });
 });
+
+describe('your Looks, under Yours', () => {
+  const mod = (id: string, kind: UserMod['kind'], name: string, manifest: unknown, enabled = true): UserMod => ({
+    id,
+    userId: 'test-user',
+    kind,
+    slug: themeSlugForId(id),
+    name,
+    enabled,
+    manifest,
+    disabledReason: null,
+    createdAt: '2026-10-07T00:00:00Z',
+    updatedAt: '2026-10-07T00:00:00Z',
+  });
+  const MOSS = mod('aaaaaaaa-0000-4000-8000-000000000001', 'theme', 'Moss', {
+    version: 1,
+    mode: 'light',
+    base: 'paper',
+    tokens: { paper0: '#fafafa' },
+  });
+  const DEEP = mod('11111111-0000-4000-8000-000000000001', 'look', 'Deep work', {
+    version: 1,
+    layout: 'classic',
+    light: 'u-aaaaaaaa',
+    dark: 'dusk',
+  });
+  const GONE = mod('22222222-0000-4000-8000-000000000002', 'look', 'Gone', {
+    version: 1,
+    layout: 'writer',
+    light: 'u-deadbeef',
+    dark: 'night',
+  });
+  const OFF = mod('33333333-0000-4000-8000-000000000003', 'look', 'Resting', { version: 1, layout: 'console', light: 'paper', dark: 'terminal' }, false);
+  const rows = [MOSS, DEEP, GONE, OFF];
+
+  beforeEach(() => {
+    localStorage.clear();
+    useModsStore.setState({ available: true, loaded: true, failed: false, hydratedUserId: 'test-user', rows, safeMode: false });
+    setUserThemesFromRows(rows, false);
+  });
+  afterEach(() => {
+    useModsStore.getState().reset();
+    useModsStore.setState({ safeMode: false });
+    useUserThemes.setState({ themes: {}, draft: null, rev: 0, source: 'none' });
+  });
+
+  const state = (ref: string) => screen.getByTestId(`look-card-${ref}`).closest('[data-look-state]')!.getAttribute('data-look-state');
+
+  it('shows enabled Looks after the built-ins', () => {
+    renderLook();
+    const block = screen.getByTestId('look-yours-looks');
+    expect(block.textContent).toContain('Deep work');
+    expect(block.textContent).toContain('Gone');
+    expect(block.textContent).not.toContain('Resting');
+    const builtIn = screen.getByTestId('look-card-dsul');
+    expect(builtIn.compareDocumentPosition(block) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('a tap applies all three parts as one patch, and the card is then on', () => {
+    renderLook();
+    expect(state('u-11111111')).toBe('off');
+    fireEvent.click(screen.getByTestId('look-card-u-11111111'));
+    expect(useLookStore.getState()).toMatchObject({ layout: 'classic', light: 'u-aaaaaaaa', dark: 'dusk' });
+    expect(settings.saveSettings).toHaveBeenCalledWith('test-user', {
+      layout: 'classic',
+      theme_light: 'u-aaaaaaaa',
+      theme_dark: 'dusk',
+    });
+    expect(state('u-11111111')).toBe('on');
+    expect(screen.getByTestId('look-card-u-11111111').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('the built-in sharing its layout rests as off, not edited, while yours is on', () => {
+    useLookStore.setState({ layout: 'classic', light: 'u-aaaaaaaa', dark: 'dusk' });
+    renderLook();
+    expect(state('u-11111111')).toBe('on');
+    expect(state('dsul')).toBe('off');
+    expect(screen.getByTestId('look-card-dsul').textContent).not.toContain('Edited');
+  });
+
+  it('says quietly when a theme it names is gone, and is on with the default showing', () => {
+    useLookStore.setState({ layout: 'writer', light: 'paper', dark: 'night' });
+    renderLook();
+    const card = screen.getByTestId('look-card-u-22222222');
+    expect(card.querySelector('[data-testid="look-card-note"]')!.textContent).toBe(
+      'Its light theme is off or gone, so Paper shows by day.'
+    );
+    expect(state('u-22222222')).toBe('on');
+  });
+
+  it('a theme of yours that is off: the card shows the default, and is on while the saved pick is that theme', () => {
+    const offMoss = { ...MOSS, enabled: false };
+    const withOff = [offMoss, DEEP, GONE, OFF];
+    useModsStore.setState({ rows: withOff });
+    setUserThemesFromRows(withOff, false);
+    useLookStore.setState({ layout: 'classic', light: 'u-aaaaaaaa', dark: 'dusk' });
+    renderLook();
+    const card = screen.getByTestId('look-card-u-11111111');
+    expect(card.textContent).toContain('Classic on Paper and Dusk');
+    expect(state('u-11111111')).toBe('on');
+  });
+
+  it('safe mode hides your Looks and says so', () => {
+    useModsStore.setState({ safeMode: true });
+    setUserThemesFromRows(rows, true);
+    renderLook();
+    expect(screen.queryByTestId('look-yours-looks')).toBeNull();
+    expect(screen.getByTestId('look-safe-mode').textContent).toBe('Your themes and Looks are off in this tab (safe mode).');
+  });
+
+  it('safe mode with Looks only says Looks', () => {
+    useModsStore.setState({ safeMode: true, rows: [DEEP] });
+    setUserThemesFromRows([DEEP], true);
+    renderLook();
+    expect(screen.getByTestId('look-safe-mode').textContent).toBe('Your Looks are off in this tab (safe mode).');
+  });
+
+  it('a phone draws no Looks, yours included, and keeps its four anchors', () => {
+    renderLook({ isMobile: true });
+    expect(screen.queryByTestId('look-yours-looks')).toBeNull();
+    for (const id of IDS) expect(anchors(id).length, id).toBe(LAYOUT_IDS.includes(id) ? 0 : 1);
+  });
+});

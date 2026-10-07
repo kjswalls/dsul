@@ -7,6 +7,8 @@ import {
   MOD_KINDS,
   MOD_SLUG_RE,
   ModNameSchema,
+  LookManifestSchema,
+  type LookManifest,
   RecipeManifestSchema,
   type RecipeManifest,
   ThemeManifestSchema,
@@ -136,6 +138,17 @@ interface ModsStore {
    * not code that runs, so an edit is not new behaviour the way a recipe's is.
    */
   saveTheme: (id: string, input: { name: string; manifest: ThemeManifest }) => Promise<boolean>;
+  /**
+   * Saves a new Look, switched off. Its ref is minted as a theme's slug is
+   * (`u-` and the id's first 8 hex digits, lib/user-looks.ts), and stored as
+   * its slug; 061's unique is per kind, so it never clashes with a theme's.
+   */
+  createLook: (
+    userId: string,
+    input: { name: string; manifest: LookManifest }
+  ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  /** A Look's name and manifest. The switch stays as it is: a Look is values, like a theme. */
+  saveLook: (id: string, input: { name: string; manifest: LookManifest }) => Promise<boolean>;
   /** Switched off by the app, with the reason Make shows (061: 1 to 200 characters). */
   disable: (id: string, reason: string) => Promise<void>;
   /** "Turn all mods off": every recipe and mod, on every device. */
@@ -211,6 +224,74 @@ export const useModsStore = create<ModsStore>((set, get) => {
   const newRow = (userId: string, id: string, kind: UserMod['kind'], slug: string, name: string, manifest: unknown): UserMod => {
     const now = new Date().toISOString();
     return { id, userId, kind, slug, name, enabled: false, manifest, disabledReason: null, createdAt: now, updatedAt: now };
+  };
+
+  /**
+   * A new theme or Look, switched off. Its id is minted here and its slug is
+   * `u-` and the id's first 8 hex digits (lib/user-themes/css.ts), so a clash
+   * mints a new id rather than a new suffix.
+   */
+  const createByIdSlug = async (
+    kind: 'theme' | 'look',
+    schema: { safeParse: (v: unknown) => { success: boolean } },
+    userId: string,
+    { name, manifest }: { name: string; manifest: unknown }
+  ): Promise<{ ok: true; id: string } | { ok: false; reason: string }> => {
+    const { available, hydratedUserId, loaded } = get();
+    const trimmed = name.trim();
+    if (!available || hydratedUserId !== userId || !loaded) return { ok: false, reason: 'Make is not ready yet.' };
+    if (!ModNameSchema.safeParse(trimmed).success) return { ok: false, reason: 'Give it a name.' };
+    if (!schema.safeParse(manifest).success) return { ok: false, reason: 'Something in it is not valid.' };
+    const what = kind === 'theme' ? 'createTheme' : 'createLook';
+    for (let attempt = 0; attempt < 3; attempt++) {
+      // A slug another row of this kind already has (an id prefix shared by
+      // chance, or a row made elsewhere) comes back as 23505: a new id.
+      const id = crypto.randomUUID();
+      // The editor's preview owns u-00000000; a row there would never show.
+      if (themeSlugForId(id) === DRAFT_SLUG) continue;
+      const error = await insertRow(newRow(userId, id, kind, themeSlugForId(id), trimmed, manifest));
+      if (!error) return { ok: true, id };
+      if (error.code === '23505') continue;
+      writeFailed(what, error);
+      return { ok: false, reason: 'Could not save it. Try again.' };
+    }
+    return { ok: false, reason: 'Could not save it. Try again.' };
+  };
+
+  /**
+   * A theme's or Look's name and manifest. The switch stays as it is: these
+   * are values, not code that runs, so an edit is not new behaviour the way
+   * a recipe's is. `keep` may refuse the edit against the row as it stands.
+   */
+  const saveValues = async (
+    kind: 'theme' | 'look',
+    schema: { safeParse: (v: unknown) => { success: boolean } },
+    id: string,
+    { name, manifest }: { name: string; manifest: unknown },
+    keep?: (before: UserMod) => boolean
+  ): Promise<boolean> => {
+    const { available, hydratedUserId: userId, rows } = get();
+    const before = rows.find((r) => r.id === id && r.kind === kind);
+    const trimmed = name.trim();
+    if (!available || !userId || !before) return false;
+    if (!ModNameSchema.safeParse(trimmed).success || !schema.safeParse(manifest).success) return false;
+    if (keep && !keep(before)) return false;
+    set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: trimmed, manifest } : r))) }));
+    const { error } = await createClient()
+      .from('user_mods')
+      .update({ name: trimmed, manifest })
+      .eq('id', id)
+      .eq('user_id', userId);
+    if (error) {
+      if (get().hydratedUserId === userId) {
+        set((s) => ({
+          rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: before.name, manifest: before.manifest } : r))),
+        }));
+      }
+      writeFailed(kind === 'theme' ? 'saveTheme' : 'saveLook', error);
+      return false;
+    }
+    return true;
   };
 
   return {
@@ -389,54 +470,19 @@ export const useModsStore = create<ModsStore>((set, get) => {
       return true;
     },
 
-    createTheme: async (userId, { name, manifest }) => {
-      const { available, hydratedUserId, loaded } = get();
-      const trimmed = name.trim();
-      if (!available || hydratedUserId !== userId || !loaded) return { ok: false, reason: 'Make is not ready yet.' };
-      if (!ModNameSchema.safeParse(trimmed).success) return { ok: false, reason: 'Give it a name.' };
-      if (!ThemeManifestSchema.safeParse(manifest).success) return { ok: false, reason: 'Something in it is not valid.' };
-      for (let attempt = 0; attempt < 3; attempt++) {
-        // A slug another theme of yours already has (an id prefix shared by
-        // chance, or a row made elsewhere) comes back as 23505: a new id.
-        const id = crypto.randomUUID();
-        // The editor's preview owns u-00000000; a row there would never show.
-        if (themeSlugForId(id) === DRAFT_SLUG) continue;
-        const error = await insertRow(newRow(userId, id, 'theme', themeSlugForId(id), trimmed, manifest));
-        if (!error) return { ok: true, id };
-        if (error.code === '23505') continue;
-        writeFailed('createTheme', error);
-        return { ok: false, reason: 'Could not save it. Try again.' };
-      }
-      return { ok: false, reason: 'Could not save it. Try again.' };
-    },
+    createTheme: (userId, input) => createByIdSlug('theme', ThemeManifestSchema, userId, input),
 
-    saveTheme: async (id, { name, manifest }) => {
-      const { available, hydratedUserId: userId, rows } = get();
-      const before = rows.find((r) => r.id === id && r.kind === 'theme');
-      const trimmed = name.trim();
-      if (!available || !userId || !before) return false;
-      if (!ModNameSchema.safeParse(trimmed).success || !ThemeManifestSchema.safeParse(manifest).success) return false;
+    saveTheme: (id, input) =>
       // A theme keeps its mode: it may be a saved light or dark pick, which a
       // switch would strand (the editor locks the choice; this is the backstop).
-      const was = ThemeManifestSchema.safeParse(before.manifest);
-      if (was.success && was.data.mode !== manifest.mode) return false;
-      set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: trimmed, manifest } : r))) }));
-      const { error } = await createClient()
-        .from('user_mods')
-        .update({ name: trimmed, manifest })
-        .eq('id', id)
-        .eq('user_id', userId);
-      if (error) {
-        if (get().hydratedUserId === userId) {
-          set((s) => ({
-            rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: before.name, manifest: before.manifest } : r))),
-          }));
-        }
-        writeFailed('saveTheme', error);
-        return false;
-      }
-      return true;
-    },
+      saveValues('theme', ThemeManifestSchema, id, input, (before) => {
+        const was = ThemeManifestSchema.safeParse(before.manifest);
+        return !was.success || was.data.mode === input.manifest.mode;
+      }),
+
+    createLook: (userId, input) => createByIdSlug('look', LookManifestSchema, userId, input),
+
+    saveLook: (id, input) => saveValues('look', LookManifestSchema, id, input),
 
     disable: async (id, reason) => {
       const { available, hydratedUserId: userId, rows } = get();

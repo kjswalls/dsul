@@ -12,6 +12,7 @@ import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
 import { useUserThemes } from '@/lib/user-themes/store';
 import { isUserThemeSlug } from '@/lib/user-themes/css';
 import { LOOKS } from '@/lib/looks';
+import { isUserLookRef, unlistedLookLabel, useUserLooks } from '@/lib/user-looks';
 import { RECIPE_VERBS, RecipeManifestSchema, type UserMod } from '@/lib/mods/schema';
 import { currentRecipeEnv, ITEM_TRIGGERS, openTodayFits, type RecipeEnv } from '@/lib/recipes/validate';
 import {
@@ -400,6 +401,8 @@ function StepFields({
 }) {
   const n = index + 1;
   const userThemes = useUserThemes((s) => s.themes);
+  const userLooks = useUserLooks();
+  const modRows = useModsStore((s) => s.rows);
   if (isVerbKind(step.do)) {
     const known = step.item === 'trigger' || step.item === '' || pickable.some((p) => p.id === step.item);
     return (
@@ -560,7 +563,11 @@ function StepFields({
         </div>
       );
     }
-    case 'applyLook':
+    case 'applyLook': {
+      // A saved step naming one of your Looks that is not listed (off, gone,
+      // or held back by safe mode) keeps it, named from its row when it has one.
+      const offOwn = isUserLookRef(step.look) && !userLooks.some((l) => l.ref === step.look);
+      const offLabel = offOwn ? unlistedLookLabel(step.look, modRows) : '';
       return (
         <select
           className={selectClass}
@@ -574,8 +581,19 @@ function StepFields({
               {l.label}
             </option>
           ))}
+          {(userLooks.length > 0 || offOwn) && (
+            <optgroup label="Yours" data-testid="recipe-look-yours">
+              {userLooks.map((l) => (
+                <option key={l.ref} value={l.ref}>
+                  {l.label}
+                </option>
+              ))}
+              {offOwn && <option value={step.look}>{offLabel}</option>}
+            </optgroup>
+          )}
         </select>
       );
+    }
     default:
       return null;
   }

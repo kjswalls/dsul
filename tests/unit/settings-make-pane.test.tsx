@@ -289,3 +289,44 @@ describe('MakePane: themes', () => {
     expect(saveSettings).not.toHaveBeenCalledWith(USER, { theme_dark: 'night' });
   });
 });
+
+describe('MakePane: Looks', () => {
+  const LOOK_ID = '12345678-2345-4678-9abc-def012345678';
+  const look = (over: Partial<UserMod> = {}) =>
+    mod({
+      id: LOOK_ID,
+      kind: 'look',
+      slug: 'u-12345678',
+      name: 'Deep work',
+      enabled: true,
+      manifest: { version: 1, layout: 'notebook', light: 'paper', dark: 'dusk' },
+      ...over,
+    });
+
+  it('New Look opens the Look form, and Cancel puts focus back on it', () => {
+    seed({});
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-look'));
+    expect(screen.getByTestId('look-builder').textContent).toContain('New Look');
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByTestId('look-builder')).toBeNull();
+    expect(document.activeElement).toBe(screen.getByTestId('make-new-look'));
+  });
+
+  it('a Look row has Edit, which opens it in the Look form, and says where to apply it when on', () => {
+    seed({ rows: [look()] });
+    render(<MakePane ctx={ctx} />);
+    expect(screen.getByText('On. Apply it in Look, under Yours.')).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Edit Deep work' }));
+    expect(screen.getByTestId('look-builder').textContent).toContain('Edit Look');
+    expect((screen.getByTestId('look-name') as HTMLInputElement).value).toBe('Deep work');
+    expect((screen.getByTestId('look-layout') as HTMLSelectElement).value).toBe('notebook');
+  });
+
+  it('on a phone, an on Look says to apply it on a computer, since a phone has no Looks row', () => {
+    seed({ rows: [look()] });
+    render(<MakePane ctx={ctx} isMobile />);
+    expect(screen.getByText('On. Apply it in Look on a computer, under Yours.')).toBeTruthy();
+    expect(screen.queryByText('On. Apply it in Look, under Yours.')).toBeNull();
+  });
+});

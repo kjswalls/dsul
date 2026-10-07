@@ -10,7 +10,7 @@ three adversarial reviews) is in Kirby's project files, not the repo
 (`/mnt/project-files/mods/`); everything a build needs is in this file.
 
 **Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
-4 (browser recipes, `lib/recipes/`) and 5a (user themes, below). Where PR 4's code departs from the body:
+4 (browser recipes, `lib/recipes/`), 5a (user themes) and 5b (user Looks), both below. Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -70,6 +70,30 @@ script is `lib/user-themes/prepaint.ts`, imported by the layout, after the look
 stamp. The cache (`dsul-user-themes`) is cleared on account switch (RAW_CLEARERS),
 and so is a device pick naming one of the last account's themes
 (`lib/user-themes/forget-picks.ts`), which goes back to the default.
+
+**Build order 5b, user Looks, is built** (`lib/user-looks.ts`, `applyUserLook` in
+`lib/settings/manifest.ts`, `components/settings/look-builder.tsx`). Where it departs
+from the body: the manifest is `{version, layout, light, dark}` with no `label`; the
+name is the row's, as a theme's is, so the two cannot drift. A Look's ref is `u-` and
+the first 8 hex of the row id (`themeSlugForId`), never the `slug` column (new Look
+rows store the same value there; 061's unique is per kind, so it never clashes with a
+theme's); the ref shares a theme slug's shape but not its namespace, since a ref only
+ever appears in a recipe's applyLook step. The layout is one of `LAYOUTS` (decision 5);
+each side is a built-in of that mode or a `u-` theme, and at save the theme must be one
+of the owner's of that mode (it may be off). Applying writes all three parts through
+the same store-plus-one-patch as a built-in Look (`applyPicks`), each theme as a pick:
+one of the owner's themes is written by its slug even while it is off (it shows Paper or
+Night until it is on again, the pick rule of look-store), and only a ref naming none of
+the owner's themes of that mode is written as the default. That is asked of mods-store's
+rows, never the theme registry, so a registry still on its cache (or empty) cannot
+decide what is saved; the card says quietly when a side is not showing. It does nothing
+in safe mode. Whether one is on compares the picks as saved. A user Look is only on or
+off, never "Edited", since two can share a layout; while one is on, a built-in sharing
+its layout draws off rather than Edited. On a phone there is no Looks row (parity with the
+built-ins), and a recipe that applies a Look there still writes the layout, the
+account's, which only a computer shows. No cache and no pre-paint: a Look is never
+stamped, only the picks it writes. Switching off or deleting a Look releases nothing,
+since no pick stores one; a recipe naming one that is off or gone does nothing.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

@@ -322,3 +322,48 @@ describe('the theme step and your themes', () => {
     expect(within(select).getByRole('option', { name: 'Your theme (off)' })).toBeTruthy();
   });
 });
+
+describe('the Look step and your Looks', () => {
+  const lookRow = (id: string, name: string, enabled = true): UserMod => ({
+    id,
+    userId: USER,
+    kind: 'look',
+    slug: `u-${id.replace(/-/g, '').slice(0, 8)}`,
+    name,
+    enabled,
+    manifest: { version: 1, layout: 'writer', light: 'paper', dark: 'night' },
+    disabledReason: null,
+    createdAt: '2026-10-07T00:00:00Z',
+    updatedAt: '2026-10-07T00:00:00Z',
+  });
+
+  it('lists your enabled Looks under Yours, by ref', () => {
+    seed([lookRow('abcdef01-2345-4678-9abc-def012345678', 'Deep work'), lookRow('bbbbbbbb-2345-4678-9abc-def012345678', 'Resting', false)]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-recipe'));
+    change(screen.getByTestId('recipe-step-kind'), 'applyLook');
+    const select = screen.getByRole('combobox', { name: 'Look for step 1' }) as HTMLSelectElement;
+    const group = select.querySelector('optgroup[label="Yours"]') as HTMLElement;
+    expect(group).not.toBeNull();
+    expect(within(group).getByRole('option', { name: 'Deep work' }).getAttribute('value')).toBe('u-abcdef01');
+    expect(within(group).queryByRole('option', { name: 'Resting' })).toBeNull();
+  });
+
+  it('keeps a saved step’s Look that is now off, says so, and saves it back unchanged', async () => {
+    const r = recipeRow({
+      manifest: { version: 1, trigger: { on: 'command' }, filters: {}, steps: [{ do: 'applyLook', look: 'u-bbbbbbbb' }] },
+    });
+    seed([r, lookRow('bbbbbbbb-2345-4678-9abc-def012345678', 'Resting', false)]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit After run' }));
+    const select = screen.getByRole('combobox', { name: 'Look for step 1' }) as HTMLSelectElement;
+    expect(select.value).toBe('u-bbbbbbbb');
+    expect(within(select).getByRole('option', { name: 'Resting (off)' })).toBeTruthy();
+    fireEvent.click(screen.getByTestId('recipe-save'));
+    await waitFor(() => expect(saveRecipe).toHaveBeenCalled());
+    expect(saveRecipe).toHaveBeenCalledWith(r.id, {
+      name: 'After run',
+      manifest: expect.objectContaining({ steps: [{ do: 'applyLook', look: 'u-bbbbbbbb' }] }),
+    });
+  });
+});

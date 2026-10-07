@@ -378,6 +378,41 @@ describe('recipes', () => {
     expect(useModsStore.getState().rows[0]).toMatchObject({ manifest: themeManifest });
   });
 
+  const lookManifest = { version: 1 as const, layout: 'notebook' as const, light: 'paper' as const, dark: 'dusk' as const };
+
+  it('createLook saves switched off, its slug from its id, and mints a new id on a clash', async () => {
+    await hydrateWith([]);
+    db.results.push({ error: { code: '23505', message: 'duplicate' } }, { error: null });
+    const r = await useModsStore.getState().createLook(USER, { name: 'Deep work', manifest: lookManifest });
+    expect(r.ok).toBe(true);
+    const first = opsOf(1)[0][1][0] as { id: string };
+    const second = opsOf(2)[0][1][0] as { id: string; slug: string; kind: string; enabled: boolean; manifest: unknown };
+    expect(second.id).not.toBe(first.id);
+    expect(second).toMatchObject({ kind: 'look', enabled: false, manifest: lookManifest, id: (r as { id: string }).id });
+    expect(second.slug).toBe(`u-${second.id.replace(/-/g, '').slice(0, 8)}`);
+    expect(useModsStore.getState().rows).toHaveLength(1);
+  });
+
+  it('createLook refuses a remix or a label', async () => {
+    await hydrateWith([]);
+    for (const bad of [{ ...lookManifest, layout: 'mine' }, { ...lookManifest, label: 'x' }]) {
+      expect(
+        await useModsStore.getState().createLook(USER, { name: 'Deep work', manifest: bad as unknown as typeof lookManifest })
+      ).toEqual({ ok: false, reason: 'Something in it is not valid.' });
+    }
+    expect(db.calls).toHaveLength(1);
+  });
+
+  it('saveLook keeps a switched-on Look on', async () => {
+    const existing = row({ kind: 'look', slug: 'u-aaaaaaaa', name: 'Deep work', enabled: true, manifest: lookManifest });
+    await hydrateWith([existing]);
+    db.results.push({ error: null });
+    const next = { ...lookManifest, layout: 'writer' as const };
+    expect(await useModsStore.getState().saveLook(existing.id, { name: 'Deep work', manifest: next })).toBe(true);
+    expect(opsOf(1)[0]).toEqual(['update', [{ name: 'Deep work', manifest: next }]]);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: true, manifest: next });
+  });
+
   it('saveRecipe: a rename alone leaves a switched-on recipe on', async () => {
     // Read back from jsonb, so its keys come in another order than the form's.
     const stored = { filters: {}, steps: [{ text: 'Hi', do: 'toast' }], trigger: { on: 'command' }, version: 1 };

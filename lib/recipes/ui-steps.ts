@@ -6,6 +6,7 @@ import { usePlannerStore } from '@/lib/planner-store';
 import { organizeEnabled } from '@/lib/extension-gates';
 import { openConsole } from '@/lib/console-door';
 import { lookById } from '@/lib/looks';
+import { isUserLookRef, userLookByRef } from '@/lib/user-looks';
 import type { SettingCtx } from '@/lib/settings/manifest';
 import type { RecipeUiStep } from './validate';
 
@@ -65,6 +66,14 @@ export function runUiStep(step: RecipeUiStep, recipeLabel: string, deps: UiStepD
     case 'applyLook': {
       const preset = lookById(step.look);
       if (preset) withManifest((m) => m.applyLook(preset, settingCtx()));
+      else if (isUserLookRef(step.look)) {
+        // Looked up after the import, so a Look switched off or deleted in the
+        // meantime (or held back by safe mode) does nothing.
+        withManifest((m) => {
+          const own = userLookByRef(step.look);
+          if (own) m.applyUserLook(own, settingCtx());
+        });
+      }
       return;
     }
   }

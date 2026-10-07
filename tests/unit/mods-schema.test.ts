@@ -8,6 +8,7 @@ import {
   RECIPE_EVENT_TRIGGERS,
   RECIPE_MAX_STEPS,
   RECIPE_VERBS,
+  LookManifestSchema,
   RecipeManifestSchema,
   ThemeManifestSchema,
   UserModRowSchema,
@@ -15,6 +16,9 @@ import {
   userModFromRow,
 } from '@/lib/mods/schema';
 import { ITEM_VERBS } from '@/lib/item-verbs';
+import { LAYOUTS } from '@/lib/layout-themes';
+import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
+import { DARK_BASES, LIGHT_BASES } from '@/lib/mods/theme-grammar';
 
 const RECIPE = {
   version: 1,
@@ -150,8 +154,8 @@ describe('recipe manifest', () => {
 });
 
 describe('placeholders', () => {
-  it('mods and Looks accept anything until their PRs land', () => {
-    for (const kind of MOD_KINDS.filter((k) => k === 'mod' || k === 'look')) {
+  it('mods accept anything until their PR lands', () => {
+    for (const kind of MOD_KINDS.filter((k) => k === 'mod')) {
       expect(manifestSchemaFor(kind).safeParse({ whatever: [1] }).success, kind).toBe(true);
     }
     expect(manifestSchemaFor('recipe')).toBe(RecipeManifestSchema);
@@ -164,5 +168,46 @@ describe('placeholders', () => {
       manifestSchemaFor('theme').safeParse({ version: 1, mode: 'light', base: 'paper', tokens: { paper0: '#fafafa' } })
         .success
     ).toBe(true);
+  });
+});
+
+describe('Look manifest', () => {
+  const look = (p: Record<string, unknown> = {}) => ({ version: 1, layout: 'classic', light: 'paper', dark: 'night', ...p });
+
+  it('is the real schema for kind look', () => {
+    expect(manifestSchemaFor('look')).toBe(LookManifestSchema);
+    expect(manifestSchemaFor('look').safeParse({ whatever: [1] }).success).toBe(false);
+  });
+
+  it('takes every shipped layout with the built-ins', () => {
+    for (const l of LAYOUTS) expect(LookManifestSchema.safeParse(look({ layout: l.value })).success, l.value).toBe(true);
+    for (const t of LIGHT_LOOKS) expect(LookManifestSchema.safeParse(look({ light: t.value })).success).toBe(true);
+    for (const t of DARK_LOOKS) expect(LookManifestSchema.safeParse(look({ dark: t.value })).success).toBe(true);
+  });
+
+  it('takes one of your themes on either side', () => {
+    expect(LookManifestSchema.safeParse(look({ light: 'u-abcdef01' })).success).toBe(true);
+    expect(LookManifestSchema.safeParse(look({ dark: 'u-abcdef01' })).success).toBe(true);
+  });
+
+  it('refuses a remix, the wrong mode, the draft slug, a bad ref, a label and a missing version', () => {
+    for (const bad of [
+      look({ layout: 'mine' }),
+      look({ layout: { sidebar: 'left' } }),
+      look({ light: 'night' }),
+      look({ dark: 'paper' }),
+      look({ light: 'u-00000000' }),
+      look({ light: 'u-moss' }),
+      look({ dark: 'u-ABCDEF01' }),
+      look({ label: 'Deep work' }),
+      { layout: 'classic', light: 'paper', dark: 'night' },
+    ]) {
+      expect(LookManifestSchema.safeParse(bad).success, JSON.stringify(bad)).toBe(false);
+    }
+  });
+
+  it("the built-in lists match theme-looks' (the schema cannot import them)", () => {
+    expect([...LIGHT_BASES]).toEqual(LIGHT_LOOKS.map((l) => l.value));
+    expect([...DARK_BASES]).toEqual(DARK_LOOKS.map((l) => l.value));
   });
 });
