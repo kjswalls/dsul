@@ -53,7 +53,7 @@ import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
-import { listGroupMovers, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
@@ -385,8 +385,8 @@ export function AppShell() {
           acted = true;
         }
       } else if (overId.startsWith('projectblock:')) {
-        const proj = overId.slice('projectblock:'.length);
-        const ids = groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj);
+        const proj = parseProjectBlockId(overId)?.projectName;
+        const ids = proj ? groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj) : [];
         if (ids.length) {
           planner.moveTasksToProjectBlock(ids);
           acted = true;

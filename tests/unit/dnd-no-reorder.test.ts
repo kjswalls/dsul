@@ -102,7 +102,7 @@ const EVERY_DROP_TARGET = [
   ['hour:9', 'touch'],
   ['weekhour:2026-07-06:14', 'touch'],
   ['week:2026-07-06:anytime', 'touch'],
-  ['projectblock:Work', 'touch'],
+  ['projectblock:2026-07-06:Work', 'touch'],
   ['sidebar', 'touch'],
   ['list:2026-07-06', 'touch'],
 ] as const satisfies readonly (readonly [string, DropContext['input']])[];

@@ -155,6 +155,17 @@ export interface DropContext {
   inferDropTime: (bucket: TimeBucket, position: DropPosition, refTime?: string) => string;
 }
 
+/**
+ * `projectblock:{date}:{projectName}`. The date is there because a recurring
+ * project block renders once per week column, and dnd-kit keys droppables by
+ * id: without it only the last-mounted of seven blocks was measurable (#214).
+ * The date is a fixed-width `YYYY-MM-DD`, so a project name may hold colons.
+ */
+export function parseProjectBlockId(targetId: string): { dateStr: string; projectName: string } | null {
+  const m = /^projectblock:(\d{4}-\d{2}-\d{2}):(.+)$/.exec(targetId);
+  return m ? { dateStr: m[1], projectName: m[2] } : null;
+}
+
 export function resolveDrop(
   itemId: string,
   targetId: string,
@@ -240,10 +251,11 @@ export function resolveDrop(
     return { kind: 'unschedule', itemId };
   }
 
-  // projectblock:{projectName} — only tasks belonging to that project
+  // projectblock:{date}:{projectName} — only tasks belonging to that project.
+  // The move itself is date-agnostic; the date only keeps the id unique.
   if (targetId.startsWith('projectblock:')) {
-    const projectName = targetId.replace('projectblock:', '');
-    if (itemType === 'task' && ctx.draggedTaskProject === projectName) {
+    const block = parseProjectBlockId(targetId);
+    if (block && itemType === 'task' && ctx.draggedTaskProject === block.projectName) {
       return { kind: 'move-task-to-project-block', taskId: itemId };
     }
     return null;
