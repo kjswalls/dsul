@@ -621,7 +621,9 @@ describe('connecting from the switch form', () => {
     fireEvent.click(screen.getByTestId('mcp-connect'));
     await waitFor(() => expect(screen.getByTestId('mcp-provider')).toHaveTextContent('OpenAI'));
     expect(calls.filter((c) => c.method === 'PUT').map((c) => c.body)).toEqual([{ provider: 'openai', apiKey: SENTINEL }]);
-    expect(screen.queryByTestId('mcp-switch-panel')).toBeNull();
+    // The card turns over when the store does; the switch form closes when
+    // connect() itself resolves, a few ticks later on a slow runner.
+    await waitFor(() => expect(screen.queryByTestId('mcp-switch-panel')).toBeNull());
     expectNoKeyInMarkup('SENTINEL');
     for (const input of Array.from(document.querySelectorAll('input'))) {
       expect(input.value).not.toContain('SENTINEL');
@@ -1094,7 +1096,8 @@ describe('failing', () => {
     fireEvent.click(screen.getByTestId('mcp-connect'));
     await waitFor(() => expect(screen.getByTestId('mcp-status')).toHaveTextContent('Working'));
     expect(screen.getByTestId('mcp-provider')).toHaveTextContent('Anthropic');
-    expect(screen.queryByTestId('mcp-switch-panel')).toBeNull();
+    // As above: the form closes when connect() resolves, after the card turns.
+    await waitFor(() => expect(screen.queryByTestId('mcp-switch-panel')).toBeNull());
     expectNoKeyInMarkup('SENTINEL');
   });
 
