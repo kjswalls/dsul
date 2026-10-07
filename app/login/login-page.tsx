@@ -28,7 +28,7 @@ const noopSubscribe = () => () => {};
 // the client only: the server renders the default, hidden, and hydration
 // swaps in the pick before the heading fades in.
 let pickedHeadline: string | null = null;
-const clientHeadline = () => (pickedHeadline ??= pickLoginHeadline(new Date()));
+const clientHeadline = () => (pickedHeadline ??= pickLoginHeadline());
 const serverHeadline = () => null;
 const isDesktopApp = () => getDesktopBridge() !== null;
 // A desktop shell opens only the providers its main process allows
