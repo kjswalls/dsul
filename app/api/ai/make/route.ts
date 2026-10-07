@@ -8,6 +8,7 @@ import {
   AiDbError,
   openModelConnection,
   readAIHidden,
+  setConnectionLimit,
   setConnectionStatus,
   type Opened,
 } from '@/lib/ai-server/connections'
@@ -122,6 +123,9 @@ export async function POST(req: Request): Promise<Response> {
     if (e.kind === 'auth') {
       // Conditional on the ciphertext this request read, as chat's.
       await setConnectionStatus(user.id, row.key_ciphertext, 'failing', 'key_rejected').catch(() => {})
+    } else if (e.kind === 'daily_limit') {
+      // So the connection says when the free day's limit lifts, as chat's.
+      await setConnectionLimit(user.id, row.key_ciphertext, e.resetAt ?? null).catch(() => {})
     }
     return e
   }

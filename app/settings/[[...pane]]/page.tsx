@@ -38,6 +38,8 @@ import {
   extensionPaneId,
   isExtensionPane,
   isPaneId,
+  paneHref,
+  resolvePaneSlug,
   settingById,
   type PaneId,
   type SettingCtx,
@@ -233,7 +235,8 @@ export default function SettingsPage() {
      the extensions index — and it costs nothing for the one-segment panes,
      whose join is themselves. */
   const path = params?.pane?.join('/');
-  const pane: PaneId = path && isPaneId(path) ? path : fallbackPane(path);
+  // An alias (`ai`) is the pane it stands for, and stays in the address bar.
+  const pane: PaneId = resolvePaneSlug(path) ?? fallbackPane(path);
   const focusId = searchParams?.get('focus') ?? undefined;
 
   /* ── 1. The type-mode stamp ───────────────────────────────────────────── */
@@ -267,11 +270,15 @@ export default function SettingsPage() {
      record (home === the 'day' fallback) it correctly does nothing. Dropping
      the query here therefore dropped the deep link outright: on a cold load the
      hydration gate means SettingsShell is not mounted yet, so nothing has
-     consumed focusId by the time this runs. */
+     consumed focusId by the time this runs.
+
+     An alias is left alone, query and all: `/settings/ai` is what the address
+     bar is meant to say, and the AI pane reads its own `?start=` and
+     `?connect=`, which a replace here would drop. */
   useEffect(() => {
-    if (path && isPaneId(path)) return;
+    if (resolvePaneSlug(path)) return;
     const query = focusId ? `?focus=${encodeURIComponent(focusId)}` : '';
-    router.replace(`/settings/${fallbackPane(path)}${query}`);
+    router.replace(`${paneHref(fallbackPane(path))}${query}`);
   }, [path, focusId, router]);
 
   /* ── A ?focus= always lands on the pane that actually holds the row ───────
@@ -292,7 +299,7 @@ export default function SettingsPage() {
     if (!focusId) return;
     const home = settingById(focusId)?.pane;
     if (!home || home === pane || !isPaneId(home)) return;
-    router.replace(`/settings/${home}?focus=${encodeURIComponent(focusId)}`);
+    router.replace(`${paneHref(home)}?focus=${encodeURIComponent(focusId)}`);
   }, [focusId, pane, router]);
 
   /* ── Subscriptions that keep record.read() fresh ──────────────────────────

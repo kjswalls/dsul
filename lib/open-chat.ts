@@ -7,6 +7,7 @@ import {
   bindingKey,
   focusIsInRail,
   railModeNow,
+  spendJustConnected,
   usePanelOverlays,
   useRailMode,
   useRailStore,
@@ -23,7 +24,7 @@ import type { Item, Task } from './planner-types';
 export { bindingKey, type ComposerBinding } from './rail-store';
 
 /** The rail belongs to the desktop shell, which Zen replaces: an answer must never stream into an unmounted rail. */
-function leaveZen(): void {
+export function leaveZen(): void {
   const view = useViewStore.getState();
   if (view.zenOpen) view.setZenOpen(false);
 }
@@ -333,9 +334,14 @@ export function openHistory(
  *    when the item is gone; the conversation can still go on, with no item to
  *    focus its context on. Nothing focuses the box: a row is not a request to
  *    type.
+ *
+ * Either way it spends Ask home's "It works." (and the sign-in's note in its
+ * place): an item opened is no push of a conversation, so rail-store's push
+ * would not see it, and the card would be back when the item closes.
  */
 export function openConversation(id: string, isMobile: boolean, o: { returnFocus?: string } = {}): void {
   if (!getAICapabilities().canChat) return;
+  spendJustConnected();
   const rid = resolveConversationId(id);
   const conversations = useConversationsStore.getState();
   const itemId = conversations.summaries[rid]?.itemId ?? conversations.threads[rid]?.itemId ?? null;

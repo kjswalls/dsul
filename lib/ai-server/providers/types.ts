@@ -24,6 +24,12 @@ export interface ProviderCredentials {
 export interface ModelMeta {
   /** The model accepts a low reasoning effort (Anthropic `output_config.effort`). */
   effortLow?: boolean;
+  /**
+   * The name the provider listed the model under when it was saved
+   * (Anthropic's display name, OpenRouter's catalog name). Display only:
+   * dropped when the model changes, never sent to a provider.
+   */
+  label?: string;
 }
 
 export interface CompletionRequest {
@@ -71,6 +77,13 @@ export interface ProviderAdapter {
     opts: { signal: AbortSignal; modelHint?: string }
   ): Promise<VerifyResult>;
   listModels(creds: ProviderCredentials, signal: AbortSignal): Promise<ModelList>;
+  /**
+   * One test question to `model`, capped at one output token: resolves once
+   * the model answered, rejects with ProviderError otherwise (classified as a
+   * call, so a 403 is the model's or the region's, not the key's). Never
+   * retried by the SDK; lib/ai-server/check.ts decides what a failure means.
+   */
+  ping(creds: ProviderCredentials, model: string, signal: AbortSignal): Promise<void>;
   /** anthropic only */
   describeModel?(creds: ProviderCredentials, model: string, signal: AbortSignal): Promise<ModelMeta>;
   pickDefaultModel(result: VerifyResult): string | null;

@@ -52,6 +52,7 @@ import {
   useConversationsStore,
 } from '@/lib/conversations-store';
 import { railModeNow, useRailStore } from '@/lib/rail-store';
+import { useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useSidebarStore } from '@/lib/sidebar-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { registerItemPanelClose, registerItemPanelFlush, useUIStore } from '@/lib/ui-store';
@@ -811,9 +812,32 @@ describe('openConversation (C4)', () => {
     seedSummaries(summary({ id: 'c6' }));
     unseed();
     unseed = seedAI(NOTHING_CONNECTED);
+    useAIConnectionStore.getState().setFlowResult('denied');
     openConversation('c6', false);
     expect(rail().stacks.desktop).toEqual([]);
+    // The setup column's sign-in result is its own to spend.
+    expect(useAIConnectionStore.getState().flowResult).toBe('denied');
   });
+
+  it.each([
+    ['desktop', false],
+    ['the phone', true],
+  ] as const)(
+    "on %s, an item's conversation spends Ask home's \"It works.\" and the sign-in's note, though no conversation is pushed",
+    (_, phone) => {
+      planner.items = [{ id: 'i1', type: 'task', title: 'Book the dentist', status: 'pending' }];
+      seedSummaries(summary({ id: 'c8', itemId: 'i1' }));
+      const ai = useAIConnectionStore.getState();
+      ai.setJustConnected({ provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: Date.now() });
+      ai.setFlowResult('saved');
+      openConversation('c8', phone);
+      // The item branch, not a pushed conversation.
+      if (phone) expect(rail().stacks.phone.at(-1)).toMatchObject({ kind: 'item', itemId: 'i1' });
+      else expect(useUIStore.getState().activeDialog).toMatchObject({ type: 'edit-item', item: { id: 'i1' } });
+      expect(useAIConnectionStore.getState().justConnected).toBeNull();
+      expect(useAIConnectionStore.getState().flowResult).toBeNull();
+    }
+  );
 });
 
 describe("asked from an item's own menu (the item right-click menu's Ask AI)", () => {

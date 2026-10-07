@@ -805,7 +805,7 @@ describe('with a connected model', () => {
     expect(rail).toBeVisible();
     expect(within(rail).getByRole('heading', { name: 'Ask' })).toBeInTheDocument();
     expect(within(rail).getByPlaceholderText('Ask anything…')).toBeInTheDocument();
-    expect(within(rail).getByTestId('answerer-label')).toHaveTextContent(/^gpt-4o-mini$/);
+    expect(within(rail).getByTestId('answerer-label')).toHaveTextContent(/^GPT-4o mini$/);
     // The tour's Ask target is the column, and the dock keeps its own.
     expect(document.querySelector('[data-tour="right-sidebar"]')).toHaveAttribute('data-rail');
     expect(document.querySelector('[data-tour="dock"]')).toHaveAttribute('data-dock-surface');

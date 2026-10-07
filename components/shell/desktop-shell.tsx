@@ -491,9 +491,11 @@ export const RailColumn = memo(function RailColumn({
 
   // Ask stays mounted under an item, so Back finds it as it was.
   const askMounted = canChat && (askOpen || summoned || leaving);
-  // The setup column does not: it is only ever summoned, and an item closing
-  // over it shows it afresh.
-  const setupMounted = mode === 'setup' || setupLeaving;
+  // So does the setup column, under the same summon: a key left in its box,
+  // and what was said about it, are still there when the item closes. Shown
+  // only in 'setup'; hidden and inert under the item (AskSetup's `visible`).
+  // Gone the moment something answers, when the column becomes Ask.
+  const setupMounted = (summoned && (askInvite || askFix) && !canChat) || setupLeaving;
   // The item goes back to whatever Ask has on top (the item is ui-store's
   // slot, not a stack entry), by its live name.
   const itemBack = useBackLabel(null, askTop);

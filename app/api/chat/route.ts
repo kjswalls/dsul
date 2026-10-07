@@ -18,7 +18,13 @@ import {
   type GatewayConfig,
 } from '@/lib/openclaw-gateway'
 import { SSE_HEADERS } from '@/lib/sse'
-import { AiDbError, openModelConnection, setConnectionStatus, type Opened } from '@/lib/ai-server/connections'
+import {
+  AiDbError,
+  openModelConnection,
+  setConnectionLimit,
+  setConnectionStatus,
+  type Opened,
+} from '@/lib/ai-server/connections'
 import {
   httpStatusFor,
   logProviderError,
@@ -181,10 +187,14 @@ export async function POST(req: Request): Promise<Response> {
   const onFailure = async (err: unknown) => {
     const e = toProviderError(err, creds.provider, 'call')
     logProviderError('chat', creds.provider, e.kind, e.status)
+    // Both writes are conditional on the ciphertext this request read: a key
+    // replaced in the meantime is never marked for the old one's answer.
     if (e.kind === 'auth') {
-      // Conditional on the ciphertext this request read: a key replaced in the
-      // meantime is never marked failing for the old one's rejection.
       await setConnectionStatus(user.id, row.key_ciphertext, 'failing', 'key_rejected').catch(() => {})
+    } else if (e.kind === 'daily_limit') {
+      // The connection stays lit: it is connected, and comes back by itself.
+      // The pill and the chat line read when from here.
+      await setConnectionLimit(user.id, row.key_ciphertext, e.resetAt ?? null).catch(() => {})
     }
     return e
   }

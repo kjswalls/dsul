@@ -288,7 +288,7 @@ describe('the omnibar in the dock', () => {
       'placeholder',
       'Ask anything…'
     );
-    expect(screen.getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
   });
 
   it('shows no answerer label off the Ask tab', () => {
@@ -416,7 +416,7 @@ describe('the chat composer in the dock', () => {
     useRailStore.getState().push('phone', { kind: 'conversation', id });
     render(<MobileBottomDock />);
     expect(input()).toHaveAttribute('placeholder', 'Reply…');
-    expect(screen.getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(screen.getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
   });
 });
 

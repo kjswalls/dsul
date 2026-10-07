@@ -53,16 +53,26 @@ describe('createPkcePair', () => {
 });
 
 describe('the sealed cookie', () => {
-  const flow = createPkcePair();
+  const pair = createPkcePair();
+  /** Where the sign-in came from, sealed with the rest. */
+  const flow = { ...pair, r: 'settings' as const };
 
-  it('round-trips {verifier, state} for the same user', () => {
+  it('round-trips {verifier, state, r} for the same user', () => {
     const cookie = sealPkceCookie(flow, 'user-1', KEY, NOW);
     expect(cookie).not.toContain(flow.verifier);
     expect(cookie).not.toContain(flow.state);
     expect(openPkceCookie(cookie, 'user-1', KEY, NOW + 1000)).toEqual({
       verifier: flow.verifier,
       state: flow.state,
+      r: 'settings',
     });
+  });
+
+  it('carries home as readily as the settings pane', () => {
+    const fromHome = sealPkceCookie({ ...pair, r: 'home' }, 'user-1', KEY, NOW);
+    expect(openPkceCookie(fromHome, 'user-1', KEY, NOW)).toMatchObject({ r: 'home' });
+    // Nothing outside this server can aim the landing: `r` is inside the seal.
+    expect(fromHome).not.toContain('home');
   });
 
   it('does not open for another user', () => {
@@ -95,7 +105,7 @@ describe('the sealed cookie', () => {
   });
 
   it('a model-key seal does not open as a PKCE cookie (purpose is in the AAD)', () => {
-    const asKey = sealSecret(JSON.stringify({ v: flow.verifier, s: flow.state, iat: NOW }), {
+    const asKey = sealSecret(JSON.stringify({ v: flow.verifier, s: flow.state, r: flow.r, iat: NOW }), {
       userId: 'user-1',
       purpose: 'model-key',
     }, KEY);
@@ -103,9 +113,14 @@ describe('the sealed cookie', () => {
   });
 
   it.each([
-    ['short verifier', { v: 'abc', s: createPkcePair().state, iat: NOW }],
-    ['bad state', { v: createPkcePair().verifier, s: 'not a state', iat: NOW }],
-    ['missing iat', { v: createPkcePair().verifier, s: createPkcePair().state }],
+    ['short verifier', { v: 'abc', s: createPkcePair().state, r: 'settings', iat: NOW }],
+    ['bad state', { v: createPkcePair().verifier, s: 'not a state', r: 'settings', iat: NOW }],
+    ['missing iat', { v: createPkcePair().verifier, s: createPkcePair().state, r: 'settings' }],
+    // `r` is strict, including when it is missing: a cookie from a build
+    // before it existed is at most ten minutes old, and the sign-in repeats.
+    ['unknown r', { v: createPkcePair().verifier, s: createPkcePair().state, r: 'evil', iat: NOW }],
+    ['r not a string', { v: createPkcePair().verifier, s: createPkcePair().state, r: ['home'], iat: NOW }],
+    ['missing r', { v: createPkcePair().verifier, s: createPkcePair().state, iat: NOW }],
     ['not an object', 'just a string'],
   ])('a well-sealed but malformed payload (%s) → null', (_label, payload) => {
     const sealed = sealSecret(JSON.stringify(payload), { userId: 'user-1', purpose: 'pkce' }, KEY);

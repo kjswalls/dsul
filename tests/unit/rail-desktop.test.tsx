@@ -1808,13 +1808,48 @@ describe('the setup column', () => {
     renderShell();
     pressCtrlJ();
     openRow();
-    expect(setup()).toBeNull();
+    // Still mounted under the item, as Ask is, but hidden and inert.
+    expect(setup()).toBeInTheDocument();
+    expect(setup()).not.toBeVisible();
+    expect(setup()).toHaveAttribute('inert');
     // The plain panel: no "‹ Ask" (there is no Ask to go back to), Done kept.
     expect(within(dialog()).queryByTestId('rail-back')).toBeNull();
     expect(within(dialog()).getByTestId('item-dialog-submit')).toBeInTheDocument();
     expect(dialog().querySelector('[data-ask-composer]')).toBeNull();
     act(() => useUIStore.getState().closeDialog());
+    expect(setup()).toBeVisible();
+    expect(setup()).not.toHaveAttribute('inert');
+  });
+
+  it('keeps a key left in its box, and the column itself, while an item is open over it', () => {
+    renderShell();
+    pressCtrlJ();
+    const before = setup();
+    const field = before!.querySelector<HTMLInputElement>('input');
+    expect(field).not.toBeNull();
+    // A sentinel, set on the DOM value as a paste leaves it (the box is uncontrolled).
+    fireEvent.change(field!, { target: { value: 'AQ.sentinel-left-in-the-box' } });
+
+    openRow();
+    expect(setup()).toBe(before);
+    act(() => useUIStore.getState().closeDialog());
+
+    // The same column, not a fresh mount: the box still holds what was in it.
+    expect(setup()).toBe(before);
+    expect(field!.isConnected).toBe(true);
+    expect(field!.value).toBe('AQ.sentinel-left-in-the-box');
+  });
+
+  it('goes when the summon does, under an item too', () => {
+    renderShell();
+    pressCtrlJ();
+    openRow();
     expect(setup()).toBeInTheDocument();
+    // Ctrl+J over the item closes both (lib/open-chat.ts toggleSetup).
+    pressCtrlJ();
+    expect(itemOpen()).toBe(false);
+    expect(useRailStore.getState().summoned).toBe(false);
+    expect(setup()).toBeNull();
   });
 
   it('Escape closes it, docked as well as overlaid: it is not a place to rest', () => {
@@ -2063,7 +2098,7 @@ describe('<AskHome/>, a brand-new account', () => {
     expect(within(home).queryByTestId('needs-you')).toBeNull();
     expect(within(home).queryByTestId('ai-activity')).toBeNull();
     expect(home.querySelector('[data-ask-composer] textarea')).not.toBeNull();
-    expect(within(home).getByTestId('answerer-label')).toHaveTextContent('gpt-4o-mini');
+    expect(within(home).getByTestId('answerer-label')).toHaveTextContent('GPT-4o mini');
     expect(within(home).queryByTestId('proposal-card')).toBeNull();
 
     act(() => {

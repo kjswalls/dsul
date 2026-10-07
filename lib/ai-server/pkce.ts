@@ -13,6 +13,7 @@
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
+import { isOpenRouterReturn, type OpenRouterReturn } from '@/lib/ai-types';
 import { ProviderError, classifyStatus, toProviderErrorFor } from './errors';
 import { openSecret, sealSecret } from './secret-box';
 import { readCappedJson } from './stream';
@@ -50,27 +51,38 @@ export function createPkcePair(): PkceFlow {
   return { verifier, challenge, state };
 }
 
-/** sealSecret(JSON{v, s, iat}, {userId, purpose:'pkce'}) */
+/**
+ * sealSecret(JSON{v, s, r, iat}, {userId, purpose:'pkce'}).
+ *
+ * `r` is where the sign-in came from, and so where the callback returns: the
+ * Settings pane or home with the setup column. It rides inside the seal, so
+ * nothing outside this server can aim the landing.
+ */
 export function sealPkceCookie(
-  flow: { verifier: string; state: string },
+  flow: { verifier: string; state: string; r: OpenRouterReturn },
   userId: string,
   key: Buffer,
   now: number = Date.now()
 ): string {
   return sealSecret(
-    JSON.stringify({ v: flow.verifier, s: flow.state, iat: now }),
+    JSON.stringify({ v: flow.verifier, s: flow.state, r: flow.r, iat: now }),
     { userId, purpose: 'pkce' },
     key
   );
 }
 
-/** null: absent/other user/tampered/expired/malformed (v not 43 chars, s failing PKCE_STATE_RE). */
+/**
+ * null: absent/other user/tampered/expired/malformed (v not 43 chars, s
+ * failing PKCE_STATE_RE, r outside its enum). `r` is strict, including when
+ * it is missing: a cookie from a build before it is at most ten minutes old,
+ * and reads as the sign-in having taken too long, which it then repeats.
+ */
 export function openPkceCookie(
   raw: string | undefined,
   userId: string,
   key: Buffer,
   now: number = Date.now()
-): { verifier: string; state: string } | null {
+): { verifier: string; state: string; r: OpenRouterReturn } | null {
   try {
     if (typeof raw !== 'string' || raw === '' || raw.length > MAX_COOKIE_LENGTH) return null;
     const plain = openSecret(raw, { userId, purpose: 'pkce' }, key);
@@ -78,14 +90,15 @@ export function openPkceCookie(
 
     const parsed: unknown = JSON.parse(plain);
     if (typeof parsed !== 'object' || parsed === null) return null;
-    const { v, s, iat } = parsed as Record<string, unknown>;
+    const { v, s, r, iat } = parsed as Record<string, unknown>;
     if (typeof v !== 'string' || !VERIFIER_RE.test(v)) return null;
     if (typeof s !== 'string' || !PKCE_STATE_RE.test(s)) return null;
+    if (!isOpenRouterReturn(r)) return null;
     if (typeof iat !== 'number' || !Number.isFinite(iat)) return null;
 
     const age = now - iat;
     if (age > PKCE_MAX_AGE_S * 1000 || age < -MAX_SKEW_MS) return null;
-    return { verifier: v, state: s };
+    return { verifier: v, state: s, r };
   } catch {
     return null;
   }

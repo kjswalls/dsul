@@ -289,6 +289,8 @@ describe('every path into "the current user changed"', () => {
         status: 'ok',
         problem: null,
         checkedAt: '2026-10-01T00:00:00.000Z',
+        limitedUntil: null,
+        modelLabel: null,
       },
     });
     try {
