@@ -46,7 +46,9 @@ import { cn } from '@/lib/utils';
 import { Plus } from 'lucide-react';
 import { SlotLayer } from '@/components/planner/slot-layer';
 import { AddRow } from '@/components/planner/slot-composer';
-import { isHolding, rowScope, setHoveredSlot, useSlotComposer, type SlotTarget } from '@/lib/slot-add';
+import { composerIsOpen, isHolding, rowScope, setHoveredSlot, useSlotComposer, type SlotTarget } from '@/lib/slot-add';
+import { MAX_TRAVEL_PX, onScrollbar } from '@/lib/click-away';
+import { useIsMobile } from '@/hooks/use-mobile';
 
 /**
  * Week × Schedule: one grid, seven day-columns + a left hour gutter. Each
@@ -189,7 +191,8 @@ function WeekScheduleColumn({
   );
   const stripAdding = useSlotComposer((s) => s.target?.scope === stripTarget.scope);
   const openComposer = useSlotComposer((s) => s.open);
-  const stripPress = useRef<{ holding: boolean; composerWasOpen: boolean } | null>(null);
+  const stripPress = useRef<{ x: number; y: number; holding: boolean; composerWasOpen: boolean } | null>(null);
+  const addHere = !useIsMobile();
 
   // Measured before paint, so a busy week opens at its grown height instead of
   // flashing at 88px for a frame. The observer catches every later change: a
@@ -390,14 +393,27 @@ function WeekScheduleColumn({
           // item panel, and not as the click that puts a composer away.
           onPointerDown={(e) => {
             stripPress.current =
-              e.button === 0 && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey && e.pointerType !== 'touch'
-                ? { holding: isHolding(), composerWasOpen: !!useSlotComposer.getState().target }
+              e.button === 0 &&
+              !e.metaKey &&
+              !e.ctrlKey &&
+              !e.shiftKey &&
+              !e.altKey &&
+              e.pointerType !== 'touch' &&
+              !onScrollbar(e.nativeEvent)
+                ? {
+                    x: e.clientX,
+                    y: e.clientY,
+                    holding: isHolding(),
+                    composerWasOpen: composerIsOpen(),
+                  }
                 : null;
           }}
           onClick={(e) => {
             const p = stripPress.current;
             stripPress.current = null;
             if (!p || p.holding || p.composerWasOpen || e.detail > 1 || dragging) return;
+            // A text-selection drag ends in a click too; it is not one.
+            if (Math.hypot(e.clientX - p.x, e.clientY - p.y) > MAX_TRAVEL_PX) return;
             const t = e.target as HTMLElement;
             if (t !== e.currentTarget && t !== anytimeContentRef.current && !t.hasAttribute('data-strip-empty')) return;
             openComposer(stripTarget);
@@ -407,7 +423,8 @@ function WeekScheduleColumn({
               headings, this strip can. It is capped and scrolls past the cap, so
               a grouped strip shows fewer rows at rest — that is the cost of
               having asked. */}
-          <div ref={anytimeContentRef}>
+          {/* Rows leave room at the foot for the corner +, so it never sits on the last one. */}
+          <div ref={anytimeContentRef} className={cn(col.untimed.length > 0 && addHere && 'pb-5')}>
             {untimedGroups.map((g) =>
               g.label ? (
                 <GroupSection key={g.key} groupKey={g.key} label={g.label} gate={g.gate} variant="canvas">
@@ -431,7 +448,7 @@ function WeekScheduleColumn({
             )}
           </div>
         </div>
-        {!stripAdding && !dragging && (
+        {addHere && !stripAdding && !dragging && (
           <button
             type="button"
             data-testid="week-anytime-add"
@@ -439,7 +456,7 @@ function WeekScheduleColumn({
             title="Add to Anytime"
             onClick={() => openComposer(stripTarget)}
             // Hover-only on a pointer that can hover; always there otherwise.
-            className="absolute bottom-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-[5px] border-[1.5px] border-muted-foreground/70 bg-canvas text-foreground/80 transition-[opacity,colors] hover:border-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/strip:opacity-100"
+            className="absolute bottom-1.5 right-1.5 flex h-4 w-4 items-center justify-center rounded-[5px] border-[1.5px] border-muted-foreground/70 bg-canvas text-foreground/80 transition-[opacity,colors] hover:border-muted-foreground hover:bg-accent hover:text-foreground focus-visible:opacity-100 [@media(hover:hover)_and_(pointer:fine)]:pointer-events-none [@media(hover:hover)_and_(pointer:fine)]:opacity-0 [@media(hover:hover)_and_(pointer:fine)]:group-hover/strip:pointer-events-auto [@media(hover:hover)_and_(pointer:fine)]:group-hover/strip:opacity-100"
           >
             <Plus className="h-2.5 w-2.5" aria-hidden />
           </button>

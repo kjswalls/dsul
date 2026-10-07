@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
+import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
 import { format } from 'date-fns';
 import { Clock, ListTodo, Repeat } from 'lucide-react';
 import {
@@ -21,9 +21,12 @@ import { useUIStore } from '@/lib/ui-store';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { LANE_PX, PANE_MIN_H, PANE_OFFSET, PANE_TRIM } from '@/lib/schedule-constants';
 import type { LanePlan } from '@/lib/schedule-lanes';
+import type { Priority } from '@dsul/types';
 import { MAX_TRAVEL_PX } from '@/lib/click-away';
 import {
   addableTypes,
+  clearHoveredSlot,
+  composerIsOpen,
   gridScope,
   isHolding,
   minAtY,
@@ -77,10 +80,19 @@ function hasModifier(e: { metaKey: boolean; ctrlKey: boolean; shiftKey: boolean;
   return e.metaKey || e.ctrlKey || e.shiftKey || e.altKey;
 }
 
-/** The project a lane names, when the grid is split by project. */
-function laneProject(lane: Located['lane']): string | undefined {
-  return lane && lane.key.startsWith('project:') ? lane.label : undefined;
+/**
+ * What a lane seeds onto the item made in it: its project or its priority.
+ * The "No project" / "No priority" lanes seed nothing, which is what they mean.
+ */
+function laneSeed(lane: Located['lane']): { project?: string; priority?: Priority } {
+  if (!lane) return {};
+  if (lane.key.startsWith('project:')) return { project: lane.label };
+  const p = lane.key.startsWith('priority:') ? lane.key.slice('priority:'.length) : null;
+  return p && p !== 'none' ? { priority: p as Priority } : {};
 }
+
+/** Lanes the layer can seed. Any other axis draws the slot across the field. */
+const seedsLane = (key: string) => key.startsWith('project:') || key.startsWith('priority:') || key.startsWith('none:project');
 
 export function SlotLayer({
   date,
@@ -116,12 +128,14 @@ export function SlotLayer({
   const swallowClick = useRef(false);
   const [menuSlot, setMenuSlot] = useState<Located | null>(null);
   const itemTypes = usePlannerStore((s) => s.itemTypes);
-  const scope = gridScope(dateStr);
+  const scope = gridScope(compact ? 'week' : 'day', dateStr);
   const target = useSlotComposer((s) => (s.target?.kind === 'grid' && s.target.scope === scope ? s.target : null));
   const open = useSlotComposer((s) => s.open);
   // Reactive only for the slot's visibility; every decision reads isHolding() at the press.
   const holding = useSelectionStore((s) => s.selectedIds.size > 0);
   const panelOpen = useUIStore((s) => s.activeDialog?.type === 'edit-item');
+  // A view switch under a resting pointer fires no pointerleave.
+  useEffect(() => () => clearHoveredSlot(scope), [scope]);
 
   const pointerOnly = !(isMobile || coarse);
   const y = (min: number) => ((min - gridStartHour * 60) / 60) * hourPx;
@@ -136,6 +150,7 @@ export function SlotLayer({
     const lane =
       lanePlan.lanes.find((l) => pct >= l.leftPct && pct <= 100 - l.rightPct) ??
       lanePlan.lanes[lanePlan.lanes.length - 1];
+    if (lane && !seedsLane(lane.key)) return { min };
     return { min, lane: lane && { key: lane.key, leftPct: lane.leftPct, rightPct: lane.rightPct, label: lane.label } };
   };
 
@@ -146,7 +161,7 @@ export function SlotLayer({
     startMin: slotStart(at.min, gridStartHour, gridEndHour),
     duration: getItemTypeConfig(extra.type ?? 'task').schedule.defaultBlockMinutes,
     lane: at.lane && { key: at.lane.key, leftPct: at.lane.leftPct, rightPct: at.lane.rightPct },
-    project: laneProject(at.lane),
+    ...laneSeed(at.lane),
     ...extra,
   });
 
@@ -180,13 +195,15 @@ export function SlotLayer({
     }
     const at = locate(e);
     if (!at) return;
+    // A click that never came (the press ended off the layer) must not eat the next one.
+    swallowClick.current = false;
     press.current = {
       pointerId: e.pointerId,
       x: e.clientX,
       y: e.clientY,
       at,
       sweeping: false,
-      composerWasOpen: !!useSlotComposer.getState().target,
+      composerWasOpen: composerIsOpen(),
       holding: isHolding(),
     };
   };
@@ -201,6 +218,8 @@ export function SlotLayer({
         setHover(null);
       }
       if (p.sweeping) {
+        // A mouse drag is a text-selection drag too; the sweep is the only thing it draws.
+        window.getSelection()?.removeAllRanges();
         const at = locate(e);
         if (at) setSweep({ ...sweepRange(p.at.min, at.min, gridStartHour, gridEndHour), lane: p.at.lane });
       }
@@ -219,8 +238,11 @@ export function SlotLayer({
     const p = press.current;
     press.current = null;
     if (!p || p.pointerId !== e.pointerId) return;
-    lastPress.current = p;
-    if (!p.sweeping) return;
+    if (!p.sweeping) {
+      lastPress.current = p;
+      return;
+    }
+    lastPress.current = null;
     layerRef.current?.releasePointerCapture(e.pointerId);
     const at = locate(e);
     const range = sweepRange(p.at.min, at?.min ?? p.at.min, gridStartHour, gridEndHour);

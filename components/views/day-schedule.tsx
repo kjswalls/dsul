@@ -57,7 +57,6 @@ import { SeasonNotice } from '@/components/views/season-notice';
 import { SlotLayer } from '@/components/planner/slot-layer';
 import { AddRow } from '@/components/planner/slot-composer';
 import { rowScope } from '@/lib/slot-add';
-import { format } from 'date-fns';
 import type { DayItems } from '@/lib/day-items';
 import type { Task, HabitItem, TimeBucket, Item } from '@/lib/planner-types';
 import { cn } from '@/lib/utils';
@@ -1637,7 +1636,7 @@ export function DaySchedule({ activeId }: { activeId: string | null }) {
   // Adding in place is the desktop's; the phone's capture bar is its way in.
   const isMobile = useIsMobile();
   const addHere = !isMobile;
-  const dayStr = format(selectedDate, 'yyyy-MM-dd');
+  const dayStr = completionDateStr;
   const anytimeAdd = (
     <AddRow
       persistent

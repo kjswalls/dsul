@@ -116,11 +116,42 @@ describe('addAt', () => {
     expect(addTask.mock.calls[0][0]).toMatchObject({ project: 'Work' });
   });
 
+  it('seeds the priority a lane names onto a task, never onto a habit', () => {
+    addAt(grid(600, 30, { priority: 'high' }), 'task', 'Taxes');
+    expect(addTask.mock.calls[0][0]).toMatchObject({ priority: 'high' });
+    addAt(grid(600, 30, { priority: 'high' }), 'habit', 'Walk');
+    expect(addHabit.mock.calls[0][0].priority).toBeUndefined();
+  });
+
   it('makes a habit that repeats, with no date', () => {
     expect(addAt(grid(7 * 60), 'habit', 'Stretch')).toBe('habit-id');
     const fields = addHabit.mock.calls[0][0];
     expect(fields).toMatchObject({ title: 'Stretch', startTime: '07:00', timesPerDay: 1 });
     expect(fields.startDate).toBeUndefined();
     expect(addTask).not.toHaveBeenCalled();
+  });
+});
+
+describe('n over a slot', () => {
+  it('opens the composer at the hovered slot while its surface is drawn, else falls back', async () => {
+    const { STATIC_COMMANDS } = await import('@/lib/commands/registry');
+    const { setHoveredSlot, useSlotComposer } = await import('@/lib/slot-add');
+    const ui = await import('@/lib/ui-store');
+    const create = STATIC_COMMANDS.find((c) => c.id === 'create.task')!;
+    const target = grid(9 * 60);
+    const el = document.createElement('div');
+    el.setAttribute('data-slot-scope', target.scope);
+    document.body.appendChild(el);
+    setHoveredSlot(target);
+    create.runFromShortcut!({} as never);
+    expect(useSlotComposer.getState().target).toBe(target);
+    useSlotComposer.getState().close();
+
+    // The surface left the page under a resting pointer: the key adds the usual way.
+    el.remove();
+    const spy = vi.spyOn(ui, 'openAddDialog').mockImplementation(() => {});
+    create.runFromShortcut!({} as never);
+    expect(useSlotComposer.getState().target).toBeNull();
+    spy.mockRestore();
   });
 });

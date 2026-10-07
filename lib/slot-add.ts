@@ -5,7 +5,8 @@ import { repeatPatch } from './item-edit';
 import { usePlannerStore } from './planner-store';
 import { openEditFor, useUIStore } from './ui-store';
 import { useSelectionStore } from './selection-store';
-import type { ItemTypeDef } from '@dsul/types';
+import type { ItemTypeDef, Priority } from '@dsul/types';
+import { fieldApplies } from './filters';
 import type { TimeBucket } from './planner-types';
 
 /**
@@ -73,6 +74,8 @@ export type SlotTarget =
       lane?: { key: string; leftPct: number; rightPct: number };
       /** A container the lane names, seeded onto the new item. */
       project?: string;
+      /** A priority the lane names, seeded onto a type that carries one. */
+      priority?: Priority;
       /** The type it opens on (the right-click menu picks one). */
       type?: string;
     }
@@ -84,8 +87,12 @@ export type SlotTarget =
       type?: string;
     };
 
-/** The surface key of a grid and of an Anytime / list row, so each draws only its own composer. */
-export const gridScope = (dateStr: string) => `grid:${dateStr}`;
+/**
+ * The surface key of a grid and of an Anytime / list row, so each draws only
+ * its own composer. A grid's names its view too: Day's grid has lanes and a
+ * Week column's does not, so a slot from one must never open in the other.
+ */
+export const gridScope = (view: 'day' | 'week', dateStr: string) => `grid:${view}:${dateStr}`;
 export const rowScope = (where: string, dateStr: string) => `row:${where}:${dateStr}`;
 
 /** The types a composer offers: the built-ins, then the user's own. */
@@ -126,6 +133,7 @@ export function addAt(target: SlotTarget, typeName: string, rawTitle: string): s
         }
       : { timeBucket: target.bucket };
   const project = target.kind === 'grid' ? target.project : undefined;
+  const priority = target.kind === 'grid' && fieldApplies(typeName, 'priority') ? target.priority : undefined;
 
   if (typeName === 'habit') {
     return store.addHabit({
@@ -139,6 +147,7 @@ export function addAt(target: SlotTarget, typeName: string, rawTitle: string): s
   const fields = {
     title,
     project,
+    priority,
     ...placement,
     startDate: config.dateAnchored ? target.dateStr : undefined,
   };
@@ -159,6 +168,19 @@ export function openAdded(id: string) {
  */
 export function isHolding(): boolean {
   return useSelectionStore.getState().selectedIds.size > 0 || useUIStore.getState().activeDialog?.type === 'edit-item';
+}
+
+/**
+ * Is a composer open, so a press elsewhere only puts it away? The store's one
+ * target, or a persistent add row (which lets the store go as soon as it is
+ * focused) holding a typed title: its blur adds that title, and the same click
+ * must not also open a second composer.
+ */
+export function composerIsOpen(): boolean {
+  if (useSlotComposer.getState().target) return true;
+  if (typeof document === 'undefined') return false;
+  const el = document.activeElement;
+  return el instanceof HTMLInputElement && !!el.closest('[data-add-row]') && el.value.trim() !== '';
 }
 
 /* ── the one open composer ───────────────────────────────────────────────── */
@@ -192,6 +214,11 @@ let hoveredSlot: SlotTarget | null = null;
 
 export function setHoveredSlot(target: SlotTarget | null) {
   hoveredSlot = target;
+}
+
+/** A surface going away lets go of the slot it wrote, if it is still the hovered one. */
+export function clearHoveredSlot(scope: string) {
+  if (hoveredSlot?.scope === scope) hoveredSlot = null;
 }
 
 /** `n` over a slot or a strip: open the composer there. False when the pointer is over neither. */

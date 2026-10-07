@@ -49,9 +49,8 @@ function TypeChip({
     <DropdownMenu modal={false} onOpenChange={onOpenChange}>
       <DropdownMenuTrigger
         data-testid="slot-composer-type"
-        // Keeps focus in the title field: the press that opens the menu would
-        // otherwise blur it, and a blur adds what is typed.
-        onPointerDown={(e) => e.preventDefault()}
+        // Radix's own pointerdown keeps focus in the title field while it
+        // opens the menu; ours must not preventDefault, or it never opens.
         className={cn(
           'flex flex-none items-center gap-0.5 rounded-[4px] border border-border px-1.5 py-px text-2xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground',
           compact && 'hidden'
@@ -81,6 +80,8 @@ function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boole
   const [title, setTitle] = useState('');
   const [type, setType] = useState(target.type ?? 'task');
   const menuOpen = useRef(false);
+  // Escape blurs a persistent row, and that blur runs before the cleared title renders.
+  const discarding = useRef(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   // A composer whose surface goes away (a view or date switch while it is
@@ -118,13 +119,17 @@ function useComposer(target: SlotTarget, { keepOpen, onDone }: { keepOpen: boole
       e.preventDefault();
       e.stopPropagation();
       setTitle('');
-      if (keepOpen) inputRef.current?.blur();
+      if (keepOpen) {
+        discarding.current = true;
+        inputRef.current?.blur();
+        discarding.current = false;
+      }
       onDone();
     }
   };
 
   const onBlur = () => {
-    if (menuOpen.current) return;
+    if (menuOpen.current || discarding.current) return;
     if (title.trim()) commit(false);
     else if (!keepOpen) onDone();
   };
@@ -267,7 +272,7 @@ export function AddRow({
       onPointerEnter={() => setHoveredSlot(target)}
       onPointerLeave={() => setHoveredSlot(null)}
       className={cn(
-        'group/addrow flex items-center gap-3 rounded-[5px] px-2 py-1.5 transition-colors hover:bg-accent focus-within:bg-transparent',
+        '@container/addrow group/addrow flex items-center gap-3 rounded-[5px] px-2 py-1.5 transition-colors hover:bg-accent focus-within:bg-transparent',
         className
       )}
     >
@@ -295,8 +300,9 @@ export function AddRow({
         onBlur={onBlur}
         className="-mx-1 min-w-0 flex-1 bg-transparent px-1 font-content text-content text-foreground caret-[var(--success-text)] outline-none placeholder:text-muted-foreground"
       />
+      {/* A narrow host (a week column's strip) gives the title the room. */}
       {title.trim() && (
-        <span className="contents">
+        <span className="hidden @min-[200px]/addrow:contents">
           <TypeChip type={type} onChange={setType} onOpenChange={onMenuOpenChange} />
           <kbd aria-hidden className={cn('pointer-events-none flex-shrink-0', kbd)}>
             ↵
