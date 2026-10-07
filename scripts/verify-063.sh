@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
-# verify-062.sh — replay the real migrations onto a bare Postgres, seed three
-# users with a row in every user table, and delete them, before and after 062.
+# verify-063.sh — replay the real migrations onto a bare Postgres, seed three
+# users with a row in every user table, and delete them, before and after 063.
 #
 # WHY THIS EXISTS. Deleting an account is one call, GoTrue's admin delete, and
 # the foreign keys do the rest: every table that holds a user's data cascades
@@ -17,13 +17,13 @@
 # deletion takes with it as GoTrue's own tables do.
 #
 # WHAT IT CHECKS
-#   1. 000..061, three users A, B, C seeded in all 28 user tables, and a forged
+#   1. 000..062, three users A, B, C seeded in all 28 user tables, and a forged
 #      task and item of B's whose parent is one of C's (only a forged row can be
-#      one: a foreign key check skips RLS). The state 062 fixes: deleting A
+#      one: a foreign key check skips RLS). The state 063 fixes: deleting A
 #      leaves one bug_reports row with A's email, deleting C fails on
 #      tasks_parent_task_id_fkey, and the user-column query lists exactly
 #      `bug_reports | supabase_user_id`.
-#   2. A fresh build, 062 applied twice: the second run changes nothing, and an
+#   2. A fresh build, 063 applied twice: the second run changes nothing, and an
 #      orphan email row an earlier deletion left is gone. Then deleting A leaves
 #      no row of A's anywhere and no email row; deleting C succeeds (B's forged
 #      links go null); B keeps a row in every one of the 28 tables; deleting A
@@ -31,17 +31,17 @@
 #      `restrict`, none to auth.users fails to cascade, and the user-column
 #      query lists nothing (and does list a probe table with a keyless user_id).
 #   3. A third build with both old constraints renamed first, as an older
-#      database might have them: 062 still replaces them.
+#      database might have them: 063 still replaces them.
 #
-# THE USER-COLUMN QUERY is the one Kirby runs read-only on prod before 062: every
+# THE USER-COLUMN QUERY is the one Kirby runs read-only on prod before 063: every
 # public table's user column (user_id, *_user_id, owner*) with no cascading key
 # to auth.users, directly or through a cascading key to a table that has one.
 #
 # NOT WIRED INTO CI, for the reason verify-058.sh gives: CI has no Postgres
-# binary outside the Supabase stack. Run it by hand before 062 is applied, or
+# binary outside the Supabase stack. Run it by hand before 063 is applied, or
 # after any migration that adds a table holding user data:
 #
-#     sudo ./scripts/verify-062.sh       # or PGBIN=/path/to/pg/bin
+#     sudo ./scripts/verify-063.sh       # or PGBIN=/path/to/pg/bin
 #
 # ROOT, OR WRITE ACCESS TO THE EXTENSION DIRECTORY, for the stub extensions, as
 # verify-058.sh explains; they are removed on exit, and a real pg_cron or pg_net
@@ -57,7 +57,7 @@ PGBIN=${PGBIN:-/usr/lib/postgresql/16/bin}
 PORT=${PORT:-55462}
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 MIGRATIONS="$ROOT/supabase/migrations"
-TARGET="$MIGRATIONS/062_account_deletion.sql"
+TARGET="$MIGRATIONS/063_account_deletion.sql"
 
 if [ ! -x "$PGBIN/initdb" ] || [ ! -x "$PGBIN/pg_config" ]; then
   echo "no Postgres at $PGBIN; set PGBIN=/path/to/postgres/bin" >&2
@@ -66,7 +66,7 @@ fi
 [ -f "$TARGET" ] || { echo "no $TARGET" >&2; exit 1; }
 
 EXTDIR="$("$PGBIN/pg_config" --sharedir)/extension"
-STUB_MARK='dsul verify-062 stub'
+STUB_MARK='dsul verify-063 stub'
 # Either script's leftover stub is a stub; anything else is a real extension.
 ANY_STUB='dsul verify-0[0-9][0-9] stub'
 STUB_FILES=(pg_cron.control pg_cron--1.6.sql pg_net.control pg_net--0.14.sql)
@@ -87,7 +87,7 @@ RUNAS=""
 if [ "$(id -u)" = 0 ]; then
   RUNAS=postgres
   [ -d /var/lib/postgresql ] || install -d -o postgres -g postgres /var/lib/postgresql
-  WORK="$(mktemp -d /var/lib/postgresql/verify-062.XXXXXX)"
+  WORK="$(mktemp -d /var/lib/postgresql/verify-063.XXXXXX)"
   chown postgres:postgres "$WORK"
 else
   WORK="$(mktemp -d)"
@@ -104,16 +104,16 @@ cleanup() {
 }
 trap cleanup EXIT
 
-# ── 1. the stub extensions (verify-058.sh's, as far as 000..062 use them) ─────
+# ── 1. the stub extensions (verify-058.sh's, as far as 000..063 use them) ─────
 cat > "$EXTDIR/pg_cron.control" <<EOF
-# $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-062.sh.
+# $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-063.sh.
 comment = '$STUB_MARK: pg_cron signatures, no scheduler'
 default_version = '1.6'
 relocatable = false
 superuser = true
 EOF
 cat > "$EXTDIR/pg_cron--1.6.sql" <<EOF
--- $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-062.sh.
+-- $STUB_MARK — NOT pg_cron. Written and removed by scripts/verify-063.sh.
 create schema cron;
 
 create table cron.job (
@@ -195,14 +195,14 @@ end\$\$;
 EOF
 
 cat > "$EXTDIR/pg_net.control" <<EOF
-# $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-062.sh.
+# $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-063.sh.
 comment = '$STUB_MARK: pg_net signatures, no worker'
 default_version = '0.14'
 relocatable = false
 superuser = true
 EOF
 cat > "$EXTDIR/pg_net--0.14.sql" <<EOF
--- $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-062.sh.
+-- $STUB_MARK — NOT pg_net. Written and removed by scripts/verify-063.sh.
 create schema net;
 
 create table net.http_request_queue (
@@ -359,7 +359,7 @@ apply() {
         values ('$version', '$name') on conflict (version) do nothing"
 }
 
-# A fresh database with every migration before 062 replayed into it.
+# A fresh database with every migration before 063 replayed into it.
 build() {
   DB=postgres
   q -c "create database $1"
@@ -520,8 +520,8 @@ check() { # check <label> <actual> <expected>
   fi
 }
 
-# ── 4. before 062 ─────────────────────────────────────────────────────────────
-echo "── before 062: the state it fixes ──"
+# ── 4. before 063 ─────────────────────────────────────────────────────────────
+echo "── before 063: the state it fixes ──"
 build before
 seed
 check "28 user tables seeded"                  "$(tables_for "$A")" 28
@@ -539,8 +539,8 @@ else
 fi
 check "…so C is still there"                   "$(qa -c "select count(*) from auth.users where id = '$C'")" 1
 
-# ── 5. 062, twice ─────────────────────────────────────────────────────────────
-echo "── 062 applied twice ──"
+# ── 5. 063, twice ─────────────────────────────────────────────────────────────
+echo "── 063 applied twice ──"
 build after
 q -c "insert into public.bug_reports (github_issue_number, supabase_user_id, user_email) values
         (900001, null, 'gone@verify.test'), (900002, null, null)"
@@ -550,13 +550,13 @@ check "the orphan email row is deleted"        "$(qa -c "select count(*) from pu
 check "a row with neither is kept"             "$(qa -c "select count(*) from public.bug_reports where github_issue_number = 900002")" 1
 check "bug_reports.supabase_user_id cascades"  "$(fk_on bug_reports supabase_user_id)" "bug_reports_supabase_user_id_fkey:c"
 check "tasks.parent_task_id sets null"         "$(fk_on tasks parent_task_id)" "tasks_parent_task_id_fkey:n"
-check "ledger row 062"                         "$(qa -c "select name from supabase_migrations.schema_migrations where version = '062'")" account_deletion
+check "ledger row 063"                         "$(qa -c "select name from supabase_migrations.schema_migrations where version = '063'")" account_deletion
 apply "$TARGET"
 constraints > "$WORK/s2"
 if diff -q "$WORK/s1" "$WORK/s2" >/dev/null; then
   echo "  ok    a second run changes nothing ($(wc -l < "$WORK/s1") constraints)"
 else
-  echo "  FAIL  re-running 062 changed the constraints:" >&2
+  echo "  FAIL  re-running 063 changed the constraints:" >&2
   diff "$WORK/s1" "$WORK/s2" >&2 || true
   FAILS=$((FAILS + 1))
 fi
@@ -569,7 +569,7 @@ check "every key to auth.users cascades" \
                    and confrelid = 'auth.users'::regclass and confdeltype <> 'c'")" none
 check "the user-column query lists nothing"    "$(qa -c "$USER_COLUMNS")" ""
 
-echo "── deleting seeded users after 062 ──"
+echo "── deleting seeded users after 063 ──"
 seed
 q -c "delete from auth.users where id = '$A'"
 check "deleting A leaves no row of A's"        "$(left_for "$A")" none
@@ -591,7 +591,7 @@ check "a probe with a keyless user_id is listed" "$(qa -c "$USER_COLUMNS")" "dev
 q -c "drop table public.devices_probe"
 
 # ── 6. constraints named otherwise ────────────────────────────────────────────
-echo "── 062 on a database whose constraints were named otherwise ──"
+echo "── 063 on a database whose constraints were named otherwise ──"
 build renamed
 q -c "alter table public.bug_reports rename constraint bug_reports_supabase_user_id_fkey to bug_reports_reporter_link"
 q -c "alter table public.tasks rename constraint tasks_parent_task_id_fkey to tasks_parent_link"
@@ -609,4 +609,4 @@ if [ "$FAILS" -gt 0 ]; then
   echo "$FAILS check(s) failed." >&2
   exit 1
 fi
-echo "062 verified against PostgreSQL $("$PGBIN/postgres" --version | awk '{print $3}')."
+echo "063 verified against PostgreSQL $("$PGBIN/postgres" --version | awk '{print $3}')."

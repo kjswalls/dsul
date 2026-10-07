@@ -448,7 +448,7 @@ list, the iPhone's native id_token flow, the dashboard setup, and the client sec
 re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
 and the desktop (the iPhone's id_token grant needs no secret).
 [account-deletion.md](memory/plans/account-deletion.md) holds Delete account on the iPhone and the
-web: the one rule (one admin delete, every user column cascades, migration 062 and the test that
+web: the one rule (one admin delete, every user column cascades, migration 063 and the test that
 pins it), the account guard and the "gone" answers, exchange then delete then revoke for Sign in
 with Apple, what stays outside the database, Kirby's setup and the App Review gate. Read it before
 touching `lib/account-*`, `lib/account-server/**`, `app/api/account/**`, `app/api/app/account/**`,

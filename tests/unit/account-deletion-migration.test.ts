@@ -16,7 +16,7 @@ import { join } from 'node:path';
  *      makes one account's row block another account's deletion (007's
  *      tasks.parent_task_id: a forged cross-account parent fails GoTrue's
  *      transaction, since a foreign key check skips RLS). Each was replaced by
- *      062, which this file checks did so.
+ *      063, which this file checks did so.
  *
  *   2. EVERY USER COLUMN HAS A CASCADING PATH TO auth.users. A column named
  *      user_id, *_user_id or owner*, in a public table, carries its own
@@ -31,7 +31,7 @@ import { join } from 'node:path';
  *
  * TEXT, NOT A DATABASE, like tests/unit/migration-text.test.ts. Comments and
  * string literals are stripped first, so a header that discusses a clause is
- * not read as one. scripts/verify-062.sh is the replay: it deletes seeded users
+ * not read as one. scripts/verify-063.sh is the replay: it deletes seeded users
  * on a real Postgres and runs the same user-column rule as a catalog query.
  */
 
@@ -193,7 +193,7 @@ const SUPERSEDED = [
     table: 'bug_reports',
     column: 'supabase_user_id',
     target: 'auth.users',
-    by: '062_account_deletion.sql',
+    by: '063_account_deletion.sql',
     action: 'cascade',
   },
   {
@@ -201,7 +201,7 @@ const SUPERSEDED = [
     table: 'tasks',
     column: 'parent_task_id',
     target: 'tasks',
-    by: '062_account_deletion.sql',
+    by: '063_account_deletion.sql',
     action: 'set null',
   },
 ] as const;
@@ -275,9 +275,9 @@ function userColumnViolations(migrations: Migration[], allowlist = ALLOWLIST): s
 }
 
 describe('every key to auth.users cascades (rule 1)', () => {
-  it('reads every migration, 062 included', () => {
+  it('reads every migration, 063 included', () => {
     expect(ALL.length).toBeGreaterThan(60);
-    expect(ALL.some((m) => m.name === '062_account_deletion.sql')).toBe(true);
+    expect(ALL.some((m) => m.name === '063_account_deletion.sql')).toBe(true);
   });
 
   it('finds the keys it should (guards the parser)', () => {
@@ -288,11 +288,11 @@ describe('every key to auth.users cascades (rule 1)', () => {
     expect(has('019_unified_items.sql', 'items', 'user_id', 'auth.users', 'cascade')).toBe(true);
     // Inline with no column list (007's user_settings).
     expect(has('007_future_proofing.sql', 'user_settings', 'user_id', 'auth.users', 'cascade')).toBe(true);
-    // The two 062 replaces, as written, and as replaced.
+    // The two 063 replaces, as written, and as replaced.
     expect(has('006_bug_reports.sql', 'bug_reports', 'supabase_user_id', 'auth.users', 'set null')).toBe(true);
     expect(has('007_future_proofing.sql', 'tasks', 'parent_task_id', 'tasks', 'no action')).toBe(true);
-    expect(has('062_account_deletion.sql', 'bug_reports', 'supabase_user_id', 'auth.users', 'cascade')).toBe(true);
-    expect(has('062_account_deletion.sql', 'tasks', 'parent_task_id', 'tasks', 'set null')).toBe(true);
+    expect(has('063_account_deletion.sql', 'bug_reports', 'supabase_user_id', 'auth.users', 'cascade')).toBe(true);
+    expect(has('063_account_deletion.sql', 'tasks', 'parent_task_id', 'tasks', 'set null')).toBe(true);
     // A composite key in a create table, and one added in a do block.
     expect(has('024_programs_routines.sql', 'routine_items', 'user_id', 'routines', 'cascade')).toBe(true);
     expect(has('057_chat_conversations.sql', 'chat_messages', 'user_id', 'chat_conversations', 'cascade')).toBe(true);
@@ -305,8 +305,8 @@ describe('every key to auth.users cascades (rule 1)', () => {
     expect(keyViolations(ALL)).toEqual([]);
   });
 
-  it('would fail without 062', () => {
-    const without = ALL.filter((m) => m.name !== '062_account_deletion.sql');
+  it('would fail without 063', () => {
+    const without = ALL.filter((m) => m.name !== '063_account_deletion.sql');
     expect(keyViolations(without)).toEqual([
       '006_bug_reports.sql: bug_reports(supabase_user_id) → auth.users is on delete set null',
       '007_future_proofing.sql: tasks(parent_task_id) → tasks is on delete no action',
@@ -369,8 +369,8 @@ describe('every user column has a cascading path to auth.users (rule 2)', () => 
     expect(userColumnViolations(ALL)).toEqual([]);
   });
 
-  it('would fail without 062: a set-null key is no path, so 006’s email row stayed', () => {
-    const without = ALL.filter((m) => m.name !== '062_account_deletion.sql');
+  it('would fail without 063: a set-null key is no path, so 006’s email row stayed', () => {
+    const without = ALL.filter((m) => m.name !== '063_account_deletion.sql');
     expect(userColumnViolations(without)).toEqual([
       '006_bug_reports.sql: bug_reports.supabase_user_id has no cascading key to auth.users',
     ]);

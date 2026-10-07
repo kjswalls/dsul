@@ -43,14 +43,14 @@ migrations as text:
    agent API) could add new ones, since only a foreign key refuses a row whose user is gone. The
    planned `devices` table (reminders-platforms.md) must cascade.
 
-**Migration 062** fixed the two keys that broke the rule: `bug_reports.supabase_user_id` was SET
-NULL (a deleted account left its email behind; 062 also deletes the rows earlier deletions left),
+**Migration 063** fixed the two keys that broke the rule: `bug_reports.supabase_user_id` was SET
+NULL (a deleted account left its email behind; 063 also deletes the rows earlier deletions left),
 and `tasks.parent_task_id` had no action (a forged task of one account pointing at another's
 would have failed that other account's deletion: a foreign key check skips RLS). Both are found
 by column, so a database whose constraints were named differently is fixed too.
-`scripts/verify-062.sh` replays the migrations onto a bare Postgres, seeds three users in all 28
-user tables, and deletes them before and after 062. Deletion works before 062 is applied; a
-deleted account then leaves its `bug_reports` email row until 062 deletes it.
+`scripts/verify-063.sh` replays the migrations onto a bare Postgres, seeds three users in all 28
+user tables, and deletes them before and after 063. Deletion works before 063 is applied; a
+deleted account then leaves its `bug_reports` email row until 063 deletes it.
 
 The stake ledger and the saved conversations go with the account. "A ledger the subject can edit
 is not a ledger" is about editing it while the account lives; the confirmation says to note what
@@ -137,7 +137,7 @@ entry is what keeps the outcome when another tab's refused refresh replaces the 
 | Supabase backups | the deleted rows, until backups age out | Nothing: the provider's schedule |
 | Vercel logs | earlier route logs; the reminder scan's per-user failure notes, which carry the user id | The account routes log codes only: never an id, email, Apple code, token or secret |
 | pg_net's response table (`net._http_response`) | the reminder tick's responses, whose notes carry the user id | Nothing: pg_net drops them after six hours |
-| GitHub issues from Send feedback | the title and text, with no account named | The `bug_reports` row linking it to the account goes (062) |
+| GitHub issues from Send feedback | the title and text, with no account named | The `bug_reports` row linking it to the account goes (063) |
 | Beeminder | datapoints already posted; goals that expect dsul's ticks can derail and charge; the auth token the person pasted, still valid there | A line when Beeminder is on; Beeminder named in the keys line |
 | Pledge | nothing outside dsul: the ledger was the only record of what each miss cost | A line when there is a ledger |
 | Twilio, Home Assistant | messages and calls already made; the tokens, still valid there | dsul's copies go; named in the keys line |
@@ -154,7 +154,7 @@ advisory: one that fails drops its line, so a lost line never keeps anyone from 
 
 ## Setup (Kirby)
 
-1. Optional, read-only, before 062, in the Supabase SQL editor on prod:
+1. Optional, read-only, before 063, in the Supabase SQL editor on prod:
 
    ```sql
    select conrelid::regclass as tbl, conname, confdeltype
@@ -166,10 +166,10 @@ advisory: one that fails drops its line, so a lost line never keeps anyone from 
    ```
 
    Expected: `bug_reports_supabase_user_id_fkey` (`n`) and `tasks_parent_task_id_fkey` (`a`), and
-   the number of email rows 062 will delete. Anything else listed is a key the tree doesn't know;
-   say so in the thread before applying 062.
+   the number of email rows 063 will delete. Anything else listed is a key the tree doesn't know;
+   say so in the thread before applying 063.
 
-   Then the user-column query (the one `scripts/verify-062.sh` runs as `USER_COLUMNS`). It lists a
+   Then the user-column query (the one `scripts/verify-063.sh` runs as `USER_COLUMNS`). It lists a
    table with a user column and no key at all, which the first query can't show, since it lists
    keys:
 
@@ -189,13 +189,13 @@ advisory: one that fails drops its line, so a lost line never keeps anyone from 
                               and k2.confdeltype = 'c' and k2.confrelid = 'auth.users'::regclass)));
    ```
 
-   Expected: one row, `bug_reports | supabase_user_id` (062 fixes it). Anything else is a table
-   made outside the migrations; say so in the thread before applying 062.
+   Expected: one row, `bug_reports | supabase_user_id` (063 fixes it). Anything else is a table
+   made outside the migrations; say so in the thread before applying 063.
 2. Vercel, Production only (Preview shares the production database, so a preview's delete
    deletes a real account): the four `APPLE_*` variables (sign-in-with-apple.md, step 8).
    Redeploy.
-3. 062, with a typed go: `pnpm db:list` shows the remote at 061, then `pnpm db:push`. If the
-   remote is behind 061, stop and say so: `db push` would apply those too.
+3. 063, with a typed go: `pnpm db:list` shows the remote at 062, then `pnpm db:push`. If the
+   remote is behind 062, stop and say so: `db push` would apply those too.
 4. The device checks, ios/README.md "Checking account deletion", with throwaway accounts only.
 5. **App Review, only after revocation is proven on prod.** Submit the iPhone build only once
    step 2 is deployed and an Apple deletion has answered `revoked`: README check 6 showed dsul

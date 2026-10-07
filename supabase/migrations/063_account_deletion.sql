@@ -1,4 +1,4 @@
--- 062_account_deletion: deleting the auth user deletes everything (memory/plans/account-deletion.md).
+-- 063_account_deletion: deleting the auth user deletes everything (memory/plans/account-deletion.md).
 --
 -- WHY. Account deletion is one call, GoTrue's admin delete (DELETE /auth/v1/admin/users/{id}), and the
 -- foreign keys do the rest: every table that holds a user's data cascades from auth.users. Two keys did
@@ -16,10 +16,10 @@
 --
 -- Both are found by column, not by name, so a database whose constraints were named differently is
 -- fixed too. Nothing else changes: tests/unit/account-deletion-migration.test.ts pins the rest, and
--- scripts/verify-062.sh replays 000-062 and deletes seeded users.
+-- scripts/verify-063.sh replays 000-063 and deletes seeded users.
 --
 -- DEPLOY ORDER. Either side of the app build. Apply to prod only on Kirby's typed OK, after
--- `pnpm db:list` shows the remote at 061. If applied out-of-band, record ledger version 062.
+-- `pnpm db:list` shows the remote at 062. If applied out-of-band, record ledger version 063.
 --
 -- Idempotent and replayable onto an empty database.
 
