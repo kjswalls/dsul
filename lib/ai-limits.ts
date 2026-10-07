@@ -39,6 +39,21 @@ export const MAX_TRANSCRIPT_CHARS = 32_000
 export const MAX_MESSAGES = 40
 /** The user's own "Custom instructions", appended to the built-in prompt. */
 export const MAX_INSTRUCTIONS_CHARS = 2_000
+/**
+ * "Write with AI" in Settings → Make (/api/ai/make): the ask, the output cap
+ * (memory/plans/mods.md, decision 6: 2,000 tokens; a mod, build order 10, gets
+ * 4,000) and the stream's own character stop, which a reply inside the token
+ * cap never reaches.
+ */
+export const MAX_MAKE_ASK_CHARS = 1_000
+/** What "Write with AI" writes, and the one `kind` /api/ai/make accepts. Mods come later (build order 10). */
+export const MAKE_KINDS = ['recipe', 'theme', 'look'] as const
+export type MakeKind = (typeof MAKE_KINDS)[number]
+export function isMakeKind(v: unknown): v is MakeKind {
+  return typeof v === 'string' && (MAKE_KINDS as readonly string[]).includes(v)
+}
+export const MAKE_OUTPUT_TOKENS = 2_000
+export const MAKE_MAX_CHARS = 12_000
 const MAX_TYPE_NOUNS = 20
 const MAX_TYPE_NOUN_CHARS = 40
 

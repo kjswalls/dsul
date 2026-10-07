@@ -323,3 +323,31 @@ describe('the invitation ("Set up AI") and the fix ("Fix AI")', () => {
     });
   });
 });
+
+describe('canMake ("Write with AI" in Settings → Make)', () => {
+  it('is the connected model answering on this device, and only that', () => {
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK })).canMake).toBe(true);
+    // OpenClaw only: chat, but no Make (decision 6).
+    const openclawOnly = resolveAICapabilities(inputs({ openclaw: GATEWAY, choice: 'openclaw' }));
+    expect(openclawOnly.canChat).toBe(true);
+    expect(openclawOnly.canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ openclaw: PLUGIN, choice: 'openclaw' })).canMake).toBe(false);
+    // A working model, but this device chose OpenClaw: the literal rule (D14).
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, openclaw: GATEWAY, choice: 'openclaw' })).canMake).toBe(false);
+    // Chose OpenClaw, OpenClaw unusable: the model answers, so Make is offered.
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, choice: 'openclaw' })).canMake).toBe(true);
+  });
+
+  it('is off when hidden, unknown, failed, failing, or chat is Off', () => {
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, aiHidden: true })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ phase: 'unknown', model: MODEL_OK })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ phase: 'error', model: MODEL_OK })).canMake).toBe(false);
+    expect(
+      resolveAICapabilities(inputs({ model: { ...MODEL_OK, status: 'failing', problem: 'key_rejected' } })).canMake
+    ).toBe(false);
+    expect(resolveAICapabilities(inputs({ model: { ...MODEL_OK, model: null } })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, available: false })).canMake).toBe(false);
+    expect(resolveAICapabilities(inputs({ model: MODEL_OK, choice: 'none' })).canMake).toBe(false);
+    expect(NO_AI.canMake).toBe(false);
+  });
+});

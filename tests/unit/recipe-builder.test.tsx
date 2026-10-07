@@ -536,3 +536,35 @@ describe('the Look step and your Looks', () => {
     });
   });
 });
+
+describe('prefilled (a "Write with AI" draft opened in Edit)', () => {
+  it('opens a new recipe with the draft\'s name, trigger and steps, and saves through createRecipe', async () => {
+    const { RecipeBuilder } = await import('@/components/settings/recipe-builder');
+    seed();
+    const onDone = vi.fn();
+    render(
+      <RecipeBuilder
+        userId={USER}
+        editing={null}
+        initial={{
+          name: 'After a run, stretch',
+          manifest: {
+            version: 1,
+            trigger: { on: 'item.skipped' },
+            filters: {},
+            steps: [{ do: 'create', type: 'task', title: 'Stretch 10 min' }],
+          },
+        }}
+        onDone={onDone}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText('New recipe')).toBeTruthy();
+    expect((screen.getByTestId('recipe-name') as HTMLInputElement).value).toBe('After a run, stretch');
+    expect((screen.getByTestId('recipe-trigger') as HTMLSelectElement).value).toBe('item.skipped');
+    expect(screen.getByDisplayValue('Stretch 10 min')).toBeTruthy();
+    fireEvent.click(screen.getByTestId('recipe-save'));
+    await waitFor(() => expect(createRecipe).toHaveBeenCalledTimes(1));
+    expect(saveRecipe).not.toHaveBeenCalled();
+  });
+});

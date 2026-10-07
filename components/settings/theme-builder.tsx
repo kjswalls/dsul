@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { RotateCcw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -23,7 +23,6 @@ import {
   effectiveColor,
   parseOpaque,
   parseToken,
-  printTheme,
   type ColorKey,
   type RelayKey,
   type ShadowPreset,
@@ -35,15 +34,8 @@ import {
 import { THEME_BASES, type ThemeBaseId } from '@/lib/mods/theme-bases';
 import { contrastWarnings } from '@/lib/mods/theme-contrast';
 import { parseColor, toHex } from '@/lib/mods/color';
-import { DRAFT_SLUG } from '@/lib/user-themes/css';
-import { setUserThemeDraft } from '@/lib/user-themes/store';
-import { DARK_LOOKS, LIGHT_LOOKS, resolveDarkPick, resolveLightPick } from '@/lib/theme-looks';
-import { useLookStore } from '@/lib/look-store';
-import { usePaletteStore } from '@/lib/palette-store';
-import { useViewStore } from '@/lib/view-store';
-import { usePlannerStore } from '@/lib/planner-store';
-import { layoutDef } from '@/lib/layout-themes';
-import { LookMini } from './look-mini';
+import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
+import { ThemeDraftPreview } from './theme-draft-preview';
 
 /**
  * Settings → Make's theme form (memory/plans/mods.md, "Themes and Looks"): a
@@ -52,7 +44,7 @@ import { LookMini } from './look-mini';
  * `oklch(L C H)`; the hover, selection, behind-dialogs and line colours may add
  * `/ A%`, within bounds. What is saved is the host's own print of each value.
  *
- * The preview is a LookMini drawn with the draft's slug, whose rules the
+ * The preview (./theme-draft-preview.tsx) is a LookMini drawn with the draft's slug, whose rules the
  * injector writes as a preview twin only, so nothing outside the preview moves
  * while you type. A contrast shortfall warns and blocks Save until "Save
  * anyway" is ticked. A new theme is saved switched off, like everything here.
@@ -161,10 +153,10 @@ function blankForm(): FormState {
   };
 }
 
-/** A saved theme back into the form. From the shape alone, so one that no longer passes still opens. */
-function formFromRow(row: UserMod): FormState {
-  const parsed = ThemeManifestSchema.safeParse(row.manifest);
-  if (!parsed.success) return { ...blankForm(), name: row.name };
+/** A manifest back into the form. From the shape alone, so one that no longer passes still opens. */
+function formFromManifest(name: string, manifest: unknown): FormState {
+  const parsed = ThemeManifestSchema.safeParse(manifest);
+  if (!parsed.success) return { ...blankForm(), name };
   const m = parsed.data;
   const colors: FormState['colors'] = {};
   for (const group of GROUPS) {
@@ -179,7 +171,7 @@ function formFromRow(row: UserMod): FormState {
     if (list) relays[key] = list.join(', ');
   }
   return {
-    name: row.name,
+    name,
     mode: m.mode,
     base: m.base,
     colors,
@@ -190,6 +182,11 @@ function formFromRow(row: UserMod): FormState {
     themeColor: m.themeColor ?? '',
     override: m.contrastOverride === true,
   };
+}
+
+/** A saved theme back into the form. */
+function formFromRow(row: UserMod): FormState {
+  return formFromManifest(row.name, row.manifest);
 }
 
 /** The form as tokens, with an error per field that does not parse. */
@@ -309,16 +306,21 @@ function ColorField({
 export function ThemeBuilder({
   userId,
   editing,
+  initial,
   onDone,
   onCancel,
 }: {
   userId: string;
   /** The theme being edited, or null for a new one. */
   editing: UserMod | null;
+  /** A new theme's starting point (a "Write with AI" draft's Edit). Read only when `editing` is null. */
+  initial?: { name: string; manifest: unknown };
   onDone: (message: string) => void;
   onCancel: () => void;
 }) {
-  const [form, setForm] = useState<FormState>(() => (editing ? formFromRow(editing) : blankForm()));
+  const [form, setForm] = useState<FormState>(() =>
+    editing ? formFromRow(editing) : initial ? formFromManifest(initial.name, initial.manifest) : blankForm()
+  );
   const [problems, setProblems] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
@@ -335,23 +337,6 @@ export function ThemeBuilder({
     [form.mode, form.base, themeColor, tokens]
   );
   const warnings = useMemo(() => contrastWarnings(manifest), [manifest]);
-
-  // The preview: the draft's rules as a preview twin only (the injector), so
-  // nothing but the LookMini below changes while you type.
-  const printedKey = JSON.stringify(manifest);
-  useEffect(() => {
-    const printed = printTheme(JSON.parse(printedKey) as ThemeManifest);
-    setUserThemeDraft({ slug: DRAFT_SLUG, mode: printed.mode, decls: printed.decls });
-  }, [printedKey]);
-  useEffect(() => () => setUserThemeDraft(null), []);
-
-  const layout = useLookStore((s) => s.layout);
-  const lightPick = useLookStore((s) => s.light);
-  const darkPick = useLookStore((s) => s.dark);
-  const tint = usePaletteStore((s) => s.palette);
-  const bucketStyle = useViewStore((s) => s.bucketStyle);
-  const typeMode = useViewStore((s) => s.typeMode);
-  const showCompleted = usePlannerStore((s) => s.showCompletedTasks);
 
   const bases = form.mode === 'light' ? LIGHT_BASES : DARK_BASES;
   const baseOnly = { base: form.base, tokens: {} };
@@ -391,17 +376,8 @@ export function ThemeBuilder({
     <div data-testid="theme-builder" className="space-y-4 py-3">
       <h2 className="text-foreground text-sm font-medium">{editing ? 'Edit theme' : 'New theme'}</h2>
 
-      <LookMini
-        def={layoutDef(layout)}
-        mode={form.mode}
-        light={form.mode === 'light' ? DRAFT_SLUG : resolveLightPick(lightPick)}
-        dark={form.mode === 'dark' ? DRAFT_SLUG : resolveDarkPick(darkPick)}
-        tint={tint}
-        bucketStyle={bucketStyle}
-        typeMode={typeMode}
-        showCompleted={showCompleted}
-        className="border-border rounded-[8px] border"
-      />
+      {/* The draft's rules as a preview twin only, so nothing but this changes while you type. */}
+      <ThemeDraftPreview manifest={manifest} />
 
       <Field label="Name">
         <Input

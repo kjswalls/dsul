@@ -10,8 +10,8 @@ three adversarial reviews) is in Kirby's project files, not the repo
 (`/mnt/project-files/mods/`); everything a build needs is in this file.
 
 **Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
-4 (browser recipes, `lib/recipes/`), 5a (user themes), 5b (user Looks) and 6 (the
-server runner), each below. Where PR 4's code departs from the body:
+4 (browser recipes, `lib/recipes/`), 5a (user themes), 5b (user Looks), 6 (the
+server runner) and 7 (AI writes recipes, themes and Looks), each below. Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -133,6 +133,34 @@ with `failed` rather than reading as Reverted. A timed run stops its remaining s
 past the tick's deadline (`stop:deadline`) so a claimed run always logs its result
 and Revert. The cron route runs the recipe tier after the scan in
 its own try, with its own `[cron/recipes]` line; the scan alone decides the status.
+
+**Build order 7, AI writes recipes, themes and Looks, is built** (`app/api/ai/make/route.ts`,
+`lib/ai-server/make-prompt.ts` and `make-context.ts`, `lib/make-ai.ts`, `lib/make-draft.ts`,
+`lib/recipes/describe.ts`, `components/settings/make-write.tsx`). The gate is `canMake`
+(`target === 'model'`), so a device that chose OpenClaw for chat sees no Write even with a working
+model connected (D14; a one-line change in `lib/ai-registry.ts` if that should change). The route
+reads `kind` and `ask` only, clips the ask to 1,000 characters, caps output at 2,000 tokens (and the
+stream at 12,000 characters), and has its own `make` bucket, 30 an hour per user (a speed bump, as
+the other buckets). The names the model sees are read server-side through the session client from
+`projects`, `item_types` and `user_mods` (theme and Look names with their `u-` refs), each cleaned to
+one line of at most 60 characters and framed as data; the person's Custom instructions are not sent,
+since they are for chat. The prompt is generated from the schemas with a drift test, and keeps its own
+exhaustive word tables because the server cannot import `lib/recipes/draft.ts` or `validate.ts`
+(they reach mods-store). Where it departs from the body: a drafted step may act only on the item that
+started the recipe (`item: 'trigger'`), since a named item needs an id and ids come with titles the
+model never sees; a draft naming `{id}` is refused, and the person adds one in Edit. The AI never sets
+`contrastOverride`: it is stripped, a contrast shortfall holds Install, and Edit opens the editor where
+the person can choose it. Install goes through the existing `create*`, so it saves switched off; Edit
+opens the builder for a new row with the draft prefilled (`initial`), and the Write box stays mounted
+(hidden) underneath, so Cancel returns to the same card with no second AI call. A reply that names
+another kind offers "Write it as a Look" (one press, which is the call); one that opens an object and
+never closes it reads "cut short", since a reasoning model can spend the 2,000-token cap thinking.
+The reader takes the last whole object of the asked kind, so a model that repeats the example first
+still lands. Nothing is stored but what is
+installed. Ask hands off through a ⌘K command, `make.write` ("Write a recipe with AI", no shortcut, in the "Made by you" group),
+which opens `/settings/make?write=recipe` with the box focused and sends nothing; a chip on Ask home
+is deferred (it touches the rail's layout and its e2e). `extractJsonObject` moved to the pure
+`lib/json-extract.ts` (re-exported from `lib/openclaw-gateway.ts`) so the browser can use it.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed

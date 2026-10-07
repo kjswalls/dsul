@@ -21,7 +21,7 @@ import { useSidebarStore } from '@/lib/sidebar-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { useUndoStripStore } from '@/lib/undo-strip-store';
 import type { Item, ItemTypeDef } from '@/lib/planner-types';
-import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, seedAI } from './helpers/ai-fixtures';
+import { AI_HIDDEN, CONNECTED_MODEL, KEY_TURNED_DOWN, NOTHING_CONNECTED, OPENCLAW_PLUGIN, seedAI } from './helpers/ai-fixtures';
 
 /**
  * The palette's load-bearing invariants: every rendered row has a unique cmdk
@@ -948,5 +948,47 @@ describe('Ctrl+Z (history.undo) and the strip', () => {
     useUndoStripStore.getState().show({ id: 'log-1', label: 'Delete task: Swim', durationMs: 5000 });
     undo().run(ctx);
     expect(plannerUndo).toHaveBeenCalledTimes(1);
+  });
+});
+
+/* ── Ask hands off to Make (mods PR 7) ───────────────────────────────────── */
+
+describe('make.write: "Write a recipe with AI"', () => {
+  const write = () => commandById('make.write');
+
+  it('shows only with a connected model (canMake), never for OpenClaw alone', () => {
+    for (const [seed, shown] of [
+      [CONNECTED_MODEL, true],
+      [OPENCLAW_PLUGIN, false],
+      [{ ...CONNECTED_MODEL, openclaw: { gateway: true, agent: true, agentId: 'a' }, choice: 'openclaw' as const }, false],
+      [KEY_TURNED_DOWN, false],
+      [AI_HIDDEN, false],
+      [{ ...CONNECTED_MODEL, aiHidden: true }, false],
+      [{ phase: 'error' as const }, false],
+      [undefined, false],
+    ] as const) {
+      const unseed = seedAI(seed);
+      try {
+        expect(write().availableWhen!(ctx)).toBe(shown);
+        expect((write().hidden as (c: CommandContext) => boolean)(ctx)).toBe(!shown);
+      } finally {
+        unseed();
+      }
+    }
+  });
+
+  it('opens Make with the Recipe box, and sends nothing; no shortcut id', () => {
+    expect(write().shortcut).toBeUndefined();
+    const navigate = vi.fn();
+    const fetchSpy = vi.spyOn(globalThis, 'fetch');
+    const unseed = seedAI(CONNECTED_MODEL);
+    try {
+      write().run({ ...ctx, navigate });
+      expect(navigate).toHaveBeenCalledWith('/settings/make?write=recipe');
+      expect(fetchSpy).not.toHaveBeenCalled();
+    } finally {
+      unseed();
+      fetchSpy.mockRestore();
+    }
   });
 });

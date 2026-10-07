@@ -180,3 +180,27 @@ describe('LookBuilder', () => {
     expect(saveLook).not.toHaveBeenCalled();
   });
 });
+
+describe('LookBuilder prefilled (a "Write with AI" draft opened in Edit)', () => {
+  it('starts from the draft, and saves a new Look switched off', async () => {
+    const onDone = vi.fn();
+    render(
+      <LookBuilder
+        userId={USER}
+        editing={null}
+        initial={{ name: 'Deep work', manifest: { version: 1, layout: 'writer', light: MOSS.slug, dark: 'dusk' } }}
+        onDone={onDone}
+        onCancel={() => {}}
+      />
+    );
+    expect(screen.getByText('New Look')).toBeTruthy();
+    expect((screen.getByTestId('look-name') as HTMLInputElement).value).toBe('Deep work');
+    expect((screen.getByTestId('look-layout') as HTMLSelectElement).value).toBe('writer');
+    expect((screen.getByTestId('look-light') as HTMLSelectElement).value).toBe(MOSS.slug);
+    expect((screen.getByTestId('look-dark') as HTMLSelectElement).value).toBe('dusk');
+    fireEvent.click(screen.getByTestId('look-save'));
+    await waitFor(() => expect(onDone).toHaveBeenCalledWith('Saved. It starts switched off.'));
+    const saved = useModsStore.getState().rows.find((r) => r.kind === 'look');
+    expect(saved).toMatchObject({ name: 'Deep work', enabled: false, manifest: { layout: 'writer', light: MOSS.slug, dark: 'dusk' } });
+  });
+});
