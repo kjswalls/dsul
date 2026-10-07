@@ -224,13 +224,14 @@ func bodyJSON(_ request: FakeServer.Request?) -> [String: Any]? {
 /// a one-off task on the day, a habit counted three times a day (once so
 /// far), a habit skipped today, and a braindump thought; `extra` adds rows
 /// (`plants`, `bags`, `reading`, `book`, `meds`, `parked`, `foldedFiling`,
-/// `nameOnly`) and `omitting` drops some, and `projects` adds the user's
-/// projects (`workJSON`, `healthJSON`). No stored timezone unless one is
-/// given, so the pinned day stays put. `writes` is the current server's list
-/// unless a test plays an older server (nil); `itemTypes` names the user's
-/// own types, `streaksEnabled` the Streaks switch, and `remindersEnabled` the
-/// raw JSON for Habit reminders ("true", "false" or "null"), each left out
-/// (an older server) unless given.
+/// `nameOnly`) and `omitting` drops some, `projects` adds the user's
+/// projects (`workJSON`, `healthJSON`), and `routines` and `seasons` their
+/// routines and seasons (`routineJSON`, `seasonJSON`). No stored timezone
+/// unless one is given, so the pinned day stays put. `writes` is the current
+/// server's list unless a test plays an older server (nil); `itemTypes` names
+/// the user's own types, `streaksEnabled` the Streaks switch, and
+/// `remindersEnabled` the raw JSON for Habit reminders ("true", "false" or
+/// "null"), each left out (an older server) unless given.
 enum PlannerJSON {
     static let today = "2026-10-01"
     /// Noon UTC on `today`: the live planner's clock. It is 2026-10-01 from
@@ -251,12 +252,16 @@ enum PlannerJSON {
     /// Work's and Health's project ids: strings, as `Project.id` is.
     static let work = "0d000000-0000-4000-8000-000000000010"
     static let health = "0d000000-0000-4000-8000-000000000011"
+    /// Morning routine's and Autumn's ids: strings, as `Routine.id` and
+    /// `Season.id` are.
+    static let morning = "0d000000-0000-4000-8000-000000000012"
+    static let autumn = "0d000000-0000-4000-8000-000000000013"
 
     /// Every item write the server takes (lib/app-api.ts `ITEM_WRITES`), in
     /// its order.
     static let allWrites = ["complete", "schedule", "skip", "move", "pause", "title", "notes", "delete",
                             "addSubtask", "resetStreak", "priority", "timesPerDay", "reminder", "time", "repeat",
-                            "project"]
+                            "project", "collect"]
 
     /// The user's own type that `book` is, as they named it.
     static let bookType = ItemTypeLabel(name: "book", label: "Book to read", labelPlural: "Books to read")
@@ -299,6 +304,22 @@ enum PlannerJSON {
 
     static var healthJSON: String {
         return "{\"id\":\"\(health)\",\"name\":\"Health\"}"
+    }
+
+    /// A routine holding `items`, in that order, as the payload lists one
+    /// (the route sends more fields; these are what the routine chip reads).
+    static func routineJSON(_ id: String, _ name: String, _ items: [UUID]) -> String {
+        let ids: [String] = items.map { "\"\(lowerID($0))\"" }
+        return "{\"id\":\"\(id)\",\"name\":\"\(name)\",\"sortOrder\":0,\"itemIds\":["
+            + ids.joined(separator: ",") + "]}"
+    }
+
+    /// A season holding `items` directly, following no dates (state auto,
+    /// none set), so it is live every day and hides nothing.
+    static func seasonJSON(_ id: String, _ name: String, _ items: [UUID]) -> String {
+        let ids: [String] = items.map { "\"\(lowerID($0))\"" }
+        return "{\"id\":\"\(id)\",\"name\":\"\(name)\",\"state\":\"auto\",\"itemIds\":["
+            + ids.joined(separator: ",") + "],\"routineIds\":[]}"
     }
 
     /// Review PRs, a task parked in Work's block today
@@ -349,7 +370,8 @@ enum PlannerJSON {
                         timezone: String? = nil, writes: [String]? = PlannerJSON.allWrites,
                         itemTypes: [ItemTypeLabel]? = nil, streaksEnabled: Bool? = nil,
                         remindersEnabled: String? = nil, omitting: Set<UUID> = [],
-                        extra: [String] = [], projects: [String] = []) -> String {
+                        extra: [String] = [], projects: [String] = [], routines: [String] = [],
+                        seasons: [String] = []) -> String {
         let status = groceriesDone ? "completed" : "pending"
         let zone: String = timezone.map { "\"\($0)\"" } ?? "null"
         let groceriesRow: String =
@@ -387,7 +409,8 @@ enum PlannerJSON {
         }
         json += "\"items\":[" + items.joined(separator: ",") + "],"
         json += "\"projects\":[" + projects.joined(separator: ",") + "],"
-        json += "\"routines\":[],\"seasons\":[]}"
+        json += "\"routines\":[" + routines.joined(separator: ",") + "],"
+        json += "\"seasons\":[" + seasons.joined(separator: ",") + "]}"
         return json
     }
 }
@@ -439,6 +462,12 @@ final class DragFlag {
     private func isDone(_ planner: SamplePlanner, _ id: UUID) -> Bool {
         guard let item = planner.item(id) else { return false }
         return planner.isDone(item)
+    }
+
+    /// Every POST the server took, to any route.
+    private func postCount(_ server: FakeServer) async -> Int {
+        let requests = await server.requests
+        return requests.filter { $0.route.hasPrefix("POST") }.count
     }
 
     @Test func theFirstFetchFillsThePlanner() async {
@@ -1159,8 +1188,10 @@ final class DragFlag {
     /// Every part 1 write, each edit and Reset streak names its own item and
     /// nothing else; a delete names its item and every subtask it took out
     /// with it, a habit's only itself. A new subtask names the subtask, not
-    /// the parent whose route it goes to, and is the one write that proves a
-    /// row: its parent, which the route answers 404 for when it isn't there.
+    /// the parent whose route it goes to, and proves a row: its parent, which
+    /// the route answers 404 for when it isn't there. A routine or season
+    /// toggle names the one membership, never its item, and proves the item,
+    /// for the same reason.
     @Test func eachWriteNamesWhatItTouches() {
         let id = PlannerJSON.groceries
         let own: Set<PlannerSync.Subject> = [.item(id)]
@@ -1193,6 +1224,16 @@ final class DragFlag {
         #expect(add.itemId == child)
         #expect(add.subjects == made)
         #expect(add.proves == own)
+
+        let toggle = PlannerSync.Write.collect(id: id, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        let membership: Set<PlannerSync.Subject> = [.member(.routine, containerId: PlannerJSON.morning, item: id)]
+        #expect(toggle.itemId == id)
+        #expect(toggle.subjects == membership)
+        #expect(toggle.proves == own)
+        let leave = PlannerSync.Write.collect(id: id, kind: .season, containerId: PlannerJSON.autumn, member: false)
+        let season: Set<PlannerSync.Subject> = [.member(.season, containerId: PlannerJSON.autumn, item: id)]
+        #expect(leave.subjects == season)
+        #expect(leave.proves == own)
 
         let groceries = SampleItem(id: id, title: "Groceries", status: "pending")
         let bags = SampleItem(id: PlannerJSON.bags, title: "Bring the bags", status: "pending",
@@ -1537,6 +1578,186 @@ final class DragFlag {
             #expect(planner.subtasks(of: PlannerJSON.groceries).map(\.id) == [PlannerJSON.bags, list])
             #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
         }
+    }
+
+    // MARK: Routines and seasons (2f-b)
+
+    /// Morning routine's members as the planner holds them now.
+    private func morning(_ planner: SamplePlanner) -> [UUID]? {
+        return planner.routines.first { $0.id == PlannerJSON.morning }?.itemIds
+    }
+
+    /// Water taken out of Morning routine, never landed: shown at once out
+    /// of it, then, the refetch failing too, back at its own place, first,
+    /// and the banner.
+    @Test func aFailedToggleTurnsBackAtItsPlace() async {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline)
+        let planner = await loaded(server)
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch])
+
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        #expect(morning(planner) == [PlannerJSON.stretch])
+        await drain(planner)
+
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch])
+        #expect(planner.routineNames(for: PlannerJSON.water) == ["Morning routine"])
+        #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.")
+        let posts = await server.count(itemRoute(PlannerJSON.water))
+        #expect(posts == 1)
+    }
+
+    /// Water and then Stretch taken out of Morning routine, both failed: each
+    /// recorded its place (0, and 0 of what the first left) against the list
+    /// the toggle before it left, so they go back newest first, each onto the
+    /// list it was measured against, and the routine reads as it did. Oldest
+    /// first would swap them, and a restore in hash order would pass by chance
+    /// about half the time, so the test runs on three fresh planners.
+    @Test func twoFailedRemovesComeBackInOrder() async {
+        let order = [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries]
+        for run in 1...3 {
+            let server = FakeServer()
+            let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine", order)
+            await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+            await server.on(itemRoute(PlannerJSON.water), .offline)
+            await server.on(itemRoute(PlannerJSON.stretch), .offline)
+            let planner = await loaded(server)
+
+            planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+            planner.collect(PlannerJSON.stretch, kind: .routine, containerId: PlannerJSON.morning, member: false)
+            #expect(morning(planner) == [PlannerJSON.groceries], "run \(run)")
+            await drain(planner)
+
+            #expect(morning(planner) == order, "run \(run)")
+            #expect(planner.banner?.text == "Couldn't reach dsul, so that change was undone.", "run \(run)")
+            let posts = await postCount(server)
+            #expect(posts == 2, "run \(run)")
+        }
+    }
+
+    /// Water taken out never landed; Groceries put in did. The revert puts
+    /// Water back at its place and leaves Groceries where the server put it,
+    /// last.
+    @Test func aLandedToggleSurvivesAFailedOne() async {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline)
+        await server.on(itemRoute(PlannerJSON.groceries), .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        planner.collect(PlannerJSON.groceries, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(morning(planner) == [PlannerJSON.stretch, PlannerJSON.groceries])
+        await drain(planner)
+
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch, PlannerJSON.groceries])
+        let posts = await postCount(server)
+        #expect(posts == 2)
+    }
+
+    /// Water taken out never landed; Water put back in did, and the server,
+    /// which still held it, found it a member and kept its place. The phone
+    /// showed it last; the revert puts it back first, where the server has
+    /// it.
+    @Test func aRepeatedToggleKeepsTheServersPlace() async {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(morning(planner) == [PlannerJSON.stretch, PlannerJSON.water])
+        await drain(planner)
+
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch])
+        let posts = await server.count(itemRoute(PlannerJSON.water))
+        #expect(posts == 2)
+    }
+
+    /// Water taken out never landed; Water put back in did, and then Water
+    /// taken out again did too, so the server holds Morning routine without
+    /// it. The revert plays both on the place from before the failure and
+    /// ends out, where the phone already shows it. Started from that place
+    /// alone, it would put Water back first.
+    @Test func aLandedRemoveStandsAfterAFailedOne() async {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        // Out never reaches the server; in, and out again, land.
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        #expect(morning(planner) == [PlannerJSON.stretch])
+        await drain(planner)
+
+        #expect(morning(planner) == [PlannerJSON.stretch])
+        #expect(planner.routineNames(for: PlannerJSON.water) == [])
+        // Nothing on screen moved, so nothing says it was undone.
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+        let posts = await server.count(itemRoute(PlannerJSON.water))
+        #expect(posts == 3)
+    }
+
+    /// As above, and then Water put in once more, which landed: the remove
+    /// before it took Water's place with it, so the server's add put it
+    /// last, where the phone shows it. A revert that kept the place from
+    /// before the failure would move it first.
+    @Test func anAddAfterALandedRemoveGoesLast() async {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+        await server.on(itemRoute(PlannerJSON.water), .offline, .status(200, ok))
+        let planner = await loaded(server)
+
+        // Out never reaches the server; in, out and in again land.
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: false)
+        planner.collect(PlannerJSON.water, kind: .routine, containerId: PlannerJSON.morning, member: true)
+        #expect(morning(planner) == [PlannerJSON.stretch, PlannerJSON.water])
+        await drain(planner)
+
+        #expect(morning(planner) == [PlannerJSON.stretch, PlannerJSON.water])
+        #expect(planner.banner?.text == "Couldn't reach dsul. Pull down to try again.")
+        let posts = await server.count(itemRoute(PlannerJSON.water))
+        #expect(posts == 4)
+    }
+
+    /// The route answers 404 for a missing item, so a toggle that landed on
+    /// a new item proves a capture whose answer was lost: the captured item
+    /// stays, and stays in Morning routine.
+    @Test func aToggleProvesACapture() async throws {
+        let server = FakeServer()
+        let routine = PlannerJSON.routineJSON(PlannerJSON.morning, "Morning routine",
+                                              [PlannerJSON.water, PlannerJSON.stretch])
+        await server.on(plannerRoute, .status(200, PlannerJSON.payload(routines: [routine])), .offline)
+        await server.on(captureRoute, .offline)
+        await server.setFallback(.status(200, ok))   // the new item's own route
+        let planner = await loaded(server)
+
+        planner.capture("Buy milk")                    // never answered
+        let milk = try #require(planner.items.last)
+        #expect(milk.title == "Buy milk")
+        planner.collect(milk.id, kind: .routine, containerId: PlannerJSON.morning, member: true)   // lands
+        await drain(planner)
+
+        #expect(planner.item(milk.id)?.title == "Buy milk")
+        #expect(morning(planner) == [PlannerJSON.water, PlannerJSON.stretch, milk.id])
+        let posts = await server.count(itemRoute(milk.id))
+        #expect(posts == 1)
     }
 
     // MARK: A new subtask

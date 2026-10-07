@@ -28,7 +28,10 @@ import Testing
 /// once per folded name; what it checks, a stored "none" read as no project;
 /// what a pick sends; No project), Add property's Project ▸ while the user has
 /// a project, where VoiceOver goes after a pick, and the container nouns,
-/// which are the registry's (`ContainerWords`).
+/// which are the registry's (`ContainerWords`). From 2f-b: the routine and
+/// season chips' menus (their rows, the membership a toggle reads at tap
+/// time, which toggle closes the menu, Remove from's words), Add property's
+/// Routine ▸ and Season ▸, and a toggle landing as the chip.
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -809,14 +812,14 @@ import Testing
                                     seasonNames: planner.seasonNames(for: item.id))
     }
 
-    /// Priority, times per day, the repeat and the project are menus, the
-    /// reminder and the time their sheets, each only where the type takes
-    /// it: no priority on a habit, no count on a task, no reminder, no repeat
-    /// and no project on a subtask, whose page still takes a priority (Q7 a).
-    /// The date is offered no Reschedule here (`offered: []`), so it stays
-    /// read-only; `theDateChipIsTheRescheduleVerb` gives it one. The routines
-    /// and the seasons stay read-only, and with nothing taken (an older
-    /// server) every chip is.
+    /// Priority, times per day, the repeat, the project, the routines and
+    /// the seasons are menus, the reminder and the time their sheets, each
+    /// only where the type takes it: no priority on a habit, no count on a
+    /// task, no reminder, no repeat, no project and no routine or season on a
+    /// subtask, whose page still takes a priority (Q7 a). The date is offered
+    /// no Reschedule here (`offered: []`), so it stays read-only;
+    /// `theDateChipIsTheRescheduleVerb` gives it one. With nothing taken (an
+    /// older server) every chip is read-only.
     @Test func aChipEditsOnlyWhereTheTypeTakesIt() throws {
         let planner = makePlanner()
         let roadmap = try named(planner, "Draft Q4 roadmap")   // a task
@@ -844,13 +847,18 @@ import Testing
         #expect(ItemSheetModel.chipEditor(.project, roadmap, offered: [], canEdit: gate(roadmap)) == ChipEditor.menu)
         #expect(ItemSheetModel.chipEditor(.project, meds, offered: [], canEdit: gate(meds)) == ChipEditor.menu)
         #expect(ItemSheetModel.chipEditor(.project, pull, offered: [], canEdit: gate(pull)) == nil)
-
-        let readOnly: [SheetChip.Kind] = [.routine, .season]
-        for kind in readOnly + [.date] {
-            #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: gate(roadmap)) == nil)
-            #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: gate(meds)) == nil)
+        for kind: SheetChip.Kind in [.routine, .season] {
+            #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: gate(roadmap)) == ChipEditor.menu)
+            #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: gate(meds)) == ChipEditor.menu)
+            #expect(ItemSheetModel.chipEditor(kind, pull, offered: [], canEdit: gate(pull)) == nil)
         }
-        for kind in readOnly + [.priority, .date, .time, .timesPerDay, .repeats, .reminder, .project] {
+
+        // Offered no Reschedule, the date is the one chip left read-only.
+        #expect(ItemSheetModel.chipEditor(.date, roadmap, offered: [], canEdit: gate(roadmap)) == nil)
+        #expect(ItemSheetModel.chipEditor(.date, meds, offered: [], canEdit: gate(meds)) == nil)
+        let every: [SheetChip.Kind] = [.priority, .date, .time, .timesPerDay, .repeats, .reminder, .project,
+                                       .routine, .season]
+        for kind in every {
             #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: takesNothing) == nil)
             #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: takesNothing) == nil)
         }
@@ -954,7 +962,8 @@ import Testing
         journal.timesPerDay = 3
         let drawn = shown(planner, roadmap) + shown(planner, journal) + shown(planner, meds)
         let symbols = drawn.reduce(into: [SheetChip.Kind: String]()) { $0[$1.kind] = $1.systemImage }
-        for kind: SheetChip.Kind in [.priority, .date, .time, .timesPerDay, .repeats, .reminder] {
+        // Meds' routine chip and Journal's season chip (Autumn) too.
+        for kind: SheetChip.Kind in [.priority, .date, .time, .timesPerDay, .repeats, .reminder, .routine, .season] {
             #expect(symbols[kind] == ItemSheetModel.seedSymbol(kind))
         }
     }
@@ -962,8 +971,8 @@ import Testing
     /// The menus: None, Low, Medium and High, the web's; "1× a day" to "5× a
     /// day", and a stored count above 5 on a row of its own; VoiceOver hears
     /// "3 times a day" in the menu as on the chip; and each editable chip's
-    /// hint, the project's with the registry's noun. A routine's chip doesn't
-    /// edit yet, so it has none.
+    /// hint, the containers' with the registry's nouns, plural for the
+    /// routines and the seasons.
     @Test func theMenusWords() throws {
         let raws: [String?] = [nil, "low", "medium", "high"]
         #expect(ItemSheetModel.priorityChoices.map(\.word) == ["None", "Low", "Medium", "High"])
@@ -993,7 +1002,10 @@ import Testing
         #expect(ItemSheetModel.chipHint(.repeats) == "Changes how it repeats")
         #expect(ItemSheetModel.chipHint(.project) == "Changes the project")
         #expect(ItemSheetModel.chipHint(.project) == "Changes the " + jsLowercased(ContainerWords.project))
-        #expect(ItemSheetModel.chipHint(.routine) == nil)
+        #expect(ItemSheetModel.chipHint(.routine) == "Changes the routines")
+        #expect(ItemSheetModel.chipHint(.season) == "Changes the seasons")
+        #expect(ItemSheetModel.chipHint(.routine) == "Changes the " + jsLowercased(ContainerWords.routines))
+        #expect(ItemSheetModel.chipHint(.season) == "Changes the " + jsLowercased(ContainerWords.seasons))
     }
 
     // MARK: The date chip
@@ -2031,15 +2043,18 @@ import Testing
     /// Add property offers the containers last, project first, each only
     /// while the user has one (`ownedContainers`) and the item has none: Call
     /// the bank, Meds and Journal are offered Project, Groceries (filed under
-    /// Home) isn't, nor a subtask. Routines and seasons are offered nothing
-    /// until their chips edit. With no project, nothing is offered Project.
-    /// As the page asks it, Call the bank's seed ends in Project.
+    /// Home) isn't, nor a subtask; Call the bank and Groceries are offered
+    /// Routine and Season, Meds (in Morning routine) Season alone, and
+    /// Journal (in Morning routine and Autumn) neither. With no container,
+    /// nothing is offered any of the three, and with projects alone,
+    /// Groceries is offered neither Routine nor Season. As the page asks it,
+    /// Call the bank's seed ends in Project, Routine and Season.
     @Test func addPropertyOffersTheContainers() throws {
         let planner = makePlanner()
         let bank = try named(planner, "Call the bank")
         let groceries = try named(planner, "Groceries")
         let meds = try named(planner, "Meds")             // in Morning routine
-        let journal = try named(planner, "Journal")       // in Morning routine
+        let journal = try named(planner, "Journal")       // in Morning routine and Autumn
         let bets = try named(planner, "Write the three bets")   // a subtask
         let all = ItemSheetModel.ownedContainers(projects: 5, routines: 2, seasons: 1)
         let noContainers = ItemSheetModel.ownedContainers(projects: 0, routines: 0, seasons: 0)
@@ -2056,20 +2071,21 @@ import Testing
             return ItemSheetModel.unsetProperties(item, shown: shown(planner, item), offered: [], canEdit: gate(item),
                                                   containers: containers)
         }
-        #expect(unset(bank, all) == [.priority, .repeats, .reminder, .project])
-        #expect(unset(groceries, all) == [.priority, .time, .repeats, .reminder])
-        #expect(unset(meds, all) == [.timesPerDay, .project])
+        #expect(unset(bank, all) == [.priority, .repeats, .reminder, .project, .routine, .season])
+        #expect(unset(groceries, all) == [.priority, .time, .repeats, .reminder, .routine, .season])
+        #expect(unset(meds, all) == [.timesPerDay, .project, .season])
         #expect(unset(journal, all) == [.timesPerDay, .reminder, .project])
         #expect(unset(bets, all) == [.priority])
         #expect(unset(bank, noContainers) == [.priority, .repeats, .reminder])
+        #expect(unset(groceries, projectOnly) == [.priority, .time, .repeats, .reminder])
 
         let owned = ItemSheetModel.ownedContainers(projects: ItemSheetModel.projectChoices(planner.projectRecords).count,
                                                    routines: planner.routines.count, seasons: planner.seasons.count)
-        #expect(owned.contains(.project))
+        #expect(owned == every)
         let page = ItemSheetModel.unsetProperties(bank, shown: shown(planner, bank),
                                                   offered: planner.offeredVerbs(for: bank, day: .today),
                                                   canEdit: { planner.canEdit($0, bank) }, containers: owned)
-        #expect(page == [.priority, .date, .repeats, .reminder, .project])
+        #expect(page == [.priority, .date, .repeats, .reminder, .project, .routine, .season])
     }
 
     /// A pick sends the project's id and its name, and No project both nil;
@@ -2215,6 +2231,181 @@ import Testing
         let relinked = try #require(planner.item(standup.id))
         #expect(relinked.project == "Work")
         #expect(relinked.projectId == work.id)
+    }
+
+    // MARK: The routine and season chips
+
+    /// A routine chip's rows, and Routine ▸'s: every routine in the
+    /// planner's order, each checked while it holds the item; a season's
+    /// likewise, by the season's own members. On the sample, Meds is in
+    /// Morning routine and not in Wind down, Journal is in Autumn, and
+    /// Groceries is in none. Remove from's words are the web's. Only the
+    /// routine and season chips join by membership.
+    @Test func theMembershipMenusRows() throws {
+        let a = UUID()
+        let rows = ItemSheetModel.routineChoices([
+            Routine(id: "r1", name: "Morning routine", itemIds: [UUID(), a]), Routine(id: "r2", name: "Wind down"),
+        ], item: a)
+        #expect(rows == [
+            MembershipChoice(kind: .routine, id: "r1", name: "Morning routine", member: true),
+            MembershipChoice(kind: .routine, id: "r2", name: "Wind down", member: false),
+        ])
+        let seasonRows = ItemSheetModel.seasonChoices([
+            Season(id: "s1", name: "Autumn"), Season(id: "s2", name: "Winter", itemIds: [a]),
+        ], item: a)
+        #expect(seasonRows == [
+            MembershipChoice(kind: .season, id: "s1", name: "Autumn", member: false),
+            MembershipChoice(kind: .season, id: "s2", name: "Winter", member: true),
+        ])
+        #expect(ItemSheetModel.routineChoices([], item: a).isEmpty)
+
+        let planner = makePlanner()
+        let meds = try named(planner, "Meds")
+        let journal = try named(planner, "Journal")
+        let groceries = try named(planner, "Groceries")
+        let medsRoutines = ItemSheetModel.routineChoices(planner.routines, item: meds.id)
+        #expect(medsRoutines.map(\.name) == ["Morning routine", "Wind down"])
+        #expect(medsRoutines.map(\.id) == planner.routines.map(\.id))
+        #expect(medsRoutines.map(\.member) == [true, false])
+        let journalSeasons = ItemSheetModel.seasonChoices(planner.seasons, item: journal.id)
+        #expect(journalSeasons.map(\.name) == ["Autumn"])
+        #expect(journalSeasons.map(\.member) == [true])
+        #expect(journalSeasons.allSatisfy { $0.kind == .season })
+        #expect(!ItemSheetModel.routineChoices(planner.routines, item: groceries.id).contains(where: { $0.member }))
+        #expect(!ItemSheetModel.seasonChoices(planner.seasons, item: groceries.id).contains(where: { $0.member }))
+
+        #expect(ItemSheetModel.removeFromWord("Wind down") == "Remove from Wind down")
+        #expect(ItemSheetModel.removeFromWord("Morning routine") == "Remove from Morning routine")
+        #expect(!ItemSheetModel.removeFromWord("Autumn").contains("\u{2014}"))
+
+        #expect(ItemSheetModel.containerKind(.routine) == ContainerKind.routine)
+        #expect(ItemSheetModel.containerKind(.season) == ContainerKind.season)
+        for kind: SheetChip.Kind in [.priority, .date, .time, .timesPerDay, .repeats, .reminder, .project] {
+            #expect(ItemSheetModel.containerKind(kind) == nil)
+        }
+    }
+
+    /// A toggle reads the membership when it is tapped, from the planner's
+    /// lists, never the row's `member`, which is what the menu showed when it
+    /// was built: Meds' Morning routine row built unchecked still reads as a
+    /// member, and a Wind down row built unchecked reads as one once Meds
+    /// has joined. A container the lists no longer hold reads nil, and so
+    /// does a season's id asked as a routine's.
+    @Test func aToggleReadsTheMembershipNow() throws {
+        let planner = makePlanner()
+        let meds = try named(planner, "Meds")
+        let journal = try named(planner, "Journal")
+        let morning = try #require(planner.routines.first(where: { $0.name == "Morning routine" }))
+        let windDown = try #require(planner.routines.first(where: { $0.name == "Wind down" }))
+        let autumn = try #require(planner.seasons.first(where: { $0.name == "Autumn" }))
+        func live(_ choice: MembershipChoice, _ item: UUID) -> Bool? {
+            return ItemSheetModel.liveMember(choice, routines: planner.routines, seasons: planner.seasons, item: item)
+        }
+
+        let staleMorning = MembershipChoice(kind: .routine, id: morning.id, name: morning.name, member: false)
+        #expect(live(staleMorning, meds.id) == true)
+        let staleWindDown = MembershipChoice(kind: .routine, id: windDown.id, name: windDown.name, member: false)
+        #expect(live(staleWindDown, meds.id) == false)
+        let autumnRow = MembershipChoice(kind: .season, id: autumn.id, name: autumn.name, member: false)
+        #expect(live(autumnRow, journal.id) == true)
+        #expect(live(autumnRow, meds.id) == false)
+
+        planner.collect(meds.id, kind: .routine, containerId: windDown.id, member: true)
+        #expect(live(staleWindDown, meds.id) == true)
+
+        let gone = MembershipChoice(kind: .routine, id: "gone", name: "Gone", member: true)
+        #expect(live(gone, meds.id) == nil)
+        let seasonAsRoutine = MembershipChoice(kind: .routine, id: autumn.id, name: autumn.name, member: true)
+        #expect(live(seasonAsRoutine, journal.id) == nil)
+    }
+
+    /// Every toggle keeps its menu open, so several can change in one visit,
+    /// but the one that would take the item's last membership off, which
+    /// closes the menu before the chip goes, as Remove from does.
+    @Test func onlyTheLastMembershipsToggleClosesTheMenu() {
+        let member = MembershipChoice(kind: .routine, id: "r1", name: "Morning routine", member: true)
+        let other = MembershipChoice(kind: .routine, id: "r2", name: "Wind down", member: false)
+        #expect(!ItemSheetModel.toggleKeepsMenuOpen(member, members: 1))
+        #expect(ItemSheetModel.toggleKeepsMenuOpen(member, members: 2))
+        #expect(ItemSheetModel.toggleKeepsMenuOpen(other, members: 1))
+        #expect(ItemSheetModel.toggleKeepsMenuOpen(other, members: 2))
+    }
+
+    /// A toggle lands as the chip, on the sample. Routine ▸ Wind down on
+    /// Groceries draws "Wind down", and Routine leaves Add property; Season ▸
+    /// Autumn likewise. On Meds, Wind down toggled on reads "Morning routine
+    /// +1", both rows checked and each keeping the menu open; Morning routine
+    /// toggled off reads "Wind down", whose row is now the one that closes;
+    /// Remove from Wind down takes the chip away, Routine comes back into
+    /// Add property, and VoiceOver goes there. Nothing else moves on either
+    /// item.
+    @Test func aToggleLandsAsTheChip() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")
+        let meds = try named(planner, "Meds")
+        let morning = try #require(planner.routines.first(where: { $0.name == "Morning routine" }))
+        let windDown = try #require(planner.routines.first(where: { $0.name == "Wind down" }))
+        let autumn = try #require(planner.seasons.first(where: { $0.name == "Autumn" }))
+        let owned = ItemSheetModel.ownedContainers(projects: ItemSheetModel.projectChoices(planner.projectRecords).count,
+                                                   routines: planner.routines.count, seasons: planner.seasons.count)
+        // What the page draws for the item now: its chips, and what Add
+        // property offers.
+        func page(_ id: UUID) throws -> (item: SampleItem, chips: [SheetChip], unset: [SheetChip.Kind]) {
+            let item = try #require(planner.item(id))
+            let chips = shown(planner, item)
+            let unset = ItemSheetModel.unsetProperties(item, shown: chips,
+                                                       offered: planner.offeredVerbs(for: item, day: .today),
+                                                       canEdit: { planner.canEdit($0, item) }, containers: owned)
+            return (item, chips, unset)
+        }
+        func routineRows(_ id: UUID) -> [MembershipChoice] {
+            return ItemSheetModel.routineChoices(planner.routines, item: id)
+        }
+
+        #expect(ItemSheetModel.chipEditor(.routine, groceries, offered: [],
+                                          canEdit: { planner.canEdit($0, groceries) }) == ChipEditor.menu)
+        let first = try page(groceries.id)
+        #expect(first.unset.contains(.routine))
+        #expect(first.unset.contains(.season))
+
+        let join = try #require(routineRows(groceries.id).first(where: { $0.name == "Wind down" }))
+        #expect(!join.member)
+        planner.collect(groceries.id, kind: join.kind, containerId: join.id, member: true)
+        let joined = try page(groceries.id)
+        let joinedChip = try #require(joined.chips.first(where: { $0.kind == .routine }))
+        #expect(joinedChip.text == "Wind down")
+        #expect(joinedChip.spoken == "Routine: Wind down")
+        #expect(!joined.unset.contains(.routine))
+        #expect(ItemSheetModel.voiceOverTarget(after: .routine, shown: joined.chips) == ChipFocus.chip(.routine))
+
+        planner.collect(groceries.id, kind: .season, containerId: autumn.id, member: true)
+        let inSeason = try page(groceries.id)
+        #expect(inSeason.chips.first(where: { $0.kind == .season })?.text == "Autumn")
+        #expect(!inSeason.unset.contains(.season))
+        #expect(inSeason.item == groceries)
+
+        planner.collect(meds.id, kind: .routine, containerId: windDown.id, member: true)
+        let both = try page(meds.id)
+        let bothChip = try #require(both.chips.first(where: { $0.kind == .routine }))
+        #expect(bothChip.text == "Morning routine +1")
+        #expect(bothChip.spoken == "Routines: Morning routine and 1 more")
+        let twoRows = routineRows(meds.id)
+        #expect(twoRows.map(\.member) == [true, true])
+        #expect(twoRows.allSatisfy { ItemSheetModel.toggleKeepsMenuOpen($0, members: 2) })
+
+        planner.collect(meds.id, kind: .routine, containerId: morning.id, member: false)
+        let one = try page(meds.id)
+        #expect(one.chips.first(where: { $0.kind == .routine })?.text == "Wind down")
+        let oneRow = try #require(routineRows(meds.id).first(where: { $0.member }))
+        #expect(oneRow.name == "Wind down")
+        #expect(!ItemSheetModel.toggleKeepsMenuOpen(oneRow, members: 1))
+
+        planner.collect(meds.id, kind: .routine, containerId: windDown.id, member: false)
+        let left = try page(meds.id)
+        #expect(!left.chips.contains(where: { $0.kind == .routine }))
+        #expect(left.unset.contains(.routine))
+        #expect(ItemSheetModel.voiceOverTarget(after: .routine, shown: left.chips) == ChipFocus.seed)
+        #expect(left.item == meds)
     }
 
     // MARK: A row to VoiceOver

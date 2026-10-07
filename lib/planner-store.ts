@@ -779,14 +779,24 @@ function persistNewItem(
     .then(() =>
       Promise.all([
         // Re-read in both loops: the optimistic set() already appended, and
-        // these are the arrays the reconciler diffs against.
+        // these are the arrays the reconciler diffs against. `known` is the
+        // same list without the new item, so the one change this write makes
+        // is the add (lib/db.ts reconcileMembership).
         ...routineIds.map((rid) => {
           const routine = get().routines.find((r) => r.id === rid);
-          return routine ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }) : undefined;
+          return routine
+            ? dbUpdateRoutine(userId, rid, { itemIds: routine.itemIds }, undefined, {
+                itemIds: routine.itemIds.filter((x) => x !== row.id),
+              })
+            : undefined;
         }),
         ...seasonIds.map((pid) => {
           const season = get().seasons.find((p) => p.id === pid);
-          return season ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }) : undefined;
+          return season
+            ? dbUpdateSeason(userId, pid, { itemIds: season.itemIds }, undefined, {
+                itemIds: season.itemIds.filter((x) => x !== row.id),
+              })
+            : undefined;
         }),
         // All three role arrays, even though only one of them changed: the
         // reconcile diffs whichever roles it is given, so sending the whole
@@ -2261,7 +2271,15 @@ export const usePlannerStore = create<PlannerStore>()(
           set({ routines: get().routines.map((r) => (r.id === id ? { ...r, ...updates } : r)) });
         if (updates.itemIds) withReleaseGrace(run);
         else run();
-        if (userId) dbUpdateRoutine(userId, id, updates).catch(console.error);
+        // A membership write names the list this tab held before it (`routine`,
+        // read before the set()), so lib/db.ts reconcileMembership writes only
+        // this change and keeps another device's toggles.
+        if (userId) {
+          (updates.itemIds
+            ? dbUpdateRoutine(userId, id, updates, undefined, { itemIds: routine.itemIds })
+            : dbUpdateRoutine(userId, id, updates)
+          ).catch(console.error);
+        }
       },
       removeRoutine: (id) => {
         const userId = get().userId;
@@ -2381,7 +2399,14 @@ export const usePlannerStore = create<PlannerStore>()(
         } else {
           run();
         }
-        if (userId) dbUpdateSeason(userId, id, updates).catch(console.error);
+        // As updateRoutine: the item list this tab held, for reconcileMembership.
+        // `routineIds` take none (the iPhone never writes season_routines).
+        if (userId) {
+          (updates.itemIds
+            ? dbUpdateSeason(userId, id, updates, undefined, { itemIds: season.itemIds })
+            : dbUpdateSeason(userId, id, updates)
+          ).catch(console.error);
+        }
       },
       removeSeason: (id) => {
         const userId = get().userId;
@@ -3798,10 +3823,13 @@ export const usePlannerStore = create<PlannerStore>()(
         );
 
         if (userId) {
+          // The list before this change, so the write is this change alone
+          // (lib/db.ts reconcileMembership's `known`).
+          const known = { itemIds: container.itemIds };
           const write =
             kind === 'routine'
-              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds })
-              : dbUpdateSeason(userId, containerId, { itemIds: nextIds });
+              ? dbUpdateRoutine(userId, containerId, { itemIds: nextIds }, undefined, known)
+              : dbUpdateSeason(userId, containerId, { itemIds: nextIds }, undefined, known);
           write.catch(console.error);
         }
       },
@@ -5237,21 +5265,31 @@ function applyHistoryState(
   // reconciliation: ROUTINE_FIELDS includes `itemIds`, so a membership undo
   // arrives here as an {itemIds} patch and dbUpdateRoutine turns it into
   // inserts/deletes. A column-mapper-style callback would drop it silently and
-  // membership undo would never reach the DB.
+  // membership undo would never reach the DB. The list the store held before
+  // the undo (`cur`) goes with it as reconcileMembership's `known`, so the undo
+  // also leaves alone what another device changed. A routine the undo brings
+  // back from the Trash has no `cur`, and its full restored list is written.
   syncContainers(
     currentState.routines, restoredRoutines, ROUTINE_FIELDS,
     (id) => dbRestoreRoutine(userId, id),
-    (id, patch) => dbUpdateRoutine(userId, id, patch),
+    (id, patch, cur) =>
+      patch.itemIds && cur
+        ? dbUpdateRoutine(userId, id, patch, undefined, { itemIds: cur.itemIds })
+        : dbUpdateRoutine(userId, id, patch),
     (id) => dbDeleteRoutine(userId, id),
   );
   // Seasons carry TWO member arrays (itemIds and routineIds), both in
   // SEASON_FIELDS and both reconciled by dbUpdateSeason against their own
   // join table. Undoing "added Morning to Summer" therefore arrives here as a
-  // {routineIds} patch and deletes exactly that one join row.
+  // {routineIds} patch and deletes exactly that one join row. `known` as the
+  // routines', for the item list alone.
   syncContainers(
     currentState.seasons, restoredSeasons, SEASON_FIELDS,
     (id) => dbRestoreSeason(userId, id),
-    (id, patch) => dbUpdateSeason(userId, id, patch),
+    (id, patch, cur) =>
+      patch.itemIds && cur
+        ? dbUpdateSeason(userId, id, patch, undefined, { itemIds: cur.itemIds })
+        : dbUpdateSeason(userId, id, patch),
     (id) => dbDeleteSeason(userId, id),
   );
   // Goals carry THREE member arrays, all in GOAL_FIELDS, and dbUpdateGoal
@@ -5269,12 +5307,17 @@ function applyHistoryState(
   );
 }
 
+/**
+ * `update`'s third argument is the container as the store holds it now, before
+ * the undo or redo: undefined on the restore path, where the container is back
+ * from the Trash and its full restored shape is pushed.
+ */
 function syncContainers<T extends { id: string }>(
   current: T[],
   restored: T[],
   fields: readonly (keyof T & string)[],
   restore: (id: string) => Promise<void>,
-  update: (id: string, patch: Partial<T>) => Promise<void>,
+  update: (id: string, patch: Partial<T>, cur?: T) => Promise<void>,
   remove: (id: string) => Promise<void>,
 ) {
   const currentById = new Map(current.map((c) => [c.id, c]));
@@ -5295,7 +5338,7 @@ function syncContainers<T extends { id: string }>(
       if (field === 'id') continue;
       if (JSON.stringify(cur[field]) !== JSON.stringify(r[field])) patch[field] = r[field];
     }
-    if (Object.keys(patch).length > 0) update(r.id, patch).catch(console.error);
+    if (Object.keys(patch).length > 0) update(r.id, patch, cur).catch(console.error);
   });
   current.forEach((c) => {
     if (!restoredById.has(c.id)) remove(c.id).catch(console.error);

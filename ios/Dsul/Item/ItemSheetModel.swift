@@ -33,7 +33,12 @@ import Foundation
 // `projectKey`, `projectEdit`), keyed on the folded name as the web's bulk
 // Move to project matches it (lib/item-edit.ts `sameProjectName`), and the
 // container nouns, which are lib/container-registry.ts `CONTAINER_KINDS`'
-// (DsulCore EditCopy.swift `ContainerWords`), never spelled here.
+// (DsulCore EditCopy.swift `ContainerWords`), never spelled here. From 2f-b,
+// the routine and season chips' menus and Add property's Routine ▸ and
+// Season ▸ (`routineChoices`, `seasonChoices`, `liveMember`,
+// `toggleKeepsMenuOpen`, `removeFromWord`): one toggle per container, read
+// live as the item panel's toggle reads the store (item-dialog.tsx
+// `toggleRoutine`), and its Remove from rows (`RemoveRows`).
 
 /// One thing the sheet can do: the web's verbs it offers, plus Pause until
 /// (the `pause` verb with a resume day, which the bar shows as its own slot).
@@ -189,6 +194,17 @@ struct ProjectChoice: Identifiable, Hashable, Sendable {
     let name: String
     /// The folded name (`jsLowercased`), what the menu checks against.
     var key: String { jsLowercased(name) }
+}
+
+/// One row of a routine or season menu: the container, and whether the item
+/// is in it, as it was when the menu was built. A toggle reads the membership
+/// again when it is tapped (`ItemSheetModel.liveMember`), never `member`.
+struct MembershipChoice: Identifiable, Hashable, Sendable {
+    let kind: ContainerKind
+    /// The routine's or the season's id, which the write sends.
+    let id: String
+    let name: String
+    let member: Bool
 }
 
 /// The Date chip's choices (Q3 a, Q4 a): today and tomorrow, wall-clock days
@@ -955,7 +971,10 @@ enum ItemSheetModel {
     /// - the reminder and the time: their sheets;
     /// - the project: a menu (`projectChoices`) whose pick writes at once,
     ///   never on a subtask;
-    /// - the routines and the seasons: read-only, until their PR (2f-b).
+    /// - the routines and the seasons: menus of toggles (`routineChoices`,
+    ///   `seasonChoices`), each written at once, where the server takes
+    ///   `collect` and the item is collectible (`isCollectible`: never a
+    ///   subtask).
     static func chipEditor(_ kind: SheetChip.Kind, _ item: SampleItem, offered: [VerbID],
                            canEdit: (String) -> Bool) -> ChipEditor? {
         switch kind {
@@ -974,7 +993,7 @@ enum ItemSheetModel {
         case .project:
             return canEdit("project") ? .menu : nil
         case .routine, .season:
-            return nil
+            return canEdit("collect") ? .menu : nil
         }
     }
 
@@ -991,12 +1010,12 @@ enum ItemSheetModel {
     /// project first, as the web seed orders its bands (item-dialog.tsx): each
     /// only while the user has one of that kind (`containers`, from
     /// `ownedContainers`), so an item with no project is offered Project while
-    /// the user has a project (the web seed's rule, lib/item-bands.ts, without
-    /// the Organize console the phone doesn't have). A stored "none" draws no
-    /// chip, so it is offered Project too. Routines and seasons are offered
-    /// nothing until their chips edit (2f-b). `containers` defaults to none,
-    /// so a caller that passes none is offered no container. Never drawn as
-    /// dimmed placeholder chips (Q2 a).
+    /// the user has a project; one in no routine, Routine while they have a
+    /// routine; likewise Season (the web seed's rule, lib/item-bands.ts,
+    /// without the Organize console the phone doesn't have). A stored "none"
+    /// draws no chip, so it is offered Project too. `containers` defaults to
+    /// none, so a caller that passes none is offered no container. Never
+    /// drawn as dimmed placeholder chips (Q2 a).
     static func unsetProperties(_ item: SampleItem, shown: [SheetChip], offered: [VerbID],
                                 canEdit: (String) -> Bool,
                                 containers: Set<SheetChip.Kind> = []) -> [SheetChip.Kind] {
@@ -1049,9 +1068,11 @@ enum ItemSheetModel {
     }
 
     /// An editable chip's hint to VoiceOver, after its words and "button":
-    /// what a tap changes. The project's noun is the registry's
-    /// (`ContainerWords`), lower-cased as JavaScript does. Nil for a chip
-    /// that doesn't edit.
+    /// what a tap changes. The containers' nouns are the registry's
+    /// (`ContainerWords`), lower-cased as JavaScript does, plural for the
+    /// routines and the seasons, which an item can be in several of. From
+    /// 2f-b every kind edits, so every kind has one; a chip that doesn't edit
+    /// is drawn read-only (`ItemDetail.readOnlyChip`) and asks for none.
     static func chipHint(_ kind: SheetChip.Kind) -> String? {
         switch kind {
         case .priority: return "Changes the priority"
@@ -1061,7 +1082,8 @@ enum ItemSheetModel {
         case .repeats: return "Changes how it repeats"
         case .reminder: return "Changes the reminder"
         case .project: return "Changes the \(jsLowercased(ContainerWords.project))"
-        case .routine, .season: return nil
+        case .routine: return "Changes the \(jsLowercased(ContainerWords.routines))"
+        case .season: return "Changes the \(jsLowercased(ContainerWords.seasons))"
         }
     }
 
@@ -1080,10 +1102,10 @@ enum ItemSheetModel {
 
     /// A property's entry in the seed: the web seed's label, with an ellipsis
     /// for one that opens a sheet rather than a submenu ("Remind…", "Time…").
-    /// 2f's seed holds the first six and the project (`unsetProperties`); the
-    /// routine and the season join it with their PR (2f-b). The containers'
-    /// entries are the registry's nouns (`ContainerWords`), the web seed's
-    /// band labels. Repeat and Project are submenus, so with no ellipsis.
+    /// 2f's seed holds them all (`unsetProperties`). The containers' entries
+    /// are the registry's nouns (`ContainerWords`), the web seed's band
+    /// labels. Repeat, Project, Routine and Season are submenus, so with no
+    /// ellipsis.
     static func seedEntry(_ kind: SheetChip.Kind) -> String {
         switch kind {
         case .priority: return "Priority"
@@ -1251,6 +1273,70 @@ enum ItemSheetModel {
     /// The project menu's first row: the registry's
     /// (`CONTAINER_KINDS.project.unsetLabel`).
     static let noProject = ContainerWords.noProject
+
+    /// A routine chip's menu rows, and Add property's Routine ▸: every routine
+    /// in the planner's order, each `member` while its `itemIds` hold `item`,
+    /// as the item panel's routine chip lists them (item-dialog.tsx, its
+    /// `routines.map` checked by `memberIds`).
+    static func routineChoices(_ routines: [Routine], item: UUID) -> [MembershipChoice] {
+        return routines.map { routine in
+            MembershipChoice(kind: .routine, id: routine.id, name: routine.name,
+                             member: routine.itemIds.contains(item))
+        }
+    }
+
+    /// A season chip's menu rows, and Add property's Season ▸, as
+    /// `routineChoices`: every season, `member` while it holds `item`
+    /// directly (DsulCore `seasonsForItem`, which the chip reads).
+    static func seasonChoices(_ seasons: [Season], item: UUID) -> [MembershipChoice] {
+        return seasons.map { season in
+            MembershipChoice(kind: .season, id: season.id, name: season.name,
+                             member: season.itemIds.contains(item))
+        }
+    }
+
+    /// A Remove from row's words: "Remove from Morning routine", the web's
+    /// (item-dialog.tsx `RemoveRows`).
+    static func removeFromWord(_ name: String) -> String {
+        return "Remove from \(name)"
+    }
+
+    /// The container a chip's kind joins by membership: a routine or a
+    /// season. Nil for every other chip.
+    static func containerKind(_ kind: SheetChip.Kind) -> ContainerKind? {
+        switch kind {
+        case .routine: return .routine
+        case .season: return .season
+        case .priority, .date, .time, .timesPerDay, .repeats, .reminder, .project: return nil
+        }
+    }
+
+    /// Whether `item` is in `choice`'s routine or season now, read from the
+    /// lists given (the planner's, at tap time); nil when the container is
+    /// gone. A toggle sends the opposite of this, never of `choice.member`,
+    /// which is what the menu showed when it was built: iOS may not redraw an
+    /// open menu, and a second tap on the same row would send that stale
+    /// value again, which the planner would drop as unmoved. The web's toggle
+    /// reads live store state the same way (item-dialog.tsx `toggleRoutine`).
+    static func liveMember(_ choice: MembershipChoice, routines: [Routine], seasons: [Season],
+                           item: UUID) -> Bool? {
+        switch choice.kind {
+        case .routine:
+            return routines.first(where: { $0.id == choice.id }).map { $0.itemIds.contains(item) }
+        case .season:
+            return seasons.first(where: { $0.id == choice.id }).map { $0.itemIds.contains(item) }
+        }
+    }
+
+    /// Does a toggle keep its menu open (`.menuActionDismissBehavior`)?
+    /// Every one does, so several can change in one visit, but the toggle
+    /// that would empty the chip: the item's last membership (`members`, the
+    /// rows checked when the menu was built). That one closes the menu
+    /// first, as Remove from does, so the menu is never left open over a chip
+    /// that is no longer drawn.
+    static func toggleKeepsMenuOpen(_ choice: MembershipChoice, members: Int) -> Bool {
+        return !(choice.member && members == 1)
+    }
 
     // MARK: Streak
 

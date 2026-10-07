@@ -4,6 +4,7 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { PrioritySchema, RepeatFrequencySchema, TimeBucketSchema } from '@dsul/types';
 import { authenticateAppRequest, dbErrorResponse } from './app-auth';
 import {
+  addContainerMember,
   createItem,
   deleteItem,
   fetchItems,
@@ -14,12 +15,13 @@ import {
   fetchUserExtensions,
   isMissingColumnError,
   loadPlannerData,
+  removeContainerMember,
   setItemCompletion,
   setItemSkip,
   updateItem,
   type PlannerData,
 } from './db';
-import { getItemTypeConfig, type ItemTypeConfig } from './item-registry';
+import { getItemTypeConfig, isCollectible, type ItemTypeConfig } from './item-registry';
 import {
   editPatch,
   editRefusal,
@@ -35,7 +37,7 @@ import {
 } from './item-edit';
 import { demoteInvalidGoalRoles } from './goal-roles';
 import { EXT_STREAKS, resolveEnabled } from './extension-registry';
-import { isPausableRow, resolveItemPause } from './item-pause';
+import { capabilityShape, isPausableRow, resolveItemPause } from './item-pause';
 import { DEFAULT_APP_ICON, isAppIcon, type AppIcon } from './app-icons';
 import { isRecurring } from './recurrence';
 import { canReschedule } from './row-moves';
@@ -58,9 +60,9 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * another day; pause or resume one; retitle it, rewrite its notes or delete
  * it; add a subtask under it, reset its streak; set its priority, a habit's
  * times a day, its reminder, its part of day, time and length, or how it
- * repeats; or file it under a project) is one verb here that does what the
- * web's own store action does for the same gesture, through the same lib/db.ts
- * calls.
+ * repeats; file it under a project, or add it to a routine or a season, or
+ * take it out) is one verb here that does what the web's own store action does
+ * for the same gesture, through the same lib/db.ts calls.
  * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
  * phone reads a 400-day window, and an array written back from a window
  * deletes what the window did not show. Nor is there a generic
@@ -235,6 +237,18 @@ const ItemWriteActions = z.discriminatedUnion('action', [
         .regex(UUID, 'expected a uuid')
         .transform((id) => id.toLowerCase())
         .nullable(),
+    })
+    .strict(),
+  // Routines and seasons (2f): join or leave one, a single membership row, never a list.
+  z
+    .object({
+      action: z.literal('collect'),
+      kind: z.enum(['routine', 'season']),
+      containerId: z
+        .string()
+        .regex(UUID, 'expected a uuid')
+        .transform((id) => id.toLowerCase()),
+      member: z.boolean(),
     })
     .strict(),
 ]);
@@ -717,6 +731,8 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *                then any goal role it left untrue demoted (lib/goal-roles.ts)
  *   project      its project, by id, the name read here (the bulk Move to project's rule,
  *                projectRefilePatch), leaving a project block it no longer belongs to
+ *   collect      join or leave one routine or season: one membership row
+ *                (addContainerMember / removeContainerMember)
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -793,6 +809,8 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
         return await addSubtask(ctx, body);
       case 'resetStreak':
         return await resetStreak(ctx);
+      case 'collect':
+        return await collect(ctx, body);
     }
   } catch (err) {
     return dbErrorResponse(err, 'app/items/:id');
@@ -1182,6 +1200,46 @@ async function resetStreak(ctx: WriteContext): Promise<Response> {
   const patch = resetStreakPatch(editShapeFromRow(row));
   if (Object.keys(patch).length === 0) return ok();
   await updateItem(id, type, patch, undefined, client);
+  return ok();
+}
+
+/**
+ * `collect`: join or leave one routine or season for one item, the end list
+ * the web's routine and season chips (item-dialog.tsx toggleRoutine /
+ * toggleSeason, through updateRoutine / updateSeason) and the bulk bar's Add
+ * to / Remove from (the store's setItemsCollected) both write. One membership
+ * row added or removed (lib/db.ts addContainerMember / removeContainerMember),
+ * never the container's whole list, so a write from another device in between
+ * is kept. An add puts the item last in a routine's order. Already so is 200
+ * with nothing written. No webhook and no item_events row, as the browser's
+ * membership writes have none.
+ *
+ * A routine or season in the Trash is `container_gone`, as one that is missing
+ * or another user's: the web's chip lists only live ones, and a trashed one's
+ * members come back with it on a restore (its join rows survive a soft
+ * delete), so writing into it would change what a restore brings back with
+ * nothing showing it.
+ */
+async function collect(ctx: WriteContext, body: IntentBody<'collect'>): Promise<Response> {
+  const { client, userId, id, row } = ctx;
+  if (!isCollectible(capabilityShape(row))) return refused('not_collectible', 400);
+  const { data, error } = await client
+    .from(body.kind === 'routine' ? 'routines' : 'seasons')
+    .select('id')
+    .eq('id', body.containerId)
+    .eq('user_id', userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return refused('container_gone', 409);
+  try {
+    if (body.member) await addContainerMember(userId, body.kind, body.containerId, id, client);
+    else await removeContainerMember(userId, body.kind, body.containerId, id, client);
+  } catch (err) {
+    // The join rows reference the container: one purged between the read and this write.
+    if (errorCode(err) === '23503') return refused('container_gone', 409);
+    throw err;
+  }
   return ok();
 }
 

@@ -189,7 +189,7 @@ describe('the membership a season gets', () => {
     await vi.waitFor(() => expect(db.updateSeason).toHaveBeenCalled());
     expect(db.updateSeason).toHaveBeenCalledWith(USER, 'p1', {
       itemIds: [created('Swim').id],
-    });
+    }, undefined, { itemIds: [] });
     const createdAt = (db.createItem as unknown as { mock: { invocationCallOrder: number[] } }).mock
       .invocationCallOrder[0];
     const joinedAt = (db.updateSeason as unknown as { mock: { invocationCallOrder: number[] } })

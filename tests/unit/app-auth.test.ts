@@ -194,6 +194,7 @@ describe('dbErrorResponse', () => {
 
 describe('every /api/app route is behind it', () => {
   const ITEM = '11111111-1111-4111-8111-111111111111';
+  const ROUTINE = '33333333-3333-4333-8333-333333333333';
   /** One intent on POST /api/app/items/:id: each is listed, so a new one is too. */
   const itemWrite =
     (body: Record<string, unknown>) =>
@@ -238,6 +239,10 @@ describe('every /api/app route is behind it', () => {
     ['POST /api/app/items/:id time', itemWrite({ action: 'time', duration: 45 })],
     ['POST /api/app/items/:id repeat', itemWrite({ action: 'repeat', frequency: 'daily' })],
     ['POST /api/app/items/:id project', itemWrite({ action: 'project', projectId: null })],
+    [
+      'POST /api/app/items/:id collect',
+      itemWrite({ action: 'collect', kind: 'routine', containerId: ROUTINE, member: true }),
+    ],
   ];
 
   it('lists every intent the item route takes', () => {

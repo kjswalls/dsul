@@ -288,7 +288,7 @@ describe('routines survive undo (Phase 2 review blocker regression)', () => {
     store().undo();
     expect(store().routines[0].itemIds).toEqual(['habit-1']);
     expect(db.updateRoutine).toHaveBeenCalledWith(
-      USER, 'r1', expect.objectContaining({ itemIds: ['habit-1'] }),
+      USER, 'r1', expect.objectContaining({ itemIds: ['habit-1'] }), undefined, { itemIds: ['habit-1', 'task-1'] },
     );
   });
 });

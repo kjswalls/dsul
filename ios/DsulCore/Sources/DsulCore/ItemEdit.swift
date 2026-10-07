@@ -33,7 +33,13 @@ import Foundation
 //   to project's own rule (lib/planner-store.ts `setItemsProject`): the name
 //   and the id, nothing when the item is already there by folded name and id,
 //   and a task parked in its old project's block released from it
-//   (`projectBlockRelease`), its own time and day back;
+//   (`projectBlockRelease`), its own time and day back. From 2f-b, the
+//   routine and season chips' gate (`collect`: lib/item-registry.ts
+//   `isCollectible`, which lib/app-api.ts `collect` asks first, else
+//   `not_collectible`). A membership is no field of the item, so `collect`
+//   has no `ItemEdit` case and no step here: its body is ItemWriteBody.swift's
+//   `.collect`, and the container's list moves by Membership.swift's
+//   `settingMembership`;
 // - lib/planner-store.ts `deleteTask` / `deleteHabit` (`deleting`): the item
 //   and, for anything but a habit, its live subtasks, which is also the child
 //   pass lib/app-api.ts `del` makes on the server, in the same order;
@@ -53,10 +59,10 @@ import Foundation
 // Text is measured in UTF-16 units, JavaScript's `length`, which is what every
 // cap on the server counts. What the phone SENDS is the intent (POST
 // /api/app/items/:id `title`, `notes`, `delete`, `addSubtask`, `resetStreak`,
-// `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, `project`, built by
-// ItemWriteBody.swift), never these items. `Place` and `reinserting` are the
-// phone's alone: they put a deleted item back where it was when its delete
-// fails.
+// `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, `project`,
+// `collect`, built by ItemWriteBody.swift), never these items. `Place` and
+// `reinserting` are the phone's alone: they put a deleted item back where it
+// was when its delete fails.
 
 /// One typed edit, as the phone sends it (lib/item-edit.ts `ItemEdit`). Each
 /// is its own server action, so a server that doesn't list one in `writes`
@@ -266,6 +272,10 @@ public func cleanNotes(_ raw: String, limit: Int) -> String? {
 /// - `project`: not a subtask (`not_for_subtask`), and a type with the project
 ///   axis (`caps.containerKind` "projects", else `no_project`), so every
 ///   shipped type's.
+/// - `collect` (2f-b): not a subtask, and a collectible type
+///   (lib/item-registry.ts `isCollectible`, else `not_collectible`), so every
+///   shipped type's. The membership write, which has no `ItemEdit` case: it
+///   changes no field of the item.
 /// - any other name: false. Delete, Add a subtask and Reset streak have gates
 ///   of their own, and an action the phone doesn't know is never sent.
 /// The growth caps are the field's to keep (`growthLimit`), not this gate's.
@@ -287,6 +297,8 @@ public func editAllowed(action: String, on item: Item, caps: ItemCaps) -> Bool {
         return !isSubtask(item) && caps.allowedFrequencies.count > 1
     case "project":
         return !isSubtask(item) && caps.containerKind == "projects"
+    case "collect":
+        return !isSubtask(item) && caps.collectible
     default:
         return false
     }

@@ -19,22 +19,34 @@ import Foundation
 ///   under steady ticking would leave a failed write unchecked.
 /// - **A failed write** shows a banner and refetches once the queue drains,
 ///   and the server's answer replaces the guess. If that refetch fails too,
-///   each subject a failed write touched (`Subject`: an item) is rebased on
-///   its own. It goes back to what it was before its earliest failed write
-///   (`Before`: the item and its place in the list, or absent for a capture
-///   or a new subtask), every write that landed after that one and names it
-///   is played again on top, in order, through the planner's own steps
-///   (`replaying`), and the result is put back whole: the item replaced,
-///   removed, or reinserted where it stood. So it ends where the server holds
-///   it, whatever fields each write set: a tick that landed is never undone
-///   by a carry that failed, a delete that failed brings the item back with
-///   its subtasks, and an edit that failed under a delete that landed stays
-///   gone. It is exact because a fetch is applied only with no write pending
-///   or queued, so between a write's snapshot and its revert only the phone's
-///   own writes changed the subject, and each of the planner's steps matches
-///   the server's write (the fixtures check it). A subject with a write still
+///   each subject a failed write touched (`Subject`: an item, or from 2f-b
+///   one item's membership of one routine or season) is rebased on its own.
+///   It goes back to what it was before its earliest failed write (`Before`:
+///   the item and its place in the list, or absent for a capture or a new
+///   subtask; for a membership, its place in the container's list or none),
+///   every write that landed after that one and names it is played again on
+///   top, in order, through the planner's own steps (`replaying`), and the
+///   result is put back whole: the item replaced, removed, or reinserted
+///   where it stood. So it ends where the server holds it, whatever fields
+///   each write set: a tick that landed is never undone by a carry that
+///   failed, a delete that failed brings the item back with its subtasks,
+///   and an edit that failed under a delete that landed stays gone. It is
+///   exact because a fetch is applied only with no write pending or queued,
+///   so between a write's snapshot and its revert only the phone's own
+///   writes changed the subject, and each of the planner's steps matches the
+///   server's write (the fixtures check it). A subject with a write still
 ///   queued that names or proves it keeps its failures, and the landed writes
 ///   that name it, until that write is in, and the drain refetches.
+/// - **A membership is its own subject** (2f-b). A routine or season toggle
+///   changes no field of its item: it adds or removes one row of the
+///   container's members (the route's `collect`). Its revert plays the
+///   toggles of that membership that landed since its earliest failure
+///   (`rebaseMember`) and puts the answer back through the planner
+///   (`restoreMembership`): out, or in at the place it held before, since
+///   the server keeps a member's place, and last when it wasn't in before.
+///   Each place was measured against the list the toggles before it had
+///   left, so several are put back newest failure first, as deletes are. A
+///   landed toggle proves its item, as any landed write on it does.
 /// - **A landed write doesn't moot a failed one.** Two writes need not set the
 ///   same fields (a carry keeps the time a failed drop set, a skip leaves the
 ///   tally a failed tick set, a resume of an item the server never paused
@@ -70,7 +82,7 @@ final class PlannerSync {
     /// (tick, braindump row to an hour, Skip/Unskip today, Tomorrow and
     /// Reschedule, Pause/Pause until/Resume, the item sheet's title, notes,
     /// priority, times a day, reminder, time, repeat and project, Delete, Add
-    /// a subtask and Reset streak).
+    /// a subtask, Reset streak, and its routine and season toggles).
     enum Write: Sendable, Hashable {
         case complete(id: UUID, date: String, done: Bool, count: Int?)
         case schedule(id: UUID, date: String, startTime: String)
@@ -96,6 +108,9 @@ final class PlannerSync {
         case addSubtask(id: UUID, parent: UUID, title: String)
         /// Reset streak: the counter to 0, the completion history kept.
         case resetStreak(id: UUID)
+        /// (2f-b) Join (`member`) or leave one routine or season: one
+        /// membership row. Changes no item field.
+        case collect(id: UUID, kind: ContainerKind, containerId: String, member: Bool)
 
         /// The item the write is about: for a new subtask the subtask, not
         /// the parent whose route it goes to.
@@ -103,19 +118,22 @@ final class PlannerSync {
             switch self {
             case .complete(let id, _, _, _), .schedule(let id, _, _), .capture(let id, _), .skip(let id, _, _),
                  .move(let id, _), .pause(let id, _, _, _), .edit(let id, _), .delete(let id, _, _),
-                 .addSubtask(let id, _, _), .resetStreak(let id):
+                 .addSubtask(let id, _, _), .resetStreak(let id), .collect(let id, _, _, _):
                 return id
             }
         }
 
         /// What this write changes: its item (a new subtask's is the
-        /// subtask), and for a delete each subtask it took out with it.
+        /// subtask), for a delete each subtask it took out with it, and for a
+        /// toggle the one membership, never the item.
         var subjects: Set<Subject> {
             switch self {
             case .delete(let id, let removed, _):
                 var named = Set(removed.map { Subject.item($0.item.id) })
                 named.insert(.item(id))
                 return named
+            case .collect(let id, let kind, let containerId, _):
+                return [.member(kind, containerId: containerId, item: id)]
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .addSubtask, .resetStreak:
                 return [.item(itemId)]
             }
@@ -124,11 +142,14 @@ final class PlannerSync {
         /// The rows a 200 to this write proves exist without changing them,
         /// as a later write proves a capture whose answer was lost: a new
         /// subtask proves its parent, since the route answers 404 for a parent
-        /// that isn't there. No other write proves anything it doesn't name.
+        /// that isn't there, and a toggle its item, for the same reason. No
+        /// other write proves anything it doesn't name.
         var proves: Set<Subject> {
             switch self {
             case .addSubtask(_, let parent, _):
                 return [.item(parent)]
+            case .collect(let id, _, _, _):
+                return [.item(id)]
             case .complete, .schedule, .capture, .skip, .move, .pause, .edit, .delete, .resetStreak:
                 return []
             }
@@ -136,13 +157,19 @@ final class PlannerSync {
     }
 
     /// One thing a write changes and a revert puts back on its own: an item,
-    /// its fields and whether it exists at all.
+    /// its fields and whether it exists at all; or whether one item is in one
+    /// routine or season.
     enum Subject: Hashable, Sendable {
         case item(UUID)
+        /// (2f-b) Whether `item` is in one routine or season: the one row a
+        /// `collect` writes.
+        case member(ContainerKind, containerId: String, item: UUID)
 
+        /// The item it is about: its own id, or the member's.
         var itemId: UUID {
             switch self {
             case .item(let id): id
+            case .member(_, _, let item): item
             }
         }
     }
@@ -153,12 +180,16 @@ final class PlannerSync {
         case item(Item, Place)
         /// It didn't yet: a capture or a new subtask, which made `created`.
         case absent(created: Item)
+        /// (2f-b) Where the item stood in the container's `itemIds` before
+        /// the toggle; nil when it wasn't in it.
+        case member(index: Int?)
 
-        /// The item it holds, made yet or not.
-        var snapshot: Item {
+        /// The item it holds, made yet or not; nil for a membership.
+        var snapshot: Item? {
             switch self {
             case .item(let item, _): item
             case .absent(let created): created
+            case .member: nil
             }
         }
     }
@@ -198,6 +229,16 @@ final class PlannerSync {
         /// place was measured against.
         let placeSeq: Int?
         /// Its earliest failure.
+        let seq: Int
+    }
+
+    /// (2f-b) One membership's rebase: whether the item goes back in, and at
+    /// what place in the container's list, nil for last.
+    private struct MemberTarget {
+        let subject: Subject
+        let member: Bool
+        let index: Int?
+        /// Its earliest failure, which recorded `index`.
         let seq: Int
     }
 
@@ -381,6 +422,8 @@ final class PlannerSync {
             try await api.addSubtask(parent: parent, id: id, title: title)
         case .resetStreak(let id):
             try await api.resetStreak(id: id)
+        case .collect(let id, let kind, let containerId, let member):
+            try await api.collect(id: id, kind: kind, containerId: containerId, member: member)
         }
     }
 
@@ -538,7 +581,8 @@ final class PlannerSync {
     /// cascade takes it. A later failure on the subject adds nothing, since
     /// the server never took it. A capture or a new subtask whose own answer
     /// was lost starts from nothing unless a later write that names or proves
-    /// it landed.
+    /// it landed. A membership is rebased in its own pass (`rebaseMember`) and
+    /// put back after the items, newest failure first.
     ///
     /// A subject with a write still queued that names or proves it, or that a
     /// queued delete may take with its parent, waits: its failures are kept,
@@ -562,11 +606,33 @@ final class PlannerSync {
         var changed = false
         if let planner {
             var targets: [Target] = []
+            var memberships: [MemberTarget] = []
             for (subject, first) in firsts where !waiting.contains(subject) {
                 guard let start = first.before[subject] else { continue }
-                targets.append(rebase(subject, from: start, after: first.seq, ordered: ordered, planner: planner))
+                switch subject {
+                case .item:
+                    targets.append(rebase(subject, from: start, after: first.seq, ordered: ordered,
+                                          planner: planner))
+                case .member:
+                    let (member, index) = rebaseMember(subject, from: start, after: first.seq)
+                    memberships.append(MemberTarget(subject: subject, member: member, index: index,
+                                                    seq: first.seq))
+                }
             }
+            let routines = planner.routines
+            let seasons = planner.seasons
             changed = put(targets, on: planner)
+            // Each index was measured against the list the toggles before it
+            // had left (`firsts` is in hash order), so the newest failure goes
+            // back first, each onto the list it was measured against, as
+            // `put` undoes deletes: Morning [a, b, c] with a taken out (at 0)
+            // and then b (at 0 of [b, c]) is [b, c] and then [a, b, c], where
+            // oldest first would give [b, a, c].
+            for target in memberships.sorted(by: { $0.seq > $1.seq }) {
+                guard case .member(let kind, let containerId, let item) = target.subject else { continue }
+                planner.restoreMembership(kind, containerId, item: item, member: target.member, at: target.index)
+            }
+            changed = changed || planner.routines != routines || planner.seasons != seasons
         }
         // Reverted subjects are done with; a failure goes with its last one,
         // and a landed write once nothing waiting needs it replayed.
@@ -607,6 +673,9 @@ final class PlannerSync {
             // (or the new subtask) landed after all.
             let proven = later.contains { $0.subjects.contains(subject) || $0.proves.contains(subject) }
             state = proven ? created : nil
+        case .member:
+            // Never reached: a membership goes to `rebaseMember`.
+            break
         }
         let zone = planner.timeZoneID
         let today = planner.today.description
@@ -622,6 +691,25 @@ final class PlannerSync {
         }
         let recorded = placeOf(subject, in: ordered)
         return Target(subject: subject, item: state, place: recorded?.place, placeSeq: recorded?.seq, seq: seq)
+    }
+
+    /// (2f-b) A membership from before its earliest failed toggle, with every
+    /// toggle of it that landed since played in order: out on a remove; in on
+    /// an add, at its old place when it was in before (the server keeps a
+    /// member's place) and else last. `revertFailures` puts the answers back
+    /// through the planner, newest failure first.
+    private func rebaseMember(_ subject: Subject, from start: Before, after seq: Int) -> (member: Bool, index: Int?) {
+        var index: Int? = nil
+        if case .member(let at) = start { index = at }
+        var member = index != nil
+        for write in landed where write.seq > seq && write.subjects.contains(subject) {
+            guard case .collect(_, _, _, let landedMember) = write.write else { continue }
+            member = landedMember
+            // A remove that landed took its place with it: an add after it
+            // goes last, as the server's does.
+            if !landedMember { index = nil }
+        }
+        return (member, index)
     }
 
     /// Where `subject` goes back if it is gone: the place the latest failed
@@ -696,6 +784,10 @@ final class PlannerSync {
         case .capture, .addSubtask:
             // It made the item, so there is nothing to play: a rebase already
             // starts from what it made (`created`).
+            return item
+        case .collect:
+            // Never asked: a toggle names a membership, not its item, and it
+            // changes no field of the item if it were.
             return item
         }
     }

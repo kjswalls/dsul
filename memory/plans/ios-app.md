@@ -103,7 +103,9 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   ports `projectRefilePatch`), `projectId` and the stash to `Item.swift`,
   `color` and `emoji` to `Project`, `containerKind` and `containerRequired`
   to `Registry.swift`, and `ContainerWords` to `EditCopy.swift`, pinned to
-  `CONTAINER_KINDS` through the fixture.
+  `CONTAINER_KINDS` through the fixture. 2f-b adds `.collect` to
+  `ItemWriteBody.swift` and `settingMembership` (← the store's
+  `setItemsCollected`) in `Membership.swift`.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -270,10 +272,10 @@ and "+ Add property" (priority, times a day, the reminder); 2d date and time;
 An older server's `writes` hides any editor it doesn't take, so the deploy
 order doesn't matter: against one without `addSubtask` there is no Add a
 subtask row, without `resetStreak` the streak popover has no Reset, and
-without `priority`, `timesPerDay`, `reminder`, `time`, `repeat` and `project`
-those chips stay read-only; the date chip still edits, through `move`, which
-every server that sends `writes` takes, so Add property then holds Date
-alone, for an undated task.
+without `priority`, `timesPerDay`, `reminder`, `time`, `repeat`, `project`
+and `collect` those chips stay read-only; the date chip still edits, through
+`move`, which every server that sends `writes` takes, so Add property then
+holds Date alone, for an undated task.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
@@ -449,6 +451,20 @@ words are fixed on every surface, below.
   name and id. A habit's NULL project reads as `''`, so its clear always
   writes (`group` cleared with it by `habitUpdatesToRow`); `group` itself is
   never read.
+  2f-b's `collect` (`kind`, `routine` or `season`; `containerId`, a uuid
+  lowercased; `member`, a boolean; `.strict()`, so a list in the body is 400
+  `invalid`) reads nothing on top of the shared row, which has the type and
+  the parent `isCollectible` asks. It is refused under a subtask (400
+  `not_collectible`), then reads the routine or season under RLS (`id`, the
+  user's, not in the Trash) and answers 409 `container_gone` for no row, and
+  for a foreign-key failure on the write (one purged in between). The write
+  is one join-table row (lib/db.ts `addContainerMember` /
+  `removeContainerMember`), never the container's list: an add is an insert
+  at the routine's last place plus one (0 for the first; no place where a
+  member has none, so it sorts among those by id), and a member already is
+  the key's 23505, answered 200 with its place kept; a remove deletes that
+  row, and nothing to remove is 200 too. No item row, no event, no webhook,
+  as the browser's membership writes have none.
 - **Add a subtask** (2b). The Subtasks section shows whenever the item has
   subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
   itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
@@ -528,8 +544,8 @@ words are fixed on every surface, below.
   sheet. From 2d the date and time chips edit too (below, with the hints
   "Changes the date" and "Changes the time"), and from 2e the repeat chip
   (below, with the hint "Changes how it repeats"), and from 2f the project
-  chip ("Changes the project"); the routine and season chips stay read-only
-  until 2f-b. An editable chip keeps
+  chip ("Changes the project"), and from 2f-b the routine and season chips
+  ("Changes the routines", "Changes the seasons"). An editable chip keeps
   part 1's look and gains a trailing chevron; its words, symbol and chevron
   draw in the label colour (`ChipView(editable: true)`), never lime, and it
   scales when pressed (`PressScaleStyle`) rather than fading. It is hit over
@@ -655,6 +671,18 @@ words are fixed on every surface, below.
   `previousStartDate`) now decodes, so the phone's own scheduling steps clear
   it as `scheduleTaskPatch` does: `editingTime` on a parked task, and a
   drop's `placing`.
+- **Routines and seasons** (2f-b). Each chip is a menu of toggles, one per
+  routine (season), which stays open as you toggle; then one Remove from row
+  per membership, which writes and closes. Add property's Routine ▸ and
+  Season ▸ list them, with at least one; one pick adds the item and closes.
+  Gated as `editAllowed(action: "collect")` (`isCollectible`: not a
+  subtask). Each toggle is one `collect` write; an add goes last in a
+  routine's order. A toggle reads the membership live when tapped, and the
+  one that would empty the chip closes the menu first
+  (`.menuActionDismissBehavior(.disabled)` on every toggle but that one,
+  which takes `.enabled`; README check 13 confirms both). The sample has a
+  season, Autumn (Journal), and an empty routine, Wind down. No New routine,
+  New season or Organize on the phone.
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -729,13 +757,24 @@ words are fixed on every surface, below.
   and id, the release, the habit's always-written clear) with `projects` and
   `containers`, the container words. caps.json's types gain `containerKind`
   and `containerRequired`.
+  2f-b adds the collect cases (driven through the store's
+  `setItemsCollected`, the bulk bar's Add to / Remove from, which writes the
+  same end list as the item panel's chips, item-dialog.tsx `toggleRoutine` /
+  `toggleSeason` through `updateRoutine` / `updateSeason`), whose one key
+  of their own, `member`, holds the container's `itemIds` before and after:
+  an add appended, a remove filtered out, and each no-op, which
+  `settingMembership` must reproduce. The refusals are `not_collectible` (a
+  subtask) and two bodies the schema refuses (a container that isn't a uuid,
+  and a goal).
 - **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-13:
   the title, the notes, the keyboard, Delete, adding subtasks, Reset streak
   and Streaks off, Add property, the chips and the Remind sheet, from 2d the
   Date menu and the Time sheet, from 2e the Repeat menu and sheet (checks 7
   and 8), from 2f the project menu and Add property's Project ▸ (checks 7
-  and 8, and the 2f lines of 9-13), offline, VoiceOver, the largest text
-  size, the lime, and the platform behaviours they rest on).
+  and 8, and the 2f lines of 9-13), from 2f-b the routine and season menus
+  and Add property's Routine ▸ and Season ▸ (likewise, with a stale web tab
+  keeping a phone toggle), offline, VoiceOver, the largest text size, the
+  lime, and the platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -862,7 +901,11 @@ needs `{{ .Token }}` in two hosted email templates and waits on Kirby.
   refetches once the queue drains, and the server's answer replaces every
   guess. A payload for another user is never shown.
 - **A revert, if that refetch fails too, is per subject** (an item; from 2f
-  also a routine's or a season's membership). Part 1 rebased the failed
+  also a routine's or a season's membership: a failed toggle puts the
+  membership back, at its old place in a routine's order, unless a later
+  toggle of the same membership landed; several in one revert go back newest
+  first, as deletes do, since each place was measured against the list the
+  earlier ones left). Part 1 rebased the failed
   write's slot, which part 2's writes cross: a repeat edit changes how later
   ticks read, a reset and a tick both move the streak, and a delete or a new
   subtask changes whether an item exists at all. So each subject with a
@@ -1015,6 +1058,18 @@ functions:
   id, a link repair when only the id is stale, and a parked task released from
   the block it leaves. A project in the Trash or gone is `project_gone`. Never
   `group`.
+- **Membership is one row at a time** (`collect`): the route adds or removes
+  the one row (lib/db.ts `addContainerMember`, `removeContainerMember`) and
+  never takes a list, and the web's own whole-list writes carry the list they
+  last knew (`reconcileMembership`'s `known`), so a web tab older than a
+  phone toggle no longer undoes it. One gap is left and stated: a phone
+  removal that lands between a web write's read and its upsert (one round
+  trip) is put back by that upsert. A routine or season in the Trash is
+  `container_gone`. An add goes last in a routine's order, or, where the
+  routine has members with no place, among them by id. The cost of `known`,
+  taken (open question 2 of the 2f brief): a web write that failed is no
+  longer healed by that tab's next write to the same container, so the tab
+  shows the member the database lacks until it reloads.
 
 ## Port order
 recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
@@ -1057,10 +1112,10 @@ animations.
 
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
-from the bar to the braindump sheet, the rest of item detail part 2
-(routines and seasons: 2f-b), creating a project from the phone (the web's
-New Project), undo or restore after a delete (the
-web's Trash restores it), Change type, Duplicate and Copy link, the rest of
+from the bar to the braindump sheet, creating a project from the phone (the
+web's New Project), creating a routine or season from the phone, the
+Organize console, undo or restore after a delete (the web's Trash restores it),
+Change type, Duplicate and Copy link, the rest of
 the sheet (a routine's or a season's hold, the goal chip once goals are in
 the payload, and any word that a repeat took a goal role away (the web then
 lists the item as a plain member, with no notice), the Beeminder row, the

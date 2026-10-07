@@ -1,8 +1,8 @@
 import Foundation
 
 // The JSON body of POST /api/app/items/:id for the item sheet's edits, its
-// Delete, Add a subtask and Reset streak, as lib/app-api.ts `ItemWriteActions`
-// takes them:
+// Delete, Add a subtask and Reset streak, and from 2f-b its routine and season
+// toggles, as lib/app-api.ts `ItemWriteActions` takes them:
 // - `{"action":"title","title":…}`;
 // - `{"action":"notes","notes":…}`, where clearing sends `"notes":null`, never
 //   a missing key: the route's schema is `.nullable()`, not `.optional()`, so
@@ -33,7 +33,12 @@ import Foundation
 // - `{"action":"project","projectId":…}`, the project's id lowercase, or
 //   `"projectId":null` for No project, never a missing key (the route's schema
 //   is `.nullable()`). The name is never sent: the route reads the project and
-//   files the item under its own name.
+//   files the item under its own name;
+// - `{"action":"collect","containerId":…,"kind":…,"member":…}`: one routine
+//   or season (`"kind"`, `"routine"` or `"season"`), by its id, lowercase, and
+//   whether the item is to be in it (a JSON boolean). One membership row,
+//   never a list: the route adds or removes that row alone (lib/db.ts
+//   `addContainerMember`, `removeContainerMember`).
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -56,6 +61,10 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
     case addSubtask(id: UUID, title: String)
     /// Reset streak: the counter to 0, the completion history kept.
     case resetStreak
+    /// (2f-b) Join or leave one routine or season: `{"action":"collect",
+    /// "containerId":…,"kind":…,"member":…}`, the id lowercased. It changes no
+    /// field of the item, so it is no `ItemEdit`.
+    case collect(kind: ContainerKind, containerId: String, member: Bool)
 
     /// The route's `action`, which is also the name `writes` lists.
     public var action: String {
@@ -64,6 +73,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
         case .delete: "delete"
         case .addSubtask: "addSubtask"
         case .resetStreak: "resetStreak"
+        case .collect: "collect"
         }
     }
 
@@ -72,6 +82,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
         case timeBucket, startTime, duration
         case frequency, days, monthDay
         case projectId
+        case kind, containerId, member
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -145,6 +156,12 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
         case .addSubtask(let id, let title):
             try c.encode(id.uuidString.lowercased(), forKey: .id)
             try c.encode(title, forKey: .title)
+        case .collect(let kind, let containerId, let member):
+            // All three, always: the route's schema requires each. The id
+            // lowercase, as Postgres stores it; `member` a JSON boolean.
+            try c.encode(kind.rawValue, forKey: .kind)
+            try c.encode(containerId.lowercased(), forKey: .containerId)
+            try c.encode(member, forKey: .member)
         case .delete, .resetStreak:
             break
         }

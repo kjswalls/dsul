@@ -4135,6 +4135,413 @@
         "order": 0,
         "startDate": "2026-10-01"
       }
+    },
+    {
+      "name": "collect-routine-add",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000053e",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": true
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000053e",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "member": {
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "before": [
+          "00000000-0000-4000-8000-00000000053f",
+          "00000000-0000-4000-8000-000000000540"
+        ],
+        "after": [
+          "00000000-0000-4000-8000-00000000053f",
+          "00000000-0000-4000-8000-000000000540",
+          "00000000-0000-4000-8000-00000000053e"
+        ]
+      }
+    },
+    {
+      "name": "collect-routine-remove",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000541",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": false
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000541",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "member": {
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "before": [
+          "00000000-0000-4000-8000-000000000542",
+          "00000000-0000-4000-8000-000000000541",
+          "00000000-0000-4000-8000-000000000543"
+        ],
+        "after": [
+          "00000000-0000-4000-8000-000000000542",
+          "00000000-0000-4000-8000-000000000543"
+        ]
+      }
+    },
+    {
+      "name": "collect-routine-already-member",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000544",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": true
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000544",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "member": {
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "before": [
+          "00000000-0000-4000-8000-000000000544"
+        ],
+        "after": [
+          "00000000-0000-4000-8000-000000000544"
+        ]
+      }
+    },
+    {
+      "name": "collect-routine-remove-absent",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000545",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": false
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000545",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "member": {
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "before": [
+          "00000000-0000-4000-8000-000000000546"
+        ],
+        "after": [
+          "00000000-0000-4000-8000-000000000546"
+        ]
+      }
+    },
+    {
+      "name": "collect-season-add",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000547",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "season",
+        "containerId": "00000000-0000-4000-8000-00000000053d",
+        "member": true
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000547",
+        "title": "Journal",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      },
+      "member": {
+        "kind": "season",
+        "containerId": "00000000-0000-4000-8000-00000000053d",
+        "before": [],
+        "after": [
+          "00000000-0000-4000-8000-000000000547"
+        ]
+      }
+    },
+    {
+      "name": "collect-season-remove",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000548",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "season",
+        "containerId": "00000000-0000-4000-8000-00000000053d",
+        "member": false
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000548",
+        "title": "Gym",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "member": {
+        "kind": "season",
+        "containerId": "00000000-0000-4000-8000-00000000053d",
+        "before": [
+          "00000000-0000-4000-8000-000000000549",
+          "00000000-0000-4000-8000-000000000548"
+        ],
+        "after": [
+          "00000000-0000-4000-8000-000000000549"
+        ]
+      }
+    },
+    {
+      "name": "collect-custom-add",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000054a",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": true
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000054a",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "member": {
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "before": [],
+        "after": [
+          "00000000-0000-4000-8000-00000000054a"
+        ]
+      }
+    },
+    {
+      "name": "collect-refused-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000054b",
+        "title": "Write the three bets",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": true
+      },
+      "refusal": "not_collectible",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000054b",
+        "title": "Write the three bets",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "collect-refused-container-not-a-uuid",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000054c",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "routine",
+        "containerId": "morning",
+        "member": true
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000054c",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "collect-refused-kind-goal",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000054d",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "collect",
+        "kind": "goal",
+        "containerId": "00000000-0000-4000-8000-00000000053c",
+        "member": true
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000054d",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
     }
   ],
   "trim": [

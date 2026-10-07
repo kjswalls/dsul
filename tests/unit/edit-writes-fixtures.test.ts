@@ -8,7 +8,7 @@ import path from 'path';
  * verb-writes-fixtures.test.ts pins what the sheet's verbs write; this pins its
  * edits (lib/item-edit.ts: the title, the notes, and the priority, times per
  * day, reminder, time, repeat and project chips), its Delete, Add a subtask
- * and Reset streak.
+ * and Reset streak, and the routine and season chips' toggles.
  * Each case drives the web's REAL
  * gesture for the same change over the real planner store, with the db layer
  * mocked and the clock pinned (Thursday 1 October), and records to
@@ -44,11 +44,12 @@ import path from 'path';
  * or an undated task, or a repeat its type doesn't list. A repeat on a
  * subtask is the route's refusal alone: the web's panel offers one, which
  * would show nowhere, since a subtask shows only in its parent's sheet.
- * Thirteen cases have a body the route's schema refuses, which the phone never
+ * Fifteen cases have a body the route's schema refuses, which the phone never
  * builds: `reminder-anchor-without-time` (cue words with no time),
  * `time-refused-anytime-with-a-time`, `time-refused-empty`, the nine repeat
  * bodies whose days or day sit beside the wrong frequency, are missing, out
- * of order or out of range, and `project-refused-not-a-uuid`.
+ * of order or out of range, `project-refused-not-a-uuid`, and the two collect
+ * bodies, `collect-refused-container-not-a-uuid` and `collect-refused-kind-goal`.
  *
  * The Time chip's cases (2d) go through commitEdit's both passes: a part of
  * day picked away from the stored one is scheduleTask, which releases a
@@ -70,6 +71,15 @@ import path from 'path';
  * writes what these write wherever it writes. Name and id, a parked task's
  * release, and a habit's clear, which always writes since an unfiled habit
  * reads ''. One body the schema refuses: a project id that isn't a uuid.
+ *
+ * The routine and season cases (2f-b) drive the bulk bar's toggle for the one
+ * item, setItemsCollected([id], kind, containerId, member), over a store
+ * holding the one routine (Morning routine) or season (Autumn) the case names.
+ * A membership is no column of the item, so `updates` is `{}` and `after` is
+ * `item`; the one key no other case has, `member`, holds the container's
+ * `itemIds` before and after the gesture (equal when the store wrote nothing),
+ * which DsulCore's `settingMembership` must reproduce. The route writes one
+ * row of it (lib/db.ts addContainerMember / removeContainerMember).
  *
  * In `updates`, a key present with null is a column cleared (the store wrote
  * undefined, which lib/db.ts sends as SQL NULL).
@@ -108,7 +118,8 @@ import path from 'path';
 type DbCall =
   | { fn: 'updateItem'; id: string; type: string; updates: Record<string, unknown> }
   | { fn: 'deleteItem'; id: string; type: string }
-  | { fn: 'createItem'; item: Item };
+  | { fn: 'createItem'; item: Item }
+  | { fn: 'updateRoutine' | 'updateSeason'; id: string; itemIds: string[] };
 
 // The mock factory runs while the imports below are still resolving, before
 // any module-level const exists, so the log it writes to is hoisted with it.
@@ -144,12 +155,17 @@ vi.mock('@/lib/db', async (importOriginal) => {
     restoreProject: vi.fn(async () => {}),
     fetchRoutines: vi.fn(async () => []),
     createRoutine: vi.fn(async () => {}),
-    updateRoutine: vi.fn(async () => {}),
+    // A membership write, logged with the list it sends; no earlier case makes one.
+    updateRoutine: vi.fn(async (_userId: string, id: string, updates: { itemIds?: string[] }) => {
+      if (updates.itemIds) log.calls.push({ fn: 'updateRoutine', id, itemIds: [...updates.itemIds] });
+    }),
     deleteRoutine: vi.fn(async () => {}),
     restoreRoutine: vi.fn(async () => {}),
     fetchSeasons: vi.fn(async () => []),
     createSeason: vi.fn(async () => {}),
-    updateSeason: vi.fn(async () => {}),
+    updateSeason: vi.fn(async (_userId: string, id: string, updates: { itemIds?: string[] }) => {
+      if (updates.itemIds) log.calls.push({ fn: 'updateSeason', id, itemIds: [...updates.itemIds] });
+    }),
     deleteSeason: vi.fn(async () => {}),
     restoreSeason: vi.fn(async () => {}),
     fetchGoals: vi.fn(async () => []),
@@ -190,9 +206,18 @@ import {
 } from '@/lib/item-edit';
 import { MAX_BULK_ITEMS, isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-add';
 import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
-import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
+import { getItemTypeConfig, isCollectible, itemTypeName } from '@/lib/item-registry';
+import { capabilityShape } from '@/lib/item-pause';
 import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, type Item, type Project, type TimeBucket } from '@/lib/planner-types';
+import {
+  REPEAT_FREQUENCY_LABELS,
+  WEEKDAY_LABELS,
+  type Item,
+  type Project,
+  type Routine,
+  type Season,
+  type TimeBucket,
+} from '@/lib/planner-types';
 import { CONTAINER_KINDS } from '@/lib/container-registry';
 
 const FILE = path.resolve(__dirname, '../fixtures/day/edit-writes.json');
@@ -295,21 +320,23 @@ const NY = 'America/New_York';
 const store = () => usePlannerStore.getState();
 
 /**
- * A fresh store holding `items` (and `seed`'s projects, none unless given),
- * then `act`: the first item as the store leaves it (null once gone), and
- * every write it sent, in order. Nothing in an act is awaited: the store writes
- * optimistically and fires its db calls in the same tick, so the log is
- * complete when `act` returns.
+ * A fresh store holding `items` (and `seed`'s projects, routines and seasons,
+ * none unless given), then `act`: the first item as the store leaves it (null
+ * once gone), and every write it sent, in order. Nothing in an act is awaited:
+ * the store writes optimistically and fires its db calls in the same tick, so
+ * the log is complete when `act` returns.
  */
 async function run(
   items: Item[],
   act: () => void,
-  seed: { projects?: Project[] } = {},
+  seed: { projects?: Project[]; routines?: Routine[]; seasons?: Season[] } = {},
 ): Promise<{ after: Item | null; calls: DbCall[] }> {
   vi.setSystemTime(new Date(NOW));
   store().clearStore();
   vi.mocked(db.fetchItems).mockResolvedValue(structuredClone(items));
   vi.mocked(db.fetchProjects).mockResolvedValue(structuredClone(seed.projects ?? []));
+  vi.mocked(db.fetchRoutines).mockResolvedValue(structuredClone(seed.routines ?? []));
+  vi.mocked(db.fetchSeasons).mockResolvedValue(structuredClone(seed.seasons ?? []));
   await store().initializeStore(USER);
   usePlannerStore.setState({ selectedDate: new Date(NOW), userTimezone: NY });
   log.calls.length = 0;
@@ -399,6 +426,11 @@ type EditCase = {
   removed: string[];
   /** A row the gesture creates: Add a subtask (2b) onward. */
   created: Item | null;
+  /**
+   * A collect case's container (2f-b): its `itemIds` before and after the gesture, equal when
+   * the store wrote nothing. Only collect cases carry it.
+   */
+  member?: { kind: 'routine' | 'season'; containerId: string; before: string[]; after: string[] };
 };
 type TrimCase = { name: string; input: string; expected: string };
 /** A paste into the new-subtask field, as lib/bulk-add.ts reads it. */
@@ -527,6 +559,55 @@ async function projectCase(
   });
   if (calls.some((c) => c.fn !== 'updateItem')) throw new Error(`${name}: a re-file wrote more than the item`);
   return { ...base, updates: merged(calls), after };
+}
+
+/** The smallest routine the store takes: Morning routine, first in the list. */
+const routineOf = (id: string, name: string, itemIds: string[]): Routine => ({ id, name, sortOrder: 0, itemIds });
+
+/** The smallest season: on by date with no dates, so on every day, holding no routines. */
+const seasonOf = (id: string, name: string, itemIds: string[]): Season => ({
+  id,
+  name,
+  state: 'auto',
+  itemIds,
+  routineIds: [],
+});
+
+/**
+ * The bulk bar's toggle for one item: setItemsCollected([id], kind, containerId, member).
+ * The item panel's chips (item-dialog.tsx toggleRoutine / toggleSeason, through
+ * updateRoutine / updateSeason) write the same end list: an add appended, a
+ * remove filtered out.
+ */
+async function collectCase(
+  name: string,
+  item: Item,
+  kind: 'routine' | 'season',
+  before: string[],
+  member: boolean,
+  refusal: string | null = null,
+  edit?: Record<string, unknown>,
+): Promise<EditCase> {
+  const containerId = kind === 'routine' ? uid(1340) : uid(1341);
+  const body = edit ?? { action: 'collect', kind, containerId, member };
+  const base = { name, item, children: [], edit: body, refusal, removed: [], created: null };
+  if (refusal) return { ...base, updates: null, after: item };
+  const seed =
+    kind === 'routine'
+      ? { routines: [routineOf(containerId, 'Morning routine', before)] }
+      : { seasons: [seasonOf(containerId, 'Autumn', before)] };
+  const { after, calls } = await run(
+    [item],
+    () => store().setItemsCollected([item.id], kind, containerId, member),
+    seed,
+  );
+  const written = calls.flatMap((c) => (c.fn === 'updateRoutine' || c.fn === 'updateSeason' ? [c] : []));
+  if (written.length !== calls.length || written.length > 1) throw new Error(`${name}: a toggle wrote more than one list`);
+  if (written[0] && (written[0].id !== containerId || written[0].fn !== (kind === 'routine' ? 'updateRoutine' : 'updateSeason'))) {
+    throw new Error(`${name}: a toggle wrote another container`);
+  }
+  const afterIds = written[0]?.itemIds ?? before;
+  return { ...base, updates: {}, after, member: { kind, containerId, before, after: afterIds } };
 }
 
 /** Today, as the sheet passes it to a verb. */
@@ -1000,6 +1081,50 @@ async function build(): Promise<EditWrites> {
     cases.push(await projectCase(...args));
   }
 
+  // The routine and season chips (2f-b): Morning routine is uid(1340), Autumn uid(1341).
+  const groceries = (n: number) => task(n, 'Groceries', { startDate: TODAY });
+  for (const args of [
+    // Members the store hasn't loaded (trashed, or another list's) are kept, in place.
+    ['collect-routine-add', groceries(1342), 'routine', [uid(1343), uid(1344)], true],
+    ['collect-routine-remove', habit(1345, 'Journal'), 'routine', [uid(1346), uid(1345), uid(1347)], false],
+    // Already so: nothing written, and no history entry.
+    ['collect-routine-already-member', habit(1348, 'Meds'), 'routine', [uid(1348)], true],
+    ['collect-routine-remove-absent', groceries(1349), 'routine', [uid(1350)], false],
+    ['collect-season-add', habit(1351, 'Journal'), 'season', [], true],
+    ['collect-season-remove', task(1352, 'Gym', { startDate: TODAY }), 'season', [uid(1353), uid(1352)], false],
+    ['collect-custom-add', custom(1354, 'errand', 'Post office', { startDate: TODAY }), 'routine', [], true],
+    // A subtask shows only in its parent's sheet (isCollectible).
+    [
+      'collect-refused-subtask',
+      task(1355, 'Write the three bets', { parentItemId: uid(1), isScheduled: false }),
+      'routine',
+      [],
+      true,
+      'not_collectible',
+    ],
+    // The schema's: a container is named by its id, and only a routine or a season.
+    [
+      'collect-refused-container-not-a-uuid',
+      groceries(1356),
+      'routine',
+      [],
+      true,
+      'invalid',
+      { action: 'collect', kind: 'routine', containerId: 'morning', member: true },
+    ],
+    [
+      'collect-refused-kind-goal',
+      groceries(1357),
+      'routine',
+      [],
+      true,
+      'invalid',
+      { action: 'collect', kind: 'goal', containerId: uid(1340), member: true },
+    ],
+  ] as [string, Item, 'routine' | 'season', string[], boolean, string?, Record<string, unknown>?][]) {
+    cases.push(await collectCase(...args));
+  }
+
   const trim = (
     [
       ['spaces', '  hi  '],
@@ -1152,6 +1277,8 @@ describe('edit writes shared with DsulCore', () => {
       'repeat-refused-monthly-without-day',
       'repeat-refused-month-day-32',
       'project-refused-not-a-uuid',
+      'collect-refused-container-not-a-uuid',
+      'collect-refused-kind-goal',
     ]);
   });
 
@@ -1260,6 +1387,37 @@ describe('edit writes shared with DsulCore', () => {
     ]);
   });
 
+  it('a toggle writes one list or none, in the store’s order', () => {
+    const toggles = generated.cases.filter((c) => c.edit.action === 'collect');
+    expect(toggles.length).toBeGreaterThan(0);
+    for (const c of toggles) {
+      // The route's gate, on the row it reads.
+      const i = c.item as { parentItemId?: string };
+      const collectible = isCollectible(capabilityShape({ type: itemTypeName(c.item), parent_item_id: i.parentItemId }));
+      if (c.refusal) {
+        expect(c.updates, c.name).toBeNull();
+        expect(c.member, c.name).toBeUndefined();
+        if (c.refusal === 'not_collectible') expect(collectible, c.name).toBe(false);
+        else expect(ItemWriteSchema.safeParse(c.edit).success, c.name).toBe(false);
+        expect(c.after, c.name).toEqual(asJson(c.item));
+        continue;
+      }
+      expect(collectible, c.name).toBe(true);
+      // A membership is no field of the item.
+      expect(c.updates, c.name).toEqual({});
+      expect(c.after, c.name).toEqual(asJson(c.item));
+      const { kind, containerId, before, after } = c.member!;
+      expect({ kind, containerId }, c.name).toEqual({ kind: c.edit.kind, containerId: c.edit.containerId });
+      const id = c.item.id;
+      const expected = c.edit.member
+        ? before.includes(id) ? before : [...before, id]
+        : before.filter((x) => x !== id);
+      expect(after, c.name).toEqual(expected);
+    }
+    // Every case but the collect ones keeps its bytes: no `member` key.
+    expect(generated.cases.filter((c) => c.member).every((c) => c.edit.action === 'collect')).toBe(true);
+  });
+
   it('a delete takes the item and, unless it is a habit, its subtasks, in the store’s order', () => {
     for (const c of generated.cases) {
       if (c.edit.action !== 'delete') continue;
@@ -1338,6 +1496,7 @@ describe('edit writes shared with DsulCore', () => {
         'time',
         'repeat',
         'project',
+        'collect',
       ]),
     );
     // Refused, already so, a write, and a cleared column.
@@ -1438,6 +1597,28 @@ describe('edit writes shared with DsulCore', () => {
     const folded = cases.find((c) => c.name === 'project-same-name-folded')!;
     expect(folded.updates).toEqual({});
     expect((folded.after as { project?: string }).project).toBe('work');
+    // The routine and season chips': a subtask refused and the schema's two bodies; for each
+    // kind an add and a remove that write; and each no-op, an add of a member and a remove of
+    // one that isn't.
+    const toggles = cases.filter((c) => c.edit.action === 'collect');
+    expect(toggles.some((c) => c.refusal === 'not_collectible')).toBe(true);
+    expect(toggles.filter((c) => c.refusal === 'invalid' && !ItemWriteSchema.safeParse(c.edit).success)).toHaveLength(2);
+    const moved = (c: EditCase) => JSON.stringify(c.member!.before) !== JSON.stringify(c.member!.after);
+    for (const kind of ['routine', 'season']) {
+      for (const member of [true, false]) {
+        expect(
+          toggles.some((c) => !c.refusal && c.edit.kind === kind && c.edit.member === member && moved(c)),
+          `${kind} ${member ? 'add' : 'remove'}`,
+        ).toBe(true);
+      }
+    }
+    for (const member of [true, false]) {
+      expect(toggles.some((c) => !c.refusal && c.edit.member === member && !moved(c))).toBe(true);
+    }
+    // By a task, a habit and a custom item between them.
+    expect(new Set(toggles.filter((c) => !c.refusal && moved(c)).map((c) => c.item.type))).toEqual(
+      new Set(['task', 'habit', 'custom']),
+    );
   });
 
   it('buckets and durations are lib/time-bucket.ts’s and the Time chip’s', () => {

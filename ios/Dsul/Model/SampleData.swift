@@ -2,15 +2,16 @@ import DsulCore
 import Foundation
 
 /// The sample planner behind "Try with sample data": the drag spike's day, a
-/// morning routine, and a braindump long enough to scroll. Built as the web's
-/// own `Item`s, so the sample goes through exactly the rules a signed-in day
-/// does. The hosted tests pin these titles, counts and ids: change them there
-/// too.
+/// morning routine (and an empty one), a season, and a braindump long enough
+/// to scroll. Built as the web's own `Item`s, so the sample goes through
+/// exactly the rules a signed-in day does. The hosted tests pin these titles,
+/// counts and ids: change them there too.
 enum SampleData {
     struct Contents {
         var items: [Item]
         var projects: [Project]
         var routines: [Routine]
+        var seasons: [Season]
     }
 
     /// Stable ids, so a test can find the same row on two planners.
@@ -141,8 +142,14 @@ enum SampleData {
         let routines = [
             Routine(id: "sample-morning-routine", name: "Morning routine", sortOrder: 0,
                     itemIds: routineHabits.map(\.id)),
+            // A second routine with nothing in it yet, so a routine member's menu has
+            // another routine to toggle, and a season holding Journal, the Season
+            // chip's case. Autumn follows no dates (state auto, none set), so it is
+            // live every day and hides nothing.
+            Routine(id: "sample-wind-down", name: "Wind down", sortOrder: 1, itemIds: []),
         ]
+        let seasons = [Season(id: "sample-autumn", name: "Autumn", itemIds: [routineHabits[2].id])]
         return Contents(items: blocks + untimed + routineHabits + otherHabits + braindump + subtasks + [payRent],
-                        projects: projects, routines: routines)
+                        projects: projects, routines: routines, seasons: seasons)
     }
 }
