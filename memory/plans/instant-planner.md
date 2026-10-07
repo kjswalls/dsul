@@ -62,15 +62,18 @@ It is not:
    hold (`notePreviewRendered`), released when the preview ends or SettleHost unmounts,
    which tells the crash marker the preview rendered cleanly. Two frames later SettleHost
    notes the preview as painted, which is the settle's concern only. The sync line fades
-   in at 300ms if the preview is still up.
+   in at 300ms if the preview is still up, and the waiting shimmer with it (see The
+   waiting shimmer): SettleHost starts it in a layout effect on the preview's commit.
 5. **Fresh landing.** `set({ ...fresh, isLoading: false, isPreview: false })`. Inside that
    `set()`, before React commits: the conductor bumps the settle epoch and captures FIRST
    from the preview DOM; the writer removes the crash marker and stamps `base`; the
    deferred-dialog hook promotes; held captures queue their release in a microtask (a
-   failed load releases them too).
+   failed load releases them too). Last, the shimmer's subscriber picks the landing's
+   pass of light, the plain ease or nothing.
 6. **Commit.** `inert` lifts and `data-loaded="true"` appears. SettleHost's layout effect
-   calls `onLandingCommitted()`: measure LAST, plan, then hold, shield or do nothing. The
-   sync line sweeps "done" and unmounts.
+   calls `shimmerLandingCommitted()` (each fresh title's rise delayed by its x), then
+   `onLandingCommitted()`: measure LAST, plan, then hold, shield or do nothing. The sync
+   line sweeps "done" and unmounts.
 7. **About 2s later, at idle,** the writer stores the fresh snapshot.
 
 **Failure:** the catch empties the data slices in the same `set()` as `error`
@@ -78,8 +81,9 @@ It is not:
 baseline, so ⌘Z can never replay cached rows against the server. No capture, no settle,
 no shield; the sync line vanishes. Held captures are filed the moment the load fails
 (`addTask` over the empty store, written at once, as before this queue), and a capture
-typed after the failure is added at once. Each is kept, by id, until a landing confirms
-it or files it again (see Held captures).
+typed after the failure is added at once. Each row filed over the failure, a pasted
+list's included, is kept as the person last left it until a landing confirms it or files
+it again (see Held captures).
 
 **Crash:** a render that throws while previewing is caught by `PreviewCrashBoundary`,
 which calls `dropPreview()` (data empty, `isLoading` still true, so the skeleton shows) and
@@ -177,9 +181,11 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
   `new-container`, `bulk-add`, `organize`) stores the request in `deferredDialog`
   instead, stamped with the account it was made under (`deferredFor`); the last request
   wins, except over a waiting pasted list (`isWaitingPaste`: a `bulk-add` carrying text),
-  which only a newer `bulk-add` replaces: an item or organizer asked for after it is
-  refused, since losing a deferred click costs far less than losing typed text. A data
-  slot opened on real data clears a waiting deferral, except that same pasted list. `closeDialog` leaves the deferral alone, because the launcher closes itself
+  which only a newer pasted list replaces: any other data request asked for after it, an
+  empty `bulk-add` ("Add many items…") included, is refused, since losing a deferred click
+  costs far less than losing typed text. A data slot opened on real data clears a waiting
+  deferral, except that same pasted list, which an empty `bulk-add` no longer supersedes
+  either: it opens once that one closes. `closeDialog` leaves the deferral alone, because the launcher closes itself
   right after running "Open Organize". `confirm` refuses while previewing on `/`, where
   confirms guard data actions, unless the request declares `touchesPlanner: false`: its
   `onConfirm` reads and writes no planner row. Two do today, deleting a conversation (the
@@ -201,7 +207,10 @@ silent no-op, and that nothing decided on cached rows runs after the landing.
     the paste, so the request is the only place its text exists. It opens once both are
     free, opens over a failed load (as a paste made after the failure would), and waits
     out a crash drop until the load finishes. Only another account, sign-out or leaving
-    `/` drops it.
+    `/` drops it. The rows it files over a failed load are kept by held-captures until a
+    landing confirms them, as a capture's are: `addTasksBulk` reports every row it files
+    through [lib/filed-rows.ts](../../lib/filed-rows.ts), a slot held-captures fills at
+    import.
 - **The phone's Ask tab.** While it is mounted, `openEditFor` hands an item to rail-store's
   interceptor, which pushes it over Ask as an autosaving inline ItemDialog instead of
   opening the drawer. While previewing, `openStampedEdit` (ui-store) skips the
@@ -283,27 +292,65 @@ waiting. Holding past a failure kept the text in this module and nowhere else, s
 reload, a closed tab or a sign-out lost it. Over a failed load's empty store a capture is
 added and its write attempted, as before this queue.
 
-- **Kept until confirmed.** The write over a failed load is attempted, not guaranteed: an
-  outage fails the insert too (`persistNewItem` only logs it), and the Retry's landing
-  replaces the store, row and all. So each capture filed over a failed load stays in the
-  queue as `{ userId, title, id }`, and "Adds once synced" keeps counting it. The next
-  landing for that account settles it: a row the landing brought back is confirmed, and
-  one it did not is filed again under the SAME id (`addTask`'s `opts.id`), so an insert
-  that committed after the Retry read fails on the primary key instead of making a second
-  row. Over the failed load a filed row is the person's: deleted or undone, it is not
-  filed again; renamed, it is filed again under the new title. A Retry that fails too
-  keeps them waiting.
+- **Kept until confirmed.** The write over a failed load is attempted, not guaranteed:
+  an outage fails the insert too (`persistNewItem` only logs it), and the Retry's
+  landing replaces the store, row and all. So each row filed before its account's data
+  has landed, by a capture or by `addTasksBulk` (a pasted list, the palette's "Add many
+  items…", a subtask paste; reported through `lib/filed-rows.ts`, so the store imports
+  nothing of this module), stays in the queue as `{ userId, title, item }`, a list's rows
+  sharing a `batch`, and "Adds once synced" keeps counting it. That is over a failed
+  load, and while a load is in flight: a Retry leaves the failed load's rows on screen
+  (no preview is offered on a retry), and neither the item panel nor the bulk-add dialog
+  waits on it, so a list filed there is kept like one filed over the failure (a capture
+  there is held, as on any load). Never during the preview, which refuses the add. Up
+  to the landing set() itself, the Retry's window included, the entry follows its row:
+  `item` is the row as the person last left it (notes, dates, bucket, type, project,
+  order), and while the row is off the store (deleted, or its add undone) the entry is
+  marked `gone`, not dropped, and not counted. The mark is recomputed on every
+  pass, so a restore (the undo strip, ⌘Z, a redo of the add) clears it; that matters
+  because the restore's own write is an UPDATE of `deleted_at`, which finds nothing when
+  the insert never committed. The next landing for that account settles every entry:
+  - a row the landing brought back is confirmed;
+  - one marked `gone` is the person's removal and is not filed again;
+  - for the rest the database is asked first (`fetchItemsAnyState`: the rows under those
+    ids, the bin included, which the own-rows policy allows), for 4 seconds at most
+    (`ASK_TIMEOUT_MS`): until it answers the rows are off the planner and only in this
+    module, where a reload loses them, and supabase-js sets no timeout of its own. An id
+    with no row is filed again, whole, under the SAME id (`refileItems`), so an insert
+    that commits late fails on the primary key instead of making a second row. A row in
+    the bin was deleted on another device and stays there: filed again, the insert
+    failed on the primary key while the store and the snapshot kept a row the database
+    had trashed. A live row the landing missed was inserted after the Retry's read began
+    (its first insert was still in flight). It is not inserted again, but the person's
+    version goes on the store and only where it differs from the database's is the
+    difference written (`diffItem`, or a type switch): an edit's UPDATE sent while that
+    insert was in flight matched nothing, so the person's copy is the only one holding
+    it. If the question fails or goes unanswered, every row is filed again: the id still
+    guards against a duplicate, and a late answer finds the queue already empty.
+
+  Every row going back has its project id stamped again against the landed store, and a
+  task row its order: after the landed rows, in the order the person last left them
+  across the whole pass, so a drag over the failed load survives. A list is filed again
+  as the one undo entry it was ("Bulk add: N items", or "Add task: …" when one line is
+  left), a capture as its own. A subtask's insert waits for its parent's when that is in
+  flight (`persistNewItem`, for every add): sent in the same tick, a subtask reached the
+  table first most of the time and failed `items_parent_item_id_fkey` (23503). A Retry
+  that fails too keeps them waiting.
 
 - **A module queue**, so it outlives the field: the launcher closes on Enter, and the phone
   remounts the dock per tab.
 - **Bound to the account.** Entries for any other `userId`, sign-out included, are dropped
   on the next store change.
 - **Released in a microtask** once the load finishes, success or failure, so it runs after
-  `initializeStore` releases the history suppressor: each capture gets its own undo entry,
-  in the order typed. The settle hold absorbs those commits, so the rows type in with the
-  landing. The subscription is made on the first hold and dropped when the queue drains.
-- **Title only, on purpose.** No other verb is queued: one decided on cached rows may mean
-  something else by the landing.
+  `initializeStore` releases the history suppressor: each held capture gets its own undo
+  entry, in the order typed. The settle hold absorbs those commits, so the rows type in
+  with the landing. Rows filed over an earlier failure and missing from the landing are
+  filed again only once the database has answered, a round trip later, as ordinary adds
+  after the captures typed during the Retry. The subscription is made on the first entry
+  and dropped when the queue drains.
+- **Typed text only, on purpose.** A capture's title while a load is in flight, and until
+  a landing the rows a capture or a list filed. No other verb is queued: one decided on
+  cached rows may mean something else by the landing.
 - It also fixes an older loss: a capture typed during a plain cold load used to be erased
   by the landing `set()`.
 
@@ -312,7 +359,7 @@ Two consequences live outside the module:
 - The first-run seed decides on the account's items **without** the captures the release
   filed (`withoutReleasedCaptures`, applied in the provider's seed snapshot). Otherwise a
   capture typed into a brand-new account reads as existing data, and the account latches
-  with no starter set. A capture filed over a failed load is recorded the same way
+  with no starter set. A capture or a list filed before a landing is recorded the same way
   (`noteFiledBeforeLanding`), so when a Retry brings its row back the seed still does not
   count it.
 - `seedStarterContainers` patches **every** history snapshot with the seeded projects, not
@@ -829,8 +876,8 @@ slide now uses the shared `prefersReducedMotion()`, so the animations toggle rea
 [components/shell/planner-sync-line.tsx](../../components/shell/planner-sync-line.tsx),
 styled under "Planner preview: sync line" in `app/globals.css`. A neutral 2px hairline on
 the desktop canvas `<main>`, the mobile content area and the Zen room. It is never lime,
-nothing else on the canvas dims, and it is `aria-hidden` (SettleHost makes the one
-announcement).
+nothing on the canvas is faded (the one thing that dims is title text, the waiting
+shimmer below), and it is `aria-hidden` (SettleHost makes the one announcement).
 
 - Invisible for its first 300ms (a CSS delay), so a warm load never flashes it.
 - It ends in "done" (a fill sweeps across, then fades) only over a successful landing it
@@ -841,6 +888,207 @@ announcement).
   CSS animates only the track and `::after`, never the root.
 - Done ends on the `planner-sync-done` `animationend`. A 420ms timer, started two frames
   after the landing, is only the backstop.
+- Its travelling bar is the shimmer's band: the same keyframe stops in viewport terms, the
+  same 1.2s period, linear, from the same 300ms start, as wide as the band, offset by the
+  track's own left edge (`--planner-shimmer-x`, measured in a layout effect and on resize).
+  It crosses the canvas under the light crossing the titles, and goes on alone once the
+  shimmer's three passes are spent.
+
+## The waiting shimmer
+
+Kirby's ask on 2026-10-07, option A of three: while the preview waits, its titles wait
+too, the way Claude's own "working" status text shimmers, and the landing keeps today's
+glide with one last pass of light. A wipe or a View Transition swap was ruled out.
+[lib/planner-shimmer.ts](../../lib/planner-shimmer.ts) decides the phase, on
+`<html data-planner-shimmer="wait|land|ease">`, and supplies the geometry CSS cannot read;
+the paint is CSS, "Planner preview: waiting shimmer" in `app/globals.css`.
+
+**What dims, and why it is allowed.** Row title TEXT and nothing else: the element marked
+`data-row-title="open"` (TaskRow, ScheduleBlock, ProjectBlock's name and its tasks; the
+phone renders TaskRow) under a preview root, which is view-root and the braindump
+`<section>` (it carries `data-preview` beside its rows' `inert`). The ink is the title's
+own background clipped to its own glyphs (`background-clip: text`), so nothing
+composites: no opacity on any container, never a checkbox, rail, chip, count, label or
+anything lime. A title that rests muted (done, skipped, set aside, receded) is marked
+`data-row-title="muted"` and keeps its own ink with no band, so a waiting open row is
+always more prominent than a muted one, and a muted one never outshines it. Everything
+else keeps the canvas rule that nothing dims at rest: this dims only text whose meaning is
+"not confirmed yet", only while that is true, and it ends with the load.
+
+**Emoji keep their colours.** Through a clipped ground a colour glyph is only a mask, so
+an emoji in a waiting title would turn into a flat silhouette in the ink.
+`RowTitleText` ([components/primitives/row-title-text.tsx](../../components/primitives/row-title-text.tsx))
+renders every open title (TaskRow, the schedule blocks, ProjectBlock's name, its tasks and
+its preview task) with each emoji run in a `data-row-emoji` span, and the CSS gives that
+span back its own fill, drawn over the ground. A text-style symbol (a bare heart, a
+trademark sign) is not an emoji and takes the ink like the letters around it. A title with
+no emoji renders as the bare string, exactly as before.
+
+**The floor.** The waiting ink is `--planner-shimmer-level` of `--foreground` mixed into
+`--muted-foreground` (in oklab), at the lowest level where every waiting title is at least
+4.5:1 on its own surface, at least 1.25 times the contrast of `--muted-foreground` on that
+same surface, and at least 1.05 times the best contrast any muted-ink text (the labels,
+chips, counts and "Add item") reaches on ITS own ground. The last one is what holds the dark
+looks, and it was missing from the first cut: their labels sit on the darker page and their
+titles on lighter cards, so the same muted ink reads stronger as a label. At the first
+cut's 25% in Night the current bucket's name ("Morning", `text-muted-foreground`) was
+7.14:1 on the phone's page against 6.3:1 for a habit's title on its card, so the labels
+outranked the titles that are the content. Secondary ink (`ink-1`: the Display shelf) and
+headers are not labels and may outrank a waiting title; an empty pane's hint is not a label
+either. Surfaces were measured from pixels in Day buckets, schedule and list, Week and the
+phone, light and dark, every theme and tint, and solved with the browser's own color-mix:
+
+| Theme | Level | Held by | On the build |
+|---|---|---|---|
+| Paper, and Slate, Dune, Iris on it | 30% | 4.5:1 (4.52:1, a project block's task under Slate) | 4.67:1 at worst, 1.5x the best label |
+| Studio | 13% | 4.5:1 (4.52:1) | |
+| Sorbet | 30% | 4.5:1 (4.56:1) | |
+| Night, and its Slate, Dune, Iris tints | 45% | 1.05x the phone's current bucket name (7.14 to 7.21:1); Day needs 42 to 44% | 1.053 to 1.075x |
+| Terminal | 24% | 1.05x Day's current bucket name (5.8:1) | 1.058x Day, 1.078x phone |
+| Dusk | 51% | 1.05x the phone's current bucket name (7.14:1) | 1.059x phone, 1.087x Day |
+
+The other views need no more: Night's Week buckets 44% once its empty pane's hint is left
+out, and Week schedule and Day schedule less (Night 28% and 20%, Dusk 33% and 24%,
+Terminal Week 13%), counting that hint. Light themes are held by 4.5:1 (their labels are 2
+to 3:1). The worst waiting titles in the dark looks are a habit on its bucket card on the
+phone and a project block's name in Day. A muted row's title is 2.1:1 in Paper.
+
+**One light.** Each title's gradient is a band (`2 x --planner-shimmer-band`, the band
+`clamp(32px, 9vw, 140px)`: wide on a desktop, a sliver on a phone) offset by
+`--planner-shimmer-x`, the title's own left edge in the viewport, which the module writes
+when the title's sweep starts and again on a resize or a scroll. So every title is a
+window onto one band, and the sync line's bar runs the same keyframes from the same start:
+one clock, one period (1.2s, linear). A sweep or bar that starts later (a mobile tab
+switch) is moved onto the first pass's start time, and so is its mute: a title that joins
+the wait late restarts both, and would otherwise show full ink for 300ms and then ink out
+on its own. Such a title is put on the clock in the frame it is first styled, before that
+frame paints: one scrolled back into view in the measure that un-marks it, and one mounted
+mid-wait (a tab switch, a view change) from a MutationObserver on the body, whose records
+arrive after React's commit and before the browser renders. If no sweep has reported yet,
+the clock is taken from one already running. Filmed on the build: a 400px braindump scroll
+at 1.5s and a phone tab switch at 3.5s, every title on screen at the waiting ink in every
+frame, and one band. Each pass parks the band off the left edge until 0.47s, crosses the
+viewport to 1.04s, then parks it off the right until the next pass; it never enters from
+the right. On a 1440px Day it reaches the braindump at about 0.55s, just as the ink has
+settled (0.54s), and has crossed the canvas by about 0.95s, so a 0.6 to 1.1s load sees it
+cross the canvas titles. Filmed on the final build: braindump 0.60 to 0.68s and canvas
+0.77 to 0.83s in screencast time (about 40ms late); at 1920px Week, x 620 at 0.75s to x
+1800 at 1.07s. `background-attachment: fixed` would draw the same picture with no
+measuring, but it re-rasters the planner at about 11 frames a second.
+
+**The cap.** Three passes (`3 both`, done 3.9s after the preview commits), then the band
+stops and the ink holds at the waiting level while the sync line goes on syncing.
+
+**Away.** A waiting title outside the viewport is marked `data-shimmer-away` by the
+module: it holds the waiting ink with no animation and no band, and sits the landing out
+in plain full ink. No band, because with no animation the band sits at position 0, its
+left edge, and a title scrolled into view showed it there until the next measure. A CSS
+animation ticks and paints off screen too; on a 165-row planner the marking took the wait
+from 39% to 23% main-thread busy at 1x.
+
+**The landing.** The phase changes inside the landing `set()`, from a planner-store
+subscriber registered after the conductor's (so the conductor's capture reads the
+preview's rects before anything re-styles the titles), before React commits, so the fresh
+rows' first frame is already styled and no title snaps.
+
+- A real landing at least 540ms into the wait, on the shimmer's own clock (the first frame
+  that styled the titles, so 240ms after the shimmer first showed, not 540ms after it
+  showed): `land`, the pass of light. The light needs a settled ink to rise from; a
+  landing sooner catches the ink still going down, and gets the ease. Each title rises
+  from the waiting ink to full ink in 150ms on `--ease-roll`, delayed by its x, 0 to 180ms
+  across the viewport, so the light crosses left to right in about 330ms beside the glide.
+  A column of titles shares one x, so a column rises together: in Day the canvas rises a
+  beat after the braindump (about 55ms behind it, all risen by about 220ms), and on the
+  phone the one column rises at once. The light does cross the viewport, but there is
+  nothing to the right of a column to show it. A wipe across each title at the light's
+  speed would cross a title in 30 to 60ms, a harder edge than a rise. The delay is set on
+  each title's rise animation (`updateTiming`) in SettleHost's landing layout effect,
+  before the conductor holds. The sweep carries on, so a band mid-crossing goes on until
+  the rising ink overtakes it. Titles are never settle participants: the type-in clips row
+  boxes and the lift writes a row's ground and shadow, never the title, so the two
+  compose.
+- 300 to 540ms: `ease`, every title up at once in 170ms on the same rise, from the
+  depth its ink had reached (the ink's own curve, computed; a `<style>` rule for the
+  titles, never a property on the root).
+- Under 300ms (it never showed), either motion veto, a hidden tab, or another account's
+  rows: nothing. The attribute comes off and the titles are text.
+- A failed load or a dropped preview empties the planner in the same `set()`, so the
+  layout effect finds no title to raise and ends the phase: the ink returns plainly, with
+  no pass of light.
+
+**Every rise ends on plain text.** Glyphs drawn as a clipped ground carry a little less
+ink than the same colour drawn as text, so a rise that ended on the clipped ground snapped
+heavier when the attribute came off. The rise is `--ease-roll` split at its midpoint into
+its two halves (per-keyframe timing functions, the animation itself `linear`): the first
+half raises the clipped ground, and at the midpoint, the rise's fastest moment, the title
+turns into plain text of the same colour, whose own `color` then eases up to rest
+(`-webkit-text-fill-color` does not interpolate; it flips). The band is drawn in
+`currentColor`, so over the first half it comes down to the ground as the ground comes up,
+and they meet where it goes. On the build, inside every title rect: the frame just before
+the attribute comes off and the frame just after are identical in Day buckets, Day
+schedule, Week and the phone, light and dark (0 of 26,000 to 141,000 pixels), and the end
+equals the rest frame from before the reload.
+
+The attribute comes off 60ms after the first rise's run ends, timed from that
+`animationstart`'s own timestamp, or by a 1.5s backstop, and every title's inline
+`--planner-shimmer-x` and away mark go with it.
+
+**Nothing before the light.** Through the 300ms delay the mute holds plain text (no ground,
+the title's own fill), not the clipped ground at full ink, which drew lighter glyphs. A
+warm load that lands inside the delay never sees the shimmer: filmed on the build, every
+frame from the preview to rest identical in every title.
+
+**Off.** Reduced motion, the OS setting or the app's animations switch
+(`html[data-reduce-motion]`, gated in the CSS too, so turning it off mid-wait stops the
+shimmer at once); forced colours (the system's colours replace the ink, and a clipped
+background is not one of them); and `static` and `off`, where the module never sets the
+attribute (`static` keeps the preview still but for its sync line). **Zen** takes no
+shimmer, deliberately: the room's titles carry no mark, so it stays still but for its sync
+line. Zen is one item in large type in a calm room, and a band of light crossing it would
+be the only motion on the screen.
+
+**Lime.** Every lime pixel of the rest frame before a reload was compared byte for byte
+at 450, 700, 900, 1600 and 4500ms into the wait, at the landing and after it, in Day
+buckets, Day schedule, Week and the phone, light and dark. Identical, but for the app's own
+animated marks (the now bucket's breathing glow, the braindump's empty-state tiles), which
+differ the same with the shimmer suppressed, and one Chromium partial-raster artefact: 8
+edge pixels of a lime checkbox, 2/255 off for the landing's 330ms, gone under
+`--disable-partial-raster`. Repeated after the repair (the app's own ambient motion held
+still): every lime pixel in the planner identical in the delay, at 1.5 and 2.7s, at the
+landing's end and at rest, in Day buckets and schedule and Week, light and dark (12,312
+of them in Week dark).
+
+**Measured cost.** Production build on the local stack, Chromium, Day buckets at
+1440x900, with the shimmer against the same page with its attribute suppressed, real
+speed and a 4x CDP CPU throttle.
+
+- The load does not land later. Load answering 800ms after it is asked, navigation to
+  `data-loaded`, 6 pairs: 1465 against 1480ms at 1x, 3125 against 3152ms at 4x (means).
+  A held load, release to `data-loaded` at 4x, 8 pairs: 372 against 381ms. A 165-row
+  planner at 4x, 10 pairs: 2361 against 2216ms mean, 2187 against 2436ms median, inside
+  that run's own spread (navigation to the preview, which the shimmer cannot touch,
+  differed by 182ms between the same two groups).
+- Waiting: main thread 15% busy against 11% at 1x, 55 to 60% against 42 to 51% at 4x;
+  raster 60 to 80ms a second on the tile workers (none without); worst compositor frame
+  gap 19ms at 1x, and at 4x 28 to 31ms with it against 26 to 30ms without. Longer
+  main-frame gaps in the wait are Blink skipping frames while every band is parked, not
+  jank.
+- Landing, its first 600ms: 24% busy against 15% at 1x (longest task 9 against 6ms,
+  worst frame gap 21 against 18ms); 70 to 75% against 49 to 57% at 4x, longest task 34 to
+  67 against 15 to 26ms, worst compositor frame gap 28 to 33 against 21 to 29ms. The extra
+  is style for the 16 to 18 animating titles while their rises run, 5 to 15ms a frame at 4x.
+- After the repair (the clock join, the plain delay, the split rise), the same harness:
+  navigation to `data-loaded` 1514 against 1464ms at 1x (navigation to the preview, which
+  the shimmer cannot touch, 566 against 517), and at 4x, 8 pairs, 2876 against 2857ms,
+  preview to loaded 1342 against 1345. A held load at 4x, release to `data-loaded`, two
+  runs of 6 and 8 pairs: 325 and 326 against 287 and 322ms mean. The wait 12% busy against
+  8% at 1x and 55% against 30 to 36% at 4x; the 700ms from the release 25% against 21% at
+  1x and about 70% against 60 to 64% at 4x, worst frame gap 17ms at 1x either way and 33
+  to 50ms against 33 to 42ms at 4x.
+- Cut on the way, each measured: the ease's depth as a property on `<html>` (re-styled the
+  whole document inside the landing; +150ms to `data-loaded` at 4x), animation reads in
+  the event handlers (each flushes style), a per-title property for the landing delay
+  (styled every title twice), and animating off-screen titles.
 
 ## The kill switch
 
@@ -851,12 +1099,12 @@ deployments first, then Production.
 
 | Value | Effect |
 |---|---|
-| `on` | Preview, sync line, settle and shield. |
-| `static` | Preview and sync line, an instant swap, and the shield on whatever changed. Use it if the settle misbehaves. |
+| `on` | Preview, sync line, waiting shimmer, settle and shield. |
+| `static` | Preview and sync line (no shimmer), an instant swap, and the shield on whatever changed. Use it if the settle misbehaves. |
 | `off` | No read and no write; the writer deletes the database at start, and every clear deletes it. Use it if the preview itself misbehaves. |
 
 Bumping `SNAPSHOT_FORMAT` invalidates every cache at once. Per user, the animations toggle
-turns the settle off and leaves the shield on.
+turns the settle and the shimmer off and leaves the shield on.
 
 ## The retirement rule
 
@@ -1026,9 +1274,20 @@ chose differently, each for a reason found while building or testing it.
   conversation is not shown in its place (the phone shows it). Data-safe; a second click
   after the landing opens the conversation.
 - **A pasted list during the preview** is kept over a later deferred item or organizer
-  request, which is refused (only another `bulk-add` replaces it), and is still dropped by
+  request, which is refused (only another pasted list replaces it, never an empty
+  `bulk-add`), and is still dropped by
   leaving `/` before the landing. A waiting paste may open later than the landing, when a
   docked item panel or another dialog closes.
+- **Filing again after a landing** is as good as the database's answer. A row the
+  person deleted and restored over the failed load whose delete committed but whose
+  restore did not (the outage began between them) reads as deleted elsewhere and stays
+  in the bin, and a subtask of a parent deleted on another device whose own insert never
+  committed is filed again, live, under a parent in the bin, where no view shows it
+  (the remote delete cascaded only to subtasks that existed). A custom-type list is
+  filed again with parallel inserts, so its created_at order (the order such types sort
+  by) can differ from the paste. A live row the landing missed takes the person's
+  version over the database's, so an edit made on another device in the seconds between
+  its insert committing and the question being asked is overwritten.
 - **The crash marker's edges.** Chrome's Duplicate Tab copies sessionStorage, so a tab
   duplicated mid-preview inherits `'1'` from a page that is still alive and purges the
   snapshot for every tab. A preview that commits in a tab hidden from the start, then is
@@ -1062,6 +1321,19 @@ chose differently, each for a reason found while building or testing it.
   `data-loaded` fresh only), `preview-crash-boundary`, `planner-sync-line`,
   `planner-preview-css`, and `week-column-hover` (no ancestor of a lime mark carries
   opacity in the preview).
+- The waiting shimmer: `planner-shimmer` (the phases: on mode only, the light, the ease
+  and nothing by elapsed time, a failed load and a dropped preview, another account, both
+  motion vetoes, forced colours, a hidden tab, away titles, one clock, every timer and
+  listener gone with the last host), `planner-shimmer-css` (title text only, scoped to the
+  preview and the settle scopes, inside the motion and forced-colours media query and the
+  app's switch, no opacity, nothing lime, the cap, every number against the module's, the
+  sync bar on the same keyframes, a level for every theme, the plain delay, the rise split
+  at its midpoint onto plain text, the away rule with no band, the emoji rule) and
+  `planner-shimmer-marks` (open and muted titles, on the title's own text element, emoji
+  runs in their own span). `planner-shimmer` also pins the late joiners: a title scrolled
+  back into view and one mounted mid-wait put on the clock before they paint, the clock
+  taken from a running sweep, the mount observer gone with the wait, and no inline x or
+  away mark left at the end.
 - The settle: `settle-plan` (every constant, `EASE_TYPE`, the 624ms worst case),
   `settle-conductor` (the paced type-ins; the stacking writes, pinned as a list, with
   solid fills, plates and the shadow, each put back exactly on every exit; ends from the

@@ -756,6 +756,10 @@ export function Braindump({ variant = 'sidebar', headerAccessory }: BraindumpPro
       // strip and the quick-add are its flex siblings, and they move when a
       // short list grows (the scroller is flex-1 only when empty).
       data-settle-scope="braindump"
+      // The look-only state, as view-root marks it: the waiting shimmer's
+      // scope (app/globals.css). Not inert here: the section's scroller, notice
+      // slot and quick-add stay live, and the rows below carry their own.
+      data-preview={previewing ? 'true' : undefined}
       className="flex min-h-0 flex-1 flex-col gap-2"
     >
       {/* Header — the shared double-card capsule (SurfaceHeader). The phone

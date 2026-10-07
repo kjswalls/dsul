@@ -8,9 +8,10 @@ import { SYNC_LINE_SWEEP } from '@/components/shell/planner-sync-line';
  * sync line"; components/shell/planner-sync-line.tsx). Read as text, the way
  * planner-skeleton.test.tsx and week-column-hover.test.tsx read theirs.
  *
- *  - Its own banner, after `@layer base {` and before the Zen room: the
- *    skeleton test treats everything up to the next banner as the skeleton
- *    block, and the week recede region counts its transitions.
+ *  - Its own banner, after `@layer base {` and before the waiting shimmer
+ *    (planner-shimmer-css.test.ts), then the Zen room: the skeleton test
+ *    treats everything up to the next banner as the skeleton block, and the
+ *    week recede region counts its transitions.
  *  - No transitions; both motion vetoes spelled out.
  *  - Never lime: no primary, success, accent or lime token anywhere in it.
  *  - The root's fade-in is never overridden by the done state, so a landing
@@ -40,12 +41,12 @@ function ruleBlocks(css: string): { selector: string; body: string }[] {
 }
 
 describe('the sync line CSS section', () => {
-  it('sits under its own banner after `@layer base {`, after the skeleton, before the Zen room', () => {
+  it('sits under its own banner after `@layer base {`, after the skeleton, before the waiting shimmer', () => {
     expect(start, 'the banner is gone').toBeGreaterThan(-1);
     expect(start).toBeGreaterThan(src.indexOf('@layer base {'));
     expect(start).toBeGreaterThan(src.indexOf('--day-recede:'));
     expect(start).toBeGreaterThan(src.indexOf('@keyframes planner-skeleton-in'));
-    expect(end).toBe(src.indexOf('/* ── Zen room'));
+    expect(end).toBe(src.indexOf('/* ── Planner preview: waiting shimmer'));
     // Guard the guard: the section actually holds the rules.
     expect(rules).toMatch(/\.planner-sync-line\s*\{/);
   });

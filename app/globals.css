@@ -2540,10 +2540,18 @@ body {
 }
 
 /* ── Planner preview: sync line ──────────────────────────────────────────
-   components/shell/planner-sync-line.tsx — the look-only preview's one signal
-   (lib/planner-snapshot.ts). Neutral ink, never lime: nothing on the canvas
-   dims while the cached planner is up, and the only opacity here is on the
-   line's OWN elements, which contain nothing but these spans.
+   components/shell/planner-sync-line.tsx — the look-only preview's steady
+   signal (lib/planner-snapshot.ts). Neutral ink, never lime, and the only
+   opacity here is on the line's OWN elements, which contain nothing but these
+   spans. Nothing on the canvas is faded while the cached planner is up; the
+   one thing that dims is row title text (the waiting shimmer, next section).
+
+   The travelling bar is the shimmer's band, on one clock: the same period,
+   the same parked-then-crossing keyframes in viewport terms, the same width,
+   the same 300ms start, offset by the track's own left edge
+   (--planner-shimmer-x, which the component measures). So it crosses the
+   canvas exactly under the light crossing the titles, and goes on alone, still
+   saying syncing, once the shimmer's three passes are spent.
 
    The root's fade-in is never overridden. A landing can arrive mid-fade, so
    the done state animates the track (out) and ::after (the sweep) only — a
@@ -2562,11 +2570,13 @@ body {
   }
 }
 @keyframes planner-sync-travel {
-  from {
-    transform: translateX(-100%);
+  0%,
+  14% {
+    transform: translateX(calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px)));
   }
-  to {
-    transform: translateX(250%);
+  62%,
+  100% {
+    transform: translateX(calc(100vw - var(--planner-shimmer-x, 0px)));
   }
 }
 @keyframes planner-sync-track-out {
@@ -2603,14 +2613,14 @@ body {
   position: absolute;
   inset-block: 0;
   left: 0;
-  width: 40%;
+  width: calc(2 * var(--planner-shimmer-band));
   background: linear-gradient(
     90deg,
     transparent,
     color-mix(in oklch, var(--muted-foreground) 55%, transparent),
     transparent
   );
-  animation: planner-sync-travel 1.4s var(--ease-roll) 300ms infinite;
+  animation: planner-sync-travel var(--planner-shimmer-period) linear 300ms infinite;
 }
 .planner-sync-line::after {
   content: '';
@@ -2644,6 +2654,242 @@ body {
   animation: none;
   width: 100%;
   background: color-mix(in oklch, var(--muted-foreground) 35%, transparent);
+}
+
+/* ── Planner preview: waiting shimmer ────────────────────────────────────
+   lib/planner-shimmer.ts — Kirby's ask on 2026-10-07, after Claude's own
+   "working" status text. While the look-only preview waits on the fresh load,
+   every cached open row title is drawn in a muted ink with one band of full
+   ink crossing the planner; when the fresh data lands, one last pass of light
+   raises each title back to full ink as it reaches it.
+
+   What dims, and why it is allowed. Title TEXT only: the element marked
+   data-row-title='open' (TaskRow, ScheduleBlock, ProjectBlock), under a
+   preview root (view-root, the braindump section) while waiting and under the
+   canvas and braindump scopes while landing. Never a checkbox, rail, chip,
+   count or label, never anything lime, never an opacity: the ink is the
+   title's own background clipped to its own glyphs, so nothing around it
+   composites. An emoji keeps its own fill (RowTitleText puts each in a
+   data-row-emoji span): through a clipped ground a colour glyph is only a
+   mask, a flat silhouette. A title that rests muted (set aside, done,
+   skipped, receded: data-row-title='muted') keeps its ink and takes no band.
+   A waiting title outside the viewport (data-shimmer-away, which the module
+   sets) holds the waiting ink with no band and sits the landing out. Zen's
+   titles carry no mark: the room stays still but for its sync line.
+
+   The floor. The waiting ink is --planner-shimmer-level of full ink mixed into
+   --muted-foreground, the ink of the labels, chips, counts and "Add item".
+   Each level is the lowest at which, measured from pixels in every view, every
+   waiting title is at least 4.5:1 on its own surface, at least 1.25 times the
+   muted ink on that same surface, and at least 1.05 times the best contrast
+   any muted-ink text reaches on ITS own ground. That last one holds the dark
+   looks: their labels sit on the darker page and their titles on lighter
+   cards, so the same ink reads stronger as a label (the current bucket's
+   name, 7.1:1 on the phone's page, against 6.3:1 for a title on its card at
+   the old 25%). Light looks are held by 4.5:1 (their labels are 2 to 3:1).
+   Secondary ink (ink-1: the Display shelf) and headers are not labels and may
+   outrank a waiting title; an empty pane's hint is not one either.
+
+   One light. Each title's gradient is offset by its own left edge in the
+   viewport (--planner-shimmer-x), so every title is a window onto one band,
+   and the sync line's bar runs the same keyframes and period from the same
+   start: one clock. Not background-attachment: fixed, which draws the same
+   picture at about 11 frames a second (it re-rasters far more than the
+   titles). The band waits off the left edge until 0.47s, reaches the
+   braindump as the ink settles (0.54s), has crossed the canvas by 1.0s, and
+   rests off the right edge until the next pass. It never enters from the
+   right. The ink easing down has no end keyframe (the rule's own ink is its
+   end) and fill backwards: a registered property holding an end value cost
+   about 2ms of recalc a frame. Every title's mute and sweep run on the clock:
+   one scrolled back into view or mounted mid-wait is put on it before it
+   paints, so it never shows full ink while its neighbours wait.
+
+   The cap: three passes (3.9s), then the band stops and the ink holds at the
+   waiting level while the sync line goes on saying syncing.
+
+   The landing. The attribute turns to 'land' inside the landing set(), before
+   React commits, so the first fresh frame is styled for it and no title
+   snaps. Both rules run the sweep, so a band mid-crossing carries on until the
+   rising ink meets it. Each title rises from the waiting ink as the light
+   reaches its left edge: the module delays each rise by the title's x, 0 to
+   180ms across the viewport, on the animation itself (a custom property per
+   title would style them all twice in the landing). A column of titles shares
+   one x, so in Day and on the phone the canvas rises together, a beat after
+   the braindump: the light crosses the viewport, but there is nothing to the
+   right of the column to show it. 'ease' is the plain version, for a landing
+   before the ink had settled: every title up at once from the depth its ink
+   had reached (--planner-shimmer-depth, a rule for the titles, never a
+   property on the root, which would re-style the whole document). Every rise
+   ends on plain text, so the attribute coming off changes nothing on screen
+   (planner-shimmer-rise). A failed load and a dropped preview empty the
+   planner, so they end with nothing to raise.
+
+   Nothing before the light: through the 300ms delay the mute holds plain
+   text, so a warm load never sees the shimmer at all.
+
+   Off, with no muting either: reduced motion (the OS or the app's switch, at
+   once, mid-wait too), forced colours (the system's colours replace the ink,
+   and a clipped background is not one of them), and `static` (the module
+   never sets the attribute). No transitions in this section. */
+:root {
+  /* Paper, and the Slate, Dune and Iris tints on it: 4.52:1 at worst, on a
+     project block's task under Slate. */
+  --planner-shimmer-level: 30%;
+  /* Half the band: wide on a desktop, a sliver on a phone. */
+  --planner-shimmer-band: clamp(32px, 9vw, 140px);
+  --planner-shimmer-period: 1.2s;
+}
+.dark {
+  /* Night and its Slate, Dune and Iris tints: held by the current bucket's
+     name on the phone's page (7.14 to 7.21:1); every waiting title is at
+     least 1.05 times that, the worst a habit on its bucket card. */
+  --planner-shimmer-level: 45%;
+}
+:root[data-look-light='studio']:not(.dark) {
+  --planner-shimmer-level: 13%; /* 4.52:1 */
+}
+:root[data-look-light='sorbet']:not(.dark) {
+  --planner-shimmer-level: 30%; /* 4.56:1 */
+}
+:root[data-look-dark='terminal'].dark {
+  --planner-shimmer-level: 24%; /* 1.05x Day's current bucket name (5.8:1) */
+}
+:root[data-look-dark='dusk'].dark {
+  --planner-shimmer-level: 51%; /* 1.05x the phone's current bucket name (7.14:1) */
+}
+@keyframes planner-shimmer-mute {
+  /* Through the 300ms delay, plain text: no ground, the title's own fill. A
+     warm load that lands inside it never sees the shimmer, not even as the
+     slightly lighter glyphs a clipped ground draws. Then at once the clipped
+     ground at full ink, easing down to the rule's waiting ink. */
+  from {
+    background-color: transparent;
+    -webkit-text-fill-color: currentColor;
+  }
+  0.01% {
+    background-color: var(--foreground);
+    -webkit-text-fill-color: transparent;
+  }
+}
+@keyframes planner-shimmer-sweep {
+  0%,
+  14% {
+    background-position-x: calc(-2 * var(--planner-shimmer-band) - var(--planner-shimmer-x, 0px));
+  }
+  62%,
+  100% {
+    background-position-x: calc(100vw - var(--planner-shimmer-x, 0px));
+  }
+}
+@keyframes planner-shimmer-rise {
+  /* --ease-roll from the ink on screen to full ink, split at its midpoint into
+     its two halves. At that midpoint, the rise's fastest moment, the title
+     turns from a clipped ground into plain text of the same colour, and the
+     second half eases its own colour up to its rest. So the rise ends on the
+     plain text the end of the shimmer leaves, and taking the attribute off
+     changes nothing: glyphs drawn as a clipped ground carry a little less ink
+     than the same colour drawn as text, and the one change between the two
+     hides inside the rise. The fill does not interpolate (it flips), which is
+     why the second half moves color. The band is drawn in color too, so over
+     the first half it comes down to the ground as the ground comes up, and
+     they meet at the midpoint, where the band goes. */
+  from {
+    background-color: var(--planner-shimmer-from);
+    -webkit-text-fill-color: transparent;
+    animation-timing-function: cubic-bezier(0.45, 0, 0.725, 0.5);
+  }
+  50% {
+    color: var(--planner-shimmer-mid);
+    background-color: var(--planner-shimmer-mid);
+    background-image: var(--planner-shimmer-light);
+    -webkit-text-fill-color: transparent;
+    animation-timing-function: linear;
+  }
+  50.01% {
+    color: var(--planner-shimmer-mid);
+    background-color: transparent;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+    animation-timing-function: cubic-bezier(0.275, 0.5, 0.55, 1);
+  }
+  to {
+    background-color: transparent;
+    background-image: none;
+    -webkit-text-fill-color: currentColor;
+  }
+}
+@media (prefers-reduced-motion: no-preference) and (forced-colors: none) {
+  :root[data-planner-shimmer='wait']:not([data-reduce-motion='true']) [data-preview='true'] [data-row-title='open'],
+  :root[data-planner-shimmer='land']:not([data-reduce-motion='true'])
+    :is([data-settle-scope='canvas'], [data-settle-scope='braindump'])
+    [data-row-title='open']:not([data-shimmer-away]),
+  :root[data-planner-shimmer='ease']:not([data-reduce-motion='true'])
+    :is([data-settle-scope='canvas'], [data-settle-scope='braindump'])
+    [data-row-title='open']:not([data-shimmer-away]) {
+    /* Declared here, on the title, so a card that re-points --foreground
+       (Focus's resting buckets) mixes from its own ink. */
+    --planner-shimmer-ink: color-mix(in oklab, var(--foreground) var(--planner-shimmer-level), var(--muted-foreground));
+    /* Where a rise starts (the ease's depth; full waiting ink by default), and its midpoint. */
+    --planner-shimmer-from: color-mix(in oklab, var(--planner-shimmer-ink) var(--planner-shimmer-depth, 100%), var(--foreground));
+    --planner-shimmer-mid: color-mix(in oklab, var(--planner-shimmer-from) 50%, var(--foreground));
+    /* The band, in the title's own colour: the rise carries that colour down
+       to meet the ground, so a band still crossing at the landing dissolves
+       into the rising ink instead of vanishing. */
+    --planner-shimmer-light: linear-gradient(
+      90deg,
+      transparent,
+      color-mix(in oklab, currentColor 45%, transparent) 27.5%,
+      currentColor 50%,
+      color-mix(in oklab, currentColor 45%, transparent) 72.5%,
+      transparent
+    );
+    -webkit-text-fill-color: transparent;
+    background-color: var(--planner-shimmer-ink);
+    background-image: var(--planner-shimmer-light);
+    background-size: calc(2 * var(--planner-shimmer-band)) 100%;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
+  :root[data-planner-shimmer='wait']:not([data-reduce-motion='true']) [data-preview='true'] [data-row-title='open'] {
+    animation:
+      planner-shimmer-mute 240ms var(--ease-out-soft) 300ms backwards,
+      planner-shimmer-sweep var(--planner-shimmer-period) linear 300ms 3 both;
+  }
+  /* Outside the viewport (lib/planner-shimmer.ts marks it): the waiting ink,
+     still, with no band, and no landing pass. An animation ticks and paints
+     off screen too. No band either: with no animation its position is 0, and
+     a title scrolled into view would show it at its left edge until the
+     module's next measure. That measure un-marks the title and puts its
+     restarted animations on the clock before the frame paints. */
+  :root[data-planner-shimmer='wait']:not([data-reduce-motion='true'])
+    [data-preview='true']
+    [data-row-title='open'][data-shimmer-away] {
+    animation: none;
+    background-image: none;
+  }
+  :root[data-planner-shimmer='land']:not([data-reduce-motion='true'])
+    :is([data-settle-scope='canvas'], [data-settle-scope='braindump'])
+    [data-row-title='open']:not([data-shimmer-away]) {
+    /* The rise's curve is in its keyframes; `both` holds the plain text it
+       ends on until the attribute comes off. */
+    animation:
+      planner-shimmer-sweep var(--planner-shimmer-period) linear 300ms 3 both,
+      planner-shimmer-rise 150ms linear both;
+  }
+  :root[data-planner-shimmer='ease']:not([data-reduce-motion='true'])
+    :is([data-settle-scope='canvas'], [data-settle-scope='braindump'])
+    [data-row-title='open']:not([data-shimmer-away]) {
+    animation:
+      planner-shimmer-sweep var(--planner-shimmer-period) linear 300ms 3 both,
+      planner-shimmer-rise 170ms linear both;
+  }
+  /* An emoji keeps its own fill (RowTitleText wraps each one): through a
+     clipped ground a colour glyph is only a mask, and it would turn into a
+     flat silhouette in the ink. Drawn over the ground, it keeps its colours. */
+  :root[data-planner-shimmer]:not([data-reduce-motion='true']) [data-row-title='open'] [data-row-emoji] {
+    -webkit-text-fill-color: currentColor;
+  }
 }
 
 /* ── Zen room ────────────────────────────────────────────────────────────

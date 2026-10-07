@@ -7,6 +7,7 @@ import { ArrowLeftToLine, Redo2, SkipForward, Undo2 } from 'lucide-react';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { GroupSection } from '@/components/primitives/group-section';
 import { TaskRow, type RowItem } from '@/components/primitives/task-row';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { PriorityGlyph, MetaText, RollingMetaText, formatDuration } from '@/components/primitives/pills';
 import { useDayItems } from '@/hooks/use-day-items';
 import { useFieldWidth, useFitHourPx, useResizeScrollCompensation } from '@/lib/use-fit-hour-px';
@@ -1001,7 +1002,10 @@ export function ScheduleBlock({
             className="pointer-events-auto flex h-full cursor-pointer items-center gap-1.5 rounded-[5px] bg-surface-3/60 px-2 hover-wash"
           >
             <SkipForward className="h-3 w-3 flex-shrink-0 text-muted-foreground/60" />
-            <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+            <span
+              data-row-title="muted"
+              className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70"
+            >
               {item.title}
             </span>
             <button
@@ -1092,6 +1096,10 @@ export function ScheduleBlock({
     picking && 'pointer-events-auto opacity-100'
   );
 
+  // The waiting shimmer's mark, by the same three states that mute the title
+  // below (lib/planner-shimmer.ts): a muted title keeps its ink while the
+  // preview is up, and only an open one takes the band.
+  const titleMark = suppressed || receded || done ? 'muted' : 'open';
   const titleClass = cn(
     'min-w-0 flex-1 font-content text-content text-foreground',
     // Set aside (showPausedOnGrid). Muted, never struck through and never a
@@ -1381,6 +1389,7 @@ export function ScheduleBlock({
                 <div className="flex min-w-0 items-start gap-1.5">
                   {checkbox}
                   <span
+                    data-row-title={titleMark}
                     className={cn(
                       titleClass,
                       'break-words',
@@ -1389,7 +1398,7 @@ export function ScheduleBlock({
                     )}
                     title={item.title}
                   >
-                    {item.title}
+                    <RowTitleText text={item.title} />
                   </span>
                 </div>
                 {/* No width to overlay here without covering the title, so the
@@ -1415,7 +1424,9 @@ export function ScheduleBlock({
               <>
                 <div className="relative flex min-w-0 items-center gap-2">
                   {checkbox}
-                  <span className={cn(titleClass, 'truncate')}>{item.title}</span>
+                  <span data-row-title={titleMark} className={cn(titleClass, 'truncate')}>
+                    <RowTitleText text={item.title} />
+                  </span>
                   {effDuration > 0 && (
                     <RollingMetaText
                       value={effDuration}
@@ -1439,7 +1450,9 @@ export function ScheduleBlock({
             ) : (
               <div className="relative flex min-w-0 items-center gap-2">
                 {checkbox}
-                <span className={cn(titleClass, 'truncate')}>{item.title}</span>
+                <span data-row-title={titleMark} className={cn(titleClass, 'truncate')}>
+                  <RowTitleText text={item.title} />
+                </span>
                 <span className={cn('flex flex-shrink-0 items-center gap-2', done && 'opacity-60')}>
                   {task?.priority && <PriorityGlyph priority={task.priority} />}
                   {effDuration > 0 && (

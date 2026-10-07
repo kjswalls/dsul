@@ -13,6 +13,7 @@ import { goalRolesByItem, milestoneItemIds } from '@/lib/goals';
 import { canMoveToNextDay, canReschedule as canRescheduleItem, canSendToBraindump, formatTargetDay, nextDayLabel, nextDayTarget } from '@/lib/row-moves';
 import { RowControl, RowControlDivider, RowControlGroup } from '@/components/primitives/row-control';
 import { RescheduleControl } from '@/components/primitives/reschedule-control';
+import { RowTitleText } from '@/components/primitives/row-title-text';
 import { useGoalsForDisplay, useStreaksEnabled } from '@/lib/extension-gates';
 import { getItemTypeConfig } from '@/lib/item-registry';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
@@ -450,7 +451,11 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <span className="flex h-4 w-4 flex-shrink-0 items-center justify-center">
             <SkipForward className="h-3.5 w-3.5 text-muted-foreground/60" />
           </span>
-          <span className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70">
+          {/* A muted title: it keeps its ink while the preview waits (app/globals.css). */}
+          <span
+            data-row-title="muted"
+            className="min-w-0 flex-1 truncate font-content text-content text-muted-foreground/70"
+          >
             {item.title}
           </span>
           {isMobile ? (
@@ -633,6 +638,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <TooltipTrigger asChild {...titleTip.triggerProps}>
             <p
               ref={titleRef}
+              // The waiting shimmer's mark (lib/planner-shimmer.ts): an open
+              // title takes the muted ink and the band while the preview is up;
+              // a muted one keeps its own ink, so it never outshines an open row.
+              data-row-title={suppressed || (completed && !suppressCompletedLook) ? 'muted' : 'open'}
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,
                 // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
@@ -650,7 +659,7 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
                   'group-hover:[mask-image:var(--title-mask,none)] group-has-[:focus-visible]:[mask-image:var(--title-mask,none)]'
               )}
             >
-              {item.title}
+              <RowTitleText text={item.title} />
             </p>
           </TooltipTrigger>
           <TooltipContent side="bottom" align="start" className="max-w-sm">

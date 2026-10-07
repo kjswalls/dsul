@@ -4,6 +4,7 @@ import { useEffect, useLayoutEffect, useRef } from 'react';
 
 import { usePlannerPreviewing } from '@/lib/planner-ready';
 import { notePreviewRendered } from '@/lib/planner-snapshot';
+import { registerShimmerHost, shimmerLandingCommitted, shimmerPreviewCommitted } from '@/lib/planner-shimmer';
 import { notePreviewPainted, onLandingCommitted, registerSettleHost } from '@/lib/settle';
 
 /** What a screen reader hears while the cached planner is up. The rows themselves are inert, so hidden from it. */
@@ -34,12 +35,23 @@ export const PREVIEW_STATUS_TEXT = 'Showing your last session. Syncing…';
  *    Every way the preview ends passes here (a failed load and a crash drop
  *    too); the conductor finds nothing captured for those. A mount is not an
  *    edge.
+ *  - The waiting shimmer (lib/planner-shimmer.ts): its wait starts in a
+ *    layout effect on the preview's commit, before the cached rows are first
+ *    styled, and its landing pass measures the fresh titles in the landing's
+ *    layout effect, just before the conductor holds the glide.
  */
 export function SettleHost() {
   const previewing = usePlannerPreviewing();
   const wasPreviewing = useRef(previewing);
 
   useEffect(() => registerSettleHost(), []);
+  // After the conductor's, so its subscriber reads the preview's rects
+  // before the shimmer's re-styles the titles for the landing.
+  useEffect(() => registerShimmerHost(), []);
+
+  useLayoutEffect(() => {
+    if (previewing) shimmerPreviewCommitted();
+  }, [previewing]);
 
   useEffect(() => {
     if (!previewing) return;
@@ -58,7 +70,11 @@ export function SettleHost() {
   useLayoutEffect(() => {
     const landed = wasPreviewing.current && !previewing;
     wasPreviewing.current = previewing;
-    if (landed) onLandingCommitted();
+    if (landed) {
+      // Before the conductor's hold, so each title is read where it now rests.
+      shimmerLandingCommitted();
+      onLandingCommitted();
+    }
   }, [previewing]);
 
   return (
