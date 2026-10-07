@@ -1,6 +1,6 @@
 import { itemTypeName } from '@/lib/item-registry';
 import { sameContainerName } from '@/lib/container-registry';
-import { parseDay } from '@/lib/collections';
+import { weekdayOf } from '@/lib/container-schedule';
 import { wantsDoingOn } from '@/lib/reminders/due';
 import type { ModEvent } from '@/lib/mod-events';
 import type { RecipeManifest, RecipeTrigger } from '@/lib/mods/schema';
@@ -20,7 +20,7 @@ export type RecipeFire =
   | { kind: 'bucket.changed'; bucket: ClockBucket };
 
 export function matchesTrigger(t: RecipeTrigger, e: RecipeFire): boolean {
-  if (t.on === 'time') return false; // the server runner's (build order 6)
+  if (t.on === 'time') return false; // only the server runner fires it (lib/recipes/server/tick.ts)
   if (t.on !== e.kind) return false;
   if (t.on === 'bucket.changed' && e.kind === 'bucket.changed') return !t.bucket || t.bucket === e.bucket;
   return true;
@@ -49,8 +49,8 @@ export function passesFilters(
   if (needsItem && !item) return false;
 
   if (f.weekdays) {
-    const day = parseDay(env.dateStr);
-    if (!day || !f.weekdays.includes(day.getDay())) return false;
+    // The fire's own calendar day, read in UTC so no server or device zone moves it.
+    if (!f.weekdays.includes(weekdayOf(env.dateStr))) return false;
   }
   if (!item) return true;
 

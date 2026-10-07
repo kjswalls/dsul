@@ -74,6 +74,7 @@ import { __resetModEventsForTests } from '@/lib/mod-events';
 import {
   __resetRecipeEngineForTests,
   executeRecipe,
+  runClock,
   runRecipeFromCommand,
   startRecipeEngine,
 } from '@/lib/recipes/engine';
@@ -537,6 +538,36 @@ describe('run log', () => {
     expect(rows[0]).toMatchObject({ user_id: USER, mod_id: r.id, summary: { kind: 'run', trigger: 'item.completed', did: 1, of: 1 } });
     expect(rows[0].claim_key).toMatch(/^run:/);
     expect(JSON.stringify(rows[0].summary)).not.toMatch(/secret/i);
+  });
+});
+
+describe('the run log counts the day', () => {
+  beforeEach(() => load([task('t1')]));
+
+  // The server's daily rate limit counts every device's runs by the user's day.
+  it('a browser run carries the user’s day', () => {
+    seedRecipes(recipe({ trigger: { on: 'item.completed' }, steps: [{ do: 'toast', text: 'x' }] }));
+    store().toggleTaskStatus('t1');
+    flush();
+    expect(modRunInserts()[0].summary.day).toBe(TODAY);
+  });
+});
+
+describe('a recipe at a time of day', () => {
+  beforeEach(() => load([task('t1')]));
+
+  // Only the server runs it (lib/recipes/server/tick.ts): never an event, the
+  // clock, or ⌘K here, so it cannot run twice.
+  it('never runs in the browser', async () => {
+    const r = recipe({ trigger: { on: 'time', at: '12:00' }, steps: [{ do: 'create', type: 'task', title: 'Plan' }] });
+    seedRecipes(r);
+    store().toggleTaskStatus('t1');
+    flush();
+    await runClock(NOON);
+    runRecipeFromCommand(r.id);
+    flush();
+    expect(store().items.map((i) => i.title)).not.toContain('Plan');
+    expect(sb.calls.filter((c) => c.table === 'mod_runs')).toEqual([]);
   });
 });
 

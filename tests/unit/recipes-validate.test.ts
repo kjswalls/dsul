@@ -49,10 +49,7 @@ describe('validateRecipe', () => {
     }
   });
 
-  it('refuses a time trigger and an anytime part of day', () => {
-    expect(validateRecipe(m({ trigger: { on: 'time', at: '07:00' } }), env)).toEqual([
-      'Recipes that run at a set time are not available yet.',
-    ]);
+  it('refuses an anytime part of day', () => {
     expect(validateRecipe(m({ trigger: { on: 'bucket.changed', bucket: 'anytime' } }), env)).toEqual([
       'Pick morning, afternoon or evening.',
     ]);
@@ -162,10 +159,69 @@ describe('stakes', () => {
   });
 });
 
+describe('a recipe at a time of day (the server runner)', () => {
+  const SERVER_ONLY = "A recipe at a set time runs on dsul's server, so it can only add, complete, skip or reschedule.";
+  const at = (steps: unknown[], filters: Record<string, unknown> = {}) =>
+    m({ trigger: { on: 'time', at: '07:30' }, filters, steps });
+
+  it('takes add, complete, skip and reschedule, and weekdays', () => {
+    expect(
+      validateRecipe(
+        at(
+          [
+            { do: 'create', type: 'task', title: 'Plan the day' },
+            { do: 'complete', item: { id: ID } },
+            { do: 'skip', item: { id: ID } },
+            { do: 'reschedule', item: { id: ID }, inDays: 1 },
+          ],
+          { weekdays: [1, 2, 3, 4, 5] }
+        ),
+        env
+      )
+    ).toEqual([]);
+  });
+
+  it.each([
+    ['a toast', { do: 'toast', text: 'x' }],
+    ['go to a view', { do: 'goto', scope: 'day', layout: 'list' }],
+    ['a theme', { do: 'setTheme', mode: 'light', theme: 'paper' }],
+    ['a browser-only verb', { do: 'pause', item: { id: ID } }],
+    ['the braindump', { do: 'braindump', item: { id: ID } }],
+  ])('refuses %s', (_, step) => {
+    expect(validateRecipe(at([{ do: 'create', type: 'task', title: 'x' }, step]), env)).toContain(SERVER_ONLY);
+  });
+
+  it('refuses item filters and "the item that started it", as every non-item trigger does', () => {
+    expect(validateRecipe(at([{ do: 'complete', item: 'trigger' }]), env)).toEqual(['Pick an item for step 1.']);
+    expect(validateRecipe(at([{ do: 'create', type: 'task', title: 'x' }], { types: ['task'] }), env)).toEqual([
+      'Item filters only work when an item starts the recipe.',
+    ]);
+  });
+
+  it('never starts in the browser', () => {
+    expect(matchesTrigger({ on: 'time', at: '07:30' }, { kind: 'command' })).toBe(false);
+    expect(matchesTrigger({ on: 'time', at: '07:30' }, { kind: 'day.opened' })).toBe(false);
+  });
+
+  it('round-trips through the builder, and says when the time is missing', () => {
+    const draft = { ...blankDraft(), name: 'Morning', trigger: 'time' as const, at: '07:30', steps: [{ ...blankStep('create', false), title: 'Plan' }] };
+    const out = draftToManifest(draft, env);
+    expect(out.ok && out.manifest.trigger).toEqual({ on: 'time', at: '07:30' });
+    expect(out.ok && manifestToDraft('Morning', out.manifest).at).toBe('07:30');
+    expect(draftToManifest({ ...draft, at: '' }, env)).toEqual({ ok: false, problems: ['Pick a time.'] });
+    expect(blankStep('complete', false).item).toBe('');
+  });
+});
+
 describe('steps are verbs, never field writes', () => {
   it('lib/recipes calls no planner write but the one create', () => {
     const dir = join(process.cwd(), 'lib/recipes');
     for (const name of readdirSync(dir)) {
+      // server/ writes through lib/item-intents.ts (tests/unit/recipes-server-run.test.ts).
+      if (!name.endsWith('.ts')) continue;
+      // Revert is not a step: it applies the inverse of a server run's verbs,
+      // each re-checked against the store (tests/unit/recipes-revert.test.ts).
+      if (name === 'revert.ts') continue;
       const src = readFileSync(join(dir, name), 'utf8');
       const writes = src.match(/planner\(\)\.(\w+)\(/g) ?? [];
       expect(writes.filter((w) => w !== 'planner().addTasksBulk('), name).toEqual([]);

@@ -131,6 +131,10 @@ export function windowOpensAt(minutes: number): number {
  * dsul_tick's gate, and tests/unit/reminders-scan.test.ts holds the latest
  * definition to this list. On a database without 034 the user query's retry
  * drops stakes_enabled, the one flag with a migration of its own.
+ *
+ * 062 gave dsul_tick one more clause, deliberately NOT in this list: it also
+ * wakes for any switched-on recipe with a timed trigger (user_mods), which is
+ * the recipe tier's own read (lib/recipes/server/tick.ts), never this scan's.
  */
 export const TICK_FLAGS = ['habit_reminders_enabled', 'stakes_enabled', 'eod_review_enabled'] as const
 

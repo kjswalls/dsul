@@ -14,7 +14,7 @@ import { isUserThemeSlug } from '@/lib/user-themes/css';
 import { LOOKS } from '@/lib/looks';
 import { isUserLookRef, unlistedLookLabel, useUserLooks } from '@/lib/user-looks';
 import { RECIPE_VERBS, RecipeManifestSchema, type UserMod } from '@/lib/mods/schema';
-import { currentRecipeEnv, ITEM_TRIGGERS, openTodayFits, type RecipeEnv } from '@/lib/recipes/validate';
+import { currentRecipeEnv, ITEM_TRIGGERS, openTodayFits, SERVER_WRITE_STEPS, type RecipeEnv } from '@/lib/recipes/validate';
 import {
   STEP_CHOICES,
   TRIGGER_CHOICES,
@@ -59,6 +59,18 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 const isVerbKind = (kind: StepKind) => (RECIPE_VERBS as readonly string[]).includes(kind);
+
+
+/**
+ * Where each item trigger can start without a browser (lib/recipes/server):
+ * a notification's Done only ever ticks, so only a tick names the reminder.
+ */
+const PHONE_NOTE_LEAD: Record<(typeof ITEM_TRIGGERS)[number], string> = {
+  'item.completed': 'When you tick from the iPhone app or a reminder',
+  'item.uncompleted': 'When you untick from the iPhone app',
+  'item.skipped': 'When you skip from the iPhone app',
+  'item.created': 'When you add from the iPhone app',
+};
 
 export function RecipeBuilder({
   userId,
@@ -165,7 +177,6 @@ export function RecipeBuilder({
           value={draft.trigger}
           onChange={(e) => patch({ trigger: e.target.value as RecipeDraft['trigger'] })}
         >
-          {draft.trigger === 'time' && <option value="time">At a set time (not available yet)</option>}
           {TRIGGER_CHOICES.map((t) => (
             <option key={t.value} value={t.value}>
               {t.label}
@@ -173,6 +184,30 @@ export function RecipeBuilder({
           ))}
         </select>
       </Field>
+
+      {draft.trigger === 'time' && (
+        <div className="space-y-1">
+          <Field label="At">
+            <Input
+              type="time"
+              data-testid="recipe-at"
+              value={draft.at}
+              onChange={(e) => patch({ at: e.target.value })}
+            />
+          </Field>
+          <p data-testid="recipe-time-note" className="text-muted-foreground text-xs">
+            Runs on dsul&apos;s server at this time in your time zone, even with dsul closed. Only add,
+            complete, skip and reschedule steps can run then.
+          </p>
+        </div>
+      )}
+
+      {itemTrigger && (
+        <p data-testid="recipe-phone-note" className="text-muted-foreground text-xs">
+          {PHONE_NOTE_LEAD[draft.trigger as (typeof ITEM_TRIGGERS)[number]]}, only add, complete, skip and
+          reschedule steps run.
+        </p>
+      )}
 
       {draft.trigger === 'bucket.changed' && (
         <Field label="Part of day">
@@ -299,7 +334,12 @@ export function RecipeBuilder({
                     patchStep(i, { ...blankStep(e.target.value as StepKind, itemTrigger) })
                   }
                 >
-                  {STEP_CHOICES.map((c) => (
+                  {STEP_CHOICES.filter(
+                    (c) =>
+                      draft.trigger !== 'time' ||
+                      c.value === step.do ||
+                      (SERVER_WRITE_STEPS as readonly string[]).includes(c.value)
+                  ).map((c) => (
                     <option key={c.value} value={c.value}>
                       {c.label}
                     </option>
@@ -356,7 +396,12 @@ export function RecipeBuilder({
           size="sm"
           data-testid="recipe-add-step"
           disabled={draft.steps.length >= 25}
-          onClick={() => setDraft((d) => ({ ...d, steps: [...d.steps, blankStep('toast', itemTrigger)] }))}
+          onClick={() =>
+            setDraft((d) => ({
+              ...d,
+              steps: [...d.steps, blankStep(d.trigger === 'time' ? 'create' : 'toast', itemTrigger)],
+            }))
+          }
         >
           <Plus className="size-3.5" aria-hidden /> Add a step
         </Button>

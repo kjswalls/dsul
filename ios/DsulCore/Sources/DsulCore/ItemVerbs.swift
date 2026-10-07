@@ -1,6 +1,8 @@
 import Foundation
 
-// Port of lib/item-verbs.ts, for the verbs the phone's item sheet offers:
+// Port of lib/item-verbs.ts (labels, details, `eligibleVerbs`) and
+// lib/verb-gates.ts (every gate body and shared predicate, which item-verbs.ts
+// re-exports), for the verbs the phone's item sheet offers:
 // tick, skip, unskip, pause, resume, nextDay, reschedule, resetStreak and
 // delete. For each, its gate (`verbEligible`), its label (`verbLabel`) and its
 // detail (`verbDetail`), and `eligibleVerbs` in the web's declaration order;
@@ -161,20 +163,20 @@ public func occurrenceOn(_ item: Item, on dateStr: String, today todayStr: Strin
     return occursOn(item, on: dateStr, timeZone: timeZone) ? drawnState(item, on: dateStr, today: todayStr) : .absent
 }
 
-/// lib/item-verbs.ts `absent`: a recurring item whose caller knows it does not
+/// lib/verb-gates.ts `absent`: a recurring item whose caller knows it does not
 /// fall on the day.
 private func isAbsent(_ item: Item, _ ctx: VerbContext) -> Bool {
     return isRecurring(item.rule) && ctx.occurrence == .absent
 }
 
-/// lib/item-verbs.ts `rowDateOf`: the day a dated row is drawn on, for the
+/// lib/verb-gates.ts `rowDateOf`: the day a dated row is drawn on, for the
 /// put-off verbs' gates: a task-like item's own `startDate`, else the acting day.
 private func rowDateOf(_ item: Item, _ ctx: VerbContext) -> String {
     if isTaskLike(item), let start = present(item.startDate) { return start }
     return ctx.dateStr
 }
 
-/// lib/item-verbs.ts `kindOf`.
+/// lib/verb-gates.ts `kindOf`.
 private func kindOf(_ item: Item) -> ItemKind {
     return item.isHabit ? .habit : .task
 }

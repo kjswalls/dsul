@@ -10,7 +10,8 @@ three adversarial reviews) is in Kirby's project files, not the repo
 (`/mnt/project-files/mods/`); everything a build needs is in this file.
 
 **Built so far:** build order 2 (raise sites), 3 (storage, Make, safe mode),
-4 (browser recipes, `lib/recipes/`), 5a (user themes) and 5b (user Looks), both below. Where PR 4's code departs from the body:
+4 (browser recipes, `lib/recipes/`), 5a (user themes), 5b (user Looks) and 6 (the
+server runner), each below. Where PR 4's code departs from the body:
 a clock run writes TWO `mod_runs` rows, the claim `<key>` and its result
 `<key>:done`, because 061 grants no UPDATE; an event or ⌘K run writes one,
 `run:<uuid>`, and the run log reads only `summary.kind === 'run'`. The ⌘K
@@ -94,6 +95,44 @@ built-ins), and a recipe that applies a Look there still writes the layout, the
 account's, which only a computer shows. No cache and no pre-paint: a Look is never
 stamped, only the picks it writes. Switching off or deleting a Look releases nothing,
 since no pick stores one; a recipe naming one that is off or gone does nothing.
+
+**Build order 6, the server runner, is built** (`lib/recipes/server/`, migration
+062). Where it departs from the body: a timed recipe's weekdays are its
+`filters.weekdays` (already saved for every trigger, read on the user's own date),
+not a field on the trigger, so the manifest did not change. Claim keys are
+`time:<day>:<at>` and `item:<kind>:<itemId>:<date>` (claim row, then `<key>:done`), so
+the server runs a recipe once per (recipe, item, date, trigger) where the browser runs
+it on every transition; a claim won and then lost to a crash is lost for that day, as
+a cue is. A timed recipe is due at any tick within 30 real minutes after its time on
+the user's date (`window.ts`: spring forward runs 02:30 at 03:00, fall back's doubled
+hour loses the second claim, 23:58 runs at 23:55). Its steps may only be create,
+complete, skip and reschedule (validated at save); an item-trigger recipe run for a
+phone or reminder tick skips other verbs (`skip:browser-only`) and counts screen steps
+into `ui`. Server code cannot import `lib/item-verbs.ts` (planner and UI stores), so
+the pure gates moved to `lib/verb-gates.ts`, which item-verbs re-exports, every verb's
+`eligible` being the same function (no Swift logic change; `ItemVerbs.swift` now cites
+`lib/verb-gates.ts` for the gates and the private helpers); the recipe rules split the same
+way (`validate-core.ts`, `stake-rule.ts`). The phone's complete, skip and move writes
+moved unchanged from `lib/app-api.ts` to `lib/item-intents.ts`, which the runner
+shares, so a server step is the phone's write. The completion and skip RPCs filter on
+id and type only and cannot be scoped, so the runner re-reads each item with
+`user_id` before each one, and `updateItem` takes `{ownerId}`. `lib/app-api.ts` names
+no recipe: its routes pass an `onCommitted` listener (`afterItemWrite`, the runner's one
+door), called once per real transition after the write committed; the phone's
+`complete` and `/api/reminders/act` read whether the day was done first, so a repeat
+`done` starts nothing. The rate limit counts the account's result rows in `mod_runs`
+(`summary.day`, which browser runs now carry too). Revert in Make applies the run's
+inverse writes (`summary.undo`) through the store as one quiet `Revert: <name>` entry,
+claimed as `revert:<run key>`; it needs the planner loaded (Make on a lean /settings
+says so rather than claiming). The planner never refetches what the server changed, so
+Revert first reads the run's items back and folds them in (`mergeServerItems`, the
+`mergeAgentStates` pattern: no undo entry, no write-back), claims only if something
+still applies, and claims as its last await; its result row (`revert:<run key>:done`)
+is what the log trusts, and a claim spent while the planner went away logs `did: 0`
+with `failed` rather than reading as Reverted. A timed run stops its remaining steps
+past the tick's deadline (`stop:deadline`) so a claimed run always logs its result
+and Revert. The cron route runs the recipe tier after the scan in
+its own try, with its own `[cron/recipes]` line; the scan alone decides the status.
 
 **This amends [plugins-themes-store.md](plugins-themes-store.md)** in two places,
 both in its Project B item 6 ("Skip indefinitely"): the tier (c) sandboxed
@@ -374,8 +413,9 @@ name, so callers send those names), one key at a time, so two devices never
 overwrite each other. `mod_runs` is SELECT and INSERT only to its owner (no
 DELETE: a deleted claim could run twice; deleting a mod cascades its runs).
 Migration 061 ships the tables and `mod_store_set` only; widening `dsul_tick`'s
-cheap question waits for the PR that adds timed triggers (build order 6), since
-no recipe can have one before then.
+cheap question waited for the PR that adds timed triggers (build order 6), since
+no recipe could have one before then. 062 widens it, with a partial index on
+switched-on timed recipes.
 
 ## Build order (one PR each, each usable alone)
 

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createServiceClient } from '@/lib/supabase-service';
 import { ReminderScanError, runReminderScan, type ScanSummary } from '@/lib/reminders/scan';
 import { checkCronAuth } from '@/lib/cron-auth';
+import { runRecipeTick, type RecipeTickSummary } from '@/lib/recipes/server';
 
 /**
  * GET /api/cron/reminders
@@ -15,6 +16,11 @@ import { checkCronAuth } from '@/lib/cron-auth';
  * Everything real lives in lib/reminders/scan.ts — this route is auth, a clock,
  * one log line and a JSON summary, so the scan stays testable without a
  * request.
+ *
+ * After the scan, the timed-recipe tier (lib/recipes/server/tick.ts,
+ * memory/plans/mods.md build order 6), in its own try with its own log line:
+ * it runs whether the scan succeeded or not, and it never decides the status,
+ * so a failing recipe never costs a reminder its monitor.
  *
  * Auth: Authorization: Bearer <CRON_SECRET>. The caller is Postgres: pg_cron
  * runs public.dsul_tick, which sends the header through pg_net with the secret
@@ -38,13 +44,33 @@ function tickLine(summary: ScanSummary): string {
   );
 }
 
+/** The recipe tier in one line, beside the tick's. */
+function recipeLine(recipes: RecipeTickSummary): string {
+  return `[cron/recipes] users=${recipes.users} runs=${recipes.runs} notes=${recipes.notes.length}`;
+}
+
+/** No new recipe run starts this long after the tick began, inside maxDuration. */
+const RECIPE_DEADLINE_MS = 45_000;
+
+/** The recipe tier, isolated: whatever it does, it answers a summary. */
+async function recipeTier(now: Date, startMs: number): Promise<RecipeTickSummary> {
+  try {
+    return await runRecipeTick(createServiceClient(), { now, deadlineMs: startMs + RECIPE_DEADLINE_MS });
+  } catch (err) {
+    console.error('[cron/recipes] tier failed:', err);
+    return { users: 0, runs: 0, notes: ['recipe tier failed'] };
+  }
+}
+
 export async function GET(req: NextRequest) {
   const denied = checkCronAuth(req);
   if (denied) return denied.response;
 
+  const startMs = Date.now();
+  const now = new Date(startMs);
   let summary: ScanSummary;
   try {
-    summary = await runReminderScan(createServiceClient(), { now: new Date() });
+    summary = await runReminderScan(createServiceClient(), { now });
   } catch (err) {
     // A 500 only when the scan never started: one of the two reads every claim
     // depends on failed, so nothing was claimed or sent and the next tick
@@ -54,10 +80,14 @@ export async function GET(req: NextRequest) {
     // had already found (memory/plans/reminders-platforms.md §7, decision 7).
     // Flip it to 200 the day a scheduler that RETRIES non-2xx is pointed here.
     console.error('[cron/reminders] scan failed:', err);
+    // The recipes still run: they do not depend on the scan's reads.
+    const recipes = await recipeTier(now, startMs);
+    console.log(recipeLine(recipes));
     return NextResponse.json(
       {
         error: err instanceof Error ? err.message : 'Scan failed',
         notes: err instanceof ReminderScanError ? err.notes : [],
+        recipes,
       },
       { status: 500 },
     );
@@ -67,5 +97,7 @@ export async function GET(req: NextRequest) {
   // user's broken token answering 500 would read as the whole tick down,
   // burying the users it did reach under an error it did not have.
   console.log(tickLine(summary));
-  return NextResponse.json({ ok: true, ...summary });
+  const recipes = await recipeTier(now, startMs);
+  console.log(recipeLine(recipes));
+  return NextResponse.json({ ok: true, ...summary, recipes });
 }

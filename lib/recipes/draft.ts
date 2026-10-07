@@ -21,6 +21,7 @@ export type TriggerChoice =
   | 'review.saved'
   | 'day.opened'
   | 'bucket.changed'
+  | 'time'
   | 'command';
 
 export const TRIGGER_CHOICES: { value: TriggerChoice; label: string }[] = [
@@ -31,6 +32,7 @@ export const TRIGGER_CHOICES: { value: TriggerChoice; label: string }[] = [
   { value: 'review.saved', label: "I save the day's review" },
   { value: 'day.opened', label: 'A new day starts' },
   { value: 'bucket.changed', label: 'Morning, afternoon or evening starts' },
+  { value: 'time', label: 'At a time of day' },
   { value: 'command', label: 'I run it from the command menu' },
 ];
 
@@ -73,11 +75,10 @@ export interface StepDraft {
 
 export interface RecipeDraft {
   name: string;
-  /** A manifest trigger the builder does not offer (a time) is kept as its own value. */
-  trigger: TriggerChoice | 'time';
+  trigger: TriggerChoice;
   /** For bucket.changed: '' (any) or a part of day. */
   bucket: string;
-  /** For a time trigger the builder cannot edit, kept so a save does not lose it. */
+  /** For a time trigger: HH:MM in the user's time zone. */
   at: string;
   types: string[];
   projects: string;
@@ -215,6 +216,7 @@ export function draftToManifest(
   const problems: string[] = [];
   if (!draft.name.trim()) problems.push('Give it a name.');
   if (draft.steps.length === 0) problems.push('Add a step.');
+  if (draft.trigger === 'time' && !/^([01]\d|2[0-3]):[0-5]\d$/.test(draft.at)) problems.push('Pick a time.');
 
   const trigger =
     draft.trigger === 'bucket.changed'
