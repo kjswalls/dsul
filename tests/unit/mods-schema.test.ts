@@ -9,6 +9,7 @@ import {
   RECIPE_MAX_STEPS,
   RECIPE_VERBS,
   RecipeManifestSchema,
+  ThemeManifestSchema,
   UserModRowSchema,
   manifestSchemaFor,
   userModFromRow,
@@ -149,10 +150,19 @@ describe('recipe manifest', () => {
 });
 
 describe('placeholders', () => {
-  it('mods, themes and Looks accept anything until their PRs land', () => {
-    for (const kind of MOD_KINDS.filter((k) => k !== 'recipe')) {
+  it('mods and Looks accept anything until their PRs land', () => {
+    for (const kind of MOD_KINDS.filter((k) => k === 'mod' || k === 'look')) {
       expect(manifestSchemaFor(kind).safeParse({ whatever: [1] }).success, kind).toBe(true);
     }
     expect(manifestSchemaFor('recipe')).toBe(RecipeManifestSchema);
+  });
+
+  it('a theme is the real grammar (lib/mods/theme-grammar.ts), not anything', () => {
+    expect(manifestSchemaFor('theme')).toBe(ThemeManifestSchema);
+    expect(manifestSchemaFor('theme').safeParse({ whatever: [1] }).success).toBe(false);
+    expect(
+      manifestSchemaFor('theme').safeParse({ version: 1, mode: 'light', base: 'paper', tokens: { paper0: '#fafafa' } })
+        .success
+    ).toBe(true);
   });
 });

@@ -58,6 +58,15 @@ describe('validateRecipe', () => {
     ]);
   });
 
+  it('takes one of your themes by its slug, and refuses a slug of the wrong shape', () => {
+    const steps = [
+      { do: 'setTheme', mode: 'light', theme: 'u-abcdef01' },
+      { do: 'setTheme', mode: 'dark', theme: 'u-abcdef01' },
+      { do: 'setTheme', mode: 'light', theme: 'u-moss' },
+    ];
+    expect(validateRecipe(m({ steps }), env)).toEqual(['Pick a light theme for step 3.']);
+  });
+
   it('refuses a habit, an unknown type, an unknown theme or Look', () => {
     const steps = [
       { do: 'create', type: 'habit', title: 'Daily' },

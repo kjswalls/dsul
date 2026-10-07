@@ -1,6 +1,7 @@
 import { getCustomTypeDefs, getItemTypeConfig } from '@/lib/item-registry';
 import { canCreateType } from '@/lib/proposal';
 import { isDarkLook, isLightLook } from '@/lib/theme-looks';
+import { isUserThemeSlug } from '@/lib/user-themes/css';
 import { lookById } from '@/lib/looks';
 import {
   RECIPE_VERBS,
@@ -98,7 +99,11 @@ export function validateRecipe(m: RecipeManifest, env: RecipeEnv): string[] {
       }
     }
     if (step.do === 'setTheme') {
-      const ok = step.mode === 'light' ? isLightLook(step.theme) : isDarkLook(step.theme);
+      // One of your themes is taken by its slug's shape: whether it is on, and
+      // of this mode, is the theme record's question when the step runs, and a
+      // theme that is off or gone then does nothing.
+      const ok =
+        (step.mode === 'light' ? isLightLook(step.theme) : isDarkLook(step.theme)) || isUserThemeSlug(step.theme);
       if (!ok) problems.push(`Pick a ${step.mode} theme for step ${n}.`);
     }
     if (step.do === 'applyLook' && !lookById(step.look)) {

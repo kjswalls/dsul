@@ -43,10 +43,14 @@ import {
   DEFAULT_DARK_LOOK,
   DEFAULT_LIGHT_LOOK,
   LIGHT_LOOKS,
-  isDarkLook,
-  isLightLook,
+  isDarkPick,
+  isLightPick,
   darkLookDef,
   lightLookDef,
+  resolveDarkPick,
+  resolveLightPick,
+  type DarkPick,
+  type LightPick,
 } from '@/lib/theme-looks';
 import {
   DEFAULT_LAYOUT,
@@ -845,10 +849,15 @@ export const SETTINGS: SettingRecord[] = [
     options: LIGHT_LOOKS.map((l) => ({ value: l.value, label: l.label })),
     keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'paper', 'studio', 'sorbet'],
     read: () => look().light,
+    // A user theme's `u-` slug reads back as its own name; the options stay
+    // the built-ins, which is what search indexes.
+    display: (v) => lightLookDef(String(v) as LightPick).label,
     // Paired write, same rule as look.theme and look.palette: the store setter
-    // is localStorage + DOM only (supabase-provider's sync effect).
+    // is localStorage + DOM only (supabase-provider's sync effect). A user
+    // theme is taken only while it is on and loaded, so a recipe step naming
+    // one that is off or deleted does nothing.
     write: (v, ctx) => {
-      if (!isLightLook(v)) return;
+      if (!isLightPick(v)) return;
       look().setLight(v, { eased: true });
       if (ctx.userId) saveSettings(ctx.userId, { theme_light: v });
     },
@@ -864,8 +873,9 @@ export const SETTINGS: SettingRecord[] = [
     options: DARK_LOOKS.map((l) => ({ value: l.value, label: l.label })),
     keywords: ['theme', 'look', 'style', 'skin', 'appearance', 'night', 'terminal', 'dusk'],
     read: () => look().dark,
+    display: (v) => darkLookDef(String(v) as DarkPick).label,
     write: (v, ctx) => {
-      if (!isDarkLook(v)) return;
+      if (!isDarkPick(v)) return;
       look().setDark(v, { eased: true });
       if (ctx.userId) saveSettings(ctx.userId, { theme_dark: v });
     },
@@ -971,8 +981,10 @@ export const SETTINGS: SettingRecord[] = [
     // The other themes design their ground with their accent, so a tint has
     // nothing to act on there. Stated, not hidden: the stored value stands and
     // comes back the moment either default theme is picked again.
+    // What shows, not the raw pick: a pick for one of your themes that is off,
+    // gone or held back by safe mode shows the default, which takes a tint.
     unavailable: () =>
-      look().light === DEFAULT_LIGHT_LOOK || look().dark === DEFAULT_DARK_LOOK
+      resolveLightPick(look().light) === DEFAULT_LIGHT_LOOK || resolveDarkPick(look().dark) === DEFAULT_DARK_LOOK
         ? null
         : 'Only Paper and Night take a tint.',
     control: 'enum',

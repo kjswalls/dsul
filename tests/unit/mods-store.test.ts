@@ -323,6 +323,61 @@ describe('recipes', () => {
     expect(useModsStore.getState().rows).toEqual([]);
   });
 
+  const themeManifest = { version: 1 as const, mode: 'light' as const, base: 'paper' as const, tokens: { paper0: '#fafafa' } };
+
+  it('createTheme saves switched off, its slug from its id, and mints a new id on a clash', async () => {
+    await hydrateWith([]);
+    db.results.push({ error: { code: '23505', message: 'duplicate' } }, { error: null });
+    const r = await useModsStore.getState().createTheme(USER, { name: 'Moss', manifest: themeManifest });
+    expect(r.ok).toBe(true);
+    const first = opsOf(1)[0][1][0] as { id: string; slug: string; kind: string; enabled: boolean };
+    const second = opsOf(2)[0][1][0] as { id: string; slug: string; kind: string; enabled: boolean };
+    expect(second.id).not.toBe(first.id);
+    expect(second).toMatchObject({ kind: 'theme', enabled: false, id: (r as { id: string }).id });
+    expect(second.slug).toBe(`u-${second.id.replace(/-/g, '').slice(0, 8)}`);
+    expect(useModsStore.getState().rows).toHaveLength(1);
+  });
+
+  it('createTheme refuses a manifest the grammar refuses', async () => {
+    await hydrateWith([]);
+    const bad = { ...themeManifest, tokens: { paper0: 'url(x)' } };
+    expect(await useModsStore.getState().createTheme(USER, { name: 'Moss', manifest: bad })).toEqual({
+      ok: false,
+      reason: 'Something in it is not valid.',
+    });
+  });
+
+  it('saveTheme keeps a switched-on theme on', async () => {
+    const existing = row({ kind: 'theme', slug: 'u-aaaaaaaa', name: 'Moss', enabled: true, manifest: themeManifest });
+    await hydrateWith([existing]);
+    db.results.push({ error: null });
+    const next = { ...themeManifest, tokens: { paper0: '#000000' } };
+    expect(await useModsStore.getState().saveTheme(existing.id, { name: 'Moss', manifest: next })).toBe(true);
+    expect(opsOf(1)[0]).toEqual(['update', [{ name: 'Moss', manifest: next }]]);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ enabled: true, manifest: next });
+  });
+
+  it('createTheme never mints the preview slug', async () => {
+    await hydrateWith([]);
+    const spy = vi
+      .spyOn(crypto, 'randomUUID')
+      .mockReturnValueOnce('00000000-1111-4111-8111-111111111111')
+      .mockReturnValueOnce('abcdef01-1111-4111-8111-111111111111');
+    db.results.push({ error: null });
+    const r = await useModsStore.getState().createTheme(USER, { name: 'Moss', manifest: themeManifest });
+    spy.mockRestore();
+    expect(r).toEqual({ ok: true, id: 'abcdef01-1111-4111-8111-111111111111' });
+    expect(opsOf(1)[0][1][0]).toMatchObject({ slug: 'u-abcdef01' });
+  });
+
+  it('saveTheme refuses to switch a theme between light and dark', async () => {
+    const existing = row({ kind: 'theme', slug: 'u-aaaaaaaa', name: 'Moss', enabled: true, manifest: themeManifest });
+    await hydrateWith([existing]);
+    const dark = { version: 1 as const, mode: 'dark' as const, base: 'night' as const, tokens: {} };
+    expect(await useModsStore.getState().saveTheme(existing.id, { name: 'Moss', manifest: dark })).toBe(false);
+    expect(useModsStore.getState().rows[0]).toMatchObject({ manifest: themeManifest });
+  });
+
   it('saveRecipe: a rename alone leaves a switched-on recipe on', async () => {
     // Read back from jsonb, so its keys come in another order than the form's.
     const stored = { filters: {}, steps: [{ text: 'Hi', do: 'toast' }], trigger: { on: 'command' }, version: 1 };

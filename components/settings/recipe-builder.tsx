@@ -9,6 +9,8 @@ import { ALL_ITEM_TYPES, getItemTypeConfig } from '@/lib/item-registry';
 import { EMPTY_PICK_LISTS, fetchRecipePickLists, type RecipePickLists } from '@/lib/recipes/pick-lists';
 import { canCreateType } from '@/lib/proposal';
 import { DARK_LOOKS, LIGHT_LOOKS } from '@/lib/theme-looks';
+import { useUserThemes } from '@/lib/user-themes/store';
+import { isUserThemeSlug } from '@/lib/user-themes/css';
 import { LOOKS } from '@/lib/looks';
 import { RECIPE_VERBS, RecipeManifestSchema, type UserMod } from '@/lib/mods/schema';
 import { currentRecipeEnv, ITEM_TRIGGERS, openTodayFits, type RecipeEnv } from '@/lib/recipes/validate';
@@ -397,6 +399,7 @@ function StepFields({
   onChange: (p: Partial<StepDraft>) => void;
 }) {
   const n = index + 1;
+  const userThemes = useUserThemes((s) => s.themes);
   if (isVerbKind(step.do)) {
     const known = step.item === 'trigger' || step.item === '' || pickable.some((p) => p.id === step.item);
     return (
@@ -517,6 +520,9 @@ function StepFields({
       );
     case 'setTheme': {
       const looks = step.mode === 'light' ? LIGHT_LOOKS : DARK_LOOKS;
+      const yours = Object.values(userThemes).filter((t) => t.mode === step.mode);
+      // A saved step naming one of your themes that is off (or gone) keeps it.
+      const offOwn = isUserThemeSlug(step.theme) && !yours.some((t) => t.slug === step.theme);
       return (
         <div className="flex gap-2">
           <select
@@ -540,6 +546,16 @@ function StepFields({
                 {l.label}
               </option>
             ))}
+            {(yours.length > 0 || offOwn) && (
+              <optgroup label="Yours" data-testid="recipe-theme-yours">
+                {yours.map((t) => (
+                  <option key={t.slug} value={t.slug}>
+                    {t.label}
+                  </option>
+                ))}
+                {offOwn && <option value={step.theme}>Your theme (off)</option>}
+              </optgroup>
+            )}
           </select>
         </div>
       );

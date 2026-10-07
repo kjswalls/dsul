@@ -2,12 +2,15 @@
 
 import { create } from 'zustand';
 import { createClient } from '@/lib/supabase';
+import { DRAFT_SLUG, themeSlugForId } from '@/lib/user-themes/css';
 import {
   MOD_KINDS,
   MOD_SLUG_RE,
   ModNameSchema,
   RecipeManifestSchema,
   type RecipeManifest,
+  ThemeManifestSchema,
+  type ThemeManifest,
   UserModRowSchema,
   userModFromRow,
   type UserMod,
@@ -98,11 +101,12 @@ interface ModsStore {
   safeMode: boolean;
 
   hydrate: (userId: string) => Promise<void>;
-  /** Optimistic; switching on also clears why the app switched it off. */
-  setEnabled: (id: string, enabled: boolean) => Promise<void>;
+  /** Optimistic; switching on also clears why the app switched it off. True once the write lands. */
+  setEnabled: (id: string, enabled: boolean) => Promise<boolean>;
   /** False (and no write) when the name breaks 061's rule. */
   rename: (id: string, name: string) => Promise<boolean>;
-  remove: (id: string) => Promise<void>;
+  /** Optimistic. True once the delete lands. */
+  remove: (id: string) => Promise<boolean>;
   /**
    * Saves a new recipe, switched off (mods.md: everything starts off). The slug
    * comes from the name and is one no row of ANY kind uses, so the recipe's ⌘K
@@ -118,6 +122,20 @@ interface ModsStore {
    * behaviour); a rename alone leaves the switch as it is.
    */
   saveRecipe: (id: string, input: { name: string; manifest: RecipeManifest }) => Promise<boolean>;
+  /**
+   * Saves a new theme, switched off. Its id is minted here and its slug is
+   * `u-` and the id's first 8 hex digits (lib/user-themes/css.ts), so a clash
+   * mints a new id rather than a new suffix.
+   */
+  createTheme: (
+    userId: string,
+    input: { name: string; manifest: ThemeManifest }
+  ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  /**
+   * A theme's name and manifest. The switch stays as it is: a theme is values,
+   * not code that runs, so an edit is not new behaviour the way a recipe's is.
+   */
+  saveTheme: (id: string, input: { name: string; manifest: ThemeManifest }) => Promise<boolean>;
   /** Switched off by the app, with the reason Make shows (061: 1 to 200 characters). */
   disable: (id: string, reason: string) => Promise<void>;
   /** "Turn all mods off": every recipe and mod, on every device. */
@@ -171,6 +189,30 @@ export const useModsStore = create<ModsStore>((set, get) => {
     console.error(`[mods] ${what} failed:`, error);
   };
 
+  /**
+   * Inserts one new row, shown at once and taken back on failure. Returns the
+   * error so the caller can retry a 23505 its own way.
+   */
+  const insertRow = async (row: UserMod): Promise<{ code?: string; message?: string } | null> => {
+    set((s) => ({ rows: sortMods([...s.rows.filter((r) => r.id !== row.id), row]) }));
+    const { error } = await createClient().from('user_mods').insert({
+      id: row.id,
+      user_id: row.userId,
+      kind: row.kind,
+      slug: row.slug,
+      name: row.name,
+      enabled: false,
+      manifest: row.manifest,
+    });
+    if (error && get().hydratedUserId === row.userId) set((s) => ({ rows: s.rows.filter((r) => r.id !== row.id) }));
+    return error;
+  };
+
+  const newRow = (userId: string, id: string, kind: UserMod['kind'], slug: string, name: string, manifest: unknown): UserMod => {
+    const now = new Date().toISOString();
+    return { id, userId, kind, slug, name, enabled: false, manifest, disabledReason: null, createdAt: now, updatedAt: now };
+  };
+
   return {
     ...INITIAL,
     safeMode: readSafeMode(),
@@ -221,7 +263,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     setEnabled: async (id, enabled) => {
       const { available, hydratedUserId: userId, rows } = get();
       const before = rows.find((r) => r.id === id);
-      if (!available || !userId || !before) return;
+      if (!available || !userId || !before) return false;
       const patch = enabled ? { enabled, disabled_reason: null } : { enabled };
       set((s) => ({
         rows: s.rows.map((r) =>
@@ -236,7 +278,9 @@ export const useModsStore = create<ModsStore>((set, get) => {
       if (error) {
         restore(userId, id, { enabled: before.enabled, disabledReason: before.disabledReason });
         writeFailed('setEnabled', error);
+        return false;
       }
+      return true;
     },
 
     rename: async (id, name) => {
@@ -264,7 +308,7 @@ export const useModsStore = create<ModsStore>((set, get) => {
     remove: async (id) => {
       const { available, hydratedUserId: userId, rows } = get();
       const at = rows.findIndex((r) => r.id === id);
-      if (!available || !userId || at < 0) return;
+      if (!available || !userId || at < 0) return false;
       const before = rows[at];
       set((s) => ({ rows: s.rows.filter((r) => r.id !== id) }));
       const { error } = await createClient()
@@ -281,7 +325,9 @@ export const useModsStore = create<ModsStore>((set, get) => {
           });
         }
         writeFailed('remove', error);
+        return false;
       }
+      return true;
     },
 
     createRecipe: async (userId, { name, manifest }) => {
@@ -298,25 +344,8 @@ export const useModsStore = create<ModsStore>((set, get) => {
       // load) comes back as 23505; take the next suffix and try again.
       for (let attempt = 0; attempt < 3; attempt++) {
         const slug = uniqueSlug(base, taken);
-        const now = new Date().toISOString();
-        const row: UserMod = {
-          id,
-          userId,
-          kind: 'recipe',
-          slug,
-          name: trimmed,
-          enabled: false,
-          manifest,
-          disabledReason: null,
-          createdAt: now,
-          updatedAt: now,
-        };
-        set((s) => ({ rows: sortMods([...s.rows.filter((r) => r.id !== id), row]) }));
-        const { error } = await createClient()
-          .from('user_mods')
-          .insert({ id, user_id: userId, kind: 'recipe', slug, name: trimmed, enabled: false, manifest });
+        const error = await insertRow(newRow(userId, id, 'recipe', slug, trimmed, manifest));
         if (!error) return { ok: true, id };
-        if (get().hydratedUserId === userId) set((s) => ({ rows: s.rows.filter((r) => r.id !== id) }));
         if (error.code === '23505') {
           taken.add(slug);
           continue;
@@ -355,6 +384,55 @@ export const useModsStore = create<ModsStore>((set, get) => {
           }));
         }
         writeFailed('saveRecipe', error);
+        return false;
+      }
+      return true;
+    },
+
+    createTheme: async (userId, { name, manifest }) => {
+      const { available, hydratedUserId, loaded } = get();
+      const trimmed = name.trim();
+      if (!available || hydratedUserId !== userId || !loaded) return { ok: false, reason: 'Make is not ready yet.' };
+      if (!ModNameSchema.safeParse(trimmed).success) return { ok: false, reason: 'Give it a name.' };
+      if (!ThemeManifestSchema.safeParse(manifest).success) return { ok: false, reason: 'Something in it is not valid.' };
+      for (let attempt = 0; attempt < 3; attempt++) {
+        // A slug another theme of yours already has (an id prefix shared by
+        // chance, or a row made elsewhere) comes back as 23505: a new id.
+        const id = crypto.randomUUID();
+        // The editor's preview owns u-00000000; a row there would never show.
+        if (themeSlugForId(id) === DRAFT_SLUG) continue;
+        const error = await insertRow(newRow(userId, id, 'theme', themeSlugForId(id), trimmed, manifest));
+        if (!error) return { ok: true, id };
+        if (error.code === '23505') continue;
+        writeFailed('createTheme', error);
+        return { ok: false, reason: 'Could not save it. Try again.' };
+      }
+      return { ok: false, reason: 'Could not save it. Try again.' };
+    },
+
+    saveTheme: async (id, { name, manifest }) => {
+      const { available, hydratedUserId: userId, rows } = get();
+      const before = rows.find((r) => r.id === id && r.kind === 'theme');
+      const trimmed = name.trim();
+      if (!available || !userId || !before) return false;
+      if (!ModNameSchema.safeParse(trimmed).success || !ThemeManifestSchema.safeParse(manifest).success) return false;
+      // A theme keeps its mode: it may be a saved light or dark pick, which a
+      // switch would strand (the editor locks the choice; this is the backstop).
+      const was = ThemeManifestSchema.safeParse(before.manifest);
+      if (was.success && was.data.mode !== manifest.mode) return false;
+      set((s) => ({ rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: trimmed, manifest } : r))) }));
+      const { error } = await createClient()
+        .from('user_mods')
+        .update({ name: trimmed, manifest })
+        .eq('id', id)
+        .eq('user_id', userId);
+      if (error) {
+        if (get().hydratedUserId === userId) {
+          set((s) => ({
+            rows: sortMods(s.rows.map((r) => (r.id === id ? { ...r, name: before.name, manifest: before.manifest } : r))),
+          }));
+        }
+        writeFailed('saveTheme', error);
         return false;
       }
       return true;

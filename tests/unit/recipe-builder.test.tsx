@@ -32,6 +32,7 @@ vi.mock('next/navigation', () => ({
 
 import { MakePane } from '@/components/settings/make-pane';
 import { useModsStore } from '@/lib/mods-store';
+import { setUserThemesFromRows, useUserThemes } from '@/lib/user-themes/store';
 import type { UserMod } from '@/lib/mods/schema';
 import type { SettingCtx } from '@/lib/settings/manifest';
 
@@ -269,5 +270,55 @@ describe('copy', () => {
       expect(src, file).not.toMatch(/—/);
       expect(src, file).not.toMatch(/beacon/i);
     }
+  });
+});
+
+describe('the theme step and your themes', () => {
+  afterEach(() => useUserThemes.setState({ themes: {}, draft: null, rev: 0, source: 'none' }));
+
+  it('offers your enabled themes of that mode under Yours', () => {
+    seed();
+    setUserThemesFromRows(
+      [
+        {
+          id: 'abcdef01-2345-4678-9abc-def012345678',
+          userId: USER,
+          kind: 'theme',
+          slug: 'u-abcdef01',
+          name: 'Moss',
+          enabled: true,
+          manifest: { version: 1, mode: 'light', base: 'paper', tokens: {} },
+          disabledReason: null,
+          createdAt: '2026-10-07T00:00:00Z',
+          updatedAt: '2026-10-07T00:00:00Z',
+        },
+      ],
+      false
+    );
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByTestId('make-new-recipe'));
+    change(screen.getByTestId('recipe-step-kind'), 'setTheme');
+    const select = screen.getByRole('combobox', { name: 'Theme for step 1' }) as HTMLSelectElement;
+    const group = select.querySelector('optgroup[label="Yours"]');
+    expect(group).not.toBeNull();
+    expect(within(group as HTMLElement).getByRole('option', { name: 'Moss' }).getAttribute('value')).toBe('u-abcdef01');
+    // The dark side has none.
+    change(screen.getByRole('combobox', { name: 'Light or dark for step 1' }), 'dark');
+    expect(
+      (screen.getByRole('combobox', { name: 'Theme for step 1' }) as HTMLSelectElement).querySelector('optgroup')
+    ).toBeNull();
+  });
+
+  it('keeps a saved step’s theme that is now off, and says so', () => {
+    seed([
+      recipeRow({
+        manifest: { version: 1, trigger: { on: 'command' }, filters: {}, steps: [{ do: 'setTheme', mode: 'light', theme: 'u-deadbeef' }] },
+      }),
+    ]);
+    render(<MakePane ctx={ctx} />);
+    fireEvent.click(screen.getByRole('button', { name: 'Edit After run' }));
+    const select = screen.getByRole('combobox', { name: 'Theme for step 1' }) as HTMLSelectElement;
+    expect(select.value).toBe('u-deadbeef');
+    expect(within(select).getByRole('option', { name: 'Your theme (off)' })).toBeTruthy();
   });
 });

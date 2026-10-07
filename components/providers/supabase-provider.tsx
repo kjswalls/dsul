@@ -18,10 +18,13 @@ import {
   LOOK_ATTRIBUTES,
   LOOK_STORAGE_KEYS,
   darkLookDef,
-  isDarkLook,
-  isLightLook,
+  isDarkPickShape,
+  isLightPickShape,
   lightLookDef,
+  resolveDarkPick,
+  resolveLightPick,
 } from '@/lib/theme-looks';
+import { useUserThemes } from '@/lib/user-themes/store';
 import { DEFAULT_LAYOUT, LAYOUT_STORAGE_KEY, isLayoutTheme } from '@/lib/layout-themes';
 import { APP_ICON_STORAGE_KEY, isAppIcon } from '@/lib/app-icons';
 import { useExtensionsStore } from '@/lib/extensions-store';
@@ -121,6 +124,9 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const palette = usePaletteStore((s) => s.palette);
   const lightLook = useLookStore((s) => s.light);
   const darkLook = useLookStore((s) => s.dark);
+  // A user theme's pick resolves against the registry, so both effects below
+  // re-run when it changes (rows arriving, a theme switched off, safe mode).
+  const userThemesRev = useUserThemes((s) => s.rev);
   useEffect(() => {
     const html = document.documentElement;
     if (palette === 'default') {
@@ -140,27 +146,29 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
     // A theme with its own ground names its own chrome colour; the defaults
     // (Paper, Night) defer to the palette, which is the only thing tinting them.
     const colors = paletteDef(palette).themeColor;
-    const light = lightLookDef(lightLook).themeColor ?? colors.light;
-    const dark = darkLookDef(darkLook).themeColor ?? colors.dark;
+    const light = lightLookDef(resolveLightPick(lightLook)).themeColor ?? colors.light;
+    const dark = darkLookDef(resolveDarkPick(darkLook)).themeColor ?? colors.dark;
     document.querySelectorAll('meta[name="theme-color"]').forEach((meta) => {
       const media = meta.getAttribute('media') ?? '';
       meta.setAttribute('content', media.includes('dark') ? dark : light);
     });
-  }, [palette, lightLook, darkLook]);
+  }, [palette, lightLook, darkLook, userThemesRev]);
 
   // The themes' single DOM writer, same pattern as the palette above. BOTH
   // picks are stamped at all times — the CSS blocks are mode-scoped, so a mode
   // switch needs no JS and no flash. A default pick is the absence of its
   // attribute, which is also what the pre-hydration script leaves behind.
+  // The stamp is what SHOWS (a user theme that is off or missing shows the
+  // default); the mirror is the PICK, so the theme comes back when it does.
   useEffect(() => {
     const html = document.documentElement;
     const picks = [
-      ['light', lightLook, DEFAULT_LIGHT_LOOK],
-      ['dark', darkLook, DEFAULT_DARK_LOOK],
+      ['light', lightLook, resolveLightPick(lightLook), DEFAULT_LIGHT_LOOK],
+      ['dark', darkLook, resolveDarkPick(darkLook), DEFAULT_DARK_LOOK],
     ] as const;
-    for (const [mode, pick, fallback] of picks) {
-      if (pick === fallback) html.removeAttribute(LOOK_ATTRIBUTES[mode]);
-      else html.setAttribute(LOOK_ATTRIBUTES[mode], pick);
+    for (const [mode, pick, shown, fallback] of picks) {
+      if (shown === fallback) html.removeAttribute(LOOK_ATTRIBUTES[mode]);
+      else html.setAttribute(LOOK_ATTRIBUTES[mode], shown);
       try {
         if (pick === fallback) window.localStorage.removeItem(LOOK_STORAGE_KEYS[mode]);
         else window.localStorage.setItem(LOOK_STORAGE_KEYS[mode], pick);
@@ -168,7 +176,7 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         // Private mode — the stamp still applies for this session.
       }
     }
-  }, [lightLook, darkLook]);
+  }, [lightLook, darkLook, userThemesRev]);
 
   // The layout's localStorage mirror. No DOM stamp here: the desktop shell
   // stamps its own root (lib/layout-themes.ts), which keeps a layout off the
@@ -329,10 +337,12 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         }
         // Same null rule as the palette: never chosen on any device leaves
         // this device's pick standing.
-        if (isLightLook(settings.theme_light)) {
+        // A user theme's slug is kept even before its row loads: what shows
+        // resolves separately, so the pick survives until the theme does.
+        if (isLightPickShape(settings.theme_light)) {
           useLookStore.getState().setLight(settings.theme_light);
         }
-        if (isDarkLook(settings.theme_dark)) {
+        if (isDarkPickShape(settings.theme_dark)) {
           useLookStore.getState().setDark(settings.theme_dark);
         }
         if (isLayoutTheme(settings.layout)) {

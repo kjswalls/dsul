@@ -18,7 +18,7 @@
  */
 
 import { layoutDef, type LayoutDef, type LayoutTheme } from '@/lib/layout-themes';
-import { darkLookDef, lightLookDef, type DarkLook, type LightLook } from '@/lib/theme-looks';
+import { darkLookDef, lightLookDef, type DarkLook, type DarkPick, type LightLook, type LightPick } from '@/lib/theme-looks';
 
 export interface LookPreset {
   /** Stable id, for keys and test ids. Never stored. */
@@ -65,8 +65,8 @@ export function lookBlurb(look: LookPreset): string {
 
 export interface LookPicks {
   layout: LayoutTheme;
-  light: LightLook;
-  dark: DarkLook;
+  light: LightPick;
+  dark: DarkPick;
 }
 
 /**

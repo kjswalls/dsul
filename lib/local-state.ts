@@ -10,6 +10,8 @@ import { usePlannerStore } from './planner-store';
 import { releaseThisBrowserPush } from './push-release';
 import { useSidebarStore } from './sidebar-store';
 import { clearReleased } from './sweep-grace';
+import { forgetUserThemePicks } from './user-themes/forget-picks';
+import { clearUserThemeCache } from './user-themes/store';
 import { useViewStore } from './view-store';
 
 /**
@@ -278,9 +280,16 @@ export const PERSISTED_USER_STORES: readonly PersistedUserStore[] = [
  * walk it by key: saved conversations are a memory-only cache (whose clear
  * also sweeps the pre-2a transcript keys, one fixed plus one per item thread),
  * and sweep-grace is plain functions over a raw map. Both are wholly
- * disclosive, so neither takes a scope. Covered by named tests.
+ * disclosive, so neither takes a scope. Covered by named tests. The user-theme
+ * cache (lib/user-themes/store.ts) is the account's own colours, so it goes too,
+ * with any device pick naming one of them (lib/user-themes/forget-picks.ts).
  */
-const RAW_CLEARERS: readonly (() => void)[] = [clearChatState, clearReleased];
+const RAW_CLEARERS: readonly (() => void)[] = [
+  clearChatState,
+  clearReleased,
+  clearUserThemeCache,
+  forgetUserThemePicks,
+];
 
 /** The account whose local state is on disk right now, or null for none. */
 export function localStateOwner(): string | null {
