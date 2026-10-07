@@ -116,7 +116,7 @@ beforeEach(() => {
   nav.push.mockReset();
   nav.params = new URLSearchParams();
   server = {
-    status: { available: true, model: null, openclaw: CLAW_OFF },
+    status: { available: true, model: null, openclaw: CLAW_OFF, aiHidden: false },
     models: { models: [{ id: 'gpt-4o-mini', label: 'gpt-4o-mini' }], listed: true },
     put: () => json({ error: 'server' }, 503),
     patch: () => json({ error: 'server' }, 503),
@@ -166,6 +166,7 @@ function given(seed: SeedAI, model: ModelConnectionView | null = null) {
     available: state.available,
     model: model ?? state.model,
     openclaw: state.openclaw,
+    aiHidden: state.aiHidden,
   };
 }
 
@@ -229,7 +230,7 @@ describe('before the server has answered', () => {
     expect(document.querySelector('[data-setting-alias="beacon.apiKey"]')).not.toBeNull();
 
     await waitFor(() => expect(statusGets()).toBe(1));
-    server.status = { available: true, model: null, openclaw: CLAW_OFF };
+    server.status = { available: true, model: null, openclaw: CLAW_OFF, aiHidden: false };
     fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
     await waitFor(() => expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument());
     expect(statusGets()).toBe(2);
@@ -361,7 +362,7 @@ describe('not connected', () => {
 describe('connecting', () => {
   function acceptPut(connection: ModelConnectionView, models: ModelOption[] = []) {
     server.put = () => json({ connection, models, listed: true });
-    server.status = { available: true, model: connection, openclaw: CLAW_OFF };
+    server.status = { available: true, model: connection, openclaw: CLAW_OFF, aiHidden: false };
   }
 
   it('sends exactly {provider, apiKey}, clears the field, and never shows the key again', async () => {
@@ -733,7 +734,7 @@ describe('connected', () => {
     });
     expect(calls.some((c) => c.method === 'DELETE')).toBe(false);
 
-    server.status = { available: true, model: null, openclaw: CLAW_OFF };
+    server.status = { available: true, model: null, openclaw: CLAW_OFF, aiHidden: false };
     act(() => useUIStore.getState().resolveConfirm(true));
     await waitFor(() => expect(calls.some((c) => c.method === 'DELETE')).toBe(true));
     await waitFor(() => expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument());
@@ -885,6 +886,7 @@ describe('in the desktop app', () => {
       available: true,
       model: view({ provider: 'openrouter', authMethod: 'oauth', model: 'openai/gpt-4o-mini' }),
       openclaw: CLAW_OFF,
+      aiHidden: false,
     };
     act(() => {
       window.dispatchEvent(new Event('focus'));
@@ -936,7 +938,7 @@ describe('the ?connect= notice', () => {
   it('goes once the user disconnects: "You’re connected" never sits over an empty form', async () => {
     given(CONNECTED_MODEL, view({ provider: 'openrouter', authMethod: 'oauth', model: 'openai/gpt-4o-mini' }));
     await landOn('ok');
-    server.status = { available: true, model: null, openclaw: CLAW_OFF };
+    server.status = { available: true, model: null, openclaw: CLAW_OFF, aiHidden: false };
     fireEvent.click(screen.getByTestId('mcp-disconnect'));
     act(() => useUIStore.getState().resolveConfirm(true));
     await waitFor(() => expect(screen.getByTestId('mcp-connect-fresh')).toBeInTheDocument());

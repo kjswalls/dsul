@@ -19,12 +19,14 @@ import {
   deleteModelConnection,
   isReadable,
   openConnectionKey,
+  readAIHidden,
   readModelConnection,
   readOpenClawStatus,
   saveModelConnection,
   setConnectionModel,
   setConnectionStatus,
   toConnectionView,
+  writeAIHidden,
   type ModelConnectionRow,
   type OpenedKey,
   type RowRead,
@@ -46,9 +48,11 @@ import { checkModelBaseUrl } from '@/lib/ai-server/url-policy'
 /**
  * /api/ai/connection: the user's ONE model connection, four verbs.
  *
- *   GET     what is connected, and whether OpenClaw is (the client's AI gate)
+ *   GET     what is connected, whether OpenClaw is, and whether the account
+ *           said "No AI, thanks" (the client's AI gate)
  *   PUT     connect or replace: verify the key with a free call, then store it
- *   PATCH   pick a model `{provider, model}`, or check the key again `{recheck:true}`
+ *   PATCH   pick a model `{provider, model}`, check the key again `{recheck:true}`,
+ *           or hide or show AI for the account `{hidden}`
  *   DELETE  forget it
  *
  * The key goes IN on a PUT and never comes back out: no response, header or log
@@ -100,20 +104,21 @@ export async function GET(): Promise<Response> {
     // OpenClaw needs no encryption key, so it is answered either way.
     const key = loadEncryptionKey()
     const noKey: RowRead = { kind: 'unavailable', reason: 'no_key' }
-    const [openclaw, read] = await Promise.all([
+    const [openclaw, read, aiHidden] = await Promise.all([
       readOpenClawStatus(user.id),
       key.ok ? readModelConnection(user.id) : Promise.resolve(noKey),
+      readAIHidden(user.id),
     ])
 
     let body: AIConnectionResponse
-    if (read.kind === 'unavailable') body = { available: false, model: null, openclaw }
-    else if (read.kind === 'none') body = { available: true, model: null, openclaw }
+    if (read.kind === 'unavailable') body = { available: false, model: null, openclaw, aiHidden }
+    else if (read.kind === 'none') body = { available: true, model: null, openclaw, aiHidden }
     else {
       // An unreadable key (another deploy's encryption key, say) shows as
       // failing from memory. It is NEVER written: the row may be perfectly
       // good to the deploy that sealed it.
       const readable = isReadable(read.row, user.id)
-      body = { available: true, model: toConnectionView(read.row, readable), openclaw }
+      body = { available: true, model: toConnectionView(read.row, readable), openclaw, aiHidden }
     }
     return jsonOk(body)
   } catch (err) {
@@ -387,6 +392,22 @@ async function recheck(req: Request, userId: string): Promise<NextResponse> {
   }
 }
 
+/**
+ * "No AI, thanks" for the whole account, or its undo. Touches nothing else:
+ * the saved key, the OpenClaw pairing and the transcripts stay as they are. A
+ * database without 060 cannot keep the choice, and says so rather than
+ * answering ok for a choice that would be gone on the next load.
+ */
+async function setHidden(userId: string, hidden: boolean): Promise<Response> {
+  try {
+    const kept = await writeAIHidden(userId, hidden)
+    if (!kept) return jsonError(503, 'unavailable')
+    return jsonOk({ aiHidden: hidden })
+  } catch (err) {
+    return dbFailure(err, 'hidden write')
+  }
+}
+
 export async function PATCH(req: Request): Promise<Response> {
   const user = await requireSessionUser()
   if (!user) return jsonError(401, 'unauthorized')
@@ -397,8 +418,9 @@ export async function PATCH(req: Request): Promise<Response> {
   const body = read.body
   if (!isPlainObject(body)) return jsonError(400, 'invalid')
 
-  // A closed union: exactly one of the two shapes, nothing beside it.
+  // A closed union: exactly one of the three shapes, nothing beside it.
   const keys = Object.keys(body).sort().join(',')
+  if (keys === 'hidden' && typeof body.hidden === 'boolean') return setHidden(user.id, body.hidden)
   if (keys === 'recheck' && body.recheck === true) return recheck(req, user.id)
   if (keys === 'model,provider' && isModelProviderId(body.provider)) {
     if (!isModelId(body.model)) return jsonError(400, 'invalid', { field: 'model' })

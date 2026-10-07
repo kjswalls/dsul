@@ -79,7 +79,7 @@ export function __resetAINoticeForTests(): void {
 
 export function useAINotice(): DockNotice | null {
   const router = useRouter();
-  const { known, canChat, modelFailing } = useAICapabilities();
+  const { known, canChat, modelFailing, aiHidden } = useAICapabilities();
   const userId = useAIConnectionStore((s) => s.hydratedUserId);
   const checkedAt = useAIConnectionStore((s) => s.model?.checkedAt ?? null);
   const hasModel = useAIConnectionStore((s) => s.model !== null);
@@ -89,6 +89,10 @@ export function useAINotice(): DockNotice | null {
   // Subscribed so a dismissal re-renders every mounted dock, not just the one
   // whose ✕ was pressed.
   useSyncExternalStore(subscribeHidden, hiddenSnapshot, hiddenSnapshot);
+
+  // "No AI, thanks": the gate keeps the connection facts (a failing key is
+  // still failing), but neither line may bring AI back up.
+  if (aiHidden) return null;
 
   const openSettings = () => router.push(SETTINGS_HREF);
 

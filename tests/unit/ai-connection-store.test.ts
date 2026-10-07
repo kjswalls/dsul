@@ -42,12 +42,14 @@ const CONNECTED: AIConnectionResponse = {
   available: true,
   model: MODEL_OK,
   openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+  aiHidden: false,
 };
 
 const NOTHING: AIConnectionResponse = {
   available: true,
   model: null,
   openclaw: { gateway: false, pluginChat: false, agent: false, agentId: null },
+  aiHidden: false,
 };
 
 type FakeResponse = { ok: boolean; status: number; json: () => Promise<unknown> };
@@ -778,6 +780,254 @@ describe('reads are ordered against writes', () => {
   });
 });
 
+describe('"No AI, thanks" (aiHidden)', () => {
+  const patches = () => calls.filter((c) => c.init?.method === 'PATCH');
+
+  it.each<[unknown, boolean | null]>([
+    [true, true],
+    [false, false],
+    [undefined, null],
+    ['true', null],
+    [null, null],
+  ])('reads %s on the answer as %s', async (sent, read) => {
+    const body: Record<string, unknown> = { ...NOTHING };
+    if (sent === undefined) delete body.aiHidden;
+    else body.aiHidden = sent;
+    await hydrated(A, body as unknown as AIConnectionResponse);
+    expect(store().aiHidden).toBe(read);
+  });
+
+  it('is unknown until the first answer, like everything else on the gate', () => {
+    expect(store().aiHidden).toBeNull();
+    expect(getAICapabilities()).toBe(NO_AI);
+  });
+
+  it('hides at once on the tap, then keeps what the server kept', async () => {
+    await hydrated(A, CONNECTED);
+    expect(getAICapabilities().canChat).toBe(true);
+
+    const p = store().setAIHidden(true);
+    // Before the PATCH has even been sent.
+    expect(store().aiHidden).toBe(true);
+    expect(getAICapabilities()).toMatchObject({ canChat: false, aiHidden: true });
+
+    await tick();
+    expect(store().busy).toBe('hidden');
+    expect(JSON.parse(String(patches()[0].init?.body))).toEqual({ hidden: true });
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(store().aiHidden).toBe(true);
+    expect(store().busy).toBeNull();
+    // A pause, not a delete: the connection is still there.
+    expect(store().model).toEqual(MODEL_OK);
+  });
+
+  it('No AI then Undo, tapped together, are sent in order and end shown', async () => {
+    await hydrated(A, NOTHING);
+    const no = store().setAIHidden(true);
+    const undo = store().setAIHidden(false);
+    expect(store().aiHidden).toBe(false);
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(no).resolves.toEqual({ ok: true });
+    // The first write's answer does not hide again what Undo brought back.
+    expect(store().aiHidden).toBe(false);
+    expect(getAICapabilities().askInvite).toBe(true);
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: false });
+    await expect(undo).resolves.toEqual({ ok: true });
+    expect(patches().map((c) => JSON.parse(String(c.init?.body)))).toEqual([{ hidden: true }, { hidden: false }]);
+    expect(store().aiHidden).toBe(false);
+    expect(getAICapabilities().askInvite).toBe(true);
+  });
+
+  it('a write the server did not keep asks it again rather than guessing back', async () => {
+    await hydrated(A, NOTHING);
+    const p = store().setAIHidden(true);
+    await tick();
+    await answerFor('PATCH', STATUS, { error: 'unavailable' }, 503);
+    await expect(p).resolves.toEqual({ ok: false, code: 'unavailable' });
+    // Back to what the server last said, and asked again.
+    expect(store().aiHidden).toBe(false);
+    expect(gets()).toHaveLength(2);
+    await answerGet({ ...NOTHING, aiHidden: null });
+    expect(store().aiHidden).toBeNull();
+    expect(getAICapabilities().askInvite).toBe(false);
+  });
+
+  it.each([
+    ['already out at the tap', true],
+    ['begun after the tap', false],
+  ])('a status read %s cannot put the old answer back while the write is out', async (_, before) => {
+    await hydrated(A, NOTHING);
+    if (before) void store().refresh();
+    const p = store().setAIHidden(true);
+    if (!before) void store().refresh();
+    expect(gets()).toHaveLength(2);
+    await tick();
+    await answerGet(NOTHING); // read before the write landed
+    expect(store().aiHidden).toBe(true);
+    expect(getAICapabilities().askInvite).toBe(false);
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(store().aiHidden).toBe(true);
+  });
+
+  it('a check that fails while AI is being turned off does not offer the fix', async () => {
+    await hydrated(A, CONNECTED);
+    const check = store().recheck();
+    const p = store().setAIHidden(true);
+    await tick();
+    await answerFor('PATCH', STATUS, { error: 'key_rejected' }, 422);
+    await check;
+    // The check's own re-read, served before the hidden write was even sent.
+    await answerGet({ ...CONNECTED, model: { ...MODEL_OK, status: 'failing', problem: 'key_rejected' } });
+    expect(store().aiHidden).toBe(true);
+    expect(getAICapabilities()).toMatchObject({ aiHidden: true, askFix: false, canChat: false });
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: true });
+  });
+
+  it('a status read begun while the write was out, answered after it, is asked again', async () => {
+    await hydrated(A, NOTHING);
+    const p = store().setAIHidden(true);
+    await tick();
+    void store().refresh();
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: true });
+    await answerGet(NOTHING); // read before the write landed: dropped
+    expect(store().aiHidden).toBe(true);
+    expect(gets()).toHaveLength(3);
+    await answerGet({ ...NOTHING, aiHidden: true });
+    expect(store().aiHidden).toBe(true);
+  });
+
+  it.each([true, false])('a write that never reached the server (hidden %s) goes back and asks again', async (hidden) => {
+    await hydrated(A, { ...NOTHING, aiHidden: !hidden });
+    const p = store().setAIHidden(hidden);
+    expect(store().aiHidden).toBe(hidden);
+    await tick();
+    await fail();
+    await expect(p).resolves.toEqual({ ok: false, code: 'server' });
+    expect(store().aiHidden).toBe(!hidden);
+    expect(gets()).toHaveLength(2);
+    await answerGet({ ...NOTHING, aiHidden: !hidden });
+    expect(store().aiHidden).toBe(!hidden);
+    expect(store().busy).toBeNull();
+  });
+
+  it('offline: the guess does not outlive a re-read that fails too, and the next sign-in asks', async () => {
+    await hydrated(A, NOTHING);
+    const p = store().setAIHidden(true);
+    await tick();
+    await fail();
+    await p;
+    await fail(); // the re-read
+    expect(store().phase).toBe('ready');
+    expect(store().aiHidden).toBe(false);
+    expect(getAICapabilities().askInvite).toBe(true);
+    void store().hydrate(A); // within the 30 s window, but nothing was confirmed
+    expect(gets()).toHaveLength(3);
+  });
+
+  it('a failed Undo goes back to the No AI the server kept', async () => {
+    await hydrated(A, NOTHING);
+    const no = store().setAIHidden(true);
+    const undo = store().setAIHidden(false);
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(no).resolves.toEqual({ ok: true });
+    await tick();
+    await fail();
+    await expect(undo).resolves.toEqual({ ok: false, code: 'server' });
+    expect(store().aiHidden).toBe(true);
+  });
+
+  it('a write that fails before the gate answered goes back to what the first answer said', async () => {
+    void store().hydrate(A);
+    const p = store().setAIHidden(true);
+    await tick();
+    await answerGet(NOTHING);
+    expect(store().aiHidden).toBe(true);
+    await fail();
+    await expect(p).resolves.toEqual({ ok: false, code: 'server' });
+    expect(store().aiHidden).toBe(false);
+  });
+
+  it('a failed write under a newer tap leaves the newer one to decide', async () => {
+    await hydrated(A, NOTHING);
+    const no = store().setAIHidden(true);
+    void store().setAIHidden(false);
+    const again = store().setAIHidden(true); // No AI, Undo, No AI
+    await tick();
+    await fail();
+    await expect(no).resolves.toEqual({ ok: false, code: 'server' });
+    expect(store().aiHidden).toBe(true);
+    await answerGet(NOTHING); // its re-read, while the newer taps are queued
+    expect(store().aiHidden).toBe(true);
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: false });
+    expect(store().aiHidden).toBe(true);
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(again).resolves.toEqual({ ok: true });
+    expect(store().aiHidden).toBe(true);
+  });
+
+  it('before the gate has answered, nothing is shown early; the write still goes', async () => {
+    void store().hydrate(A);
+    const p = store().setAIHidden(true);
+    expect(store().aiHidden).toBeNull();
+    await tick();
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(store().aiHidden).toBe(true);
+    // The first read went out before the write: dropped, and asked again.
+    await answerGet(NOTHING);
+    expect(gets()).toHaveLength(2);
+    await answerGet({ ...NOTHING, aiHidden: true });
+    expect(store().phase).toBe('ready');
+    expect(store().aiHidden).toBe(true);
+  });
+
+  it('a first answer that lands while the write is out shows the tap', async () => {
+    void store().hydrate(A);
+    const p = store().setAIHidden(true);
+    await tick();
+    await answerGet(NOTHING);
+    expect(store().phase).toBe('ready');
+    expect(store().aiHidden).toBe(true);
+    expect(getAICapabilities().askInvite).toBe(false);
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: true });
+  });
+
+  it("one account's tap never stands over another account's answer", async () => {
+    await hydrated(A, NOTHING);
+    const p = store().setAIHidden(true);
+    await tick();
+    void store().hydrate(B);
+    await answerGet(NOTHING); // B's answer, while A's write is still out
+    expect(store().hydratedUserId).toBe(B);
+    expect(store().aiHidden).toBe(false);
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: false, code: 'unauthorized' });
+    expect(store().aiHidden).toBe(false);
+  });
+
+  it('a write answered after a change of user is dropped', async () => {
+    await hydrated(A, NOTHING);
+    const p = store().setAIHidden(true);
+    await tick();
+    void store().hydrate(B);
+    await answerFor('PATCH', STATUS, { aiHidden: true });
+    await expect(p).resolves.toEqual({ ok: false, code: 'unauthorized' });
+    await answerGet(NOTHING);
+    expect(store().aiHidden).toBe(false);
+  });
+});
+
 describe('the model list follows the connection', () => {
   const CLAUDE: ModelConnectionView = { ...MODEL_OK, provider: 'anthropic', model: 'claude-opus-5-5' };
 
@@ -984,6 +1234,21 @@ describe('useAICapabilities', () => {
 
     expect(renders).toBe(before);
     expect(result.current).toBe(first);
+  });
+
+  it('re-renders when the account hides or shows AI', async () => {
+    await hydrated(A, CONNECTED);
+    const { result } = renderHook(() => useAICapabilities());
+    expect(result.current.canChat).toBe(true);
+    expect(result.current.aiHidden).toBe(false);
+
+    act(() => useAIConnectionStore.setState({ aiHidden: true }));
+    expect(result.current.aiHidden).toBe(true);
+    expect(result.current.canChat).toBe(false);
+    expect(result.current).toEqual(getAICapabilities());
+
+    act(() => useAIConnectionStore.setState({ aiHidden: false }));
+    expect(result.current.canChat).toBe(true);
   });
 });
 

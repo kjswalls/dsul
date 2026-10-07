@@ -67,12 +67,14 @@ import {
   isReadable,
   openConnectionKey,
   openModelConnection,
+  readAIHidden,
   readModelConnection,
   readOpenClawStatus,
   saveModelConnection,
   setConnectionModel,
   setConnectionStatus,
   toConnectionView,
+  writeAIHidden,
   type ModelConnectionRow,
 } from '@/lib/ai-server/connections';
 import { BUILTIN_BASE_URLS } from '@/lib/ai-server/providers';
@@ -676,5 +678,60 @@ describe('readOpenClawStatus', () => {
   it('another error throws', async () => {
     respondWith({ openclaw_api_key: 'k' }, null, { secrets: { code: 'PGRST301' } });
     await expect(readOpenClawStatus(USER)).rejects.toMatchObject({ op: 'openclaw', code: 'PGRST301' });
+  });
+});
+
+describe('"No AI, thanks" (user_settings.ai_hidden, 060)', () => {
+  it('reads the account\'s own row, and only that column', async () => {
+    answer(() => ({ data: { ai_hidden: true }, error: null }));
+    expect(await readAIHidden(USER)).toBe(true);
+    const [call] = mock.state.calls;
+    expect(call.table).toBe('user_settings');
+    expect(call.ops).toContainEqual(['select', ['ai_hidden']]);
+    expect(call.ops).toContainEqual(['eq', ['user_id', USER]]);
+    expect(hasWrite()).toBe(false);
+  });
+
+  it('no row yet is an account that has said nothing: false', async () => {
+    answer(() => ({ data: null, error: null }));
+    expect(await readAIHidden(USER)).toBe(false);
+    // maybeSingle: .single() would answer an error for no row, and fail the
+    // whole gate for an account whose settings row is not there yet.
+    const [call] = mock.state.calls;
+    expect(opsOf(call)).toContain('maybeSingle');
+    expect(opsOf(call)).not.toContain('single');
+    answer(() => ({ data: { ai_hidden: false }, error: null }));
+    expect(await readAIHidden(USER)).toBe(false);
+  });
+
+  it.each(['42703', 'PGRST204'])('a missing column (%s) is unknown: null', async (code) => {
+    answer(() => ({ data: null, error: { code } }));
+    expect(await readAIHidden(USER)).toBeNull();
+  });
+
+  it('another read error throws as op hidden', async () => {
+    answer(() => ({ data: null, error: { code: 'PGRST301', details: 'row' } }));
+    await expect(readAIHidden(USER)).rejects.toMatchObject({ op: 'hidden', code: 'PGRST301' });
+  });
+
+  it.each([true, false])('writes %s by upsert on user_id, so an account with no row yet gets one', async (hidden) => {
+    answer(() => ({ data: null, error: null }));
+    expect(await writeAIHidden(USER, hidden)).toBe(true);
+    const [call] = mock.state.calls;
+    expect(call.table).toBe('user_settings');
+    expect(call.ops).toContainEqual(['upsert', [{ user_id: USER, ai_hidden: hidden }, { onConflict: 'user_id' }]]);
+  });
+
+  it('a missing column keeps nothing and says so', async () => {
+    answer(() => ({ data: null, error: { code: '42703' } }));
+    expect(await writeAIHidden(USER, true)).toBe(false);
+  });
+
+  it('another write error throws as op hidden, with the code alone', async () => {
+    answer(() => ({ data: null, error: { code: '23514', details: 'the whole row' } }));
+    const err = await writeAIHidden(USER, false).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AiDbError);
+    expect(err).toMatchObject({ op: 'hidden', code: '23514' });
+    expect(String((err as Error).message)).not.toContain('the whole row');
   });
 });
