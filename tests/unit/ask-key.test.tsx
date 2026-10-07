@@ -563,9 +563,176 @@ describe("the key's paint (app/globals.css)", () => {
     const timing = (p: string) => list.find((i) => i.startsWith(`${p} `))?.slice(p.length + 1);
     expect(timing('color')).toBeDefined();
     expect(timing('color')).toBe(timing('--ask-key-fill'));
-    // Every transition-duration list that re-times the key names one per property.
+    // Every duration or curve list that re-times the key names one per property.
     for (const r of all.filter((r) => r.selectors.some((s) => s.endsWith('[data-ask-key]')))) {
-      for (const v of values(r.body, 'transition-duration')) expect(items(v), r.selectors.join(', ')).toHaveLength(list.length);
+      for (const prop of ['transition-duration', 'transition-timing-function']) {
+        for (const v of values(r.body, prop)) expect(items(v), `${prop} in ${r.selectors.join(', ')}`).toHaveLength(list.length);
+      }
+    }
+  });
+
+  // The well popped: on the settle curve (--ease-out-soft) it was three
+  // quarters there by its second frame, at any duration. It fades up now, on a
+  // curve that spreads its travel, and goes back a little quicker; the light
+  // runs round the rim on the same timing, so the two read as one gesture.
+  // Keyboard focus brings only its focus line promptly, so a pointer on a
+  // focused key still sees the card fade, and a press with no hover first
+  // brings the card with the key's sink.
+  it('fades the well up under the pointer where you can see it, and back a little quicker, with the light in step', () => {
+    const css = stripComments(read('app/globals.css'));
+    const all = rules(stripComments(askBlock()));
+    const find = (sel: string) => {
+      const r = all.find((x) => x.selectors.length === 1 && x.selectors[0] === sel);
+      expect(r, sel).toBeDefined();
+      return r!;
+    };
+    const ms = (v: string) => {
+      const m = /^(\d+(?:\.\d+)?)(ms|s)$/.exec(v.trim());
+      expect(m, `a duration, not ${v}`).not.toBeNull();
+      return Number(m![1]) * (m![2] === 's' ? 1000 : 1);
+    };
+    /** A shorthand list as {property: [duration, curve]}, each item one time (no delay). */
+    const timings = (r: Rule) => {
+      const out: Record<string, [number, string]> = {};
+      for (const item of items(values(r.body, 'transition')[0])) {
+        const m = /^(\S+)\s+(\S+)\s+(.+)$/.exec(item)!;
+        expect(item.match(/\b\d+(?:\.\d+)?m?s\b/g), `${item}: one time, no delay`).toHaveLength(1);
+        out[m[1]] = [ms(m[2]), m[3]];
+      }
+      return out;
+    };
+    /** A rule's transition-duration list, one per item. */
+    const durations = (r: Rule) => items(values(r.body, 'transition-duration').at(-1)!).map(ms);
+    /** A curve token's progress at x, solved from its control points. */
+    const progress = (curve: string) => {
+      const name = /^var\((--ease-[\w-]+)\)$/.exec(curve)?.[1];
+      expect(name, `${curve} is a shared curve token`).toBeDefined();
+      const def = new RegExp(`${name}:\\s*cubic-bezier\\(([^)]+)\\)`).exec(css);
+      expect(def, `${name} is defined`).not.toBeNull();
+      const [x1, y1, x2, y2] = def![1].split(',').map(Number);
+      const at = (a: number, b: number, t: number) => 3 * a * t * (1 - t) ** 2 + 3 * b * t * t * (1 - t) + t ** 3;
+      const f = (x: number) => {
+        let lo = 0;
+        let hi = 1;
+        for (let i = 0; i < 60; i++) {
+          const t = (lo + hi) / 2;
+          if (at(x1, x2, t) < x) lo = t;
+          else hi = t;
+        }
+        return at(y1, y2, (lo + hi) / 2);
+      };
+      return { f, startSpeed: x1 > 0 ? y1 / x1 : Infinity };
+    };
+
+    const well = timings(find('[data-ask-opener]::before'));
+    const props = ['background-color', 'box-shadow', 'transform'];
+    expect(Object.keys(well).sort()).toEqual([...props].sort());
+    const [out, curve] = well['background-color'];
+    for (const p of props) expect(well[p], p).toEqual([out, curve]);
+
+    // In: long enough to watch, inside the block's 300ms, and longer than out.
+    const hover = find('[data-ask-opener]:hover::before');
+    const [enter] = durations(hover);
+    expect(new Set(durations(hover))).toEqual(new Set([enter]));
+    expect(enter).toBeGreaterThanOrEqual(200);
+    expect(enter).toBeLessThanOrEqual(300);
+    expect(out).toBeLessThan(enter);
+    expect(values(hover.body, 'transition-timing-function'), 'the way in keeps the curve').toHaveLength(0);
+
+    // The curve spreads its travel and still moves on the first frame: never
+    // the settle curve, no ease-in, under 60% by a quarter of the run (the
+    // settle curve is 76%), and 90% there by three quarters, so it lands.
+    expect(curve).not.toBe('var(--ease-out-soft)');
+    const { f, startSpeed } = progress(curve);
+    expect(progress('var(--ease-out-soft)').f(0.25)).toBeGreaterThan(0.75);
+    expect(startSpeed, 'moves at least at linear speed from the first frame').toBeGreaterThanOrEqual(1);
+    expect(f(0.25)).toBeLessThan(0.6);
+    expect(f(0.75)).toBeGreaterThan(0.9);
+    // And nothing holds it back.
+    expect(stripComments(askBlock())).not.toMatch(/transition-delay\s*:/);
+
+    // The light travels with the well, both ways; the chord brightens with it.
+    const key = find('[data-ask-key]');
+    const keyList = items(values(key.body, 'transition')[0]);
+    const rim = ['--ask-key-hold', '--ask-key-tail', '--ask-key-reach'];
+    const keyTimings = timings(key);
+    for (const p of rim) expect(keyTimings[p], p).toEqual([out, curve]);
+    const keyHover = durations(find('[data-ask-opener]:hover [data-ask-key]'));
+    expect(keyHover).toHaveLength(keyList.length);
+    rim.forEach((p) => expect(keyHover[keyList.findIndex((i) => i.startsWith(`${p} `))], p).toBe(enter));
+    expect(timings(find('[data-ask-opener-chord]')).color).toEqual([out, curve]);
+    expect(durations(find('[data-ask-opener]:hover [data-ask-opener-chord]'))).toEqual([enter]);
+
+    // The key alone has no well: its hover fill is one, so the fill and the
+    // colour that keeps pace with it take the well's timing both ways, with
+    // the light. Both rules stand aside while pressed, so a press keeps the
+    // key's own lists; the lift and the shadow keep the key's settle.
+    const at = (p: string) => keyList.findIndex((i) => i.startsWith(`${p} `));
+    const curves = (r: Rule) => items(values(r.body, 'transition-timing-function').at(-1)!);
+    const iconRestSel = "[data-ask-opener][data-form='icon']:not(:active) [data-ask-key]";
+    const iconHoverSel = "[data-ask-opener][data-form='icon']:hover:not(:active) [data-ask-key]";
+    const iconRest = find(iconRestSel);
+    const iconHover = find(iconHoverSel);
+    for (const p of [...rim, '--ask-key-fill', 'color']) {
+      expect(durations(iconRest)[at(p)], `${p}, the key alone's way back`).toBe(out);
+      expect(curves(iconRest)[at(p)], `${p}, the key alone's curve`).toBe(curve);
+      expect(durations(iconHover)[at(p)], `${p}, the key alone's way in`).toBe(enter);
+    }
+    for (const p of ['box-shadow', 'translate']) {
+      expect(durations(iconRest)[at(p)], p).toBe(keyTimings[p][0]);
+      expect(curves(iconRest)[at(p)], p).toBe(keyTimings[p][1]);
+      expect(durations(iconHover)[at(p)], p).toBe(keyTimings[p][0]);
+    }
+    expect(values(iconHover.body, 'transition-timing-function'), 'the way in keeps the curve').toHaveLength(0);
+    expect(beats(iconHover, iconHoverSel, iconRest, iconRestSel)).toBe(true);
+
+    // Keyboard focus never paints the card, only the focus line and the
+    // well's opening, which come with the ring on the key's 1px sink's
+    // duration and curve; the card's colour keeps the fade, so a pointer on a
+    // focused key sees it fade in and out as anywhere. A press brings all
+    // three on the sink's timing (a tap or Space: the card with the sink),
+    // and wins over every other timing of the well while it holds.
+    const press = find('[data-ask-opener]:active [data-ask-key]');
+    const sink = durations(press)[at('translate')];
+    const sinkCurve = keyTimings.translate[1];
+    const wellProps = items(values(find('[data-ask-opener]::before').body, 'transition')[0]).map((i) => i.split(/\s+/)[0]);
+    const byProp = <T,>(bg: T, rest: T) => wellProps.map((p) => (p === 'background-color' ? bg : rest));
+    const timed = (sel: string) => {
+      const r = all.find((x) => x.selectors.length === 1 && x.selectors[0] === sel && values(x.body, 'transition-duration').length);
+      expect(r, `${sel}, timed`).toBeDefined();
+      return r!;
+    };
+    const focusSel = '[data-ask-opener]:focus-visible::before';
+    const focusHoverSel = '[data-ask-opener]:focus-visible:hover:not(:active)::before';
+    const pressSel = '[data-ask-opener]:active::before';
+    const focus = timed(focusSel);
+    const focusHover = timed(focusHoverSel);
+    const pressWell = timed(pressSel);
+    expect(durations(focus)).toEqual(byProp(out, sink));
+    expect(curves(focus)).toEqual(byProp(curve, sinkCurve));
+    expect(durations(focusHover)).toEqual(byProp(enter, sink));
+    expect(values(focusHover.body, 'transition-timing-function'), "the focused hover keeps focus's curves").toHaveLength(0);
+    expect(beats(focusHover, focusHoverSel, focus, focusSel)).toBe(true);
+    expect(beats(focusHover, focusHoverSel, hover, '[data-ask-opener]:hover::before')).toBe(true);
+    expect(new Set(durations(pressWell))).toEqual(new Set([sink]));
+    expect(curves(pressWell)).toEqual([sinkCurve]);
+    for (const r of all) {
+      if (r === pressWell || /!important/.test(r.body) || !/(?:^|[\s;{])transition(?:-duration|-timing-function)?\s*:/.test(r.body)) continue;
+      for (const s of r.selectors) {
+        if (!s.endsWith('::before') || s.includes(':not(:active)')) continue;
+        expect(beats(pressWell, pressSel, r, s), `${s} outranks the press's timing`).toBe(true);
+      }
+    }
+    // The chord brightens with the focus line, or with the press, on the sink's timing.
+    const chordSel = '[data-ask-opener]:is(:focus-visible, :active) [data-ask-opener-chord]';
+    const chord = find(chordSel);
+    expect(durations(chord)).toEqual([sink]);
+    expect(curves(chord)).toEqual([sinkCurve]);
+    expect(beats(chord, chordSel, find('[data-ask-opener]:hover [data-ask-opener-chord]'), '[data-ask-opener]:hover [data-ask-opener-chord]')).toBe(true);
+    // The plain and masthead headers repaint the well as a wash, on its timing.
+    for (const r of all) {
+      if (!r.selectors.some((s) => /data-layout-header/.test(s) && s.endsWith('::before'))) continue;
+      expect(r.body, r.selectors.join(', ')).not.toMatch(/transition/);
     }
   });
 
