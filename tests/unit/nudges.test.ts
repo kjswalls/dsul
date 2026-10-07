@@ -12,6 +12,7 @@ vi.mock('@/lib/nudges/service', () => ({
 import { loadDismissedNudges, saveDismissedNudges } from '@/lib/nudges/service';
 import { useNudgeStore } from '@/lib/nudge-store';
 import { NUDGES, NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, nudgeDef, ritualsNudgeReady } from '@/lib/nudges/registry';
+import { streakNudgeEnabled } from '@/lib/nudges/streak-gate';
 
 const mockLoad = vi.mocked(loadDismissedNudges);
 const mockSave = vi.mocked(saveDismissedNudges);
@@ -168,5 +169,42 @@ describe('the rituals nudge (#86)', () => {
     ['the review is already on', { eodReviewEnabled: true }],
   ])('waits while %s', (_why, patch) => {
     expect(ritualsNudgeReady({ ...READY, ...patch })).toBe(false);
+  });
+});
+
+describe('when the streak nudge may show', () => {
+  // A returning account with a habit, the tour answered and not showing.
+  const READY = {
+    extReady: true,
+    streaksOn: true,
+    userId: 'user-1',
+    tourAnsweredFor: 'user-1',
+    tourShowing: false,
+    hasHabit: true,
+  };
+
+  it('shows once everything has answered and there is a habit', () => {
+    expect(streakNudgeEnabled(READY)).toBe(true);
+  });
+
+  it('waits for streaks to be provably on', () => {
+    expect(streakNudgeEnabled({ ...READY, extReady: false })).toBe(false);
+    expect(streakNudgeEnabled({ ...READY, streaksOn: false })).toBe(false);
+  });
+
+  it('never covers the first-run tour', () => {
+    expect(streakNudgeEnabled({ ...READY, tourShowing: true })).toBe(false);
+  });
+
+  it("waits for the tour's answer, for this account", () => {
+    // The onboarding read lands after the planner load: no tour showing yet
+    // is not an answer, and nor is the last account's.
+    expect(streakNudgeEnabled({ ...READY, tourAnsweredFor: null })).toBe(false);
+    expect(streakNudgeEnabled({ ...READY, tourAnsweredFor: 'user-0' })).toBe(false);
+    expect(streakNudgeEnabled({ ...READY, userId: null, tourAnsweredFor: null })).toBe(false);
+  });
+
+  it('says nothing about flames to an account with no habit', () => {
+    expect(streakNudgeEnabled({ ...READY, hasHabit: false })).toBe(false);
   });
 });

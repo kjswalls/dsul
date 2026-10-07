@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo } from 'react';
+import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 import {
   DndContext,
@@ -49,6 +50,7 @@ import { ITEM_TYPES } from '@/lib/item-registry';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useExtensionsStore } from '@/lib/extensions-store';
 import { NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, ritualsNudgeReady } from '@/lib/nudges/registry';
+import { streakNudgeEnabled } from '@/lib/nudges/streak-gate';
 import { useMorningStore } from '@/lib/morning-store';
 import { useEODStore } from '@/lib/eod-store';
 import { settingsBelongToUser } from '@/lib/settings/hydration';
@@ -107,6 +109,66 @@ function DragGhost() {
     <DragOverlay>
       {title !== null && <DraggableTaskOverlay title={title} count={groupCount} />}
     </DragOverlay>
+  );
+}
+
+/**
+ * The first-run toasts, "Streaks are on" and the rituals intro, with their own
+ * subscribers like DragGhost, so the stores they wait on never re-render
+ * AppShell. When each may show is streakNudgeEnabled (lib/nudges/streak-gate.ts)
+ * and ritualsNudgeReady (lib/nudges/registry.ts). Exported for
+ * tests/unit/first-run-nudges.test.tsx, which mounts this rather than a copy of
+ * its wiring.
+ */
+export function FirstRunNudges({
+  tourAnsweredFor,
+  tourShowing,
+}: {
+  tourAnsweredFor: string | null;
+  tourShowing: boolean;
+}) {
+  const streaksOn = useStreaksEnabled();
+  const extReady = useExtensionsStore((s) => s.configsLoaded);
+  const userId = usePlannerStore((s) => s.userId);
+  const hasHabit = usePlannerStore((s) => s.habits.length > 0);
+  const hasTasks = usePlannerStore((s) => s.tasks.length > 0);
+  const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
+  const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
+  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
+  const streakNudgeOn = streakNudgeEnabled({
+    extReady,
+    streaksOn,
+    userId,
+    tourAnsweredFor,
+    tourShowing,
+    hasHabit,
+  });
+  const ritualsNudgeOn = ritualsNudgeReady({
+    settingsHydrated: settingsBelongToUser(userId, settingsHydratedUserId),
+    tourAnswered: !!userId && tourAnsweredFor === userId,
+    tourShowing,
+    hasTasks,
+    morningCheckEnabled,
+    eodReviewEnabled,
+  });
+  // One first-run toast at a time: while the streak nudge is up (or about to
+  // be), the rituals one waits its turn rather than stacking under it. An
+  // account with no habit gets no streak nudge, so its rituals one never waits.
+  const streaksNudgeUp = useOneTimeNudge(NUDGE_STREAKS_ON).active && streakNudgeOn;
+  // The gates only decide when a toast first shows. One already up, left from
+  // before a Replay tour brought this shell back, would sit over the tour, so
+  // both come down while the tour shows. A programmatic dismiss records
+  // nothing, and the fresh mount's latch lets each fire again after.
+  useEffect(() => {
+    if (!tourShowing) return;
+    toast.dismiss(NUDGE_STREAKS_ON);
+    toast.dismiss(NUDGE_RITUALS_INTRO);
+  }, [tourShowing]);
+  return (
+    <>
+      <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={streakNudgeOn} />
+      <OneTimeNudge id={NUDGE_RITUALS_INTRO} enabled={ritualsNudgeOn && !streaksNudgeUp} />
+    </>
   );
 }
 
@@ -200,32 +262,10 @@ export function AppShell() {
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
-  // Whose onboarding answer has come back: the rituals nudge waits for it, so
-  // it cannot fire in the gap before a brand-new account's tour opens.
+  // Whose onboarding answer has come back, either way. Both first-run toasts
+  // wait for it, so neither can fire in the gap before a brand-new account's
+  // tour opens (FirstRunNudges).
   const [tourAnsweredFor, setTourAnsweredFor] = useState<string | null>(null);
-  // The streak nudge fires only when streaks are provably ON: `configsLoaded`
-  // means the extensions store has answered, so we never nudge "turn streaks
-  // off" at someone who already did (streaksOn reads its default-true before
-  // hydration), and never at all when the extensions table is undeployed
-  // (configsLoaded stays false — the toggle would be a no-op there anyway).
-  const streaksOn = useStreaksEnabled();
-  const extReady = useExtensionsStore((s) => s.configsLoaded);
-  const userId = usePlannerStore((s) => s.userId);
-  const hasTasks = usePlannerStore((s) => s.tasks.length > 0);
-  const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
-  const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
-  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
-  const ritualsNudgeOn = ritualsNudgeReady({
-    settingsHydrated: settingsBelongToUser(userId, settingsHydratedUserId),
-    tourAnswered: !!userId && tourAnsweredFor === userId,
-    tourShowing: showTour,
-    hasTasks,
-    morningCheckEnabled,
-    eodReviewEnabled,
-  });
-  // One first-run toast at a time: while the streak nudge is up (or about to
-  // be), the rituals one waits its turn rather than stacking under it.
-  const streaksNudgeUp = useOneTimeNudge(NUDGE_STREAKS_ON).active && extReady && streaksOn;
 
   useEffect(() => {
     setMounted(true);
@@ -714,10 +754,10 @@ export function AppShell() {
         />
       )}
 
-      {/* First-run orientation, shown once: streaks are on, and how to quiet
-          them. Persistent toast, dismissed forever server-side. */}
-      <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={extReady && streaksOn} />
-      <OneTimeNudge id={NUDGE_RITUALS_INTRO} enabled={ritualsNudgeOn && !streaksNudgeUp} />
+      {/* First-run orientation, each shown once: streaks are on and how to
+          quiet them, and the two rituals. Persistent toasts, dismissed forever
+          server-side. */}
+      <FirstRunNudges tourAnsweredFor={tourAnsweredFor} tourShowing={showTour} />
 
       <EODReview />
 

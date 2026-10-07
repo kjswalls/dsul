@@ -16,6 +16,8 @@ import { cleanup, fireEvent, render, screen } from '@testing-library/react';
  *  - 4 on the phone: the bar below, with no chord to press.
  *  - The phone's mode step names the third surface "Ask".
  *  - With no AI, none of that: the dock, and AI as optional.
+ *  - Step 4 offers Settings only with no AI, where connecting one is the thing
+ *    to do there; with AI it is only "Got it".
  */
 
 vi.mock('@/lib/user-profile', () => ({ setOnboardingComplete: vi.fn(async () => {}) }));
@@ -43,17 +45,18 @@ function renderTour(seed: SeedAI) {
   cleanupAI = seedAI(seed);
   const onExpandChat = vi.fn();
   const onCollapseChat = vi.fn();
+  const onOpenSettings = vi.fn();
   render(
     <OnboardingTour
       userId="u1"
       onComplete={vi.fn()}
-      onOpenSettings={vi.fn()}
+      onOpenSettings={onOpenSettings}
       onExpandChat={onExpandChat}
       onCollapseChat={onCollapseChat}
       onSetActiveTab={vi.fn()}
     />
   );
-  return { onExpandChat, onCollapseChat };
+  return { onExpandChat, onCollapseChat, onOpenSettings };
 }
 
 /** Welcome → skip the first task → step 3's first card. */
@@ -92,6 +95,9 @@ describe('the desktop tour, with AI', () => {
 
     next(); // 4
     expect(screen.getByText('Your AI is ready')).toBeInTheDocument();
+    // Nothing to set up: the card's one way out is "Got it".
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+    expect(screen.getByRole('button', { name: /Got it/ })).toBeInTheDocument();
     expect(chordLabel(DEFAULT_ASK_KEYS, false)).toBe('Ctrl+J');
     expect(
       screen.getByText(
@@ -126,8 +132,29 @@ describe('the desktop tour, with no AI', () => {
     expect(screen.getByText('Your dock')).toBeInTheDocument();
     expect(onExpandChat).not.toHaveBeenCalled();
     next();
-    expect(screen.getByText('Bring your own AI (optional)')).toBeInTheDocument();
+    expect(screen.getByText('AI, if you want it')).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        'dsul works fine without it. For help planning, connect a model you already use, or OpenClaw, in Settings.'
+      )
+    ).toBeInTheDocument();
     expect(screen.queryByText(/Ask button|Ctrl\+J/)).toBeNull();
+  });
+
+  it('offers Settings at step 4, which opens where a model is connected', () => {
+    vi.useFakeTimers();
+    try {
+      const { onOpenSettings } = renderTour(NOTHING_CONNECTED);
+      toStep3();
+      next();
+      next();
+      next();
+      fireEvent.click(screen.getByRole('button', { name: 'Settings' }));
+      vi.advanceTimersByTime(300);
+      expect(onOpenSettings).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it("names the launcher's chord as the user has it bound", () => {
@@ -162,6 +189,16 @@ describe('the phone tour', () => {
     next(); // 4
     expect(screen.getByText('Type in the bar below to ask about your day.')).toBeInTheDocument();
     expect(screen.queryByText(/Ctrl|⌘|Ask button/)).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Settings' })).toBeNull();
+  });
+
+  it('with no AI, step 4 calls AI optional and offers Settings', () => {
+    renderTour(NOTHING_CONNECTED);
+    toStep3();
+    next(); // B
+    next(); // 4
+    expect(screen.getByText('AI, if you want it')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Settings' })).toBeInTheDocument();
   });
 
   it('with no AI, names only Braindump and Today', () => {
