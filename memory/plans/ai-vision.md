@@ -976,7 +976,8 @@ conversation is saved to the account.
 
   It is protected by row-level security and TLS, and is **not end-to-end encrypted**.
 - *Delete* removes a conversation and its messages from the database at once. Database
-  backups age it out on the provider's backup schedule.
+  backups age it out on the provider's backup schedule. Deleting the account deletes them at
+  once, with everything else (memory/plans/account-deletion.md).
 - *OpenClaw* keeps its own session memory, and dsul cannot delete that. Continuing a
   conversation with OpenClaw sends its last few turns to OpenClaw (at most 12, as context),
   so a conversation another answerer started becomes part of that memory too. A message

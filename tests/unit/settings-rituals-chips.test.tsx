@@ -76,6 +76,7 @@ function Harness({ pane, focusId }: { pane: PaneId; focusId?: string }) {
       replayTour: () => {},
       signOut: () => {},
       openLedger,
+      deleteAccount: () => {},
     },
   };
   return (

@@ -45,6 +45,17 @@ enum AppleIDCredentialState: Sendable, Equatable {
     case authorized, revoked, notFound, transferred, unknown
 }
 
+/// What `deleteAccount` came to. `failed` carries the line the sheet shows;
+/// the session is untouched.
+enum AccountDeletionOutcome: Sendable, Equatable {
+    /// The account is gone: the session is over and `message` says so, and
+    /// AppGate has moved on.
+    case deleted(AppleRevocation)
+    case failed(String)
+    /// The session ended under the call; nothing to show.
+    case signedOut
+}
+
 /// Sign-in, the tokens and their refresh: Supabase Auth (GoTrue) spoken
 /// directly, with the pure half in DsulCore's AuthCore.swift.
 ///
@@ -79,6 +90,14 @@ enum AppleIDCredentialState: Sendable, Equatable {
 /// - Sign-out is `scope=local`: GoTrue's default is global, which would sign
 ///   the web and the desktop app out too. The local wipe happens first and
 ///   whatever the call does.
+/// - Delete account is two calls to dsul's own server, which deletes through
+///   GoTrue's admin API (memory/plans/account-deletion.md): `accountFacts` for
+///   what the sheet says, then `deleteAccount`, answered once the account and
+///   everything in it are gone. The server's secret key and the Apple key stay
+///   on the server; the phone sends at most Apple's one-time code. A deletion
+///   ends this phone's session the way a sign-out does, but with no logout
+///   call (the user and its sessions are gone with it), and only while the
+///   session is still the one that asked.
 @Observable @MainActor
 final class AuthStore {
     private(set) var state: AuthState
@@ -116,6 +135,8 @@ final class AuthStore {
     /// Asks Apple about an Apple ID (`AppleAuthorization` in the app); nil
     /// asks nothing.
     private let appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)?
+    /// Where Delete account's two routes are: the web app, as for the planner.
+    private let apiOrigin: URL
 
     /// The waits between refresh attempts that failed for want of a server:
     /// three tries within about three seconds, well inside the reuse window.
@@ -124,13 +145,15 @@ final class AuthStore {
     init(tokenStore: any TokenStore, configStore: SupabaseConfigStore, transport: @escaping Transport,
          now: @escaping @Sendable () -> Date = { Date() },
          sleep: @escaping @Sendable (Duration) async throws -> Void = { duration in try await Task.sleep(for: duration) },
-         appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)? = nil) {
+         appleCredentialState: (@Sendable (String) async -> AppleIDCredentialState)? = nil,
+         apiOrigin: URL = AppConfig.apiOrigin) {
         self.tokenStore = tokenStore
         self.configStore = configStore
         self.transport = transport
         self.now = now
         self.sleep = sleep
         self.appleCredentialState = appleCredentialState
+        self.apiOrigin = apiOrigin
         if let saved = tokenStore.load() {
             state = .signedIn(saved)
         } else {
@@ -150,9 +173,11 @@ final class AuthStore {
         } else {
             store = KeychainTokenStore(defaults: defaults, keychain: SystemKeychain())
         }
-        let config = SupabaseConfigStore(origin: AppConfig.apiOrigin, defaults: defaults, transport: HTTP.live)
+        let origin = AppConfig.apiOrigin
+        let config = SupabaseConfigStore(origin: origin, defaults: defaults, transport: HTTP.live)
         return AuthStore(tokenStore: store, configStore: config, transport: HTTP.live,
-                         appleCredentialState: { await AppleAuthorization.credentialState(forUserID: $0) })
+                         appleCredentialState: { await AppleAuthorization.credentialState(forUserID: $0) },
+                         apiOrigin: origin)
     }
 
     var session: AuthSession? {
@@ -583,6 +608,97 @@ final class AuthStore {
         emailSent = nil
         state = .signedOut
         self.message = message
+    }
+
+    // MARK: Deleting the account
+
+    /// GET /api/app/account: what the Delete account sheet says. Nil on any
+    /// failure. A 410 `gone` (an earlier call deleted the account and its
+    /// answer was lost) also ends the session, if still signed in as the user
+    /// who asked, with `AccountDeletion.deletedMessage` and no logout call,
+    /// exactly as a deletion does; AppGate drops the sheet.
+    func accountFacts() async -> AccountFacts? {
+        guard let asking = session else { return nil }
+        do {
+            return try await accountAPI().accountFacts()
+        } catch APIError.rejected(status: 410, code: "gone"?) {
+            endDeletedSession(asked: asking, message: AccountDeletion.deletedMessage)
+            return nil
+        } catch {
+            return nil
+        }
+    }
+
+    /// The first of `facts.appleIds` this phone's Apple Account can authorize
+    /// (`.authorized`), only when `facts.appleRevocable`; nil with no
+    /// credential-state closure. Local and cheap ("Verifying a user"), so the
+    /// sheet asks when it opens and again just before Apple's request: a retry
+    /// may follow a deletion that already revoked the id, and a request for a
+    /// revoked id would ask Apple for a new first consent that nothing then
+    /// revokes.
+    func deletionAppleUserId(for facts: AccountFacts) async -> String? {
+        guard facts.appleRevocable, let check = appleCredentialState else { return nil }
+        for appleID in facts.appleIds {
+            if await check(appleID) == .authorized { return appleID }
+        }
+        return nil
+    }
+
+    /// POST /api/app/account/delete with `account`, the facts' `userId`: a
+    /// guard the server checks against the caller, never a target. Any 2xx is
+    /// a deletion. If still signed in as the user who asked, any refresh is
+    /// cancelled, the pending email record dropped and the session ended with
+    /// the done line (`AccountDeletion.doneMessage`), with no logout call; if
+    /// already signed out, only `message` becomes the done line; if someone
+    /// else is signed in by then, nothing changes. A failure leaves the session
+    /// as it was.
+    ///
+    /// A refresh still out when the session ends finds it gone and changes
+    /// nothing (`performRefresh`). Apple's revoked notification may sign the
+    /// phone out first (`checkAppleCredential`); the 200 then only sets the
+    /// line.
+    func deleteAccount(account: String, appleCode: String?, hadApple: Bool) async -> AccountDeletionOutcome {
+        guard let asking = session else { return .signedOut }
+        do {
+            let answer = try await accountAPI().deleteAccount(account: account, appleCode: appleCode)
+            endDeletedSession(asked: asking,
+                              message: AccountDeletion.doneMessage(apple: answer.apple, hadApple: hadApple))
+            return .deleted(answer.apple)
+        } catch APIError.signedOut {
+            return .signedOut
+        } catch APIError.unavailable {
+            return .failed(AccountDeletion.unreachableMessage)
+        } catch APIError.rejected(status: 409, code: _) {
+            return .failed(AccountDeletion.changedMessage)
+        } catch is CancellationError {
+            return .failed(AccountDeletion.unreachableMessage)
+        } catch {
+            return .failed(AccountDeletion.failedMessage)
+        }
+    }
+
+    /// The end of a session whose account is gone: the user and its sessions
+    /// went with it, so there is no logout call to make (it would answer 403).
+    /// Only the session that asked is ended; one that already ended takes the
+    /// line, and someone else's is never touched.
+    private func endDeletedSession(asked: AuthSession, message: String) {
+        switch state {
+        case .signedIn(let current) where current.userId == asked.userId:
+            refreshTask?.cancel()
+            refreshTask = nil
+            dropPending()
+            endSession(message: message)
+        case .signedOut:
+            self.message = message
+        case .signedIn, .signingIn, .sample:
+            break
+        }
+    }
+
+    /// Delete account's own client: never the planner's, since the deletion
+    /// drops the planner.
+    private func accountAPI() -> APIClient {
+        return APIClient(origin: apiOrigin, tokens: self, transport: transport)
     }
 
     // MARK: GoTrue

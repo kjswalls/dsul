@@ -6,7 +6,8 @@ capture, the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an
 item's title and notes, Delete, a new subtask, a streak reset, an item's
 priority, times per day and reminder, and an item's date, part of day, time
 and length, how it repeats, its project, and the routines and seasons it is
-in, are saved to the server.
+in, are saved to the server. Delete account, in the avatar menu, deletes the
+account and everything in it.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -31,7 +32,7 @@ or by pasting a list. A tap on a row's circle still just ticks it.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
     `AppConfig` (the server's address).
   - `Auth/`: Google, Apple and email-link sign-in, the tokens and the
-    Keychain.
+    Keychain, and Delete account's sheet.
   - `Data/`: the calls to `/api/app/*` and `PlannerSync`, which sends your
     changes in order and fetches your day.
   - `Model/`, `Today/`, `Schedule/`: the planner and the screens.
@@ -86,8 +87,8 @@ and Face ID. The app hands Apple's answer to Supabase and shows
 My Email starts a separate, empty account, and Share My Email opens the
 account with that address if there is one. After that, the same Apple Account
 always opens the same account. The first time, the app also saves the name
-Apple gives to your account if it has none, so the web shows it. If you stop
-using Sign in with Apple for dsul in Settings, or sign the iPhone in to
+Apple gives to your account if it has none, so the web shows it. If you
+remove dsul from Sign in with Apple in Settings, or sign the iPhone in to
 another Apple Account, the app signs this phone out the next time you open
 it; the web stays signed in.
 
@@ -137,6 +138,14 @@ The phone talks to production, so it can only sign in once `/auth/ios` and
 - **The avatar** (your initials, top right) shows your email and **Sign out**.
   Sign out ends this phone's session only; the web and the desktop app stay
   signed in. On the sample, it says **Leave sample data** instead.
+- **Delete account…** in the avatar menu deletes your account and everything
+  in it, on every device, at once; it is not the Trash and can't be undone.
+  The sheet names the account, says what else to check (Beeminder goals, the
+  stakes ledger, keys you gave dsul for other services, OpenClaw, a connected
+  model key) and asks you to type DELETE. If you sign in with Apple, Apple
+  asks you to continue so dsul is also removed from Sign in with Apple. Then
+  the sign-in screen says "Your dsul account is deleted." The web has the
+  same in Settings → dsul.
 - **Debug builds** can point at another server: Edit Scheme → Run →
   Arguments → `-DsulAPIOrigin http://192.168.1.20:3000` (your Mac's address
   on the same Wi-Fi). Release builds always use do.dsul.app. Sign-in then
@@ -163,8 +172,8 @@ The tests can't open Mail or Safari, so these need your iPhone (after Step 0):
 The tests can't open Apple's sheet, so these need your iPhone, signed in to
 your Apple Account. Which dsul account an Apple Account opens is settled the
 first time it signs in to dsul, on the web or here. If you have used Continue
-with Apple on the web, first open Settings, then your Apple Account, find Sign
-in with Apple, pick dsul and Stop Using, so Apple asks again.
+with Apple on the web, first open Settings, tap your name, then Sign in with
+Apple, pick dsul and tap Delete, so Apple asks again.
 1. In a private window, do.dsul.app/login shows Continue with Apple. In the
    Supabase dashboard, Authentication → Sign In / Providers → Apple, the
    Client IDs read `app.dsul.web,app.dsul.ios`. If either isn't so, finish
@@ -199,9 +208,9 @@ in with Apple, pick dsul and Stop Using, so Apple asks again.
    line. Turn Airplane Mode off. (The "Couldn't reach dsul" line needs the
    network to drop between Apple and Supabase; a hosted test covers it.)
 8. Continue with Apple (Apple shows only Continue) so you are signed in.
-   Then in Settings, open your Apple Account, find Sign in with Apple, pick
-   dsul and Stop Using. Back in dsul: the sign-in screen, with "You were
-   signed out. Sign in again to see your day." The web is still signed in.
+   Then open Settings, tap your name, then Sign in with Apple, pick dsul and
+   tap Delete. Back in dsul: the sign-in screen, with "You were signed out.
+   Sign in again to see your day." The web is still signed in.
 9. Continue with Apple again after step 8: Apple asks for your name and email
    again, and the same account opens whichever email choice you make
    (Supabase finds the account by your Apple ID before any email). An
@@ -209,9 +218,10 @@ in with Apple, pick dsul and Stop Using, so Apple asks again.
    Google, keeps it. One that had none shows the name you gave on the web
    after its next sign-in there, or within the hour. (Hosted tests cover the
    name write itself.)
-10. Sign out, then Continue with Google: signed in. In Settings, stop using
-    Sign in with Apple for dsul again, then come back to dsul: still signed
-    in, no message. Sign out, and Email me a sign-in link still signs in.
+10. Sign out, then Continue with Google: signed in. In Settings, remove dsul
+    from Sign in with Apple again (as in check 8), then come back to dsul:
+    still signed in, no message. Sign out, and Email me a sign-in link still
+    signs in.
 11. Sign out, then tap Continue with Apple, and with Apple's sheet up switch
     the appearance in Control Center, then close the sheet: no message, the
     button takes the new colour, and you can tap again.
@@ -223,6 +233,90 @@ in with Apple, pick dsul and Stop Using, so Apple asks again.
     should; the plan said it wouldn't), and tell the thread which.
 13. Try with sample data still opens the sample, and Leave sample data comes
     back to both buttons.
+
+## Checking account deletion
+
+Deletion can't be undone, so use throwaway accounts only, never your own.
+Before you start, sign the phone out of your own account. Before every Delete
+account, check that the address in the avatar menu and the one the sheet (or
+the web's dialog) names is the throwaway.
+
+A plus address (you+del1@…, then del2) gives a fresh account through Email me
+a sign-in link. Supabase sends one sign-in email per address a minute, and the
+project has an hourly cap: if "Too many sign-in emails just now" shows, wait a
+few minutes and send again. On the web, the link only works in the window that
+asked for it, so copy it from the email into that private window's address bar
+rather than clicking it.
+
+1. Sign in on the phone with a throwaway address and add an item. Wait a
+   minute, then in a private window sign the web in to the same address. On
+   the phone, tap the avatar, then Delete account…: the sheet says "This
+   deletes the account for" the throwaway address, explains what goes and that
+   it can't be undone, and lists nothing else for a new account. Above the
+   field it says Type DELETE to confirm. Delete account stays dim; type
+   "delete" in lower case and it lights up. Tap Cancel: nothing changed.
+2. Delete account… again, type DELETE, tap Delete account: the sign-in screen,
+   with "Your dsul account is deleted." Reload the web tab: it goes to the
+   login page. Sign the phone in to the same address again: a new, empty day
+   (the item is gone). Keep this account for check 3.
+3. With check 2's account signed in, turn on Airplane Mode, then Delete
+   account…: "Couldn't reach dsul. Check your connection and try again."
+   (either while the sheet loads or after Delete). Still signed in. Turn
+   Airplane Mode off, tap Try again if it shows, then Delete account: deleted.
+4. The web: sign in with a new throwaway in a private window, add an item,
+   Settings → dsul → Delete account. The dialog names the address and has the
+   same words; type DELETE; Delete account: "Your dsul account is deleted."
+   Done goes to the login page, which says "Your dsul account is deleted."
+   too.
+5. Find it by search: in the web's settings, search "delete account": the row
+   is first; search "sign out": Sign out is still first.
+6. Apple's revocation. This needs a second Apple Account that has never used
+   dsul, with two-factor authentication on, signed in under Settings on an
+   iPhone or iPad that runs the app from Xcode. Use a spare device if you have
+   one: on your own iPhone, signing out of your own Apple Account turns off
+   Find My, removes your Apple Pay cards and takes iCloud data off the phone
+   until you sign back in. Never use your own Apple Account here: it opens
+   your own dsul account. On that device, Continue with Apple, Hide My Email:
+   a new, empty account. Straight away, as App Review will, tap Delete
+   account…: it says "Apple will ask you to continue…". Type DELETE, tap
+   Delete account: Apple's sheet; close it: nothing deleted, still signed in.
+   Delete account again and continue with Face ID: "Your dsul account is
+   deleted." Open Settings, tap your name, then Sign in with Apple: dsul is
+   gone (give it a minute; Apple may also email that Apple Account). If the
+   line said Apple may still list dsul, or dsul is still listed, open Vercel's
+   logs for that minute and post the `[account]` lines in the thread (they
+   hold only codes). Continue with Apple again: Apple asks for name and email
+   again, a new, empty account; delete it the same way. Then sign the device
+   back in to your own Apple Account and the app to your own dsul account, and
+   check your day is all there. If you skip this check, say so in the thread:
+   after the first real Apple deletion on prod, Vercel's logs show
+   `[account] deleted revoked` or `[account] deleted not_revoked`. An
+   `[account] apple` line says why Apple's step failed on the server.
+   `[account] deleted not_revoked` with no `[account] apple` line means the
+   phone sent no code: Apple's sheet failed on the phone, most likely
+   throttled.
+7. Apple's manual line, with no Apple Account switch. In a private window on
+   the web, Continue with Apple with the second Apple Account and pick Share
+   My Email, with an address you can read that has no dsul account. Not Hide
+   My Email: Apple's relay forwards mail only from registered senders, so the
+   sign-in email would never arrive. And never an address that already has a
+   dsul account: Supabase would open that account. On your phone, Email me a
+   sign-in link to that address. Delete account… says "dsul can't remove
+   itself from Sign in with Apple here. Afterwards, open Settings, tap your
+   name, then Sign in with Apple, pick dsul and tap Delete.", with no Apple
+   step (this phone's Apple Account is your own). In the web window,
+   Settings → dsul → Delete account says the same with account.apple.com
+   added; close it. Delete on the phone: "Your dsul account is deleted. Apple may still
+   list dsul under Sign in with Apple…". At account.apple.com, signed in as
+   the second Apple Account, Sign-In & Security, Sign in with Apple: dsul is
+   listed; remove it, and tell the thread what the button said.
+8. Try with sample data: the avatar menu has no Delete account.
+9. VoiceOver. Turn it on, sign in with a new throwaway, and open Delete
+   account…: the title is read as a heading, and the field as Type DELETE to
+   confirm. With Airplane Mode on, type DELETE and tap Delete account:
+   VoiceOver says "Couldn't reach dsul…". Turn Airplane Mode off and delete:
+   on the sign-in screen VoiceOver says "Your dsul account is deleted." If it
+   says nothing, or only "dsul", tell the thread.
 
 ## Trying the drag
 

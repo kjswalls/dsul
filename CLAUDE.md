@@ -225,6 +225,16 @@ https base URL. Five rules are load-bearing:
 
 Read [ai-vision.md](memory/plans/ai-vision.md) before touching any of it.
 
+**Deleting an account is one call.** `auth.admin.deleteUser` in
+[lib/account-server/delete.ts](lib/account-server/delete.ts) (its only caller), and every table
+that holds a user's data references `auth.users` ON DELETE CASCADE, so the database deletes the
+rest in GoTrue's one transaction. A new table with a user column follows the rule (its own
+cascading key, or a composite key to a table that has one), or
+`tests/unit/account-deletion-migration.test.ts` fails; a column with no key at all would keep
+its rows and take new ones from a service-role write in flight. Sign in with Apple is revoked
+after the delete, never before, and never blocks it. Read
+[account-deletion.md](memory/plans/account-deletion.md) before touching it.
+
 **State.** Zustand stores in `lib/*-store.ts`, one per concern (planner, view, drag,
 sidebar, eod, morning, conversations, rail, …). `planner-store.ts` is the big one: it
 holds `items[]` with `tasks`/`habits` projections derived off it.
@@ -436,6 +446,12 @@ button follows Supabase's own settings (the iPhone's is always shown), the deskt
 list, the iPhone's native id_token flow, the dashboard setup, and the client secret that must be
 re-minted every six months (`scripts/apple-client-secret.mjs`) or Apple sign-in stops on the web
 and the desktop (the iPhone's id_token grant needs no secret).
+[account-deletion.md](memory/plans/account-deletion.md) holds Delete account on the iPhone and the
+web: the one rule (one admin delete, every user column cascades, migration 062 and the test that
+pins it), the account guard and the "gone" answers, exchange then delete then revoke for Sign in
+with Apple, what stays outside the database, Kirby's setup and the App Review gate. Read it before
+touching `lib/account-*`, `lib/account-server/**`, `app/api/account/**`, `app/api/app/account/**`,
+or a migration that adds a table holding user data.
 [reminders-platforms.md](memory/plans/reminders-platforms.md) is the plan for reminders on
 every surface (web/PWA, Electron, the iPhone app, Android, Apple Watch): one server authority
 on owed/discharged, a `devices` registry replacing `push_subscriptions`, device-local scheduling

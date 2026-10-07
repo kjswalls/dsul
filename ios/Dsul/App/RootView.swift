@@ -9,10 +9,10 @@ enum AppTab: Hashable {
 /// as the tab view's bottom accessory everywhere but Ask (whose composer
 /// takes its place).
 ///
-/// The capture, date and item sheets are one `PlannerSheet` on the planner.
-/// RootView presents it unless the braindump sheet is up; then the braindump
-/// sheet presents it, stacked (ScheduleView), because nothing under a sheet can
-/// present another one.
+/// The capture, date, item and Delete account sheets are one `PlannerSheet`
+/// on the planner. RootView presents it unless the braindump sheet is up; then
+/// the braindump sheet presents it, stacked (ScheduleView), because nothing
+/// under a sheet can present another one.
 struct RootView: View {
     @Environment(SamplePlanner.self) private var planner
     @Environment(\.scenePhase) private var scenePhase
@@ -91,6 +91,8 @@ struct PlannerSheetContent: View {
             DatePickerSheet()
         case .item(let id, let day):
             ItemSheet(id: id, day: day)
+        case .deleteAccount:
+            DeleteAccountSheet()
         }
     }
 }

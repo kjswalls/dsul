@@ -34,12 +34,17 @@ enum PlannerSheet: Identifiable, Hashable, Sendable {
     /// `SamplePlanner.open`, and closed by `apply` or `restore` when the item
     /// is gone.
     case item(UUID, day: SheetDay)
+    /// Delete account, from the avatar menu (signed in only): here so it rides
+    /// the one slot and both hosts, the braindump sheet's too. A deletion
+    /// drops the planner, and the sheet with it.
+    case deleteAccount
 
     var id: String {
         switch self {
         case .capture: return "capture"
         case .datePicker: return "datePicker"
         case .item(let id, _): return "item-" + id.uuidString.lowercased()
+        case .deleteAccount: return "deleteAccount"
         }
     }
 }

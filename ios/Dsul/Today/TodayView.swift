@@ -113,9 +113,12 @@ private struct TodayTitle: View {
     }
 }
 
-/// The avatar circle: the account (the email and Sign out), or on the sample
-/// a way back to the sign-in screen, then the drag spike's switches. "Load
-/// 40 blocks" is sample only: its blocks exist nowhere on the server.
+/// The avatar circle: the account (the email, Sign out and Delete account…),
+/// or on the sample a way back to the sign-in screen, then the drag spike's
+/// switches. Delete account… opens its sheet through the planner's one sheet
+/// slot, so it shows over the braindump sheet too; the sample has no account
+/// to delete. "Load 40 blocks" is sample only: its blocks exist nowhere on
+/// the server.
 private struct AvatarMenu: View {
     @Binding var showProbe: Bool
 
@@ -132,6 +135,11 @@ private struct AvatarMenu: View {
                         Task { await store.signOut() }
                     } label: {
                         Label("Sign out", systemImage: "rectangle.portrait.and.arrow.right")
+                    }
+                    Button(role: .destructive) {
+                        planner.activeSheet = .deleteAccount
+                    } label: {
+                        Label("Delete account\u{2026}", systemImage: "person.crop.circle.badge.xmark")
                     }
                 }
             } else {

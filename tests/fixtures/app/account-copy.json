@@ -1,0 +1,424 @@
+{
+  "words": {
+    "title": "Delete your dsul account?",
+    "account": "This deletes the account for {email}.",
+    "lead": "Deleting it removes everything in it from every device, right away: your items, habits, projects, routines, seasons, goals, recipes, settings and saved conversations. None of it goes to the Trash, and this cannot be undone.",
+    "beeminder": "Beeminder stops getting your ticks from dsul. A goal that needs them can derail and charge you, so change or archive those goals in Beeminder first.",
+    "ledger": "Your stakes ledger is deleted too, so note anything you owe first. It's at do.dsul.app/ledger.",
+    "openclaw": "OpenClaw loses access to dsul, but keeps anything it already remembers.",
+    "keys": "Keys you gave dsul for {services} stay active there until you revoke them.",
+    "modelKey": "dsul deletes the key you connected, but it stays active with {name} until you revoke it there.",
+    "appleStep": "Apple will ask you to continue, so that dsul is also removed from Sign in with Apple.",
+    "appleManual": "dsul can't remove itself from Sign in with Apple here. Afterwards, open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete.",
+    "appleManualWeb": "dsul can't remove itself from Sign in with Apple here. Afterwards, on an iPhone, open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete. Or sign in at account.apple.com and find Sign in with Apple under Sign-In & Security.",
+    "unreachable": "Couldn't reach dsul. Check your connection and try again.",
+    "failed": "Couldn't delete your account. Nothing was deleted. Try again.",
+    "changed": "You're signed in to a different account now, so nothing was deleted. Close this and open it again.",
+    "deleted": "Your dsul account is deleted.",
+    "appleLeft": "Your dsul account is deleted. Apple may still list dsul under Sign in with Apple: open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete.",
+    "appleLeftWeb": "Your dsul account is deleted. Apple may still list dsul under Sign in with Apple. To remove it, on an iPhone, open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete. Or sign in at account.apple.com and find Sign in with Apple under Sign-In & Security.",
+    "confirmLabel": "Type DELETE to confirm",
+    "deleteLabel": "Delete account",
+    "deletingLabel": "Deleting…",
+    "doneLabel": "Done",
+    "confirmWord": "DELETE"
+  },
+  "confirms": [
+    {
+      "typed": "DELETE",
+      "ok": true
+    },
+    {
+      "typed": "delete",
+      "ok": true
+    },
+    {
+      "typed": "Delete",
+      "ok": true
+    },
+    {
+      "typed": "dElEtE",
+      "ok": true
+    },
+    {
+      "typed": " Delete\n",
+      "ok": true
+    },
+    {
+      "typed": "\tDELETE  ",
+      "ok": true
+    },
+    {
+      "typed": "\u00a0delete\u3000",
+      "ok": true
+    },
+    {
+      "typed": "\ufeffDELETE\u2028",
+      "ok": true
+    },
+    {
+      "typed": "",
+      "ok": false
+    },
+    {
+      "typed": "   ",
+      "ok": false
+    },
+    {
+      "typed": "DELET",
+      "ok": false
+    },
+    {
+      "typed": "DELETED",
+      "ok": false
+    },
+    {
+      "typed": "DELETE.",
+      "ok": false
+    },
+    {
+      "typed": "DEL ETE",
+      "ok": false
+    },
+    {
+      "typed": "delete account",
+      "ok": false
+    },
+    {
+      "typed": "DELETE DELETE",
+      "ok": false
+    },
+    {
+      "typed": "\u200bDELETE",
+      "ok": false
+    }
+  ],
+  "joinNames": [
+    {
+      "names": [
+        "Beeminder"
+      ],
+      "joined": "Beeminder"
+    },
+    {
+      "names": [
+        "Beeminder",
+        "Twilio"
+      ],
+      "joined": "Beeminder and Twilio"
+    },
+    {
+      "names": [
+        "Beeminder",
+        "Twilio",
+        "Home Assistant"
+      ],
+      "joined": "Beeminder, Twilio and Home Assistant"
+    },
+    {
+      "names": [
+        "Beeminder",
+        "Twilio",
+        "Home Assistant",
+        "OpenClaw"
+      ],
+      "joined": "Beeminder, Twilio, Home Assistant and OpenClaw"
+    }
+  ],
+  "consequences": [
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": []
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": "kirby@example.com",
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": []
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": "kirby@example.com",
+        "appleIds": [
+          "001234.dsul.0001"
+        ],
+        "appleRevocable": true,
+        "beeminder": true,
+        "ledger": true,
+        "openclaw": false,
+        "keyServices": [
+          "Beeminder",
+          "Twilio"
+        ],
+        "modelProviderName": "OpenAI"
+      },
+      "appleStep": true,
+      "lines": [
+        "Beeminder stops getting your ticks from dsul. A goal that needs them can derail and charge you, so change or archive those goals in Beeminder first.",
+        "Your stakes ledger is deleted too, so note anything you owe first. It's at do.dsul.app/ledger.",
+        "Keys you gave dsul for Beeminder and Twilio stay active there until you revoke them.",
+        "dsul deletes the key you connected, but it stays active with OpenAI until you revoke it there.",
+        "Apple will ask you to continue, so that dsul is also removed from Sign in with Apple."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": "kirby@example.com",
+        "appleIds": [
+          "001234.dsul.0001"
+        ],
+        "appleRevocable": true,
+        "beeminder": true,
+        "ledger": true,
+        "openclaw": false,
+        "keyServices": [
+          "Beeminder",
+          "Twilio"
+        ],
+        "modelProviderName": "OpenAI"
+      },
+      "appleStep": false,
+      "lines": [
+        "Beeminder stops getting your ticks from dsul. A goal that needs them can derail and charge you, so change or archive those goals in Beeminder first.",
+        "Your stakes ledger is deleted too, so note anything you owe first. It's at do.dsul.app/ledger.",
+        "Keys you gave dsul for Beeminder and Twilio stay active there until you revoke them.",
+        "dsul deletes the key you connected, but it stays active with OpenAI until you revoke it there.",
+        "dsul can't remove itself from Sign in with Apple here. Afterwards, open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": "kirby@example.com",
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": true,
+        "ledger": true,
+        "openclaw": true,
+        "keyServices": [
+          "Beeminder",
+          "Twilio",
+          "Home Assistant",
+          "OpenClaw"
+        ],
+        "modelProviderName": "llm.example.com"
+      },
+      "appleStep": false,
+      "lines": [
+        "Beeminder stops getting your ticks from dsul. A goal that needs them can derail and charge you, so change or archive those goals in Beeminder first.",
+        "Your stakes ledger is deleted too, so note anything you owe first. It's at do.dsul.app/ledger.",
+        "OpenClaw loses access to dsul, but keeps anything it already remembers.",
+        "Keys you gave dsul for Beeminder, Twilio, Home Assistant and OpenClaw stay active there until you revoke them.",
+        "dsul deletes the key you connected, but it stays active with llm.example.com until you revoke it there."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": true,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": [
+        "Beeminder stops getting your ticks from dsul. A goal that needs them can derail and charge you, so change or archive those goals in Beeminder first."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": true,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": [
+        "Your stakes ledger is deleted too, so note anything you owe first. It's at do.dsul.app/ledger."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": true,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": [
+        "OpenClaw loses access to dsul, but keeps anything it already remembers."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [
+          "Home Assistant"
+        ],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": [
+        "Keys you gave dsul for Home Assistant stay active there until you revoke them."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": "Anthropic"
+      },
+      "appleStep": false,
+      "lines": [
+        "dsul deletes the key you connected, but it stays active with Anthropic until you revoke it there."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [
+          "001234.dsul.0001"
+        ],
+        "appleRevocable": true,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": true,
+      "lines": [
+        "Apple will ask you to continue, so that dsul is also removed from Sign in with Apple."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [
+          "001234.dsul.0001"
+        ],
+        "appleRevocable": false,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": [
+        "dsul can't remove itself from Sign in with Apple here. Afterwards, open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete."
+      ]
+    },
+    {
+      "facts": {
+        "userId": "6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b",
+        "email": null,
+        "appleIds": [
+          "001234.dsul.0001"
+        ],
+        "appleRevocable": true,
+        "beeminder": false,
+        "ledger": false,
+        "openclaw": false,
+        "keyServices": [],
+        "modelProviderName": null
+      },
+      "appleStep": false,
+      "lines": [
+        "dsul can't remove itself from Sign in with Apple here. Afterwards, open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete."
+      ]
+    }
+  ],
+  "done": [
+    {
+      "apple": "revoked",
+      "hadApple": true,
+      "message": "Your dsul account is deleted."
+    },
+    {
+      "apple": "revoked",
+      "hadApple": false,
+      "message": "Your dsul account is deleted."
+    },
+    {
+      "apple": "not_revoked",
+      "hadApple": true,
+      "message": "Your dsul account is deleted. Apple may still list dsul under Sign in with Apple: open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete."
+    },
+    {
+      "apple": "not_revoked",
+      "hadApple": false,
+      "message": "Your dsul account is deleted. Apple may still list dsul under Sign in with Apple: open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete."
+    },
+    {
+      "apple": "none",
+      "hadApple": true,
+      "message": "Your dsul account is deleted."
+    },
+    {
+      "apple": "none",
+      "hadApple": false,
+      "message": "Your dsul account is deleted."
+    },
+    {
+      "apple": "unknown",
+      "hadApple": true,
+      "message": "Your dsul account is deleted. Apple may still list dsul under Sign in with Apple: open Settings, tap your name, then Sign in with Apple, pick dsul and tap Delete."
+    },
+    {
+      "apple": "unknown",
+      "hadApple": false,
+      "message": "Your dsul account is deleted."
+    }
+  ]
+}

@@ -77,13 +77,17 @@ import { extensionEnabled } from '@/lib/extension-gates';
  *      and which the settings request usually beats anyway.
  */
 
+/** The modals this page owns and opens by name (see the dynamic imports below). */
+type LocalDialog = 'bug' | 'deleteAccount';
+
 /** Where an unrecognised path goes. Nearest real pane, never a blank page. */
 function fallbackPane(path: string | undefined): PaneId {
   return path && isExtensionPane(path) ? 'extensions' : 'day';
 }
 
-/* ── The one modal this page opens by name, deferred ───────────────────────
-   Reached only from a row the user clicks: dsul → Send feedback. Deferring it
+/* ── The modals this page opens by name, deferred ──────────────────────────
+   Reached only from a row the user clicks: dsul → Send feedback, and dsul →
+   Delete account, which is the same shape for the same reasons. Deferring it
    takes weight off this route's first load — measured across the PR that
    introduced the split at 40.6 kB gzip for the two modals that were deferred
    together, spent on surfaces most visits never open.
@@ -107,6 +111,10 @@ function fallbackPane(path: string | undefined): PaneId {
    STAYS mounted, keeping the close animation Radix needs a live subtree for. */
 const BugReportDialog = dynamic(
   () => import('@/components/bug-report/bug-report-dialog').then((m) => m.BugReportDialog),
+  { ssr: false }
+);
+const DeleteAccountDialog = dynamic(
+  () => import('@/components/settings/delete-account-dialog').then((m) => m.DeleteAccountDialog),
   { ssr: false }
 );
 
@@ -215,13 +223,16 @@ export default function SettingsPage() {
   const hydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
   const push = usePushSubscription();
 
-  const [localDialog, setLocalDialog] = useState<'bug' | null>(null);
-  // Whether the deferred modal has ever been opened. Latched, never cleared —
+  const [localDialog, setLocalDialog] = useState<LocalDialog | null>(null);
+  // Whether each deferred modal has ever been opened. Latched, never cleared —
   // see the note on the dynamic import above for both halves of why: mounting
   // it unopened downloads it, unmounting it on close takes the exit animation
   // with it.
-  const [everOpened, setEverOpened] = useState<{ bug: boolean }>({ bug: false });
-  const openLocalDialog = useCallback((which: 'bug') => {
+  const [everOpened, setEverOpened] = useState<Record<LocalDialog, boolean>>({
+    bug: false,
+    deleteAccount: false,
+  });
+  const openLocalDialog = useCallback((which: LocalDialog) => {
     setEverOpened((prev) => (prev[which] ? prev : { ...prev, [which]: true }));
     setLocalDialog(which);
   }, []);
@@ -402,6 +413,7 @@ export default function SettingsPage() {
         replayTour: () => void replayTour(),
         signOut: () => void signOut(),
         openLedger: () => router.push('/ledger'),
+        deleteAccount: () => openLocalDialog('deleteAccount'),
       },
     }),
     // The ticks are the point: they are not read here, they are what makes this
@@ -483,26 +495,45 @@ export default function SettingsPage() {
   // not part of it.
   const hydrated = settingsBelongToUser(userId, hydratedUserId);
 
-  if (!hydrated) return <SettingsSkeleton userId={userId} />;
+  // Delete account sits OUTSIDE the gate, so it keeps its state when the gate
+  // drops. A browser can switch accounts under an open dialog (an email link
+  // for another account opened in a second tab): the gate goes to the skeleton
+  // until the new account's settings land. Inside the gate the dialog would
+  // unmount there and come back open by itself, asking about the NEW account.
+  // Out here it keeps the account it was opened for, and the server answers a
+  // delete with 409 changed (memory/plans/account-deletion.md).
+  const deleteAccountDialog = everOpened.deleteAccount && (
+    <DeleteAccountDialog
+      open={localDialog === 'deleteAccount'}
+      onOpenChange={(open) => setLocalDialog(open ? 'deleteAccount' : null)}
+    />
+  );
 
   return (
-    <div data-testid="settings-page" data-settings-state="ready">
-      <SettingsShell
-        pane={pane}
-        ctx={ctx}
-        focusId={focusId}
-        isMobile={isMobile}
-        onOpenDestination={openDestination}
-      />
+    <>
+      {hydrated ? (
+        <div data-testid="settings-page" data-settings-state="ready">
+          <SettingsShell
+            pane={pane}
+            ctx={ctx}
+            focusId={focusId}
+            isMobile={isMobile}
+            onOpenDestination={openDestination}
+          />
 
-      {/* Mounted here because AppShell isn't. */}
-      <ConfirmDialog />
-      {everOpened.bug && (
-        <BugReportDialog
-          open={localDialog === 'bug'}
-          onOpenChange={(open) => setLocalDialog(open ? 'bug' : null)}
-        />
+          {/* Mounted here because AppShell isn't. */}
+          <ConfirmDialog />
+          {everOpened.bug && (
+            <BugReportDialog
+              open={localDialog === 'bug'}
+              onOpenChange={(open) => setLocalDialog(open ? 'bug' : null)}
+            />
+          )}
+        </div>
+      ) : (
+        <SettingsSkeleton userId={userId} />
       )}
-    </div>
+      {deleteAccountDialog}
+    </>
   );
 }

@@ -660,6 +660,26 @@ describe('settings search', () => {
     }
   });
 
+  it('"delete account" and "close account" find Delete account first', () => {
+    // Sign out also answers to "account"; the row someone searching to leave
+    // for good wants is this one.
+    for (const term of ['delete account', 'close account', 'remove account']) {
+      const hits = searchSettings(term, ctx).settings.map((h) => h.record.id);
+      expect(hits[0], term).toBe('dsul.deleteAccount');
+    }
+  });
+
+  it('Delete account opens the page-owned dialog', () => {
+    const deleteAccount = vi.fn();
+    const record = settingById('dsul.deleteAccount')!;
+    expect(record.pane).toBe('dsul');
+    expect(record.control).toBe('action');
+    const actions = { openBugReport: vi.fn(), replayTour: vi.fn(), signOut: vi.fn(), openLedger: vi.fn() };
+    record.write('Delete…', { ...ctx, actions: { ...actions, deleteAccount } });
+    expect(actions.signOut).not.toHaveBeenCalled();
+    expect(deleteAccount).toHaveBeenCalledTimes(1);
+  });
+
   it('splits and lowercases the query — scoreText only lowercases the text', () => {
     expect(queryTerms('  Week  Start ')).toEqual(['week', 'start']);
   });

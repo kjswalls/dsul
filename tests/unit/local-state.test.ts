@@ -692,7 +692,7 @@ describe('nothing persists per-user state outside the registry', () => {
     // aliased handle (`const store = window.localStorage; store.setItem(…)`)
     // and sessionStorage, which the narrower pattern walked straight past.
     //
-    // A tenth entry here means per-user state with nothing clearing it.
+    // An eleventh entry here means per-user state with nothing clearing it.
     expect(filesMatching(/\bsetItem\(/)).toEqual([
       // The ownership stamp itself.
       'lib/local-state.ts',
@@ -724,6 +724,11 @@ describe('nothing persists per-user state outside the registry', () => {
       // that did it. The loop guard's whole state; it dies with the tab and is
       // written only when nobody is signed in, so there is no one to clear it for.
       'lib/signed-out-redirect.ts',
+      // `dsul-account-deleted`, sessionStorage: a deletion's outcome (Apple's
+      // revocation word and a boolean) for /login to say once. Written only once
+      // the account is gone, read and removed by /login, and it dies with the
+      // tab, so there is no account left to clear it for.
+      'lib/account-client.ts',
       // `dsul-user-themes`: the account's own themes, printed, for the pre-paint
       // script. Per user, so clearUserThemeCache is in RAW_CLEARERS.
       'lib/user-themes/store.ts',

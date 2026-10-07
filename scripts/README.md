@@ -141,6 +141,37 @@ hand before applying 058, or after any edit to `dsul_tick` or the cron jobs.
 migration from 058 on as text (empty `search_path`, no `time + interval`, revoke
 before grant, no token or keys for `authenticated`, guarded `cron.*`).
 
+## `verify-062.sh`
+
+Deletes accounts on a **throwaway bare Postgres**, before and after
+`062_account_deletion.sql`. Deleting an account is one call, GoTrue's admin
+delete, and the foreign keys delete everything else
+(`memory/plans/account-deletion.md`), so this is where that is proven on a real
+database: it replays `000..061`, seeds three users with a row in each of the 28
+user tables (and a forged task and item of one user's whose parent is another's),
+and checks the state 062 fixes: a deleted account's email left in `bug_reports`,
+and one account's forged row blocking another's deletion. Then, on a fresh build
+with 062 applied twice: the second run changes nothing, a deleted user leaves no
+row anywhere, the forged links go null instead of blocking, the other user keeps
+every row, no public foreign key is `no action` or `restrict`, and the
+user-column query (every user column with no cascading path to `auth.users`)
+lists nothing, though it does list a probe table with a keyless `user_id`. A
+third build renames both old constraints first, and 062 still replaces them.
+
+The same stub extensions and bare cluster as `verify-058.sh`, so the same rules:
+root, or write access to `$(pg_config --sharedir)/extension/`, stubs removed on
+exit, a real pg_cron or pg_net refused:
+
+```bash
+sudo ./scripts/verify-062.sh     # or PGBIN=/path/to/pg/bin
+```
+
+It needs no Supabase credentials and cannot reach a remote database. Run it by
+hand before applying 062, and after any migration that adds a table holding user
+data. `tests/unit/account-deletion-migration.test.ts` is its twin in CI, reading
+every migration as text: every key to `auth.users` cascades, and every user
+column has a cascading path to it.
+
 ## `apple-client-secret.mjs`
 
 Mints the client secret Supabase's Apple provider needs: a JWT signed with the Sign
