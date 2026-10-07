@@ -29,7 +29,11 @@ import Foundation
 // - `{"action":"repeat","frequency":…}`, with `"days":[…]` (0 = Sun … 6 =
 //   Sat, ascending, a JSON array of numbers) with Custom days alone and
 //   `"monthDay":…` (a JSON number, 1 to 31) with Monthly alone; neither key
-//   otherwise, and never null. The server writes all three columns together.
+//   otherwise, and never null. The server writes all three columns together;
+// - `{"action":"project","projectId":…}`, the project's id lowercase, or
+//   `"projectId":null` for No project, never a missing key (the route's schema
+//   is `.nullable()`). The name is never sent: the route reads the project and
+//   files the item under its own name.
 // Every action is `.strict()` there, so a key the route doesn't name is a 400,
 // and `encode(to:)` is written out by hand rather than synthesized, so it
 // writes exactly these keys. Checked against the web by ItemWriteBodyTests,
@@ -42,7 +46,7 @@ import Foundation
 /// One write the item sheet sends, ready to encode.
 public enum ItemWriteBody: Encodable, Sendable, Hashable {
     /// A typed edit: `title`, `notes`, `priority`, `timesPerDay`,
-    /// `reminder`, `time` or `repeat`.
+    /// `reminder`, `time`, `repeat` or `project`.
     case edit(ItemEdit)
     /// Delete: the item, and, unless it is a habit, its subtasks.
     case delete
@@ -67,6 +71,7 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
         case action, id, title, notes, priority, timesPerDay, time, anchor
         case timeBucket, startTime, duration
         case frequency, days, monthDay
+        case projectId
     }
 
     public func encode(to encoder: Encoder) throws {
@@ -128,6 +133,14 @@ public enum ItemWriteBody: Encodable, Sendable, Hashable {
             }
             if let monthDay {
                 try c.encode(monthDay, forKey: .monthDay)
+            }
+        case .edit(.project(let id, _)):
+            // The id alone, lowercase as Postgres stores it; null for No
+            // project, never absent. The name is the optimistic step's.
+            if let id {
+                try c.encode(id.lowercased(), forKey: .projectId)
+            } else {
+                try c.encodeNil(forKey: .projectId)
             }
         case .addSubtask(let id, let title):
             try c.encode(id.uuidString.lowercased(), forKey: .id)

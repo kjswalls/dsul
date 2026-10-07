@@ -5,8 +5,9 @@ import Foundation
 // column is NULL, the block length a timed item gets when it has none, and the
 // capabilities the item sheet's verbs, chips and fields read (label, skippable,
 // pausable, dated, remindable, collectible, subtasks, the counters, priority,
-// notes, duration, and from 2e the frequencies the Repeat chip offers), with
-// the item-level questions built on them (`isSkippable`, `isPausable`,
+// notes, duration, from 2e the frequencies the Repeat chip offers, and from 2f
+// the project axis: its container kind and whether it may be left unfiled),
+// with the item-level questions built on them (`isSkippable`, `isPausable`,
 // `isRemindable`, `isCollectible`, lib/item-edit.ts `subtaskRefusal` as
 // `canAddSubtask`, and lib/bulk-edit.ts
 // `reminderNeedsDate`), and the words the sheet borrows from
@@ -79,6 +80,15 @@ public struct ItemCaps: Sendable, Hashable {
     /// repeats. More than one is what lets the Repeat chip edit; a frequency
     /// not here is the server's `frequency_not_allowed`.
     public var allowedFrequencies: [String]
+    /// `containerKind`: which container table names the type resolves
+    /// against, `"projects"` (the classify kind's registry name, which
+    /// lib/container-registry.ts `classifyKindForItemType` reads as the project
+    /// kind) for every shipped type, or nil for a type with no project axis,
+    /// whose Project chip the server refuses (`no_project`).
+    public var containerKind: String?
+    /// `containerRequired`: the type must stay filed, so No project is
+    /// refused (`project_required`). False for every shipped type.
+    public var containerRequired: Bool
     /// `form.titlePlaceholder`: the empty title field's prompt ("What needs to
     /// be done?"; "Add a side quest…" for a custom type).
     public var titlePlaceholder: String
@@ -106,6 +116,8 @@ public struct ItemCaps: Sendable, Hashable {
         hasNotes: Bool = true,
         hasDuration: Bool = true,
         allowedFrequencies: [String] = repeatFrequencyOrder,
+        containerKind: String? = "projects",
+        containerRequired: Bool = false,
         titlePlaceholder: String = "",
         deleteNamesHistory: Bool = false
     ) {
@@ -128,6 +140,8 @@ public struct ItemCaps: Sendable, Hashable {
         self.hasNotes = hasNotes
         self.hasDuration = hasDuration
         self.allowedFrequencies = allowedFrequencies
+        self.containerKind = containerKind
+        self.containerRequired = containerRequired
         self.titlePlaceholder = titlePlaceholder
         self.deleteNamesHistory = deleteNamesHistory
     }
@@ -138,6 +152,7 @@ public struct ItemCaps: Sendable, Hashable {
         dateAnchored: true, dateAddressable: true, skippable: true, pausable: true, remindable: true,
         collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false, dailyCounts: false,
         hasPriority: true, hasNotes: true, hasDuration: true, allowedFrequencies: repeatFrequencyOrder,
+        containerKind: "projects", containerRequired: false,
         titlePlaceholder: "What needs to be done?", deleteNamesHistory: false
     )
 
@@ -148,6 +163,7 @@ public struct ItemCaps: Sendable, Hashable {
         collectible: true, braindumpEligible: false, subtasks: false, streakCounter: true, dailyCounts: true,
         hasPriority: false, hasNotes: true, hasDuration: true,
         allowedFrequencies: ["daily", "weekdays", "weekends", "monthly", "custom"],
+        containerKind: "projects", containerRequired: false,
         titlePlaceholder: "What habit to track?", deleteNamesHistory: true
     )
 
@@ -168,7 +184,7 @@ public struct ItemCaps: Sendable, Hashable {
             defaultBlockMinutes: 30, dateAnchored: true, dateAddressable: true, skippable: true, pausable: true,
             remindable: true, collectible: true, braindumpEligible: true, subtasks: true, streakCounter: false,
             dailyCounts: false, hasPriority: true, hasNotes: true, hasDuration: true,
-            allowedFrequencies: repeatFrequencyOrder,
+            allowedFrequencies: repeatFrequencyOrder, containerKind: "projects", containerRequired: false,
             titlePlaceholder: "Add a \(jsLowercased(noun))\u{2026}", deleteNamesHistory: false
         )
     }

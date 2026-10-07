@@ -7,8 +7,8 @@ import path from 'path';
  *
  * verb-writes-fixtures.test.ts pins what the sheet's verbs write; this pins its
  * edits (lib/item-edit.ts: the title, the notes, and the priority, times per
- * day, reminder, time and repeat chips), its Delete, Add a subtask and Reset
- * streak.
+ * day, reminder, time, repeat and project chips), its Delete, Add a subtask
+ * and Reset streak.
  * Each case drives the web's REAL
  * gesture for the same change over the real planner store, with the db layer
  * mocked and the clock pinned (Thursday 1 October), and records to
@@ -44,11 +44,11 @@ import path from 'path';
  * or an undated task, or a repeat its type doesn't list. A repeat on a
  * subtask is the route's refusal alone: the web's panel offers one, which
  * would show nowhere, since a subtask shows only in its parent's sheet.
- * Twelve cases have a body the route's schema refuses, which the phone never
+ * Thirteen cases have a body the route's schema refuses, which the phone never
  * builds: `reminder-anchor-without-time` (cue words with no time),
- * `time-refused-anytime-with-a-time`, `time-refused-empty`, and the nine
- * repeat bodies whose days or day sit beside the wrong frequency, are missing,
- * out of order or out of range.
+ * `time-refused-anytime-with-a-time`, `time-refused-empty`, the nine repeat
+ * bodies whose days or day sit beside the wrong frequency, are missing, out
+ * of order or out of range, and `project-refused-not-a-uuid`.
  *
  * The Time chip's cases (2d) go through commitEdit's both passes: a part of
  * day picked away from the stored one is scheduleTask, which releases a
@@ -60,6 +60,16 @@ import path from 'path';
  * together (repeatPatch), or nothing when the draft is its seed. fetchGoals
  * holds no goals here, so no case takes a goal role back: item-repeat-edit
  * and the route's tests pin that.
+ *
+ * The project chip's cases (2f) drive the bulk Move to project for the one
+ * item, setItemsProject([id], name), the rule's own home (lib/item-edit.ts
+ * projectRefilePatch), over a store seeded with `projects` (Work and Health),
+ * which the phone's tests resolve a `projectId` against. The item dialog's
+ * project change has a no-op rule of its own (it holds the name alone), so
+ * the panel isn't driven here: item-project-edit.test.ts shows the dialog
+ * writes what these write wherever it writes. Name and id, a parked task's
+ * release, and a habit's clear, which always writes since an unfiled habit
+ * reads ''. One body the schema refuses: a project id that isn't a uuid.
  *
  * In `updates`, a key present with null is a column cleared (the store wrote
  * undefined, which lib/db.ts sends as SQL NULL).
@@ -84,7 +94,9 @@ import path from 'path';
  * `durations` pins the Time chip's lengths and their words (lib/item-edit.ts
  * DURATION_ORDER and durationLabel), for DsulCore's EditCopy. `repeats` pins
  * the Repeat chip's words: lib/planner-types.ts REPEAT_FREQUENCY_LABELS, in
- * its order, and WEEKDAY_LABELS, for DsulCore's Cadence.
+ * its order, and WEEKDAY_LABELS, for DsulCore's Cadence. `containers` pins
+ * the container nouns (lib/container-registry.ts CONTAINER_KINDS' label,
+ * labelPlural and the project's unsetLabel), for DsulCore's ContainerWords.
  *
  * Regenerate with:
  *
@@ -171,6 +183,7 @@ import {
   editShapeFromRow,
   resetStreakPatch,
   resetStreakRefusal,
+  sameProjectName,
   streakRunText,
   subtaskRefusal,
   type ItemEdit,
@@ -179,7 +192,8 @@ import { MAX_BULK_ITEMS, isBulkPaste, splitBulkLinesWithMeta } from '@/lib/bulk-
 import { ITEM_VERBS, type VerbContext } from '@/lib/item-verbs';
 import { getItemTypeConfig, itemTypeName } from '@/lib/item-registry';
 import { BUCKET_START_TIMES, autoCorrectBucket, getBucketForTime } from '@/lib/time-bucket';
-import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, type Item, type TimeBucket } from '@/lib/planner-types';
+import { REPEAT_FREQUENCY_LABELS, WEEKDAY_LABELS, type Item, type Project, type TimeBucket } from '@/lib/planner-types';
+import { CONTAINER_KINDS } from '@/lib/container-registry';
 
 const FILE = path.resolve(__dirname, '../fixtures/day/edit-writes.json');
 const USER = 'user-1';
@@ -238,6 +252,10 @@ const shapeOf = (item: Item) => {
     repeatFrequency?: string;
     repeatDays?: number[];
     repeatMonthDay?: number;
+    project?: string;
+    projectId?: string;
+    previousStartTime?: string;
+    previousStartDate?: string;
   };
   return editShapeFromRow({
     id: item.id,
@@ -259,6 +277,11 @@ const shapeOf = (item: Item) => {
     repeat_frequency: i.repeatFrequency ?? null,
     repeat_days: i.repeatDays ?? null,
     repeat_month_day: i.repeatMonthDay ?? null,
+    // An unfiled habit is '' in the store and NULL in the row.
+    project: i.project || null,
+    project_id: i.projectId ?? null,
+    previous_start_time: i.previousStartTime ?? null,
+    previous_start_date: i.previousStartDate ?? null,
   });
 };
 
@@ -272,15 +295,21 @@ const NY = 'America/New_York';
 const store = () => usePlannerStore.getState();
 
 /**
- * A fresh store holding `items`, then `act`: the first item as the store
- * leaves it (null once gone), and every write it sent, in order. Nothing in an
- * act is awaited: the store writes optimistically and fires its db calls in
- * the same tick, so the log is complete when `act` returns.
+ * A fresh store holding `items` (and `seed`'s projects, none unless given),
+ * then `act`: the first item as the store leaves it (null once gone), and
+ * every write it sent, in order. Nothing in an act is awaited: the store writes
+ * optimistically and fires its db calls in the same tick, so the log is
+ * complete when `act` returns.
  */
-async function run(items: Item[], act: () => void): Promise<{ after: Item | null; calls: DbCall[] }> {
+async function run(
+  items: Item[],
+  act: () => void,
+  seed: { projects?: Project[] } = {},
+): Promise<{ after: Item | null; calls: DbCall[] }> {
   vi.setSystemTime(new Date(NOW));
   store().clearStore();
   vi.mocked(db.fetchItems).mockResolvedValue(structuredClone(items));
+  vi.mocked(db.fetchProjects).mockResolvedValue(structuredClone(seed.projects ?? []));
   await store().initializeStore(USER);
   usePlannerStore.setState({ selectedDate: new Date(NOW), userTimezone: NY });
   log.calls.length = 0;
@@ -347,6 +376,8 @@ function panelChange(edit: ItemEdit): Partial<ItemDraft> {
         ...(edit.days !== undefined ? { repeatDays: edit.days } : {}),
         ...(edit.monthDay !== undefined ? { repeatMonthDay: edit.monthDay } : {}),
       };
+    case 'project':
+      throw new Error('panelChange: a project case drives setItemsProject (projectCase), never the dialog');
   }
 }
 
@@ -399,15 +430,24 @@ type EditBuckets = {
 type EditDurations = { presets: number[]; labels: { minutes: number; label: string }[] };
 /** The Repeat chip's frequencies and weekdays, in the web's order and words, which DsulCore's Cadence must equal. */
 type EditRepeats = { labels: { frequency: string; label: string }[]; weekdays: string[] };
+/** lib/container-registry.ts CONTAINER_KINDS' words, which DsulCore's ContainerWords must equal. */
+type EditContainers = {
+  project: { label: string; labelPlural: string; unsetLabel: string };
+  routine: { label: string; labelPlural: string };
+  season: { label: string; labelPlural: string };
+};
 type EditWrites = {
   today: string;
   limits: EditLimits;
+  /** The projects the project cases' store holds, which the phone resolves a `projectId` against. */
+  projects: { id: string; name: string }[];
   cases: EditCase[];
   trim: TrimCase[];
   bulk: BulkCase[];
   streakRun: StreakRunCase[];
   copy: Record<string, string>;
   repeats: EditRepeats;
+  containers: EditContainers;
   buckets: EditBuckets;
   durations: EditDurations;
 };
@@ -463,6 +503,30 @@ async function subtaskCase(
   const [call] = calls;
   if (calls.length !== 1 || call.fn !== 'createItem') throw new Error(`${name}: an add wrote more than one new row`);
   return { ...base, updates: {}, after, created: call.item };
+}
+
+/** The projects every project case's store holds: Work and Health. */
+const PROJECTS: Project[] = [
+  { id: uid(1310), name: 'Work' },
+  { id: uid(1311), name: 'Health' },
+] as Project[];
+
+/** The bulk Move to project for one item: setItemsProject([id], name), the rule's home. */
+async function projectCase(
+  name: string,
+  item: Item,
+  target: string | null,
+  refusal: string | null = null,
+): Promise<EditCase> {
+  const project = target === null ? null : PROJECTS.find((p) => p.id === target);
+  const edit = { action: 'project', projectId: target } as const;
+  const base = { name, item, children: [], edit, refusal, removed: [], created: null };
+  if (refusal) return { ...base, updates: null, after: item };
+  const { after, calls } = await run([item], () => store().setItemsProject([item.id], project?.name), {
+    projects: PROJECTS,
+  });
+  if (calls.some((c) => c.fn !== 'updateItem')) throw new Error(`${name}: a re-file wrote more than the item`);
+  return { ...base, updates: merged(calls), after };
 }
 
 /** Today, as the sheet passes it to a verb. */
@@ -881,6 +945,61 @@ async function build(): Promise<EditWrites> {
     cases.push(await editCase(...args));
   }
 
+  // The project chip (2f): the bulk Move to project for the one item, by name and id, with the
+  // release of a task parked in its old project's block. Work is uid(1310), Health uid(1311).
+  const WORK = uid(1310);
+  const HEALTH = uid(1311);
+  const standup = (n: number, over: Record<string, unknown> = {}) =>
+    task(n, 'Standup', { startDate: TODAY, project: 'Work', projectId: WORK, ...over });
+  /** Parked in Work's block (moveTasksToProjectBlock): the block's part of day, its own slot stashed. */
+  const parked = (n: number, over: Record<string, unknown> = {}) =>
+    task(n, 'Review PRs', {
+      project: 'Work',
+      projectId: WORK,
+      startDate: TODAY,
+      timeBucket: 'morning',
+      inProjectBlock: true,
+      previousStartTime: '14:00',
+      previousStartDate: TODAY,
+      ...over,
+    });
+  for (const args of [
+    ['project-set', task(1312, 'Groceries', { startDate: TODAY, timeBucket: 'anytime' }), WORK],
+    ['project-same-name-and-id', standup(1313), WORK],
+    // The project kind folds case: 'work' is already Work, and stays as written.
+    ['project-same-name-folded', standup(1314, { project: 'work' }), WORK],
+    // Name AND id: a folded match whose id is stale, or missing, still writes, which repairs the link.
+    ['project-same-name-stale-id', standup(1315, { projectId: uid(1399) }), WORK],
+    ['project-text-only-relink', standup(1316, { projectId: undefined }), WORK],
+    ['project-move', standup(1317), HEALTH],
+    ['project-clear', standup(1318), null],
+    ['project-clear-text-only', standup(1319, { project: 'Health', projectId: undefined }), null],
+    ['project-clear-unfiled', task(1320, 'Groceries', { startDate: TODAY }), null],
+    // A habit carries '' unfiled, as lib/db.ts itemFromRow serves it.
+    ['project-habit-set', habit(1321, 'Meds', { project: '' }), WORK],
+    ['project-habit-clear', habit(1322, 'Water the plants', { project: 'Health', projectId: HEALTH }), null],
+    // '' is a name to the bulk path, so an unfiled habit's clear writes, as the web's always does.
+    ['project-habit-clear-unfiled', habit(1323, 'Floss', { project: '' }), null],
+    ['project-custom', custom(1324, 'errand', 'Post office', { startDate: TODAY }), WORK],
+    // Out of the block it no longer belongs to: its own slot back, the block's part of day kept.
+    ['project-leave-block', parked(1325), HEALTH],
+    ['project-leave-block-clear', parked(1326), null],
+    // A same-name link repair keeps it in its own block.
+    ['project-same-name-in-block', parked(1327, { projectId: uid(1399) }), WORK],
+    // Parked from the braindump, with nothing stashed: released with no time and no day.
+    ['project-leave-block-undated', parked(1328, { previousStartTime: undefined, previousStartDate: undefined }), HEALTH],
+    [
+      'project-refused-subtask',
+      task(1329, 'Write the three bets', { parentItemId: uid(1), isScheduled: false }),
+      WORK,
+      'not_for_subtask',
+    ],
+    // The schema's: a project is named by its id, never its name.
+    ['project-refused-not-a-uuid', task(1330, 'Groceries', { startDate: TODAY }), 'work', 'invalid'],
+  ] as [string, Item, string | null, string?][]) {
+    cases.push(await projectCase(...args));
+  }
+
   const trim = (
     [
       ['spaces', '  hi  '],
@@ -943,6 +1062,7 @@ async function build(): Promise<EditWrites> {
   return {
     today: TODAY,
     limits,
+    projects: PROJECTS.map(({ id, name }) => ({ id, name })),
     cases,
     trim,
     bulk: bulkCases(),
@@ -951,6 +1071,15 @@ async function build(): Promise<EditWrites> {
     repeats: {
       labels: Object.entries(REPEAT_FREQUENCY_LABELS).map(([frequency, label]) => ({ frequency, label })),
       weekdays: [...WEEKDAY_LABELS],
+    },
+    containers: {
+      project: {
+        label: CONTAINER_KINDS.project.label,
+        labelPlural: CONTAINER_KINDS.project.labelPlural,
+        unsetLabel: CONTAINER_KINDS.project.unsetLabel!,
+      },
+      routine: { label: CONTAINER_KINDS.routine.label, labelPlural: CONTAINER_KINDS.routine.labelPlural },
+      season: { label: CONTAINER_KINDS.season.label, labelPlural: CONTAINER_KINDS.season.labelPlural },
     },
     buckets,
     durations,
@@ -1022,11 +1151,12 @@ describe('edit writes shared with DsulCore', () => {
       'repeat-refused-month-day-without-monthly',
       'repeat-refused-monthly-without-day',
       'repeat-refused-month-day-32',
+      'project-refused-not-a-uuid',
     ]);
   });
 
   it('lib/item-edit.ts refuses, and writes, what the web gesture did', () => {
-    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time', 'repeat'];
+    const fields = ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time', 'repeat', 'project'];
     for (const c of generated.cases) {
       if (!fields.includes(String(c.edit.action))) continue;
       // A body the schema refuses never reaches the row (the check above).
@@ -1040,7 +1170,14 @@ describe('edit writes shared with DsulCore', () => {
         expect(c.after, c.name).toEqual(asJson(c.item));
         continue;
       }
-      const patch = editPatch(shape, edit, config);
+      // The project the route reads for a project edit, from the fixture's own list.
+      const project =
+        edit.action === 'project'
+          ? edit.projectId === null
+            ? null
+            : generated.projects.find((p) => p.id === edit.projectId)!
+          : undefined;
+      const patch = editPatch(shape, edit, config, { project });
       expect(asWritten(patch), c.name).toEqual(c.updates);
       // The phone's step is the item with the patch on it, and so is the store's.
       expect(asJson({ ...c.item, ...patch }), c.name).toEqual(c.after);
@@ -1098,6 +1235,29 @@ describe('edit writes shared with DsulCore', () => {
       expect(Object.keys(c.updates!).sort(), c.name).toEqual(['repeatDays', 'repeatFrequency', 'repeatMonthDay']);
       expect(kept(c.after), c.name).toEqual(kept(asJson(c.item)));
     }
+  });
+
+  it('a re-file writes the name and the id, and the release only when it leaves a block', () => {
+    const refiles = generated.cases.filter(
+      (c) => c.edit.action === 'project' && c.refusal === null && Object.keys(c.updates!).length > 0,
+    );
+    expect(refiles.length).toBeGreaterThan(0);
+    const release = ['inProjectBlock', 'previousStartDate', 'previousStartTime', 'startDate', 'startTime'];
+    for (const c of refiles) {
+      const i = c.item as { project?: string; inProjectBlock?: boolean; timeBucket?: string };
+      const target = c.edit.projectId === null ? undefined : generated.projects.find((p) => p.id === c.edit.projectId)!.name;
+      const leaves = Boolean(i.inProjectBlock) && !sameProjectName(i.project, target);
+      expect(Object.keys(c.updates!).sort(), c.name).toEqual(
+        [...(leaves ? release : []), 'project', 'projectId'].sort(),
+      );
+      // The part of day stays the block's: the stash holds none.
+      expect((c.after as { timeBucket?: string }).timeBucket, c.name).toEqual(i.timeBucket);
+    }
+    expect(refiles.filter((c) => 'inProjectBlock' in c.updates!).map((c) => c.name)).toEqual([
+      'project-leave-block',
+      'project-leave-block-clear',
+      'project-leave-block-undated',
+    ]);
   });
 
   it('a delete takes the item and, unless it is a habit, its subtasks, in the store’s order', () => {
@@ -1177,12 +1337,13 @@ describe('edit writes shared with DsulCore', () => {
         'reminder',
         'time',
         'repeat',
+        'project',
       ]),
     );
     // Refused, already so, a write, and a cleared column.
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'title')).toBe(true);
     expect(cases.some((c) => c.refusal === 'invalid' && c.edit.action === 'notes')).toBe(true);
-    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time', 'repeat']) {
+    for (const action of ['title', 'notes', 'priority', 'timesPerDay', 'reminder', 'time', 'repeat', 'project']) {
       const of = cases.filter((c) => c.edit.action === action && !c.refusal);
       expect(of.some((c) => Object.keys(c.updates!).length === 0), action).toBe(true);
       expect(of.some((c) => Object.keys(c.updates!).length > 0), action).toBe(true);
@@ -1257,6 +1418,26 @@ describe('edit writes shared with DsulCore', () => {
       ).toBe(true);
     }
     expect(new Set(repeats.filter((c) => !c.refusal).map((c) => c.item.type))).toEqual(new Set(['task', 'habit', 'custom']));
+    // The project chip's: a subtask refused and the schema's body; a set by a habit, a task and a
+    // custom item; a habit's clear written though it was unfiled; a release; a same-name repair
+    // that keeps the block.
+    const refiles = cases.filter((c) => c.edit.action === 'project');
+    expect(refiles.some((c) => c.refusal === 'not_for_subtask')).toBe(true);
+    expect(refiles.some((c) => c.refusal === 'invalid' && !ItemWriteSchema.safeParse(c.edit).success)).toBe(true);
+    expect(
+      new Set(refiles.filter((c) => !c.refusal && Object.keys(c.updates!).length > 0).map((c) => c.item.type)),
+    ).toEqual(new Set(['task', 'habit', 'custom']));
+    const habitClear = cases.find((c) => c.name === 'project-habit-clear-unfiled')!;
+    expect((habitClear.item as { project?: string }).project).toBe('');
+    expect(habitClear.updates).toEqual({ project: null, projectId: null });
+    expect(refiles.some((c) => c.updates?.inProjectBlock === false)).toBe(true);
+    const repair = cases.find((c) => c.name === 'project-same-name-in-block')!;
+    expect(Object.keys(repair.updates!).sort()).toEqual(['project', 'projectId']);
+    expect((repair.after as { inProjectBlock?: boolean }).inProjectBlock).toBe(true);
+    // A folded match, already so, keeps the name as written.
+    const folded = cases.find((c) => c.name === 'project-same-name-folded')!;
+    expect(folded.updates).toEqual({});
+    expect((folded.after as { project?: string }).project).toBe('work');
   });
 
   it('buckets and durations are lib/time-bucket.ts’s and the Time chip’s', () => {

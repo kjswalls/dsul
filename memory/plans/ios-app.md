@@ -13,7 +13,7 @@ away. One PR for all three parts, so merging deploys the routes and the app
 together.
 Item detail, part 1 adds the item sheet, opened from every surface: what the
 item is (read-only) and its verbs, with three more writes (skip, move, pause)
-on the same route. Part 2 makes it editable, in six PRs; the first (2a) edits
+on the same route. Part 2 makes it editable, in seven PRs; the first (2a) edits
 the title and the notes and adds Delete, with three more writes (title, notes,
 delete), and replaces PlannerSync's slots with a rebase per subject.
 Designs, the stack comparison and the board images live in the project's
@@ -99,6 +99,11 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   `repeatEditPatch`); `repeatFrequencyOrder`, `repeatFrequencyLabel`,
   `weekdayLabel` and `weekdayOrder` to `Cadence.swift`; the two repeat
   sentences to `EditCopy.swift`; and `allowedFrequencies` to `Registry.swift`.
+  2f adds `.project` and `sameProjectName` to `ItemEdit.swift` (its step
+  ports `projectRefilePatch`), `projectId` and the stash to `Item.swift`,
+  `color` and `emoji` to `Project`, `containerKind` and `containerRequired`
+  to `Registry.swift`, and `ContainerWords` to `EditCopy.swift`, pinned to
+  `CONTAINER_KINDS` through the fixture.
   Each cites what it mirrors.
 - `ios/Dsul/App`: `DsulApp` (one `AuthStore`), `AppGate` (sign-in screen,
   sample or the user's planner, keyed on `AuthStore.gateKey`), `AppConfig`.
@@ -257,17 +262,18 @@ interaction, and `expo-vs-swiftui.md` ends with the fact-check.
   VoiceOver, the largest text size, the lime).
 
 ## Item detail, part 2
-Six PRs, each shipping its routes with the app: 2a the title, the notes and
+Seven PRs, each shipping its routes with the app: 2a the title, the notes and
 Delete (below); 2b Add a subtask and Reset streak (in the streak chip's
 popover), and the Streaks switch honoured (below); 2c the chips as controls
 and "+ Add property" (priority, times a day, the reminder); 2d date and time;
-2e repeat; 2f project, routines and seasons. An older server's `writes` hides
-any editor it doesn't take, so the deploy order doesn't matter: against one
-without `addSubtask` there is no Add a subtask row, without `resetStreak` the
-streak popover has no Reset, and without `priority`, `timesPerDay`, `reminder`,
-`time` and `repeat` those chips stay read-only; the date chip still edits,
-through `move`, which every server that sends `writes` takes, so Add property
-then holds Date alone, for an undated task.
+2e repeat; 2f in two, the project (2f-a), then routines and seasons (2f-b).
+An older server's `writes` hides any editor it doesn't take, so the deploy
+order doesn't matter: against one without `addSubtask` there is no Add a
+subtask row, without `resetStreak` the streak popover has no Reset, and
+without `priority`, `timesPerDay`, `reminder`, `time`, `repeat` and `project`
+those chips stay read-only; the date chip still edits, through `move`, which
+every server that sends `writes` takes, so Add property then holds Date
+alone, for an undated task.
 
 Decided (Kirby, 2026-10-03): part 1's look stays through part 2, and dsul's
 own flavour (square swatches, priority dots, a serif title) comes later as a
@@ -427,6 +433,22 @@ words are fixed on every surface, below.
   new rule left untrue is demoted (lib/goal-roles.ts, moved out of
   lib/agent-api.ts, whose PATCH runs it as before), on the user's client; a
   failure there is logged, and the answer is still `{ok: true}`.
+  2f's `project` (`projectId`, a uuid lowercased, or null for No project;
+  `.strict()`, so a name in the body is 400 `invalid`) goes through the same
+  handler. It reads `project, project_id, previous_start_time,
+  previous_start_date` on top of the shared row (which already has
+  `in_project_block`), and is refused under a subtask (400
+  `not_for_subtask`), on a type with no project axis (400 `no_project`) and,
+  for null, on a type whose container is required (400 `project_required`);
+  no shipped type meets the last two. Then it reads the project under RLS
+  (`id`, the user's, not in the Trash) and answers 409 `project_gone` for no
+  row, and for a foreign-key failure on the write (a project purged in
+  between). The write is `projectRefilePatch`, the bulk Move to project's
+  rule, which the store's `setItemsProject` imports back: the project's own
+  name and id, a parked task's release, `{}` when already there by folded
+  name and id. A habit's NULL project reads as `''`, so its clear always
+  writes (`group` cleared with it by `habitUpdatesToRow`); `group` itself is
+  never read.
 - **Add a subtask** (2b). The Subtasks section shows whenever the item has
   subtasks or can take one (`canAddSubtask`: a type with subtasks that isn't
   itself a subtask, and `canWrite("addSubtask")`), headed "Subtasks", still a
@@ -505,8 +527,9 @@ words are fixed on every surface, below.
   the planner's `canEdit`); a menu writes at once, the reminder opens a
   sheet. From 2d the date and time chips edit too (below, with the hints
   "Changes the date" and "Changes the time"), and from 2e the repeat chip
-  (below, with the hint "Changes how it repeats"); the rest stay read-only
-  until 2f. An editable chip keeps
+  (below, with the hint "Changes how it repeats"), and from 2f the project
+  chip ("Changes the project"); the routine and season chips stay read-only
+  until 2f-b. An editable chip keeps
   part 1's look and gains a trailing chevron; its words, symbol and chevron
   draw in the label colour (`ChipView(editable: true)`), never lime, and it
   scales when pressed (`PressScaleStyle`) rather than fading. It is hit over
@@ -617,6 +640,21 @@ words are fixed on every surface, below.
   "Mon, Wed"), which Today's rows show, where the web's chip reads "Day 1" and
   "Mon Wed"; so seven days picked read "Daily" on the chip while its menu
   checks Custom days….
+- **Project** (2f). The project chip is a menu: No project (never on a type
+  whose container is required), then the projects in payload order with the
+  phone's dots, the current one checked by folded name; a name with no
+  project checks nothing, and a stored "none" (pre-#373 habits) reads as no
+  project, as the web's dialog reads it. A pick writes at once and No project
+  takes the chip away. Add property's Project ▸ lists the projects, with at
+  least one. Gated as `editAllowed(action: "project")` (not a subtask, a
+  type with the project axis). A task parked in its old project's block
+  leaves it, its own time and day back and the block's part of day kept, as
+  the web's bulk Move to project, and from 2f its item dialog, release it
+  (Q6). The dialog keeps a day or a time the same save set itself, and
+  files such a time where it falls, as before. The stash (`previousStartTime`,
+  `previousStartDate`) now decodes, so the phone's own scheduling steps clear
+  it as `scheduleTaskPatch` does: `editingTime` on a parked task, and a
+  drop's `placing`.
 - **Labels.** The payload's `itemTypes` is `[{name, label, labelPlural}]`,
   from load_planner or, on the per-table fallback, `fetchItemTypes`, and null
   when the table is unreachable. The planner keeps them as `typeLabels` and
@@ -687,12 +725,17 @@ words are fixed on every surface, below.
   missing, empty, out of order, twice, or out of range), which the phone's
   gate never builds. `copy` gains the two repeat sentences. caps.json's types
   gain `allowedFrequencies`.
+  2f adds the project cases (driven through the bulk Move to project, name
+  and id, the release, the habit's always-written clear) with `projects` and
+  `containers`, the container words. caps.json's types gain `containerKind`
+  and `containerRequired`.
 - **Unproven on a device:** ios/README.md, "Editing an item" (checks 1-13:
   the title, the notes, the keyboard, Delete, adding subtasks, Reset streak
   and Streaks off, Add property, the chips and the Remind sheet, from 2d the
   Date menu and the Time sheet, from 2e the Repeat menu and sheet (checks 7
-  and 8), offline, VoiceOver, the largest text size, the lime, and the
-  platform behaviours they rest on).
+  and 8), from 2f the project menu and Add property's Project ▸ (checks 7
+  and 8, and the 2f lines of 9-13), offline, VoiceOver, the largest text
+  size, the lime, and the platform behaviours they rest on).
 
 ## CI
 `.github/workflows/ios.yml`, on PRs to main and pushes to main. A `changes`
@@ -966,6 +1009,12 @@ functions:
   tick and `/api/reminders/act` after its own: through `after()` once the
   response is sent, with a service client that scopes the report by user. The
   nightly settlement stays the backstop.
+- **A project edit names the project by id**, and the route files the item
+  under that project's own name (`projectRefilePatch`, the bulk Move to
+  project's rule): nothing when the item is already there by folded name and
+  id, a link repair when only the id is stale, and a parked task released from
+  the block it leaves. A project in the Trash or gone is `project_gone`. Never
+  `group`.
 
 ## Port order
 recurrence → `isPausedOn` / `isOpenLoopOn` → `isItemActiveOn` →
@@ -1009,7 +1058,8 @@ animations.
 ## Not yet
 Week, density (`DensityMetrics`), swipe actions on rows, the zoom transition
 from the bar to the braindump sheet, the rest of item detail part 2
-(project, routines and seasons: 2f), undo or restore after a delete (the
+(routines and seasons: 2f-b), creating a project from the phone (the web's
+New Project), undo or restore after a delete (the
 web's Trash restores it), Change type, Duplicate and Copy link, the rest of
 the sheet (a routine's or a season's hold, the goal chip once goals are in
 the payload, and any word that a repeat took a goal role away (the web then

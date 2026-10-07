@@ -4,8 +4,8 @@ import DsulCore
 
 // ItemWriteBody.swift: the wire JSON of the item sheet's edits (the fields and
 // the chips, the time chip's keys only when they changed, the repeat chip's
-// days and day only beside their frequency), its Delete, Add a subtask and
-// Reset streak.
+// days and day only beside their frequency, the project chip's id or null),
+// its Delete, Add a subtask and Reset streak.
 // Each case in tests/fixtures/day/edit-writes.json records the exact body the
 // web's gesture means (keys absent or null exactly as sent), and lib/app-api.ts
 // parses every one of them through `ItemWriteSchema`; the phone's body for the
@@ -21,6 +21,9 @@ private func json(_ body: ItemWriteBody) throws -> JSONValue {
 
 /// A new subtask's id, as `UUID` holds it (uppercase when printed).
 private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
+
+/// Work's id in edit-writes.json's `projects` (the generator's `uid(1310)`).
+private let work = "00000000-0000-4000-8000-00000000051e"
 
 @Suite struct ItemWriteBodyTests {
     @Test func eachBodyIsTheWireJSON() throws {
@@ -53,13 +56,24 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
             #expect(try json(ItemWriteBody.edit(edit)) == wire, "\(edit)")
             #expect(phoneBody(wire) == .edit(edit), "\(edit): read back")
         }
+        // The project chip's two bodies: Work by its id (read back under its
+        // fixture name), and No project.
+        let projects: [(ItemEdit, JSONValue)] = [
+            (.project(id: work, name: "Work"), .object(["action": .string("project"), "projectId": .string(work)])),
+            (.project(id: nil, name: nil), .object(["action": .string("project"), "projectId": .null])),
+        ]
+        for (edit, wire) in projects {
+            #expect(try json(ItemWriteBody.edit(edit)) == wire, "\(edit)")
+            #expect(phoneBody(wire) == .edit(edit), "\(edit): read back")
+        }
     }
 
     /// Clearing the notes sends `"notes":null`, clearing the priority
-    /// `"priority":null`, and turning the reminder off `"time":null`. A
-    /// missing key is refused: each of those fields is nullable, not optional.
-    /// A time edit's clears are null too (no specific time, a habit's no part
-    /// of day), since there a missing key keeps what is stored.
+    /// `"priority":null`, turning the reminder off `"time":null`, and No
+    /// project `"projectId":null`. A missing key is refused: each of those
+    /// fields is nullable, not optional. A time edit's clears are null too (no
+    /// specific time, a habit's no part of day), since there a missing key
+    /// keeps what is stored.
     @Test func aClearSendsNull() throws {
         let cleared = try json(ItemWriteBody.edit(ItemEdit.notes(nil)))
         #expect(cleared == JSONValue.object(["action": .string("notes"), "notes": .null]))
@@ -73,6 +87,8 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(off == JSONValue.object(["action": .string("reminder"), "time": .null]))
         let unfiled = try json(ItemWriteBody.edit(ItemEdit.time(bucket: .clear, startTime: .clear, duration: nil)))
         #expect(unfiled == JSONValue.object(["action": .string("time"), "startTime": .null, "timeBucket": .null]))
+        let noProject = try json(ItemWriteBody.edit(ItemEdit.project(id: nil, name: nil)))
+        #expect(noProject == JSONValue.object(["action": .string("project"), "projectId": .null]))
     }
 
     /// Every action is `.strict()` on the server: a body carries its own keys
@@ -146,6 +162,15 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
             let body = try json(ItemWriteBody.edit(edit))
             #expect(body == JSONValue.object(keys.merging(["action": .string("repeat")]) { a, _ in a }), "\(edit)")
         }
+
+        // The project chip: the id alone, never the name, lowercase however
+        // it is held; null for No project.
+        let filed = try json(ItemWriteBody.edit(ItemEdit.project(id: work, name: "Work")))
+        #expect(filed == JSONValue.object(["action": .string("project"), "projectId": .string(work)]))
+        let upper = try json(ItemWriteBody.edit(ItemEdit.project(id: work.uppercased(), name: "Work")))
+        #expect(upper == JSONValue.object(["action": .string("project"), "projectId": .string(work)]))
+        let unfiled = try json(ItemWriteBody.edit(ItemEdit.project(id: nil, name: nil)))
+        #expect(unfiled == JSONValue.object(["action": .string("project"), "projectId": .null]))
     }
 
     /// APIClient encodes with sorted keys; this is the request it sends.
@@ -190,6 +215,9 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
              #"{"action":"repeat","days":[1,3,5],"frequency":"custom"}"#),
             (.repeats(frequency: "monthly", days: nil, monthDay: 31),
              #"{"action":"repeat","frequency":"monthly","monthDay":31}"#),
+            (.project(id: work, name: "Work"), #"{"action":"project","projectId":"\#(work)"}"#),
+            (.project(id: work.uppercased(), name: "Work"), #"{"action":"project","projectId":"\#(work)"}"#),
+            (.project(id: nil, name: nil), #"{"action":"project","projectId":null}"#),
         ]
         for (edit, wire) in bodies {
             let bytes = try encoder.encode(ItemWriteBody.edit(edit))
@@ -217,6 +245,8 @@ private let eggs = UUID(uuidString: "22222222-2222-4222-8222-22222222222A")!
         #expect(ItemEdit.time(bucket: .set("evening"), startTime: .clear, duration: nil).action == "time")
         #expect(ItemWriteBody.edit(ItemEdit.repeats(frequency: "daily", days: nil, monthDay: nil)).action == "repeat")
         #expect(ItemEdit.repeats(frequency: "custom", days: [1], monthDay: nil).action == "repeat")
+        #expect(ItemWriteBody.edit(ItemEdit.project(id: work, name: "Work")).action == "project")
+        #expect(ItemEdit.project(id: nil, name: nil).action == "project")
     }
 
     /// A time edit's key that didn't change is absent, never null: absent

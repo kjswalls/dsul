@@ -62,7 +62,7 @@ private struct RawItems: Decodable, Sendable {
         #expect(p.settings.timeFormat == .twentyFourHour)
         #expect(p.writes == [
             "complete", "schedule", "skip", "move", "pause", "title", "notes", "delete", "addSubtask", "resetStreak",
-            "priority", "timesPerDay", "reminder", "time", "repeat",
+            "priority", "timesPerDay", "reminder", "time", "repeat", "project",
         ])
         // The route's test turns Streaks off, a value no default gives.
         #expect(p.settings.streaksEnabled == false)
@@ -146,6 +146,30 @@ private struct RawItems: Decodable, Sendable {
         let water = try row("Drink water")
         #expect(water.currentDayCount == 3)
         #expect(water.reminderTime == nil)
+
+        // The project chip's fields: the id beside the name, a parked task's
+        // stash, and the projects' own colour and emoji (decoded, drawn
+        // nowhere yet).
+        let admin = "22222222-2222-4222-8222-000000000001"
+        let inbox = try row("Inbox zero")
+        #expect(inbox.projectId == admin)
+        #expect(inbox.inProjectBlock == true)
+        #expect(inbox.previousStartTime == "16:00")
+        #expect(inbox.previousStartDate == "2026-10-01")
+        #expect(bank.projectId == admin)
+        // An unfiled habit reads "" (itemFromRow), with no id.
+        #expect(meditate.project == "")
+        #expect(meditate.projectId == nil)
+        // A text-only name: no project row behind it.
+        let stretch = try row("Stretch")
+        #expect(stretch.project == "Fitness")
+        #expect(stretch.projectId == nil)
+        let adminProject = try #require(p.projects.first { $0.id == admin }, "no Admin")
+        #expect(adminProject.name == "Admin")
+        #expect(adminProject.color == "blue")
+        #expect(adminProject.emoji == "\u{1F4CB}")
+        let health = try #require(p.projects.first { $0.name == "Health" }, "no Health")
+        #expect(health.color == nil)
     }
 
     @Test func theWholePipelineRunsOverTheResponse() throws {

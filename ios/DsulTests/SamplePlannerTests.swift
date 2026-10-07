@@ -432,6 +432,38 @@ import Testing
         #expect(planner.sync == nil)
     }
 
+    /// The sample takes the project chip's write too, sending nothing: every
+    /// row filed under a project carries its id, as a payload's row does, so
+    /// Groceries (Home) moved to Work reads Work's name and id. Standup is
+    /// filed "work" with no link, which the List layout already reads as
+    /// Work; picking Work relinks it under Work's own name, and it stays in
+    /// Work's section.
+    @Test func theSampleTakesAProjectWithoutSending() throws {
+        let planner = makePlanner()
+        #expect(planner.sync == nil)
+        #expect(first(planner, "Draft Q4 roadmap").projectId == "sample-work")
+
+        let groceries = first(planner, "Groceries")
+        #expect(groceries.project == "Home")
+        #expect(groceries.projectId == "sample-home")
+        #expect(planner.canEdit("project", groceries))
+        planner.edit(groceries.id, .project(id: "sample-work", name: "Work"))
+        let filed = try #require(planner.item(groceries.id))
+        #expect(filed.project == "Work")
+        #expect(filed.projectId == "sample-work")
+
+        let standup = first(planner, "Standup")
+        #expect(standup.project == "work")
+        #expect(standup.projectId == nil)
+        planner.edit(standup.id, .project(id: "sample-work", name: "Work"))
+        let relinked = try #require(planner.item(standup.id))
+        #expect(relinked.project == "Work")
+        #expect(relinked.projectId == "sample-work")
+        let work = try #require(planner.listSections(.all).first { $0.title == "Work" })
+        #expect(work.items.contains { $0.id == standup.id })
+        #expect(planner.sync == nil)
+    }
+
     @Test func nextWeekStartsOnTheUsersWeekStart() {
         let planner = makePlanner()
         // Thursday 2026-10-01; the sample's week starts on Sunday (the default).

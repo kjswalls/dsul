@@ -58,8 +58,9 @@ import type { HabitItem, Item, Project, Routine, Season, Task, TaskItem } from '
  * another day; pause or resume one; retitle it, rewrite its notes or delete
  * it; add a subtask under it, reset its streak; set its priority, a habit's
  * times a day, its reminder, its part of day, time and length, or how it
- * repeats) is one verb here that does what the web's own store action does
- * for the same gesture, through the same lib/db.ts calls.
+ * repeats; or file it under a project) is one verb here that does what the
+ * web's own store action does for the same gesture, through the same lib/db.ts
+ * calls.
  * Nothing accepts an absolute completedDates, skippedDates or dailyCounts: the
  * phone reads a 400-day window, and an array written back from a window
  * deletes what the window did not show. Nor is there a generic
@@ -223,6 +224,17 @@ const ItemWriteActions = z.discriminatedUnion('action', [
       days: z.array(z.number().int().min(0).max(6)).min(1).max(7).optional(),
       /** Monthly only. A short month takes its last day (lib/recurrence.ts). */
       monthDay: z.number().int().min(1).max(31).optional(),
+    })
+    .strict(),
+  // The project chip (2f): a project by id, or null for No project. The route reads its name.
+  z
+    .object({
+      action: z.literal('project'),
+      projectId: z
+        .string()
+        .regex(UUID, 'expected a uuid')
+        .transform((id) => id.toLowerCase())
+        .nullable(),
     })
     .strict(),
 ]);
@@ -602,6 +614,8 @@ const EDIT_COLUMNS: Partial<Record<ItemWriteAction, string>> = {
   time: 'start_time, is_scheduled, duration',
   // repeat_frequency is in every read.
   repeat: 'repeat_days, repeat_month_day',
+  // in_project_block is in every read.
+  project: 'project, project_id, previous_start_time, previous_start_date',
 };
 
 interface WriteRow {
@@ -631,6 +645,10 @@ interface WriteRow {
   duration?: number | null;
   repeat_days?: number[] | null;
   repeat_month_day?: number | null;
+  project?: string | null;
+  project_id?: string | null;
+  previous_start_time?: string | null;
+  previous_start_date?: string | null;
 }
 
 type ItemWrite = z.infer<typeof ItemWriteSchema>;
@@ -696,6 +714,8 @@ function reportStake(userId: string, itemId: string, dateStr: string, completed:
  *   time         part of day, a specific time and a length (the dialog's Time chip, commitEdit)
  *   repeat       how it repeats, its three keys together (the dialog's Repeat chip, repeatPatch),
  *                then any goal role it left untrue demoted (lib/goal-roles.ts)
+ *   project      its project, by id, the name read here (the bulk Move to project's rule,
+ *                projectRefilePatch), leaving a project block it no longer belongs to
  *
  * The row is read first, under RLS, and a missing one is a 404. That read is
  * load-bearing, not politeness: set_item_completion, set_item_skip,
@@ -764,6 +784,7 @@ export async function postItemWrite(req: Request, rawId: string): Promise<Respon
       case 'reminder':
       case 'time':
       case 'repeat':
+      case 'project':
         return await edit(ctx, body);
       case 'delete':
         return await del(client, userId, id, row.type);
@@ -996,19 +1017,61 @@ async function pause(ctx: WriteContext, body: IntentBody<'pause'>): Promise<Resp
  * `repeat`, the Repeat chip, is the dialog's save over the keys sent
  * (repeatEditPatch): all three keys whenever any moved, never the date, the
  * status or the streak. Then `demoteRoles`.
+ *
+ * `project`, the project chip, is the bulk Move to project's write
+ * (`projectRefilePatch`) for the project the route reads first: its own name
+ * and id, and a parked task released from the block it no longer belongs to;
+ * nothing when the item is already there by folded name and id. A project
+ * missing, trashed or another user's is `project_gone`.
  */
 async function edit(
   ctx: WriteContext,
-  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time' | 'repeat'>,
+  body: IntentBody<'title' | 'notes' | 'priority' | 'timesPerDay' | 'reminder' | 'time' | 'repeat' | 'project'>,
 ): Promise<Response> {
   const { client, id, type, config, row } = ctx;
   const shape = editShapeFromRow(row);
   const refusal = editRefusal(shape, body, config);
   if (refusal) return refused(refusal.code, refusal.status);
-  const patch = editPatch(shape, body, config);
-  if (Object.keys(patch).length > 0) await updateItem(id, type, patch, undefined, client);
+  let project: { id: string; name: string } | null | undefined;
+  if (body.action === 'project') {
+    const target = await projectTarget(ctx, body.projectId);
+    if (target === 'gone') return refused('project_gone', 409);
+    project = target;
+  }
+  const patch = editPatch(shape, body, config, { project });
+  if (Object.keys(patch).length > 0) {
+    try {
+      await updateItem(id, type, patch, undefined, client);
+    } catch (err) {
+      // items.project_id references projects: one purged between the read and this write.
+      if (body.action === 'project' && errorCode(err) === '23503') return refused('project_gone', 409);
+      throw err;
+    }
+  }
   if (body.action === 'repeat') await demoteRoles(ctx);
   return ok();
+}
+
+/**
+ * The project a `project` edit names, read live under RLS: null for No project, 'gone' for one
+ * that is missing, in the Trash or another user's (all three read as no row). Its own name is what
+ * the item is filed under, as the web's pickers file it.
+ */
+async function projectTarget(
+  ctx: WriteContext,
+  projectId: string | null,
+): Promise<{ id: string; name: string } | null | 'gone'> {
+  if (projectId === null) return null;
+  const { data, error } = await ctx.client
+    .from('projects')
+    .select('id, name')
+    .eq('id', projectId)
+    .eq('user_id', ctx.userId)
+    .is('deleted_at', null)
+    .maybeSingle();
+  if (error) throw error;
+  const found = data as { id: string; name: string } | null;
+  return found ? { id: found.id, name: found.name } : 'gone';
 }
 
 /**

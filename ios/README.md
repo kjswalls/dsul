@@ -4,8 +4,8 @@ A native SwiftUI app (iOS 27). It signs in with Google or an emailed link
 and shows your own day from do.dsul.app; a tick, a drop on an hour, a capture,
 the item sheet's Skip, move (Tomorrow, Reschedule) and Pause, an item's title
 and notes, Delete, a new subtask, a streak reset, an item's priority, times
-per day and reminder, and an item's date, part of day, time and length, and
-how it repeats, are saved to the server.
+per day and reminder, and an item's date, part of day, time and length, how
+it repeats, and its project, are saved to the server.
 "Try with sample data" on the sign-in screen opens a made-up day instead,
 which needs no account and whose changes last until the app quits.
 
@@ -21,10 +21,11 @@ result) to open its sheet: what it is (its notes, its streak, its chips), its
 verbs in a bar along the bottom (tick, Skip, Tomorrow, Reschedule, Pause,
 Pause until, Resume, whichever apply), and Delete behind ⋯. Tap the title or
 the notes to edit them in place. Tap the priority, date, time, times per day,
-repeat or reminder chip to change it, and Add property (a plus once there are
-chips) to add one; the other chips are read-only for now, and the streak chip
-opens this week and Reset streak. Add a subtask from the Subtasks section, one
-at a time or by pasting a list. A tap on a row's circle still just ticks it.
+repeat, reminder or project chip to change it, and Add property (a plus once
+there are chips) to add one; the other chips are read-only for now, and the
+streak chip opens this week and Reset streak. Add a subtask from the Subtasks
+section, one at a time or by pasting a list. A tap on a row's circle still
+just ticks it.
 
 - `Dsul/` is the app. `DsulTests/` tests it in the simulator.
   - `App/`: the app, `AppGate` (sign-in screen, sample or your planner) and
@@ -234,12 +235,12 @@ Write the three bets), and no sample note runs past four lines.
 The hosted tests pin what each field sends and what Delete says, but not how
 typing feels. Check on the iPhone, on the sample or signed in once the
 server's `title`, `notes`, `delete`, `addSubtask`, `resetStreak`, `priority`,
-`timesPerDay`, `reminder`, `time` and `repeat` writes are deployed (against
-an older server the title and notes stay text, ⋯ has no Delete, there is no
-Add a subtask row, the streak popover has no Reset, and the chips stay
-read-only, with no chevrons, but for the date chip, which moves the item as
-Reschedule does; Add property then holds Date alone, on an undated task); a
-check that needs one or the other says so.
+`timesPerDay`, `reminder`, `time`, `repeat` and `project` writes are deployed
+(against an older server the title and notes stay text, ⋯ has no Delete,
+there is no Add a subtask row, the streak popover has no Reset, and the chips
+stay read-only, with no chevrons, but for the date chip, which moves the item
+as Reschedule does; Add property then holds Date alone, on an undated task);
+a check that needs one or the other says so.
 The sample comes back whole each time the app starts, so relaunch it to undo
 a delete, a reset or a chip.
 
@@ -317,12 +318,13 @@ a delete, a reset or a chip.
      only chip reads "Add property". On Groceries it is a plus after the
      project chip. VoiceOver reads both as "Add property".
    - Tap it on Groceries: Priority, Time…, Repeat and Remind…, and no Times
-     per day (a task has none). On Call the bank: Priority, Date, Repeat and
-     Remind…, and no Time… (it has no day yet). On Journal: Times per day and
-     Remind…, and no Repeat (a habit always shows its repeat chip). On Meds:
-     Times per day alone. On Draft Q4 roadmap's subtask Pull the September
-     numbers (its own page): Priority alone, with no Date, Time…, Repeat or
-     Remind….
+     per day (a task has none) or Project (it has one). On Call the bank:
+     Priority, Date, Repeat, Remind… and Project, and no Time… (it has no day
+     yet). On Journal: Times per day, Remind… and Project, and no Repeat (a
+     habit always shows its repeat chip). On Meds: Times per day and
+     Project. On Draft Q4 roadmap's subtask Pull the September numbers (its
+     own page): Priority alone, with no Date, Time…, Repeat, Remind… or
+     Project.
    - Priority ▸ Low on Groceries: one pick, a "Low" chip with a chevron
      appears, and Priority is gone from Add property.
    - Remind… opens the Remind sheet at once, with the wheel already up.
@@ -333,6 +335,9 @@ a delete, a reset or a chip.
    - Time… opens the Time sheet at once.
    - Repeat ▸ on Groceries: Daily, Weekdays, Weekends, Monthly… and Custom
      days…, and no No repeat.
+   - Project ▸ on Call the bank: Work, Home, Writing, dsul and Health, each
+     with its dot, and no No project. Pick Writing: a "Writing" chip with a
+     chevron and its dot appears, and Project leaves Add property.
    - Once everything it offers is set, there is no Add property.
 8. **The chips.**
    - Priority: on Draft Q4 roadmap, tap "High": None, Low, Medium and High,
@@ -492,9 +497,39 @@ a delete, a reset or a chip.
      today, pick No repeat: the date chip reads that first day, the task
      leaves Today and is in no list on the phone, and Search finds it. The
      web shows it in its past-due bar.
+   - Project: on Groceries, tap "Home": No project, then, under a line,
+     Work, Home, Writing, dsul and Health, each with its dot, Home checked.
+     Pick Work: the chip reads Work at once, with Work's dot. Pick Work
+     again: the menu closes and nothing changes. Pick No project: the chip
+     goes, and Project is back in Add property.
+   - On Standup, tap "work" (filed in lowercase, with no link to Work):
+     Work is checked. Pick Work: the chip reads "Work".
+   - Write the three bets (a subtask) has no Project in Add property.
+   - Signed in, file a task of yours under a name none of your projects
+     has, the Trash's included, through the agent API:
+     `PATCH /api/agent/tasks/:id`, with your OpenClaw API key as the Bearer
+     token and the body `{"project":"Fitness"}`. Pull to refresh and tap its
+     chip, "Fitness", with a gray dot: nothing is checked, and No project
+     and each of your projects can be picked. Then send one of your
+     projects' names in lowercase the same way (`{"project":"work"}` for
+     Work): pull to refresh, and the menu checks that project.
+   - Signed in, on a task of yours timed today (say 2:00 pm) and filed under
+     a project with a block today: on the web's Schedule, drag it onto the
+     block. Pull to refresh here: on Schedule it sits in the block. Pick
+     another project in its chip: at once it is out of the block, at 2:00
+     pm again. Reload the web: it is out of the block there too, at 2:00
+     pm, under the new project.
+   - Signed in, on a habit of yours filed under a project, pick No project
+     here, then reload the web: its item panel shows no project (the
+     server cleared both the project and the old group column, which the
+     web still falls back to).
+   - Signed in, put a project of yours in the Trash on a computer, with the
+     app left in the foreground so no fetch lands, then pick that project
+     here for a task: the chip turns back, with the banner, and once the
+     refresh lands the project is gone from the menu.
 
-Check 8's other chips (project, routines and seasons) come with the PRs that
-make them editable.
+Check 8's other chips (routines and seasons) come with the PR that makes them
+editable.
 
 9. **Offline** (signed in only: the sample sends nothing, so nothing fails).
    With Airplane Mode and Wi-Fi off:
@@ -512,7 +547,8 @@ make them editable.
    - change a priority, a times per day and a reminder: each turns back, with
      the banner;
    - pick a date, and change a time: each turns back, with the banner;
-   - change a repeat: it turns back, with the banner.
+   - change a repeat: it turns back, with the banner;
+   - change a project: it turns back, with the banner.
 10. **VoiceOver.**
     - The title reads as "Title", a text field and a heading; the notes, and
       "Notes" where there are none, as a button with the hint "Edits the
@@ -532,8 +568,7 @@ make them editable.
     - An editable chip reads its words, "button" and a hint: "High priority,
       button, Changes the priority"; "3 times a day, button, Changes how many
       times a day"; "Reminder: After I pour my coffee, 8:00 am, button,
-      Changes the reminder". A read-only chip (the project, a routine) has
-      no hint.
+      Changes the reminder". A read-only chip (a routine) has no hint.
     - "Add property" is a button. Pick None on a priority chip: VoiceOver
       moves to Add property.
     - On Pull the September numbers' page, Add property ▸ Priority ▸ Low: Add
@@ -545,7 +580,13 @@ make them editable.
       reminder, VoiceOver is on Add property. After Done on a new reminder
       from Add property, it is on the new reminder chip.
     - In the times menus, the choices read "3 times a day".
-    - Relaunch the sample first: check 8 moved the roadmap and Meds.
+    - Relaunch the sample first: check 8 moved the roadmap and Meds,
+      unfiled Groceries and relinked Standup.
+    - The project chip on Groceries reads "Project: Home, button, Changes
+      the project". In its menu Home is read as selected, and no dot is
+      read.
+    - Pick No project: VoiceOver is on Add property. Add property ▸ Project
+      ▸ Home: VoiceOver lands on the new chip.
     - The date chip reads "Date: Today, button, Changes the date"; the time
       chip "Time: 9:00 to 11:00 am, button, Changes the time". Tick Groceries
       done: its date chip has no hint and is not a button. Tap Not done.
@@ -588,10 +629,11 @@ make them editable.
     words, and the Time sheet scrolls to Duration with every part of day, the
     line under them, the wheel and No specific time on the way. The Custom
     days sheet shows seven rows with the full day names and a check, and the
-    Monthly sheet a list from Day 1 to Day 31; each scrolls to its footer. On
-    Pay rent, pick Day 31 in Monthly… and tap Done, then open Monthly… again:
-    it opens with Day 31 checked and in view. (Check 10 relaunched the
-    sample, so Pay rent is back on the 1st.)
+    Monthly sheet a list from Day 1 to Day 31; each scrolls to its footer.
+    The project menu and Add property's Project ▸ open, and the names wrap
+    rather than truncate. On Pay rent, pick Day 31 in Monthly… and tap Done,
+    then open Monthly… again: it opens with Day 31 checked and in view.
+    (Check 10 relaunched the sample, so Pay rent is back on the 1st.)
     - At xxxLarge, the largest size below the accessibility sizes (Larger
       Text with Larger Accessibility Sizes off, the slider at its end): the
       Custom days keys are seven rows with the full names; the Monthly sheet
@@ -629,6 +671,9 @@ make them editable.
       picked keys and the picked day are the system blue with white text, in
       light and dark mode, and the rest gray or the label colour; Cancel and
       Done aren't lime; Select at least one day and Discard are red.
+    - The project chip's words and chevron are the label colour or gray, not
+      lime, at rest and while pressed, and its dot is its colour. The
+      project menu's checks aren't lime.
 13. **What the code assumes of iOS.**
     - Return in the title (a vertical field with a Done key) ends the edit.
     - Return in the subtask field (a vertical field with a Next key) adds
@@ -692,6 +737,13 @@ make them editable.
     - A swipe on a changed Repeat sheet is refused, and the discard confirm
       comes up over the nested sheet.
     - With Increase Contrast on, the picked keys' blue is darker.
+    - In the project menu, and in Add property's Project ▸, each project's
+      dot shows in its colour, not gray (an image drawn as is). If it is
+      gray, the rows drop the dot, and this line says so.
+    - Picking the checked project runs its action (a Toggle's setter runs on
+      every tap): on Standup, filed "work" with no link, the menu checks
+      Work; pick Work and the chip reads "Work". On Draft Q4 roadmap,
+      picking its checked Work closes the menu and changes nothing.
 
 ## Rules
 

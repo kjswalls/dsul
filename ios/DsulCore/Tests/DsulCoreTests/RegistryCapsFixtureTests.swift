@@ -38,6 +38,11 @@ private struct TypeCase: Decodable, Sendable {
     let hasDuration: Bool
     /// `config.allowedFrequencies`, in its order.
     let allowedFrequencies: [String]
+    /// `config.containerKind`: "projects", or null for a type with no
+    /// project axis.
+    let containerKind: String?
+    /// `config.containerRequired`.
+    let containerRequired: Bool
     let titlePlaceholder: String
     /// lib/item-verbs.ts `deleteConfirmTitle(label)`.
     let deleteTitle: String
@@ -129,6 +134,8 @@ private func loadFixture(_ here: String = #filePath) throws -> Fixture {
             #expect(c.hasNotes == t.hasNotes, "\(t.name): hasNotes")
             #expect(c.hasDuration == t.hasDuration, "\(t.name): hasDuration")
             #expect(c.allowedFrequencies == t.allowedFrequencies, "\(t.name): allowedFrequencies")
+            #expect(c.containerKind == t.containerKind, "\(t.name): containerKind")
+            #expect(c.containerRequired == t.containerRequired, "\(t.name): containerRequired")
             #expect(c.titlePlaceholder == t.titlePlaceholder, "\(t.name): titlePlaceholder")
             #expect(deleteConfirmTitle(c.label) == t.deleteTitle, "\(t.name): deleteConfirmTitle")
             for d in t.deleteDescriptions {

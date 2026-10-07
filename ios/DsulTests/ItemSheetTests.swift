@@ -24,7 +24,11 @@ import Testing
 /// and words. From 2e: the repeat chip's menu and Add property's Repeat ▸
 /// (their rows, what a pick does), the Repeat sheet's rules (the days and the
 /// day it opens on, the keys' order, what Done sends) and words, and where
-/// VoiceOver goes as it closes.
+/// VoiceOver goes as it closes. From 2f: the project chip's menu (its rows,
+/// once per folded name; what it checks, a stored "none" read as no project;
+/// what a pick sends; No project), Add property's Project ▸ while the user has
+/// a project, where VoiceOver goes after a pick, and the container nouns,
+/// which are the registry's (`ContainerWords`).
 @MainActor
 @Suite struct ItemSheetTests {
     private func makePlanner() -> SamplePlanner {
@@ -805,13 +809,14 @@ import Testing
                                     seasonNames: planner.seasonNames(for: item.id))
     }
 
-    /// Priority, times per day and the repeat are menus, the reminder and the
-    /// time their sheets, each only where the type takes it: no priority on a
-    /// habit, no count on a task, no reminder and no repeat on a subtask,
-    /// whose page still takes a priority (Q7 a). The date is offered no
-    /// Reschedule here (`offered: []`), so it stays read-only;
-    /// `theDateChipIsTheRescheduleVerb` gives it one. Every other chip stays
-    /// read-only, and with nothing taken (an older server) every chip is.
+    /// Priority, times per day, the repeat and the project are menus, the
+    /// reminder and the time their sheets, each only where the type takes
+    /// it: no priority on a habit, no count on a task, no reminder, no repeat
+    /// and no project on a subtask, whose page still takes a priority (Q7 a).
+    /// The date is offered no Reschedule here (`offered: []`), so it stays
+    /// read-only; `theDateChipIsTheRescheduleVerb` gives it one. The routines
+    /// and the seasons stay read-only, and with nothing taken (an older
+    /// server) every chip is.
     @Test func aChipEditsOnlyWhereTheTypeTakesIt() throws {
         let planner = makePlanner()
         let roadmap = try named(planner, "Draft Q4 roadmap")   // a task
@@ -836,13 +841,16 @@ import Testing
         #expect(ItemSheetModel.chipEditor(.repeats, roadmap, offered: [], canEdit: gate(roadmap)) == ChipEditor.menu)
         #expect(ItemSheetModel.chipEditor(.repeats, meds, offered: [], canEdit: gate(meds)) == ChipEditor.menu)
         #expect(ItemSheetModel.chipEditor(.repeats, pull, offered: [], canEdit: gate(pull)) == nil)
+        #expect(ItemSheetModel.chipEditor(.project, roadmap, offered: [], canEdit: gate(roadmap)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.project, meds, offered: [], canEdit: gate(meds)) == ChipEditor.menu)
+        #expect(ItemSheetModel.chipEditor(.project, pull, offered: [], canEdit: gate(pull)) == nil)
 
-        let readOnly: [SheetChip.Kind] = [.project, .routine, .season]
+        let readOnly: [SheetChip.Kind] = [.routine, .season]
         for kind in readOnly + [.date] {
             #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: gate(roadmap)) == nil)
             #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: gate(meds)) == nil)
         }
-        for kind in readOnly + [.priority, .date, .time, .timesPerDay, .repeats, .reminder] {
+        for kind in readOnly + [.priority, .date, .time, .timesPerDay, .repeats, .reminder, .project] {
             #expect(ItemSheetModel.chipEditor(kind, roadmap, offered: [], canEdit: takesNothing) == nil)
             #expect(ItemSheetModel.chipEditor(kind, meds, offered: [], canEdit: takesNothing) == nil)
         }
@@ -919,8 +927,9 @@ import Testing
     /// beside chips, and is "Add property" to VoiceOver either way; its
     /// entries are the web's, Remind… and Time… with an ellipsis since each
     /// opens a sheet, and each wears its chip's own symbol. Repeat is the web
-    /// seed's own label, a submenu, so with no ellipsis; the entries 2f will
-    /// add already read as design §3.7 words them.
+    /// seed's own label, a submenu, so with no ellipsis. The containers'
+    /// entries are the registry's nouns (`ContainerWords`, which
+    /// edit-writes.json's `containers` pins to lib/container-registry.ts).
     @Test func theSeedsWords() throws {
         #expect(ItemSheetModel.seedLabel(rowHasOthers: false) == "Add property")
         #expect(ItemSheetModel.seedLabel(rowHasOthers: true) == nil)
@@ -931,6 +940,12 @@ import Testing
         #expect(ItemSheetModel.seedEntry(.date) == "Date")
         #expect(ItemSheetModel.seedEntry(.time) == "Time\u{2026}")
         #expect(ItemSheetModel.seedEntry(.repeats) == "Repeat")
+        #expect(ItemSheetModel.seedEntry(.project) == "Project")
+        #expect(ItemSheetModel.seedEntry(.routine) == "Routine")
+        #expect(ItemSheetModel.seedEntry(.season) == "Season")
+        #expect(ItemSheetModel.seedEntry(.project) == ContainerWords.project)
+        #expect(ItemSheetModel.seedEntry(.routine) == ContainerWords.routine)
+        #expect(ItemSheetModel.seedEntry(.season) == ContainerWords.season)
 
         let planner = makePlanner()
         let roadmap = try named(planner, "Draft Q4 roadmap")
@@ -947,7 +962,8 @@ import Testing
     /// The menus: None, Low, Medium and High, the web's; "1× a day" to "5× a
     /// day", and a stored count above 5 on a row of its own; VoiceOver hears
     /// "3 times a day" in the menu as on the chip; and each editable chip's
-    /// hint.
+    /// hint, the project's with the registry's noun. A routine's chip doesn't
+    /// edit yet, so it has none.
     @Test func theMenusWords() throws {
         let raws: [String?] = [nil, "low", "medium", "high"]
         #expect(ItemSheetModel.priorityChoices.map(\.word) == ["None", "Low", "Medium", "High"])
@@ -975,7 +991,9 @@ import Testing
         #expect(ItemSheetModel.chipHint(.date) == "Changes the date")
         #expect(ItemSheetModel.chipHint(.time) == "Changes the time")
         #expect(ItemSheetModel.chipHint(.repeats) == "Changes how it repeats")
-        #expect(ItemSheetModel.chipHint(.project) == nil)
+        #expect(ItemSheetModel.chipHint(.project) == "Changes the project")
+        #expect(ItemSheetModel.chipHint(.project) == "Changes the " + jsLowercased(ContainerWords.project))
+        #expect(ItemSheetModel.chipHint(.routine) == nil)
     }
 
     // MARK: The date chip
@@ -1939,6 +1957,264 @@ import Testing
         let all = words + rows.map(\.word)
         let dashed = all.filter { $0.contains("\u{2014}") }
         #expect(dashed.isEmpty)
+    }
+
+    // MARK: The project chip
+
+    /// The project menu's rows, and Project ▸'s: the user's projects in
+    /// payload order, the first of each folded name, so "Work" and "work"
+    /// (names are unique exactly, not folded) give one row, never two
+    /// checked. On the sample, its five.
+    @Test func theProjectMenusRows() throws {
+        let rows = ItemSheetModel.projectChoices([
+            Project(id: "a", name: "Work"), Project(id: "b", name: "work"), Project(id: "c", name: "Home"),
+        ])
+        #expect(rows == [ProjectChoice(id: "a", name: "Work"), ProjectChoice(id: "c", name: "Home")])
+        #expect(rows.map(\.key) == ["work", "home"])
+        #expect(ItemSheetModel.projectChoices([]).isEmpty)
+
+        let planner = makePlanner()
+        #expect(ItemSheetModel.projectChoices(planner.projectRecords).map(\.name)
+                == ["Work", "Home", "Writing", "dsul", "Health"])
+    }
+
+    /// What the menu checks: the stored name folded as JavaScript folds it,
+    /// so "work" checks Work, a final sigma included; nothing for no project,
+    /// "" (an unfiled habit) and the web dialog's "none", matched exactly, so
+    /// a project named "None" is a name. A name no project has checks no row.
+    /// On the sample, Standup's key is Work's row's.
+    @Test func theProjectMenuChecksTheFoldedName() throws {
+        #expect(ItemSheetModel.legacyNoProject == "none")
+        #expect(ItemSheetModel.projectKey(nil) == nil)
+        #expect(ItemSheetModel.projectKey("") == nil)
+        #expect(ItemSheetModel.projectKey("none") == nil)
+        #expect(ItemSheetModel.projectKey("Work") == "work")
+        #expect(ItemSheetModel.projectKey("None") == "none")
+        let upper = "\u{03A3}\u{03A4}\u{039F}\u{03A7}\u{039F}\u{03A3}"
+        let lower = "\u{03C3}\u{03C4}\u{03BF}\u{03C7}\u{03BF}\u{03C2}"
+        #expect(ItemSheetModel.projectKey(upper) == ProjectChoice(id: "x", name: lower).key)
+
+        let planner = makePlanner()
+        let choices = ItemSheetModel.projectChoices(planner.projectRecords)
+        let work = try #require(choices.first(where: { $0.name == "Work" }))
+        let standup = try named(planner, "Standup")
+        #expect(ItemSheetModel.projectKey(standup.project) == work.key)
+        let fitness = ItemSheetModel.projectKey("Fitness")
+        #expect(fitness != nil)
+        #expect(!choices.contains(where: { $0.key == fitness }))
+    }
+
+    /// A stored "none" (habits saved before #373 can carry it) is no project,
+    /// as the web's dialog reads it, and so is "" (an unfiled habit): no
+    /// chip, and Project in Add property. "None", capitalised, is a name: its
+    /// chip reads it, and Project isn't offered.
+    @Test func aStoredNoneIsNoProject() throws {
+        let planner = makePlanner()
+        var meds = try named(planner, "Meds")
+        func offersProject() -> Bool {
+            return ItemSheetModel.unsetProperties(meds, shown: shown(planner, meds), offered: [], canEdit: gate(meds),
+                                                  containers: [.project]).contains(.project)
+        }
+
+        for stored in ["none", ""] {
+            meds.project = stored
+            #expect(!shown(planner, meds).contains(where: { $0.kind == .project }))
+            #expect(offersProject())
+        }
+
+        meds.project = "None"
+        let chip = try #require(shown(planner, meds).first(where: { $0.kind == .project }))
+        #expect(chip.text == "None")
+        #expect(!offersProject())
+    }
+
+    /// Add property offers the containers last, project first, each only
+    /// while the user has one (`ownedContainers`) and the item has none: Call
+    /// the bank, Meds and Journal are offered Project, Groceries (filed under
+    /// Home) isn't, nor a subtask. Routines and seasons are offered nothing
+    /// until their chips edit. With no project, nothing is offered Project.
+    /// As the page asks it, Call the bank's seed ends in Project.
+    @Test func addPropertyOffersTheContainers() throws {
+        let planner = makePlanner()
+        let bank = try named(planner, "Call the bank")
+        let groceries = try named(planner, "Groceries")
+        let meds = try named(planner, "Meds")             // in Morning routine
+        let journal = try named(planner, "Journal")       // in Morning routine
+        let bets = try named(planner, "Write the three bets")   // a subtask
+        let all = ItemSheetModel.ownedContainers(projects: 5, routines: 2, seasons: 1)
+        let noContainers = ItemSheetModel.ownedContainers(projects: 0, routines: 0, seasons: 0)
+        let every: Set<SheetChip.Kind> = [.project, .routine, .season]
+        let projectOnly: Set<SheetChip.Kind> = [.project]
+        let memberships: Set<SheetChip.Kind> = [.routine, .season]
+        #expect(all == every)
+        #expect(noContainers.isEmpty)
+        #expect(ItemSheetModel.ownedContainers(projects: 1, routines: 0, seasons: 0) == projectOnly)
+        #expect(ItemSheetModel.ownedContainers(projects: 0, routines: 1, seasons: 1) == memberships)
+
+        // Offered no Reschedule, so never Date.
+        func unset(_ item: SampleItem, _ containers: Set<SheetChip.Kind>) -> [SheetChip.Kind] {
+            return ItemSheetModel.unsetProperties(item, shown: shown(planner, item), offered: [], canEdit: gate(item),
+                                                  containers: containers)
+        }
+        #expect(unset(bank, all) == [.priority, .repeats, .reminder, .project])
+        #expect(unset(groceries, all) == [.priority, .time, .repeats, .reminder])
+        #expect(unset(meds, all) == [.timesPerDay, .project])
+        #expect(unset(journal, all) == [.timesPerDay, .reminder, .project])
+        #expect(unset(bets, all) == [.priority])
+        #expect(unset(bank, noContainers) == [.priority, .repeats, .reminder])
+
+        let owned = ItemSheetModel.ownedContainers(projects: ItemSheetModel.projectChoices(planner.projectRecords).count,
+                                                   routines: planner.routines.count, seasons: planner.seasons.count)
+        #expect(owned.contains(.project))
+        let page = ItemSheetModel.unsetProperties(bank, shown: shown(planner, bank),
+                                                  offered: planner.offeredVerbs(for: bank, day: .today),
+                                                  canEdit: { planner.canEdit($0, bank) }, containers: owned)
+        #expect(page == [.priority, .date, .repeats, .reminder, .project])
+    }
+
+    /// A pick sends the project's id and its name, and No project both nil;
+    /// each passes the gate on a task. No project is offered on every shipped
+    /// type, never on one whose container is required, where the gate refuses
+    /// it too. Its words are the registry's, with no em dash.
+    @Test func aProjectPickIsOneEdit() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")
+        let work = ProjectChoice(id: "sample-work", name: "Work")
+        let filed = ItemSheetModel.projectEdit(work)
+        let cleared = ItemSheetModel.projectEdit(nil)
+        #expect(filed == ItemEdit.project(id: "sample-work", name: "Work"))
+        #expect(cleared == ItemEdit.project(id: nil, name: nil))
+        #expect(filed.action == "project")
+        #expect(editAllowed(filed, on: groceries, caps: .task))
+        #expect(editAllowed(cleared, on: groceries, caps: .task))
+
+        #expect(ItemSheetModel.offersNoProject(.task))
+        #expect(ItemSheetModel.offersNoProject(.habit))
+        var mustFile = ItemCaps.task
+        mustFile.containerRequired = true
+        #expect(!ItemSheetModel.offersNoProject(mustFile))
+        #expect(!editAllowed(cleared, on: groceries, caps: mustFile))
+
+        #expect(ItemSheetModel.noProject == "No project")
+        #expect(ItemSheetModel.noProject == ContainerWords.noProject)
+        let words = [ItemSheetModel.noProject, ItemSheetModel.chipHint(.project) ?? "",
+                     ItemSheetModel.seedEntry(.project)]
+        #expect(!words.contains(where: { $0.contains("\u{2014}") }))
+    }
+
+    /// The container chips' spoken words take their nouns from the registry:
+    /// "Project: Home", "Routine: Morning routine", "Routines: Morning
+    /// routine and 1 more", and a season's likewise.
+    @Test func theContainerChipsSayTheRegistrysNouns() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")   // Home
+        let meds = try named(planner, "Meds")
+        let project = try #require(shown(planner, groceries).first(where: { $0.kind == .project }))
+        #expect(project.spoken == "Project: Home")
+        #expect(project.spoken == "\(ContainerWords.project): Home")
+
+        func spoken(_ kind: SheetChip.Kind, routines: [String], seasons: [String]) -> String? {
+            let chips = ItemSheetModel.chips(meds, today: planner.today, timeFormat: .twelveHour,
+                                             routineNames: routines, seasonNames: seasons)
+            return chips.first(where: { $0.kind == kind })?.spoken
+        }
+        #expect(spoken(.routine, routines: ["Morning routine"], seasons: []) == "Routine: Morning routine")
+        #expect(spoken(.routine, routines: ["Morning routine", "Wind down"], seasons: [])
+                == "Routines: Morning routine and 1 more")
+        #expect(spoken(.season, routines: [], seasons: ["Autumn"]) == "Season: Autumn")
+        #expect(spoken(.season, routines: [], seasons: ["Autumn", "Winter"]) == "Seasons: Autumn and 1 more")
+        #expect(spoken(.routine, routines: ["Wind down"], seasons: []) == "\(ContainerWords.routine): Wind down")
+        #expect(spoken(.routine, routines: ["A", "B"], seasons: []) == "\(ContainerWords.routines): A and 1 more")
+        #expect(spoken(.season, routines: [], seasons: ["Autumn"]) == "\(ContainerWords.season): Autumn")
+        #expect(spoken(.season, routines: [], seasons: ["A", "B"]) == "\(ContainerWords.seasons): A and 1 more")
+    }
+
+    /// After a project pick, VoiceOver goes to the project chip while there
+    /// is one (Groceries, filed under Home), and to Add property once No
+    /// project took it (Call the bank, filed nowhere). With no project to
+    /// offer, Add property holds no Project, so after No project on a
+    /// text-only name, for a user with no projects, there may be no seed to
+    /// land on, and VoiceOver stays where iOS puts it.
+    @Test func voiceOverAfterAProjectPick() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")
+        let bank = try named(planner, "Call the bank")
+        #expect(ItemSheetModel.voiceOverTarget(after: .project, shown: shown(planner, groceries))
+                == ChipFocus.chip(.project))
+        #expect(ItemSheetModel.voiceOverTarget(after: .project, shown: shown(planner, bank)) == ChipFocus.seed)
+
+        var filed = bank
+        filed.project = "Fitness"   // a text-only name, which no project has
+        #expect(shown(planner, filed).contains(where: { $0.kind == .project }))
+        let cleared = editing(filed, ItemSheetModel.projectEdit(nil))
+        #expect(cleared.project == nil)
+        #expect(!shown(planner, cleared).contains(where: { $0.kind == .project }))
+        let noContainers = ItemSheetModel.ownedContainers(projects: 0, routines: 0, seasons: 0)
+        let offered = ItemSheetModel.unsetProperties(cleared, shown: shown(planner, cleared), offered: [],
+                                                     canEdit: gate(cleared), containers: noContainers)
+        #expect(!offered.contains(.project))
+    }
+
+    /// A pick lands as the chip, on the sample: Work on Groceries (Home)
+    /// reads "Work" at once, linked to Work's row, and VoiceOver goes to the
+    /// chip; No project takes the chip away, Project comes back into Add
+    /// property, and VoiceOver goes there; Project ▸ Writing files it again.
+    /// Groceries keeps its date, its part of day and its status throughout.
+    /// On Standup, Work is checked by its folded name, and picking it reads
+    /// "Work", linked.
+    @Test func aProjectPickLandsAsTheChip() throws {
+        let planner = makePlanner()
+        let groceries = try named(planner, "Groceries")   // Home, dated today, Anytime
+        let choices = ItemSheetModel.projectChoices(planner.projectRecords)
+        let work = try #require(choices.first(where: { $0.name == "Work" }))
+        let writing = try #require(choices.first(where: { $0.name == "Writing" }))
+        let owned = ItemSheetModel.ownedContainers(projects: choices.count, routines: planner.routines.count,
+                                                   seasons: planner.seasons.count)
+        func unset() throws -> [SheetChip.Kind] {
+            let item = try #require(planner.item(groceries.id))
+            return ItemSheetModel.unsetProperties(item, shown: shown(planner, item),
+                                                  offered: planner.offeredVerbs(for: item, day: .today),
+                                                  canEdit: { planner.canEdit($0, item) }, containers: owned)
+        }
+        #expect(ItemSheetModel.chipEditor(.project, groceries, offered: [],
+                                          canEdit: { planner.canEdit($0, groceries) }) == ChipEditor.menu)
+        let before = try unset()
+        #expect(!before.contains(.project))
+
+        planner.edit(groceries.id, ItemSheetModel.projectEdit(work))
+        let filed = try #require(planner.item(groceries.id))
+        let filedChips = shown(planner, filed)
+        #expect(filed.project == "Work")
+        #expect(filed.projectId == work.id)
+        #expect(filedChips.first(where: { $0.kind == .project })?.text == "Work")
+        #expect(ItemSheetModel.projectKey(filed.project) == work.key)
+        #expect(ItemSheetModel.voiceOverTarget(after: .project, shown: filedChips) == ChipFocus.chip(.project))
+
+        planner.edit(groceries.id, ItemSheetModel.projectEdit(nil))
+        let unfiled = try #require(planner.item(groceries.id))
+        let unfiledChips = shown(planner, unfiled)
+        #expect(unfiled.project == nil)
+        #expect(unfiled.projectId == nil)
+        #expect(!unfiledChips.contains(where: { $0.kind == .project }))
+        let afterNone = try unset()
+        #expect(afterNone.contains(.project))
+        #expect(ItemSheetModel.voiceOverTarget(after: .project, shown: unfiledChips) == ChipFocus.seed)
+
+        planner.edit(groceries.id, ItemSheetModel.projectEdit(writing))
+        let refiled = try #require(planner.item(groceries.id))
+        #expect(shown(planner, refiled).first(where: { $0.kind == .project })?.text == "Writing")
+        let afterWriting = try unset()
+        #expect(!afterWriting.contains(.project))
+        #expect(refiled.startDate == groceries.startDate)
+        #expect(refiled.timeBucket == groceries.timeBucket)
+        #expect(refiled.status == groceries.status)
+
+        let standup = try named(planner, "Standup")
+        #expect(ItemSheetModel.projectKey(standup.project) == work.key)
+        planner.edit(standup.id, ItemSheetModel.projectEdit(work))
+        let relinked = try #require(planner.item(standup.id))
+        #expect(relinked.project == "Work")
+        #expect(relinked.projectId == work.id)
     }
 
     // MARK: A row to VoiceOver

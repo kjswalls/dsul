@@ -51,12 +51,21 @@ import path from 'path';
  * replays from the fixture too; the demotion is pinned here, since the
  * fixture's store holds no goals.
  *
+ * `project` is the panel's project chip, written as the bulk Move to project
+ * writes it (lib/item-edit.ts projectRefilePatch) for the project the route
+ * reads first, under RLS: its own name and id, a parked task released from
+ * the block it leaves, nothing when it is already there by folded name and
+ * id, and 409 `project_gone` for a project missing, trashed or another
+ * user's. It replays from the fixture too, whose store files the item by the
+ * name the route reads here.
+ *
  * And nothing here reaches the OpenClaw webhook, which the browser never does.
  */
 
 const USER = '6f1c2a9e-3b4d-4e5f-8a6b-7c8d9e0f1a2b';
 const ITEM = '0b7e4a52-9c1d-4f3e-8a2b-5d6c7e8f9a0b';
 const PARENT = '5d4c3b2a-1f0e-4d9c-8b7a-6f5e4d3c2b1a';
+const PROJECT = '3c9e1d7a-5b2f-4e8c-9a1d-2f4b6c8e0a13';
 const DATE = '2026-10-02';
 const TOMORROW = '2026-10-03';
 /**
@@ -203,6 +212,8 @@ let updateResult: Result;
 let settingsResult: Result;
 /** What every goal_items query answers: the demotion's select of held roles, and its update. */
 let goalItemsResult: Result;
+/** What the project edit's read of `projects` answers. */
+let projectsResult: Result;
 
 beforeAll(() => {
   vi.useFakeTimers({ toFake: ['Date'] });
@@ -222,12 +233,14 @@ beforeEach(() => {
   updateResult = { data: null, error: null };
   settingsResult = { data: { timezone: 'America/Los_Angeles' }, error: null };
   goalItemsResult = { data: [], error: null };
+  projectsResult = { data: { id: PROJECT, name: 'Work' }, error: null };
   rpc = vi.fn(async () => ({ data: null, error: null }));
   h.reportLiveCompletion.mockResolvedValue({ ok: true, skipped: true });
   respond = (q) => {
     if (q.table === 'item_events') return { data: null, error: null };
     if (q.table === 'user_settings') return settingsResult;
     if (q.table === 'goal_items') return goalItemsResult;
+    if (q.table === 'projects') return projectsResult;
     if (q.table !== 'items') return { data: null, error: { code: 'XX000', message: `unexpected ${q.table}` } };
     if (op(q) === 'update') return updateResult;
     return { data: row, error: null };
@@ -275,6 +288,7 @@ describe('reading the row first', () => {
     ['reminder', { action: 'reminder', time: '08:00' }],
     ['time', { action: 'time', duration: 45 }],
     ['repeat', { action: 'repeat', frequency: 'daily' }],
+    ['project', { action: 'project', projectId: PROJECT }],
   ])('404s another user’s id for %s, invisible under RLS, and writes nothing', async (_, body) => {
     // Load-bearing: set_item_completion, set_item_skip and updateItem filter
     // on id and type only, so without this read a foreign (or deleted) id
@@ -312,6 +326,12 @@ describe('reading the row first', () => {
     ['time', { action: 'time', duration: 45 }, `${BASE_COLUMNS}, start_time, is_scheduled, duration`],
     // repeat_frequency is in every read.
     ['repeat', { action: 'repeat', frequency: 'daily' }, `${BASE_COLUMNS}, repeat_days, repeat_month_day`],
+    // in_project_block is in every read.
+    [
+      'project',
+      { action: 'project', projectId: PROJECT },
+      `${BASE_COLUMNS}, project, project_id, previous_start_time, previous_start_date`,
+    ],
     ['complete', { action: 'complete', date: DATE, done: true }, BASE_COLUMNS],
     // The type and the parent decide it, and both are in every read.
     ['addSubtask', { action: 'addSubtask', id: '22222222-2222-4222-8222-222222222222', title: 'Eggs' }, BASE_COLUMNS],
@@ -326,6 +346,10 @@ describe('reading the row first', () => {
       duration: null,
       repeat_days: [],
       repeat_month_day: null,
+      project: null,
+      project_id: null,
+      previous_start_time: null,
+      previous_start_date: null,
     };
     await write(body);
     expect(called(queries[0], 'select')).toEqual([[columns]]);
@@ -1014,7 +1038,7 @@ type EditCase = {
 
 const EDIT_WRITES = JSON.parse(
   readFileSync(path.resolve(__dirname, '../fixtures/day/edit-writes.json'), 'utf8'),
-) as { cases: EditCase[] };
+) as { projects: { id: string; name: string }[]; cases: EditCase[] };
 
 /**
  * The row the route reads for `item`: every WRITE_ROW_COLUMNS key plus the
@@ -1048,6 +1072,11 @@ function rowFor(item: Item): Record<string, unknown> {
     duration: i.duration ?? null,
     repeat_days: i.repeatDays ?? null,
     repeat_month_day: i.repeatMonthDay ?? null,
+    // An unfiled habit is '' in the store and NULL in the row.
+    project: i.project || null,
+    project_id: i.projectId ?? null,
+    previous_start_time: i.previousStartTime ?? null,
+    previous_start_date: i.previousStartDate ?? null,
   };
 }
 
@@ -1103,6 +1132,11 @@ describe('the web’s own edits, replayed through the route (edit-writes.json)',
         (i) => i.type !== 'habit' && !(i as { parentItemId?: string }).parentItemId,
       ).length;
       parentId = c.item.id;
+      // The project a project edit names, as the route reads it: the one the store filed under.
+      if (c.edit.action === 'project' && typeof c.edit.projectId === 'string') {
+        const project = EDIT_WRITES.projects.find((p) => p.id === c.edit.projectId);
+        projectsResult = { data: project ?? null, error: null };
+      }
       const res = await write(c.edit, c.item.id);
       await settle();
 
@@ -2079,6 +2113,136 @@ describe('repeat', () => {
   });
 });
 
+describe('project', () => {
+  /** A one-off with the project chip's columns read: unfiled, and in no block. */
+  const UNFILED = { ...ONE_OFF, project: null, project_id: null, previous_start_time: null, previous_start_date: null };
+  /** Another project's id: Health, where a parked task sits before it is moved to Work. */
+  const HEALTH = '7d2a4f6c-8e1b-4c3d-9f5a-1b3c5d7e9f20';
+  const projectReads = () => queries.filter((q) => q.table === 'projects');
+
+  beforeEach(() => {
+    row = UNFILED;
+  });
+
+  it('files it under the project it reads, by that project’s own name, with the web’s event', async () => {
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    // Read live, as the user: one live project of theirs, by id.
+    expect(projectReads()).toHaveLength(1);
+    const read = projectReads()[0];
+    expect(called(read, 'select')).toEqual([['id, name']]);
+    expect(read.calls).toEqual(
+      expect.arrayContaining([
+        ['eq', ['id', PROJECT]],
+        ['eq', ['user_id', USER]],
+        ['is', ['deleted_at', null]],
+      ]),
+    );
+    expect(writes('items', 'update')).toEqual([{ project: 'Work', project_id: PROJECT }]);
+    expect(writes('item_events', 'insert')).toEqual([
+      { item_id: ITEM, item_type: 'task', action: 'update', payload: { project: 'Work', projectId: PROJECT } },
+    ]);
+  });
+
+  it('reads an uppercase id as the lowercase project', async () => {
+    expect((await write({ action: 'project', projectId: PROJECT.toUpperCase() })).status).toBe(200);
+    expect(projectReads()[0].calls).toContainEqual(['eq', ['id', PROJECT]]);
+    expect(writes('items', 'update')).toEqual([{ project: 'Work', project_id: PROJECT }]);
+  });
+
+  it('writes nothing when the item is already there by folded name and id', async () => {
+    row = { ...UNFILED, project: 'work', project_id: PROJECT };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ ok: true });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('links a text-only name to its project', async () => {
+    row = { ...UNFILED, project: 'Work', project_id: null };
+    expect((await write({ action: 'project', projectId: PROJECT })).status).toBe(200);
+    expect(writes('items', 'update')).toEqual([{ project: 'Work', project_id: PROJECT }]);
+  });
+
+  it('takes a parked task out of the block it leaves, its own slot back and its part of day kept', async () => {
+    row = {
+      ...UNFILED,
+      project: 'Health',
+      project_id: HEALTH,
+      time_bucket: 'morning',
+      in_project_block: true,
+      previous_start_time: '14:00',
+      previous_start_date: '2026-09-30',
+    };
+    expect((await write({ action: 'project', projectId: PROJECT })).status).toBe(200);
+    const [update] = writes('items', 'update');
+    expect(update).toEqual({
+      project: 'Work',
+      project_id: PROJECT,
+      in_project_block: false,
+      start_time: '14:00',
+      start_date: '2026-09-30',
+      previous_start_time: null,
+      previous_start_date: null,
+    });
+    expect(update).not.toHaveProperty('time_bucket');
+  });
+
+  it('clears both for No project, and reads no project', async () => {
+    row = { ...UNFILED, project: 'Work', project_id: PROJECT };
+    expect((await write({ action: 'project', projectId: null })).status).toBe(200);
+    expect(projectReads()).toEqual([]);
+    expect(writes('items', 'update')).toEqual([{ project: null, project_id: null }]);
+  });
+
+  it('writes a habit’s clear even when it is unfiled, the frozen group with it, as the web’s always does', async () => {
+    row = { ...HABIT, project: null, project_id: null, previous_start_time: null, previous_start_date: null };
+    expect((await write({ action: 'project', projectId: null })).status).toBe(200);
+    await settle();
+    expect(writes('items', 'update')).toEqual([{ project: null, group: null, project_id: null }]);
+    expect(writes('item_events', 'insert')).toHaveLength(1);
+  });
+
+  it('409s a project that is missing, in the Trash or another user’s, which all read as no row', async () => {
+    projectsResult = { data: null, error: null };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'project_gone' });
+    await settle();
+    expect(writes('items', 'update')).toEqual([]);
+    expect(writes('item_events', 'insert')).toEqual([]);
+  });
+
+  it('409s a project purged between the read and the write', async () => {
+    updateResult = { data: null, error: { code: '23503', message: 'violates foreign key constraint' } };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(409);
+    expect(await res.json()).toEqual({ error: 'project_gone' });
+  });
+
+  it('500s a failed read of the project, as any read error', async () => {
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    projectsResult = { data: null, error: { code: '57014', message: 'timeout' } };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(500);
+    expect(writes('items', 'update')).toEqual([]);
+    spy.mockRestore();
+  });
+
+  it('400s a subtask, and reads no project', async () => {
+    row = { ...UNFILED, parent_item_id: PARENT };
+    const res = await write({ action: 'project', projectId: PROJECT });
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'not_for_subtask' });
+    expect(projectReads()).toEqual([]);
+    expect(writes('items', 'update')).toEqual([]);
+  });
+});
+
 describe('validation', () => {
   it.each([
     ['invalid JSON', '{'],
@@ -2166,6 +2330,10 @@ describe('validation', () => {
     ['a day of the month as a string', { action: 'repeat', frequency: 'monthly', monthDay: '1' }],
     ['a day of the month of 0', { action: 'repeat', frequency: 'monthly', monthDay: 0 }],
     ['a repeat with a date in it', { action: 'repeat', frequency: 'daily', startDate: DATE }],
+    ['a project edit with no projectId, which is not a clear', { action: 'project' }],
+    ['a project named, not by its id', { action: 'project', projectId: 'work' }],
+    ['a project id that is a number', { action: 'project', projectId: 5 }],
+    ['a project edit with a name in it', { action: 'project', projectId: PROJECT, name: 'Work' }],
   ])('400s %s before touching the row', async (_, body) => {
     const res = await write(body);
     expect(res.status).toBe(400);
@@ -2231,6 +2399,10 @@ describe('webhooks', () => {
       [ONE_OFF, { action: 'reminder', time: '08:00' }],
       [{ ...ONE_OFF, start_time: null, is_scheduled: true, duration: null }, { action: 'time', duration: 45 }],
       [{ ...ONE_OFF, repeat_days: null, repeat_month_day: null }, { action: 'repeat', frequency: 'daily' }],
+      [
+        { ...ONE_OFF, project: null, project_id: null, previous_start_time: null, previous_start_date: null },
+        { action: 'project', projectId: PROJECT },
+      ],
     ] as const) {
       row = r;
       // A new subtask is a created row: 201, as a capture is.

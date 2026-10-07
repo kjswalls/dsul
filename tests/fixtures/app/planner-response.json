@@ -26,7 +26,8 @@
     "timesPerDay",
     "reminder",
     "time",
-    "repeat"
+    "repeat",
+    "project"
   ],
   "items": [
     {
@@ -185,7 +186,9 @@
       "completedDates": [],
       "skippedDates": [],
       "order": 7,
-      "inProjectBlock": true
+      "inProjectBlock": true,
+      "previousStartTime": "16:00",
+      "previousStartDate": "2026-10-01"
     },
     {
       "type": "habit",

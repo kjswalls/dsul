@@ -12,6 +12,16 @@
     "timesPerDayMax": 5,
     "durationMax": 1440
   },
+  "projects": [
+    {
+      "id": "00000000-0000-4000-8000-00000000051e",
+      "name": "Work"
+    },
+    {
+      "id": "00000000-0000-4000-8000-00000000051f",
+      "name": "Health"
+    }
+  ],
   "cases": [
     {
       "name": "title-task",
@@ -3411,6 +3421,720 @@
         "order": 0,
         "startDate": "2026-10-01"
       }
+    },
+    {
+      "name": "project-set",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000520",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000520",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "anytime",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-same-name-and-id",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000521",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000521",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-same-name-folded",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000522",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000522",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-same-name-stale-id",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000523",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-000000000577"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000523",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-text-only-relink",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000524",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000524",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-move",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000525",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051f"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000525",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f"
+      }
+    },
+    {
+      "name": "project-clear",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000526",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": null,
+        "projectId": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000526",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "project-clear-text-only",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000527",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Health"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": null,
+        "projectId": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000527",
+        "title": "Standup",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "project-clear-unfiled",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000528",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {},
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000528",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "project-habit-set",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000529",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "project": ""
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-000000000529",
+        "title": "Meds",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-habit-clear",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000052a",
+        "title": "Water the plants",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": null,
+        "projectId": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000052a",
+        "title": "Water the plants",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "project-habit-clear-unfiled",
+      "item": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000052b",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily",
+        "project": ""
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": null,
+        "projectId": null
+      },
+      "after": {
+        "type": "habit",
+        "id": "00000000-0000-4000-8000-00000000052b",
+        "title": "Floss",
+        "streak": 0,
+        "status": "pending",
+        "completedDates": [],
+        "skippedDates": [],
+        "dailyCounts": {},
+        "repeatFrequency": "daily"
+      }
+    },
+    {
+      "name": "project-custom",
+      "item": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000052c",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "after": {
+        "type": "custom",
+        "customType": "errand",
+        "id": "00000000-0000-4000-8000-00000000052c",
+        "title": "Post office",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      }
+    },
+    {
+      "name": "project-leave-block",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000052d",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e",
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051f"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f",
+        "inProjectBlock": false,
+        "startTime": "14:00",
+        "startDate": "2026-10-01",
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000052d",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f",
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": false,
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "project-leave-block-clear",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000052e",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e",
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": null
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": null,
+        "projectId": null,
+        "inProjectBlock": false,
+        "startTime": "14:00",
+        "startDate": "2026-10-01",
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000052e",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": false,
+        "startTime": "14:00"
+      }
+    },
+    {
+      "name": "project-same-name-in-block",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000052f",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-000000000577",
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-00000000052f",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e",
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true,
+        "previousStartTime": "14:00",
+        "previousStartDate": "2026-10-01"
+      }
+    },
+    {
+      "name": "project-leave-block-undated",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000530",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Work",
+        "projectId": "00000000-0000-4000-8000-00000000051e",
+        "startDate": "2026-10-01",
+        "timeBucket": "morning",
+        "inProjectBlock": true
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051f"
+      },
+      "refusal": null,
+      "removed": [],
+      "created": null,
+      "updates": {
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f",
+        "inProjectBlock": false,
+        "startTime": null,
+        "startDate": null,
+        "previousStartTime": null,
+        "previousStartDate": null
+      },
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000530",
+        "title": "Review PRs",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "project": "Health",
+        "projectId": "00000000-0000-4000-8000-00000000051f",
+        "timeBucket": "morning",
+        "inProjectBlock": false
+      }
+    },
+    {
+      "name": "project-refused-subtask",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000531",
+        "title": "Write the three bets",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "00000000-0000-4000-8000-00000000051e"
+      },
+      "refusal": "not_for_subtask",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000531",
+        "title": "Write the three bets",
+        "status": "pending",
+        "isScheduled": false,
+        "order": 0,
+        "parentItemId": "00000000-0000-4000-8000-000000000001"
+      }
+    },
+    {
+      "name": "project-refused-not-a-uuid",
+      "item": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000532",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      },
+      "children": [],
+      "edit": {
+        "action": "project",
+        "projectId": "work"
+      },
+      "refusal": "invalid",
+      "removed": [],
+      "created": null,
+      "updates": null,
+      "after": {
+        "type": "task",
+        "id": "00000000-0000-4000-8000-000000000532",
+        "title": "Groceries",
+        "status": "pending",
+        "isScheduled": true,
+        "order": 0,
+        "startDate": "2026-10-01"
+      }
     }
   ],
   "trim": [
@@ -4313,6 +5037,21 @@
       "Fri",
       "Sat"
     ]
+  },
+  "containers": {
+    "project": {
+      "label": "Project",
+      "labelPlural": "Projects",
+      "unsetLabel": "No project"
+    },
+    "routine": {
+      "label": "Routine",
+      "labelPlural": "Routines"
+    },
+    "season": {
+      "label": "Season",
+      "labelPlural": "Seasons"
+    }
   },
   "buckets": {
     "forTime": [

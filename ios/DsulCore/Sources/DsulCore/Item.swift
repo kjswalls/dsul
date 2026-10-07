@@ -38,6 +38,9 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     public var repeatFrequency: String?
     /// The container's NAME, which is what the web displays and matches on.
     public var project: String?
+    /// The project's id (items.project_id): nil for a name with no project row
+    /// (a text-only reference) or none at all.
+    public var projectId: String?
     public var parentItemId: String?
     /// The instant a pause began, as Postgres wrote it.
     public var pausedAt: String?
@@ -63,6 +66,10 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     public var currentDayCount: Int?
     public var isScheduled: Bool?
     public var inProjectBlock: Bool?
+    /// Where a task parked in its project's block stood before it was parked
+    /// (moveTasksToProjectBlock), put back when it leaves the block.
+    public var previousStartTime: String?
+    public var previousStartDate: String?
     public var repeatDays: [Int]?
     public var completedDates: [String]
     public var skippedDates: [String]
@@ -79,6 +86,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         timeBucket: String? = nil,
         repeatFrequency: String? = nil,
         project: String? = nil,
+        projectId: String? = nil,
         parentItemId: String? = nil,
         pausedAt: String? = nil,
         pausedUntil: String? = nil,
@@ -94,6 +102,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         currentDayCount: Int? = nil,
         isScheduled: Bool? = nil,
         inProjectBlock: Bool? = nil,
+        previousStartTime: String? = nil,
+        previousStartDate: String? = nil,
         repeatDays: [Int]? = nil,
         completedDates: [String] = [],
         skippedDates: [String] = [],
@@ -109,6 +119,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = timeBucket
         self.repeatFrequency = repeatFrequency
         self.project = project
+        self.projectId = projectId
         self.parentItemId = parentItemId
         self.pausedAt = pausedAt
         self.pausedUntil = pausedUntil
@@ -124,6 +135,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.currentDayCount = currentDayCount
         self.isScheduled = isScheduled
         self.inProjectBlock = inProjectBlock
+        self.previousStartTime = previousStartTime
+        self.previousStartDate = previousStartDate
         self.repeatDays = repeatDays
         self.completedDates = completedDates
         self.skippedDates = skippedDates
@@ -147,10 +160,11 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
 
     enum CodingKeys: String, CodingKey {
         case id, type, customType, title, status, startDate, startTime, timeBucket
-        case repeatFrequency, project, parentItemId, pausedAt, pausedUntil
+        case repeatFrequency, project, projectId, parentItemId, pausedAt, pausedUntil
         case notes, priority, reminderTime, reminderAnchor
         case duration, order, repeatMonthDay, streak, timesPerDay, currentDayCount
-        case isScheduled, inProjectBlock, repeatDays, completedDates, skippedDates, dailyCounts
+        case isScheduled, inProjectBlock, previousStartTime, previousStartDate
+        case repeatDays, completedDates, skippedDates, dailyCounts
     }
 
     /// Throws only for what makes a row meaningless: no uuid id, no type, no
@@ -171,6 +185,7 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = c.lenientString(.timeBucket)
         self.repeatFrequency = c.lenientString(.repeatFrequency)
         self.project = c.lenientString(.project)
+        self.projectId = c.lenientString(.projectId)
         self.parentItemId = c.lenientString(.parentItemId)
         self.pausedAt = c.lenientString(.pausedAt)
         self.pausedUntil = c.lenientString(.pausedUntil)
@@ -186,6 +201,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
         self.currentDayCount = c.lenientInt(.currentDayCount)
         self.isScheduled = c.lenientBool(.isScheduled)
         self.inProjectBlock = c.lenientBool(.inProjectBlock)
+        self.previousStartTime = c.lenientString(.previousStartTime)
+        self.previousStartDate = c.lenientString(.previousStartDate)
         self.repeatDays = c.lenientInts(.repeatDays)
         self.completedDates = c.lenientStrings(.completedDates) ?? []
         self.skippedDates = c.lenientStrings(.skippedDates) ?? []
@@ -193,7 +210,8 @@ public struct Item: Codable, Sendable, Hashable, Identifiable {
     }
 }
 
-/// packages/types `ProjectSchema`, the fields a recurring time block reads.
+/// packages/types `ProjectSchema`, the fields a recurring time block reads,
+/// and from 2f the web's colour and emoji.
 public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var id: String
     public var name: String
@@ -203,6 +221,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
     public var timeBucket: String?
     public var startTime: String?
     public var duration: Int?
+    /// The web's colour token and emoji. Decoded and drawn nowhere in part 2 (Q1 a).
+    public var color: String?
+    public var emoji: String?
 
     public init(
         id: String,
@@ -212,7 +233,9 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         repeatMonthDay: Int? = nil,
         timeBucket: String? = nil,
         startTime: String? = nil,
-        duration: Int? = nil
+        duration: Int? = nil,
+        color: String? = nil,
+        emoji: String? = nil
     ) {
         self.id = id
         self.name = name
@@ -222,10 +245,12 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = timeBucket
         self.startTime = startTime
         self.duration = duration
+        self.color = color
+        self.emoji = emoji
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration
+        case id, name, repeatFrequency, repeatDays, repeatMonthDay, timeBucket, startTime, duration, color, emoji
     }
 
     public init(from decoder: Decoder) throws {
@@ -238,6 +263,8 @@ public struct Project: Codable, Sendable, Hashable, Identifiable {
         self.timeBucket = c.lenientString(.timeBucket)
         self.startTime = c.lenientString(.startTime)
         self.duration = c.lenientInt(.duration)
+        self.color = c.lenientString(.color)
+        self.emoji = c.lenientString(.emoji)
     }
 }
 
