@@ -470,13 +470,14 @@ describe('refresh', () => {
   });
 
   it('drops an answer when a local write started after the select went out', async () => {
-    const r = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: false });
+    const r = row({ kind: 'mod', slug: 'water', name: 'Water', enabled: false, manifest: { version: 1, uses: [] } });
     await hydrateWith([r]);
     let release!: () => void;
     db.gate = new Promise<void>((resolve) => (release = resolve));
     db.results.push({ data: [{ ...r, name: 'Stale' }], error: null });
     const refreshing = useModsStore.getState().refresh(USER);
     db.gate = null;
+    db.results.push({ data: { manifest: r.manifest }, error: null });
     await useModsStore.getState().setEnabled(r.id, true);
     release();
     await refreshing;
@@ -651,6 +652,26 @@ describe('mods (build order 8)', () => {
       switchedOff: true,
     });
     expect(opsOf(2)[0]).toEqual(['update', [{ name: 'Water', manifest, enabled: false, source: SOURCE }]]);
+  });
+
+  it('setEnabled switches a mod on only when the stored uses are the ones this tab shows', async () => {
+    const existing = row({ kind: 'mod', slug: 'water', name: 'Water', manifest: { version: 1, uses: [] } });
+    await hydrateWith([existing]);
+    // Widened on another device since this tab loaded: nothing is written, the rows re-read.
+    db.results.push({ data: { manifest: { version: 1, uses: ['items:write'] } }, error: null });
+    expect(await useModsStore.getState().setEnabled(existing.id, true)).toBe(false);
+    expect(opsOf(1)[0]).toEqual(['select', ['manifest']]);
+    expect(db.calls.slice(2).some((c) => c.ops.some(([op]) => op === 'update'))).toBe(false);
+    expect(useModsStore.getState().rows[0].enabled).toBe(false);
+
+  });
+
+  it('setEnabled switches a mod on when the stored uses match', async () => {
+    const existing = row({ kind: 'mod', slug: 'water', name: 'Water', manifest: { version: 1, uses: ['storage'] } });
+    await hydrateWith([existing]);
+    db.results.push({ data: { manifest: { version: 1, uses: ['storage'] } }, error: null }, { error: null });
+    expect(await useModsStore.getState().setEnabled(existing.id, true)).toBe(true);
+    expect(opsOf(2)[0]).toEqual(['update', [{ enabled: true, disabled_reason: null }]]);
   });
 
   it('rename of a mod refuses "Sign in" with no call; a recipe may still be called that', async () => {

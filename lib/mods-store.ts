@@ -450,6 +450,26 @@ export const useModsStore = create<ModsStore>((set, get) => {
       const { available, hydratedUserId: userId, rows } = get();
       const before = rows.find((r) => r.id === id);
       if (!available || !userId || !before) return false;
+      // Switching a mod on is the consent to its uses, so it must be the uses
+      // this tab shows. A save on another device may have widened them since;
+      // then this tab re-reads its rows and the switch stays off.
+      if (enabled && before.kind === 'mod') {
+        const stored = await track(
+          createClient()
+            .from('user_mods')
+            .select('manifest')
+            .eq('id', id)
+            .eq('user_id', userId)
+            .maybeSingle()
+        );
+        const fresh = stored.error ? null : (stored.data as { manifest?: unknown } | null);
+        const shown = parseModManifest(before);
+        const current = fresh ? parseModManifest({ kind: 'mod', manifest: fresh.manifest }) : null;
+        if (!shown || !current || usesWidened(shown, current)) {
+          void get().refresh(userId);
+          return false;
+        }
+      }
       const patch = enabled ? { enabled, disabled_reason: null } : { enabled };
       set((s) => ({
         rows: s.rows.map((r) =>
