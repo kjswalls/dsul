@@ -310,6 +310,21 @@ function dismissLeftCards(before: Record<AskSurface, AskView[]>, after: Record<A
   }
 }
 
+/**
+ * Ask home's "It works." (components/ai/ask/it-works-card.tsx) is said once,
+ * for the moment a connection lands, and so is the note in its place when a
+ * sign-in that came home saved one whose test question went unanswered
+ * (`flowResult`, lib/connect-return.ts). A conversation pushed (a send from
+ * home, New chat) or opened (lib/open-chat.ts `openConversation`, an item's
+ * too) or Ask closing spends both; so does any send (conversations-store's
+ * `send`), a model change, a disconnect and a sign-out (ai-connection-store.ts).
+ */
+export function spendJustConnected(): void {
+  const ai = useAIConnectionStore.getState();
+  if (ai.justConnected) ai.setJustConnected(null);
+  if (ai.flowResult) ai.setFlowResult(null);
+}
+
 /** Re-open an item by id, as every opener does, if the planner still has it. True when it did. */
 function reopenItem(itemId: string): boolean {
   const item = usePlannerStore.getState().items.find((i) => i.id === itemId);
@@ -342,6 +357,7 @@ export const useRailStore = create<RailState>()((set, get) => {
       const { stacks } = get();
       const kept = stacks[surface].filter((v) => ASK_LEVEL[v.kind] < ASK_LEVEL[view.kind]);
       setStacks({ ...stacks, [surface]: [...kept, view] }, 'push');
+      if (view.kind === 'conversation') spendJustConnected();
     },
 
     back: (surface) => {
@@ -464,6 +480,7 @@ export const useRailStore = create<RailState>()((set, get) => {
       if (!get().summoned) return;
       const handBack = focusIsInRail();
       set({ summoned: false });
+      spendJustConnected();
       // A docked Ask kept open stays where it is, and so does its record.
       if (railModeNow() !== 'hidden') return;
       const el = takeFocusRecord();
@@ -474,6 +491,7 @@ export const useRailStore = create<RailState>()((set, get) => {
       const handBack = focusIsInRail();
       useSidebarStore.getState().setAskOpen(false);
       set({ summoned: false });
+      spendJustConnected();
       // Taken either way: a record left behind would answer a later, unrelated close.
       const el = takeFocusRecord();
       if (handBack) restoreFocus(el);

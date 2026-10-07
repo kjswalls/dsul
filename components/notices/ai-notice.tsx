@@ -7,7 +7,7 @@ import { AskMarkIcon } from '@/components/ai/ask-mark';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { useAISettingsStore } from '@/lib/ai-settings-store';
 import { NOTICE_RANK, type DockNotice } from '@/lib/dock-notices';
-import { PROVIDER_META, type ModelProviderId } from '@/lib/ai-types';
+import { AI_SETTINGS_PATH, PROVIDER_META, type ModelProviderId } from '@/lib/ai-types';
 
 /**
  * The AI's two dock lines: "your key stopped working" and "AI now uses your own
@@ -26,8 +26,8 @@ import { PROVIDER_META, type ModelProviderId } from '@/lib/ai-types';
  * idiom for a condition that waits too.
  */
 
-/** Where both notices send you: Settings → AI (the pane id is a contract). */
-const SETTINGS_HREF = '/settings/beacon';
+/** Where both notices send you: Settings → AI, by the path the address bar shows (the pane id 'beacon' is a contract). */
+const SETTINGS_HREF = AI_SETTINGS_PATH;
 
 /**
  * The failing line's words. "AI paused" only when it is true: a failing model

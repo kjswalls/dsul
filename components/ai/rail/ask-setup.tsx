@@ -2,24 +2,18 @@
 
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
-import {
-  CalendarDays,
-  CalendarRange,
-  CircleAlert,
-  History,
-  Hourglass,
-  ListChecks,
-  MessageCircle,
-  type LucideIcon,
-} from 'lucide-react';
+import { CircleAlert, MessageCircle } from 'lucide-react';
 import { AskMark } from '@/components/ai/ask-mark';
 import { AskGreeting } from '@/components/ai/ask/ask-greeting';
+import { OPENER_ICONS } from '@/components/ai/ask/it-works-card';
 import { ASK_SECTION_HEADING } from '@/components/ai/ask/needs-you';
+import { ConnectAI } from '@/components/ai/connect/connect-ai';
+import { ConnectFix, fixCopy } from '@/components/ai/connect/connect-fix';
+import { labelName, useRefreshOnWindowFocus } from '@/components/ai/connect/connect-shared';
 import { RailHeader } from '@/components/ai/rail/rail-header';
 import { Button } from '@/components/ui/button';
 import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { buildOpenerPreviews } from '@/lib/ai-openers';
-import { PROVIDER_META, type ModelConnectionView } from '@/lib/ai-types';
 import { chooseNoAI } from '@/lib/no-ai';
 import { useRailStore } from '@/lib/rail-store';
 import { useOpenerContext } from '@/hooks/use-opener-context';
@@ -28,24 +22,13 @@ import { useOpenerContext } from '@/hooks/use-opener-context';
 export const SETUP_PREVIEWS = 3;
 
 /**
- * Where the setup column sends someone to connect, until the column carries
- * its own connect card: Settings → AI, its key field ringed (`?focus=`, the
- * settings page routes the id to its pane). The pane's id is permanent, so
- * the path keeps its old lowercase name; nothing on screen says it.
+ * Settings → AI by its alias (`/settings/ai`; the pane's id stays 'beacon',
+ * and nothing on screen says it), its key field or its model row ringed
+ * (`?focus=`, the settings page routes the id to its pane). The copy for the
+ * fix home lives with its card, and is named here as it always was.
  */
-export const SETUP_SETTINGS_HREF = '/settings/beacon?focus=beacon.apiKey';
-/** A saved connection with no model picked: the model row. */
-export const SETUP_MODEL_HREF = '/settings/beacon?focus=beacon.model';
-
-/** Each preview's glyph, beside its quoted words; a later opener falls back to a speech bubble. */
-const PREVIEW_ICONS: Record<string, LucideIcon> = {
-  plan: CalendarDays,
-  triage: ListChecks,
-  'plan-tomorrow': CalendarDays,
-  'let-go': Hourglass,
-  review: History,
-  reflect: CalendarRange,
-};
+export { SETUP_MODEL_HREF, SETUP_SETTINGS_HREF } from '@/components/ai/connect/connect-shared';
+export { fixCopy };
 
 const park = () => useRailStore.getState().park();
 
@@ -74,17 +57,26 @@ function typing(el: Element): boolean {
  *  - Setup home: Ask's own greeting, then what the person could ask now, the
  *    chips Ask would offer today as quoted previews (lib/ai-openers.ts
  *    `buildOpenerPreviews`): no hover, no arrows, nothing to press, since
- *    nothing answers yet. Then the way in, which is Settings → AI for now.
+ *    nothing answers yet. Then the way in, right here: the connect card, its
+ *    folds and Good to know (components/ai/connect/connect-ai.tsx).
  *  - Fix home: the saved connection, what is wrong with it in plain words,
- *    the way to Settings → AI, and a fresh check of the key it has.
+ *    a box for a new key, and a fresh check of the key it has
+ *    (connect-fix.tsx). A connection with no model picked is fixed in
+ *    Settings → AI instead.
  *  - The foot, pinned: "AI is optional. dsul works fully without it." and
  *    No AI, thanks, which hides AI on every device with an Undo in the strip
  *    (lib/no-ai.ts).
  *
  * Nothing in it is lime, and nothing fades in: the column's own width slide
  * is its entrance (CLAUDE.md, the lime accent; right-rail.tsx slides too).
- * Escape closes it, docked or overlaid: unlike Ask it is not a place to rest.
+ * Escape closes it, docked or overlaid: unlike Ask it is not a place to rest,
+ * except from a key box with a key in it, which keeps its own Escape.
  * Focus, lost when the key that opened it hid, goes to its heading.
+ *
+ * It stays mounted, hidden and inert, under an item opened over it (the
+ * shell's `setupMounted`), so a key left in a box, and what was said about
+ * it, are still there when the item closes. While hidden it takes no focus,
+ * hears no Escape and asks the server nothing.
  */
 export function AskSetup({
   visible,
@@ -103,6 +95,10 @@ export function AskSetup({
   const kind = live ?? shown;
   const word = kind === 'fix' ? 'Fix AI' : 'Set up AI';
   const asideRef = useRef<HTMLElement>(null);
+
+  // In the desktop app a sign-in finishes in the browser: the window asks
+  // again when it comes back, while this shows.
+  useRefreshOnWindowFocus(visible);
 
   // There is no box here. A composer request (Ask's, made just before the
   // gate changed) would wait for the next box to mount anywhere and take the
@@ -199,7 +195,8 @@ function SetupHome() {
           </h3>
           <ul className="flex flex-col gap-3">
             {previews.map((p) => {
-              const Icon = PREVIEW_ICONS[p.id] ?? MessageCircle;
+              // The live row's glyph (it-works-card.tsx), so a preview keeps it once it can be asked.
+              const Icon = OPENER_ICONS[p.id] ?? MessageCircle;
               return (
                 <li key={p.id} data-preview={p.id} className="flex gap-2.5">
                   <Icon aria-hidden className="mt-0.5 size-4 shrink-0 text-ai" />
@@ -214,142 +211,36 @@ function SetupHome() {
           <p className="text-xs text-muted-foreground">Each becomes one click once AI is connected.</p>
         </section>
       )}
-      <section data-testid="setup-connect" className="flex flex-col gap-2 rounded-xl border border-border bg-surface-2 p-4">
-        <h3 className="text-sm font-medium text-foreground">Connect AI</h3>
-        <p className="text-sm leading-snug text-muted-foreground">
-          Use a free key from Google, a key you already have, or your own OpenClaw agent. It takes about a minute.
-        </p>
-        <Button asChild variant="outline" size="sm" className="mt-1 self-start">
-          <Link href={SETUP_SETTINGS_HREF}>Set up in Settings → AI</Link>
-        </Button>
-      </section>
+      <ConnectAI host="column" />
     </>
   );
 }
 
-/** Who turned the key down, as a sentence's subject. */
-function providerName(model: ModelConnectionView): string {
-  return model.provider === 'custom' ? 'Your service' : PROVIDER_META[model.provider].label;
-}
-
 /**
- * What is wrong with the saved connection, in plain words. `askFix` covers a
- * key the provider stopped accepting, a key dsul can no longer read, and a
- * connection saved with no model picked. An OpenRouter sign-in never had a
- * key to paste, so its copy says sign-in and "connect it again" (Settings →
- * AI offers Sign in again on the web, a key in the desktop app).
- *
- * `check` labels the fresh check and `still` is what it says when the
- * provider still turns it down.
+ * A saved model that needs attention. A key turned down, or one dsul can't
+ * read, is fixed in place (ConnectFix); a connection with no model picked
+ * says so, and the way to its model row in Settings → AI. One that works
+ * again has nothing to fix: the column is becoming Ask.
  */
-export function fixCopy(model: ModelConnectionView): {
-  status: string;
-  note: string;
-  href: string;
-  action: string;
-  check: string;
-  still: string;
-} {
-  const signIn = model.authMethod === 'oauth';
-  const check = signIn ? 'Check again' : 'Check the key again';
-  const still = signIn
-    ? `${providerName(model)} still turns it down. Connecting again in Settings → AI fixes it.`
-    : `${providerName(model)} still turns it down. A new key in Settings → AI fixes it.`;
-  if (model.status !== 'failing') {
-    return {
-      status: 'No model picked',
-      note: 'No model is picked yet, so AI can’t answer. Pick one in Settings → AI.',
-      href: SETUP_MODEL_HREF,
-      action: 'Pick a model in Settings → AI',
-      check,
-      still,
-    };
-  }
-  if (model.problem === 'key_unreadable') {
-    return {
-      status: 'Needs attention',
-      note: signIn
-        ? 'dsul can’t read your saved sign-in anymore, so AI can’t answer right now. Connect it again in Settings → AI and Ask picks up where it left off.'
-        : 'dsul can’t read your saved key anymore, so AI can’t answer right now. Paste it again in Settings → AI and Ask picks up where it left off.',
-      href: SETUP_SETTINGS_HREF,
-      action: 'Fix it in Settings → AI',
-      check,
-      still,
-    };
-  }
-  return {
-    status: 'Needs attention',
-    note: signIn
-      ? `${providerName(model)} stopped accepting your sign-in, so AI can’t answer right now. Connect it again in Settings → AI and Ask picks up where it left off.`
-      : `${providerName(model)} stopped accepting your key, so AI can’t answer right now. Paste a new one in Settings → AI and Ask picks up where it left off.`,
-    href: SETUP_SETTINGS_HREF,
-    action: 'Fix it in Settings → AI',
-    check,
-    still,
-  };
-}
-
-/** A saved model that needs attention: what is wrong, and the way to fix it. */
 function FixHome() {
   const model = useAIConnectionStore((s) => s.model);
-  const busy = useAIConnectionStore((s) => s.busy);
-  const [still, setStill] = useState<string | null>(null);
   if (!model) return null;
+  if (model.status === 'failing') return <ConnectFix model={model} />;
+  if (model.model) return null;
   const copy = fixCopy(model);
-  // A fresh check only helps a key the provider turned down: an unreadable
-  // key reads no better a second time, and a missing model is not a key.
-  const canRecheck = model.status === 'failing' && model.problem !== 'key_unreadable';
-  const title = model.provider === 'custom' ? 'Your own service' : PROVIDER_META[model.provider].label;
-
-  const recheck = async () => {
-    // Pressed again while a check is out: the button stays focusable while
-    // busy (a focused button that goes `disabled` drops focus to <body>).
-    if (useAIConnectionStore.getState().busy !== null) return;
-    setStill(null);
-    const result = await useAIConnectionStore.getState().recheck();
-    if (result.ok) {
-      // The route answers a check it could make with the connection as it now
-      // stands, so a key still turned down is an ok answer whose status still
-      // reads failing. Working again, the gate lights and the column becomes
-      // Ask on its own; anything else rewrites the note above by itself.
-      const now = useAIConnectionStore.getState().model;
-      if (now?.status === 'failing' && now.problem === 'key_rejected') setStill(copy.still);
-      return;
-    }
-    setStill(result.code === 'key_rejected' ? copy.still : 'Couldn’t check it just now. Try again in a moment.');
-  };
-
   return (
     <section data-testid="setup-fix" className="flex flex-col gap-3 rounded-xl border border-border bg-surface-2 p-4">
       <div className="flex flex-col gap-0.5">
-        <h3 className="text-sm font-medium text-foreground">{title}</h3>
+        <h3 className="text-sm font-medium text-foreground">{labelName(model.provider, model.baseUrl)}</h3>
         <p className="text-xs text-muted-foreground">{copy.status}</p>
       </div>
       <div className="flex gap-2 rounded-lg bg-warning/10 px-3 py-2.5">
         <CircleAlert aria-hidden className="mt-0.5 size-4 shrink-0 text-warning-text" />
         <p className="text-sm leading-snug text-foreground">{copy.note}</p>
       </div>
-      <div className="flex flex-wrap items-center gap-2">
-        <Button asChild variant="outline" size="sm">
-          <Link href={copy.href}>{copy.action}</Link>
-        </Button>
-        {canRecheck && (
-          <button
-            type="button"
-            data-testid="setup-recheck"
-            aria-disabled={busy !== null || undefined}
-            onClick={() => void recheck()}
-            className="rounded-md px-2 py-1 text-sm text-muted-foreground transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none aria-disabled:cursor-default aria-disabled:hover:text-muted-foreground"
-          >
-            {busy === 'recheck' ? 'Checking…' : copy.check}
-          </button>
-        )}
-      </div>
-      {still && (
-        <p role="status" className="text-xs text-muted-foreground">
-          {still}
-        </p>
-      )}
+      <Button asChild variant="outline" size="sm" className="self-start">
+        <Link href={copy.href}>{copy.action}</Link>
+      </Button>
     </section>
   );
 }

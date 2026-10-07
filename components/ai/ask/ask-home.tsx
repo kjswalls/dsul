@@ -7,10 +7,11 @@ import { OpenerChips } from '@/components/ai/opener-chips';
 import { AskGreeting } from '@/components/ai/ask/ask-greeting';
 import { NeedsYou } from '@/components/ai/ask/needs-you';
 import { AIActivity } from '@/components/ai/ask/ai-activity';
+import { AskFlowNote, ItWorksCard, useItWorksShown } from '@/components/ai/ask/it-works-card';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useConversationsStore } from '@/lib/conversations-store';
 import { useEODStore } from '@/lib/eod-store';
-import { buildChatOpeners, HOME_OPENERS } from '@/lib/ai-openers';
+import { buildChatOpeners, HOME_OPENERS, type ChatOpener } from '@/lib/ai-openers';
 import { activityRows, dayEndFromReview, dayLoad, loadLine, needsYou } from '@/lib/ask-home';
 import { askNew } from '@/lib/open-chat';
 import { useAgentFreshness } from '@/hooks/use-agent-freshness';
@@ -89,6 +90,13 @@ function useScrollsBeneath(ref: RefObject<HTMLElement | null>): boolean {
  * for more". A rule, never a mask or an opacity fade: either would dim a lime
  * mark scrolling under it (CLAUDE.md, the lime accent).
  *
+ * Right after a connection lands in this tab, "It works." sits under the
+ * greeting with three of today's openers as live rows
+ * (components/ai/ask/it-works-card.tsx), and the foot's chips stand down
+ * until it is spent, so no opener is offered twice. An OpenRouter sign-in
+ * that came home saved but unanswered says why in its place, quietly
+ * (AskFlowNote, beside the card), and leaves the chips be.
+ *
  * `variant="mobile"` is the phone's Ask tab: the same home, pushing on the
  * phone's stack, with no box of its own (the dock's bar is the tab's box).
  */
@@ -138,6 +146,8 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
 
   const scrollerRef = useRef<HTMLDivElement>(null);
   const beneath = useScrollsBeneath(scrollerRef);
+  const itWorks = useItWorksShown();
+  const pick = (opener: ChatOpener) => askNew(opener.prompt, { title: opener.label, isMobile: phone });
 
   return (
     <div data-ask-home="" className="flex min-h-0 flex-1 flex-col">
@@ -155,6 +165,8 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
             </p>
           )}
         </div>
+        <ItWorksCard ctx={ctx} minutesNow={minutesNow} onPick={pick} />
+        <AskFlowNote />
         <NeedsYou items={waiting} />
         <AIActivity rows={activity} surface={phone ? 'phone' : 'desktop'} />
       </div>
@@ -168,11 +180,7 @@ export function AskHome({ variant = 'rail' }: { variant?: 'rail' | 'mobile' }) {
           beneath ? 'border-border' : 'border-transparent'
         )}
       >
-        <OpenerChips
-          openers={openers}
-          onPick={(opener) => askNew(opener.prompt, { title: opener.label, isMobile: phone })}
-          className="px-2"
-        />
+        {!itWorks && <OpenerChips openers={openers} onPick={pick} className="px-2" />}
         {!phone && <BoundComposer binding={HOME} />}
       </div>
     </div>

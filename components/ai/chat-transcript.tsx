@@ -7,7 +7,7 @@ import remarkGfm from 'remark-gfm';
 import { ProposalCard } from '@/components/ai/proposal-card';
 import { TypingIndicator } from '@/components/ui/typing-indicator';
 import { useConversationsStore, type ChatMessage } from '@/lib/conversations-store';
-import { useAICapabilities } from '@/lib/ai-connection-store';
+import { useAICapabilities, useAIConnectionStore } from '@/lib/ai-connection-store';
 import { usePlannerStore } from '@/lib/planner-store';
 import { useProposalStore } from '@/lib/proposal-store';
 import { buildPlanPrompt } from '@/lib/plan-prompt';
@@ -216,6 +216,9 @@ const Reply = memo(function Reply({
   const { canPropose, openclawTransport } = useAICapabilities();
   const userTimezone = usePlannerStore((s) => s.userTimezone);
   const timeFormat = usePlannerStore((s) => s.timeFormat);
+  // When today's limit lifts, while one holds: the server's word, read with
+  // the connection (lib/ai-connection-store.ts `noteCallFailure` re-reads it).
+  const limitedUntil = useAIConnectionStore((s) => s.model?.limitedUntil ?? null);
   const streaming = m.status === 'streaming';
   const text = m.content ? stripReasoningTags(m.content).replace(/^\[\[reply_to[^\]]*\]\]\s*/i, '') : '';
 
@@ -239,10 +242,12 @@ const Reply = memo(function Reply({
       )}
       {/* A failed reply's words are ours, by its code, never its content: they
           were not the AI's to save or to send back to a model. Not a live
-          region of its own: ReplyStatus says it once, for the reply seen failing. */}
+          region of its own: ReplyStatus says it once, for the reply seen failing.
+          A daily limit says when it lifts, on the planner's clock, while the
+          connection says one holds; the saved code alone stays time-free. */}
       {m.status === 'error' && (
         <p data-testid="chat-error-note" className="text-sm text-muted-foreground">
-          {chatErrorCopy(m.errorCode, m.answerer)}
+          {chatErrorCopy(m.errorCode, m.answerer, { resetAt: limitedUntil, timeZone: userTimezone, timeFormat })}
         </p>
       )}
       {!streaming && (

@@ -11,9 +11,11 @@ import { join } from 'node:path';
  * this is what it says and what "No AI, thanks" does.
  *
  *  - Setup home: the greeting, what the person could ask now (the chips Ask
- *    would offer today, quoted, nothing to press), and the way to connect.
- *  - Fix home: the saved connection, what is wrong in plain words, the way to
- *    Settings → AI, and a fresh check where one can help.
+ *    would offer today, quoted, nothing to press), and the connect card
+ *    (its own behaviour is connect-ai.test.tsx's).
+ *  - Fix home: the saved connection, what is wrong in plain words, a box for
+ *    a new key, and a fresh check where one can help (the box's own behaviour
+ *    is connect-fix.test.tsx's).
  *  - The foot: "No AI, thanks" closes the column, hides AI for the account at
  *    once, and says so in the undo strip, in prose, with focus on Undo; Undo
  *    takes it back, and a write that fails takes the strip down.
@@ -175,10 +177,14 @@ describe('the setup home', () => {
     expect(within(column()).getByRole('heading', { level: 2 })).toHaveTextContent(/^Set up AI$/);
     // The unlit mark leads the header; History and New chat are not there.
     expect(column().querySelector('[data-ask-heading] [data-ask-mark]')).toHaveAttribute('data-lit', 'false');
-    expect(within(column()).getAllByRole('button').map((b) => b.getAttribute('aria-label') ?? b.textContent)).toEqual([
-      'Close',
-      'No AI, thanks',
-    ]);
+    // Outside the connect card: ✕ and No AI, thanks, nothing else.
+    const card = screen.getByTestId('connect-ai');
+    expect(
+      within(column())
+        .getAllByRole('button')
+        .filter((b) => !card.contains(b))
+        .map((b) => b.getAttribute('aria-label') ?? b.textContent)
+    ).toEqual(['Close', 'No AI, thanks']);
     expect(column().querySelector('[data-ask-greeting]')).toHaveTextContent('Evening, Kirby.');
 
     // Evening, with something sitting: the three Ask would offer, in its order.
@@ -195,13 +201,19 @@ describe('the setup home', () => {
     expect(within(previews).queryAllByRole('link')).toEqual([]);
     expect(screen.queryByTestId('chat-openers')).toBeNull();
 
-    // The way in, for now: Settings → AI, its key field ringed.
-    const connect = screen.getByTestId('setup-connect');
-    expect(within(connect).getByRole('link', { name: 'Set up in Settings → AI' })).toHaveAttribute(
+    // The way in, right here: the connect card, after the previews, the
+    // column's own (sign-in returns home, the only Settings link is Good to know's).
+    expect(card).toHaveAttribute('data-connect-host', 'column');
+    expect(previews.compareDocumentPosition(card) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.queryByTestId('setup-connect')).toBeNull();
+    expect(screen.getByTestId('connect-openrouter-signin').getAttribute('href')).toBe('/api/ai/openrouter/start?r=home');
+    expect(within(screen.getByTestId('connect-good-to-know')).getByRole('link', { name: 'Settings → AI' })).toHaveAttribute(
       'href',
-      SETUP_SETTINGS_HREF
+      '/settings/ai'
     );
-    expect(SETUP_SETTINGS_HREF).toBe('/settings/beacon?focus=beacon.apiKey');
+    // Settings → AI by its alias wherever the column names it.
+    expect(SETUP_SETTINGS_HREF).toBe('/settings/ai?focus=beacon.apiKey');
+    expect(SETUP_MODEL_HREF).toBe('/settings/ai?focus=beacon.model');
 
     // None of Ask's own markers: those mean "Ask is on screen".
     for (const sel of ['[data-rail-view]', '[data-ask-home]', '[data-ask-composer]', 'textarea']) {
@@ -247,56 +259,78 @@ describe('the fix home', () => {
     model: { ...KEY_TURNED_DOWN.model, ...over },
   });
 
-  it('names the connection and says the key was turned down, with the way to fix it and a fresh check', async () => {
+  it('names the connection and says the key was turned down, with a box for a new key and a fresh check', async () => {
     seed(KEY_TURNED_DOWN);
     render(<AskSetup visible />);
     expect(column()).toHaveAttribute('data-ask-setup', 'fix');
     expect(within(column()).getByRole('heading', { level: 2 })).toHaveTextContent(/^Fix AI$/);
     const fix = screen.getByTestId('setup-fix');
-    expect(fix).toHaveTextContent('Google Gemini');
-    expect(fix).toHaveTextContent('Needs attention');
+    expect(within(fix).getByRole('heading', { level: 3 })).toHaveTextContent(/^Google Gemini$/);
+    // Turned down at the seed's checkedAt, six and a bit days before this evening.
+    expect(screen.getByTestId('fix-line')).toHaveTextContent(/^Key saved · Google turned it down 7 days ago$/);
     expect(fix).toHaveTextContent(
-      'Google Gemini stopped accepting your key, so AI can’t answer right now. Paste a new one in Settings → AI and Ask picks up where it left off.'
+      'Google stopped accepting your key, so AI can’t answer right now. Paste a new one and Ask picks up where it left off.'
     );
-    expect(within(fix).getByRole('link', { name: 'Fix it in Settings → AI' })).toHaveAttribute('href', SETUP_SETTINGS_HREF);
-    // No previews here: the fix is the point.
+    expect(within(fix).getByLabelText('New Gemini key')).toBe(screen.getByTestId('fix-key'));
+    // Everything else is in Settings → AI, by its alias, outside the card.
+    const caption = screen.getByTestId('fix-caption');
+    expect(fix).not.toContainElement(caption);
+    expect(within(caption).getByRole('link', { name: 'Settings → AI' })).toHaveAttribute('href', '/settings/ai');
+    // No previews and no connect card here: the fix is the point.
     expect(screen.queryByTestId('setup-previews')).toBeNull();
+    expect(screen.queryByTestId('connect-ai')).toBeNull();
 
     // The check, through the store and the route's own answers. A key still
     // turned down is not a failed request: the route checked, and answers
     // with the connection as it stands, still failing.
+    const status = screen.getByTestId('fix-status');
+    expect(status).toHaveAttribute('role', 'status');
+    expect(status).toBeEmptyDOMElement();
     const press = () =>
       act(async () => {
-        fireEvent.click(within(fix).getByRole('button', { name: 'Check the key again' }));
+        fireEvent.click(within(fix).getByRole('button', { name: 'Check the old key again' }));
       });
     recheckReply = { status: 200, body: { connection: { ...KEY_TURNED_DOWN.model, baseUrl: null, authMethod: 'key', checkedAt: null } } };
     await press();
     expect(patches).toEqual([{ recheck: true }]);
-    expect(within(fix).getByRole('status')).toHaveTextContent(
-      'Google Gemini still turns it down. A new key in Settings → AI fixes it.'
+    expect(status).toHaveTextContent('Google still turns it down. A new key above fixes it.');
+
+    // An answer about the provider, not the key, says which.
+    recheckReply = { status: 502, body: { error: 'unreachable' } };
+    await press();
+    expect(status).toHaveTextContent('Google couldn’t answer the test question just now. Check again in a moment.');
+    recheckReply = { status: 403, body: { error: 'region' } };
+    await press();
+    expect(status).toHaveTextContent(
+      'Google won’t answer from where dsul’s server is right now. A key from another service works instead, in Settings → AI.'
     );
 
     // A check that could not be made says so, and nothing about the key.
-    recheckReply = { status: 502, body: { error: 'unreachable' } };
+    recheckReply = { status: 500, body: { error: 'server' } };
     await press();
-    expect(within(fix).getByRole('status')).toHaveTextContent('Couldn’t check it just now. Try again in a moment.');
+    expect(status).toHaveTextContent('Couldn’t check it just now. Try again in a moment.');
 
-    // Working again: nothing to say here, the gate lights.
+    // Working again: nothing to fix, the gate lights and the column becomes Ask.
     recheckReply = {
       status: 200,
       body: { connection: { ...KEY_TURNED_DOWN.model, status: 'ok', problem: null, baseUrl: null, authMethod: 'key', checkedAt: null } },
     };
     await press();
-    expect(within(fix).queryByRole('status')).toBeNull();
     expect(getAICapabilities().canChat).toBe(true);
-    expect(patches).toHaveLength(3);
+    expect(screen.queryByTestId('setup-fix')).toBeNull();
+    expect(patches).toHaveLength(5);
   });
 
   it('offers no fresh check for a key dsul cannot read, nor for a missing model', () => {
     seed(failing({ problem: 'key_unreadable' }));
     const { unmount } = render(<AskSetup visible />);
-    expect(screen.getByTestId('setup-fix')).toHaveTextContent('dsul can’t read your saved key anymore');
-    expect(screen.queryByRole('button', { name: 'Check the key again' })).toBeNull();
+    expect(screen.getByTestId('setup-fix')).toHaveTextContent(
+      'dsul can’t read your saved key anymore, so AI can’t answer right now. Paste it again and Ask picks up where it left off.'
+    );
+    expect(screen.getByTestId('fix-line')).toHaveTextContent(/^Key saved · Needs attention$/);
+    expect(screen.queryByTestId('setup-recheck')).toBeNull();
+    // A box to paste it into, all the same.
+    expect(screen.getByTestId('fix-key')).toBeInTheDocument();
     unmount();
 
     seed({ ...KEY_TURNED_DOWN, model: { provider: 'openai', model: null, status: 'ok', problem: null } });
@@ -305,7 +339,8 @@ describe('the fix home', () => {
     expect(fix).toHaveTextContent('OpenAI');
     expect(fix).toHaveTextContent('No model picked');
     expect(within(fix).getByRole('link', { name: 'Pick a model in Settings → AI' })).toHaveAttribute('href', SETUP_MODEL_HREF);
-    expect(screen.queryByRole('button', { name: 'Check the key again' })).toBeNull();
+    expect(screen.queryByTestId('setup-recheck')).toBeNull();
+    expect(screen.queryByTestId('fix-key')).toBeNull();
   });
 
   it('an OpenRouter sign-in is a sign-in, never a key to paste', () => {
@@ -318,19 +353,21 @@ describe('the fix home', () => {
         status: 'failing',
         problem,
         checkedAt: null,
+        limitedUntil: null,
+        modelLabel: null,
       });
     expect(oauth('key_rejected').note).toBe(
-      'OpenRouter stopped accepting your sign-in, so AI can’t answer right now. Connect it again in Settings → AI and Ask picks up where it left off.'
+      'OpenRouter stopped accepting your sign-in, so AI can’t answer right now. Sign in again and Ask picks up where it left off.'
     );
     expect(oauth('key_unreadable').note).toBe(
-      'dsul can’t read your saved sign-in anymore, so AI can’t answer right now. Connect it again in Settings → AI and Ask picks up where it left off.'
+      'dsul can’t read your saved sign-in anymore, so AI can’t answer right now. Sign in again and Ask picks up where it left off.'
     );
     for (const problem of ['key_rejected', 'key_unreadable'] as const) {
       const copy = oauth(problem);
       expect(`${copy.note} ${copy.check} ${copy.still}`).not.toMatch(/\bkey\b|[Pp]aste/);
     }
     expect(oauth('key_rejected').check).toBe('Check again');
-    expect(oauth('key_rejected').still).toBe('OpenRouter still turns it down. Connecting again in Settings → AI fixes it.');
+    expect(oauth('key_rejected').still).toBe('OpenRouter still turns it down. Signing in again fixes it.');
   });
 
   it('keeps the check focusable while it runs, and ignores a second press', async () => {
@@ -361,18 +398,24 @@ describe('the fix home', () => {
     expect(document.activeElement).toBe(button);
   });
 
-  it('says "your service" for a custom address, never "Other"', () => {
-    const copy = fixCopy({
-      provider: 'custom',
-      model: 'm',
-      baseUrl: 'https://llm.example.com/v1',
-      authMethod: 'key',
-      status: 'failing',
-      problem: 'key_rejected',
-      checkedAt: null,
-    });
-    expect(copy.note).toMatch(/^Your service stopped accepting your key/);
-    expect(copy.note).not.toMatch(/\bOther\b/);
+  it('names a custom address by its host, or "Your service", never "Other"', () => {
+    const custom = (baseUrl: string | null) =>
+      fixCopy({
+        provider: 'custom',
+        model: 'm',
+        baseUrl,
+        authMethod: 'key',
+        status: 'failing',
+        problem: 'key_rejected',
+        checkedAt: null,
+        limitedUntil: null,
+        modelLabel: null,
+      });
+    expect(custom('https://llm.example.com/v1').note).toMatch(/^llm\.example\.com stopped accepting your key/);
+    expect(custom(null).note).toMatch(/^Your service stopped accepting your key/);
+    for (const copy of [custom('https://llm.example.com/v1'), custom(null)]) {
+      expect(`${copy.note} ${copy.still}`).not.toMatch(/\bOther\b/);
+    }
   });
 });
 
@@ -623,6 +666,66 @@ describe('No AI, thanks', () => {
       vi.advanceTimersByTime(AI_OFF_STRIP_MS);
     });
     expect(strip()).toHaveAttribute('data-undo-id', 'log-1');
+  });
+});
+
+describe('the column’s rules', () => {
+  const statusGets = () => fetchMock.mock.calls.filter(([, init]) => (init?.method ?? 'GET') === 'GET').length;
+  const paste = (input: HTMLElement, text: string) =>
+    fireEvent.paste(input, { clipboardData: { getData: () => text } });
+
+  it('asks the server again on window focus in the desktop app, only while it shows', async () => {
+    const w = window as unknown as { dsulDesktop?: unknown };
+    w.dsulDesktop = { version: 1 };
+    try {
+      const { rerender } = render(<AskSetup visible={false} />);
+      fetchMock.mockClear();
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      // Hidden under an item: it asks nothing.
+      expect(statusGets()).toBe(0);
+      rerender(<AskSetup visible />);
+      await act(async () => {
+        window.dispatchEvent(new Event('focus'));
+      });
+      expect(statusGets()).toBe(1);
+    } finally {
+      delete w.dsulDesktop;
+    }
+  });
+
+  it('asks nothing on window focus in a browser, where a sign-in comes back to this page', async () => {
+    render(<AskSetup visible />);
+    fetchMock.mockClear();
+    await act(async () => {
+      window.dispatchEvent(new Event('focus'));
+    });
+    expect(statusGets()).toBe(0);
+  });
+
+  it('has nothing lime in it, in either home, whatever is open or said', async () => {
+    const lime = () => Array.from(column().querySelectorAll<HTMLElement>('[class*="bg-primary"]'));
+    const { unmount } = render(<AskSetup visible />);
+    expect(lime()).toEqual([]);
+    // Every fold open in turn, the custom service too, and a note with actions.
+    fireEvent.click(screen.getByTestId('connect-fold-openrouter'));
+    expect(lime()).toEqual([]);
+    fireEvent.click(screen.getByTestId('connect-fold-any'));
+    fireEvent.click(screen.getByTestId('connect-custom-toggle'));
+    expect(lime()).toEqual([]);
+    paste(screen.getByTestId('connect-key'), 'sk-ant-api03-SENTINEL-9876');
+    expect(screen.getByTestId('connect-note')).toHaveAttribute('data-note', 'wrong');
+    fireEvent.change(screen.getByTestId('connect-any-key'), { target: { value: 'sk-SENTINEL-9876' } });
+    expect(screen.getByTestId('connect-chooser')).toBeInTheDocument();
+    expect(lime()).toEqual([]);
+    unmount();
+
+    seed(KEY_TURNED_DOWN);
+    render(<AskSetup visible />);
+    fireEvent.change(screen.getByTestId('fix-key'), { target: { value: 'AIzaSyTEST-SENTINEL-9876' } });
+    expect(screen.getByTestId('fix-submit')).toBeInTheDocument();
+    expect(lime()).toEqual([]);
   });
 });
 

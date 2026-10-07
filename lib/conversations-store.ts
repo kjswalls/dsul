@@ -28,7 +28,7 @@ import {
   type TurnOutcome,
 } from './chat-transport';
 import { addChanges, hasChanges } from './conversation-summary';
-import { useRailStore } from './rail-store';
+import { spendJustConnected, useRailStore } from './rail-store';
 import { useProposalStore } from './proposal-store';
 
 /**
@@ -1262,9 +1262,15 @@ export const useConversationsStore = create<ConversationsState>()((set, get) => 
       const content = cleanText(trimmed, CHAT_LIMITS.userChars);
       if (!/[^ \t\r\n]/.test(content)) return;
 
+      // The first send spends Ask home's "It works." (or the sign-in's note in
+      // its place), whichever box it came from (an item's does not push, so
+      // rail-store's push cannot see it).
+      spendJustConnected();
+      const ai = useAIConnectionStore.getState();
+
       const answerer: Answerer = caps.target === 'openclaw' ? 'openclaw' : 'model';
       const via = answerer === 'openclaw' && caps.openclawTransport === 'plugin' ? 'plugin' : 'chat';
-      const connected = useAIConnectionStore.getState().model?.model;
+      const connected = ai.model?.model;
       const modelId = answerer === 'model' && isModelId(connected) ? connected : null;
 
       const summary = get().summaries[id];

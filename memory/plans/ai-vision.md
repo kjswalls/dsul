@@ -49,6 +49,21 @@ cleared on a stale "Queued". Both writes are named history entries with the undo
 The item panel's "Assign to OpenClaw" / "Unassign" is unchanged for now (it still offers
 finished and paused tasks); naming the AI across the rest of the app is parked.
 
+**Note 2026-10-07: connecting asks one test question (AI setup PR 4).** Every connect,
+recheck and OpenRouter sign-in lists the models and then asks the chosen one a 1-token
+question (`lib/ai-server/check.ts`), so "connected" means a model answered. The answers are
+typed: key_rejected, wrong_provider (a key whose prefix names another company is refused
+before anything is sent, `lib/ai-key-prefix.ts`), no_credit, daily_limit, region, network.
+A free key's daily cap is read from Google's and OpenRouter's error bodies by fixed fields
+only (`lib/ai-server/error-hints.ts`), written to `model_connections.limited_until` (060),
+and the chat note says when it resets. Connecting lives in one card, `ConnectAI`
+(`components/ai/connect/`), in the setup column and in Settings → AI; a free Google key
+leads, pasting a sure key checks it at once, and the key field is uncontrolled so a key is
+never in a `value` attribute. The pane's address is `/settings/ai` (an alias of the
+permanent `beacon` id), and an OpenRouter sign-in returns to the pane or home (`r`, sealed
+in the PKCE cookie). Open: a model that refuses only streamed requests (an unverified
+OpenAI org) still passes the check; the rate limit is still per-instance memory.
+
 **Status (2026-10-01): step 1, "Honest setup", SHIPPED (#355).** dsul ships no AI of
 its own any more: `process.env.OPENAI_API_KEY` is never read. Each user connects their own
 model in Settings → AI: OpenAI, Anthropic, Google Gemini, OpenRouter (sign-in or key) or any

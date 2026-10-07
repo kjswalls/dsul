@@ -6,6 +6,7 @@ import {
   readJson,
   requireSessionUser,
 } from '@/app/api/ai/_shared/guard'
+import { mismatchedKey, type DetectedProvider } from '@/lib/ai-key-prefix'
 import {
   isModelId,
   isModelProviderId,
@@ -14,6 +15,7 @@ import {
   type ModelOption,
   type ModelProviderId,
 } from '@/lib/ai-types'
+import { checkConnection, type PingOutcome } from '@/lib/ai-server/check'
 import {
   AiDbError,
   deleteModelConnection,
@@ -23,6 +25,7 @@ import {
   readModelConnection,
   readOpenClawStatus,
   saveModelConnection,
+  setConnectionLimit,
   setConnectionModel,
   setConnectionStatus,
   toConnectionView,
@@ -31,7 +34,7 @@ import {
   type OpenedKey,
   type RowRead,
 } from '@/lib/ai-server/connections'
-import { logProviderError, toProviderError, type ProviderErrorKind } from '@/lib/ai-server/errors'
+import { logProviderError, toProviderError, type ProviderError, type ProviderErrorKind } from '@/lib/ai-server/errors'
 import {
   credentialsFor,
   getAdapter,
@@ -50,7 +53,8 @@ import { checkModelBaseUrl } from '@/lib/ai-server/url-policy'
  *
  *   GET     what is connected, whether OpenClaw is, and whether the account
  *           said "No AI, thanks" (the client's AI gate)
- *   PUT     connect or replace: verify the key with a free call, then store it
+ *   PUT     connect or replace: check the key (the key authenticates, then a
+ *           model answers a test question, lib/ai-server/check.ts), then store it
  *   PATCH   pick a model `{provider, model}`, check the key again `{recheck:true}`,
  *           or hide or show AI for the account `{hidden}`
  *   DELETE  forget it
@@ -67,8 +71,10 @@ export const maxDuration = 60
 
 const PUT_MAX_BYTES = 16_384
 const PATCH_MAX_BYTES = 2_048
-/** verify / list / describe. */
+/** list / describe, one call. */
 const CHECK_TIMEOUT_MS = 10_000
+/** A full check: the key's own call, then the test question, each with a 10 s attempt. */
+const CONNECT_TIMEOUT_MS = 20_000
 /** Printable ASCII, no spaces: what every provider's keys look like, and nothing that could split a header. */
 const API_KEY_RE = /^[\x21-\x7e]{8,512}$/
 
@@ -131,6 +137,7 @@ export async function GET(): Promise<Response> {
 type ConnectBody =
   | { ok: true; provider: ModelProviderId; apiKey: string; baseUrl: string | null; model: string | null }
   | { ok: false; error: 'invalid' | 'blocked_url'; field: string }
+  | { ok: false; error: 'wrong_provider'; field: 'apiKey'; detected: DetectedProvider }
 
 function parseConnect(raw: unknown): ConnectBody {
   if (!isPlainObject(raw)) return { ok: false, error: 'invalid', field: 'body' }
@@ -139,6 +146,13 @@ function parseConnect(raw: unknown): ConnectBody {
 
   const key = typeof apiKey === 'string' ? apiKey.trim() : ''
   if (!API_KEY_RE.test(key)) return { ok: false, error: 'invalid', field: 'apiKey' }
+
+  // A key whose first characters are another company's is never sent to the
+  // one it was not made for, whatever the browser asked. Checked here, before
+  // the limiter: a paste in the wrong box costs nothing. Never for custom: an
+  // OpenAI-compatible host may issue a key in any shape.
+  const detected = mismatchedKey(provider, key)
+  if (detected !== null) return { ok: false, error: 'wrong_provider', field: 'apiKey', detected }
 
   let url: string | null = null
   if (provider === 'custom') {
@@ -162,13 +176,28 @@ function parseConnect(raw: unknown): ConnectBody {
 }
 
 /**
- * A check that failed for a reason other than the key, as the panel's code.
- * Shared by connect and "Check again" so the same upstream answer reads the
- * same in both: a custom host's retired model is a model problem, not an
- * unreachable provider. Our words only.
+ * A check that did not pass, as the panel's code. Shared by connect, the test
+ * question and "Check again", so the same upstream answer reads the same in
+ * all three: a custom host's retired model is a model problem, not an
+ * unreachable provider, and an account with no credit is not a bad key. Our
+ * words only.
+ *
+ * `daily_limit` answers 409 and not 429, because a 429 reads as the route's
+ * own limiter ("Too many tries") everywhere the client looks at the status.
  */
-function checkFailure(kind: ProviderErrorKind): NextResponse {
+function checkFailure(kind: ProviderErrorKind, resetAt?: string): NextResponse {
   switch (kind) {
+    case 'auth':
+      return jsonError(400, 'key_rejected')
+    case 'quota':
+      return jsonError(402, 'no_credit')
+    case 'daily_limit':
+      return jsonError(409, 'daily_limit', resetAt === undefined ? {} : { limitedUntil: resetAt })
+    case 'region':
+      return jsonError(403, 'region')
+    case 'network':
+    case 'timeout':
+      return jsonError(502, 'network')
     case 'blocked_url':
       return jsonError(400, 'blocked_url', { field: 'baseUrl' })
     case 'model_required':
@@ -180,11 +209,30 @@ function checkFailure(kind: ProviderErrorKind): NextResponse {
   }
 }
 
-/** A verify that did not pass, as the panel's code. Our words only. */
-function verifyFailure(err: unknown, provider: ModelProviderId, route: string): NextResponse {
+/** A check that threw, logged and answered. Our words only. */
+function checkThrew(err: unknown, provider: ModelProviderId, route: string): NextResponse {
   const e = toProviderError(err, provider, 'verify')
   logProviderError(route, provider, e.kind, e.status)
-  return e.kind === 'auth' ? jsonError(400, 'key_rejected') : checkFailure(e.kind)
+  return checkFailure(e.kind, e.resetAt)
+}
+
+/** A test question that went unanswered, logged and answered. */
+function pingFailure(e: ProviderError, provider: ModelProviderId, route: string): NextResponse {
+  logProviderError(route, provider, e.kind, e.status)
+  return checkFailure(e.kind, e.resetAt)
+}
+
+/**
+ * What a model was listed as, kept beside it so a reload can name it without
+ * asking the provider again (OpenRouter's catalog names, Anthropic's display
+ * names). A label that only repeats the id says nothing and is dropped.
+ */
+function metaFor(entry: ListedModel | undefined, model: string | null): ModelMeta {
+  const label = entry && entry.label !== model ? entry.label : undefined
+  return {
+    ...(entry?.effortLow === undefined ? {} : { effortLow: entry.effortLow }),
+    ...(label === undefined ? {} : { label }),
+  }
 }
 
 export async function PUT(req: Request): Promise<Response> {
@@ -195,7 +243,10 @@ export async function PUT(req: Request): Promise<Response> {
   const read = await readJson<unknown>(req, PUT_MAX_BYTES)
   if (!read.ok) return jsonError(read.status, read.error)
   const body = parseConnect(read.body)
-  if (!body.ok) return jsonError(400, body.error, { field: body.field })
+  if (!body.ok) {
+    const extra = body.error === 'wrong_provider' ? { field: body.field, detected: body.detected } : { field: body.field }
+    return jsonError(400, body.error, extra)
+  }
   const { provider, apiKey, baseUrl } = body
 
   if (!loadEncryptionKey().ok) return unavailable()
@@ -217,30 +268,36 @@ export async function PUT(req: Request): Promise<Response> {
   // A failed PUT returns before the save, so an existing connection is never
   // touched by a key that did not pass.
   const adapter = getAdapter(provider)
-  const signal = anySignal([req.signal, AbortSignal.timeout(CHECK_TIMEOUT_MS)])
+  const signal = anySignal([req.signal, AbortSignal.timeout(CONNECT_TIMEOUT_MS)])
   let result: VerifyResult
+  let model: string | null
+  let ping: PingOutcome
   try {
-    const verified = await adapter.verify(creds, { signal, modelHint: body.model ?? undefined })
-    // OpenRouter's key check says nothing about models; its catalog is public.
-    result =
-      provider === 'openrouter'
-        ? { ...(await adapter.listModels(creds, signal)), freeTier: verified.freeTier }
-        : verified
+    const checked = await checkConnection(adapter, creds, {
+      signal,
+      modelHint: body.model ?? undefined,
+      deadline: Date.now() + CONNECT_TIMEOUT_MS,
+    })
+    result = checked.result
+    model = checked.model
+    ping = checked.ping
   } catch (err) {
-    return verifyFailure(err, provider, 'connect')
+    return checkThrew(err, provider, 'connect')
   }
+  // "Working" means a model answered. A key whose test question went
+  // unanswered is not kept, whatever the reason: it stays in the box, and the
+  // copy names what happened.
+  if (!ping.ok) return pingFailure(ping.error, provider, 'connect')
 
-  // Every listed id already passed MODEL_ID_RE inside the adapter, so the
-  // default can never be an id the table's CHECK would refuse.
-  const model = body.model ?? adapter.pickDefaultModel(result)
   // Only a custom host that listed nothing usable needs a typed name: there is
   // nothing to pick from. One that listed several connects with no model yet,
   // like a built-in provider with no default, and the picker opens on the list.
   if (model === null && provider === 'custom' && (!result.listed || result.models.length === 0)) {
     return jsonError(400, 'model_required')
   }
+  // Every listed id already passed MODEL_ID_RE inside the adapter, so the
+  // model can never be an id the table's CHECK would refuse.
   const entry = model === null ? undefined : result.models.find((m) => m.id === model)
-  const modelMeta: ModelMeta = entry?.effortLow === undefined ? {} : { effortLow: entry.effortLow }
 
   let row: ModelConnectionRow
   try {
@@ -248,7 +305,7 @@ export async function PUT(req: Request): Promise<Response> {
       provider,
       baseUrl,
       model,
-      modelMeta,
+      modelMeta: metaFor(entry, model),
       authMethod: 'key',
       apiKey,
     })
@@ -260,6 +317,7 @@ export async function PUT(req: Request): Promise<Response> {
     connection: toConnectionView(row, true),
     models: result.models.map(toOption),
     listed: result.listed,
+    ...(result.freeTier === true ? { freeTier: true } : {}),
   }
   return jsonOk(response)
 }
@@ -362,22 +420,44 @@ async function recheck(req: Request, userId: string): Promise<NextResponse> {
   }
 
   const { row, creds } = stored
+  // "Check again" asks about the model that is stored, not a new default: it
+  // is the one Ask would use. Every write below is conditional on the
+  // ciphertext read above, so a key replaced meanwhile is untouched.
+  const markFailing = () => setConnectionStatus(userId, row.key_ciphertext, 'failing', 'key_rejected')
   try {
-    await getAdapter(row.provider).verify(creds, {
-      signal: anySignal([req.signal, AbortSignal.timeout(CHECK_TIMEOUT_MS)]),
+    const { ping } = await checkConnection(getAdapter(row.provider), creds, {
+      signal: anySignal([req.signal, AbortSignal.timeout(CONNECT_TIMEOUT_MS)]),
       modelHint: row.model ?? undefined,
+      choose: () => row.model,
+      deadline: Date.now() + CONNECT_TIMEOUT_MS,
     })
-    await setConnectionStatus(userId, row.key_ciphertext, 'ok', null)
+    if (ping.ok) {
+      await setConnectionStatus(userId, row.key_ciphertext, 'ok', null)
+      // Whatever cap held is over, or belongs to a key that is gone.
+      await setConnectionLimit(userId, row.key_ciphertext, null).catch(() => {})
+    } else {
+      const e = ping.error
+      logProviderError('recheck', row.provider, e.kind, e.status)
+      if (e.kind === 'auth') {
+        await markFailing()
+      } else if (e.kind === 'daily_limit') {
+        // The key authenticated and the model answered a limit, not a refusal:
+        // a connection over its cap is connected, and comes back by itself.
+        await setConnectionStatus(userId, row.key_ciphertext, 'ok', null)
+        await setConnectionLimit(userId, row.key_ciphertext, e.resetAt ?? null).catch(() => {})
+      } else {
+        // Anything else says nothing about the key: the status stays as it
+        // was, and the answer matches what connect would have said.
+        return checkFailure(e.kind, e.resetAt)
+      }
+    }
   } catch (err) {
     if (err instanceof AiDbError) return dbFailure(err, 'connection status')
     const e = toProviderError(err, row.provider, 'verify')
     logProviderError('recheck', row.provider, e.kind, e.status)
-    // Anything but a refused key says nothing about the key: the status stays
-    // as it was, and the answer matches what connect would have said.
-    if (e.kind !== 'auth') return checkFailure(e.kind)
+    if (e.kind !== 'auth') return checkFailure(e.kind, e.resetAt)
     try {
-      // Conditional on the ciphertext read above: a key replaced meanwhile is untouched.
-      await setConnectionStatus(userId, row.key_ciphertext, 'failing', 'key_rejected')
+      await markFailing()
     } catch (dbErr) {
       return dbFailure(dbErr, 'connection status')
     }

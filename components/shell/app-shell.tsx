@@ -44,6 +44,8 @@ import { milestoneItemIds } from '@/lib/goals';
 import { tourHideAsk, tourShowAsk } from '@/lib/rail-store';
 import { useMobileNavStore } from '@/lib/mobile-nav-store';
 import { openReviewFromLink } from '@/lib/eod-link';
+import { takeConnectReturn } from '@/lib/connect-return';
+import { AI_SETTINGS_PATH } from '@/lib/ai-types';
 import { flushSettings } from '@/lib/settings-service';
 import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
@@ -334,6 +336,24 @@ export function AppShell() {
       getState: usePlannerStore.getState,
       subscribe: usePlannerStore.subscribe,
       clearLink: () => window.history.replaceState({}, '', '/'),
+    });
+  }, []);
+
+  // OpenRouter sign-in's home return: ?connect=<result> says how a sign-in
+  // begun in the setup column ended, once the AI gate has answered, and opens
+  // the column again (lib/connect-return.ts, which says why it waits). Only
+  // this parameter comes off the address bar, at once.
+  useEffect(() => {
+    if (typeof window === 'undefined' || window.location.pathname !== '/') return;
+    return takeConnectReturn(window.location.search, {
+      clearLink: () => {
+        const url = new URL(window.location.href);
+        url.searchParams.delete('connect');
+        window.history.replaceState({}, '', `${url.pathname}${url.search}${url.hash}`);
+      },
+      // useIsMobile's own test (hooks/use-mobile.ts), read when the gate
+      // answers: at mount the hook has not measured yet.
+      isPhone: () => window.innerWidth < 768,
     });
   }, []);
 
@@ -744,8 +764,9 @@ export function AppShell() {
           userId={tourUserId}
           onComplete={() => setShowTour(false)}
           // The tour calls handleComplete() before this fires, so navigating
-          // away doesn't abandon it. Beacon is the pane the step is about.
-          onOpenSettings={() => router.push('/settings/beacon')}
+          // away doesn't abandon it. Settings → AI, by its alias, is the pane
+          // the step is about.
+          onOpenSettings={() => router.push(AI_SETTINGS_PATH)}
           // The tour shows Ask for its step and puts it back, never writing
           // `askOpen` (lib/rail-store.ts tourShowAsk, tourHideAsk).
           onExpandChat={tourShowAsk}

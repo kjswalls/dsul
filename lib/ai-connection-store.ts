@@ -4,6 +4,8 @@ import { useMemo } from 'react';
 import { create, type StoreApi, type UseBoundStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { resolveAICapabilities, type AICapabilities } from './ai-registry';
+import type { DetectedProvider } from './ai-key-prefix';
+import type { FlowResult } from './connect-flow';
 import { useAISettingsStore } from './ai-settings-store';
 import {
   isModelId,
@@ -15,6 +17,7 @@ import {
   type ConnectResponse,
   type ModelConnectionView,
   type ModelOption,
+  type ModelProviderId,
   type ModelsResponse,
   type OpenClawView,
 } from './ai-types';
@@ -42,8 +45,32 @@ export type ConnectionPhase = 'unknown' | 'ready' | 'error';
  * named one (every 400 `invalid` does), the field it is about, so the panel can
  * say which: a key, a base URL, or a model the key cannot use.
  */
-export type ApiFailure = { ok: false; code: ApiErrorCode; field?: string };
-export type ApiResult = { ok: true } | ApiFailure;
+export type ApiFailure = {
+  ok: false;
+  code: ApiErrorCode;
+  field?: string;
+  /** `wrong_provider` only: whose key the route read it as. */
+  detected?: DetectedProvider;
+  /** `daily_limit` only: when the limit lifts (ISO). */
+  limitedUntil?: string;
+};
+/** `freeTier`: a connect's answer only, OpenRouter's free-tier flag (ConnectResponse). */
+export type ApiResult = { ok: true; freeTier?: boolean } | ApiFailure;
+
+/**
+ * A connection made a moment ago in this tab, by a key in the setup column or
+ * an OpenRouter sign-in that returned home: what Ask home's "It works." card
+ * names. Memory only, never persisted, and shown only while the live model is
+ * still this one (components/ai/ask/it-works-card.tsx).
+ */
+export interface JustConnected {
+  provider: ModelProviderId;
+  model: string;
+  /** OpenRouter's free tier, as the connect answer said. */
+  freeTier: boolean;
+  /** When (ms). */
+  at: number;
+}
 
 export interface AIConnectionState {
   phase: ConnectionPhase;
@@ -64,6 +91,16 @@ export interface AIConnectionState {
   modelsListed: boolean;
   modelsStatus: 'idle' | 'loading' | 'ready' | 'error';
   busy: null | 'connect' | 'model' | 'recheck' | 'disconnect' | 'hidden';
+  /** See JustConnected. Cleared by the first send, a new chat, a conversation opened, Ask closing, a model change, a disconnect. */
+  justConnected: JustConnected | null;
+  /**
+   * How an OpenRouter sign-in that returned HOME ended, when it did not end
+   * connected (lib/connect-return.ts). The setup column's OpenRouter fold and
+   * the fix home show it; the next action there clears it. One that saved a
+   * connection that answers (saved, no_credit, daily_limit) is Ask home's to
+   * say instead, and is spent where "It works." is.
+   */
+  flowResult: FlowResult | null;
 }
 
 export interface AIConnectionStore extends AIConnectionState {
@@ -94,6 +131,8 @@ export interface AIConnectionStore extends AIConnectionState {
   loadModels(opts?: { force?: boolean }): Promise<ApiResult>;
   /** 'auth' → model.status='failing' locally, then refresh(); 'not_connected' → refresh() */
   noteCallFailure(code: ChatErrorCode): void;
+  setJustConnected(value: JustConnected | null): void;
+  setFlowResult(value: FlowResult | null): void;
   reset(): void;
 }
 
@@ -116,6 +155,8 @@ const INITIAL: AIConnectionState = {
   modelsListed: false,
   modelsStatus: 'idle',
   busy: null,
+  justConnected: null,
+  flowResult: null,
 };
 
 const CONNECTION_URL = '/api/ai/connection';
@@ -223,6 +264,20 @@ function isObj(v: unknown): v is Record<string, unknown> {
 
 const strOrNull = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
 
+/** An ISO time the server sent, normalized, or null. */
+function isoOrNull(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 40) return null;
+  const at = Date.parse(v);
+  return Number.isFinite(at) ? new Date(at).toISOString() : null;
+}
+
+/** A model's listed name: printable, at most 200 characters, or null. */
+function labelOrNull(v: unknown): string | null {
+  if (typeof v !== 'string') return null;
+  const t = v.trim();
+  return t && t.length <= 200 && !/[\u0000-\u001f\u007f]/.test(t) ? t : null;
+}
+
 /** A server view, re-checked field by field. Anything that does not read as `ok` reads as failing. */
 function readModelView(v: unknown): ModelConnectionView | null {
   if (!isObj(v) || !isModelProviderId(v.provider)) return null;
@@ -235,6 +290,8 @@ function readModelView(v: unknown): ModelConnectionView | null {
     status: v.status === 'ok' ? 'ok' : 'failing',
     problem,
     checkedAt: strOrNull(v.checkedAt),
+    limitedUntil: isoOrNull(v.limitedUntil),
+    modelLabel: labelOrNull(v.modelLabel),
   };
 }
 
@@ -282,6 +339,11 @@ const API_ERROR_CODES: readonly ApiErrorCode[] = [
   'too_large',
   'unsupported_media',
   'key_rejected',
+  'wrong_provider',
+  'no_credit',
+  'daily_limit',
+  'region',
+  'network',
   'unreachable',
   'blocked_url',
   'model_required',
@@ -302,11 +364,26 @@ function errorCodeOf(body: unknown, status: number): ApiErrorCode {
   return 'server';
 }
 
-/** A failed write's result: the route's code, and the field it named, if it named one. */
+/**
+ * A failed write's result: the route's code, the field it named, if it named
+ * one, and the two extras two codes carry, each re-checked: `detected` must be
+ * a provider the prefix table could name, `limitedUntil` a time.
+ */
 function failureOf(body: unknown, status: number): ApiFailure {
   const code = errorCodeOf(body, status);
-  const field = isObj(body) ? strOrNull(body.field) : null;
-  return field === null ? { ok: false, code } : { ok: false, code, field };
+  const out: ApiFailure = { ok: false, code };
+  if (!isObj(body)) return out;
+  const field = strOrNull(body.field);
+  if (field !== null) out.field = field;
+  if (code === 'wrong_provider' && typeof body.detected === 'string') {
+    const d = body.detected;
+    if (d === 'openai' || d === 'anthropic' || d === 'gemini' || d === 'openrouter') out.detected = d;
+  }
+  if (code === 'daily_limit') {
+    const until = isoOrNull(body.limitedUntil);
+    if (until !== null) out.limitedUntil = until;
+  }
+  return out;
 }
 
 async function readBody(res: Response): Promise<unknown> {
@@ -537,13 +614,16 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
             models: readModelOptions(data.models),
             modelsListed: data.listed === true,
             modelsStatus: 'ready',
+            // A new connection: what was said about the last one is spent.
+            justConnected: null,
+            flowResult: null,
           });
           modelSeen();
           // A connect from a gate that never answered (or failed) still owes
           // the OpenClaw half of the picture. A fresh read, never the one in
           // flight: that one began before the PUT.
           if (get().phase !== 'ready') void get().refresh();
-          return { ok: true };
+          return data.freeTier === true ? { ok: true, freeTier: true } : { ok: true };
         }),
 
       setModel: (model) =>
@@ -564,7 +644,7 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
           }
           serverMoved();
           const connection = readModelView(isObj(body) ? body.connection : null);
-          if (connection) set({ model: connection });
+          if (connection) set({ model: connection, justConnected: null, flowResult: null });
           else void get().refresh();
           return { ok: true };
         }),
@@ -598,7 +678,14 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
           if (!res.ok) return { ok: false, code: errorCodeOf(body, res.status) };
           serverMoved();
           listReplaced();
-          set({ model: null, models: null, modelsListed: false, modelsStatus: 'idle' });
+          set({
+            model: null,
+            models: null,
+            modelsListed: false,
+            modelsStatus: 'idle',
+            justConnected: null,
+            flowResult: null,
+          });
           return { ok: true };
         }),
 
@@ -724,11 +811,16 @@ export const useAIConnectionStore: UseBoundStore<StoreApi<AIConnectionStore>> =
             set({ model: { ...model, status: 'failing', problem: 'key_rejected' } });
           }
           void get().refresh();
-        } else if (code === 'not_connected') {
+        } else if (code === 'not_connected' || code === 'daily_limit') {
+          // daily_limit: the server wrote when the limit lifts; the read brings it.
           serverMoved();
           void get().refresh();
         }
       },
+
+      setJustConnected: (value) => set({ justConnected: value }),
+
+      setFlowResult: (value) => set({ flowResult: value }),
 
       reset: () => {
         generation += 1;
@@ -784,6 +876,8 @@ export function useAICapabilities(): AICapabilities {
                 authMethod: 'key',
                 problem: null,
                 checkedAt: null,
+                limitedUntil: null,
+                modelLabel: null,
               },
         openclaw: {
           gateway: f.gateway,

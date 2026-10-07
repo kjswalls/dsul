@@ -17,6 +17,8 @@ const MODEL_OK: ModelConnectionView = {
   status: 'ok',
   problem: null,
   checkedAt: '2026-10-01T00:00:00.000Z',
+  limitedUntil: null,
+  modelLabel: null,
 };
 
 const NO_OPENCLAW: OpenClawView = { gateway: false, pluginChat: false, agent: false, agentId: null };

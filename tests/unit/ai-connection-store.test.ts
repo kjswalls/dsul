@@ -36,6 +36,8 @@ const MODEL_OK: ModelConnectionView = {
   status: 'ok',
   problem: null,
   checkedAt: '2026-10-01T08:00:00.000Z',
+  limitedUntil: null,
+  modelLabel: null,
 };
 
 const CONNECTED: AIConnectionResponse = {
@@ -1184,6 +1186,106 @@ describe('seedAI drives the real store', () => {
   });
 });
 
+describe('what a connection carries, and what a connect just said', () => {
+  const REQ: ConnectRequest = { provider: 'openai', apiKey: 'sk-test-SENTINEL-9876' };
+  const JUST = { provider: 'openai', model: 'gpt-4o-mini', freeTier: false, at: T0 } as const;
+
+  /** The model view a status read hands back, with these fields as the server sent them. */
+  async function readBack(over: Record<string, unknown>) {
+    const p = store().refresh();
+    await answer({ ...CONNECTED, model: { ...MODEL_OK, ...over } });
+    await p;
+    return store().model;
+  }
+
+  it('limitedUntil is normalized to ISO, and anything that is not a time is null', async () => {
+    await hydrated(A, CONNECTED);
+    expect((await readBack({ limitedUntil: '2026-10-08T07:00:00Z' }))?.limitedUntil).toBe('2026-10-08T07:00:00.000Z');
+    expect((await readBack({ limitedUntil: '2026-10-08T09:00:00+02:00' }))?.limitedUntil).toBe(
+      '2026-10-08T07:00:00.000Z'
+    );
+    for (const bad of ['tomorrow', 1_760_000_000_000, '', `2026-10-08T07:00:00Z${' '.repeat(40)}`]) {
+      expect((await readBack({ limitedUntil: bad }))?.limitedUntil).toBeNull();
+    }
+  });
+
+  it('modelLabel is kept only printable and at most 200 characters', async () => {
+    await hydrated(A, CONNECTED);
+    expect((await readBack({ modelLabel: '  GPT-5 mini  ' }))?.modelLabel).toBe('GPT-5 mini');
+    expect((await readBack({ modelLabel: 'x'.repeat(200) }))?.modelLabel).toBe('x'.repeat(200));
+    for (const bad of ['bell\u0007', 'line\nbreak', 'x'.repeat(201), '   ', 42]) {
+      expect((await readBack({ modelLabel: bad }))?.modelLabel).toBeNull();
+    }
+  });
+
+  it("a failed connect's extras are re-checked: a provider the prefix table names, a time", async () => {
+    await hydrated(A, NOTHING);
+    const failed = async (body: unknown, status: number) => {
+      const p = store().connect(REQ);
+      await tick();
+      await answer(body, status);
+      return p;
+    };
+
+    expect(await failed({ error: 'wrong_provider', detected: 'anthropic' }, 400)).toEqual({
+      ok: false,
+      code: 'wrong_provider',
+      detected: 'anthropic',
+    });
+    expect(await failed({ error: 'wrong_provider', detected: 'evil' }, 400)).toEqual({
+      ok: false,
+      code: 'wrong_provider',
+    });
+
+    expect(await failed({ error: 'daily_limit', limitedUntil: '2026-10-01T17:00:00Z' }, 409)).toEqual({
+      ok: false,
+      code: 'daily_limit',
+      limitedUntil: '2026-10-01T17:00:00.000Z',
+    });
+    expect(await failed({ error: 'daily_limit', limitedUntil: 'x' }, 409)).toEqual({ ok: false, code: 'daily_limit' });
+    // Each extra rides only on its own code.
+    expect(await failed({ error: 'invalid', detected: 'anthropic', limitedUntil: '2026-10-01T17:00:00Z' }, 400)).toEqual({
+      ok: false,
+      code: 'invalid',
+    });
+  });
+
+  it('a new connection spends what was said about the last one', async () => {
+    await hydrated(A, NOTHING);
+    store().setJustConnected(JUST);
+    store().setFlowResult('denied');
+
+    const p = store().connect(REQ);
+    await tick();
+    await answer({ connection: MODEL_OK, models: [], listed: true });
+    await expect(p).resolves.toEqual({ ok: true });
+    expect(store().justConnected).toBeNull();
+    expect(store().flowResult).toBeNull();
+  });
+
+  it('a model change and a disconnect spend the "It works." too, and the sign-in note in its place', async () => {
+    await hydrated(A, CONNECTED);
+
+    store().setJustConnected(JUST);
+    store().setFlowResult('no_credit');
+    const m = store().setModel('gpt-4.1-mini');
+    await tick();
+    await answer({ connection: { ...MODEL_OK, model: 'gpt-4.1-mini' } });
+    await expect(m).resolves.toEqual({ ok: true });
+    expect(store().justConnected).toBeNull();
+    expect(store().flowResult).toBeNull();
+
+    store().setJustConnected({ ...JUST, model: 'gpt-4.1-mini' });
+    store().setFlowResult('saved');
+    const d = store().disconnect();
+    await tick();
+    await answer({});
+    await expect(d).resolves.toEqual({ ok: true });
+    expect(store().justConnected).toBeNull();
+    expect(store().flowResult).toBeNull();
+  });
+});
+
 describe('noteCallFailure', () => {
   it("'auth' flips the model to failing at once, then refreshes", async () => {
     await hydrated(A, CONNECTED);
@@ -1211,6 +1313,17 @@ describe('noteCallFailure', () => {
     expect(gets()).toHaveLength(2);
     await answer(NOTHING);
     expect(store().model).toBeNull();
+  });
+
+  it("'daily_limit' refreshes, so the time the limit lifts reaches the gate", async () => {
+    await hydrated(A, CONNECTED);
+
+    store().noteCallFailure('daily_limit');
+    // The model still works; only the read is owed.
+    expect(store().model?.status).toBe('ok');
+    expect(gets()).toHaveLength(2);
+    await answer({ ...CONNECTED, model: { ...MODEL_OK, limitedUntil: '2026-10-01T17:00:00.000Z' } });
+    expect(store().model?.limitedUntil).toBe('2026-10-01T17:00:00.000Z');
   });
 });
 

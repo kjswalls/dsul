@@ -51,6 +51,7 @@ vi.mock('@/lib/ai-server/connections', async (importOriginal) => {
     openModelConnection: vi.fn(),
     readAIHidden: vi.fn(async () => false),
     setConnectionStatus: vi.fn(async () => true),
+    setConnectionLimit: vi.fn(async () => true),
   };
 });
 
@@ -108,6 +109,7 @@ beforeEach(() => {
   vi.mocked(conn.openModelConnection).mockReset().mockResolvedValue(OPENED);
   vi.mocked(conn.readAIHidden).mockReset().mockResolvedValue(false);
   vi.mocked(conn.setConnectionStatus).mockClear();
+  vi.mocked(conn.setConnectionLimit).mockClear();
   adapter.openStream.mockReset().mockImplementation(stream('{"kind":', '"recipe"}'));
   logs = [];
   for (const level of ['log', 'info', 'warn', 'error'] as const) {
@@ -264,6 +266,15 @@ describe('the stream', () => {
     expect(text).not.toContain('SENTINEL');
     expect(conn.setConnectionStatus).toHaveBeenCalledWith('user-1', 'v1:cipher', 'failing', 'key_rejected');
     expect(JSON.stringify(logs)).not.toContain('SENTINEL');
+  });
+
+  it('a used-up daily limit records when it lifts and answers code daily_limit', async () => {
+    const resetAt = '2026-10-08T07:00:00.000Z';
+    adapter.openStream.mockRejectedValue(new ProviderError('daily_limit', 429, resetAt));
+    const res = await POST(req({ kind: 'recipe', ask: 'x' }));
+    expect(JSON.parse(await res.text())).toMatchObject({ code: 'daily_limit' });
+    expect(conn.setConnectionLimit).toHaveBeenCalledWith('user-1', 'v1:cipher', resetAt);
+    expect(conn.setConnectionStatus).not.toHaveBeenCalled();
   });
 
   it('an abort before the stream answers 204', async () => {

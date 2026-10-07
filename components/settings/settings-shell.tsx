@@ -13,6 +13,7 @@ import {
   ALL_PANES,
   PANES,
   paneById,
+  paneHref,
   railPaneFor,
   settingById,
   extensionSlugFromPane,
@@ -394,7 +395,7 @@ export function SettingsShell({
   const openPanelFor = (record: SettingRecord) => {
     setRawQuery('');
     setQuery('');
-    router.push(`/settings/${record.pane}?focus=${encodeURIComponent(record.id)}`);
+    router.push(`${paneHref(record.pane)}?focus=${encodeURIComponent(record.id)}`);
   };
 
   const setUpAction = (record: SettingRecord) =>
@@ -546,7 +547,7 @@ export function SettingsShell({
         {parentPane && (
           <>
             <span aria-hidden>/</span>
-            <Link href={`/settings/${parentPane.id}`} className="hover:text-foreground transition-colors">
+            <Link href={paneHref(parentPane.id)} className="hover:text-foreground transition-colors">
               {parentPane.name}
             </Link>
           </>
@@ -600,7 +601,7 @@ export function SettingsShell({
                 onClick={() => {
                   setRawQuery('');
                   setQuery('');
-                  router.push(`/settings/${p.id}`);
+                  router.push(paneHref(p.id));
                 }}
                 className={cn(
                   'flex h-8 shrink-0 items-center gap-2.5 rounded-sm px-2 text-sm transition-colors md:w-full',
