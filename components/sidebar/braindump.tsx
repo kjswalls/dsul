@@ -218,11 +218,13 @@ function braindumpRows(
   const base: RowItem[] = braindumpMembers(tasks, habits, suppressedIds);
 
   const rows = base.filter((row) => {
+    // "Hide finished" asks the same dateless predicate that sinks, strikes and
+    // counts the rows, so a recurring row (finished on no day the braindump can
+    // name, issue #215) is never hidden while it draws as open.
+    if (braindumpFilters.hideFinished && isRowCompletedOn(row, null)) return false;
     if (row.itemType === 'task') {
-      if (braindumpFilters.hideFinished && row.item.status === 'completed') return false;
       return passesFilters(row.item, braindumpFilters, undefined, goalMemberIds);
     }
-    if (braindumpFilters.hideFinished && row.item.status === 'done') return false;
     return passesFilters(row.item, braindumpFilters, 'habit', goalMemberIds);
   });
 

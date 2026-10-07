@@ -48,12 +48,15 @@ import { useUIStore, openEditFor } from '@/lib/ui-store';
 import { ITEM_TYPES } from '@/lib/item-registry';
 import { useStreaksEnabled } from '@/lib/extension-gates';
 import { useExtensionsStore } from '@/lib/extensions-store';
-import { NUDGE_STREAKS_ON } from '@/lib/nudges/registry';
+import { NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, ritualsNudgeReady } from '@/lib/nudges/registry';
+import { useMorningStore } from '@/lib/morning-store';
+import { useEODStore } from '@/lib/eod-store';
+import { settingsBelongToUser } from '@/lib/settings/hydration';
 import { adoptLegacyViewPrefs, useViewStore } from '@/lib/view-store';
 import { useDragStore } from '@/lib/drag-store';
 import { useSelectionStore } from '@/lib/selection-store';
 import { hoveredItem } from '@/lib/hovered-item';
-import { listGroupMovers, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
+import { listGroupMovers, parseProjectBlockId, placementOf, resolveDrop } from '@/lib/dnd/handle-drag-end';
 import { sidebarDropPlan } from '@/lib/dnd/sidebar-drop';
 import { toDateStr } from '@/lib/recurrence';
 import { useCommandShortcuts } from '@/hooks/use-command-shortcuts';
@@ -63,6 +66,7 @@ import { useTimezoneSync } from '@/hooks/use-timezone-sync';
 import { useOverdueSweep } from '@/hooks/use-overdue-sweep';
 import { useCompletionFiling } from '@/hooks/use-completion-filing';
 import { useIsMobile } from '@/hooks/use-mobile';
+import { useOneTimeNudge } from '@/hooks/use-one-time-nudge';
 import { isOnboardingComplete } from '@/lib/user-profile';
 import { watchOnboardingAfterLoad } from '@/lib/onboarding-watch';
 import type { MobileTab } from '@/lib/mobile-nav-store';
@@ -196,6 +200,9 @@ export function AppShell() {
   const [mounted, setMounted] = useState(false);
   const [showTour, setShowTour] = useState(false);
   const [tourUserId, setTourUserId] = useState<string | null>(null);
+  // Whose onboarding answer has come back: the rituals nudge waits for it, so
+  // it cannot fire in the gap before a brand-new account's tour opens.
+  const [tourAnsweredFor, setTourAnsweredFor] = useState<string | null>(null);
   // The streak nudge fires only when streaks are provably ON: `configsLoaded`
   // means the extensions store has answered, so we never nudge "turn streaks
   // off" at someone who already did (streaksOn reads its default-true before
@@ -203,6 +210,22 @@ export function AppShell() {
   // (configsLoaded stays false — the toggle would be a no-op there anyway).
   const streaksOn = useStreaksEnabled();
   const extReady = useExtensionsStore((s) => s.configsLoaded);
+  const userId = usePlannerStore((s) => s.userId);
+  const hasTasks = usePlannerStore((s) => s.tasks.length > 0);
+  const settingsHydratedUserId = useMorningStore((s) => s.settingsHydratedUserId);
+  const morningCheckEnabled = useMorningStore((s) => s.morningCheckEnabled);
+  const eodReviewEnabled = useEODStore((s) => s.eodReviewEnabled);
+  const ritualsNudgeOn = ritualsNudgeReady({
+    settingsHydrated: settingsBelongToUser(userId, settingsHydratedUserId),
+    tourAnswered: !!userId && tourAnsweredFor === userId,
+    tourShowing: showTour,
+    hasTasks,
+    morningCheckEnabled,
+    eodReviewEnabled,
+  });
+  // One first-run toast at a time: while the streak nudge is up (or about to
+  // be), the rituals one waits its turn rather than stacking under it.
+  const streaksNudgeUp = useOneTimeNudge(NUDGE_STREAKS_ON).active && extReady && streaksOn;
 
   useEffect(() => {
     setMounted(true);
@@ -248,6 +271,7 @@ export function AppShell() {
         subscribe: usePlannerStore.subscribe,
         isComplete: isOnboardingComplete,
         onResult: (uid, needed) => {
+          setTourAnsweredFor(uid);
           if (needed) {
             setTourUserId(uid);
             setShowTour(true);
@@ -385,8 +409,8 @@ export function AppShell() {
           acted = true;
         }
       } else if (overId.startsWith('projectblock:')) {
-        const proj = overId.slice('projectblock:'.length);
-        const ids = groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj);
+        const proj = parseProjectBlockId(overId)?.projectName;
+        const ids = proj ? groupIds.filter((id) => tasks.find((t) => t.id === id)?.project === proj) : [];
         if (ids.length) {
           planner.moveTasksToProjectBlock(ids);
           acted = true;
@@ -693,6 +717,7 @@ export function AppShell() {
       {/* First-run orientation, shown once: streaks are on, and how to quiet
           them. Persistent toast, dismissed forever server-side. */}
       <OneTimeNudge id={NUDGE_STREAKS_ON} enabled={extReady && streaksOn} />
+      <OneTimeNudge id={NUDGE_RITUALS_INTRO} enabled={ritualsNudgeOn && !streaksNudgeUp} />
 
       <EODReview />
 

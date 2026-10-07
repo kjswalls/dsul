@@ -11,7 +11,7 @@ vi.mock('@/lib/nudges/service', () => ({
 
 import { loadDismissedNudges, saveDismissedNudges } from '@/lib/nudges/service';
 import { useNudgeStore } from '@/lib/nudge-store';
-import { NUDGES, NUDGE_STREAKS_ON, nudgeDef } from '@/lib/nudges/registry';
+import { NUDGES, NUDGE_RITUALS_INTRO, NUDGE_STREAKS_ON, nudgeDef, ritualsNudgeReady } from '@/lib/nudges/registry';
 
 const mockLoad = vi.mocked(loadDismissedNudges);
 const mockSave = vi.mocked(saveDismissedNudges);
@@ -138,5 +138,35 @@ describe('nudge store in-flight claim', () => {
     dB.resolve([]);
     await b;
     expect(useNudgeStore.getState().hydratedUserId).toBe('user-b');
+  });
+});
+
+describe('the rituals nudge (#86)', () => {
+  const READY = {
+    settingsHydrated: true,
+    tourAnswered: true,
+    tourShowing: false,
+    hasTasks: true,
+    morningCheckEnabled: false,
+    eodReviewEnabled: false,
+  };
+
+  it('deep-links to the Rituals pane, which turns nothing on by itself', () => {
+    expect(nudgeDef(NUDGE_RITUALS_INTRO)?.settingsFocusId).toBe('rituals.morningCheck');
+  });
+
+  it('fires once there is something planned and both rituals are still off', () => {
+    expect(ritualsNudgeReady(READY)).toBe(true);
+  });
+
+  it.each([
+    ['settings are not this account’s yet', { settingsHydrated: false }],
+    ['the onboarding answer has not come back', { tourAnswered: false }],
+    ['the tour is up', { tourShowing: true }],
+    ['nothing is planned yet', { hasTasks: false }],
+    ['the morning check is already on', { morningCheckEnabled: true }],
+    ['the review is already on', { eodReviewEnabled: true }],
+  ])('waits while %s', (_why, patch) => {
+    expect(ritualsNudgeReady({ ...READY, ...patch })).toBe(false);
   });
 });

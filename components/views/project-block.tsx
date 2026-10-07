@@ -16,8 +16,9 @@ import { cn } from '@/lib/utils';
 
 /**
  * Recurring project time block (ported from timeline.tsx in P5b, compact
- * mode retired). Droppable id stays `projectblock:{name}` per
- * lib/dnd/CONTRACT.md — only tasks of the same project may drop in.
+ * mode retired). Droppable id is `projectblock:{date}:{name}` per
+ * lib/dnd/CONTRACT.md — only tasks of the same project may drop in. The date
+ * keeps the id unique when a recurring block renders in every week column.
  */
 
 function BlockTask({ task, onClick, date }: { task: Task; onClick: () => void; date?: Date }) {
@@ -147,8 +148,14 @@ export function ProjectBlock({
   variant = 'day',
   date,
 }: ProjectBlockProps) {
-  const { getProjectColor, tasks: allTasks, moveTaskToProjectBlock, moveTasksToProjectBlock } =
-    usePlannerStore();
+  const {
+    getProjectColor,
+    tasks: allTasks,
+    moveTaskToProjectBlock,
+    moveTasksToProjectBlock,
+    selectedDate,
+    userTimezone,
+  } = usePlannerStore();
 
   const tasksInBlock = tasks.filter((t) => t.inProjectBlock);
   const availableTasks = allTasks.filter(
@@ -156,7 +163,11 @@ export function ProjectBlock({
   );
 
   const projectColor = getProjectColor(project.name);
-  const { isOver, setNodeRef } = useDroppable({ id: `projectblock:${project.name}` });
+  // Dated, because a recurring block renders in up to seven week columns at
+  // once and dnd-kit can only measure one droppable per id (#214).
+  const timezone = userTimezone ?? Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const dropId = `projectblock:${toDateStr(date ?? selectedDate, timezone)}:${project.name}`;
+  const { isOver, setNodeRef } = useDroppable({ id: dropId });
   const draggedTask = activeId ? allTasks.find((t) => t.id === activeId) : null;
   const canAcceptDrop = draggedTask && draggedTask.project === project.name;
   const previewLimit = PREVIEW_LIMIT[variant];
@@ -165,7 +176,7 @@ export function ProjectBlock({
     <div
       ref={setNodeRef}
       data-testid="project-block"
-      data-dnd-id={`projectblock:${project.name}`}
+      data-dnd-id={dropId}
       data-dnd-over={isOver ? 'true' : 'false'}
       // A project block only accepts a task whose project matches, so a test
       // asserting the reject path needs to see the distinction.

@@ -67,3 +67,27 @@ describe('the block task drag grip', () => {
     expect(grip.className).not.toContain('touch-none');
   });
 });
+
+describe('the block droppable id (#214)', () => {
+  it('carries its day, so a block repeated across week columns registers once per column', () => {
+    const project = { id: 'p1', name: 'Work', emoji: '💼', startTime: '09:00' } as never;
+    const { container } = render(
+      <DndContext>
+        <ProjectBlock project={project} tasks={[TASK]} onTaskClick={() => {}} />
+        <ProjectBlock
+          project={project}
+          tasks={[TASK]}
+          onTaskClick={() => {}}
+          variant="week"
+          date={new Date('2026-07-30T12:00:00Z')}
+        />
+      </DndContext>
+    );
+
+    const ids = [...container.querySelectorAll('[data-testid="project-block"]')].map((el) =>
+      el.getAttribute('data-dnd-id')
+    );
+    // Day view falls back to the selected day; a week column passes its own.
+    expect(ids).toEqual(['projectblock:2026-07-29:Work', 'projectblock:2026-07-30:Work']);
+  });
+});
