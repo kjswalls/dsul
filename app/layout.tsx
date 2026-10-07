@@ -6,6 +6,7 @@ import { SupabaseProvider } from '@/components/providers/supabase-provider'
 import { ConsoleSlotGuard } from '@/components/providers/console-slot-guard'
 import { DesktopBridge } from '@/components/providers/desktop-bridge'
 import { FaviconSync } from '@/components/providers/favicon-sync'
+import { RecipeHost } from '@/components/recipes/recipe-host'
 import { Toaster } from '@/components/ui/sonner'
 import { ICON_REV } from '@/lib/app-icons'
 import './globals.css'
@@ -165,6 +166,9 @@ export default function RootLayout({
             {/* The tab's icon: the picked one, or Lime once today is done.
                 See the component. */}
             <FaviconSync />
+            {/* Your recipes, once the planner has loaded on this route. Nothing
+                on a route that never loads it. See the component. */}
+            <RecipeHost />
             {children}
           </SupabaseProvider>
           {/* Bottom-left, above the sidebar history controls. Exact placement

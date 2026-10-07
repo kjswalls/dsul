@@ -56,8 +56,12 @@ export interface ValidatedProposal {
 
 const KNOWN_BUILTINS = ['task', 'habit']
 
-/** Types the AI may CREATE: anything that doesn't require a container. */
-function canCreateType(typeName: string, ctx: ProposalContext): boolean {
+/**
+ * Types the AI (and a recipe, lib/recipes/) may CREATE: a known type that keeps
+ * no streak, so neither ever creates a habit. Takes only the custom type names,
+ * so a caller with no item list to hand can ask.
+ */
+export function canCreateType(typeName: string, ctx: Pick<ProposalContext, 'customTypeNames'>): boolean {
   if (!KNOWN_BUILTINS.includes(typeName) && !ctx.customTypeNames.includes(typeName)) return false
   // "The AI invented you a new daily commitment" is a product decision this
   // version deliberately does not make. Registry-derived, not hardcoded: a

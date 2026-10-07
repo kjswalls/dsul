@@ -4,7 +4,10 @@ import { create } from 'zustand';
 import { createClient } from '@/lib/supabase';
 import {
   MOD_KINDS,
+  MOD_SLUG_RE,
   ModNameSchema,
+  RecipeManifestSchema,
+  type RecipeManifest,
   UserModRowSchema,
   userModFromRow,
   type UserMod,
@@ -28,8 +31,9 @@ import {
  *
  * `safeMode` belongs to the TAB, not the account: it is read once from the URL
  * (`?safe-mode`) when this module loads and survives sign-out and every
- * client-side navigation until a reload without it. Nothing runs yet, so for
- * now it only draws Make's banner; the runtime (build order 4 and 8) asks it.
+ * client-side navigation until a reload without it. Make draws its banner off
+ * it, and the recipe engine (lib/recipes/engine.ts) and ⌘K run nothing while it
+ * is on; the mod runtime (build order 8) will ask it too.
  */
 
 /** Make's list. Never `source` or `store`: the list has no use for 128KB a row. */
@@ -47,6 +51,33 @@ export function hasSafeModeParam(search: string): boolean {
 function readSafeMode(): boolean {
   return typeof window !== 'undefined' && hasSafeModeParam(window.location.search);
 }
+
+/** A slug from a name, under 061's rule: a letter first, then [a-z0-9-], at most 30. */
+export function slugFromName(name: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^[^a-z]+/, '')
+    .replace(/-+$/, '')
+    .slice(0, 30)
+    .replace(/-+$/, '');
+  return MOD_SLUG_RE.test(base) ? base : 'recipe';
+}
+
+/** `base`, or `base-2`, `base-3`... the first no row uses, kept to 30 characters. */
+export function uniqueSlug(base: string, taken: ReadonlySet<string>): string {
+  if (!taken.has(base)) return base;
+  for (let n = 2; n < 1000; n++) {
+    const suffix = `-${n}`;
+    const slug = `${base.slice(0, 30 - suffix.length).replace(/-+$/, '')}${suffix}`;
+    if (!taken.has(slug)) return slug;
+  }
+  return `recipe-${crypto.randomUUID().slice(0, 4)}`;
+}
+
+const DISABLED_REASON_MAX = 200;
 
 function sortMods(rows: UserMod[]): UserMod[] {
   return [...rows].sort(
@@ -72,10 +103,45 @@ interface ModsStore {
   /** False (and no write) when the name breaks 061's rule. */
   rename: (id: string, name: string) => Promise<boolean>;
   remove: (id: string) => Promise<void>;
+  /**
+   * Saves a new recipe, switched off (mods.md: everything starts off). The slug
+   * comes from the name and is one no row of ANY kind uses, so the recipe's ⌘K
+   * id (`mod.<slug>.run`) cannot collide with a later mod's.
+   */
+  createRecipe: (
+    userId: string,
+    input: { name: string; manifest: RecipeManifest }
+  ) => Promise<{ ok: true; id: string } | { ok: false; reason: string }>;
+  /**
+   * A recipe's name and manifest. A switched-on recipe whose manifest changed
+   * is saved switched off (everything starts off, and an edit is new
+   * behaviour); a rename alone leaves the switch as it is.
+   */
+  saveRecipe: (id: string, input: { name: string; manifest: RecipeManifest }) => Promise<boolean>;
+  /** Switched off by the app, with the reason Make shows (061: 1 to 200 characters). */
+  disable: (id: string, reason: string) => Promise<void>;
   /** "Turn all mods off": every recipe and mod, on every device. */
   turnAllOff: (userId: string) => Promise<void>;
   /** Back to the start for the next account, keeping `safeMode`. */
   reset: () => void;
+}
+
+/**
+ * Same JSON value, key order aside: a manifest read back from jsonb has its
+ * keys sorted, one built by the form does not.
+ */
+function sameJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    return Array.isArray(a) && Array.isArray(b) && a.length === b.length && a.every((v, i) => sameJson(v, b[i]));
+  }
+  if (!a || !b || typeof a !== 'object' || typeof b !== 'object') return false;
+  const ka = Object.keys(a).filter((k) => (a as Record<string, unknown>)[k] !== undefined);
+  const kb = Object.keys(b).filter((k) => (b as Record<string, unknown>)[k] !== undefined);
+  return (
+    ka.length === kb.length &&
+    ka.every((k) => sameJson((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]))
+  );
 }
 
 const INITIAL = {
@@ -215,6 +281,100 @@ export const useModsStore = create<ModsStore>((set, get) => {
           });
         }
         writeFailed('remove', error);
+      }
+    },
+
+    createRecipe: async (userId, { name, manifest }) => {
+      const { available, hydratedUserId, loaded } = get();
+      const trimmed = name.trim();
+      if (!available || hydratedUserId !== userId || !loaded) return { ok: false, reason: 'Make is not ready yet.' };
+      if (!ModNameSchema.safeParse(trimmed).success) return { ok: false, reason: 'Give it a name.' };
+      if (!RecipeManifestSchema.safeParse(manifest).success) return { ok: false, reason: 'Something in it is not valid.' };
+
+      const id = crypto.randomUUID();
+      const taken = new Set(get().rows.map((r) => r.slug));
+      const base = slugFromName(trimmed);
+      // A clash the list cannot see (a row made on another device since the
+      // load) comes back as 23505; take the next suffix and try again.
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const slug = uniqueSlug(base, taken);
+        const now = new Date().toISOString();
+        const row: UserMod = {
+          id,
+          userId,
+          kind: 'recipe',
+          slug,
+          name: trimmed,
+          enabled: false,
+          manifest,
+          disabledReason: null,
+          createdAt: now,
+          updatedAt: now,
+        };
+        set((s) => ({ rows: sortMods([...s.rows.filter((r) => r.id !== id), row]) }));
+        const { error } = await createClient()
+          .from('user_mods')
+          .insert({ id, user_id: userId, kind: 'recipe', slug, name: trimmed, enabled: false, manifest });
+        if (!error) return { ok: true, id };
+        if (get().hydratedUserId === userId) set((s) => ({ rows: s.rows.filter((r) => r.id !== id) }));
+        if (error.code === '23505') {
+          taken.add(slug);
+          continue;
+        }
+        writeFailed('createRecipe', error);
+        return { ok: false, reason: 'Could not save it. Try again.' };
+      }
+      return { ok: false, reason: 'Could not save it. Try again.' };
+    },
+
+    saveRecipe: async (id, { name, manifest }) => {
+      const { available, hydratedUserId: userId, rows } = get();
+      const before = rows.find((r) => r.id === id && r.kind === 'recipe');
+      const trimmed = name.trim();
+      if (!available || !userId || !before) return false;
+      if (!ModNameSchema.safeParse(trimmed).success || !RecipeManifestSchema.safeParse(manifest).success) return false;
+      const switchOff = before.enabled && !sameJson(before.manifest, manifest);
+      set((s) => ({
+        rows: sortMods(
+          s.rows.map((r) => (r.id === id ? { ...r, name: trimmed, manifest, ...(switchOff && { enabled: false }) } : r))
+        ),
+      }));
+      const { error } = await createClient()
+        .from('user_mods')
+        .update({ name: trimmed, manifest, ...(switchOff && { enabled: false }) })
+        .eq('id', id)
+        .eq('user_id', userId);
+      if (error) {
+        if (get().hydratedUserId === userId) {
+          set((s) => ({
+            rows: sortMods(
+              s.rows.map((r) =>
+                r.id === id ? { ...r, name: before.name, manifest: before.manifest, enabled: before.enabled } : r
+              )
+            ),
+          }));
+        }
+        writeFailed('saveRecipe', error);
+        return false;
+      }
+      return true;
+    },
+
+    disable: async (id, reason) => {
+      const { available, hydratedUserId: userId, rows } = get();
+      const before = rows.find((r) => r.id === id);
+      if (!available || !userId || !before) return;
+      const why = reason.trim().slice(0, DISABLED_REASON_MAX) || 'Switched off.';
+      set((s) => ({ rows: s.rows.map((r) => (r.id === id ? { ...r, enabled: false, disabledReason: why } : r)) }));
+      const { error } = await createClient()
+        .from('user_mods')
+        .update({ enabled: false, disabled_reason: why })
+        .eq('id', id)
+        .eq('user_id', userId);
+      if (error) {
+        // Left off locally even so: a recipe that broke its limit must not run
+        // again in this tab because the write that recorded it failed.
+        writeFailed('disable', error);
       }
     },
 

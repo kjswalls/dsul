@@ -11,6 +11,7 @@ export type CommandGroupId =
   | 'recent'
   | 'create'
   | 'items'
+  | 'mods'
   | 'goto'
   | 'view'
   | 'rituals'
@@ -30,6 +31,7 @@ export const RECENT_HEADING = 'Recently used';
 export const COMMAND_GROUPS: { id: CommandGroupId; heading: string }[] = [
   { id: 'create', heading: 'Create' },
   { id: 'items', heading: 'Items' },
+  { id: 'mods', heading: 'Made by you' },
   { id: 'goto', heading: 'Go to' },
   { id: 'view', heading: 'View' },
   { id: 'rituals', heading: 'Rituals' },
