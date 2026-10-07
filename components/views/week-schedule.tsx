@@ -589,6 +589,7 @@ export function WeekSchedule({ activeId }: { activeId: string | null }) {
              for why z-10 is not enough.
         */}
         <div
+          data-testid="week-hour-gutter"
           className={cn(
             'sticky left-0 flex flex-shrink-0 flex-col border-r bg-canvas transition-colors',
             // The edge treatment appears only once there is something behind

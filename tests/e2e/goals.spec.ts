@@ -312,9 +312,12 @@ test.describe('goals', () => {
     await setScope(page, 'Day');
     await setLayout(page, 'Buckets');
     // Walk to the day it falls on — seeded weekly-on-Sunday, anchored today.
+    // By the header's Next button, not ArrowRight: setLayout leaves focus on the
+    // Layout trigger, and an arrow key there belongs to the button, so the walk
+    // never left today on any day but a Sunday.
     let row = page.locator('[data-testid="item-card"]').filter({ hasText: checkin });
     for (let i = 0; i < 7 && !(await row.count()); i += 1) {
-      await page.keyboard.press('ArrowRight');
+      await page.getByTestId('header-next').click();
       await page.waitForTimeout(150);
       row = page.locator('[data-testid="item-card"]').filter({ hasText: checkin });
     }

@@ -32,6 +32,10 @@ async function pickDisplay(page: Page, section: string, value: string) {
   await page.getByTestId('display-trigger-canvas').click();
   await page.getByRole('menuitem', { name: section }).click();
   await page.getByRole('menuitemradio', { name: value, exact: true }).click();
+  // Let the close animation finish. A pointerdown on the trigger while the
+  // closing submenu is still mounted reads as an outside press to that layer, so
+  // a second pickDisplay straight after this one never got its menu open.
+  await expect(page.getByRole('menu')).toHaveCount(0);
 }
 
 test.describe('View matrix', () => {

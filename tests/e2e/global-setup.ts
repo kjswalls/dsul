@@ -3,6 +3,7 @@ import { dirname } from 'node:path';
 import { randomBytes } from 'node:crypto';
 import { testEnv, STORAGE_STATE, SETUP_ARTIFACT, TEST_TITLE_PREFIX, BASE_URL } from './helpers/env';
 import { passwordGrant, sessionCookies, seededLocalStorage } from './helpers/session';
+import { NUDGES } from '../../lib/nudges/registry';
 
 /**
  * Runs ONCE before the whole suite.
@@ -52,6 +53,9 @@ export default async function globalSetup() {
   // the tick serves nobody until reminders-tick.spec switches it on for itself:
   // a run aborted before that spec's teardown would otherwise leave the shared
   // user enrolled in every later run's tick.
+  // dismissed_nudges holds every one-time nudge: a nudge is a toast, and the
+  // toaster sits where the dock omnibar's panel opens, so "Streaks are on"
+  // swallowed the clicks on omnibar rows in omnibar.spec and pause.spec.
   const existing = await rest(
     `user_settings?user_id=eq.${userId}&select=openclaw_api_key`
   ).then((r) => (r.ok ? r.json() : []));
@@ -76,6 +80,7 @@ export default async function globalSetup() {
       time_format: '12h',
       week_start_day: 'sunday',
       openclaw_api_key: apiKey,
+      dismissed_nudges: NUDGES.map((nudge) => nudge.id),
     }),
   });
   if (!settingsRes.ok) {

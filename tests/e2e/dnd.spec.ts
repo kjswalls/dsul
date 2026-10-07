@@ -9,7 +9,7 @@ import {
   testTitle,
 } from './helpers/api';
 import { getTodayStr } from './helpers/dates';
-import { dragTo, dragItemToBucket } from './helpers/dnd';
+import { dragTo, dragItemToBucket, pressPoint } from './helpers/dnd';
 import { reloadApp, itemCard, bucket } from './helpers/app';
 
 /**
@@ -203,15 +203,16 @@ test.describe('Drag and drop flows', { tag: '@exclusive-dnd' }, () => {
       await reloadApp(page);
       const row = itemCard(page, taskId);
       await row.scrollIntoViewIfNeeded();
-      const box = await row.boundingBox();
-      expect(box).not.toBeNull();
+      const at = await pressPoint(row);
 
       // Start a drag so the drag-only droppables mount, then inventory them.
-      await page.mouse.move(box!.x + box!.width / 2, box!.y + box!.height / 2);
+      await page.mouse.move(at.x, at.y);
       await page.mouse.down();
       try {
-        await page.mouse.move(box!.x + box!.width / 2 + 12, box!.y + box!.height / 2, { steps: 3 });
-        await expect(page.locator('[data-dnd-id^="unscheduled:"]').first()).toBeAttached();
+        await page.mouse.move(at.x + 12, at.y, { steps: 3 });
+        // Morning's own untimed section exists without a drag (it holds this
+        // row), so wait on one that only a live drag mounts.
+        await expect(page.locator('[data-dnd-id="unscheduled:evening"]')).toBeAttached();
 
         const ids = await page
           .locator('[data-dnd-id]')

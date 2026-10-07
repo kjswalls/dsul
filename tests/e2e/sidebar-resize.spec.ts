@@ -90,6 +90,10 @@ test.describe('Sidebar resize', () => {
   test('dragging narrows the column too, and stops at the minimum', async ({ page }) => {
     await dragSash(page, -60);
     await expect.poll(() => columnWidth(page)).toBe(DEFAULT_W - 60);
+    // Wait for the release to commit too, not just the live width: the next
+    // drag measures the sash where it is, and starting it before the commit
+    // settles is how this test went flaky in CI.
+    await expect(sash(page)).toHaveAttribute('aria-valuenow', String(DEFAULT_W - 60));
 
     // Far past the floor. The column must stop dead at MIN rather than
     // collapsing — the sash goes with the column, so a zero-width one would be

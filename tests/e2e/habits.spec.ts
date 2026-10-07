@@ -6,6 +6,7 @@ import {
   cleanupTestData,
   cleanupByTitlePrefix,
   fetchTestHabit,
+  fetchTestItem,
   testTitle,
 } from './helpers/api';
 import {
@@ -358,12 +359,14 @@ test.describe('Habits', { tag: '@exclusive-habits' }, () => {
     }
   });
 
-  test('dragging a habit to the braindump is a no-op', async ({ page }) => {
-    // Behavioural invariant: the sidebar drop relies on unscheduleTask no-oping
-    // for habit ids — habits are not braindump-eligible. If this ever starts
-    // "working", a habit silently loses its bucket and disappears from the day.
+  test('dragging a habit to the braindump pauses it', async ({ page }) => {
+    // A habit on the canvas recurs and has no day to take away, so a drop on
+    // the braindump pauses it (lib/dnd/handle-drag-end.ts, `pause-item`). It used
+    // to be a no-op, and this test still asserted that while the drag tail sat
+    // unrun behind the red front of the suite. What must hold either way: the
+    // habit keeps its bucket and is never unscheduled into the braindump list.
     const habitId = await createTestHabit(page, {
-      title: testTitle('habit_nodrop'),
+      title: testTitle('habit_pausedrop'),
       timeBucket: 'morning',
     });
 
@@ -371,8 +374,7 @@ test.describe('Habits', { tag: '@exclusive-habits' }, () => {
       await reloadApp(page);
       await expect(itemCard(page, habitId)).toHaveAttribute('data-bucket', 'morning');
 
-      // The braindump reports hover, so the drag genuinely lands there — the
-      // no-op is the handler's decision, not a missed drop.
+      // The braindump reports hover, so the drag genuinely lands there.
       await dragTo(
         page,
         itemCard(page, habitId),
@@ -380,13 +382,13 @@ test.describe('Habits', { tag: '@exclusive-habits' }, () => {
         { scrollHint: page.getByTestId('braindump') }
       );
 
-      await expect(itemCard(page, habitId)).toHaveAttribute('data-bucket', 'morning');
-      await expect(
-        page.getByTestId('braindump').locator(`[data-item-id="${habitId}"]`)
-      ).toHaveCount(0);
+      // Off the grid, into nothing but the braindump's Paused section.
+      await expect(page.locator(`[data-tour="timeline"] [data-item-id="${habitId}"]`)).toHaveCount(0);
 
-      const persisted = await fetchTestHabit(page, habitId);
-      expect(persisted?.timeBucket).toBe('morning');
+      const stored = await fetchTestItem(page, habitId);
+      expect(stored).not.toBeNull();
+      expect(stored!.pausedAt).toBeTruthy();
+      expect(stored!.timeBucket).toBe('morning');
     } finally {
       await cleanupTestData(page, [], [habitId]);
     }

@@ -620,6 +620,10 @@ export function TaskRow({ row, context = 'bucket', density = 'default', date }: 
           <TooltipTrigger asChild {...titleTip.triggerProps}>
             <p
               ref={titleRef}
+              // Where tests/e2e/helpers/dnd.ts presses to drag the row. The row's
+              // centre is under the hover cluster once the pointer arrives, and
+              // the cluster stops pointerdown, so a press there never drags.
+              data-row-title=""
               className={cn(
                 // Content typeface via tokens: sans = Inter Regular 11.5,
                 // serif = Source Serif SemiBold 15. Flipped by data-type-mode.
